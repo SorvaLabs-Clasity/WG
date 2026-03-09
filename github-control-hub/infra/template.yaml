@@ -12,6 +12,7 @@ Globals:
         GITHUB_ORG: !Ref GitHubOrg
         FRONTEND_URL: !Ref FrontendUrl
         BACKEND_URL: !Ref BackendUrl
+        NODE_ENV: production
 
 Parameters:
   GitHubOrg:
@@ -25,7 +26,7 @@ Parameters:
     Default: https://your-api-domain.com
   SecretsArn:
     Type: String
-    Description: ARN of the Secrets Manager secret containing GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, JWT_SECRET
+    Description: ARN of the Secrets Manager secret containing GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, JWT_SECRET, SYSTEM_GITHUB_TOKEN, GITHUB_WEBHOOK_SECRET
 
 Resources:
   GitHubControlHubApi:
@@ -42,6 +43,8 @@ Resources:
     Properties:
       CodeUri: ../backend/dist/
       Handler: lambda.handler
+      Timeout: 30
+      MemorySize: 512
       Policies:
         - Version: "2012-10-17"
           Statement:
@@ -49,9 +52,29 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: !Ref SecretsArn
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:BatchWriteItem
+              Resource:
+                - !GetAtt ActivityTable.Arn
+                - !GetAtt TemplatesTable.Arn
+                - !GetAtt ScannersTable.Arn
+                - !GetAtt AlertsTable.Arn
+                - !GetAtt OrgConfigTable.Arn
       Environment:
         Variables:
           SECRETS_ARN: !Ref SecretsArn
+          ACTIVITY_TABLE: !Ref ActivityTable
+          TEMPLATES_TABLE: !Ref TemplatesTable
+          SCANNERS_TABLE: !Ref ScannersTable
+          ALERTS_TABLE: !Ref AlertsTable
+          ORG_CONFIG_TABLE: !Ref OrgConfigTable
       Events:
         ProxyRoot:
           Type: Api
@@ -66,11 +89,12 @@ Resources:
             Path: /{proxy+}
             Method: ANY
 
-  # Optional: audit log table
-  AuditLogTable:
+  # --- DynamoDB Tables ---
+
+  ActivityTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: github-control-hub-audit-log
+      TableName: !Sub "${AWS::StackName}-activity"
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: pk
@@ -83,7 +107,160 @@ Resources:
         - AttributeName: sk
           KeyType: RANGE
 
-  # Audit Log Check Scheduled Job
+  TemplatesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-templates"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  ScannersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-scanners"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+  AlertsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-alerts"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  OrgConfigTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-org-config"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: org
+          AttributeType: S
+      KeySchema:
+        - AttributeName: org
+          KeyType: HASH
+
+  # --- S3 Bucket for Frontend ---
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::StackName}-frontend"
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${FrontendBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  # --- CloudFront Distribution ---
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: S3Origin
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            OriginAccessControlId: !Ref CloudFrontOAC
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+          - Id: ApiOrigin
+            DomainName: !Sub "${GitHubControlHubApi}.execute-api.${AWS::Region}.amazonaws.com"
+            OriginPath: /prod
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          ForwardedValues:
+            QueryString: false
+          Compress: true
+        CacheBehaviors:
+          - PathPattern: "/api/*"
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            ForwardedValues:
+              QueryString: true
+              Headers:
+                - Authorization
+                - Content-Type
+            CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+          - PathPattern: "/auth/*"
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, POST, PATCH, DELETE]
+            ForwardedValues:
+              QueryString: true
+              Headers:
+                - Authorization
+                - Content-Type
+            CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+          - PathPattern: "/health"
+            TargetOriginId: ApiOrigin
+            ViewerProtocolPolicy: redirect-to-https
+            ForwardedValues:
+              QueryString: false
+            CachePolicyId: "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${AWS::StackName}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # --- Audit Log Check Scheduled Job ---
+
   AuditLogCheckFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -96,9 +273,16 @@ Resources:
               Action:
                 - secretsmanager:GetSecretValue
               Resource: !Ref SecretsArn
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+              Resource: !GetAtt OrgConfigTable.Arn
       Environment:
         Variables:
           SECRETS_ARN: !Ref SecretsArn
+          ORG_CONFIG_TABLE: !Ref OrgConfigTable
       Events:
         CheckSchedule:
           Type: Schedule
@@ -111,3 +295,12 @@ Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint URL
     Value: !Sub "https://${GitHubControlHubApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"
+  FrontendBucketName:
+    Description: S3 bucket name for frontend static assets
+    Value: !Ref FrontendBucket
+  CloudFrontDomain:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt CloudFrontDistribution.DomainName
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (for cache invalidation)
+    Value: !Ref CloudFrontDistribution

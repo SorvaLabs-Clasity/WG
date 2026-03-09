@@ -17,10 +17,19 @@ import { authMiddleware } from "./middleware/authMiddleware";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
+const isProduction = process.env.NODE_ENV === "production";
+
+function requireEnv(name: string): string {
+  const val = process.env[name];
+  if (!val && isProduction) throw new Error(`Missing required env var: ${name}`);
+  return val || "";
+}
+
+const frontendUrl = process.env.FRONTEND_URL || (isProduction ? requireEnv("FRONTEND_URL") : "http://localhost:5173");
 
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL ?? "http://localhost:5173",
+    origin: frontendUrl,
     credentials: true,
   })
 );
@@ -44,8 +53,10 @@ app.use("/api/security", authMiddleware, dependencyRoutes);
 app.use("/api/org", authMiddleware, orgRoutes);
 app.use("/api/webhooks", webhookRoutes);
 
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
-});
+if (!isProduction) {
+  app.listen(PORT, () => {
+    console.log(`Backend running on http://localhost:${PORT}`);
+  });
+}
 
 export default app;

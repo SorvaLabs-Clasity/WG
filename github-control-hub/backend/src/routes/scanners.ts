@@ -13,17 +13,17 @@ import { createOctokit } from "../github/client";
 
 const router = Router();
 
-router.get("/", (req: Request, res: Response) => {
-  res.json(listScanners());
+router.get("/", async (req: Request, res: Response) => {
+  res.json(await listScanners());
 });
 
-router.post("/", (req: Request, res: Response) => {
-  const scanner = createScanner(req.body);
+router.post("/", async (req: Request, res: Response) => {
+  const scanner = await createScanner(req.body);
   res.status(201).json(scanner);
 });
 
-router.put("/:id", (req: Request<{id: string}>, res: Response) => {
-  const scanner = updateScanner(req.params.id, req.body);
+router.put("/:id", async (req: Request<{id: string}>, res: Response) => {
+  const scanner = await updateScanner(req.params.id, req.body);
   if (!scanner) {
     res.status(404).json({ error: "Scanner not found" });
     return;
@@ -31,8 +31,8 @@ router.put("/:id", (req: Request<{id: string}>, res: Response) => {
   res.json(scanner);
 });
 
-router.delete("/:id", (req: Request<{id: string}>, res: Response) => {
-  const success = deleteScanner(req.params.id);
+router.delete("/:id", async (req: Request<{id: string}>, res: Response) => {
+  const success = await deleteScanner(req.params.id);
   if (!success) {
     res.status(404).json({ error: "Scanner not found" });
     return;
@@ -40,8 +40,8 @@ router.delete("/:id", (req: Request<{id: string}>, res: Response) => {
   res.status(204).send();
 });
 
-router.get("/:id/results", (req: Request<{id: string}>, res: Response) => {
-  const result = getScanResult(req.params.id);
+router.get("/:id/results", async (req: Request<{id: string}>, res: Response) => {
+  const result = await getScanResult(req.params.id);
   if (!result) {
     res.status(404).json({ error: "Scan results not found" });
     return;

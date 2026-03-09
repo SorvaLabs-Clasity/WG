@@ -12,7 +12,7 @@ router.get("/github", (_req: Request, res: Response) => {
   res.redirect(url);
 });
 
-router.get("/github/callback", async (req: Request, res: Response) => {
+router.get("/callback", async (req: Request, res: Response) => {
   const { code } = req.query;
   if (typeof code !== "string") {
     res.status(400).json({ error: "Missing code parameter" });
@@ -43,7 +43,7 @@ router.get("/github/callback", async (req: Request, res: Response) => {
       accessToken,
     });
 
-    const frontendUrl = process.env.FRONTEND_URL ?? "http://localhost:5173";
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
     res.redirect(`${frontendUrl}/auth/callback?token=${token}`);
   } catch (err) {
     console.error("OAuth callback error:", err);

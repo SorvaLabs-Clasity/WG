@@ -1,23 +1,23 @@
 import { Router, Request, Response } from "express";
 import { getAlerts, resolveAlert, createAlert } from "../services/alertService";
+import { createOctokit, getOrg } from "../github/client";
 
 const router = Router();
 
-// GET /api/alerts
-router.get("/", (req: Request, res: Response) => {
+router.get("/", async (req: Request, res: Response) => {
   try {
-    const alerts = getAlerts();
+    const alerts = await getAlerts();
     res.json(alerts);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
 });
 
-// POST /api/alerts/:id/resolve
-router.post("/:id/resolve", (req: Request, res: Response) => {
+router.post("/:id/resolve", async (req: Request, res: Response) => {
   try {
     const user = req.user?.login || "system";
-    const alert = resolveAlert(req.params.id, user);
+    const alertId = req.params.id as string;
+    const alert = await resolveAlert(alertId, user);
     if (!alert) {
       return res.status(404).json({ error: "Alert not found" });
     }
@@ -27,23 +27,22 @@ router.post("/:id/resolve", (req: Request, res: Response) => {
   }
 });
 
-// POST /api/alerts/simulate
-router.post("/simulate", (req: Request, res: Response) => {
+router.post("/simulate", async (req: Request, res: Response) => {
   try {
     const { scenario } = req.body;
     
     switch (scenario) {
       case "compromised_dev":
-        createAlert("api-gateway", "suspicious_activity", "User 'dev-john' pushed to 40 repos in 5 minutes.", "critical");
+        await createAlert("api-gateway", "suspicious_activity", "User 'dev-john' pushed to 40 repos in 5 minutes.", "critical");
         break;
       case "malicious_pr":
-        createAlert("web-platform", "protection_drift", "Branch protection bypassed for malicious PR on 'main'.", "high");
+        await createAlert("web-platform", "protection_drift", "Branch protection bypassed for malicious PR on 'main'.", "high");
         break;
       case "force_push":
-        createAlert("design-system", "protection_drift", "Force push protection disabled on 'main'.", "high");
+        await createAlert("design-system", "protection_drift", "Force push protection disabled on 'main'.", "high");
         break;
       case "privilege_escalation":
-        createAlert("infrastructure", "user_promoted", "User 'guest-user' promoted to Admin.", "critical");
+        await createAlert("infrastructure", "user_promoted", "User 'guest-user' promoted to Admin.", "critical");
         break;
       default:
         return res.status(400).json({ error: "Unknown scenario" });
@@ -55,17 +54,49 @@ router.post("/simulate", (req: Request, res: Response) => {
   }
 });
 
-// GET /api/alerts/inactive-users
-router.get("/inactive-users", (req: Request, res: Response) => {
+router.get("/inactive-users", async (req: Request, res: Response) => {
   try {
-    // Mock inactive users (180 days)
-    const inactiveUsers = [
-      { username: "old-contractor", lastActive: new Date(Date.now() - 1000 * 60 * 60 * 24 * 190).toISOString(), role: "collaborator" },
-      { username: "former-employee", lastActive: new Date(Date.now() - 1000 * 60 * 60 * 24 * 210).toISOString(), role: "member" },
-      { username: "test-bot-2024", lastActive: new Date(Date.now() - 1000 * 60 * 60 * 24 * 300).toISOString(), role: "admin" }
-    ];
+    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    if (!token) {
+      return res.status(401).json({ error: "No GitHub token available" });
+    }
+
+    const octokit = createOctokit(token);
+    const org = getOrg();
+
+    const { data: members } = await octokit.rest.orgs.listMembers({ org, per_page: 100 });
+
+    const inactiveUsers: { username: string; lastActive: string; role: string }[] = [];
+    const cutoff = Date.now() - (180 * 24 * 60 * 60 * 1000);
+
+    for (const member of members) {
+      try {
+        const { data: events } = await octokit.rest.activity.listPublicEventsForUser({
+          username: member.login,
+          per_page: 1,
+        });
+        const lastEvent = events[0];
+        const lastActive = lastEvent?.created_at || "1970-01-01T00:00:00Z";
+
+        if (new Date(lastActive).getTime() < cutoff) {
+          const { data: membership } = await octokit.rest.orgs.getMembershipForUser({
+            org,
+            username: member.login,
+          });
+          inactiveUsers.push({
+            username: member.login,
+            lastActive,
+            role: membership.role,
+          });
+        }
+      } catch {
+        // skip members we can't fetch events for
+      }
+    }
+
     res.json(inactiveUsers);
   } catch (error: any) {
+    console.error("Error fetching inactive users:", error);
     res.status(500).json({ error: error.message });
   }
 });

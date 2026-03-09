@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import { logActivity } from "./activityService";
-import { getOrg } from "../github/client";
+import { docClient, usesDynamo, tableName, PutCommand, ScanCommand, GetCommand } from "../utils/dynamo";
 
 export type AlertSeverity = "critical" | "high" | "medium" | "low";
 export type AlertType =
@@ -29,19 +29,28 @@ export interface SecurityAlert {
   details?: any;
 }
 
-let alertsStore: SecurityAlert[] = [];
+const TABLE = () => tableName("ALERTS_TABLE");
 
-export function getAlerts(): SecurityAlert[] {
-  return alertsStore.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+// In-memory fallback for local development
+let memAlertsStore: SecurityAlert[] = [];
+
+export async function getAlerts(): Promise<SecurityAlert[]> {
+  if (usesDynamo()) {
+    const result = await docClient.send(new ScanCommand({ TableName: TABLE() }));
+    return ((result.Items || []) as SecurityAlert[]).sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+    );
+  }
+  return memAlertsStore.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 }
 
-export function createAlert(
+export async function createAlert(
   repo: string,
   type: AlertType,
   message: string,
   severity: AlertSeverity,
   details?: any
-): SecurityAlert {
+): Promise<SecurityAlert> {
   const newAlert: SecurityAlert = {
     id: uuidv4(),
     repo,
@@ -52,11 +61,15 @@ export function createAlert(
     resolved: false,
     details,
   };
-  alertsStore.unshift(newAlert);
 
-  // Log this in activity too for visibility
-  logActivity(
-    "github.issue_opened" as any, // mapping to a general warning
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: newAlert }));
+  } else {
+    memAlertsStore.unshift(newAlert);
+  }
+
+  await logActivity(
+    "github.issue_opened" as any,
     "system",
     repo,
     "security_alert",
@@ -68,16 +81,31 @@ export function createAlert(
   return newAlert;
 }
 
-export function resolveAlert(id: string, user: string): SecurityAlert | null {
-  const alertIndex = alertsStore.findIndex(a => a.id === id);
+export async function resolveAlert(id: string, user: string): Promise<SecurityAlert | null> {
+  if (usesDynamo()) {
+    const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id } }));
+    const alert = result.Item as SecurityAlert | undefined;
+    if (!alert) return null;
+
+    const updated: SecurityAlert = {
+      ...alert,
+      resolved: true,
+      resolvedAt: new Date().toISOString(),
+      resolvedBy: user,
+    };
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+    return updated;
+  }
+
+  const alertIndex = memAlertsStore.findIndex(a => a.id === id);
   if (alertIndex === -1) return null;
 
-  alertsStore[alertIndex] = {
-    ...alertsStore[alertIndex],
+  memAlertsStore[alertIndex] = {
+    ...memAlertsStore[alertIndex],
     resolved: true,
     resolvedAt: new Date().toISOString(),
     resolvedBy: user,
   };
 
-  return alertsStore[alertIndex];
+  return memAlertsStore[alertIndex];
 }

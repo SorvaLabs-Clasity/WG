@@ -30,16 +30,18 @@ async function loadSecrets() {
     process.env.GITHUB_CLIENT_ID = secrets.GITHUB_CLIENT_ID;
     process.env.GITHUB_CLIENT_SECRET = secrets.GITHUB_CLIENT_SECRET;
     process.env.JWT_SECRET = secrets.JWT_SECRET;
+    if (secrets.SYSTEM_GITHUB_TOKEN) process.env.SYSTEM_GITHUB_TOKEN = secrets.SYSTEM_GITHUB_TOKEN;
+    if (secrets.GITHUB_WEBHOOK_SECRET) process.env.GITHUB_WEBHOOK_SECRET = secrets.GITHUB_WEBHOOK_SECRET;
   }
 
   initialized = true;
 }
 
-export async function handler(event: unknown, context: unknown) {
+export async function handler(event: any, context: any) {
   await loadSecrets();
 
   const serverlessExpress = await import("@vendia/serverless-express");
   const { default: app } = await import("./server");
   const serverlessHandler = serverlessExpress.configure({ app });
-  return serverlessHandler(event, context);
+  return serverlessHandler(event, context, () => {});
 }

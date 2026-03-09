@@ -4,16 +4,18 @@ import { getActivity, getActivityForRepo, getActivityCount } from "../services/a
 
 const router = Router();
 
-router.get("/", (req: Request, res: Response) => {
+router.get("/", async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 50, 200);
   const offset = Number(req.query.offset) || 0;
   const repo = req.query.repo as string | undefined;
 
-  const entries = repo ? getActivityForRepo(repo, limit) : getActivity(limit, offset);
+  const entries = repo
+    ? await getActivityForRepo(repo, limit)
+    : await getActivity(limit, offset);
 
   res.json({
     entries,
-    total: getActivityCount(),
+    total: await getActivityCount(),
     limit,
     offset,
   });

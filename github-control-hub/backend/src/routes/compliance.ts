@@ -1,34 +1,27 @@
 import { Router, Request, Response } from "express";
 import { calculateRepoCompliance } from "../services/complianceService";
-import { createOctokit } from "../github/client";
+import { createOctokit, getOrg } from "../github/client";
 
 const router = Router();
 
-// GET /api/compliance/dashboard
 router.get("/dashboard", async (req: Request, res: Response) => {
   try {
-    // Determine token based on header or env
-    let token = process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.substring(7);
-    }
-    
+    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
 
     const octokit = createOctokit(token);
+    const org = getOrg();
 
-    // Get list of repos
     const { data: repos } = await octokit.rest.repos.listForOrg({
-      org: process.env.GITHUB_ORG || "default-org",
+      org,
       sort: "updated",
-      per_page: 5, // Limiting for performance in demo. In real app, paginate.
+      per_page: 20,
     });
 
     const scores = await Promise.all(
-      repos.map(r => calculateRepoCompliance(octokit, r.name))
+      repos.map((r: any) => calculateRepoCompliance(octokit, r.name))
     );
 
     res.json(scores);

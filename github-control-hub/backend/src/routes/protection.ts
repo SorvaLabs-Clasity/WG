@@ -50,7 +50,7 @@ router.put("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res:
     const octokit = createOctokit(req.user!.accessToken);
     const protection = req.body;
     await protectBranch(octokit, req.params.repo, req.params.branch, protection);
-    logActivity("branch.protect", req.user!.login, req.params.repo, req.params.branch, "Applied protection rules", {
+    await logActivity("branch.protect", req.user!.login, req.params.repo, req.params.branch, "Applied protection rules", {
       new: protection,
     });
     res.json({ message: `Protection applied to ${req.params.branch}` });
@@ -64,7 +64,7 @@ router.delete("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, r
   try {
     const octokit = createOctokit(req.user!.accessToken);
     await deleteProtection(octokit, req.params.repo, req.params.branch);
-    logActivity("branch.unprotect", req.user!.login, req.params.repo, req.params.branch, "Removed branch protection");
+    await logActivity("branch.unprotect", req.user!.login, req.params.repo, req.params.branch, "Removed branch protection");
     res.json({ message: `Protection removed from ${req.params.branch}` });
   } catch (err) {
     console.error("Error deleting protection:", err);
@@ -76,7 +76,7 @@ router.delete("/:repo/rulesets/:rulesetId", async (req: Request<{ repo: string; 
   try {
     const octokit = createOctokit(req.user!.accessToken);
     await deleteRuleset(octokit, req.params.repo, parseInt(req.params.rulesetId, 10));
-    logActivity("repo.ruleset.delete", req.user!.login, req.params.repo, req.params.rulesetId, "Deleted ruleset");
+    await logActivity("repo.ruleset.delete", req.user!.login, req.params.repo, req.params.rulesetId, "Deleted ruleset");
     res.json({ message: `Ruleset ${req.params.rulesetId} deleted` });
   } catch (err) {
     console.error("Error deleting ruleset:", err);

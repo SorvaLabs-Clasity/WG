@@ -16,7 +16,7 @@ function getClientSecret(): string {
 export function buildAuthorizationUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: getClientId(),
-    redirect_uri: `${process.env.BACKEND_URL ?? "http://localhost:4000"}/auth/github/callback`,
+    redirect_uri: `${process.env.BACKEND_URL || "http://localhost:4000"}/auth/callback`,
     scope: "repo read:org",
     state,
   });

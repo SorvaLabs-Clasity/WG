@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { listBranches, getProtection, listRulesets, getAllProtections } from "./branchService";
+import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, QueryCommand, ScanCommand } from "../utils/dynamo";
 
 export interface ScannerCondition {
   branchPatterns: string[];
@@ -50,21 +51,41 @@ export interface ScanResult {
   violations: ComplianceViolation[];
 }
 
-// In-memory store
-const scanners: Map<string, Scanner> = new Map();
-const scanResults: Map<string, ScanResult> = new Map();
+const TABLE = () => tableName("SCANNERS_TABLE");
 
-export function listScanners(): Scanner[] {
-  return Array.from(scanners.values()).sort(
+// In-memory fallback for local development
+const memScanners: Map<string, Scanner> = new Map();
+const memScanResults: Map<string, ScanResult> = new Map();
+
+export async function listScanners(): Promise<Scanner[]> {
+  if (usesDynamo()) {
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE(),
+        KeyConditionExpression: "pk = :pk",
+        ExpressionAttributeValues: { ":pk": "SCANNER" },
+      })
+    );
+    return ((result.Items || []) as Scanner[]).sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+  }
+  return Array.from(memScanners.values()).sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 }
 
-export function getScanner(id: string): Scanner | undefined {
-  return scanners.get(id);
+export async function getScanner(id: string): Promise<Scanner | undefined> {
+  if (usesDynamo()) {
+    const result = await docClient.send(
+      new GetCommand({ TableName: TABLE(), Key: { pk: "SCANNER", sk: id } })
+    );
+    return result.Item as Scanner | undefined;
+  }
+  return memScanners.get(id);
 }
 
-export function createScanner(data: Omit<Scanner, "id" | "createdAt" | "updatedAt">): Scanner {
+export async function createScanner(data: Omit<Scanner, "id" | "createdAt" | "updatedAt">): Promise<Scanner> {
   const now = new Date().toISOString();
   const scanner: Scanner = {
     ...data,
@@ -72,12 +93,23 @@ export function createScanner(data: Omit<Scanner, "id" | "createdAt" | "updatedA
     createdAt: now,
     updatedAt: now,
   };
-  scanners.set(scanner.id, scanner);
+
+  if (usesDynamo()) {
+    await docClient.send(
+      new PutCommand({
+        TableName: TABLE(),
+        Item: { pk: "SCANNER", sk: scanner.id, ...scanner },
+      })
+    );
+  } else {
+    memScanners.set(scanner.id, scanner);
+  }
+
   return scanner;
 }
 
-export function updateScanner(id: string, data: Partial<Omit<Scanner, "id" | "createdAt" | "updatedAt">>): Scanner | null {
-  const existing = scanners.get(id);
+export async function updateScanner(id: string, data: Partial<Omit<Scanner, "id" | "createdAt" | "updatedAt">>): Promise<Scanner | null> {
+  const existing = await getScanner(id);
   if (!existing) return null;
 
   const updated: Scanner = {
@@ -87,19 +119,43 @@ export function updateScanner(id: string, data: Partial<Omit<Scanner, "id" | "cr
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   };
-  scanners.set(id, updated);
+
+  if (usesDynamo()) {
+    await docClient.send(
+      new PutCommand({
+        TableName: TABLE(),
+        Item: { pk: "SCANNER", sk: updated.id, ...updated },
+      })
+    );
+  } else {
+    memScanners.set(id, updated);
+  }
+
   return updated;
 }
 
-export function deleteScanner(id: string): boolean {
-  return scanners.delete(id);
+export async function deleteScanner(id: string): Promise<boolean> {
+  if (usesDynamo()) {
+    const existing = await getScanner(id);
+    if (!existing) return false;
+    await docClient.send(
+      new DeleteCommand({ TableName: TABLE(), Key: { pk: "SCANNER", sk: id } })
+    );
+    return true;
+  }
+  return memScanners.delete(id);
 }
 
-export function getScanResult(scannerId: string): ScanResult | undefined {
-  return scanResults.get(scannerId);
+export async function getScanResult(scannerId: string): Promise<ScanResult | undefined> {
+  if (usesDynamo()) {
+    const result = await docClient.send(
+      new GetCommand({ TableName: TABLE(), Key: { pk: "RESULT", sk: scannerId } })
+    );
+    return result.Item as ScanResult | undefined;
+  }
+  return memScanResults.get(scannerId);
 }
 
-// Helper to check if a branch matches a pattern (simple wildcard support)
 function branchMatches(branch: string, pattern: string) {
   if (pattern === "*") return true;
   if (pattern.endsWith("*")) {
@@ -109,13 +165,12 @@ function branchMatches(branch: string, pattern: string) {
 }
 
 export async function runScan(octokit: Octokit, scannerId: string, overrideReposToScan?: string[]): Promise<ScanResult> {
-  const scanner = scanners.get(scannerId);
+  const scanner = await getScanner(scannerId);
   if (!scanner) throw new Error("Scanner not found");
 
   const org = getOrg();
   let reposToScan: string[] = [];
 
-  // 1. Fetch repositories to scan
   if (overrideReposToScan) {
     reposToScan = overrideReposToScan;
   } else if (scanner.targetRepos === "all") {
@@ -165,7 +220,6 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
   const compliantRepos = new Set<string>();
   const nonCompliantRepos = new Set<string>();
 
-  // 2. Scan each repository
   for (const repo of reposToScan) {
     let isRepoCompliant = true;
     
@@ -178,11 +232,9 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
 
       for (const condition of scanner.conditions) {
         for (const pattern of condition.branchPatterns) {
-          // Find matching branches for this condition
           const matchingBranches = branchNames.filter(b => branchMatches(b, pattern));
           
           if (matchingBranches.length === 0 && !pattern.includes("*")) {
-            // If a specific exact branch is required and doesn't exist
             violations.push({ repo, branch: pattern, reason: "Required branch does not exist" });
             isRepoCompliant = false;
             continue;
@@ -191,7 +243,6 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
           for (const branch of matchingBranches) {
             let hasClassic = !!classicProtections[branch];
             
-            // Check rulesets for this branch
             const applyingRulesets = rulesets.filter((rs: any) => 
               rs.enforcement === "active" &&
               rs.conditions?.ref_name?.include?.some((inc: string) => branchMatches(branch, inc.replace('refs/heads/', '')))
@@ -218,7 +269,6 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
               continue;
             }
 
-            // Deep rule checks (Simplified for now, focusing on Classic if present, else first matching active ruleset)
             if (condition.rules) {
               const ruleReqs = condition.rules;
               
@@ -236,8 +286,6 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
                   violations.push({ repo, branch, reason: "Classic protection missing status checks requirement" });
                   isRepoCompliant = false;
                 }
-
-                // Check advanced rules for Classic
                 if (ruleReqs.dismissStaleReviews && p.required_pull_request_reviews && !p.required_pull_request_reviews.dismiss_stale_reviews) {
                   violations.push({ repo, branch, reason: "Classic protection missing dismiss stale reviews requirement" });
                   isRepoCompliant = false;
@@ -275,7 +323,6 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
                   isRepoCompliant = false;
                 }
               } else if (hasRuleset) {
-                // Combine rules from all applying active rulesets
                 const allRules = applyingRulesets.flatMap((rs: any) => rs.rules || []);
                 const hasRule = (type: string) => allRules.some((r: any) => r.type === type);
                 const getRule = (type: string) => allRules.find((r: any) => r.type === type);
@@ -293,8 +340,6 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
                   violations.push({ repo, branch, reason: "Ruleset missing status checks requirement" });
                   isRepoCompliant = false;
                 }
-
-                // Check advanced rules for Ruleset
                 if (ruleReqs.dismissStaleReviews && prRule && !prRule.parameters?.dismiss_stale_reviews_on_push) {
                   violations.push({ repo, branch, reason: "Ruleset missing dismiss stale reviews requirement" });
                   isRepoCompliant = false;
@@ -328,7 +373,6 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
                   violations.push({ repo, branch, reason: "Ruleset allows branch deletion" });
                   isRepoCompliant = false;
                 }
-                // Check if bypass_actors is empty (meaning enforced for everyone including admins)
                 const isEnforcedForAdmins = applyingRulesets.some((rs: any) => !rs.bypass_actors || rs.bypass_actors.length === 0);
                 if (ruleReqs.enforceAdmins && !isEnforcedForAdmins) {
                   violations.push({ repo, branch, reason: "Ruleset missing enforce admins requirement (allows bypass)" });
@@ -337,7 +381,6 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
               }
             }
           } else {
-              // requiresProtection is false -> shouldn't be protected
               if (hasClassic || hasRuleset) {
                 violations.push({ repo, branch, reason: "Branch is protected but should not be" });
                 isRepoCompliant = false;
@@ -368,33 +411,49 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
     violations,
   };
 
-  scanResults.set(scannerId, result);
-  
-  // Update scanner lastRunAt
-  scanner.lastRunAt = result.runAt;
-  scanners.set(scannerId, scanner);
+  if (usesDynamo()) {
+    await docClient.send(
+      new PutCommand({
+        TableName: TABLE(),
+        Item: { pk: "RESULT", sk: scannerId, ...result },
+      })
+    );
+    // Update scanner lastRunAt
+    await docClient.send(
+      new PutCommand({
+        TableName: TABLE(),
+        Item: { pk: "SCANNER", sk: scannerId, ...scanner, lastRunAt: result.runAt, updatedAt: new Date().toISOString() },
+      })
+    );
+  } else {
+    memScanResults.set(scannerId, result);
+    scanner.lastRunAt = result.runAt;
+    memScanners.set(scannerId, scanner);
+  }
 
   return result;
 }
 
-// Add a default scanner for demo purposes
-createScanner({
-  name: "Standard Org Compliance",
-  description: "Ensures main and uat branches exist and are protected via Rulesets with PRs required.",
-  targetRepos: "all",
-  includeFutureRepos: true,
-  conditions: [
-    {
-      branchPatterns: ["main"],
-      requiresProtection: true,
-      protectionType: "ruleset",
-      rules: { requirePr: true, minApprovals: 2, requireStatusChecks: true, enforceAdmins: true }
-    },
-    {
-      branchPatterns: ["uat"],
-      requiresProtection: true,
-      protectionType: "ruleset",
-      rules: { requirePr: true, minApprovals: 1, preventForcePush: true, preventDeletion: true }
-    }
-  ]
-});
+// Seed a default scanner for local dev (runs only in non-production)
+if (!usesDynamo()) {
+  createScanner({
+    name: "Standard Org Compliance",
+    description: "Ensures main and uat branches exist and are protected via Rulesets with PRs required.",
+    targetRepos: "all",
+    includeFutureRepos: true,
+    conditions: [
+      {
+        branchPatterns: ["main"],
+        requiresProtection: true,
+        protectionType: "ruleset",
+        rules: { requirePr: true, minApprovals: 2, requireStatusChecks: true, enforceAdmins: true }
+      },
+      {
+        branchPatterns: ["uat"],
+        requiresProtection: true,
+        protectionType: "ruleset",
+        rules: { requirePr: true, minApprovals: 1, preventForcePush: true, preventDeletion: true }
+      }
+    ]
+  });
+}

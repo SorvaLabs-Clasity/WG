@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { logActivity } from "./activityService";
+import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand } from "../utils/dynamo";
 
 export interface BranchRule {
   branchNames: string[];
@@ -33,25 +34,35 @@ export interface RepoTemplate {
   updatedAt: string;
 }
 
-/**
- * In-memory store. Swap for DynamoDB in production.
- */
-const templates: Map<string, RepoTemplate> = new Map();
+const TABLE = () => tableName("TEMPLATES_TABLE");
 
-export function listTemplates(): RepoTemplate[] {
-  return Array.from(templates.values()).sort(
+// In-memory fallback for local development
+const memTemplates: Map<string, RepoTemplate> = new Map();
+
+export async function listTemplates(): Promise<RepoTemplate[]> {
+  if (usesDynamo()) {
+    const result = await docClient.send(new ScanCommand({ TableName: TABLE() }));
+    return ((result.Items || []) as RepoTemplate[]).sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+  }
+  return Array.from(memTemplates.values()).sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 }
 
-export function getTemplate(id: string): RepoTemplate | undefined {
-  return templates.get(id);
+export async function getTemplate(id: string): Promise<RepoTemplate | undefined> {
+  if (usesDynamo()) {
+    const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id } }));
+    return result.Item as RepoTemplate | undefined;
+  }
+  return memTemplates.get(id);
 }
 
-export function createTemplate(
+export async function createTemplate(
   data: Omit<RepoTemplate, "id" | "createdAt" | "updatedAt">,
   actor: string
-): RepoTemplate {
+): Promise<RepoTemplate> {
   const now = new Date().toISOString();
   const template: RepoTemplate = {
     ...data,
@@ -59,19 +70,23 @@ export function createTemplate(
     createdAt: now,
     updatedAt: now,
   };
-  templates.set(template.id, template);
 
-  logActivity("template.create", actor, "*", template.name, `Created template "${template.name}"`);
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: template }));
+  } else {
+    memTemplates.set(template.id, template);
+  }
 
+  await logActivity("template.create", actor, "*", template.name, `Created template "${template.name}"`);
   return template;
 }
 
-export function updateTemplate(
+export async function updateTemplate(
   id: string,
   data: Partial<Omit<RepoTemplate, "id" | "createdAt" | "updatedAt">>,
   actor: string
-): RepoTemplate | null {
-  const existing = templates.get(id);
+): Promise<RepoTemplate | null> {
+  const existing = await getTemplate(id);
   if (!existing) return null;
 
   const updated: RepoTemplate = {
@@ -81,7 +96,12 @@ export function updateTemplate(
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   };
-  templates.set(id, updated);
+
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+  } else {
+    memTemplates.set(id, updated);
+  }
 
   const diff: Record<string, { old: any; new: any }> = {};
   if (data.name !== undefined && data.name !== existing.name) {
@@ -97,7 +117,7 @@ export function updateTemplate(
     diff.branches = { old: existing.branches, new: data.branches };
   }
 
-  logActivity(
+  await logActivity(
     "template.update", 
     actor, 
     "*", 
@@ -109,13 +129,17 @@ export function updateTemplate(
   return updated;
 }
 
-export function deleteTemplate(id: string, actor: string): boolean {
-  const existing = templates.get(id);
+export async function deleteTemplate(id: string, actor: string): Promise<boolean> {
+  const existing = await getTemplate(id);
   if (!existing) return false;
 
-  templates.delete(id);
-  logActivity("template.delete", actor, "*", existing.name, `Deleted template "${existing.name}"`);
+  if (usesDynamo()) {
+    await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { id } }));
+  } else {
+    memTemplates.delete(id);
+  }
 
+  await logActivity("template.delete", actor, "*", existing.name, `Deleted template "${existing.name}"`);
   return true;
 }
 
@@ -125,7 +149,7 @@ export async function applyTemplate(
   repo: string,
   actor: string
 ): Promise<{ created: string[]; protected: string[]; errors: string[] }> {
-  const template = templates.get(templateId);
+  const template = await getTemplate(templateId);
   if (!template) throw new Error("Template not found");
 
   const org = getOrg();
@@ -133,7 +157,6 @@ export async function applyTemplate(
   const protectedBranches: string[] = [];
   const errors: string[] = [];
 
-  // Get the default branch SHA to base new branches on
   let defaultSha: string;
   try {
     const { data: repoData } = await octokit.rest.repos.get({ owner: org, repo });
@@ -147,21 +170,17 @@ export async function applyTemplate(
     throw new Error(`Failed to read repo default branch: ${(err as Error).message}`);
   }
 
-  // Group branches by their protection configuration to bundle rulesets
-  // We use the object reference (or a unique ID) of the rule as the key so we ONLY bundle branches that are within the exact same rule block.
   const rulesetGroups = new Map<number, { branchNames: string[]; protection: NonNullable<BranchRule["protection"]> }>();
 
   for (let i = 0; i < template.branches.length; i++) {
     const rule = template.branches[i];
     for (const branchName of rule.branchNames) {
-      // Create branch if it doesn't exist
       try {
         await octokit.rest.git.getRef({
           owner: org,
           repo,
           ref: `heads/${branchName}`,
         });
-        // Branch already exists, skip creation
       } catch {
         try {
           await octokit.rest.git.createRef({
@@ -172,7 +191,9 @@ export async function applyTemplate(
           });
           created.push(branchName);
         } catch (err) {
-          errors.push(`Failed to create ${branchName}: ${(err as Error).message}`);
+          const msg = `Failed to create ${branchName}: ${(err as Error).message}`;
+          console.error("[applyTemplate]", msg);
+          errors.push(msg);
           continue;
         }
       }
@@ -185,7 +206,6 @@ export async function applyTemplate(
         }
         rulesetGroups.get(i)!.branchNames.push(...rule.branchNames);
       } else {
-        // Classic protection gets applied individually
         for (const branchName of rule.branchNames) {
           try {
             await octokit.rest.repos.updateBranchProtection({
@@ -215,14 +235,15 @@ export async function applyTemplate(
             });
             protectedBranches.push(branchName);
           } catch (err) {
-            errors.push(`Failed to apply classic protection to ${branchName}: ${(err as Error).message}`);
+            const msg = `Failed to apply classic protection to ${branchName}: ${(err as Error).message}`;
+            console.error("[applyTemplate]", msg);
+            errors.push(msg);
           }
         }
       }
     }
   }
 
-  // Apply bundled rulesets
   for (const { branchNames, protection } of rulesetGroups.values()) {
     try {
       const rules: any[] = [];
@@ -262,7 +283,7 @@ export async function applyTemplate(
         enforcement: "active",
         bypass_actors: protection.enforceAdmins ? [] : [
           {
-            actor_id: 1, // pseudo ID for repository admin
+            actor_id: 1,
             actor_type: "RepositoryRole",
             bypass_mode: "always"
           }
@@ -277,11 +298,13 @@ export async function applyTemplate(
       });
       protectedBranches.push(...branchNames);
     } catch (err) {
-      errors.push(`Failed to create ruleset for [${branchNames.join(', ')}]: ${(err as Error).message}`);
+      const msg = `Failed to create ruleset for [${branchNames.join(', ')}]: ${(err as Error).message}`;
+      console.error("[applyTemplate]", msg);
+      errors.push(msg);
     }
   }
 
-  logActivity(
+  await logActivity(
     "template.apply",
     actor,
     repo,

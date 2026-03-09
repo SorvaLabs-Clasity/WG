@@ -1,19 +1,11 @@
 import { Router, Request, Response } from "express";
-import { Octokit } from "octokit";
 import { createOctokit, getOrg } from "../github/client";
 
 const router = Router();
 
-// In a real app, this would hit GitHub's Dependabot API or query a database
-// GET /api/security/dependencies
 router.get("/dependencies", async (req: Request, res: Response) => {
   try {
-    let token = process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith("Bearer ")) {
-      token = authHeader.substring(7);
-    }
-    
+    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -21,88 +13,109 @@ router.get("/dependencies", async (req: Request, res: Response) => {
     const octokit = createOctokit(token);
     const org = getOrg();
 
-    // Mock response for now, but real implementation would fetch Dependabot alerts
-    // using octokit.rest.dependabot.listAlertsForOrg({ org })
-    const alerts = [
-      {
-        id: "dep-1",
-        repo: "payments-api",
-        dependency: "lodash",
-        severity: "high",
-        cve: "CVE-2021-23337",
-        ecosystem: "npm",
-        vulnerable_version: "< 4.17.21",
-        patched_version: "4.17.21",
-        detected_at: new Date(Date.now() - 86400000).toISOString(),
-      },
-      {
-        id: "dep-2",
-        repo: "payments-api",
-        dependency: "axios",
-        severity: "critical",
-        cve: "CVE-2023-45857",
-        ecosystem: "npm",
-        vulnerable_version: "< 1.6.0",
-        patched_version: "1.6.0",
-        detected_at: new Date(Date.now() - 172800000).toISOString(),
-      },
-      {
-        id: "dep-3",
-        repo: "auth-service",
-        dependency: "log4j",
-        severity: "critical",
-        cve: "CVE-2021-44228",
-        ecosystem: "maven",
-        vulnerable_version: "< 2.15.0",
-        patched_version: "2.15.0",
-        detected_at: new Date(Date.now() - 345600000).toISOString(),
-      },
-      {
-        id: "dep-4",
-        repo: "web-platform",
-        dependency: "react-scripts",
-        severity: "low",
-        cve: "CVE-2022-24302",
-        ecosystem: "npm",
-        vulnerable_version: "< 5.0.1",
-        patched_version: "5.0.1",
-        detected_at: new Date(Date.now() - 432000000).toISOString(),
-      },
-      {
-        id: "dep-disabled",
-        repo: "infrastructure",
-        dependency: "",
-        severity: "low",
-        cve: "",
-        ecosystem: "",
-        vulnerable_version: "",
-        patched_version: null,
-        detected_at: new Date().toISOString(),
-        disabled: true,
-      }
-    ];
+    const repoFilter = req.query.repo as string | undefined;
+    const severityFilter = req.query.severity as string | undefined;
 
-    res.json(alerts);
+    let allAlerts: any[] = [];
+
+    if (repoFilter) {
+      const { data } = await octokit.rest.dependabot.listAlertsForRepo({
+        owner: org,
+        repo: repoFilter,
+        state: "open",
+        per_page: 100,
+      });
+      allAlerts = data.map((a: any) => mapAlert(a, repoFilter));
+    } else {
+      try {
+        const { data } = await octokit.rest.dependabot.listAlertsForOrg({
+          org,
+          state: "open",
+          per_page: 100,
+        });
+        allAlerts = data.map((a: any) => mapAlert(a, a.repository?.name || "unknown"));
+      } catch (err: any) {
+        if (err.status === 403 || err.status === 404) {
+          return res.json([]);
+        }
+        throw err;
+      }
+    }
+
+    if (severityFilter) {
+      allAlerts = allAlerts.filter(a => a.severity === severityFilter);
+    }
+
+    res.json(allAlerts);
   } catch (error: any) {
     console.error("Error fetching dependencies:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// GET /api/security/summary
 router.get("/summary", async (req: Request, res: Response) => {
   try {
-    // This is mocked for demonstration
+    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    if (!token) {
+      return res.status(401).json({ error: "No GitHub token provided" });
+    }
+
+    const octokit = createOctokit(token);
+    const org = getOrg();
+
+    let allAlerts: any[] = [];
+    try {
+      const { data } = await octokit.rest.dependabot.listAlertsForOrg({
+        org,
+        state: "open",
+        per_page: 100,
+      });
+      allAlerts = data;
+    } catch (err: any) {
+      if (err.status === 403 || err.status === 404) {
+        return res.json({ critical: 0, high: 0, medium: 0, low: 0, repos_with_vulns: 0 });
+      }
+      throw err;
+    }
+
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    const reposWithVulns = new Set<string>();
+
+    for (const alert of allAlerts) {
+      const severity = alert.security_advisory?.severity || alert.security_vulnerability?.severity || "low";
+      if (severity in counts) {
+        counts[severity as keyof typeof counts]++;
+      }
+      if (alert.repository?.name) {
+        reposWithVulns.add(alert.repository.name);
+      }
+    }
+
     res.json({
-      critical: 3,
-      high: 12,
-      medium: 20,
-      low: 45,
-      repos_with_vulns: 7,
+      ...counts,
+      repos_with_vulns: reposWithVulns.size,
     });
   } catch (error: any) {
+    console.error("Error fetching dependency summary:", error);
     res.status(500).json({ error: error.message });
   }
 });
+
+function mapAlert(alert: any, repoName: string) {
+  const advisory = alert.security_advisory || {};
+  const vuln = alert.security_vulnerability || {};
+
+  return {
+    id: `dep-${alert.number}`,
+    repo: repoName,
+    dependency: vuln.package?.name || advisory.summary || "unknown",
+    severity: advisory.severity || vuln.severity || "low",
+    cve: advisory.cve_id || (advisory.identifiers || []).find((i: any) => i.type === "CVE")?.value || "",
+    ecosystem: vuln.package?.ecosystem || "",
+    vulnerable_version: vuln.vulnerable_version_range || "",
+    patched_version: vuln.first_patched_version?.identifier || null,
+    detected_at: alert.created_at || new Date().toISOString(),
+  };
+}
 
 export default router;

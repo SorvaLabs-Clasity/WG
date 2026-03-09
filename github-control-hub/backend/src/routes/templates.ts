@@ -12,12 +12,12 @@ import {
 
 const router = Router();
 
-router.get("/", (_req: Request, res: Response) => {
-  res.json(listTemplates());
+router.get("/", async (_req: Request, res: Response) => {
+  res.json(await listTemplates());
 });
 
-router.get("/:id", (req: Request<{ id: string }>, res: Response) => {
-  const template = getTemplate(req.params.id);
+router.get("/:id", async (req: Request<{ id: string }>, res: Response) => {
+  const template = await getTemplate(req.params.id);
   if (!template) {
     res.status(404).json({ error: "Template not found" });
     return;
@@ -25,14 +25,14 @@ router.get("/:id", (req: Request<{ id: string }>, res: Response) => {
   res.json(template);
 });
 
-router.post("/", (req: Request, res: Response) => {
+router.post("/", async (req: Request, res: Response) => {
   const { name, description, branches, autoApplyOnNewRepo } = req.body;
   if (!name || !branches?.length) {
     res.status(400).json({ error: "name and at least one branch rule are required" });
     return;
   }
 
-  const template = createTemplate(
+  const template = await createTemplate(
     {
       name,
       description: description ?? "",
@@ -46,8 +46,8 @@ router.post("/", (req: Request, res: Response) => {
   res.status(201).json(template);
 });
 
-router.put("/:id", (req: Request<{ id: string }>, res: Response) => {
-  const updated = updateTemplate(req.params.id, req.body, req.user!.login);
+router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
+  const updated = await updateTemplate(req.params.id, req.body, req.user!.login);
   if (!updated) {
     res.status(404).json({ error: "Template not found" });
     return;
@@ -55,8 +55,8 @@ router.put("/:id", (req: Request<{ id: string }>, res: Response) => {
   res.json(updated);
 });
 
-router.delete("/:id", (req: Request<{ id: string }>, res: Response) => {
-  const deleted = deleteTemplate(req.params.id, req.user!.login);
+router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
+  const deleted = await deleteTemplate(req.params.id, req.user!.login);
   if (!deleted) {
     res.status(404).json({ error: "Template not found" });
     return;

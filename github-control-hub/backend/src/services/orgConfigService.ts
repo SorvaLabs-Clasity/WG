@@ -1,3 +1,5 @@
+import { docClient, usesDynamo, tableName, PutCommand, GetCommand } from "../utils/dynamo";
+
 export interface OrgFeatures {
   auditLogs: boolean;
   rulesetsSupported: boolean;
@@ -9,28 +11,51 @@ export interface OrgConfig {
   features: OrgFeatures;
 }
 
-// In-memory store for local development.
-// In production, this would be stored in DynamoDB or Systems Manager Parameter Store.
-let config: OrgConfig = {
+const TABLE = () => tableName("ORG_CONFIG_TABLE");
+
+// In-memory fallback for local development
+let memConfig: OrgConfig = {
   org: process.env.GITHUB_ORG || "default-org",
   features: {
     auditLogs: false,
-    rulesetsSupported: true, // Assuming true by default for modern orgs
+    rulesetsSupported: true,
     advancedSecurity: false,
   }
 };
 
-export function getOrgConfig(): OrgConfig {
-  return config;
+export async function getOrgConfig(): Promise<OrgConfig> {
+  if (usesDynamo()) {
+    const org = process.env.GITHUB_ORG || "default-org";
+    const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { org } }));
+    if (result.Item) {
+      return result.Item as OrgConfig;
+    }
+    // First access: seed default config
+    const defaultConfig: OrgConfig = {
+      org,
+      features: { auditLogs: false, rulesetsSupported: true, advancedSecurity: false },
+    };
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: defaultConfig }));
+    return defaultConfig;
+  }
+  return memConfig;
 }
 
-export function updateOrgFeatures(featureUpdates: Partial<OrgFeatures>): OrgConfig {
-  config = {
-    ...config,
+export async function updateOrgFeatures(featureUpdates: Partial<OrgFeatures>): Promise<OrgConfig> {
+  const current = await getOrgConfig();
+  const updated: OrgConfig = {
+    ...current,
     features: {
-      ...config.features,
-      ...featureUpdates
-    }
+      ...current.features,
+      ...featureUpdates,
+    },
   };
-  return config;
+
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+  } else {
+    memConfig = updated;
+  }
+
+  return updated;
 }

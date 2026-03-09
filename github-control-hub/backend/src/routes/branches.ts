@@ -31,7 +31,7 @@ router.post("/:repo/branches", async (req: Request<{ repo: string }>, res: Respo
   try {
     const octokit = createOctokit(req.user!.accessToken);
     await createBranch(octokit, req.params.repo, branchName, baseBranch);
-    logActivity("branch.create", req.user!.login, req.params.repo, branchName, `Created from ${baseBranch}`);
+    await logActivity("branch.create", req.user!.login, req.params.repo, branchName, `Created from ${baseBranch}`);
     res.status(201).json({ message: `Branch ${branchName} created` });
   } catch (err) {
     console.error("Error creating branch:", err);
@@ -45,7 +45,7 @@ router.delete(
     try {
       const octokit = createOctokit(req.user!.accessToken);
       await deleteBranch(octokit, req.params.repo, req.params.branch);
-      logActivity("branch.delete", req.user!.login, req.params.repo, req.params.branch);
+      await logActivity("branch.delete", req.user!.login, req.params.repo, req.params.branch);
       res.json({ message: `Branch ${req.params.branch} deleted` });
     } catch (err) {
       console.error("Error deleting branch:", err);
