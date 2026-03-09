@@ -9,10 +9,16 @@ export type ActivityAction =
   | "template.create"
   | "template.update"
   | "template.delete"
-  | "repo.ruleset.delete";
+  | "repo.ruleset.delete"
+  | "github.push"
+  | "github.pr_opened"
+  | "github.pr_merged"
+  | "github.pr_closed"
+  | "github.issue_opened";
 
 export interface ActivityEntry {
   id: string;
+  source: "app" | "github";
   action: ActivityAction;
   actor: string;
   repo: string;
@@ -20,6 +26,8 @@ export interface ActivityEntry {
   details?: string;
   diff?: any;
   timestamp: string;
+  prNumber?: number;
+  commitSha?: string;
 }
 
 /**
@@ -35,16 +43,22 @@ export function logActivity(
   repo: string,
   target: string,
   details?: string,
-  diff?: any
+  diff?: any,
+  source: "app" | "github" = "app",
+  prNumber?: number,
+  commitSha?: string
 ): ActivityEntry {
   const entry: ActivityEntry = {
     id: crypto.randomUUID(),
+    source,
     action,
     actor,
     repo,
     target,
     details,
     diff,
+    prNumber,
+    commitSha,
     timestamp: new Date().toISOString(),
   };
   activityLog.unshift(entry);

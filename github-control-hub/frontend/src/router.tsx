@@ -5,6 +5,10 @@ import LoginPage from "./pages/LoginPage";
 import AuthCallback from "./pages/AuthCallback";
 import ActivityPage from "./pages/ActivityPage";
 import TemplatesPage from "./pages/TemplatesPage";
+import MonitoringPage from "./pages/MonitoringPage";
+import SecurityPage from "./pages/SecurityPage";
+import ComplianceDashboardPage from "./pages/ComplianceDashboardPage";
+import DependencyDashboardPage from "./pages/DependencyDashboardPage";
 import { isAuthenticated } from "./api/client";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -52,6 +56,38 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <TemplatesPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/monitoring",
+    element: (
+      <RequireAuth>
+        <MonitoringPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/security",
+    element: (
+      <RequireAuth>
+        <SecurityPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/compliance",
+    element: (
+      <RequireAuth>
+        <ComplianceDashboardPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/dependencies",
+    element: (
+      <RequireAuth>
+        <DependencyDashboardPage />
       </RequireAuth>
     ),
   },

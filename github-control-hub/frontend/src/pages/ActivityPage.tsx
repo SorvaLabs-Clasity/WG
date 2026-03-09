@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
 import { useActivity } from "../hooks/useActivity";
+import { useOrgConfig } from "../hooks/useOrgConfig";
 import type { ActivityAction } from "../types/Activity";
 
 const ACTION_CONFIG: Record<
@@ -43,6 +44,41 @@ const ACTION_CONFIG: Record<
     colorClass: "bg-red-50 text-red-700 border-red-200/60", 
     iconClass: "fa-solid fa-trash text-[10px]" 
   },
+  "branch.unprotect": { 
+    label: "Branch Unprotected", 
+    colorClass: "bg-orange-50 text-orange-700 border-orange-200/60", 
+    iconClass: "fa-solid fa-shield-slash text-[10px]" 
+  },
+  "repo.ruleset.delete": { 
+    label: "Ruleset Deleted", 
+    colorClass: "bg-red-50 text-red-700 border-red-200/60", 
+    iconClass: "fa-solid fa-trash text-[10px]" 
+  },
+  "github.push": { 
+    label: "Code Pushed", 
+    colorClass: "bg-teal-50 text-teal-700 border-teal-200/60", 
+    iconClass: "fa-solid fa-code-commit text-[10px]" 
+  },
+  "github.pr_opened": { 
+    label: "PR Opened", 
+    colorClass: "bg-green-50 text-green-700 border-green-200/60", 
+    iconClass: "fa-solid fa-code-pull-request text-[10px]" 
+  },
+  "github.pr_merged": { 
+    label: "PR Merged", 
+    colorClass: "bg-purple-50 text-purple-700 border-purple-200/60", 
+    iconClass: "fa-solid fa-code-merge text-[10px]" 
+  },
+  "github.pr_closed": { 
+    label: "PR Closed", 
+    colorClass: "bg-red-50 text-red-700 border-red-200/60", 
+    iconClass: "fa-solid fa-code-pull-request text-[10px]" 
+  },
+  "github.issue_opened": { 
+    label: "Issue Opened", 
+    colorClass: "bg-green-50 text-green-700 border-green-200/60", 
+    iconClass: "fa-regular fa-circle-dot text-[10px]" 
+  },
 };
 
 function formatTimestamp(ts: string): string {
@@ -59,24 +95,57 @@ function formatTimestamp(ts: string): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+export interface Activity {
+  id: string;
+  action: string;
+  actor: string;
+  repo: string;
+  target: string;
+  details?: string;
+  diff?: any;
+  timestamp: string;
+}
+
 export default function ActivityPage() {
   const { user } = useAuth();
   const { data, isLoading, error } = useActivity(100);
+  const { data: orgConfig } = useOrgConfig();
   const [search, setSearch] = useState("");
-  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [sourceFilter, setSourceFilter] = useState<"all" | "app" | "github">("all");
+  const [repoFilter, setRepoFilter] = useState("");
+  const [targetFilter, setTargetFilter] = useState("");
+  const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
 
   const filtered = useMemo(() => {
     if (!data?.entries) return [];
-    if (!search) return data.entries;
-    const q = search.toLowerCase();
-    return data.entries.filter(
-      (e) =>
-        e.actor.toLowerCase().includes(q) ||
-        e.repo.toLowerCase().includes(q) ||
-        e.target.toLowerCase().includes(q) ||
-        e.action.toLowerCase().includes(q)
-    );
-  }, [data, search]);
+    let entries = data.entries;
+
+    if (sourceFilter !== "all") {
+      entries = entries.filter((e) => e.source === sourceFilter);
+    }
+    
+    if (repoFilter) {
+      const q = repoFilter.toLowerCase();
+      entries = entries.filter((e) => e.repo.toLowerCase().includes(q));
+    }
+    
+    if (targetFilter) {
+      const q = targetFilter.toLowerCase();
+      entries = entries.filter((e) => e.target.toLowerCase().includes(q) || (e.prNumber && e.prNumber.toString() === q) || (e.commitSha && e.commitSha.toLowerCase().includes(q)));
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      entries = entries.filter(
+        (e) =>
+          e.actor.toLowerCase().includes(q) ||
+          e.action.toLowerCase().includes(q) ||
+          (e.details && e.details.toLowerCase().includes(q))
+      );
+    }
+    
+    return entries;
+  }, [data, search, sourceFilter, repoFilter, targetFilter]);
 
   return (
     <div className="bg-gh-bg text-gh-text font-sans antialiased min-h-screen flex flex-col pt-14">
@@ -84,23 +153,95 @@ export default function ActivityPage() {
       
       <main className="flex-1 max-w-[1400px] w-full mx-auto px-6 py-8 animate-fade-in">
         
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+        <header className="flex flex-col mb-6 space-y-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-gh-textBase">Activity Log</h1>
-            <p className="text-sm text-gh-muted mt-1">Audit trail of all organization events and security changes.</p>
+            <p className="text-sm text-gh-muted mt-1">Global audit trail of all organization events and security changes.</p>
           </div>
           
-          <div className="relative w-full md:w-96 group">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 group-focus-within:text-gh-blue transition-colors">
-              <i className="fa-solid fa-magnifying-glass text-sm"></i>
+          <div className="bg-white p-4 rounded-lg border border-gh-border shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <i className="fa-solid fa-filter text-gh-muted text-sm"></i>
+              <span className="text-sm font-semibold text-gh-textBase">Advanced Filters</span>
             </div>
-            <input 
-              type="text" 
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Filter by user, repo, or action type..." 
-              className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-gh-border rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue transition-all"
-            />
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-[11px] font-semibold text-gh-muted uppercase tracking-wider mb-1">Source</label>
+                <div className="flex flex-col gap-1">
+                  <select 
+                    value={sourceFilter}
+                    onChange={(e) => setSourceFilter(e.target.value as any)}
+                    className="w-full text-sm bg-gray-50 border border-gh-border rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none"
+                  >
+                    <option value="all">All Sources</option>
+                    <option value="app">Control Hub App</option>
+                    {orgConfig?.features?.auditLogs && (
+                      <option value="github">Native GitHub</option>
+                    )}
+                  </select>
+                  {!orgConfig?.features?.auditLogs && (
+                    <span className="text-[10px] text-orange-600 flex items-center gap-1">
+                      <i className="ph-fill ph-warning-circle"></i>
+                      Native GitHub events require Enterprise Audit Logs.
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-gh-muted uppercase tracking-wider mb-1">Repository</label>
+                <input 
+                  type="text" 
+                  value={repoFilter}
+                  onChange={(e) => setRepoFilter(e.target.value)}
+                  placeholder="e.g. web-platform" 
+                  className="w-full text-sm bg-gray-50 border border-gh-border rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-gh-muted uppercase tracking-wider mb-1">Target (Branch/PR)</label>
+                <input 
+                  type="text" 
+                  value={targetFilter}
+                  onChange={(e) => setTargetFilter(e.target.value)}
+                  placeholder="e.g. main or 42" 
+                  className="w-full text-sm bg-gray-50 border border-gh-border rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-semibold text-gh-muted uppercase tracking-wider mb-1">Search Details</label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-gray-400">
+                    <i className="fa-solid fa-magnifying-glass text-[11px]"></i>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="User, action, details..." 
+                    className="w-full pl-7 pr-3 py-1.5 text-sm bg-gray-50 border border-gh-border rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+            {(sourceFilter !== 'all' || repoFilter || targetFilter || search) && (
+              <div className="mt-3 flex justify-end">
+                <button 
+                  onClick={() => {
+                    setSourceFilter('all');
+                    setRepoFilter('');
+                    setTargetFilter('');
+                    setSearch('');
+                  }}
+                  className="text-[11px] font-medium text-gh-muted hover:text-gh-blue"
+                >
+                  Clear Filters
+                </button>
+              </div>
+            )}
           </div>
         </header>
 
@@ -122,6 +263,7 @@ export default function ActivityPage() {
               <table className="w-full text-left border-collapse">
                 <thead className="bg-gray-50 border-b border-gh-border">
                   <tr>
+                    <th className="px-6 py-3 text-xs font-semibold text-gh-muted uppercase tracking-wider w-16">Source</th>
                     <th className="px-6 py-3 text-xs font-semibold text-gh-muted uppercase tracking-wider w-48">Action</th>
                     <th className="px-6 py-3 text-xs font-semibold text-gh-muted uppercase tracking-wider">User</th>
                     <th className="px-6 py-3 text-xs font-semibold text-gh-muted uppercase tracking-wider">Repository</th>
@@ -132,13 +274,20 @@ export default function ActivityPage() {
                 </thead>
                 <tbody className="divide-y divide-gh-border">
                   {filtered.map((entry) => {
-                    const cfg = ACTION_CONFIG[entry.action];
+                    const cfg = ACTION_CONFIG[entry.action as ActivityAction] || { label: entry.action, colorClass: "bg-gray-50", iconClass: "fa-solid fa-circle" };
                     return (
                       <tr 
                         key={entry.id} 
                         className={`table-row-hover transition-colors group ${entry.diff ? 'cursor-pointer hover:bg-gray-50' : ''}`}
                         onClick={() => entry.diff ? setSelectedActivity(entry) : null}
                       >
+                        <td className="px-6 py-4 whitespace-nowrap text-center">
+                          {entry.source === "github" ? (
+                            <i className="fa-brands fa-github text-lg text-gh-textBase" title="Native GitHub Event"></i>
+                          ) : (
+                            <i className="fa-solid fa-shield-halved text-lg text-gh-blue" title="Control Hub App Event"></i>
+                          )}
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${cfg.colorClass}`}>
                             <i className={cfg.iconClass}></i>
@@ -224,7 +373,7 @@ export default function ActivityPage() {
 
             <div className="px-6 py-4 overflow-y-auto">
               <div className="mb-4">
-                <p className="text-sm text-gh-muted mb-1">Action: <strong className="text-gh-textBase">{ACTION_CONFIG[selectedActivity.action].label}</strong></p>
+                <p className="text-sm text-gh-muted mb-1">Action: <strong className="text-gh-textBase">{ACTION_CONFIG[selectedActivity.action as ActivityAction]?.label || selectedActivity.action}</strong></p>
                 <p className="text-sm text-gh-muted mb-1">Target: <code className="bg-gray-100 px-1 rounded">{selectedActivity.target}</code></p>
                 <p className="text-sm text-gh-muted">Details: {selectedActivity.details}</p>
               </div>

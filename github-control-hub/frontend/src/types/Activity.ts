@@ -7,10 +7,16 @@ export type ActivityAction =
   | "template.create"
   | "template.update"
   | "template.delete"
-  | "repo.ruleset.delete";
+  | "repo.ruleset.delete"
+  | "github.push"
+  | "github.pr_opened"
+  | "github.pr_merged"
+  | "github.pr_closed"
+  | "github.issue_opened";
 
 export interface Activity {
   id: string;
+  source: "app" | "github";
   action: ActivityAction;
   actor: string;
   repo: string;
@@ -18,4 +24,6 @@ export interface Activity {
   details?: string;
   diff?: any;
   timestamp: string;
+  prNumber?: number;
+  commitSha?: string;
 }

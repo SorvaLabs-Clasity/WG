@@ -148,9 +148,11 @@ export async function applyTemplate(
   }
 
   // Group branches by their protection configuration to bundle rulesets
-  const rulesetGroups = new Map<string, { branchNames: string[]; protection: NonNullable<BranchRule["protection"]> }>();
+  // We use the object reference (or a unique ID) of the rule as the key so we ONLY bundle branches that are within the exact same rule block.
+  const rulesetGroups = new Map<number, { branchNames: string[]; protection: NonNullable<BranchRule["protection"]> }>();
 
-  for (const rule of template.branches) {
+  for (let i = 0; i < template.branches.length; i++) {
+    const rule = template.branches[i];
     for (const branchName of rule.branchNames) {
       // Create branch if it doesn't exist
       try {
@@ -178,14 +180,10 @@ export async function applyTemplate(
 
     if (rule.protection) {
       if (rule.protection.type === "ruleset") {
-        // Create a hash of the protection settings (excluding type) to group identical rules
-        const { type, ...settings } = rule.protection;
-        const hash = crypto.createHash("sha256").update(JSON.stringify(settings)).digest("hex");
-        
-        if (!rulesetGroups.has(hash)) {
-          rulesetGroups.set(hash, { branchNames: [], protection: rule.protection });
+        if (!rulesetGroups.has(i)) {
+          rulesetGroups.set(i, { branchNames: [], protection: rule.protection });
         }
-        rulesetGroups.get(hash)!.branchNames.push(...rule.branchNames);
+        rulesetGroups.get(i)!.branchNames.push(...rule.branchNames);
       } else {
         // Classic protection gets applied individually
         for (const branchName of rule.branchNames) {

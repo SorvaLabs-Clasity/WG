@@ -79,19 +79,20 @@ export default function TemplatesPage() {
   };
 
   const handleCreateOrUpdate = () => {
-    // A rule is valid if it has at least one branch name, OR if there's text in the input that hasn't been submitted yet.
-    // If there's pending text, we'll auto-add it to branchNames right before submitting.
-    const validRules = branchRules.filter((r) => r.branchNames.length > 0 || r.inputVal.trim());
+    // Check if there's text in the input that hasn't been submitted yet.
+    const hasPendingInput = branchRules.some(r => r.inputVal && r.inputVal.trim() !== "");
+    if (hasPendingInput) {
+      setSnack({ msg: "Please press Enter to add all typed branch names before saving.", severity: "error" });
+      return;
+    }
+
+    const validRules = branchRules.filter((r) => r.branchNames.length > 0);
     if (!name || validRules.length === 0) return;
 
-    // Auto-commit pending input values
-    const finalRules = validRules.map(r => {
-      const pending = r.inputVal.trim();
-      return {
-        branchNames: pending && !r.branchNames.includes(pending) ? [...r.branchNames, pending] : [...r.branchNames],
-        protection: r.protection
-      };
-    });
+    const finalRules = validRules.map(r => ({
+      branchNames: [...r.branchNames],
+      protection: r.protection
+    }));
 
     if (editingId) {
       updateMutation.mutate(
@@ -157,7 +158,7 @@ export default function TemplatesPage() {
 
   const handleRuleInputKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
     const rule = branchRules[idx];
-    if ((e.key === 'Enter' || e.key === ' ') && rule.inputVal.trim()) {
+    if (e.key === 'Enter' && rule.inputVal.trim()) {
       e.preventDefault();
       const newName = rule.inputVal.trim();
       if (!rule.branchNames.includes(newName)) {
@@ -285,7 +286,7 @@ export default function TemplatesPage() {
                 </div>
 
                 <div className="p-5">
-                  <p className="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Branch Rules</p>
+                  <p className="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Branches</p>
                   <div className="space-y-2">
                     {tmpl.branches.map((rule, idx) => (
                       <div key={idx} className="flex items-center justify-between text-sm bg-gray-50 border border-gray-100 rounded px-3 py-2">
@@ -383,7 +384,7 @@ export default function TemplatesPage() {
 
               <div>
                 <div className="flex justify-between items-end mb-3">
-                  <label className="block text-sm font-bold text-gh-textBase">Branch Rules</label>
+                  <label className="block text-sm font-bold text-gh-textBase">Branches</label>
                   <span className="text-xs text-gh-muted">Define the branch structure</span>
                 </div>
 
@@ -416,7 +417,7 @@ export default function TemplatesPage() {
                             value={rule.inputVal || ''}
                             onChange={(e) => updateRuleInput(idx, e.target.value)}
                             onKeyDown={(e) => handleRuleInputKeyDown(idx, e)}
-                            placeholder={rule.branchNames.length === 0 ? "Branch name (e.g. dev) + Space/Enter" : "Add another..."} 
+                            placeholder={rule.branchNames.length === 0 ? "Branch name (e.g. dev) + Enter" : "Add another..."} 
                             className="flex-1 min-w-[120px] border-none focus:ring-0 sm:text-sm py-0.5 font-mono text-sm bg-transparent outline-none m-0 p-0 shadow-none placeholder-gray-400"
                           />
                         </div>
@@ -460,23 +461,17 @@ export default function TemplatesPage() {
                               >
                                 Classic Protection
                               </button>
-                              <div className="relative group/rulesetbtn">
-                                <button
-                                  type="button"
-                                  onClick={() => updateRuleProtectionField(idx, 'type', 'ruleset')}
-                                  className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
-                                    rule.protection.type === 'ruleset' 
-                                      ? 'bg-white shadow-sm text-gh-textBase border border-gray-200' 
-                                      : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
-                                  }`}
-                                >
-                                  Repository Ruleset
-                                  <i className="ph-fill ph-info text-gh-muted text-[10px]"></i>
-                                </button>
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/rulesetbtn:block bg-gh-nav text-white text-[11px] font-medium px-2.5 py-1.5 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg">
-                                  Branches with identical ruleset settings<br/>will be automatically bundled together.
-                                </div>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => updateRuleProtectionField(idx, 'type', 'ruleset')}
+                                className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+                                  rule.protection.type === 'ruleset' 
+                                    ? 'bg-white shadow-sm text-gh-textBase border border-gray-200' 
+                                    : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                                }`}
+                              >
+                                Repository Ruleset
+                              </button>
                             </div>
 
                             <div className="flex items-center gap-3">
@@ -557,7 +552,7 @@ export default function TemplatesPage() {
                     onClick={addRule}
                     className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm font-medium text-gray-500 hover:text-gh-blue hover:border-gh-blue hover:bg-blue-50 transition-all flex items-center justify-center gap-2"
                   >
-                    <i className="fa-solid fa-plus"></i> Add Branch Rule
+                    <i className="fa-solid fa-plus"></i> Add Branch
                   </button>
                 </div>
               </div>

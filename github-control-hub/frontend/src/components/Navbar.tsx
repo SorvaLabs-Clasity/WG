@@ -17,6 +17,10 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
 
   const isRepos = location.pathname === "/" || location.pathname.startsWith("/repo");
   const isTemplates = location.pathname.startsWith("/templates");
+  const isSecurity = location.pathname.startsWith("/security");
+  const isCompliance = location.pathname.startsWith("/compliance");
+  const isDependencies = location.pathname.startsWith("/dependencies");
+  const isMonitoring = location.pathname.startsWith("/monitoring");
   const isActivity = location.pathname.startsWith("/activity");
 
   return (
@@ -49,6 +53,42 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
         >
           <i className="ph ph-copy text-lg"></i>
           Templates
+        </button>
+        <button 
+          onClick={() => navigate("/security")}
+          className={`h-full flex items-center text-sm font-medium border-b-2 px-1 gap-1.5 transition-colors ${
+            isSecurity ? "text-white border-white" : "text-gray-400 hover:text-gray-300 border-transparent"
+          }`}
+        >
+          <i className="ph ph-shield-warning text-lg"></i>
+          Security
+        </button>
+        <button 
+          onClick={() => navigate("/compliance")}
+          className={`h-full flex items-center text-sm font-medium border-b-2 px-1 gap-1.5 transition-colors ${
+            isCompliance ? "text-white border-white" : "text-gray-400 hover:text-gray-300 border-transparent"
+          }`}
+        >
+          <i className="ph ph-check-square-offset text-lg"></i>
+          Compliance
+        </button>
+        <button 
+          onClick={() => navigate("/dependencies")}
+          className={`h-full flex items-center text-sm font-medium border-b-2 px-1 gap-1.5 transition-colors ${
+            isDependencies ? "text-white border-white" : "text-gray-400 hover:text-gray-300 border-transparent"
+          }`}
+        >
+          <i className="ph ph-bug text-lg"></i>
+          Dependabot
+        </button>
+        <button 
+          onClick={() => navigate("/monitoring")}
+          className={`h-full flex items-center text-sm font-medium border-b-2 px-1 gap-1.5 transition-colors ${
+            isMonitoring ? "text-white border-white" : "text-gray-400 hover:text-gray-300 border-transparent"
+          }`}
+        >
+          <i className="ph ph-binoculars text-lg"></i>
+          Scanners
         </button>
         <button 
           onClick={() => navigate("/activity")}

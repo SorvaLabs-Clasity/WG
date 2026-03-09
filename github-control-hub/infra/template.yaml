@@ -83,6 +83,30 @@ Resources:
         - AttributeName: sk
           KeyType: RANGE
 
+  # Audit Log Check Scheduled Job
+  AuditLogCheckFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/dist/
+      Handler: jobs/auditLogChecker.handler
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref SecretsArn
+      Environment:
+        Variables:
+          SECRETS_ARN: !Ref SecretsArn
+      Events:
+        CheckSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(6 hours)"
+            Name: AuditLogAccessCheck
+            Description: "Checks if GitHub Enterprise Audit Logs are accessible every 6 hours"
+
 Outputs:
   ApiEndpoint:
     Description: API Gateway endpoint URL

@@ -2,6 +2,10 @@ import type { Repo } from "../types/Repo";
 import type { Branch } from "../types/Branch";
 import type { Activity } from "../types/Activity";
 import type { RepoTemplate, BranchRule } from "../types/Template";
+import type { Scanner, ScanResult } from "../types/Scanner";
+import type { SecurityAlert } from "../types/Alert";
+import type { RepoComplianceScore } from "../types/Compliance";
+import type { DependencyAlert, DependencySummary } from "../types/Dependabot";
 
 export const DEMO_USER = {
   login: "demo-user",
@@ -141,6 +145,7 @@ export async function mockCreateBranch(
   await delay(500);
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
+    source: "app",
     action: "branch.create",
     actor: DEMO_USER.login,
     repo: _repo,
@@ -158,6 +163,7 @@ export async function mockDeleteBranch(
   await delay(500);
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
+    source: "app",
     action: "branch.delete",
     actor: DEMO_USER.login,
     repo: _repo,
@@ -175,6 +181,7 @@ export async function mockProtectBranch(
   await delay(500);
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
+    source: "app",
     action: "branch.protect",
     actor: DEMO_USER.login,
     repo: _repo,
@@ -186,11 +193,121 @@ export async function mockProtectBranch(
   return { message: `Protection applied to "${branch}" (demo)` };
 }
 
-// ── Activity mock data ───────────────────────────────────────────
+// ── Scanner mock data ────────────────────────────────────────────
+
+let mockScanners: Scanner[] = [
+  {
+    id: "s1",
+    name: "Standard Org Compliance",
+    description: "Ensures main and uat branches exist and are protected via Rulesets with PRs required.",
+    targetRepos: "all",
+    includeFutureRepos: true,
+    createdAt: "2026-03-08T10:00:00Z",
+    updatedAt: "2026-03-08T10:00:00Z",
+    lastRunAt: "2026-03-09T08:00:00Z",
+    conditions: [
+      {
+        branchPatterns: ["main"],
+        requiresProtection: true,
+        protectionType: "ruleset",
+        rules: { requirePr: true, minApprovals: 2, requireStatusChecks: true }
+      },
+      {
+        branchPatterns: ["uat"],
+        requiresProtection: true,
+        protectionType: "ruleset",
+        rules: { requirePr: true, minApprovals: 1 }
+      }
+    ]
+  }
+];
+
+let mockScanResults: Map<string, ScanResult> = new Map([
+  ["s1", {
+    scannerId: "s1",
+    runAt: "2026-03-09T08:00:00Z",
+    totalScanned: MOCK_REPOS.length,
+    compliantCount: 2,
+    nonCompliantCount: MOCK_REPOS.length - 2,
+    violations: [
+      { repo: "web-platform", branch: "uat", reason: "Required branch does not exist" },
+      { repo: "api-gateway", branch: "main", reason: "Branch lacks Repository Ruleset (has Classic instead)" },
+      { repo: "design-system", branch: "main", reason: "Ruleset requires 1 approvals, expected >= 2" }
+    ]
+  }]
+]);
+
+export async function mockFetchScanners(): Promise<Scanner[]> {
+  await delay(300);
+  return [...mockScanners];
+}
+
+export async function mockCreateScanner(data: Omit<Scanner, "id" | "createdAt" | "updatedAt">): Promise<Scanner> {
+  await delay(500);
+  const scanner: Scanner = {
+    ...data,
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  mockScanners = [scanner, ...mockScanners];
+  return scanner;
+}
+
+export async function mockUpdateScanner(id: string, data: Partial<Omit<Scanner, "id" | "createdAt" | "updatedAt">>): Promise<Scanner> {
+  await delay(400);
+  const idx = mockScanners.findIndex((s) => s.id === id);
+  if (idx === -1) throw new Error("Scanner not found");
+  mockScanners[idx] = { ...mockScanners[idx], ...data, updatedAt: new Date().toISOString() };
+  return mockScanners[idx];
+}
+
+export async function mockDeleteScanner(id: string): Promise<{ message: string }> {
+  await delay(400);
+  mockScanners = mockScanners.filter((s) => s.id !== id);
+  mockScanResults.delete(id);
+  return { message: "Scanner deleted" };
+}
+
+export async function mockGetScanResult(id: string): Promise<ScanResult> {
+  await delay(300);
+  const result = mockScanResults.get(id);
+  if (!result) throw new Error("Result not found");
+  return result;
+}
+
+export async function mockRunScan(id: string): Promise<ScanResult> {
+  await delay(1000);
+  const scanner = mockScanners.find(s => s.id === id);
+  if (!scanner) throw new Error("Scanner not found");
+
+  const runAt = new Date().toISOString();
+  scanner.lastRunAt = runAt;
+
+  // Generate fake result
+  const totalScanned = scanner.targetRepos === "all" ? MOCK_REPOS.length : scanner.targetRepos.length;
+  const compliantCount = Math.floor(Math.random() * totalScanned);
+  
+  const result: ScanResult = {
+    scannerId: id,
+    runAt,
+    totalScanned,
+    compliantCount,
+    nonCompliantCount: totalScanned - compliantCount,
+    violations: [
+      { repo: "random-repo", branch: "main", reason: "Simulated violation" }
+    ]
+  };
+
+  mockScanResults.set(id, result);
+  return result;
+}
+
 
 const mockActivityLog: Activity[] = [
   {
     id: "a1",
+    source: "app",
     action: "branch.create",
     actor: "alice",
     repo: "web-platform",
@@ -200,6 +317,7 @@ const mockActivityLog: Activity[] = [
   },
   {
     id: "a2",
+    source: "app",
     action: "branch.protect",
     actor: "bob",
     repo: "web-platform",
@@ -209,6 +327,7 @@ const mockActivityLog: Activity[] = [
   },
   {
     id: "a3",
+    source: "app",
     action: "branch.delete",
     actor: "alice",
     repo: "api-gateway",
@@ -217,6 +336,7 @@ const mockActivityLog: Activity[] = [
   },
   {
     id: "a4",
+    source: "app",
     action: "template.apply",
     actor: "carol",
     repo: "design-system",
@@ -226,6 +346,7 @@ const mockActivityLog: Activity[] = [
   },
   {
     id: "a5",
+    source: "app",
     action: "branch.create",
     actor: "dave",
     repo: "ml-pipeline",
@@ -235,6 +356,7 @@ const mockActivityLog: Activity[] = [
   },
   {
     id: "a6",
+    source: "app",
     action: "template.create",
     actor: "alice",
     repo: "*",
@@ -244,6 +366,7 @@ const mockActivityLog: Activity[] = [
   },
   {
     id: "a7",
+    source: "app",
     action: "branch.protect",
     actor: "bob",
     repo: "api-gateway",
@@ -253,6 +376,7 @@ const mockActivityLog: Activity[] = [
   },
   {
     id: "a8",
+    source: "app",
     action: "branch.create",
     actor: "carol",
     repo: "api-gateway",
@@ -262,6 +386,7 @@ const mockActivityLog: Activity[] = [
   },
   {
     id: "a9",
+    source: "app",
     action: "branch.create",
     actor: "dave",
     repo: "mobile-app",
@@ -271,12 +396,56 @@ const mockActivityLog: Activity[] = [
   },
   {
     id: "a10",
+    source: "app",
     action: "branch.protect",
     actor: "alice",
     repo: "ml-pipeline",
     target: "develop",
     details: "Applied default protection rules",
     timestamp: "2026-03-05T18:10:00Z",
+  },
+  {
+    id: "g1",
+    source: "github",
+    action: "github.pr_opened",
+    actor: "bob",
+    repo: "web-platform",
+    target: "feature/dark-mode",
+    details: "Opened PR #42: Add dark mode toggle",
+    prNumber: 42,
+    timestamp: "2026-03-09T10:05:00Z",
+  },
+  {
+    id: "g2",
+    source: "github",
+    action: "github.push",
+    actor: "alice",
+    repo: "web-platform",
+    target: "main",
+    details: "Pushed 3 commits to main",
+    commitSha: "a1b2c3d",
+    timestamp: "2026-03-09T09:50:00Z",
+  },
+  {
+    id: "g3",
+    source: "github",
+    action: "github.pr_merged",
+    actor: "carol",
+    repo: "api-gateway",
+    target: "main",
+    details: "Merged PR #18: Fix rate limiting bug",
+    prNumber: 18,
+    timestamp: "2026-03-08T16:10:00Z",
+  },
+  {
+    id: "g4",
+    source: "github",
+    action: "github.issue_opened",
+    actor: "dave",
+    repo: "design-system",
+    target: "Button Component",
+    details: "Opened Issue #5: Button has wrong padding on mobile",
+    timestamp: "2026-03-07T11:20:00Z",
   },
 ];
 
@@ -381,6 +550,7 @@ export async function mockCreateTemplate(
   mockTemplateStore = [template, ...mockTemplateStore];
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
+    source: "app",
     action: "template.create",
     actor: DEMO_USER.login,
     repo: "*",
@@ -418,6 +588,7 @@ export async function mockUpdateTemplate(
 
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
+    source: "app",
     action: "template.update",
     actor: DEMO_USER.login,
     repo: "*",
@@ -437,6 +608,7 @@ export async function mockDeleteTemplate(id: string): Promise<{ message: string 
   if (tmpl) {
     mockActivityLog.unshift({
       id: crypto.randomUUID(),
+      source: "app",
       action: "template.delete",
       actor: DEMO_USER.login,
       repo: "*",
@@ -458,19 +630,15 @@ export async function mockApplyTemplate(
 
   const created = tmpl.branches.map((b) => b.branchNames).flat();
   
-  const rulesetGroups = new Map<string, string[]>();
+  const rulesetGroups = new Map<number, string[]>();
   const classicProtected: string[] = [];
   
-  tmpl.branches.forEach(b => {
+  tmpl.branches.forEach((b, index) => {
     if (!b.protection) return;
     
     if (b.protection.type === 'ruleset') {
-      const { type, ...settings } = b.protection;
-      // In JS, object key order matters for JSON.stringify, but for this mock this naive approach is fine
-      // since the settings object usually comes directly from state in the same order.
-      const hash = JSON.stringify(settings);
-      if (!rulesetGroups.has(hash)) rulesetGroups.set(hash, []);
-      rulesetGroups.get(hash)!.push(...b.branchNames);
+      if (!rulesetGroups.has(index)) rulesetGroups.set(index, []);
+      rulesetGroups.get(index)!.push(...b.branchNames);
     } else {
       classicProtected.push(...b.branchNames);
     }
@@ -489,6 +657,7 @@ export async function mockApplyTemplate(
 
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
+    source: "app",
     action: "template.apply",
     actor: DEMO_USER.login,
     repo,
@@ -498,4 +667,206 @@ export async function mockApplyTemplate(
   });
 
   return { created, protected: protectedBranches, errors: [] };
+}
+
+let mockAlertsStore: SecurityAlert[] = [
+  {
+    id: "alert-1",
+    repo: "web-platform",
+    type: "protection_removed",
+    message: "Branch protection rules removed for 'main'",
+    severity: "critical",
+    timestamp: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
+    resolved: false,
+  },
+  {
+    id: "alert-2",
+    repo: "api-gateway",
+    type: "protection_drift",
+    message: "Required approvals lowered from 2 to 1 on 'main'",
+    severity: "high",
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(),
+    resolved: false,
+    details: { previousApprovals: 2, newApprovals: 1 },
+  },
+  {
+    id: "alert-3",
+    repo: "design-system",
+    type: "repo_made_public",
+    message: "Repository visibility changed to public",
+    severity: "critical",
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24).toISOString(),
+    resolved: true,
+    resolvedAt: new Date(Date.now() - 1000 * 60 * 60 * 23).toISOString(),
+    resolvedBy: DEMO_USER.login,
+  },
+  {
+    id: "alert-4",
+    repo: "mobile-app",
+    type: "admin_added",
+    message: "User 'external-contractor' was granted admin access",
+    severity: "high",
+    timestamp: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
+    resolved: false,
+  },
+  {
+    id: "alert-5",
+    repo: "infrastructure",
+    type: "ruleset_disabled",
+    message: "Repository ruleset 'Enforce PRs' was disabled",
+    severity: "critical",
+    timestamp: new Date(Date.now() - 1000 * 60 * 5).toISOString(),
+    resolved: false,
+  }
+];
+
+export async function mockFetchAlerts(): Promise<SecurityAlert[]> {
+  await delay(500);
+  return [...mockAlertsStore];
+}
+
+export async function mockResolveAlert(alertId: string): Promise<SecurityAlert> {
+  await delay(400);
+  const idx = mockAlertsStore.findIndex(a => a.id === alertId);
+  if (idx === -1) throw new Error("Alert not found");
+  mockAlertsStore[idx] = {
+    ...mockAlertsStore[idx],
+    resolved: true,
+    resolvedAt: new Date().toISOString(),
+    resolvedBy: DEMO_USER.login,
+  };
+  return mockAlertsStore[idx];
+}
+
+const mockComplianceDashboard: RepoComplianceScore[] = [
+  {
+    repo: "web-platform",
+    score: 80,
+    protectionsActive: false,
+    rulesetsActive: true,
+    hasRequiredFiles: true,
+    outsideCollaborators: 0,
+    issues: ["Classic branch protection is missing on main"],
+    lastChecked: new Date().toISOString(),
+  },
+  {
+    repo: "api-gateway",
+    score: 90,
+    protectionsActive: true,
+    rulesetsActive: true,
+    hasRequiredFiles: true,
+    outsideCollaborators: 0,
+    issues: ["Approvals required is less than organization standard (2)"],
+    lastChecked: new Date().toISOString(),
+  },
+  {
+    repo: "design-system",
+    score: 100,
+    protectionsActive: true,
+    rulesetsActive: true,
+    hasRequiredFiles: true,
+    outsideCollaborators: 0,
+    issues: [],
+    lastChecked: new Date().toISOString(),
+  },
+  {
+    repo: "mobile-app",
+    score: 60,
+    protectionsActive: true,
+    rulesetsActive: false,
+    hasRequiredFiles: false,
+    outsideCollaborators: 2,
+    issues: ["Missing CODEOWNERS file", "2 outside collaborators have access", "No rulesets active"],
+    lastChecked: new Date().toISOString(),
+  },
+  {
+    repo: "infrastructure",
+    score: 40,
+    protectionsActive: false,
+    rulesetsActive: false,
+    hasRequiredFiles: false,
+    outsideCollaborators: 1,
+    issues: ["No branch protections", "No rulesets active", "Missing README.md", "1 outside collaborator has access"],
+    lastChecked: new Date().toISOString(),
+  },
+];
+
+export async function mockFetchComplianceDashboard(): Promise<RepoComplianceScore[]> {
+  await delay(600);
+  return [...mockComplianceDashboard];
+}
+
+const mockDependencyAlerts: DependencyAlert[] = [
+  {
+    id: "dep-1",
+    repo: "api-gateway",
+    dependency: "lodash",
+    severity: "high",
+    cve: "CVE-2021-23337",
+    ecosystem: "npm",
+    vulnerable_version: "< 4.17.21",
+    patched_version: "4.17.21",
+    detected_at: new Date(Date.now() - 86400000).toISOString(),
+  },
+  {
+    id: "dep-2",
+    repo: "api-gateway",
+    dependency: "axios",
+    severity: "critical",
+    cve: "CVE-2023-45857",
+    ecosystem: "npm",
+    vulnerable_version: "< 1.6.0",
+    patched_version: "1.6.0",
+    detected_at: new Date(Date.now() - 172800000).toISOString(),
+  },
+  {
+    id: "dep-3",
+    repo: "auth-service",
+    dependency: "log4j",
+    severity: "critical",
+    cve: "CVE-2021-44228",
+    ecosystem: "maven",
+    vulnerable_version: "< 2.15.0",
+    patched_version: "2.15.0",
+    detected_at: new Date(Date.now() - 345600000).toISOString(),
+  },
+  {
+    id: "dep-4",
+    repo: "web-platform",
+    dependency: "react-scripts",
+    severity: "low",
+    cve: "CVE-2022-24302",
+    ecosystem: "npm",
+    vulnerable_version: "< 5.0.1",
+    patched_version: "5.0.1",
+    detected_at: new Date(Date.now() - 432000000).toISOString(),
+  },
+  {
+    id: "dep-disabled",
+    repo: "infrastructure",
+    dependency: "",
+    severity: "low",
+    cve: "",
+    ecosystem: "",
+    vulnerable_version: "",
+    patched_version: null,
+    detected_at: new Date().toISOString(),
+    disabled: true,
+  }
+];
+
+export async function mockFetchDependencies(): Promise<DependencyAlert[]> {
+  await delay(600);
+  return [...mockDependencyAlerts];
+}
+
+export async function mockFetchDependencySummary(): Promise<DependencySummary> {
+  await delay(400);
+  return {
+    critical: 3,
+    high: 12,
+    medium: 20,
+    low: 45,
+    repos_with_vulns: 7,
+  };
 }
