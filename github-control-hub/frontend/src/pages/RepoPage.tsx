@@ -2,6 +2,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import Navbar from "../components/Navbar";
 import BranchList from "../components/BranchList";
+import RepoProtections from "../components/RepoProtections";
 import { useAuth } from "../App";
 import { apiGet } from "../api/client";
 import type { Repo } from "../types/Repo";
@@ -56,7 +57,14 @@ export default function RepoPage() {
         </div>
 
         {repo && (
-          <BranchList repo={repo} defaultBranch={repoData?.default_branch ?? "main"} />
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-2">
+              <BranchList repo={repo} defaultBranch={repoData?.default_branch ?? "main"} />
+            </div>
+            <div className="space-y-6">
+              <RepoProtections repo={repo} />
+            </div>
+          </div>
         )}
 
       </main>

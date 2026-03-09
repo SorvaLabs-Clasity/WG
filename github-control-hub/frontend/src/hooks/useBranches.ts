@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchBranches, createBranch, deleteBranch, protectBranch } from "../api/branches";
+import { fetchBranches, createBranch, deleteBranch, protectBranch, fetchRepoRulesets, fetchBranchProtection, fetchAllBranchProtections } from "../api/branches";
 
 export function useBranches(repo: string) {
   return useQuery({
@@ -7,6 +7,33 @@ export function useBranches(repo: string) {
     queryFn: () => fetchBranches(repo),
     enabled: !!repo,
     staleTime: 15_000,
+  });
+}
+
+export function useRepoRulesets(repo: string) {
+  return useQuery({
+    queryKey: ["rulesets", repo],
+    queryFn: () => fetchRepoRulesets(repo),
+    enabled: !!repo,
+    staleTime: 30_000,
+  });
+}
+
+export function useBranchProtection(repo: string, branch: string) {
+  return useQuery({
+    queryKey: ["protection", repo, branch],
+    queryFn: () => fetchBranchProtection(repo, branch),
+    enabled: !!repo && !!branch,
+    staleTime: 30_000,
+  });
+}
+
+export function useAllBranchProtections(repo: string) {
+  return useQuery({
+    queryKey: ["all-protections", repo],
+    queryFn: () => fetchAllBranchProtections(repo),
+    enabled: !!repo,
+    staleTime: 30_000,
   });
 }
 

@@ -158,6 +158,20 @@ export async function protectBranch(
   }
 }
 
+export async function listRulesets(octokit: Octokit, repo: string) {
+  const org = getOrg();
+  try {
+    const { data } = await octokit.rest.repos.getRepoRulesets({
+      owner: org,
+      repo,
+    });
+    return data;
+  } catch (err: unknown) {
+    console.error("Error listing rulesets:", err);
+    return [];
+  }
+}
+
 export async function getProtection(
   octokit: Octokit,
   repo: string,
@@ -177,4 +191,30 @@ export async function getProtection(
     if (status === 404) return null;
     throw err;
   }
+}
+
+export async function getAllProtections(
+  octokit: Octokit,
+  repo: string
+): Promise<Record<string, Record<string, unknown>>> {
+  const branches = await listBranches(octokit, repo);
+  const protectedBranches = branches.filter((b) => b.protected);
+  
+  const protections: Record<string, Record<string, unknown>> = {};
+  
+  // Fetch protections concurrently for all protected branches
+  await Promise.all(
+    protectedBranches.map(async (branch) => {
+      try {
+        const protection = await getProtection(octokit, repo, branch.name);
+        if (protection) {
+          protections[branch.name] = protection;
+        }
+      } catch (err) {
+        console.error(`Error fetching protection for branch ${branch.name}:`, err);
+      }
+    })
+  );
+  
+  return protections;
 }

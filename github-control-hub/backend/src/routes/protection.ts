@@ -1,12 +1,34 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { createOctokit } from "../github/client";
-import { protectBranch, getProtection } from "../services/branchService";
+import { protectBranch, getProtection, listRulesets, getAllProtections } from "../services/branchService";
 import { logActivity } from "../services/activityService";
 
 type RepoAndBranch = { repo: string; branch: string };
 
 const router = Router();
+
+router.get("/:repo/rulesets", async (req: Request<{ repo: string }>, res: Response) => {
+  try {
+    const octokit = createOctokit(req.user!.accessToken);
+    const rulesets = await listRulesets(octokit, req.params.repo);
+    res.json(rulesets);
+  } catch (err) {
+    console.error("Error getting rulesets:", err);
+    res.status(500).json({ error: "Failed to get rulesets" });
+  }
+});
+
+router.get("/:repo/protections", async (req: Request<{ repo: string }>, res: Response) => {
+  try {
+    const octokit = createOctokit(req.user!.accessToken);
+    const protections = await getAllProtections(octokit, req.params.repo);
+    res.json(protections);
+  } catch (err) {
+    console.error("Error getting all protections:", err);
+    res.status(500).json({ error: "Failed to get all branch protections" });
+  }
+});
 
 router.get("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res: Response) => {
   try {
