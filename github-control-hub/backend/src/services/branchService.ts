@@ -172,6 +172,32 @@ export async function listRulesets(octokit: Octokit, repo: string) {
   }
 }
 
+export async function deleteProtection(
+  octokit: Octokit,
+  repo: string,
+  branch: string
+): Promise<void> {
+  const org = getOrg();
+  await octokit.rest.repos.deleteBranchProtection({
+    owner: org,
+    repo,
+    branch,
+  });
+}
+
+export async function deleteRuleset(
+  octokit: Octokit,
+  repo: string,
+  rulesetId: number
+): Promise<void> {
+  const org = getOrg();
+  await octokit.rest.repos.deleteRepoRuleset({
+    owner: org,
+    repo,
+    ruleset_id: rulesetId,
+  });
+}
+
 export async function getProtection(
   octokit: Octokit,
   repo: string,

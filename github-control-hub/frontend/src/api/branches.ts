@@ -67,3 +67,19 @@ export function protectBranch(
   if (DEMO_MODE) return mockProtectBranch(repo, branch, protection);
   return apiPut(`/repos/${repo}/protection/${branch}`, protection);
 }
+
+export async function deleteBranchProtection(repo: string, branch: string): Promise<{ message: string }> {
+  if (DEMO_MODE) {
+    await new Promise(r => setTimeout(r, 400));
+    return { message: "Mock deleted protection" };
+  }
+  return apiDelete(`/repos/${repo}/protection/${branch}`);
+}
+
+export async function deleteRepoRuleset(repo: string, rulesetId: number): Promise<{ message: string }> {
+  if (DEMO_MODE) {
+    await new Promise(r => setTimeout(r, 400));
+    return { message: "Mock deleted ruleset" };
+  }
+  return apiDelete(`/repos/${repo}/rulesets/${rulesetId}`);
+}

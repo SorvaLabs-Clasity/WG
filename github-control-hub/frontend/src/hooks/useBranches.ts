@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchBranches, createBranch, deleteBranch, protectBranch, fetchRepoRulesets, fetchBranchProtection, fetchAllBranchProtections } from "../api/branches";
+import { fetchBranches, createBranch, deleteBranch, protectBranch, fetchRepoRulesets, fetchBranchProtection, fetchAllBranchProtections, deleteBranchProtection, deleteRepoRuleset } from "../api/branches";
 
 export function useBranches(repo: string) {
   return useQuery({
@@ -66,6 +66,32 @@ export function useProtectBranch(repo: string) {
     mutationFn: ({ branch, protection }: { branch: string, protection: NonNullable<import("../types/Template").BranchRule["protection"]> }) => protectBranch(repo, branch, protection),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["branches", repo] });
+      qc.invalidateQueries({ queryKey: ["activity"] });
+      qc.invalidateQueries({ queryKey: ["protection", repo] });
+      qc.invalidateQueries({ queryKey: ["all-protections", repo] });
+    },
+  });
+}
+
+export function useDeleteBranchProtection(repo: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (branch: string) => deleteBranchProtection(repo, branch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["branches", repo] });
+      qc.invalidateQueries({ queryKey: ["activity"] });
+      qc.invalidateQueries({ queryKey: ["protection", repo] });
+      qc.invalidateQueries({ queryKey: ["all-protections", repo] });
+    },
+  });
+}
+
+export function useDeleteRepoRuleset(repo: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rulesetId: number) => deleteRepoRuleset(repo, rulesetId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["rulesets", repo] });
       qc.invalidateQueries({ queryKey: ["activity"] });
     },
   });

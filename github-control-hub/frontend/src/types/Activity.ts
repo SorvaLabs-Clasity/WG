@@ -2,10 +2,12 @@ export type ActivityAction =
   | "branch.create"
   | "branch.delete"
   | "branch.protect"
+  | "branch.unprotect"
   | "template.apply"
   | "template.create"
   | "template.update"
-  | "template.delete";
+  | "template.delete"
+  | "repo.ruleset.delete";
 
 export interface Activity {
   id: string;

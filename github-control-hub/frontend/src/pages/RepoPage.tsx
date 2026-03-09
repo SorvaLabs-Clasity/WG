@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import Navbar from "../components/Navbar";
@@ -11,6 +12,7 @@ export default function RepoPage() {
   const { repo } = useParams<{ repo: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [activeTab, setActiveTab] = useState<"branches" | "rules">("branches");
 
   const { data: repos } = useQuery({
     queryKey: ["repos"],
@@ -26,7 +28,7 @@ export default function RepoPage() {
       <main className="max-w-6xl mx-auto px-6 py-8 animate-fade-in">
         
         {/* Page Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-10">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => navigate("/")}
@@ -56,14 +58,47 @@ export default function RepoPage() {
           </div>
         </div>
 
+        {/* Tabs Navigation */}
+        <div className="border-b border-gh-border mb-8 flex gap-6">
+          <button
+            onClick={() => setActiveTab("branches")}
+            className={`pb-3 text-sm font-medium transition-colors relative ${
+              activeTab === "branches" 
+                ? "text-gh-textBase" 
+                : "text-gh-muted hover:text-gh-textBase"
+            }`}
+          >
+            <i className="fa-solid fa-code-branch mr-2"></i>
+            Branches
+            {activeTab === "branches" && (
+              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-gh-blue rounded-t"></span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab("rules")}
+            className={`pb-3 text-sm font-medium transition-colors relative ${
+              activeTab === "rules" 
+                ? "text-gh-textBase" 
+                : "text-gh-muted hover:text-gh-textBase"
+            }`}
+          >
+            <i className="fa-solid fa-shield-halved mr-2"></i>
+            Rules & Protections
+            {activeTab === "rules" && (
+              <span className="absolute bottom-0 left-0 w-full h-0.5 bg-gh-blue rounded-t"></span>
+            )}
+          </button>
+        </div>
+
         {repo && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            <div className="lg:col-span-2">
+          <div>
+            {activeTab === "branches" ? (
               <BranchList repo={repo} defaultBranch={repoData?.default_branch ?? "main"} />
-            </div>
-            <div className="space-y-6">
-              <RepoProtections repo={repo} />
-            </div>
+            ) : (
+              <div className="max-w-4xl mx-auto pb-12">
+                <RepoProtections repo={repo} />
+              </div>
+            )}
           </div>
         )}
 

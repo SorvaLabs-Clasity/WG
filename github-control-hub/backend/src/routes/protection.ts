@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { createOctokit } from "../github/client";
-import { protectBranch, getProtection, listRulesets, getAllProtections } from "../services/branchService";
+import { protectBranch, getProtection, listRulesets, getAllProtections, deleteProtection, deleteRuleset } from "../services/branchService";
 import { logActivity } from "../services/activityService";
 
 type RepoAndBranch = { repo: string; branch: string };
@@ -57,6 +57,30 @@ router.put("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res:
   } catch (err) {
     console.error("Error applying protection:", err);
     res.status(500).json({ error: "Failed to apply branch protection" });
+  }
+});
+
+router.delete("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res: Response) => {
+  try {
+    const octokit = createOctokit(req.user!.accessToken);
+    await deleteProtection(octokit, req.params.repo, req.params.branch);
+    logActivity("branch.unprotect", req.user!.login, req.params.repo, req.params.branch, "Removed branch protection");
+    res.json({ message: `Protection removed from ${req.params.branch}` });
+  } catch (err) {
+    console.error("Error deleting protection:", err);
+    res.status(500).json({ error: "Failed to delete branch protection" });
+  }
+});
+
+router.delete("/:repo/rulesets/:rulesetId", async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
+  try {
+    const octokit = createOctokit(req.user!.accessToken);
+    await deleteRuleset(octokit, req.params.repo, parseInt(req.params.rulesetId, 10));
+    logActivity("repo.ruleset.delete", req.user!.login, req.params.repo, req.params.rulesetId, "Deleted ruleset");
+    res.json({ message: `Ruleset ${req.params.rulesetId} deleted` });
+  } catch (err) {
+    console.error("Error deleting ruleset:", err);
+    res.status(500).json({ error: "Failed to delete ruleset" });
   }
 });
 
