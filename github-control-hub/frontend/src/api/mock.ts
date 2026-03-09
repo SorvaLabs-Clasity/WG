@@ -475,9 +475,35 @@ export async function mockApplyTemplate(
   if (!tmpl) throw new Error("Template not found");
 
   const created = tmpl.branches.map((b) => b.branchName);
-  const protectedBranches = tmpl.branches
-    .filter((b) => b.protection)
-    .map((b) => b.branchName);
+  
+  const rulesetGroups = new Map<string, string[]>();
+  const classicProtected: string[] = [];
+  
+  tmpl.branches.forEach(b => {
+    if (!b.protection) return;
+    
+    if (b.protection.type === 'ruleset') {
+      const { type, ...settings } = b.protection;
+      // In JS, object key order matters for JSON.stringify, but for this mock this naive approach is fine
+      // since the settings object usually comes directly from state in the same order.
+      const hash = JSON.stringify(settings);
+      if (!rulesetGroups.has(hash)) rulesetGroups.set(hash, []);
+      rulesetGroups.get(hash)!.push(b.branchName);
+    } else {
+      classicProtected.push(b.branchName);
+    }
+  });
+
+  const protectedBranches = [...classicProtected, ...Array.from(rulesetGroups.values()).flat()];
+  
+  let detailsStr = `Applied template "${tmpl.name}" — created: [${created.join(", ")}]`;
+  if (classicProtected.length > 0) {
+    detailsStr += `, classic protection: [${classicProtected.join(", ")}]`;
+  }
+  if (rulesetGroups.size > 0) {
+    const bundles = Array.from(rulesetGroups.values()).map(g => `[${g.join(", ")}]`).join(", ");
+    detailsStr += `, ruleset bundles: ${bundles}`;
+  }
 
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
@@ -485,7 +511,7 @@ export async function mockApplyTemplate(
     actor: DEMO_USER.login,
     repo,
     target: tmpl.name,
-    details: `Applied template "${tmpl.name}" — created: [${created.join(", ")}], protected: [${protectedBranches.join(", ")}]`,
+    details: detailsStr,
     timestamp: new Date().toISOString(),
   });
 

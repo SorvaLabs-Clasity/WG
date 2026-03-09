@@ -147,6 +147,9 @@ export async function applyTemplate(
     throw new Error(`Failed to read repo default branch: ${(err as Error).message}`);
   }
 
+  // Group branches by their protection configuration to bundle rulesets
+  const rulesetGroups = new Map<string, { branchNames: string[]; protection: NonNullable<BranchRule["protection"]> }>();
+
   for (const rule of template.branches) {
     // Create branch if it doesn't exist
     try {
@@ -171,38 +174,108 @@ export async function applyTemplate(
       }
     }
 
-    // Apply protection if configured
     if (rule.protection) {
-      try {
-        await octokit.rest.repos.updateBranchProtection({
-          owner: org,
-          repo,
-          branch: rule.branchName,
-          required_status_checks: rule.protection.requireStatusChecks
-            ? {
-                strict: rule.protection.strictStatusChecks,
-                contexts: [], // Can be expanded later to specific contexts
-              }
-            : null,
-          enforce_admins: rule.protection.enforceAdmins,
-          required_pull_request_reviews: rule.protection.requirePr
-            ? {
-                required_approving_review_count: rule.protection.requiredApprovals,
-                dismiss_stale_reviews: rule.protection.dismissStaleReviews,
-                require_code_owner_reviews: rule.protection.requireCodeOwnerReviews,
-              }
-            : null,
-          restrictions: null,
-          required_linear_history: rule.protection.requireLinearHistory,
-          allow_force_pushes: !rule.protection.preventForcePush,
-          allow_deletions: !rule.protection.preventDeletion,
-          required_conversation_resolution: rule.protection.requireConversationResolution,
-          required_signatures: rule.protection.requireSignedCommits,
-        });
-        protectedBranches.push(rule.branchName);
-      } catch (err) {
-        errors.push(`Failed to protect ${rule.branchName}: ${(err as Error).message}`);
+      if (rule.protection.type === "ruleset") {
+        // Create a hash of the protection settings (excluding type) to group identical rules
+        const { type, ...settings } = rule.protection;
+        const hash = crypto.createHash("sha256").update(JSON.stringify(settings)).digest("hex");
+        
+        if (!rulesetGroups.has(hash)) {
+          rulesetGroups.set(hash, { branchNames: [], protection: rule.protection });
+        }
+        rulesetGroups.get(hash)!.branchNames.push(rule.branchName);
+      } else {
+        // Classic protection gets applied individually
+        try {
+          await octokit.rest.repos.updateBranchProtection({
+            owner: org,
+            repo,
+            branch: rule.branchName,
+            required_status_checks: rule.protection.requireStatusChecks
+              ? {
+                  strict: rule.protection.strictStatusChecks,
+                  contexts: [],
+                }
+              : null,
+            enforce_admins: rule.protection.enforceAdmins,
+            required_pull_request_reviews: rule.protection.requirePr
+              ? {
+                  required_approving_review_count: rule.protection.requiredApprovals,
+                  dismiss_stale_reviews: rule.protection.dismissStaleReviews,
+                  require_code_owner_reviews: rule.protection.requireCodeOwnerReviews,
+                }
+              : null,
+            restrictions: null,
+            required_linear_history: rule.protection.requireLinearHistory,
+            allow_force_pushes: !rule.protection.preventForcePush,
+            allow_deletions: !rule.protection.preventDeletion,
+            required_conversation_resolution: rule.protection.requireConversationResolution,
+            required_signatures: rule.protection.requireSignedCommits,
+          });
+          protectedBranches.push(rule.branchName);
+        } catch (err) {
+          errors.push(`Failed to apply classic protection to ${rule.branchName}: ${(err as Error).message}`);
+        }
       }
+    }
+  }
+
+  // Apply bundled rulesets
+  for (const { branchNames, protection } of rulesetGroups.values()) {
+    try {
+      const rules: any[] = [];
+      if (protection.preventDeletion) rules.push({ type: "deletion" });
+      if (protection.preventForcePush) rules.push({ type: "non_fast_forward" });
+      if (protection.requireLinearHistory) rules.push({ type: "required_linear_history" });
+      if (protection.requireSignedCommits) rules.push({ type: "required_signatures" });
+      
+      if (protection.requirePr) {
+        rules.push({
+          type: "pull_request",
+          parameters: {
+            required_approving_review_count: protection.requiredApprovals,
+            dismiss_stale_reviews_on_push: protection.dismissStaleReviews,
+            require_code_owner_review: protection.requireCodeOwnerReviews,
+            require_last_push_approval: false,
+            required_review_thread_resolution: protection.requireConversationResolution,
+          },
+        });
+      }
+      
+      if (protection.requireStatusChecks) {
+        rules.push({
+          type: "required_status_checks",
+          parameters: {
+            strict_required_status_checks_policy: protection.strictStatusChecks,
+            required_status_checks: [],
+          },
+        });
+      }
+
+      await octokit.rest.repos.createRepoRuleset({
+        owner: org,
+        repo,
+        name: `Template Ruleset (${branchNames.join(', ')})`,
+        target: "branch",
+        enforcement: "active",
+        bypass_actors: protection.enforceAdmins ? [] : [
+          {
+            actor_id: 1, // pseudo ID for repository admin
+            actor_type: "RepositoryRole",
+            bypass_mode: "always"
+          }
+        ],
+        conditions: {
+          ref_name: {
+            include: branchNames.map(b => `refs/heads/${b}`),
+            exclude: [],
+          },
+        },
+        rules,
+      });
+      protectedBranches.push(...branchNames);
+    } catch (err) {
+      errors.push(`Failed to create ruleset for [${branchNames.join(', ')}]: ${(err as Error).message}`);
     }
   }
 

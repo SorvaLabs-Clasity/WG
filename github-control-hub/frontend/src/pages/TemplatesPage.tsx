@@ -399,17 +399,23 @@ export default function TemplatesPage() {
                               >
                                 Classic Protection
                               </button>
-                              <button
-                                type="button"
-                                onClick={() => updateRuleProtectionField(idx, 'type', 'ruleset')}
-                                className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-                                  rule.protection.type === 'ruleset' 
-                                    ? 'bg-white shadow-sm text-gh-textBase border border-gray-200' 
-                                    : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
-                                }`}
-                              >
-                                Repository Ruleset
-                              </button>
+                              <div className="relative group/rulesetbtn">
+                                <button
+                                  type="button"
+                                  onClick={() => updateRuleProtectionField(idx, 'type', 'ruleset')}
+                                  className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
+                                    rule.protection.type === 'ruleset' 
+                                      ? 'bg-white shadow-sm text-gh-textBase border border-gray-200' 
+                                      : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                                  }`}
+                                >
+                                  Repository Ruleset
+                                  <i className="ph-fill ph-info text-gh-muted text-[10px]"></i>
+                                </button>
+                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover/rulesetbtn:block bg-gh-nav text-white text-[11px] font-medium px-2.5 py-1.5 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg">
+                                  Branches with identical ruleset settings<br/>will be automatically bundled together.
+                                </div>
+                              </div>
                             </div>
 
                             <div className="flex items-center gap-3">
