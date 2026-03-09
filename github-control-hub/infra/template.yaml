@@ -1,0 +1,89 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: GitHub Control Hub — API Gateway + Lambda backend
+
+Globals:
+  Function:
+    Timeout: 30
+    Runtime: nodejs20.x
+    MemorySize: 256
+    Environment:
+      Variables:
+        GITHUB_ORG: !Ref GitHubOrg
+        FRONTEND_URL: !Ref FrontendUrl
+        BACKEND_URL: !Ref BackendUrl
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: GitHub organization name
+  FrontendUrl:
+    Type: String
+    Default: https://your-frontend-domain.com
+  BackendUrl:
+    Type: String
+    Default: https://your-api-domain.com
+  SecretsArn:
+    Type: String
+    Description: ARN of the Secrets Manager secret containing GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, JWT_SECRET
+
+Resources:
+  GitHubControlHubApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Cors:
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: !Sub "'${FrontendUrl}'"
+
+  BackendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/dist/
+      Handler: lambda.handler
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Ref SecretsArn
+      Environment:
+        Variables:
+          SECRETS_ARN: !Ref SecretsArn
+      Events:
+        ProxyRoot:
+          Type: Api
+          Properties:
+            RestApiId: !Ref GitHubControlHubApi
+            Path: /
+            Method: ANY
+        ProxyAll:
+          Type: Api
+          Properties:
+            RestApiId: !Ref GitHubControlHubApi
+            Path: /{proxy+}
+            Method: ANY
+
+  # Optional: audit log table
+  AuditLogTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: github-control-hub-audit-log
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+
+Outputs:
+  ApiEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${GitHubControlHubApi}.execute-api.${AWS::Region}.amazonaws.com/prod/"

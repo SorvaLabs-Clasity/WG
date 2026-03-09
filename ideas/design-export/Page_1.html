@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - GitHub Control Hub</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Custom Styles -->
+    <style>
+        /* Base Setup */
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Animated Mesh Gradient Background */
+        .mesh-gradient {
+            background: linear-gradient(-45deg, #667eea, #764ba2, #6B8DD6, #8E37D7);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Subtle Noise Overlay for Texture (Anti-Banding) */
+        .noise-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0.03;
+            pointer-events: none;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            z-index: 10;
+        }
+
+        /* Entrance Animations */
+        .fade-in-up {
+            animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+            transform: translateY(20px);
+        }
+
+        .fade-in-delayed {
+            animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            animation-delay: 0.2s;
+            opacity: 0;
+        }
+
+        @keyframes fadeInUp {
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            to { opacity: 1; }
+        }
+
+        /* Glass / Card Refinements */
+        .glass-card {
+            background: rgba(255, 255, 255, 1);
+            box-shadow: 
+                0 25px 50px -12px rgba(0, 0, 0, 0.25), 
+                0 0 0 1px rgba(255, 255, 255, 0.1); 
+        }
+
+        /* Button Glow Effect on Hover */
+        .github-btn-glow:hover {
+            box-shadow: 0 10px 15px -3px rgba(36, 41, 47, 0.3);
+        }
+    </style>
+</head>
+<body class="mesh-gradient h-screen w-full flex items-center justify-center p-4 relative text-[#24292f]">
+
+    <!-- Noise Texture -->
+    <div class="noise-overlay"></div>
+
+    <!-- Decorative shapes for depth -->
+    <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-white opacity-[0.05] rounded-full blur-3xl -translate-x-1/2 -translate-y-1/2 pointer-events-none animate-pulse"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-[500px] h-[500px] bg-purple-900 opacity-[0.1] rounded-full blur-3xl translate-x-1/3 translate-y-1/3 pointer-events-none"></div>
+
+    <!-- Main Container -->
+    <main class="w-full max-w-[440px] relative z-20">
+        
+        <!-- Login Card -->
+        <div class="glass-card rounded-2xl p-10 md:p-12 text-center fade-in-up border border-gray-100/50 relative overflow-hidden">
+            
+            <!-- Top Subtle Highlight Bar -->
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-gray-200 to-transparent opacity-50"></div>
+
+            <!-- Icon -->
+            <div class="mb-8 flex justify-center">
+                <div class="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center border border-gray-100 shadow-sm transform transition-transform hover:scale-105 duration-300">
+                    <i class="fa-brands fa-github text-4xl text-[#24292f]"></i>
+                </div>
+            </div>
+
+            <!-- Typography -->
+            <h1 class="text-3xl font-bold tracking-tight text-gray-900 mb-4">
+                GitHub Control Hub
+            </h1>
+            
+            <p class="text-[15px] leading-relaxed text-gray-500 mb-10 mx-auto max-w-[320px]">
+                Manage your organization's repositories, branches, and branch protections in one place.
+            </p>
+
+            <!-- SSO Action -->
+            <div class="space-y-6">
+                <button class="github-btn-glow group w-full bg-[#24292f] hover:bg-[#32383f] text-white font-medium py-3.5 px-4 rounded-xl transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center relative overflow-hidden">
+                    <!-- Button Shine Effect -->
+                    <div class="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-[shine_1s_infinite] transition-none"></div>
+                    
+                    <i class="fa-brands fa-github text-xl mr-3 group-hover:rotate-12 transition-transform duration-300"></i>
+                    <span>Sign in with GitHub</span>
+                </button>
+
+                <!-- Footer / Help Links -->
+                <div class="fade-in-delayed pt-2">
+                    <div class="flex items-center justify-center gap-4 text-xs text-gray-400 font-medium">
+                        <a href="#" class="hover:text-gray-600 transition-colors" rel="nofollow">Documentation</a>
+                        <span class="w-1 h-1 rounded-full bg-gray-300"></span>
+                        <a href="#" class="hover:text-gray-600 transition-colors" rel="nofollow">Support</a>
+                        <span class="w-1 h-1 rounded-full bg-gray-300"></span>
+                        <a href="#" class="hover:text-gray-600 transition-colors" rel="nofollow">Status</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Copyright -->
+        <div class="text-center mt-8 fade-in-delayed opacity-0" style="animation-delay: 0.4s; animation-fill-mode: forwards;">
+            <p class="text-white/60 text-xs font-medium tracking-wide">
+                &copy; 2023 Organization Internal Tools. Secure Access Only.
+            </p>
+        </div>
+
+    </main>
+
+    <!-- Tailwind Style Extension for custom shine animation that standard config misses -->
+    <style>
+        @keyframes shine {
+            100% {
+                transform: translateX(100%);
+            }
+        }
+    </style>
+</body>
+</html>
