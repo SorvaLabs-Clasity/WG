@@ -17,6 +17,7 @@ const EMPTY_RULE: BranchRule = {
 };
 
 const DEFAULT_PROTECTION: NonNullable<BranchRule["protection"]> = {
+  type: "classic",
   requirePr: true,
   requiredApprovals: 1,
   dismissStaleReviews: true,
@@ -366,8 +367,8 @@ export default function TemplatesPage() {
                         </button>
                       </div>
                       
-                      <div className="flex items-center justify-between border-t border-gray-100 pt-3">
-                        <label className="inline-flex items-center cursor-pointer">
+                      <div className="flex items-start border-t border-gray-100 pt-3">
+                        <label className="inline-flex items-center cursor-pointer mt-1 whitespace-nowrap w-48 shrink-0">
                           <input 
                             type="checkbox" 
                             checked={!!rule.protection} 
@@ -375,9 +376,9 @@ export default function TemplatesPage() {
                             className="sr-only peer"
                           />
                           <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600 relative"></div>
-                          <span className="ml-2 text-sm font-medium text-gh-textBase">
+                          <span className="ml-2 text-sm font-medium text-gh-textBase flex-1 truncate pr-2">
                             {rule.protection ? (
-                              <>Enable Protection for <span className="font-mono">{rule.branchName || 'branch'}</span></>
+                              <>Protect <span className="font-mono" title={rule.branchName}>{rule.branchName || 'branch'}</span></>
                             ) : (
                               <span className="text-gray-500">Enable Protection</span>
                             )}
@@ -385,8 +386,33 @@ export default function TemplatesPage() {
                         </label>
                         
                         {rule.protection && (
-                          <div className="mt-4 pt-4 border-t border-gray-100 space-y-3">
-                            <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0 pl-4 border-l border-gray-100 space-y-3">
+                            <div className="flex items-center gap-4 bg-gray-50 p-1.5 rounded-md border border-gray-200/60 mb-3 w-fit">
+                              <button
+                                type="button"
+                                onClick={() => updateRuleProtectionField(idx, 'type', 'classic')}
+                                className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+                                  rule.protection.type === 'classic' 
+                                    ? 'bg-white shadow-sm text-gh-textBase border border-gray-200' 
+                                    : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                                }`}
+                              >
+                                Classic Protection
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateRuleProtectionField(idx, 'type', 'ruleset')}
+                                className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors ${
+                                  rule.protection.type === 'ruleset' 
+                                    ? 'bg-white shadow-sm text-gh-textBase border border-gray-200' 
+                                    : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                                }`}
+                              >
+                                Repository Ruleset
+                              </button>
+                            </div>
+
+                            <div className="flex items-center gap-3">
                               <label className="text-xs font-semibold text-gh-textBase">Required Approvals</label>
                               <select 
                                 value={rule.protection.requiredApprovals}
@@ -399,16 +425,9 @@ export default function TemplatesPage() {
                               </select>
                             </div>
 
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-2">
+                            <div className="grid grid-cols-1 gap-y-2">
                               {[
                                 { field: 'dismissStaleReviews', label: 'Dismiss stale reviews', desc: 'When new commits are pushed' },
-                                { field: 'requireCodeOwnerReviews', label: 'Require Code Owner review', desc: 'If code owner is specified' },
-                                { field: 'requireConversationResolution', label: 'Require conversation resolution', desc: 'All comments must be resolved' },
-                                { field: 'requireStatusChecks', label: 'Require status checks', desc: 'Checks must pass' },
-                                { field: 'strictStatusChecks', label: 'Require up to date branch', desc: 'Before merging' },
-                                { field: 'requireSignedCommits', label: 'Require signed commits', desc: 'All commits must be signed' },
-                                { field: 'requireLinearHistory', label: 'Require linear history', desc: 'Prevent merge commits' },
-                                { field: 'enforceAdmins', label: 'Enforce for admins', desc: 'Rules apply to admins too' },
                                 { field: 'preventForcePush', label: 'Prevent force pushing', desc: 'Block force pushes' },
                                 { field: 'preventDeletion', label: 'Prevent deletion', desc: 'Block branch deletion' },
                               ].map(({ field, label, desc }) => (
@@ -428,6 +447,39 @@ export default function TemplatesPage() {
                                 </label>
                               ))}
                             </div>
+
+                            <details className="group/details mt-2">
+                              <summary className="text-[11px] font-semibold text-gh-blue cursor-pointer hover:underline list-none flex items-center gap-1 select-none">
+                                <i className="fa-solid fa-chevron-right text-[9px] group-open/details:rotate-90 transition-transform"></i>
+                                Advanced Settings
+                              </summary>
+                              <div className="pt-3 mt-2 border-t border-dashed border-gray-200 grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-3">
+                                {[
+                                  { field: 'requireCodeOwnerReviews', label: 'Require Code Owner review', desc: 'If code owner is specified' },
+                                  { field: 'requireConversationResolution', label: 'Require conversation resolution', desc: 'All comments must be resolved' },
+                                  { field: 'requireStatusChecks', label: 'Require status checks', desc: 'Checks must pass' },
+                                  { field: 'strictStatusChecks', label: 'Require up to date branch', desc: 'Before merging' },
+                                  { field: 'requireSignedCommits', label: 'Require signed commits', desc: 'All commits must be signed' },
+                                  { field: 'requireLinearHistory', label: 'Require linear history', desc: 'Prevent merge commits' },
+                                  { field: 'enforceAdmins', label: 'Enforce for admins', desc: 'Rules apply to admins too' },
+                                ].map(({ field, label, desc }) => (
+                                  <label key={field} className="flex items-start gap-2 cursor-pointer group/chk">
+                                    <div className="flex items-center h-5">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!rule.protection?.[field as keyof NonNullable<BranchRule["protection"]>]}
+                                        onChange={(e) => updateRuleProtectionField(idx, field as any, e.target.checked)}
+                                        className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue focus:ring-2 focus:ring-offset-1 transition-colors"
+                                      />
+                                    </div>
+                                    <div className="flex flex-col">
+                                      <span className="text-xs font-medium text-gh-textBase group-hover/chk:text-gh-blue transition-colors">{label}</span>
+                                      <span className="text-[10px] text-gh-muted">{desc}</span>
+                                    </div>
+                                  </label>
+                                ))}
+                              </div>
+                            </details>
                           </div>
                         )}
                       </div>

@@ -77,31 +77,85 @@ export async function protectBranch(
 ): Promise<void> {
   const org = getOrg();
 
-  await octokit.rest.repos.updateBranchProtection({
-    owner: org,
-    repo,
-    branch,
-    required_status_checks: protection.requireStatusChecks
-      ? {
-          strict: protection.strictStatusChecks,
-          contexts: [],
-        }
-      : null,
-    enforce_admins: protection.enforceAdmins,
-    required_pull_request_reviews: protection.requirePr
-      ? {
+  if (protection.type === "ruleset") {
+    const rules: any[] = [];
+    if (protection.preventDeletion) rules.push({ type: "deletion" });
+    if (protection.preventForcePush) rules.push({ type: "non_fast_forward" });
+    if (protection.requireLinearHistory) rules.push({ type: "required_linear_history" });
+    if (protection.requireSignedCommits) rules.push({ type: "required_signatures" });
+    
+    if (protection.requirePr) {
+      rules.push({
+        type: "pull_request",
+        parameters: {
           required_approving_review_count: protection.requiredApprovals,
-          dismiss_stale_reviews: protection.dismissStaleReviews,
-          require_code_owner_reviews: protection.requireCodeOwnerReviews,
+          dismiss_stale_reviews_on_push: protection.dismissStaleReviews,
+          require_code_owner_review: protection.requireCodeOwnerReviews,
+          require_last_push_approval: false,
+          required_review_thread_resolution: protection.requireConversationResolution,
+        },
+      });
+    }
+    
+    if (protection.requireStatusChecks) {
+      rules.push({
+        type: "required_status_checks",
+        parameters: {
+          strict_required_status_checks_policy: protection.strictStatusChecks,
+          required_status_checks: [],
+        },
+      });
+    }
+
+    await octokit.rest.repos.createRepoRuleset({
+      owner: org,
+      repo,
+      name: `Ruleset for ${branch}`,
+      target: "branch",
+      enforcement: "active",
+      bypass_actors: protection.enforceAdmins ? [] : [
+        {
+          actor_id: 1, // pseudo ID for repository admin
+          actor_type: "RepositoryRole",
+          bypass_mode: "always"
         }
-      : null,
-    restrictions: null,
-    required_linear_history: protection.requireLinearHistory,
-    allow_force_pushes: !protection.preventForcePush,
-    allow_deletions: !protection.preventDeletion,
-    required_conversation_resolution: protection.requireConversationResolution,
-    required_signatures: protection.requireSignedCommits,
-  });
+      ],
+      conditions: {
+        ref_name: {
+          include: [`refs/heads/${branch}`],
+          exclude: [],
+        },
+      },
+      rules,
+    });
+  } else {
+    // Classic Branch Protection API
+    await octokit.rest.repos.updateBranchProtection({
+      owner: org,
+      repo,
+      branch,
+      required_status_checks: protection.requireStatusChecks
+        ? {
+            strict: protection.strictStatusChecks,
+            contexts: [],
+          }
+        : null,
+      enforce_admins: protection.enforceAdmins,
+      required_pull_request_reviews: protection.requirePr
+        ? {
+            required_approving_review_count: protection.requiredApprovals,
+            dismiss_stale_reviews: protection.dismissStaleReviews,
+            require_code_owner_reviews: protection.requireCodeOwnerReviews,
+          }
+        : null,
+      restrictions: null,
+      required_linear_history: protection.requireLinearHistory,
+      allow_force_pushes: !protection.preventForcePush,
+      allow_deletions: !protection.preventDeletion,
+      required_conversation_resolution: protection.requireConversationResolution,
+      required_signatures: protection.requireSignedCommits,
+    });
+  }
 }
 
 export async function getProtection(

@@ -9,6 +9,7 @@ import BranchRow from "./BranchRow";
 import type { BranchRule } from "../types/Template";
 
 const DEFAULT_PROTECTION: NonNullable<BranchRule["protection"]> = {
+  type: "classic",
   requirePr: true,
   requiredApprovals: 1,
   dismissStaleReviews: true,
@@ -301,6 +302,33 @@ export default function BranchList({ repo, defaultBranch }: BranchListProps) {
             <div className="p-6 space-y-6 overflow-y-auto">
               <div className="space-y-4">
                 <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+                  <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-md border border-gray-200 w-fit">
+                    <button
+                      type="button"
+                      onClick={() => updateProtectRule('type', 'classic')}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                        protectRules.type === 'classic' 
+                          ? 'bg-white shadow-sm text-gh-textBase border border-gray-200/50' 
+                          : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                      }`}
+                    >
+                      Classic Branch API
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => updateProtectRule('type', 'ruleset')}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                        protectRules.type === 'ruleset' 
+                          ? 'bg-white shadow-sm text-gh-textBase border border-gray-200/50' 
+                          : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                      }`}
+                    >
+                      Repository Ruleset API
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between border-b border-gray-100 pb-4">
                   <label className="text-sm font-semibold text-gh-textBase">Required Approvals</label>
                   <select 
                     value={protectRules.requiredApprovals}
@@ -313,16 +341,9 @@ export default function BranchList({ repo, defaultBranch }: BranchListProps) {
                   </select>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 pb-2">
                   {[
                     { field: 'dismissStaleReviews', label: 'Dismiss stale reviews', desc: 'When new commits are pushed' },
-                    { field: 'requireCodeOwnerReviews', label: 'Require Code Owner review', desc: 'If code owner is specified' },
-                    { field: 'requireConversationResolution', label: 'Require conversation resolution', desc: 'All comments must be resolved' },
-                    { field: 'requireStatusChecks', label: 'Require status checks', desc: 'Checks must pass' },
-                    { field: 'strictStatusChecks', label: 'Require up to date branch', desc: 'Before merging' },
-                    { field: 'requireSignedCommits', label: 'Require signed commits', desc: 'All commits must be signed' },
-                    { field: 'requireLinearHistory', label: 'Require linear history', desc: 'Prevent merge commits' },
-                    { field: 'enforceAdmins', label: 'Enforce for admins', desc: 'Rules apply to admins too' },
                     { field: 'preventForcePush', label: 'Prevent force pushing', desc: 'Block force pushes' },
                     { field: 'preventDeletion', label: 'Prevent deletion', desc: 'Block branch deletion' },
                   ].map(({ field, label, desc }) => (
@@ -342,6 +363,39 @@ export default function BranchList({ repo, defaultBranch }: BranchListProps) {
                     </label>
                   ))}
                 </div>
+
+                <details className="group/details mt-2">
+                  <summary className="text-sm font-semibold text-gh-blue cursor-pointer hover:underline list-none flex items-center gap-1.5 select-none pt-2 border-t border-gray-100">
+                    <i className="ph-bold ph-caret-right text-xs group-open/details:rotate-90 transition-transform"></i>
+                    Advanced Settings
+                  </summary>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-4 pt-4 mt-2">
+                    {[
+                      { field: 'requireCodeOwnerReviews', label: 'Require Code Owner review', desc: 'If code owner is specified' },
+                      { field: 'requireConversationResolution', label: 'Require conversation resolution', desc: 'All comments must be resolved' },
+                      { field: 'requireStatusChecks', label: 'Require status checks', desc: 'Checks must pass' },
+                      { field: 'strictStatusChecks', label: 'Require up to date branch', desc: 'Before merging' },
+                      { field: 'requireSignedCommits', label: 'Require signed commits', desc: 'All commits must be signed' },
+                      { field: 'requireLinearHistory', label: 'Require linear history', desc: 'Prevent merge commits' },
+                      { field: 'enforceAdmins', label: 'Enforce for admins', desc: 'Rules apply to admins too' },
+                    ].map(({ field, label, desc }) => (
+                      <label key={field} className="flex items-start gap-3 cursor-pointer group/chk">
+                        <div className="flex items-center h-5 mt-0.5">
+                          <input
+                            type="checkbox"
+                            checked={!!protectRules[field as keyof NonNullable<BranchRule["protection"]>]}
+                            onChange={(e) => updateProtectRule(field as any, e.target.checked)}
+                            className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue focus:ring-2 focus:ring-offset-1 transition-colors"
+                          />
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-medium text-gh-textBase group-hover/chk:text-gh-blue transition-colors">{label}</span>
+                          <span className="text-[11px] text-gh-muted">{desc}</span>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                </details>
               </div>
             </div>
 
