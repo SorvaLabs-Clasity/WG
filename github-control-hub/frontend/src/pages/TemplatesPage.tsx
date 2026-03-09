@@ -11,8 +11,9 @@ import {
 import { useRepos } from "../hooks/useRepos";
 import type { BranchRule } from "../types/Template";
 
-const EMPTY_RULE: BranchRule = {
-  branchName: "",
+const EMPTY_RULE: BranchRule & { inputVal: string } = {
+  branchNames: [],
+  inputVal: "",
   protection: null,
 };
 
@@ -51,9 +52,9 @@ export default function TemplatesPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [autoApply, setAutoApply] = useState(false);
-  const [branchRules, setBranchRules] = useState<BranchRule[]>([
-    { branchName: "main", protection: { ...DEFAULT_PROTECTION, requiredApprovals: 2 } },
-    { branchName: "develop", protection: null },
+  const [branchRules, setBranchRules] = useState<(BranchRule & { inputVal: string })[]>([
+    { branchNames: ["main"], inputVal: "", protection: { ...DEFAULT_PROTECTION, requiredApprovals: 2 } },
+    { branchNames: ["develop"], inputVal: "", protection: null },
   ]);
 
   const resetForm = () => {
@@ -61,8 +62,8 @@ export default function TemplatesPage() {
     setDescription("");
     setAutoApply(false);
     setBranchRules([
-      { branchName: "main", protection: { ...DEFAULT_PROTECTION, requiredApprovals: 2 } },
-      { branchName: "develop", protection: null },
+      { branchNames: ["main"], inputVal: "", protection: { ...DEFAULT_PROTECTION, requiredApprovals: 2 } },
+      { branchNames: ["develop"], inputVal: "", protection: null },
     ]);
     setEditingId(null);
   };
@@ -71,19 +72,30 @@ export default function TemplatesPage() {
     setName(tmpl.name);
     setDescription(tmpl.description);
     setAutoApply(tmpl.autoApplyOnNewRepo);
-    // Deep clone the rules so we don't accidentally mutate the cached ones
-    setBranchRules(JSON.parse(JSON.stringify(tmpl.branches)));
+    // Deep clone the rules and ensure inputVal exists
+    setBranchRules(JSON.parse(JSON.stringify(tmpl.branches)).map((r: any) => ({ ...r, inputVal: "" })));
     setEditingId(tmpl.id);
     setCreateOpen(true);
   };
 
   const handleCreateOrUpdate = () => {
-    const validRules = branchRules.filter((r) => r.branchName.trim());
+    // A rule is valid if it has at least one branch name, OR if there's text in the input that hasn't been submitted yet.
+    // If there's pending text, we'll auto-add it to branchNames right before submitting.
+    const validRules = branchRules.filter((r) => r.branchNames.length > 0 || r.inputVal.trim());
     if (!name || validRules.length === 0) return;
+
+    // Auto-commit pending input values
+    const finalRules = validRules.map(r => {
+      const pending = r.inputVal.trim();
+      return {
+        branchNames: pending && !r.branchNames.includes(pending) ? [...r.branchNames, pending] : [...r.branchNames],
+        protection: r.protection
+      };
+    });
 
     if (editingId) {
       updateMutation.mutate(
-        { id: editingId, data: { name, description, branches: validRules, autoApplyOnNewRepo: autoApply } },
+        { id: editingId, data: { name, description, branches: finalRules, autoApplyOnNewRepo: autoApply } },
         {
           onSuccess: () => {
             setSnack({ msg: `Template "${name}" updated`, severity: "success" });
@@ -95,7 +107,7 @@ export default function TemplatesPage() {
       );
     } else {
       createMutation.mutate(
-        { name, description, branches: validRules, autoApplyOnNewRepo: autoApply },
+        { name, description, branches: finalRules, autoApplyOnNewRepo: autoApply },
         {
           onSuccess: () => {
             setSnack({ msg: `Template "${name}" created`, severity: "success" });
@@ -132,14 +144,48 @@ export default function TemplatesPage() {
     );
   };
 
-  const addRule = () => setBranchRules([...branchRules, { ...EMPTY_RULE }]);
+  const addRule = () => setBranchRules([...branchRules, { ...EMPTY_RULE, branchNames: [], inputVal: "" }]);
 
   const removeRule = (idx: number) =>
     setBranchRules(branchRules.filter((_, i) => i !== idx));
 
-  const updateRuleName = (idx: number, val: string) => {
+  const updateRuleInput = (idx: number, val: string) => {
     const updated = [...branchRules];
-    updated[idx] = { ...updated[idx], branchName: val };
+    updated[idx] = { ...updated[idx], inputVal: val };
+    setBranchRules(updated);
+  };
+
+  const handleRuleInputKeyDown = (idx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    const rule = branchRules[idx];
+    if ((e.key === 'Enter' || e.key === ' ') && rule.inputVal.trim()) {
+      e.preventDefault();
+      const newName = rule.inputVal.trim();
+      if (!rule.branchNames.includes(newName)) {
+        const updated = [...branchRules];
+        updated[idx] = { 
+          ...updated[idx], 
+          branchNames: [...updated[idx].branchNames, newName],
+          inputVal: "" 
+        };
+        setBranchRules(updated);
+      }
+    } else if (e.key === 'Backspace' && !rule.inputVal && rule.branchNames.length > 0) {
+      // Remove last tag on backspace if input is empty
+      e.preventDefault();
+      const updated = [...branchRules];
+      const newNames = [...updated[idx].branchNames];
+      newNames.pop();
+      updated[idx] = { ...updated[idx], branchNames: newNames };
+      setBranchRules(updated);
+    }
+  };
+
+  const removeBranchFromRule = (ruleIdx: number, branchToRemove: string) => {
+    const updated = [...branchRules];
+    updated[ruleIdx] = {
+      ...updated[ruleIdx],
+      branchNames: updated[ruleIdx].branchNames.filter(b => b !== branchToRemove)
+    };
     setBranchRules(updated);
   };
 
@@ -241,11 +287,11 @@ export default function TemplatesPage() {
                 <div className="p-5">
                   <p className="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Branch Rules</p>
                   <div className="space-y-2">
-                    {tmpl.branches.map((rule) => (
-                      <div key={rule.branchName} className="flex items-center justify-between text-sm bg-gray-50 border border-gray-100 rounded px-3 py-2">
-                        <span className="font-mono font-medium text-gh-textBase">
+                    {tmpl.branches.map((rule, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-sm bg-gray-50 border border-gray-100 rounded px-3 py-2">
+                        <span className="font-mono font-medium text-gh-textBase" title={rule.branchNames.join(", ")}>
                           <i className="fa-solid fa-code-branch text-gh-muted mr-2 text-xs"></i>
-                          {rule.branchName}
+                          {rule.branchNames.join(", ") || <span className="text-gray-400 italic">unnamed</span>}
                         </span>
                         {rule.protection ? (
                           <span className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded text-xs font-medium">
@@ -347,21 +393,36 @@ export default function TemplatesPage() {
                       rule.protection ? 'border-gh-border bg-white shadow-sm ring-1 ring-black/5' : 'border-gh-border bg-gray-50/50 border-dashed'
                     }`}>
                       <div className="flex items-center gap-3 mb-3">
-                        <div className="flex-1 relative">
-                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                            <i className="fa-solid fa-code-branch text-gray-400 text-xs"></i>
-                          </div>
+                        <div className="flex-1 relative flex items-center bg-gray-50 rounded-md border border-gray-300 shadow-sm focus-within:border-gh-blue focus-within:ring-1 focus-within:ring-gh-blue/30 overflow-hidden min-h-[36px] flex-wrap px-1.5 py-1 gap-1.5 transition-all">
+                          <i className="fa-solid fa-code-branch text-gray-400 text-xs ml-2 flex-shrink-0"></i>
+                          
+                          {/* Tags */}
+                          {rule.branchNames.map(branchName => (
+                            <span key={branchName} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-white text-gh-textBase border border-gray-200 shadow-sm text-sm font-mono whitespace-nowrap">
+                              {branchName}
+                              <button
+                                type="button"
+                                onClick={() => removeBranchFromRule(idx, branchName)}
+                                className="text-gray-400 hover:text-gray-600 focus:outline-none"
+                              >
+                                <i className="fa-solid fa-xmark text-xs"></i>
+                              </button>
+                            </span>
+                          ))}
+
+                          {/* Input */}
                           <input 
                             type="text" 
-                            value={rule.branchName}
-                            onChange={(e) => updateRuleName(idx, e.target.value)}
-                            placeholder="Branch name (e.g. dev)" 
-                            className="pl-8 block w-full rounded-md border-gray-300 shadow-sm focus:border-gh-blue focus:ring-gh-blue/30 sm:text-sm py-1.5 font-mono text-sm bg-gray-50 ring-1 ring-inset ring-gray-200 outline-none"
+                            value={rule.inputVal || ''}
+                            onChange={(e) => updateRuleInput(idx, e.target.value)}
+                            onKeyDown={(e) => handleRuleInputKeyDown(idx, e)}
+                            placeholder={rule.branchNames.length === 0 ? "Branch name (e.g. dev) + Space/Enter" : "Add another..."} 
+                            className="flex-1 min-w-[120px] border-none focus:ring-0 sm:text-sm py-0.5 font-mono text-sm bg-transparent outline-none m-0 p-0 shadow-none placeholder-gray-400"
                           />
                         </div>
                         <button 
                           onClick={() => removeRule(idx)}
-                          className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors"
+                          className="text-gray-400 hover:text-red-500 p-1 rounded hover:bg-red-50 transition-colors flex-shrink-0"
                         >
                           <i className="fa-solid fa-trash-can text-sm"></i>
                         </button>
@@ -378,7 +439,7 @@ export default function TemplatesPage() {
                           <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600 relative"></div>
                           <span className="ml-2 text-sm font-medium text-gh-textBase flex-1 truncate pr-2">
                             {rule.protection ? (
-                              <>Protect <span className="font-mono" title={rule.branchName}>{rule.branchName || 'branch'}</span></>
+                              <>Protect branches</>
                             ) : (
                               <span className="text-gray-500">Enable Protection</span>
                             )}
@@ -511,7 +572,7 @@ export default function TemplatesPage() {
               </button>
               <button 
                 onClick={handleCreateOrUpdate}
-                disabled={!name || branchRules.every((r) => !r.branchName.trim()) || createMutation.isPending || updateMutation.isPending}
+                disabled={!name || branchRules.every((r) => r.branchNames.length === 0 && !r.inputVal.trim()) || createMutation.isPending || updateMutation.isPending}
                 className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gh-blue hover:bg-gh-blueHover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gh-blue/50 disabled:opacity-50"
               >
                 {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingId ? "Save Changes" : "Create Template"}

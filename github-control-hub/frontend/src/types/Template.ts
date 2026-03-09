@@ -1,5 +1,5 @@
 export interface BranchRule {
-  branchName: string;
+  branchNames: string[];
   protection: {
     type: "classic" | "ruleset";
     requirePr: boolean;

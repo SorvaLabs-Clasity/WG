@@ -304,9 +304,9 @@ let mockTemplateStore: RepoTemplate[] = [
     description: "Creates main, uat, and dev branches with standard protection on main and uat",
     branches: [
       {
-        branchName: "main",
+        branchNames: ["main", "uat"],
         protection: {
-          type: "classic",
+          type: "ruleset",
           requirePr: true,
           requiredApprovals: 2,
           dismissStaleReviews: true,
@@ -322,25 +322,7 @@ let mockTemplateStore: RepoTemplate[] = [
         },
       },
       {
-        branchName: "uat",
-        protection: {
-          type: "classic",
-          requirePr: true,
-          requiredApprovals: 1,
-          dismissStaleReviews: true,
-          requireCodeOwnerReviews: false,
-          requireConversationResolution: false,
-          requireStatusChecks: true,
-          strictStatusChecks: true,
-          requireSignedCommits: false,
-          requireLinearHistory: false,
-          enforceAdmins: true,
-          preventForcePush: true,
-          preventDeletion: false,
-        },
-      },
-      {
-        branchName: "dev",
+        branchNames: ["dev"],
         protection: null,
       },
     ],
@@ -355,7 +337,7 @@ let mockTemplateStore: RepoTemplate[] = [
     description: "Only ensures main branch exists with basic PR requirement",
     branches: [
       {
-        branchName: "main",
+        branchNames: ["main"],
         protection: {
           type: "classic",
           requirePr: true,
@@ -474,7 +456,7 @@ export async function mockApplyTemplate(
   const tmpl = mockTemplateStore.find((t) => t.id === _templateId);
   if (!tmpl) throw new Error("Template not found");
 
-  const created = tmpl.branches.map((b) => b.branchName);
+  const created = tmpl.branches.map((b) => b.branchNames).flat();
   
   const rulesetGroups = new Map<string, string[]>();
   const classicProtected: string[] = [];
@@ -488,9 +470,9 @@ export async function mockApplyTemplate(
       // since the settings object usually comes directly from state in the same order.
       const hash = JSON.stringify(settings);
       if (!rulesetGroups.has(hash)) rulesetGroups.set(hash, []);
-      rulesetGroups.get(hash)!.push(b.branchName);
+      rulesetGroups.get(hash)!.push(...b.branchNames);
     } else {
-      classicProtected.push(b.branchName);
+      classicProtected.push(...b.branchNames);
     }
   });
 

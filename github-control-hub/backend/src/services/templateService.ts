@@ -4,7 +4,7 @@ import { getOrg } from "../github/client";
 import { logActivity } from "./activityService";
 
 export interface BranchRule {
-  branchName: string;
+  branchNames: string[];
   protection: {
     type: "classic" | "ruleset";
     requirePr: boolean;
@@ -151,26 +151,28 @@ export async function applyTemplate(
   const rulesetGroups = new Map<string, { branchNames: string[]; protection: NonNullable<BranchRule["protection"]> }>();
 
   for (const rule of template.branches) {
-    // Create branch if it doesn't exist
-    try {
-      await octokit.rest.git.getRef({
-        owner: org,
-        repo,
-        ref: `heads/${rule.branchName}`,
-      });
-      // Branch already exists, skip creation
-    } catch {
+    for (const branchName of rule.branchNames) {
+      // Create branch if it doesn't exist
       try {
-        await octokit.rest.git.createRef({
+        await octokit.rest.git.getRef({
           owner: org,
           repo,
-          ref: `refs/heads/${rule.branchName}`,
-          sha: defaultSha,
+          ref: `heads/${branchName}`,
         });
-        created.push(rule.branchName);
-      } catch (err) {
-        errors.push(`Failed to create ${rule.branchName}: ${(err as Error).message}`);
-        continue;
+        // Branch already exists, skip creation
+      } catch {
+        try {
+          await octokit.rest.git.createRef({
+            owner: org,
+            repo,
+            ref: `refs/heads/${branchName}`,
+            sha: defaultSha,
+          });
+          created.push(branchName);
+        } catch (err) {
+          errors.push(`Failed to create ${branchName}: ${(err as Error).message}`);
+          continue;
+        }
       }
     }
 
@@ -183,38 +185,40 @@ export async function applyTemplate(
         if (!rulesetGroups.has(hash)) {
           rulesetGroups.set(hash, { branchNames: [], protection: rule.protection });
         }
-        rulesetGroups.get(hash)!.branchNames.push(rule.branchName);
+        rulesetGroups.get(hash)!.branchNames.push(...rule.branchNames);
       } else {
         // Classic protection gets applied individually
-        try {
-          await octokit.rest.repos.updateBranchProtection({
-            owner: org,
-            repo,
-            branch: rule.branchName,
-            required_status_checks: rule.protection.requireStatusChecks
-              ? {
-                  strict: rule.protection.strictStatusChecks,
-                  contexts: [],
-                }
-              : null,
-            enforce_admins: rule.protection.enforceAdmins,
-            required_pull_request_reviews: rule.protection.requirePr
-              ? {
-                  required_approving_review_count: rule.protection.requiredApprovals,
-                  dismiss_stale_reviews: rule.protection.dismissStaleReviews,
-                  require_code_owner_reviews: rule.protection.requireCodeOwnerReviews,
-                }
-              : null,
-            restrictions: null,
-            required_linear_history: rule.protection.requireLinearHistory,
-            allow_force_pushes: !rule.protection.preventForcePush,
-            allow_deletions: !rule.protection.preventDeletion,
-            required_conversation_resolution: rule.protection.requireConversationResolution,
-            required_signatures: rule.protection.requireSignedCommits,
-          });
-          protectedBranches.push(rule.branchName);
-        } catch (err) {
-          errors.push(`Failed to apply classic protection to ${rule.branchName}: ${(err as Error).message}`);
+        for (const branchName of rule.branchNames) {
+          try {
+            await octokit.rest.repos.updateBranchProtection({
+              owner: org,
+              repo,
+              branch: branchName,
+              required_status_checks: rule.protection.requireStatusChecks
+                ? {
+                    strict: rule.protection.strictStatusChecks,
+                    contexts: [],
+                  }
+                : null,
+              enforce_admins: rule.protection.enforceAdmins,
+              required_pull_request_reviews: rule.protection.requirePr
+                ? {
+                    required_approving_review_count: rule.protection.requiredApprovals,
+                    dismiss_stale_reviews: rule.protection.dismissStaleReviews,
+                    require_code_owner_reviews: rule.protection.requireCodeOwnerReviews,
+                  }
+                : null,
+              restrictions: null,
+              required_linear_history: rule.protection.requireLinearHistory,
+              allow_force_pushes: !rule.protection.preventForcePush,
+              allow_deletions: !rule.protection.preventDeletion,
+              required_conversation_resolution: rule.protection.requireConversationResolution,
+              required_signatures: rule.protection.requireSignedCommits,
+            });
+            protectedBranches.push(branchName);
+          } catch (err) {
+            errors.push(`Failed to apply classic protection to ${branchName}: ${(err as Error).message}`);
+          }
         }
       }
     }
