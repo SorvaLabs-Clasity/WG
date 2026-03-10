@@ -5,6 +5,7 @@ import { getOrg } from "../github/client";
 import { runScan, listScanners } from "../services/scannerService";
 import { createAlert } from "../services/alertService";
 import { logActivity } from "../services/activityService";
+import { listTemplates, applyTemplate } from "../services/templateService";
 
 const router = Router();
 
@@ -161,12 +162,35 @@ router.post("/github", async (req: Request, res: Response) => {
     setTimeout(async () => {
       try {
         if (!SYSTEM_GITHUB_TOKEN) {
-          console.warn("[Webhook] SYSTEM_GITHUB_TOKEN is not set. Cannot run automated background scan.");
+          console.warn("[Webhook] SYSTEM_GITHUB_TOKEN is not set. Cannot run automated background tasks.");
           return;
         }
 
         const octokit = new Octokit({ auth: SYSTEM_GITHUB_TOKEN });
-        
+
+        // Auto-apply templates to newly created repos
+        if (event === "repository" && payload.action === "created") {
+          try {
+            const templates = await listTemplates();
+            const autoApplyTemplates = templates.filter(t => t.autoApplyOnNewRepo);
+            for (const tmpl of autoApplyTemplates) {
+              console.log(`[Webhook] Auto-applying template "${tmpl.name}" to new repo "${repoName}"`);
+              try {
+                const result = await applyTemplate(octokit, tmpl.id, repoName!, "system (auto-apply)");
+                console.log(`[Webhook] Template "${tmpl.name}" applied to "${repoName}": created=${result.created.join(",")}, protected=${result.protected.join(",")}, errors=${result.errors.length}`);
+                if (result.errors.length > 0) {
+                  console.warn(`[Webhook] Template "${tmpl.name}" errors:`, result.errors);
+                }
+              } catch (applyErr) {
+                console.error(`[Webhook] Failed to auto-apply template "${tmpl.name}" to "${repoName}":`, applyErr);
+              }
+            }
+          } catch (err) {
+            console.error(`[Webhook] Error fetching templates for auto-apply:`, err);
+          }
+        }
+
+        // Run compliance scanners
         const scanners = await listScanners();
         const relevantScanners = scanners.filter(s => 
           s.targetRepos === "all" || 
@@ -180,9 +204,9 @@ router.post("/github", async (req: Request, res: Response) => {
         }
 
       } catch (err) {
-        console.error(`[Webhook] Error executing background scan for ${repoName}:`, err);
+        console.error(`[Webhook] Error executing background tasks for ${repoName}:`, err);
       }
-    }, 1000);
+    }, 3000);
   }
 });
 

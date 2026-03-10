@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import Navbar from "../components/Navbar";
+import DiffViewer from "../components/DiffViewer";
 import { useAuth } from "../App";
 import { useActivity } from "../hooks/useActivity";
 import { useOrgConfig } from "../hooks/useOrgConfig";
@@ -412,16 +413,7 @@ export default function ActivityPage() {
                         <div className="bg-gray-50 px-3 py-1.5 border-b border-gh-border text-xs font-mono font-semibold text-gray-600 uppercase tracking-wider">
                           {key}
                         </div>
-                        <div className="grid grid-cols-2 divide-x divide-gh-border bg-white text-sm font-mono overflow-x-auto">
-                          <div className="p-3 bg-red-50/30 text-red-800">
-                            <div className="text-[10px] text-red-500 mb-1 uppercase tracking-wider font-sans">Previous</div>
-                            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(changes.old, null, 2)}</pre>
-                          </div>
-                          <div className="p-3 bg-green-50/30 text-green-800">
-                            <div className="text-[10px] text-green-500 mb-1 uppercase tracking-wider font-sans">New</div>
-                            <pre className="whitespace-pre-wrap break-all">{JSON.stringify(changes.new, null, 2)}</pre>
-                          </div>
-                        </div>
+                        <DiffViewer oldValue={changes.old} newValue={changes.new} />
                       </div>
                     ))}
                   </div>

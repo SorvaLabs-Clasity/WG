@@ -568,6 +568,19 @@ export default function TemplatesPage() {
                                 </button>
                               </div>
 
+                              {rule.protection.type === 'ruleset' && (
+                                <div className="flex items-center gap-3 mt-2">
+                                  <label className="text-xs font-semibold text-gh-textBase">Ruleset Name</label>
+                                  <input
+                                    type="text"
+                                    placeholder="Leave blank for default"
+                                    value={rule.protection.rulesetName || ""}
+                                    onChange={(e) => updateRuleProtectionField(idx, 'rulesetName', e.target.value)}
+                                    className="block w-64 pl-2 pr-2 py-1 text-xs border border-gray-300 focus:outline-none focus:ring-1 focus:ring-gh-blue focus:border-gh-blue rounded-md bg-white shadow-sm"
+                                  />
+                                </div>
+                              )}
+
                               <div className="flex items-center gap-3">
                                 <label className="text-xs font-semibold text-gh-textBase">Required Approvals</label>
                                 <select 

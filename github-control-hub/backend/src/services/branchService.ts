@@ -112,7 +112,7 @@ export async function protectBranch(
     await octokit.rest.repos.createRepoRuleset({
       owner: org,
       repo,
-      name: `Ruleset for ${branch}`,
+      name: protection.rulesetName || `Ruleset for ${branch}`,
       target: "branch",
       enforcement: "active",
       bypass_actors: protection.enforceAdmins ? [] : [

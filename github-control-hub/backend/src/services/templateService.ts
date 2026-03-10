@@ -19,6 +19,7 @@ export interface BranchRule {
   branchNames: string[];
   protection: {
     type: "classic" | "ruleset";
+    rulesetName?: string;
     requirePr: boolean;
     requiredApprovals: number;
     dismissStaleReviews: boolean;
