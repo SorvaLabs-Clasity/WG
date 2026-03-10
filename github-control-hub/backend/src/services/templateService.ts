@@ -172,12 +172,32 @@ export async function applyTemplate(
   let defaultSha: string;
   try {
     const { data: repoData } = await octokit.rest.repos.get({ owner: org, repo });
-    const { data: ref } = await octokit.rest.git.getRef({
-      owner: org,
-      repo,
-      ref: `heads/${repoData.default_branch}`,
-    });
-    defaultSha = ref.object.sha;
+
+    try {
+      const { data: ref } = await octokit.rest.git.getRef({
+        owner: org,
+        repo,
+        ref: `heads/${repoData.default_branch}`,
+      });
+      defaultSha = ref.object.sha;
+    } catch {
+      // Repo is empty (no commits). Create an initial commit so branches can be created.
+      const { data: blob } = await octokit.rest.git.createBlob({
+        owner: org, repo, content: Buffer.from(`# ${repo}\n`).toString("base64"), encoding: "base64",
+      });
+      const { data: tree } = await octokit.rest.git.createTree({
+        owner: org, repo, tree: [{ path: "README.md", mode: "100644", type: "blob", sha: blob.sha }],
+      });
+      const { data: commit } = await octokit.rest.git.createCommit({
+        owner: org, repo, message: "Initial commit", tree: tree.sha, parents: [],
+      });
+      try {
+        await octokit.rest.git.createRef({ owner: org, repo, ref: `refs/heads/${repoData.default_branch || "main"}`, sha: commit.sha });
+      } catch {
+        await octokit.rest.git.updateRef({ owner: org, repo, ref: `heads/${repoData.default_branch || "main"}`, sha: commit.sha });
+      }
+      defaultSha = commit.sha;
+    }
   } catch (err) {
     throw new Error(`Failed to read repo default branch: ${(err as Error).message}`);
   }

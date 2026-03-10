@@ -96,6 +96,14 @@ export default function TemplatesPage() {
       return;
     }
 
+    const missingRulesetName = branchRules.some(
+      r => r.protection?.type === "ruleset" && !(r.protection.rulesetName?.trim())
+    );
+    if (missingRulesetName) {
+      setSnack({ msg: "Ruleset name is required for each branch rule using Repository Ruleset.", severity: "error" });
+      return;
+    }
+
     const validRules = branchRules.filter((r) => r.branchNames.length > 0);
     if (!name || validRules.length === 0) return;
 
@@ -299,7 +307,7 @@ export default function TemplatesPage() {
         {!isLoading && !error && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {templates?.map((tmpl) => (
-              <div key={tmpl.id} className="bg-white rounded-lg border border-gh-border p-0 hover:border-gh-blue hover:shadow-card transition-all group">
+              <div key={tmpl.id} className="bg-white rounded-lg border border-gh-border p-0 hover:border-gh-blue hover:shadow-card transition-all group flex flex-col h-full">
                 <div className="p-5 border-b border-gh-border bg-gradient-to-r from-white to-gray-50/50 rounded-t-lg">
                   <div className="flex justify-between items-start">
                     <div>
@@ -366,7 +374,7 @@ export default function TemplatesPage() {
                   </div>
                 </div>
                 
-                <div className="px-5 py-3 border-t border-gh-border bg-gray-50/50 rounded-b-lg">
+                <div className="px-5 py-3 border-t border-gh-border bg-gray-50/50 rounded-b-lg mt-auto">
                   <p className="text-xs text-gh-muted flex items-center gap-1">
                     <i className="fa-regular fa-clock"></i> 
                     Created by <strong className="font-medium text-gh-textBase">{tmpl.createdBy}</strong> on {new Date(tmpl.createdAt).toLocaleDateString()}
@@ -570,10 +578,11 @@ export default function TemplatesPage() {
 
                               {rule.protection.type === 'ruleset' && (
                                 <div className="flex items-center gap-3 mt-2">
-                                  <label className="text-xs font-semibold text-gh-textBase">Ruleset Name</label>
+                                  <label className="text-xs font-semibold text-gh-textBase">Ruleset Name <span className="text-red-500">(required)</span></label>
                                   <input
                                     type="text"
-                                    placeholder="Leave blank for default"
+                                    required
+                                    placeholder="e.g. Branch protection"
                                     value={rule.protection.rulesetName || ""}
                                     onChange={(e) => updateRuleProtectionField(idx, 'rulesetName', e.target.value)}
                                     className="block w-64 pl-2 pr-2 py-1 text-xs border border-gray-300 focus:outline-none focus:ring-1 focus:ring-gh-blue focus:border-gh-blue rounded-md bg-white shadow-sm"
@@ -675,7 +684,7 @@ export default function TemplatesPage() {
               </button>
               <button 
                 onClick={handleCreateOrUpdate}
-                disabled={!name || branchRules.every((r) => r.branchNames.length === 0 && !r.inputVal.trim()) || createMutation.isPending || updateMutation.isPending}
+                disabled={!name || branchRules.every((r) => r.branchNames.length === 0 && !r.inputVal.trim()) || branchRules.some(r => r.protection?.type === "ruleset" && !(r.protection.rulesetName?.trim())) || createMutation.isPending || updateMutation.isPending}
                 className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gh-blue hover:bg-gh-blueHover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gh-blue/50 disabled:opacity-50"
               >
                 {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingId ? "Save Changes" : "Create Template"}

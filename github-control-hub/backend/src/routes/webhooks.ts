@@ -154,43 +154,62 @@ router.post("/github", async (req: Request, res: Response) => {
     }
   }
 
+  // Auto-apply templates to newly created repos (must run before response on Lambda)
+  if (event === "repository" && payload.action === "created" && repoName) {
+    if (SYSTEM_GITHUB_TOKEN) {
+      const octokit = new Octokit({ auth: SYSTEM_GITHUB_TOKEN });
+      try {
+        const templates = await listTemplates();
+        const autoApplyTemplates = templates.filter(t => t.autoApplyOnNewRepo);
+        for (const tmpl of autoApplyTemplates) {
+          console.log(`[Webhook] Auto-applying template "${tmpl.name}" to new repo "${repoName}"`);
+
+          // Retry up to 3 times with increasing delays to wait for GitHub to finish initializing the repo
+          let lastErr: unknown;
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              const result = await applyTemplate(octokit, tmpl.id, repoName, "system (auto-apply)");
+              console.log(`[Webhook] Template "${tmpl.name}" applied to "${repoName}": created=${result.created.join(",")}, protected=${result.protected.join(",")}, errors=${result.errors.length}`);
+              if (result.errors.length > 0) {
+                console.warn(`[Webhook] Template "${tmpl.name}" errors:`, result.errors);
+              }
+              lastErr = null;
+              break;
+            } catch (applyErr) {
+              lastErr = applyErr;
+              console.warn(`[Webhook] Auto-apply attempt ${attempt}/3 failed for "${tmpl.name}" on "${repoName}":`, (applyErr as Error).message);
+              if (attempt < 3) {
+                await new Promise(r => setTimeout(r, attempt * 3000));
+              }
+            }
+          }
+          if (lastErr) {
+            console.error(`[Webhook] All attempts to auto-apply template "${tmpl.name}" to "${repoName}" failed.`);
+          }
+        }
+      } catch (err) {
+        console.error(`[Webhook] Error fetching templates for auto-apply:`, err);
+      }
+    } else {
+      console.warn("[Webhook] SYSTEM_GITHUB_TOKEN is not set. Cannot auto-apply templates.");
+    }
+  }
+
   res.status(202).send("Accepted");
 
+  // Background compliance scans (setTimeout is best-effort on Lambda)
   if (repoName) {
     console.log(`[Webhook] Scheduling compliance scan for repository: ${repoName}`);
     
     setTimeout(async () => {
       try {
         if (!SYSTEM_GITHUB_TOKEN) {
-          console.warn("[Webhook] SYSTEM_GITHUB_TOKEN is not set. Cannot run automated background tasks.");
+          console.warn("[Webhook] SYSTEM_GITHUB_TOKEN is not set. Cannot run automated background scan.");
           return;
         }
 
         const octokit = new Octokit({ auth: SYSTEM_GITHUB_TOKEN });
 
-        // Auto-apply templates to newly created repos
-        if (event === "repository" && payload.action === "created") {
-          try {
-            const templates = await listTemplates();
-            const autoApplyTemplates = templates.filter(t => t.autoApplyOnNewRepo);
-            for (const tmpl of autoApplyTemplates) {
-              console.log(`[Webhook] Auto-applying template "${tmpl.name}" to new repo "${repoName}"`);
-              try {
-                const result = await applyTemplate(octokit, tmpl.id, repoName!, "system (auto-apply)");
-                console.log(`[Webhook] Template "${tmpl.name}" applied to "${repoName}": created=${result.created.join(",")}, protected=${result.protected.join(",")}, errors=${result.errors.length}`);
-                if (result.errors.length > 0) {
-                  console.warn(`[Webhook] Template "${tmpl.name}" errors:`, result.errors);
-                }
-              } catch (applyErr) {
-                console.error(`[Webhook] Failed to auto-apply template "${tmpl.name}" to "${repoName}":`, applyErr);
-              }
-            }
-          } catch (err) {
-            console.error(`[Webhook] Error fetching templates for auto-apply:`, err);
-          }
-        }
-
-        // Run compliance scanners
         const scanners = await listScanners();
         const relevantScanners = scanners.filter(s => 
           s.targetRepos === "all" || 
@@ -206,7 +225,7 @@ router.post("/github", async (req: Request, res: Response) => {
       } catch (err) {
         console.error(`[Webhook] Error executing background tasks for ${repoName}:`, err);
       }
-    }, 3000);
+    }, 1000);
   }
 });
 
