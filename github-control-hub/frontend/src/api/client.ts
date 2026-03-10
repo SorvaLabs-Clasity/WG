@@ -25,6 +25,10 @@ async function handleResponse<T>(res: Response): Promise<T> {
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
+  if (res.status === 503) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error((body as { error?: string }).error ?? "Service temporarily unavailable");
+  }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as { error?: string }).error ?? `Request failed: ${res.status}`);
@@ -32,15 +36,28 @@ async function handleResponse<T>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  retries = 1
+): Promise<Response> {
+  let res = await fetch(url, options);
+  if (res.status === 503 && retries > 0) {
+    await new Promise((r) => setTimeout(r, 1500));
+    res = await fetch(url, options);
+  }
+  return res;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchWithRetry(`${BASE_URL}${path}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   return handleResponse<T>(res);
 }
 
 export async function apiPost<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchWithRetry(`${BASE_URL}${path}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${getToken()}`,
@@ -52,7 +69,7 @@ export async function apiPost<T>(path: string, body: unknown): Promise<T> {
 }
 
 export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchWithRetry(`${BASE_URL}${path}`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${getToken()}`,
@@ -64,7 +81,7 @@ export async function apiPut<T>(path: string, body?: unknown): Promise<T> {
 }
 
 export async function apiDelete<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE_URL}${path}`, {
+  const res = await fetchWithRetry(`${BASE_URL}${path}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${getToken()}` },
   });

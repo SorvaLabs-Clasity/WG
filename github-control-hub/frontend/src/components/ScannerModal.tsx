@@ -266,17 +266,16 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                     <i className="fa-solid fa-trash-can"></i>
                   </button>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4 pr-6">
-                    <div>
-                      <label className="block text-xs font-semibold text-gh-textBase mb-1">Branch Patterns</label>
-                      <div className="flex flex-wrap gap-2 p-1.5 min-h-[36px] bg-white border border-gray-300 rounded-md shadow-sm focus-within:ring-1 focus-within:ring-gh-blue focus-within:border-gh-blue cursor-text"
-                           onClick={(e) => {
-                             const target = e.target as HTMLElement;
-                             if (target === e.currentTarget) {
-                               const input = target.querySelector('input');
-                               if (input) input.focus();
-                             }
-                           }}>
+                  <div className="mb-4 pr-6">
+                    <label className="block text-xs font-semibold text-gh-textBase mb-1">Branch Patterns</label>
+                    <div className="flex flex-wrap gap-2 p-1.5 min-h-[36px] bg-white border border-gray-300 rounded-md shadow-sm focus-within:ring-1 focus-within:ring-gh-blue focus-within:border-gh-blue cursor-text"
+                         onClick={(e) => {
+                           const target = e.target as HTMLElement;
+                           if (target === e.currentTarget) {
+                             const input = target.querySelector('input');
+                             if (input) input.focus();
+                           }
+                         }}>
                         {cond.branchPatterns.map((pattern, pIdx) => (
                           <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[13px] font-mono bg-white text-gh-textBase border border-gray-200 shadow-sm">
                             {pattern}
@@ -316,33 +315,49 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                         />
                       </div>
                       <p className="text-[11px] text-gh-muted mt-1">Press <kbd className="px-1 py-0.5 rounded bg-gray-100 border border-gray-200 text-[10px]">Enter</kbd> to add a branch pattern</p>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold text-gh-textBase mb-1">Protection Requirement</label>
-                      <select 
-                        value={cond.requiresProtection ? cond.protectionType : "none"}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          if (val === "none") {
-                            updateCondition(idx, "requiresProtection", false);
-                          } else {
-                            updateCondition(idx, "requiresProtection", true);
-                            updateCondition(idx, "protectionType", val);
-                          }
-                        }}
-                        className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
-                      >
-                        <option value="none">Must NOT be protected</option>
-                        <option value="any">Must have ANY protection</option>
-                        <option value="ruleset">Must use Repository Ruleset</option>
-                        <option value="classic">Must use Classic Protection</option>
-                      </select>
-                    </div>
                   </div>
 
+                    <div className="flex items-center gap-2 mt-4 mb-4">
+                      <div 
+                        className={`w-10 h-5 flex items-center rounded-full p-1 cursor-pointer transition-colors ${cond.requiresProtection ? 'bg-gh-blue' : 'bg-gray-300'}`}
+                        onClick={() => updateCondition(idx, "requiresProtection", !cond.requiresProtection)}
+                      >
+                        <div className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${cond.requiresProtection ? 'translate-x-5' : ''}`}></div>
+                      </div>
+                      <span className="text-sm font-medium text-gh-textBase">Check for protection rules</span>
+                    </div>
+
                   {cond.requiresProtection && (
-                    <div className="bg-white border border-gray-200 rounded p-3 text-sm">
-                      <h4 className="font-semibold text-xs text-gh-muted uppercase tracking-wider mb-3">Required Rules</h4>
+                    <div className="mt-3 border-t border-gh-border pt-4">
+                      <div className="mb-3">
+                        <label className="block text-xs font-semibold text-gh-textBase mb-1">Protection Type</label>
+                        <select 
+                          value={cond.protectionType || "any"}
+                          onChange={(e) => updateCondition(idx, "protectionType", e.target.value)}
+                          className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                        >
+                          <option value="any">Must have ANY protection</option>
+                          <option value="ruleset">Must use Repository Ruleset</option>
+                          <option value="classic">Must use Classic Protection</option>
+                        </select>
+                      </div>
+
+                      <div className="mb-3">
+                        <label className="block text-xs font-semibold text-gh-textBase mb-1">Rule Matching Mode</label>
+                        <select 
+                          value={cond.ruleMatchType || "at_least"}
+                          onChange={(e) => updateCondition(idx, "ruleMatchType", e.target.value)}
+                          className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                        >
+                          <option value="any">Any rules (just check if protection exists)</option>
+                          <option value="at_least">Must have at least the selected rules</option>
+                          <option value="exact">Must match exactly the selected rules</option>
+                        </select>
+                      </div>
+
+                      {(!cond.ruleMatchType || cond.ruleMatchType !== "any") && (
+                        <div className="bg-white border border-gray-200 rounded p-3 text-sm">
+                          <h4 className="font-semibold text-xs text-gh-muted uppercase tracking-wider mb-3">Required Rules</h4>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-4">
                         <label className="flex items-center gap-2">
@@ -472,6 +487,8 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                       </details>
                     </div>
                   )}
+                  </div>
+                )}
 
                 </div>
               ))}

@@ -1,6 +1,11 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { getActivity, getActivityForRepo, getActivityCount } from "../services/activityService";
+import {
+  getActivity,
+  getActivityForRepo,
+  getActivityCount,
+  getActivityMerged,
+} from "../services/activityService";
 
 const router = Router();
 
@@ -11,7 +16,7 @@ router.get("/", async (req: Request, res: Response) => {
 
   const entries = repo
     ? await getActivityForRepo(repo, limit)
-    : await getActivity(limit, offset);
+    : await getActivityMerged(limit, offset);
 
   res.json({
     entries,

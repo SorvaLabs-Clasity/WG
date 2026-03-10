@@ -4,6 +4,17 @@ import { getOrg } from "../github/client";
 import { logActivity } from "./activityService";
 import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand } from "../utils/dynamo";
 
+/** Extract a readable message from a GitHub API error (Octokit). */
+function githubErrorMessage(err: unknown): string {
+  const e = err as { response?: { data?: { message?: string; errors?: unknown[] } }; message?: string };
+  const msg = e.response?.data?.message ?? e.message ?? "Unknown error";
+  const details = e.response?.data?.errors;
+  if (Array.isArray(details) && details.length > 0) {
+    return `${msg} — ${JSON.stringify(details)}`;
+  }
+  return msg;
+}
+
 export interface BranchRule {
   branchNames: string[];
   protection: {
@@ -191,7 +202,7 @@ export async function applyTemplate(
           });
           created.push(branchName);
         } catch (err) {
-          const msg = `Failed to create ${branchName}: ${(err as Error).message}`;
+          const msg = `Create branch ${branchName}: ${githubErrorMessage(err)}`;
           console.error("[applyTemplate]", msg);
           errors.push(msg);
           continue;
@@ -224,9 +235,10 @@ export async function applyTemplate(
                     required_approving_review_count: rule.protection.requiredApprovals,
                     dismiss_stale_reviews: rule.protection.dismissStaleReviews,
                     require_code_owner_reviews: rule.protection.requireCodeOwnerReviews,
+                    dismissal_restrictions: {}, // required for org repos when using PR reviews
                   }
                 : null,
-              restrictions: null,
+              restrictions: { users: [], teams: [], apps: [] }, // explicit empty = no push restrictions (org repos)
               required_linear_history: rule.protection.requireLinearHistory,
               allow_force_pushes: !rule.protection.preventForcePush,
               allow_deletions: !rule.protection.preventDeletion,
@@ -235,7 +247,7 @@ export async function applyTemplate(
             });
             protectedBranches.push(branchName);
           } catch (err) {
-            const msg = `Failed to apply classic protection to ${branchName}: ${(err as Error).message}`;
+            const msg = `Classic protection ${branchName}: ${githubErrorMessage(err)}`;
             console.error("[applyTemplate]", msg);
             errors.push(msg);
           }
@@ -270,27 +282,29 @@ export async function applyTemplate(
           type: "required_status_checks",
           parameters: {
             strict_required_status_checks_policy: protection.strictStatusChecks,
-            required_status_checks: [],
+            required_status_checks: [
+              { context: "build" } // GitHub API requires at least one context for rulesets
+            ],
           },
         });
+      }
+
+      if (rules.length === 0) {
+        rules.push({ type: "pull_request", parameters: { required_approving_review_count: 0 } });
       }
 
       await octokit.rest.repos.createRepoRuleset({
         owner: org,
         repo,
-        name: `Template Ruleset (${branchNames.join(', ')})`,
+        name: `Template Ruleset (${branchNames.join(", ")})`,
         target: "branch",
         enforcement: "active",
         bypass_actors: protection.enforceAdmins ? [] : [
-          {
-            actor_id: 1,
-            actor_type: "RepositoryRole",
-            bypass_mode: "always"
-          }
+          { actor_id: 1, actor_type: "RepositoryRole", bypass_mode: "always" },
         ],
         conditions: {
           ref_name: {
-            include: branchNames.map(b => `refs/heads/${b}`),
+            include: branchNames.map((b) => `refs/heads/${b}`),
             exclude: [],
           },
         },
@@ -298,7 +312,7 @@ export async function applyTemplate(
       });
       protectedBranches.push(...branchNames);
     } catch (err) {
-      const msg = `Failed to create ruleset for [${branchNames.join(', ')}]: ${(err as Error).message}`;
+      const msg = `Ruleset [${branchNames.join(", ")}]: ${githubErrorMessage(err)}`;
       console.error("[applyTemplate]", msg);
       errors.push(msg);
     }

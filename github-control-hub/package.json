@@ -3,16 +3,25 @@
   "version": "1.0.0",
   "private": true,
   "description": "Internal GitHub Control Hub — manage repos, branches, and protections via a web UI",
-  "workspaces": ["frontend", "backend"],
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "demo": "concurrently \"npm run dev:backend\" \"VITE_DEMO_MODE=true npm run dev:frontend\"",
     "build:frontend": "npm run build --workspace=frontend",
     "build:backend": "npm run build:lambda --workspace=backend",
     "build": "npm run build:backend && npm run build:frontend",
-    "deploy:backend": "cd infra && sam build && sam deploy",
+    "deploy:backend": "npm run build:backend && cd infra && rm -rf .aws-sam && sam build && sam deploy --parameter-overrides \"$(cd .. && npx tsx infra/emit-params.ts)\"",
     "deploy:frontend": "npm run build:frontend && aws s3 sync frontend/dist/ s3://$(aws cloudformation describe-stacks --stack-name github-control-hub --query 'Stacks[0].Outputs[?OutputKey==`FrontendBucketName`].OutputValue' --output text) --delete && aws cloudfront create-invalidation --distribution-id $(aws cloudformation describe-stacks --stack-name github-control-hub --query 'Stacks[0].Outputs[?OutputKey==`CloudFrontDistributionId`].OutputValue' --output text) --paths '/*'",
     "deploy": "npm run build && npm run deploy:backend && npm run deploy:frontend",
     "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "tsx": "^4.19.3"
   }
 }

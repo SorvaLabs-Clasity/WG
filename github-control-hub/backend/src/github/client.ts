@@ -23,9 +23,38 @@ export async function checkAuditLogAccess(octokit: Octokit): Promise<boolean> {
     if (error.status === 403 || error.status === 404) {
       return false;
     }
-    // If it fails for another reason (e.g., network error), we might log it, 
+    // If it fails for another reason (e.g., network error), we might log it,
     // but we can assume false or re-throw. Assuming false for safety.
     console.error("Error checking audit log access:", error);
     return false;
   }
+}
+
+/** Org audit log event shape (GitHub API). */
+export interface OrgAuditLogEvent {
+  "@timestamp"?: number;
+  action?: string;
+  actor?: string;
+  actor_id?: number;
+  user?: string;
+  org?: string;
+  repo?: string;
+  created_at?: number;
+  data?: Record<string, unknown>;
+}
+
+/** Fetch recent org audit log events (Enterprise / orgs with audit log). */
+export async function fetchOrgAuditLog(
+  octokit: Octokit,
+  options: { per_page?: number; page?: number; phrase?: string } = {}
+): Promise<OrgAuditLogEvent[]> {
+  const org = getOrg();
+  const res = await octokit.request("GET /orgs/{org}/audit-log", {
+    org,
+    per_page: options.per_page ?? 50,
+    page: options.page ?? 1,
+    phrase: options.phrase,
+    order: "desc",
+  });
+  return (res.data as OrgAuditLogEvent[]) || [];
 }

@@ -4,6 +4,7 @@ import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { runScan, listScanners } from "../services/scannerService";
 import { createAlert } from "../services/alertService";
+import { logActivity } from "../services/activityService";
 
 const router = Router();
 
@@ -51,9 +52,16 @@ router.post("/github", async (req: Request, res: Response) => {
     repoName = payload.repository.name;
   }
 
+  const actor = payload.sender?.login || payload.installation?.account?.login || "github";
+
   if (repoName) {
     if (event === "repository" && payload.action === "publicized") {
       await createAlert(repoName, "repo_made_public", `Repository ${repoName} was made public.`, "critical");
+      await logActivity("repo.publicized", actor, repoName, repoName, "Repository was made public", undefined, "github");
+    }
+
+    if (event === "repository" && (payload.action === "created" || payload.action === "unarchived")) {
+      await logActivity("repo.created", actor, repoName, repoName, payload.action === "created" ? "Repository created" : "Repository unarchived", undefined, "github");
     }
 
     if (event === "member" && payload.action === "added") {
@@ -76,18 +84,65 @@ router.post("/github", async (req: Request, res: Response) => {
     if (event === "branch_protection_rule") {
       if (payload.action === "deleted") {
         await createAlert(repoName, "protection_removed", `Branch protection was completely removed.`, "critical");
+        await logActivity("branch.unprotect", actor, repoName, payload.changes?.name?.from || "branch", "Branch protection removed via GitHub", undefined, "github");
       } else if (payload.action === "edited") {
         await createAlert(repoName, "protection_drift", `Branch protection rules were modified (drift detected).`, "high");
+        await logActivity("github.branch_protection_edited", actor, repoName, payload.rule?.name || "branch", "Branch protection rules modified", undefined, "github");
       }
     }
 
     if (event === "repository_ruleset") {
       if (payload.action === "deleted") {
         await createAlert(repoName, "ruleset_disabled", `A repository ruleset was deleted.`, "critical");
+        await logActivity("repo.ruleset.delete", actor, repoName, String(payload.ruleset?.id || ""), "Ruleset deleted via GitHub", undefined, "github");
       } else if (payload.action === "edited") {
         await createAlert(repoName, "protection_drift", `Repository ruleset was modified (drift detected).`, "high");
+        await logActivity("github.ruleset_edited", actor, repoName, payload.ruleset?.name || "ruleset", "Repository ruleset modified", undefined, "github");
       }
     }
+  }
+
+  if (event === "push" && payload.repository?.name && !payload.created && !payload.deleted) {
+    const repo = payload.repository.name;
+    const ref = payload.ref || "";
+    const branch = ref.replace("refs/heads/", "");
+    const actorLogin = payload.sender?.login || "github";
+    await logActivity("github.push", actorLogin, repo, branch, payload.head_commit?.message?.slice(0, 200) || "Push", undefined, "github", undefined, payload.after);
+  }
+
+  if (event === "pull_request" && payload.repository?.name) {
+    const repo = payload.repository.name;
+    const pr = payload.pull_request;
+    const actorLogin = payload.sender?.login || pr?.user?.login || "github";
+    const branch = pr?.head?.ref || "";
+    const prNum = pr?.number;
+    if (payload.action === "opened") {
+      await logActivity("github.pr_opened", actorLogin, repo, branch, pr?.title?.slice(0, 200), undefined, "github", prNum);
+    } else if (payload.action === "closed") {
+      if (pr?.merged) {
+        await logActivity("github.pr_merged", actorLogin, repo, branch, pr?.title?.slice(0, 200), undefined, "github", prNum);
+      } else {
+        await logActivity("github.pr_closed", actorLogin, repo, branch, pr?.title?.slice(0, 200), undefined, "github", prNum);
+      }
+    }
+  }
+
+  if (event === "issues" && payload.action === "opened" && payload.repository?.name) {
+    const repo = payload.repository.name;
+    const actorLogin = payload.sender?.login || payload.issue?.user?.login || "github";
+    await logActivity("github.issue_opened", actorLogin, repo, String(payload.issue?.number || ""), payload.issue?.title?.slice(0, 200), undefined, "github");
+  }
+
+  if (event === "create" && payload.ref_type === "branch" && payload.repository?.name) {
+    const repo = payload.repository.name;
+    const actorLogin = payload.sender?.login || "github";
+    await logActivity("branch.create", actorLogin, repo, payload.ref || "branch", "Branch created via GitHub", undefined, "github");
+  }
+
+  if (event === "delete" && payload.ref_type === "branch" && payload.repository?.name) {
+    const repo = payload.repository.name;
+    const actorLogin = payload.sender?.login || "github";
+    await logActivity("branch.delete", actorLogin, repo, payload.ref || "branch", "Branch deleted via GitHub", undefined, "github");
   }
 
   if (event === "repository" && (payload.action === "created" || payload.action === "unarchived")) {

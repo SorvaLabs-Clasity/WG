@@ -79,6 +79,31 @@ const ACTION_CONFIG: Record<
     colorClass: "bg-green-50 text-green-700 border-green-200/60", 
     iconClass: "fa-regular fa-circle-dot text-[10px]" 
   },
+  "repo.created": { 
+    label: "Repo Created", 
+    colorClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60", 
+    iconClass: "fa-solid fa-repo text-[10px]" 
+  },
+  "repo.publicized": { 
+    label: "Repo Made Public", 
+    colorClass: "bg-amber-50 text-amber-700 border-amber-200/60", 
+    iconClass: "fa-solid fa-globe text-[10px]" 
+  },
+  "github.branch_protection_edited": { 
+    label: "Protection Changed", 
+    colorClass: "bg-blue-50 text-blue-700 border-blue-200/60", 
+    iconClass: "fa-solid fa-shield-halved text-[10px]" 
+  },
+  "github.ruleset_edited": { 
+    label: "Ruleset Changed", 
+    colorClass: "bg-indigo-50 text-indigo-700 border-indigo-200/60", 
+    iconClass: "fa-solid fa-list-check text-[10px]" 
+  },
+  "audit.event": { 
+    label: "Audit Log", 
+    colorClass: "bg-slate-50 text-slate-700 border-slate-200/60", 
+    iconClass: "fa-solid fa-clipboard-list text-[10px]" 
+  },
 };
 
 function formatTimestamp(ts: string): string {

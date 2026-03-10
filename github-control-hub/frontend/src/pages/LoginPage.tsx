@@ -1,10 +1,8 @@
 import { getLoginUrl } from "../api/auth";
 
-export default function LoginPage() {
-  const handleLogin = () => {
-    window.location.href = getLoginUrl();
-  };
+const loginUrl = getLoginUrl();
 
+export default function LoginPage() {
   return (
     <div className="mesh-gradient h-screen w-full flex items-center justify-center p-4 relative text-[#24292f]">
       {/* Noise Texture */}
@@ -41,16 +39,16 @@ export default function LoginPage() {
 
           {/* SSO Action */}
           <div className="space-y-6">
-            <button 
-              onClick={handleLogin}
-              className="github-btn-glow group w-full bg-[#24292f] hover:bg-[#32383f] text-white font-medium py-3.5 px-4 rounded-xl transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center relative overflow-hidden"
+            <a
+              href={loginUrl}
+              className="github-btn-glow group w-full bg-[#24292f] hover:bg-[#32383f] text-white font-medium py-3.5 px-4 rounded-xl transition-all duration-300 transform hover:-translate-y-0.5 flex items-center justify-center relative overflow-hidden no-underline"
             >
               {/* Button Shine Effect */}
               <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:animate-shine transition-none"></div>
               
               <i className="fa-brands fa-github text-xl mr-3 group-hover:rotate-12 transition-transform duration-300"></i>
               <span>Sign in with GitHub</span>
-            </button>
+            </a>
 
             {/* Footer / Help Links */}
             <div className="fade-in-delayed pt-2">

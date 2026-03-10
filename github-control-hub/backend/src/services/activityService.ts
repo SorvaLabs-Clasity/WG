@@ -1,5 +1,8 @@
 import crypto from "crypto";
 import { docClient, usesDynamo, tableName, PutCommand, QueryCommand } from "../utils/dynamo";
+import { createOctokit } from "../github/client";
+import { fetchOrgAuditLog, type OrgAuditLogEvent } from "../github/client";
+import { getOrgConfig } from "./orgConfigService";
 
 export type ActivityAction =
   | "branch.create"
@@ -11,15 +14,20 @@ export type ActivityAction =
   | "template.update"
   | "template.delete"
   | "repo.ruleset.delete"
+  | "repo.created"
+  | "repo.publicized"
   | "github.push"
   | "github.pr_opened"
   | "github.pr_merged"
   | "github.pr_closed"
-  | "github.issue_opened";
+  | "github.issue_opened"
+  | "github.branch_protection_edited"
+  | "github.ruleset_edited"
+  | "audit.event";
 
 export interface ActivityEntry {
   id: string;
-  source: "app" | "github";
+  source: "app" | "github" | "audit";
   action: ActivityAction;
   actor: string;
   repo: string;
@@ -127,4 +135,53 @@ export async function getActivityCount(): Promise<number> {
     return result.Count || 0;
   }
   return memoryLog.length;
+}
+
+function normalizeAuditEventToEntry(event: OrgAuditLogEvent, index: number): ActivityEntry {
+  const ts = event["@timestamp"] ?? event.created_at ?? 0;
+  const timestamp = typeof ts === "number" ? new Date(ts).toISOString() : new Date().toISOString();
+  const actor = (event.actor as string) || "unknown";
+  const repo = (event.repo as string) || "";
+  const action = (event.action as string) || "event";
+  const details = event.data ? `${action}: ${JSON.stringify(event.data).slice(0, 150)}` : action;
+  return {
+    id: `audit-${ts}-${index}`,
+    source: "audit",
+    action: "audit.event",
+    actor,
+    repo,
+    target: action,
+    details,
+    timestamp,
+  };
+}
+
+/** Fetch org audit log as activity entries (only when org has auditLogs enabled). */
+export async function getAuditLogActivity(limit: number): Promise<ActivityEntry[]> {
+  const config = await getOrgConfig();
+  if (!config.features.auditLogs) return [];
+
+  const token = process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+  if (!token) return [];
+
+  try {
+    const octokit = createOctokit(token);
+    const events = await fetchOrgAuditLog(octokit, { per_page: Math.min(limit, 100) });
+    return events.map((e, i) => normalizeAuditEventToEntry(e, i));
+  } catch (err) {
+    console.error("[activityService] Failed to fetch audit log:", err);
+    return [];
+  }
+}
+
+/** Get activity merged with audit log when Enterprise audit is enabled. */
+export async function getActivityMerged(limit: number, offset: number): Promise<ActivityEntry[]> {
+  const [appEntries, auditEntries] = await Promise.all([
+    getActivity(limit + 100, 0),
+    getAuditLogActivity(limit + 50),
+  ]);
+  const merged = [...appEntries, ...auditEntries].sort(
+    (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+  );
+  return merged.slice(offset, offset + limit);
 }

@@ -102,7 +102,9 @@ export async function protectBranch(
         type: "required_status_checks",
         parameters: {
           strict_required_status_checks_policy: protection.strictStatusChecks,
-          required_status_checks: [],
+          required_status_checks: [
+            { context: "build" } // GitHub API requires at least one context for rulesets
+          ],
         },
       });
     }
