@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useAlerts, useResolveAlert, useSimulateAlert, useInactiveUsers } from "../hooks/useAlerts";
+import { useAlerts, useResolveAlert, useUnresolveAlert, useSimulateAlert, useInactiveUsers } from "../hooks/useAlerts";
 import { SecurityAlert } from "../types/Alert";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
@@ -29,6 +29,7 @@ export default function SecurityPage() {
   const { data: alerts, isLoading: alertsLoading } = useAlerts();
   const { data: inactiveUsers, isLoading: usersLoading } = useInactiveUsers();
   const resolveMutation = useResolveAlert();
+  const unresolveMutation = useUnresolveAlert();
   const simulateMutation = useSimulateAlert();
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("active");
   const [isSimulating, setIsSimulating] = useState(false);
@@ -55,6 +56,10 @@ export default function SecurityPage() {
 
   const handleResolve = (id: string) => {
     resolveMutation.mutate(id);
+  };
+
+  const handleUnresolve = (id: string) => {
+    unresolveMutation.mutate(id);
   };
 
   return (
@@ -187,8 +192,8 @@ export default function SecurityPage() {
                 </div>
               </div>
 
-              {!alert.resolved && (
-                <div className="flex shrink-0">
+              <div className="flex shrink-0">
+                {!alert.resolved ? (
                   <button
                     onClick={() => handleResolve(alert.id)}
                     disabled={resolveMutation.isPending}
@@ -197,8 +202,17 @@ export default function SecurityPage() {
                     <i className="ph-bold ph-check text-green-600"></i>
                     Acknowledge & Resolve
                   </button>
-                </div>
-              )}
+                ) : (
+                  <button
+                    onClick={() => handleUnresolve(alert.id)}
+                    disabled={unresolveMutation.isPending}
+                    className="px-4 py-2 text-[13px] font-semibold text-gh-muted bg-white border border-gh-border hover:bg-gray-50 rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gray-200 disabled:opacity-50 flex items-center gap-2"
+                  >
+                    <i className="ph-bold ph-arrow-u-up-left"></i>
+                    Unresolve
+                  </button>
+                )}
+              </div>
             </div>
           ))
         )}

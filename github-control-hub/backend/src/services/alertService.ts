@@ -109,3 +109,32 @@ export async function resolveAlert(id: string, user: string): Promise<SecurityAl
 
   return memAlertsStore[alertIndex];
 }
+
+export async function unresolveAlert(id: string): Promise<SecurityAlert | null> {
+  if (usesDynamo()) {
+    const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id } }));
+    const alert = result.Item as SecurityAlert | undefined;
+    if (!alert) return null;
+
+    const updated: SecurityAlert = {
+      ...alert,
+      resolved: false,
+    };
+    delete updated.resolvedAt;
+    delete updated.resolvedBy;
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+    return updated;
+  }
+
+  const alertIndex = memAlertsStore.findIndex(a => a.id === id);
+  if (alertIndex === -1) return null;
+
+  memAlertsStore[alertIndex] = {
+    ...memAlertsStore[alertIndex],
+    resolved: false,
+  };
+  delete memAlertsStore[alertIndex].resolvedAt;
+  delete memAlertsStore[alertIndex].resolvedBy;
+
+  return memAlertsStore[alertIndex];
+}

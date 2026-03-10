@@ -738,6 +738,19 @@ export async function mockResolveAlert(alertId: string): Promise<SecurityAlert> 
   return mockAlertsStore[idx];
 }
 
+export async function mockUnresolveAlert(alertId: string): Promise<SecurityAlert> {
+  await delay(400);
+  const idx = mockAlertsStore.findIndex(a => a.id === alertId);
+  if (idx === -1) throw new Error("Alert not found");
+  mockAlertsStore[idx] = {
+    ...mockAlertsStore[idx],
+    resolved: false,
+  };
+  delete mockAlertsStore[idx].resolvedAt;
+  delete mockAlertsStore[idx].resolvedBy;
+  return mockAlertsStore[idx];
+}
+
 const mockComplianceDashboard: RepoComplianceScore[] = [
   {
     repo: "web-platform",
@@ -800,6 +813,7 @@ const mockDependencyAlerts: DependencyAlert[] = [
   {
     id: "dep-1",
     repo: "api-gateway",
+    org: "acme-org",
     dependency: "lodash",
     severity: "high",
     cve: "CVE-2021-23337",
@@ -811,6 +825,7 @@ const mockDependencyAlerts: DependencyAlert[] = [
   {
     id: "dep-2",
     repo: "api-gateway",
+    org: "acme-org",
     dependency: "axios",
     severity: "critical",
     cve: "CVE-2023-45857",
@@ -822,6 +837,7 @@ const mockDependencyAlerts: DependencyAlert[] = [
   {
     id: "dep-3",
     repo: "auth-service",
+    org: "acme-org",
     dependency: "log4j",
     severity: "critical",
     cve: "CVE-2021-44228",
@@ -833,6 +849,7 @@ const mockDependencyAlerts: DependencyAlert[] = [
   {
     id: "dep-4",
     repo: "web-platform",
+    org: "acme-org",
     dependency: "react-scripts",
     severity: "low",
     cve: "CVE-2022-24302",
@@ -844,6 +861,7 @@ const mockDependencyAlerts: DependencyAlert[] = [
   {
     id: "dep-disabled",
     repo: "infrastructure",
+    org: "acme-org",
     dependency: "",
     severity: "low",
     cve: "",

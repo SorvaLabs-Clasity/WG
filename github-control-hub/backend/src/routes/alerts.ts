@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { getAlerts, resolveAlert, createAlert } from "../services/alertService";
+import { getAlerts, resolveAlert, unresolveAlert, createAlert } from "../services/alertService";
 import { createOctokit, getOrg } from "../github/client";
 
 const router = Router();
@@ -18,6 +18,19 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
     const user = req.user?.login || "system";
     const alertId = req.params.id as string;
     const alert = await resolveAlert(alertId, user);
+    if (!alert) {
+      return res.status(404).json({ error: "Alert not found" });
+    }
+    res.json(alert);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/:id/unresolve", async (req: Request, res: Response) => {
+  try {
+    const alertId = req.params.id as string;
+    const alert = await unresolveAlert(alertId);
     if (!alert) {
       return res.status(404).json({ error: "Alert not found" });
     }

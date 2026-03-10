@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchAlerts, resolveAlert, simulateAlert, fetchInactiveUsers } from "../api/alerts";
+import { fetchAlerts, resolveAlert, unresolveAlert, simulateAlert, fetchInactiveUsers } from "../api/alerts";
 
 export function useAlerts() {
   return useQuery({
@@ -13,6 +13,16 @@ export function useResolveAlert() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: resolveAlert,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["alerts"] });
+    },
+  });
+}
+
+export function useUnresolveAlert() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: unresolveAlert,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["alerts"] });
     },

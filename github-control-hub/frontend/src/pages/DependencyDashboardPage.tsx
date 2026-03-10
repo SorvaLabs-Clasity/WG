@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useDependencies, useDependencySummary } from "../hooks/useDependencies";
+import { useDependencies, useDependencySummary, useEnableDependabot } from "../hooks/useDependencies";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
 import { DependencyAlert } from "../types/Dependabot";
@@ -7,9 +7,20 @@ import { DependencyAlert } from "../types/Dependabot";
 export default function DependencyDashboardPage() {
   const { data: dependencies, isLoading: depsLoading } = useDependencies();
   const { data: summary, isLoading: sumLoading } = useDependencySummary();
+  const enableMutation = useEnableDependabot();
   const { user } = useAuth();
   
   const [filterSeverity, setFilterSeverity] = useState<string>("all");
+  const [enablingRepo, setEnablingRepo] = useState<string | null>(null);
+
+  const handleEnable = async (repo: string) => {
+    setEnablingRepo(repo);
+    try {
+      await enableMutation.mutateAsync(repo);
+    } finally {
+      setEnablingRepo(null);
+    }
+  };
 
   const isLoading = depsLoading || sumLoading;
 
@@ -120,18 +131,45 @@ export default function DependencyDashboardPage() {
           ) : (
             Object.entries(repoGroups).map(([repoName, alerts]) => (
               <div key={repoName} className="bg-white rounded-xl border border-gh-border shadow-sm overflow-hidden">
-                <div className="bg-gray-50 px-5 py-3 border-b border-gh-border flex items-center gap-2">
-                  <i className="ph ph-git-repository text-gh-muted"></i>
-                  <h3 className="font-bold text-gh-textBase">{repoName}</h3>
+                <div className="bg-gray-50 px-5 py-3 border-b border-gh-border flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <i className="ph ph-git-repository text-gh-muted"></i>
+                    <h3 className="font-bold text-gh-textBase">{repoName}</h3>
+                  </div>
+                  {alerts[0]?.org && (
+                    <a
+                      href={`https://github.com/${alerts[0].org}/${repoName}/security/dependabot`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1.5 text-xs font-semibold text-gh-textMuted hover:text-gh-blue bg-white border border-gh-border hover:border-gh-blue px-2.5 py-1.5 rounded-md transition-colors shadow-sm"
+                    >
+                      <i className="ph ph-arrow-square-out"></i>
+                      View in GitHub
+                    </a>
+                  )}
                 </div>
                 
                 <div className="p-2">
                   {alerts.map(alert => {
                     if (alert.disabled) {
                       return (
-                        <div key={alert.id} className="px-3 py-3 flex items-center gap-3 text-sm text-gh-muted bg-gray-50 rounded-lg m-2 border border-gray-200 border-dashed">
-                          <i className="ph-fill ph-warning-circle text-yellow-500 text-lg"></i>
-                          <span>Dependabot alerts disabled</span>
+                        <div key={alert.id} className="px-3 py-3 flex items-center justify-between text-sm text-gh-muted bg-gray-50 rounded-lg m-2 border border-gray-200 border-dashed">
+                          <div className="flex items-center gap-3">
+                            <i className="ph-fill ph-warning-circle text-yellow-500 text-lg"></i>
+                            <span>Dependabot alerts disabled</span>
+                          </div>
+                          <button 
+                            onClick={() => handleEnable(alert.repo)}
+                            disabled={enablingRepo === alert.repo}
+                            className="bg-white border border-gh-border px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-50 flex items-center gap-2"
+                          >
+                            {enablingRepo === alert.repo ? (
+                              <div className="animate-spin w-3 h-3 border-2 border-gh-blue border-t-transparent rounded-full"></div>
+                            ) : (
+                              <i className="ph ph-shield-check"></i>
+                            )}
+                            Enable
+                          </button>
                         </div>
                       );
                     }

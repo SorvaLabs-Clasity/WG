@@ -3,6 +3,7 @@ export type DependencySeverity = "critical" | "high" | "medium" | "low";
 export interface DependencyAlert {
   id: string;
   repo: string;
+  org: string;
   dependency: string;
   severity: DependencySeverity;
   cve: string;
