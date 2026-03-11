@@ -36,18 +36,24 @@ export const DEFAULT_PROTECTION: NonNullable<BranchRule["protection"]> = {
 };
 
 /**
- * Parse a GitHub-exported ruleset JSON into our internal protection form fields.
- * Handles the exact format you get when downloading a ruleset from GitHub.
+ * Parse a GitHub ruleset into our internal protection form fields.
+ * Accepts either:
+ *   - The full ruleset JSON (with name, enforcement, rules, etc.)
+ *   - Just the "rules" array directly
  */
 export function parseGitHubRulesetJson(json: any): NonNullable<BranchRule["protection"]> {
   const result: NonNullable<BranchRule["protection"]> = { ...DEFAULT_PROTECTION, type: "ruleset" };
 
-  if (json.name) result.rulesetName = json.name;
-  if (json.enforcement) result.enforcement = json.enforcement;
+  let rules: any[];
 
-  result.enforceAdmins = !json.bypass_actors || json.bypass_actors.length === 0;
-
-  const rules: any[] = json.rules || [];
+  if (Array.isArray(json)) {
+    rules = json;
+  } else {
+    if (json.name) result.rulesetName = json.name;
+    if (json.enforcement) result.enforcement = json.enforcement;
+    result.enforceAdmins = !json.bypass_actors || json.bypass_actors.length === 0;
+    rules = json.rules || [];
+  }
 
   for (const rule of rules) {
     switch (rule.type) {
@@ -236,8 +242,10 @@ export default function ProtectBranchModal({
   const handleImportJson = () => {
     try {
       const parsed = JSON.parse(jsonText);
-      if (!parsed.rules || !Array.isArray(parsed.rules)) {
-        setJsonError("Invalid format: expected a GitHub ruleset JSON with a \"rules\" array.");
+      const isArray = Array.isArray(parsed);
+      const hasRules = parsed.rules && Array.isArray(parsed.rules);
+      if (!isArray && !hasRules) {
+        setJsonError("Invalid format: paste either the full ruleset JSON or just the \"rules\" array.");
         return;
       }
       const imported = parseGitHubRulesetJson(parsed);
@@ -245,7 +253,7 @@ export default function ProtectBranchModal({
       setJsonError("");
       setMode("form");
     } catch {
-      setJsonError("Invalid JSON. Please paste a valid GitHub ruleset JSON.");
+      setJsonError("Invalid JSON. Please paste a valid GitHub ruleset JSON or rules array.");
     }
   };
 
@@ -302,14 +310,13 @@ export default function ProtectBranchModal({
             <div className="space-y-4">
               <div>
                 <p className="text-sm text-gh-muted mb-3">
-                  Paste a GitHub ruleset JSON below. You can export this from GitHub by going to a repository's
-                  <span className="font-semibold text-gh-textBase"> Settings &rarr; Rules &rarr; Rulesets</span>, selecting a ruleset,
-                  and clicking <span className="font-semibold text-gh-textBase">Export</span>.
+                  Paste a GitHub ruleset JSON below &mdash; either the full export or just the <code className="text-xs bg-gray-100 px-1 rounded font-mono">"rules"</code> array.
+                  Export from GitHub via <span className="font-semibold text-gh-textBase">Settings &rarr; Rules &rarr; Rulesets &rarr; Export</span>.
                 </p>
                 <textarea
                   value={jsonText}
                   onChange={e => { setJsonText(e.target.value); setJsonError(""); }}
-                  placeholder='{"name": "...", "rules": [...], ...}'
+                  placeholder='Paste the full ruleset JSON or just the "rules" array, e.g.&#10;[{"type": "deletion"}, {"type": "pull_request", ...}]'
                   rows={16}
                   className="w-full px-4 py-3 text-xs font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue bg-gray-50 resize-y"
                 />

@@ -300,8 +300,10 @@ export default function TemplatesPage() {
     const rule = updated[idx];
     try {
       const parsed = JSON.parse(rule.importText || "");
-      if (!parsed.rules || !Array.isArray(parsed.rules)) {
-        rule.importError = 'Invalid format: expected a GitHub ruleset JSON with a "rules" array.';
+      const isArray = Array.isArray(parsed);
+      const hasRules = parsed.rules && Array.isArray(parsed.rules);
+      if (!isArray && !hasRules) {
+        rule.importError = 'Invalid format: paste either the full ruleset JSON or just the "rules" array.';
         setBranchRules(updated);
         return;
       }
@@ -602,12 +604,12 @@ export default function TemplatesPage() {
                         {rule.importMode && (
                           <div className="mt-3 p-4 bg-blue-50/50 border border-blue-200 rounded-lg space-y-3">
                             <p className="text-xs text-gh-muted">
-                              Paste a GitHub-exported ruleset JSON below. Get it from <span className="font-semibold text-gh-textBase">Settings &rarr; Rules &rarr; Rulesets &rarr; Export</span>.
+                              Paste the full ruleset JSON or just the <code className="text-[10px] bg-white px-1 rounded font-mono border border-gray-200">"rules"</code> array from a GitHub export.
                             </p>
                             <textarea
                               value={rule.importText || ""}
                               onChange={e => updateImportText(idx, e.target.value)}
-                              placeholder='{"name": "...", "rules": [...], ...}'
+                              placeholder='Paste the full ruleset JSON or just the "rules" array'
                               rows={10}
                               className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gh-blue bg-white resize-y"
                             />
