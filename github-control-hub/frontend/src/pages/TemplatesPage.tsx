@@ -10,6 +10,7 @@ import {
 } from "../hooks/useTemplates";
 import { useRepos } from "../hooks/useRepos";
 import type { BranchRule } from "../types/Template";
+import { parseGitHubRulesetJson } from "../components/ProtectBranchModal";
 import Editor from "react-simple-code-editor";
 import Prism from "prismjs";
 import "prismjs/components/prism-json";
@@ -74,7 +75,7 @@ export default function TemplatesPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [autoApply, setAutoApply] = useState(false);
-  const [branchRules, setBranchRules] = useState<(BranchRule & { inputVal: string; jsonMode?: boolean; jsonString?: string; jsonError?: string })[]>([
+  const [branchRules, setBranchRules] = useState<(BranchRule & { inputVal: string; jsonMode?: boolean; jsonString?: string; jsonError?: string; importMode?: boolean; importText?: string; importError?: string })[]>([
     { branchNames: ["main"], inputVal: "", protection: { ...DEFAULT_PROTECTION, requiredApprovals: 2 } },
     { branchNames: ["develop"], inputVal: "", protection: null },
   ]);
@@ -275,6 +276,44 @@ export default function TemplatesPage() {
       updated[idx].protection = parsed; // keep object in sync if valid
     } catch {
       updated[idx].jsonError = "Invalid JSON";
+    }
+    setBranchRules(updated);
+  };
+
+  const toggleImportMode = (idx: number) => {
+    const updated = [...branchRules];
+    updated[idx].importMode = !updated[idx].importMode;
+    updated[idx].importText = "";
+    updated[idx].importError = "";
+    setBranchRules(updated);
+  };
+
+  const updateImportText = (idx: number, val: string) => {
+    const updated = [...branchRules];
+    updated[idx].importText = val;
+    updated[idx].importError = "";
+    setBranchRules(updated);
+  };
+
+  const handleImportRuleset = (idx: number) => {
+    const updated = [...branchRules];
+    const rule = updated[idx];
+    try {
+      const parsed = JSON.parse(rule.importText || "");
+      if (!parsed.rules || !Array.isArray(parsed.rules)) {
+        rule.importError = 'Invalid format: expected a GitHub ruleset JSON with a "rules" array.';
+        setBranchRules(updated);
+        return;
+      }
+      const imported = parseGitHubRulesetJson(parsed);
+      rule.protection = imported;
+      rule.importMode = false;
+      rule.importText = "";
+      rule.importError = "";
+      rule.jsonMode = false;
+      if (imported.rulesetName) rule.protection.rulesetName = imported.rulesetName;
+    } catch {
+      rule.importError = "Invalid JSON. Please paste a valid GitHub ruleset JSON.";
     }
     setBranchRules(updated);
   };
@@ -534,18 +573,61 @@ export default function TemplatesPage() {
                             </div>
                           )}
 
-                          <button
-                            type="button"
-                            onClick={() => toggleJsonMode(idx)}
-                            className="px-3 py-1 text-[11px] font-semibold text-gh-blue hover:text-gh-blueHover hover:bg-blue-50 rounded-md transition-colors flex items-center gap-1.5"
-                          >
-                            {rule.jsonMode ? (
-                              <><i className="fa-solid fa-code"></i> Visual Editor</>
-                            ) : (
-                              <><i className="fa-solid fa-brackets-curly"></i> Edit JSON</>
-                            )}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => toggleImportMode(idx)}
+                              className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
+                                rule.importMode
+                                  ? "text-white bg-gh-blue hover:bg-gh-blueHover"
+                                  : "text-gh-blue hover:text-gh-blueHover hover:bg-blue-50"
+                              }`}
+                            >
+                              <i className="ph-bold ph-arrow-square-in text-xs"></i> Import Ruleset
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => toggleJsonMode(idx)}
+                              className="px-3 py-1 text-[11px] font-semibold text-gh-blue hover:text-gh-blueHover hover:bg-blue-50 rounded-md transition-colors flex items-center gap-1.5"
+                            >
+                              {rule.jsonMode ? (
+                                <><i className="fa-solid fa-code"></i> Visual Editor</>
+                              ) : (
+                                <><i className="fa-solid fa-brackets-curly"></i> Edit JSON</>
+                              )}
+                            </button>
+                          </div>
                         </div>
+
+                        {rule.importMode && (
+                          <div className="mt-3 p-4 bg-blue-50/50 border border-blue-200 rounded-lg space-y-3">
+                            <p className="text-xs text-gh-muted">
+                              Paste a GitHub-exported ruleset JSON below. Get it from <span className="font-semibold text-gh-textBase">Settings &rarr; Rules &rarr; Rulesets &rarr; Export</span>.
+                            </p>
+                            <textarea
+                              value={rule.importText || ""}
+                              onChange={e => updateImportText(idx, e.target.value)}
+                              placeholder='{"name": "...", "rules": [...], ...}'
+                              rows={10}
+                              className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gh-blue bg-white resize-y"
+                            />
+                            {rule.importError && (
+                              <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded-md">
+                                <i className="ph-fill ph-warning-circle text-red-500 text-sm"></i>
+                                <span className="text-xs text-red-700">{rule.importError}</span>
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleImportRuleset(idx)}
+                              disabled={!(rule.importText || "").trim()}
+                              className="w-full py-2 text-xs font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-md shadow-sm transition-colors disabled:opacity-50"
+                            >
+                              <i className="ph-bold ph-arrow-square-in mr-1.5"></i>
+                              Import & Populate Fields
+                            </button>
+                          </div>
+                        )}
 
                         {rule.jsonMode ? (
                           <div className="mt-3 flex flex-col gap-2">
