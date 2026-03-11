@@ -51,8 +51,13 @@ router.get("/:id/results", async (req: Request<{id: string}>, res: Response) => 
 
 router.post("/:id/run", async (req: Request<{id: string}>, res: Response) => {
   try {
-    const octokit = createOctokit(req.user!.accessToken);
-    const result = await runScan(octokit, req.params.id);
+    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    if (!token) {
+      res.status(401).json({ error: "No GitHub token available. Sign in again or set SYSTEM_GITHUB_TOKEN." });
+      return;
+    }
+    const octokit = createOctokit(token);
+    const result = await runScan(octokit, req.params.id, undefined, token);
     res.json(result);
   } catch (err: any) {
     console.error("Error running scan:", err);

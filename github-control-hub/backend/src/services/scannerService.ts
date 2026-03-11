@@ -5,9 +5,14 @@ import { listBranches, getProtection, listRulesets, getAllProtections } from "./
 import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, QueryCommand, ScanCommand } from "../utils/dynamo";
 
 export interface ScannerCondition {
-  branchPatterns: string[];
-  requiresProtection: boolean;
-  protectionType: "any" | "classic" | "ruleset";
+  type?: "branch_protection" | "query";
+  queryId?: string;
+  queryParam?: string;
+  queryAdvanced?: any;
+
+  branchPatterns?: string[];
+  requiresProtection?: boolean;
+  protectionType?: "any" | "classic" | "ruleset";
   ruleMatchType?: "any" | "at_least" | "exact";
   rules?: {
     requirePr?: boolean;
@@ -165,7 +170,7 @@ function branchMatches(branch: string, pattern: string) {
   return branch === pattern;
 }
 
-export async function runScan(octokit: Octokit, scannerId: string, overrideReposToScan?: string[]): Promise<ScanResult> {
+export async function runScan(octokit: Octokit, scannerId: string, overrideReposToScan?: string[], token?: string): Promise<ScanResult> {
   const scanner = await getScanner(scannerId);
   if (!scanner) throw new Error("Scanner not found");
 
@@ -221,18 +226,60 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
   const compliantRepos = new Set<string>();
   const nonCompliantRepos = new Set<string>();
 
+  const { evaluateSecurityQuery } = await import("./graphService");
+
+  // 1. Evaluate "query" conditions
+  const queryConditions = scanner.conditions.filter(c => c.type === "query");
+  for (const condition of queryConditions) {
+    if (condition.queryId) {
+      try {
+        const results = await evaluateSecurityQuery(
+          condition.queryId,
+          condition.queryParam,
+          condition.queryAdvanced,
+          token
+        );
+
+        for (const res of results) {
+          const entity = res.repo || res.user || res.team || "unknown";
+          // If scanner is restricted to specific repos, filter out entities that are repos but not in target list
+          if (scanner.targetRepos !== "all" && res.repo && !reposToScan.includes(res.repo)) {
+            continue;
+          }
+          
+          violations.push({
+            repo: entity,
+            branch: "-", // N/A for queries
+            reason: res.reason || "Matched security query"
+          });
+          
+          if (res.repo) {
+            nonCompliantRepos.add(res.repo);
+          }
+        }
+      } catch (err: any) {
+        console.error("Error evaluating query scanner:", err);
+      }
+    }
+  }
+
+  // 2. Evaluate branch protection conditions
+  const branchConditions = scanner.conditions.filter(c => !c.type || c.type === "branch_protection");
+
   for (const repo of reposToScan) {
-    let isRepoCompliant = true;
+    let isRepoCompliant = !nonCompliantRepos.has(repo);
     
     try {
-      const branches = await listBranches(octokit, repo);
-      const branchNames = branches.map(b => b.name);
-      
-      const classicProtections = await getAllProtections(octokit, repo);
-      const rulesets = await listRulesets(octokit, repo);
+      if (branchConditions.length > 0) {
+        const branches = await listBranches(octokit, repo);
+        const branchNames = branches.map(b => b.name);
+        
+        const classicProtections = await getAllProtections(octokit, repo);
+        const rulesets = await listRulesets(octokit, repo);
 
-      for (const condition of scanner.conditions) {
-        for (const pattern of condition.branchPatterns) {
+        for (const condition of branchConditions) {
+          if (!condition.branchPatterns) continue;
+          for (const pattern of condition.branchPatterns) {
           const matchingBranches = branchNames.filter(b => branchMatches(b, pattern));
           
           if (matchingBranches.length === 0 && !pattern.includes("*")) {
@@ -398,7 +445,7 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
                 const hasLinearHistory = hasRule('required_linear_history');
                 const preventsForcePush = hasRule('non_fast_forward');
                 const preventsDeletion = hasRule('deletion');
-                const isEnforcedForAdmins = applyingRulesets.some((rs: any) => !rs.bypass_actors || rs.bypass_actors.length === 0 || !rs.bypass_actors.some((ba: any) => ba.actor_type === "RepositoryRole" && ba.repository_role_id === 1 && ba.bypass_mode === "always"));
+                const isEnforcedForAdmins = applyingRulesets.some((rs: any) => !rs.bypass_actors || rs.bypass_actors.length === 0 || !rs.bypass_actors.some((ba: any) => ba.actor_type === "RepositoryRole" && (ba.repository_role_id === 5 || ba.actor_id === 5) && ba.bypass_mode === "always"));
 
                 if (ruleReqs.requirePr && !hasPr) {
                   violations.push({ repo, branch, reason: "Ruleset missing PR requirement" });
@@ -507,14 +554,10 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
                 }
               }
             }
-          } else {
-              if (hasClassic || hasRuleset) {
-                violations.push({ repo, branch, reason: "Branch is protected but should not be" });
-                isRepoCompliant = false;
-              }
-            }
+          }
           }
         }
+      }
       }
     } catch (err) {
       console.error(`Error scanning repo ${repo}:`, err);

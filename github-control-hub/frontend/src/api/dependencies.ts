@@ -14,6 +14,11 @@ export async function enableDependabot(repo: string): Promise<{ success: boolean
   return apiPost<{ success: boolean }>("/security/dependencies/enable", { repo });
 }
 
+export async function disableDependabot(repo: string): Promise<{ success: boolean }> {
+  if (DEMO_MODE) return { success: true };
+  return apiPost<{ success: boolean }>("/security/dependencies/disable", { repo });
+}
+
 export async function fetchDependencySummary(): Promise<DependencySummary> {
   if (DEMO_MODE) return mockFetchDependencySummary();
   return apiGet<DependencySummary>("/security/summary");

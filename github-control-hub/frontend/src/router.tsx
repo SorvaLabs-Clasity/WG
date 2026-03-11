@@ -5,10 +5,11 @@ import LoginPage from "./pages/LoginPage";
 import AuthCallback from "./pages/AuthCallback";
 import ActivityPage from "./pages/ActivityPage";
 import TemplatesPage from "./pages/TemplatesPage";
-import MonitoringPage from "./pages/MonitoringPage";
 import SecurityPage from "./pages/SecurityPage";
 import ComplianceDashboardPage from "./pages/ComplianceDashboardPage";
 import DependencyDashboardPage from "./pages/DependencyDashboardPage";
+import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
+import AnalyticsPage from "./pages/AnalyticsPage";
 import { isAuthenticated } from "./api/client";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -60,10 +61,10 @@ export const router = createBrowserRouter([
     ),
   },
   {
-    path: "/monitoring",
+    path: "/analytics",
     element: (
       <RequireAuth>
-        <MonitoringPage />
+        <AnalyticsPage />
       </RequireAuth>
     ),
   },
@@ -91,4 +92,12 @@ export const router = createBrowserRouter([
       </RequireAuth>
     ),
   },
+  {
+    path: "/graph",
+    element: (
+      <RequireAuth>
+        <KnowledgeGraphPage />
+      </RequireAuth>
+    ),
+  }
 ]);

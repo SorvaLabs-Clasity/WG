@@ -64,6 +64,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
         await Promise.all(chunk.map(async (r) => {
           try {
             await octokit.rest.repos.checkVulnerabilityAlerts({ owner: org, repo: r.name });
+            allAlerts.push(mockCleanAlert(r.name, org));
           } catch (err: any) {
             if (err.status === 404) {
               allAlerts.push(mockDisabledAlert(r.name, org));
@@ -107,6 +108,33 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     console.error(`Error enabling Dependabot for ${req.body.repo}:`, error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/dependencies/disable", async (req: Request, res: Response) => {
+  try {
+    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    if (!token) {
+      return res.status(401).json({ error: "No GitHub token provided" });
+    }
+
+    const { repo } = req.body;
+    if (!repo) {
+      return res.status(400).json({ error: "Repo name is required" });
+    }
+
+    const octokit = createOctokit(token);
+    const org = getOrg();
+
+    await octokit.rest.repos.disableVulnerabilityAlerts({
+      owner: org,
+      repo,
+    });
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error(`Error disabling Dependabot for ${req.body.repo}:`, error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -190,6 +218,22 @@ function mockDisabledAlert(repoName: string, orgName: string) {
     patched_version: null,
     detected_at: new Date().toISOString(),
     disabled: true
+  };
+}
+
+function mockCleanAlert(repoName: string, orgName: string) {
+  return {
+    id: `clean-${repoName}`,
+    repo: repoName,
+    org: orgName,
+    dependency: "No vulnerabilities found",
+    severity: "low",
+    cve: "",
+    ecosystem: "",
+    vulnerable_version: "",
+    patched_version: null,
+    detected_at: new Date().toISOString(),
+    clean: true
   };
 }
 

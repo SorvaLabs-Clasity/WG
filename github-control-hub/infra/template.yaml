@@ -72,6 +72,8 @@ Resources:
                 - !GetAtt AlertsTable.Arn
                 - !GetAtt OrgConfigTable.Arn
                 - !GetAtt AuthCodesTable.Arn
+                - !GetAtt GraphEdgesTable.Arn
+                - !GetAtt GraphEdgesTable.Arn
       Environment:
         Variables:
           SECRET_NAME: !Ref SecretName
@@ -81,6 +83,7 @@ Resources:
           ALERTS_TABLE: !Ref AlertsTable
           ORG_CONFIG_TABLE: !Ref OrgConfigTable
           AUTH_CODES_TABLE: !Ref AuthCodesTable
+          GRAPH_EDGES_TABLE: !Ref GraphEdgesTable
       Events:
         ProxyRoot:
           Type: Api
@@ -179,6 +182,22 @@ Resources:
       KeySchema:
         - AttributeName: code
           KeyType: HASH
+
+  GraphEdgesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-graph-edges"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
 
   # --- S3 Bucket for Frontend ---
 
@@ -290,8 +309,8 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
-  # --- Audit Log Check Scheduled Job ---
-
+  # --- Background Workers ---
+  
   AuditLogCheckFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -321,6 +340,42 @@ Resources:
             Schedule: "rate(6 hours)"
             Name: AuditLogAccessCheck
             Description: "Checks if GitHub Enterprise Audit Logs are accessible every 6 hours"
+
+  GraphAggregatorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ../backend/
+      Handler: dist/jobs/graphAggregator.handler
+      Timeout: 300
+      MemorySize: 512
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+              Resource: !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${SecretName}-*"
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:BatchWriteItem
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:DeleteItem
+              Resource: !GetAtt GraphEdgesTable.Arn
+      Environment:
+        Variables:
+          SECRET_NAME: !Ref SecretName
+          GRAPH_EDGES_TABLE: !Ref GraphEdgesTable
+      Events:
+        AggregateSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: "rate(6 hours)"
+            Name: GraphAggregatorSchedule
+            Description: "Aggregates GitHub data into Knowledge Graph every 6 hours"
 
 Outputs:
   ApiEndpoint:

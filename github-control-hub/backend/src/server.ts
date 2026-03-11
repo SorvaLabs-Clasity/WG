@@ -13,6 +13,7 @@ import alertRoutes from "./routes/alerts";
 import complianceRoutes from "./routes/compliance";
 import dependencyRoutes from "./routes/dependencies";
 import orgRoutes from "./routes/org";
+import graphRoutes from "./routes/graph";
 import { authMiddleware } from "./middleware/authMiddleware";
 
 const app = express();
@@ -45,6 +46,7 @@ app.use("/api/alerts", authMiddleware, alertRoutes);
 app.use("/api/compliance", authMiddleware, complianceRoutes);
 app.use("/api/security", authMiddleware, dependencyRoutes);
 app.use("/api/org", authMiddleware, orgRoutes);
+app.use("/api/graph", authMiddleware, graphRoutes);
 app.use("/api/webhooks", webhookRoutes);
 
 if (!isProduction) {

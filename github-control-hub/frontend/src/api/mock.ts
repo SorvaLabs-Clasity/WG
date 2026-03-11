@@ -14,86 +14,455 @@ export const DEMO_USER = {
 
 const MOCK_REPOS: Repo[] = [
   {
-    name: "web-platform",
-    full_name: "acme-org/web-platform",
+    name: "repo-1",
+    full_name: "acme-org/repo-1",
     private: false,
     default_branch: "main",
-    description: "Core web application platform powering the customer dashboard",
-    language: "TypeScript",
+    description: "Auto-generated mock repo 1",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
     updated_at: "2026-03-08T18:30:00Z",
   },
   {
-    name: "api-gateway",
-    full_name: "acme-org/api-gateway",
-    private: true,
-    default_branch: "main",
-    description: "Central API gateway handling routing, auth, and rate limiting",
-    language: "Go",
-    updated_at: "2026-03-07T14:20:00Z",
-  },
-  {
-    name: "design-system",
-    full_name: "acme-org/design-system",
+    name: "repo-2",
+    full_name: "acme-org/repo-2",
     private: false,
     default_branch: "main",
-    description: "Shared component library and design tokens",
-    language: "TypeScript",
-    updated_at: "2026-03-06T09:15:00Z",
+    description: "Auto-generated mock repo 2",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
   },
   {
-    name: "ml-pipeline",
-    full_name: "acme-org/ml-pipeline",
-    private: true,
-    default_branch: "develop",
-    description: "Machine learning data pipeline and model training infrastructure",
-    language: "Python",
-    updated_at: "2026-03-05T22:45:00Z",
-  },
-  {
-    name: "mobile-app",
-    full_name: "acme-org/mobile-app",
+    name: "repo-3",
+    full_name: "acme-org/repo-3",
     private: true,
     default_branch: "main",
-    description: "Cross-platform mobile application built with React Native",
-    language: "TypeScript",
-    updated_at: "2026-03-04T11:00:00Z",
+    description: "Auto-generated mock repo 3",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
   },
   {
-    name: "infrastructure",
-    full_name: "acme-org/infrastructure",
-    private: true,
-    default_branch: "main",
-    description: "Terraform modules, Kubernetes manifests, and CI/CD pipelines",
-    language: "HCL",
-    updated_at: "2026-03-03T16:30:00Z",
-  },
-  {
-    name: "docs",
-    full_name: "acme-org/docs",
+    name: "repo-4",
+    full_name: "acme-org/repo-4",
     private: false,
     default_branch: "main",
-    description: "Public-facing developer documentation and API reference",
-    language: "MDX",
-    updated_at: "2026-03-02T08:00:00Z",
+    description: "Auto-generated mock repo 4",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
   },
   {
-    name: "analytics-service",
-    full_name: "acme-org/analytics-service",
-    private: true,
+    name: "repo-5",
+    full_name: "acme-org/repo-5",
+    private: false,
     default_branch: "main",
-    description: "Event ingestion and analytics processing microservice",
-    language: "Java",
-    updated_at: "2026-03-01T13:20:00Z",
+    description: "Auto-generated mock repo 5",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
   },
   {
-    name: "auth-service",
-    full_name: "acme-org/auth-service",
+    name: "repo-6",
+    full_name: "acme-org/repo-6",
     private: true,
     default_branch: "main",
-    description: "OAuth2 / OIDC authentication and authorization service",
-    language: "Rust",
-    updated_at: "2026-02-28T19:45:00Z",
+    description: "Auto-generated mock repo 6",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
+    updated_at: "2026-03-08T18:30:00Z",
   },
+  {
+    name: "repo-7",
+    full_name: "acme-org/repo-7",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 7",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-8",
+    full_name: "acme-org/repo-8",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 8",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-9",
+    full_name: "acme-org/repo-9",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 9",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-10",
+    full_name: "acme-org/repo-10",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 10",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-11",
+    full_name: "acme-org/repo-11",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 11",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-12",
+    full_name: "acme-org/repo-12",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 12",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-13",
+    full_name: "acme-org/repo-13",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 13",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-14",
+    full_name: "acme-org/repo-14",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 14",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-15",
+    full_name: "acme-org/repo-15",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 15",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-16",
+    full_name: "acme-org/repo-16",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 16",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-17",
+    full_name: "acme-org/repo-17",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 17",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-18",
+    full_name: "acme-org/repo-18",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 18",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-19",
+    full_name: "acme-org/repo-19",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 19",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-20",
+    full_name: "acme-org/repo-20",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 20",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-21",
+    full_name: "acme-org/repo-21",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 21",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-22",
+    full_name: "acme-org/repo-22",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 22",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-23",
+    full_name: "acme-org/repo-23",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 23",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-24",
+    full_name: "acme-org/repo-24",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 24",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-25",
+    full_name: "acme-org/repo-25",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 25",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-26",
+    full_name: "acme-org/repo-26",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 26",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-27",
+    full_name: "acme-org/repo-27",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 27",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-28",
+    full_name: "acme-org/repo-28",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 28",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-29",
+    full_name: "acme-org/repo-29",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 29",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-30",
+    full_name: "acme-org/repo-30",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 30",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-31",
+    full_name: "acme-org/repo-31",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 31",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-32",
+    full_name: "acme-org/repo-32",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 32",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-33",
+    full_name: "acme-org/repo-33",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 33",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-34",
+    full_name: "acme-org/repo-34",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 34",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-35",
+    full_name: "acme-org/repo-35",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 35",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-36",
+    full_name: "acme-org/repo-36",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 36",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-37",
+    full_name: "acme-org/repo-37",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 37",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-38",
+    full_name: "acme-org/repo-38",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 38",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-39",
+    full_name: "acme-org/repo-39",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 39",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-40",
+    full_name: "acme-org/repo-40",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 40",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-41",
+    full_name: "acme-org/repo-41",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 41",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-42",
+    full_name: "acme-org/repo-42",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 42",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-43",
+    full_name: "acme-org/repo-43",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 43",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-44",
+    full_name: "acme-org/repo-44",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 44",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-45",
+    full_name: "acme-org/repo-45",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 45",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-46",
+    full_name: "acme-org/repo-46",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 46",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][1],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-47",
+    full_name: "acme-org/repo-47",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 47",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][2],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-48",
+    full_name: "acme-org/repo-48",
+    private: true,
+    default_branch: "main",
+    description: "Auto-generated mock repo 48",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][3],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-49",
+    full_name: "acme-org/repo-49",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 49",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][4],
+    updated_at: "2026-03-08T18:30:00Z",
+  },
+  {
+    name: "repo-50",
+    full_name: "acme-org/repo-50",
+    private: false,
+    default_branch: "main",
+    description: "Auto-generated mock repo 50",
+    language: ["TypeScript", "Go", "Python", "Rust", "Java"][0],
+    updated_at: "2026-03-08T18:30:00Z",
+  }
 ];
 
 const MOCK_BRANCHES: Record<string, Branch[]> = {
@@ -870,6 +1239,19 @@ const mockDependencyAlerts: DependencyAlert[] = [
     patched_version: null,
     detected_at: new Date().toISOString(),
     disabled: true,
+  },
+  {
+    id: "dep-clean",
+    repo: "design-system",
+    org: "acme-org",
+    dependency: "No vulnerabilities found",
+    severity: "low",
+    cve: "",
+    ecosystem: "",
+    vulnerable_version: "",
+    patched_version: null,
+    detected_at: new Date().toISOString(),
+    clean: true,
   }
 ];
 
@@ -887,4 +1269,624 @@ export async function mockFetchDependencySummary(): Promise<DependencySummary> {
     low: 45,
     repos_with_vulns: 7,
   };
+}
+
+export async function mockGetGraphNode(id: string): Promise<any> {
+  await delay(300);
+  if (id.startsWith("REPO#")) {
+    return {
+      node: id,
+      edges: [
+        { target: "TEAM#engineers", type: "owned_by_team", metadata: { permission: "admin" } },
+        { target: "WORKFLOW#deploy-prod", type: "uses_workflow", metadata: { path: ".github/workflows/deploy-prod.yml" } },
+        { target: "DEPENDENCY#lodash", type: "has_vulnerable_dependency", metadata: { severity: "high" } }
+      ]
+    };
+  } else if (id.startsWith("USER#")) {
+    return {
+      node: id,
+      edges: [
+        { target: "TEAM#engineers", type: "member_of", metadata: {} },
+        { target: "REPO#payments-api", type: "collaborates_on", metadata: { role: "admin" } }
+      ]
+    };
+  } else if (id.startsWith("TEAM#")) {
+    return {
+      node: id,
+      edges: [
+        { target: "REPO#payments-api", type: "owns_repo", metadata: { permission: "admin" } },
+        { target: "REPO#auth-lib", type: "owns_repo", metadata: { permission: "write" } },
+        { target: "USER#alice", type: "has_member", metadata: {} },
+        { target: "USER#bob", type: "has_member", metadata: {} }
+      ]
+    };
+  }
+  return { node: id, edges: [] };
+}
+
+export async function mockGetBlastRadius(repo: string): Promise<any> {
+  await delay(500);
+  return {
+    repo,
+    workflows: ["deploy-prod", "ci-tests"],
+    vulnerableDependencies: [
+      { name: "lodash", severity: "high" },
+      { name: "axios", severity: "critical" }
+    ],
+    teamsWithAccess: [
+      { name: "engineers", permission: "admin" },
+      { name: "contractors", permission: "read" }
+    ],
+    directCollaborators: [
+      { name: "alice", role: "admin" }
+    ],
+    riskScore: "High"
+  };
+}
+
+export async function mockGetBlastRadiusRanking(): Promise<any[]> {
+  await delay(500);
+  return [
+    {
+      repo: "repo-19",
+      score: 39,
+      riskLevel: "CRITICAL",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 4
+    },
+    {
+      repo: "repo-4",
+      score: 38,
+      riskLevel: "CRITICAL",
+      workflowsCount: 2,
+      vulnerabilitiesCount: 2,
+      accessVectorsCount: 0
+    },
+    {
+      repo: "repo-26",
+      score: 37,
+      riskLevel: "CRITICAL",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 9
+    },
+    {
+      repo: "repo-30",
+      score: 34,
+      riskLevel: "CRITICAL",
+      workflowsCount: 3,
+      vulnerabilitiesCount: 0,
+      accessVectorsCount: 4
+    },
+    {
+      repo: "repo-35",
+      score: 33,
+      riskLevel: "CRITICAL",
+      workflowsCount: 2,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 0
+    },
+    {
+      repo: "repo-15",
+      score: 31,
+      riskLevel: "CRITICAL",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 3
+    },
+    {
+      repo: "repo-33",
+      score: 31,
+      riskLevel: "CRITICAL",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 9
+    },
+    {
+      repo: "repo-44",
+      score: 30,
+      riskLevel: "HIGH",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 0,
+      accessVectorsCount: 7
+    },
+    {
+      repo: "repo-37",
+      score: 29,
+      riskLevel: "HIGH",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 3
+    },
+    {
+      repo: "repo-36",
+      score: 28,
+      riskLevel: "HIGH",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 9
+    },
+    {
+      repo: "repo-34",
+      score: 27,
+      riskLevel: "HIGH",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 4
+    },
+    {
+      repo: "repo-22",
+      score: 26,
+      riskLevel: "HIGH",
+      workflowsCount: 3,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 7
+    },
+    {
+      repo: "repo-25",
+      score: 25,
+      riskLevel: "HIGH",
+      workflowsCount: 3,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 8
+    },
+    {
+      repo: "repo-14",
+      score: 24,
+      riskLevel: "HIGH",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 6
+    },
+    {
+      repo: "repo-29",
+      score: 22,
+      riskLevel: "HIGH",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 5
+    },
+    {
+      repo: "repo-31",
+      score: 21,
+      riskLevel: "HIGH",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 2
+    },
+    {
+      repo: "repo-9",
+      score: 20,
+      riskLevel: "HIGH",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 1
+    },
+    {
+      repo: "repo-42",
+      score: 20,
+      riskLevel: "HIGH",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 6
+    },
+    {
+      repo: "repo-17",
+      score: 19,
+      riskLevel: "HIGH",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 2
+    },
+    {
+      repo: "repo-49",
+      score: 19,
+      riskLevel: "HIGH",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 5
+    },
+    {
+      repo: "repo-10",
+      score: 18,
+      riskLevel: "HIGH",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 8
+    },
+    {
+      repo: "repo-5",
+      score: 16,
+      riskLevel: "HIGH",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 4
+    },
+    {
+      repo: "repo-16",
+      score: 16,
+      riskLevel: "HIGH",
+      workflowsCount: 3,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 7
+    },
+    {
+      repo: "repo-2",
+      score: 14,
+      riskLevel: "MEDIUM",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 0
+    },
+    {
+      repo: "repo-12",
+      score: 14,
+      riskLevel: "MEDIUM",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 0,
+      accessVectorsCount: 9
+    },
+    {
+      repo: "repo-45",
+      score: 14,
+      riskLevel: "MEDIUM",
+      workflowsCount: 2,
+      vulnerabilitiesCount: 0,
+      accessVectorsCount: 2
+    },
+    {
+      repo: "repo-13",
+      score: 13,
+      riskLevel: "MEDIUM",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 7
+    },
+    {
+      repo: "repo-50",
+      score: 13,
+      riskLevel: "MEDIUM",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 8
+    },
+    {
+      repo: "repo-11",
+      score: 12,
+      riskLevel: "MEDIUM",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 9
+    },
+    {
+      repo: "repo-27",
+      score: 12,
+      riskLevel: "MEDIUM",
+      workflowsCount: 2,
+      vulnerabilitiesCount: 0,
+      accessVectorsCount: 6
+    },
+    {
+      repo: "repo-8",
+      score: 11,
+      riskLevel: "MEDIUM",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 2,
+      accessVectorsCount: 5
+    },
+    {
+      repo: "repo-32",
+      score: 11,
+      riskLevel: "MEDIUM",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 0
+    },
+    {
+      repo: "repo-47",
+      score: 11,
+      riskLevel: "MEDIUM",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 0,
+      accessVectorsCount: 4
+    },
+    {
+      repo: "repo-48",
+      score: 10,
+      riskLevel: "MEDIUM",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 8
+    },
+    {
+      repo: "repo-23",
+      score: 9,
+      riskLevel: "MEDIUM",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 9
+    },
+    {
+      repo: "repo-28",
+      score: 9,
+      riskLevel: "MEDIUM",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 2,
+      accessVectorsCount: 4
+    },
+    {
+      repo: "repo-41",
+      score: 9,
+      riskLevel: "MEDIUM",
+      workflowsCount: 2,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 6
+    },
+    {
+      repo: "repo-46",
+      score: 9,
+      riskLevel: "MEDIUM",
+      workflowsCount: 2,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 7
+    },
+    {
+      repo: "repo-24",
+      score: 7,
+      riskLevel: "MEDIUM",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 7
+    },
+    {
+      repo: "repo-1",
+      score: 6,
+      riskLevel: "MEDIUM",
+      workflowsCount: 3,
+      vulnerabilitiesCount: 2,
+      accessVectorsCount: 5
+    },
+    {
+      repo: "repo-6",
+      score: 6,
+      riskLevel: "MEDIUM",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 3
+    },
+    {
+      repo: "repo-18",
+      score: 5,
+      riskLevel: "LOW",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 2,
+      accessVectorsCount: 9
+    },
+    {
+      repo: "repo-40",
+      score: 5,
+      riskLevel: "LOW",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 9
+    },
+    {
+      repo: "repo-3",
+      score: 4,
+      riskLevel: "LOW",
+      workflowsCount: 1,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 4
+    },
+    {
+      repo: "repo-20",
+      score: 3,
+      riskLevel: "LOW",
+      workflowsCount: 3,
+      vulnerabilitiesCount: 3,
+      accessVectorsCount: 3
+    },
+    {
+      repo: "repo-43",
+      score: 3,
+      riskLevel: "LOW",
+      workflowsCount: 2,
+      vulnerabilitiesCount: 2,
+      accessVectorsCount: 0
+    },
+    {
+      repo: "repo-7",
+      score: 1,
+      riskLevel: "LOW",
+      workflowsCount: 2,
+      vulnerabilitiesCount: 2,
+      accessVectorsCount: 8
+    },
+    {
+      repo: "repo-39",
+      score: 1,
+      riskLevel: "LOW",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 1,
+      accessVectorsCount: 4
+    },
+    {
+      repo: "repo-21",
+      score: 0,
+      riskLevel: "LOW",
+      workflowsCount: 0,
+      vulnerabilitiesCount: 4,
+      accessVectorsCount: 8
+    },
+    {
+      repo: "repo-38",
+      score: 0,
+      riskLevel: "LOW",
+      workflowsCount: 4,
+      vulnerabilitiesCount: 0,
+      accessVectorsCount: 2
+    }
+  ];
+}
+
+export async function mockGetUserImpact(user: string): Promise<any> {
+  await delay(500);
+  return {
+    user,
+    teams: ["engineers", "platform"],
+    repos: [
+      { repo: "payments-api", access: "direct", permission: "admin" },
+      { repo: "auth-lib", access: "via_team", team: "engineers", permission: "write" },
+      { repo: "infrastructure", access: "via_team", team: "platform", permission: "admin" }
+    ],
+    writeOrAdminReposCount: 3,
+    productionPipelinesReachable: 2
+  };
+}
+
+export async function mockFetchSecurityQuery(q: string, param?: string, advanced?: any): Promise<any[]> {
+  await delay(600);
+  switch (q) {
+    case "repos-dependent-on":
+      return [
+        { repo: "payments-api", reason: `Depends on ${param || 'unknown'} (critical severity)` },
+        { repo: "billing-service", reason: `Depends on ${param || 'unknown'} (high severity)` }
+      ];
+    case "repos-deploying-to-prod":
+      return [
+        { repo: "payments-api", reason: "Uses workflow: deploy-prod" },
+        { repo: "auth-lib", reason: "Uses workflow: release-to-npm" }
+      ];
+    case "repos-with-outside-admins":
+      return [
+        { repo: "infrastructure", reason: "User alice has direct admin access" },
+        { repo: "auth-lib", reason: "User bob has direct admin access" }
+      ];
+    case "highly-privileged-users":
+      return [
+        { user: "alice", reason: "Has direct write/admin access to 8 repos", details: "repo1, repo2, repo3, repo4, repo5..." },
+        { user: "bob", reason: "Has direct write/admin access to 5 repos", details: "auth-lib, core, frontend..." }
+      ];
+    case "unowned-repos":
+      return [
+        { repo: "legacy-tooling", reason: "No team assigned as owner" },
+        { repo: "test-repo-123", reason: "No team assigned as owner" }
+      ];
+    case "repos-with-critical-vulns":
+      return [
+        { repo: "payments-api", reason: "Critical vulnerability in lodash" },
+        { repo: "frontend-ui", reason: "Critical vulnerability in react-scripts" }
+      ];
+    case "repos-missing-branch":
+      return [
+        { repo: "legacy-api", reason: `Missing branch: ${param || 'main'}` },
+        { repo: "old-docs", reason: `Missing branch: ${param || 'main'}` }
+      ];
+    case "repos-with-unprotected-branch":
+      return [
+        { repo: "frontend-ui", reason: `Branch '${param || 'main'}' exists but is NOT protected` },
+        { repo: "payments-api", reason: `Branch '${param || 'main'}' exists but is NOT protected` }
+      ];
+    case "repos-with-branch":
+      return [
+        { repo: "repo-1", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-3", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-5", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-7", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-9", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-11", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-13", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-15", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-17", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-19", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-21", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-23", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-25", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-27", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-29", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-31", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-33", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-35", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-37", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-39", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-41", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-43", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-45", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-47", reason: `Has branch: ${param || 'main'}` },
+        { repo: "repo-49", reason: `Has branch: ${param || 'main'}` }
+      ];
+    case "repos-with-branch-rules":
+      const reqs = [];
+      if (advanced?.protectionType && advanced.protectionType !== 'any') reqs.push(advanced.protectionType);
+      if (advanced?.requirePr) reqs.push("PRs");
+      if (advanced?.requireStatusChecks) reqs.push("Status Checks");
+      if (advanced?.enforceAdmins) reqs.push("Enforce Admins");
+      
+      return [
+        { repo: "payments-api", reason: `Branch '${param}' matches required rules: ${reqs.join(", ") || "none"}` },
+        { repo: "auth-lib", reason: `Branch '${param}' matches required rules: ${reqs.join(", ") || "none"}` }
+      ];
+    case "empty-teams":
+      return [
+        { team: "old-project-team", reason: "Team has no members" }
+      ];
+    case "stale-branch-protections":
+      return [
+        { repo: "payments-api", reason: "Requires 2 reviewers, but recent PRs average 0.2 approving reviews", details: "Protections are likely being bypassed (e.g., by admins)" },
+        { repo: "legacy-docs", reason: "Requires 1 reviewers, but recent PRs average 0.0 approving reviews", details: "Protections are likely being bypassed (e.g., by admins)" }
+      ];
+    case "protection-bypasses-ranking":
+      return [
+        { repo: "repo-30", bypasses: 14, reason: "14 out of last 20 PRs bypassed the 2 reviewers requirement", score: 14 },
+        { repo: "repo-5", bypasses: 13, reason: "13 out of last 20 PRs bypassed the 2 reviewers requirement", score: 13 },
+        { repo: "repo-26", bypasses: 13, reason: "13 out of last 20 PRs bypassed the 2 reviewers requirement", score: 13 },
+        { repo: "repo-34", bypasses: 13, reason: "13 out of last 20 PRs bypassed the 2 reviewers requirement", score: 13 },
+        { repo: "repo-6", bypasses: 12, reason: "12 out of last 20 PRs bypassed the 2 reviewers requirement", score: 12 },
+        { repo: "repo-40", bypasses: 12, reason: "12 out of last 20 PRs bypassed the 2 reviewers requirement", score: 12 },
+        { repo: "repo-45", bypasses: 12, reason: "12 out of last 20 PRs bypassed the 2 reviewers requirement", score: 12 },
+        { repo: "repo-8", bypasses: 11, reason: "11 out of last 20 PRs bypassed the 2 reviewers requirement", score: 11 },
+        { repo: "repo-12", bypasses: 11, reason: "11 out of last 20 PRs bypassed the 2 reviewers requirement", score: 11 },
+        { repo: "repo-14", bypasses: 11, reason: "11 out of last 20 PRs bypassed the 2 reviewers requirement", score: 11 },
+        { repo: "repo-37", bypasses: 11, reason: "11 out of last 20 PRs bypassed the 2 reviewers requirement", score: 11 },
+        { repo: "repo-16", bypasses: 10, reason: "10 out of last 20 PRs bypassed the 2 reviewers requirement", score: 10 },
+        { repo: "repo-27", bypasses: 10, reason: "10 out of last 20 PRs bypassed the 2 reviewers requirement", score: 10 },
+        { repo: "repo-28", bypasses: 10, reason: "10 out of last 20 PRs bypassed the 2 reviewers requirement", score: 10 },
+        { repo: "repo-29", bypasses: 10, reason: "10 out of last 20 PRs bypassed the 2 reviewers requirement", score: 10 },
+        { repo: "repo-31", bypasses: 10, reason: "10 out of last 20 PRs bypassed the 2 reviewers requirement", score: 10 },
+        { repo: "repo-36", bypasses: 9, reason: "9 out of last 20 PRs bypassed the 2 reviewers requirement", score: 9 },
+        { repo: "repo-43", bypasses: 9, reason: "9 out of last 20 PRs bypassed the 2 reviewers requirement", score: 9 },
+        { repo: "repo-49", bypasses: 9, reason: "9 out of last 20 PRs bypassed the 2 reviewers requirement", score: 9 },
+        { repo: "repo-4", bypasses: 8, reason: "8 out of last 20 PRs bypassed the 2 reviewers requirement", score: 8 },
+        { repo: "repo-10", bypasses: 8, reason: "8 out of last 20 PRs bypassed the 2 reviewers requirement", score: 8 },
+        { repo: "repo-25", bypasses: 8, reason: "8 out of last 20 PRs bypassed the 2 reviewers requirement", score: 8 },
+        { repo: "repo-7", bypasses: 7, reason: "7 out of last 20 PRs bypassed the 2 reviewers requirement", score: 7 },
+        { repo: "repo-9", bypasses: 7, reason: "7 out of last 20 PRs bypassed the 2 reviewers requirement", score: 7 },
+        { repo: "repo-13", bypasses: 7, reason: "7 out of last 20 PRs bypassed the 2 reviewers requirement", score: 7 },
+        { repo: "repo-18", bypasses: 7, reason: "7 out of last 20 PRs bypassed the 2 reviewers requirement", score: 7 },
+        { repo: "repo-20", bypasses: 7, reason: "7 out of last 20 PRs bypassed the 2 reviewers requirement", score: 7 },
+        { repo: "repo-41", bypasses: 7, reason: "7 out of last 20 PRs bypassed the 2 reviewers requirement", score: 7 },
+        { repo: "repo-1", bypasses: 6, reason: "6 out of last 20 PRs bypassed the 2 reviewers requirement", score: 6 },
+        { repo: "repo-17", bypasses: 6, reason: "6 out of last 20 PRs bypassed the 2 reviewers requirement", score: 6 },
+        { repo: "repo-22", bypasses: 6, reason: "6 out of last 20 PRs bypassed the 2 reviewers requirement", score: 6 },
+        { repo: "repo-24", bypasses: 6, reason: "6 out of last 20 PRs bypassed the 2 reviewers requirement", score: 6 },
+        { repo: "repo-38", bypasses: 6, reason: "6 out of last 20 PRs bypassed the 2 reviewers requirement", score: 6 },
+        { repo: "repo-42", bypasses: 6, reason: "6 out of last 20 PRs bypassed the 2 reviewers requirement", score: 6 },
+        { repo: "repo-47", bypasses: 6, reason: "6 out of last 20 PRs bypassed the 2 reviewers requirement", score: 6 },
+        { repo: "repo-11", bypasses: 5, reason: "5 out of last 20 PRs bypassed the 2 reviewers requirement", score: 5 },
+        { repo: "repo-46", bypasses: 5, reason: "5 out of last 20 PRs bypassed the 2 reviewers requirement", score: 5 },
+        { repo: "repo-48", bypasses: 5, reason: "5 out of last 20 PRs bypassed the 2 reviewers requirement", score: 5 },
+        { repo: "repo-32", bypasses: 4, reason: "4 out of last 20 PRs bypassed the 2 reviewers requirement", score: 4 },
+        { repo: "repo-33", bypasses: 4, reason: "4 out of last 20 PRs bypassed the 2 reviewers requirement", score: 4 },
+        { repo: "repo-21", bypasses: 3, reason: "3 out of last 20 PRs bypassed the 2 reviewers requirement", score: 3 },
+        { repo: "repo-39", bypasses: 3, reason: "3 out of last 20 PRs bypassed the 2 reviewers requirement", score: 3 },
+        { repo: "repo-2", bypasses: 2, reason: "2 out of last 20 PRs bypassed the 2 reviewers requirement", score: 2 },
+        { repo: "repo-19", bypasses: 2, reason: "2 out of last 20 PRs bypassed the 2 reviewers requirement", score: 2 },
+        { repo: "repo-23", bypasses: 2, reason: "2 out of last 20 PRs bypassed the 2 reviewers requirement", score: 2 },
+        { repo: "repo-15", bypasses: 1, reason: "1 out of last 20 PRs bypassed the 2 reviewers requirement", score: 1 },
+        { repo: "repo-35", bypasses: 1, reason: "1 out of last 20 PRs bypassed the 2 reviewers requirement", score: 1 }
+      ];
+    default:
+      return [];
+  }
 }

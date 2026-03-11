@@ -7,6 +7,7 @@ import {
   QueryCommand,
   ScanCommand,
   UpdateCommand,
+  BatchWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 const isProduction = process.env.NODE_ENV === "production";
@@ -35,4 +36,5 @@ export {
   QueryCommand,
   ScanCommand,
   UpdateCommand,
+  BatchWriteCommand,
 };

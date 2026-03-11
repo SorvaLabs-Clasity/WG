@@ -12,6 +12,7 @@ export interface DependencyAlert {
   patched_version: string | null;
   detected_at: string;
   disabled?: boolean; // indicates if dependabot is off for the repo
+  clean?: boolean; // indicates if dependabot is on but has no alerts
 }
 
 export interface DependencySummary {

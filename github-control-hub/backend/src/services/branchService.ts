@@ -117,7 +117,7 @@ export async function protectBranch(
       enforcement: "active",
       bypass_actors: protection.enforceAdmins ? [] : [
         {
-          actor_id: 1, // pseudo ID for repository admin
+          actor_id: 5, // RepositoryRole: 5 = admin (2=maintain, 4=write). 1 is OrganizationAdmin, not valid for RepositoryRole.
           actor_type: "RepositoryRole",
           bypass_mode: "always"
         }

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useCreateScanner, useUpdateScanner } from "../hooks/useScanners";
 import { useRepos } from "../hooks/useRepos";
 import type { ScannerCondition } from "../types/Scanner";
+import { QUERY_OPTIONS } from "../utils/queryOptions";
 
 export default function ScannerModal({ isOpen, onClose, scanner }: any) {
   const createMutation = useCreateScanner();
@@ -37,6 +38,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
       setSelectedRepos([]);
       setIncludeFutureRepos(false);
       setConditions([{
+        type: "branch_protection",
         branchPatterns: ["main"],
         inputVal: "",
         requiresProtection: true,
@@ -80,6 +82,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
   const addCondition = () => {
     setConditions([...conditions, {
+      type: "branch_protection",
       branchPatterns: [],
       inputVal: "",
       requiresProtection: true,
@@ -267,6 +270,20 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                   </button>
 
                   <div className="mb-4 pr-6">
+                    <label className="block text-xs font-semibold text-gh-textBase mb-1">Condition Type</label>
+                    <select 
+                      value={cond.type || "branch_protection"}
+                      onChange={(e) => updateCondition(idx, "type", e.target.value)}
+                      className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                    >
+                      <option value="branch_protection">Branch Protection Rule</option>
+                      <option value="query">Security Insight Query</option>
+                    </select>
+                  </div>
+
+                  {(!cond.type || cond.type === "branch_protection") && (
+                    <div>
+                  <div className="mb-4 pr-6">
                     <label className="block text-xs font-semibold text-gh-textBase mb-1">Branch Patterns</label>
                     <div className="flex flex-wrap gap-2 p-1.5 min-h-[36px] bg-white border border-gray-300 rounded-md shadow-sm focus-within:ring-1 focus-within:ring-gh-blue focus-within:border-gh-blue cursor-text"
                          onClick={(e) => {
@@ -276,14 +293,14 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                              if (input) input.focus();
                            }
                          }}>
-                        {cond.branchPatterns.map((pattern, pIdx) => (
+                        {cond.branchPatterns?.map((pattern, pIdx) => (
                           <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[13px] font-mono bg-white text-gh-textBase border border-gray-200 shadow-sm">
                             {pattern}
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                const newPatterns = cond.branchPatterns.filter((_, i) => i !== pIdx);
+                                const newPatterns = cond.branchPatterns?.filter((_, i) => i !== pIdx) || [];
                                 updateCondition(idx, "branchPatterns", newPatterns);
                               }}
                               className="text-gray-400 hover:text-gray-600 focus:outline-none"
@@ -296,18 +313,19 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                           type="text" 
                           value={cond.inputVal || ''}
                           onChange={(e) => updateCondition(idx, "inputVal", e.target.value)}
-                          placeholder={cond.branchPatterns.length === 0 ? "e.g. main (Press Enter)" : ""} 
+                          placeholder={!cond.branchPatterns || cond.branchPatterns.length === 0 ? "e.g. main (Press Enter)" : ""} 
                           className="flex-1 min-w-[120px] outline-none border-none shadow-none focus:ring-0 p-0 text-sm font-mono text-gh-textBase bg-transparent"
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') {
                               e.preventDefault();
                               const val = e.currentTarget.value.trim();
-                              if (val && !cond.branchPatterns.includes(val)) {
-                                updateCondition(idx, "branchPatterns", [...cond.branchPatterns, val]);
+                              const patterns = cond.branchPatterns || [];
+                              if (val && !patterns.includes(val)) {
+                                updateCondition(idx, "branchPatterns", [...patterns, val]);
                                 updateCondition(idx, "inputVal", "");
                               }
-                            } else if (e.key === 'Backspace' && e.currentTarget.value === '' && cond.branchPatterns.length > 0) {
-                              const newPatterns = [...cond.branchPatterns];
+                            } else if (e.key === 'Backspace' && e.currentTarget.value === '' && (cond.branchPatterns?.length || 0) > 0) {
+                              const newPatterns = [...(cond.branchPatterns || [])];
                               newPatterns.pop();
                               updateCondition(idx, "branchPatterns", newPatterns);
                             }
@@ -487,6 +505,200 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                       </details>
                     </div>
                   )}
+                  </div>
+                )}
+
+                {cond.type === ("query" as any) && (
+                  <div className="space-y-4 pt-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-gh-textBase mb-1">Select Insight Query</label>
+                      <select 
+                        value={cond.queryId || ""}
+                        onChange={(e) => {
+                          const qid = e.target.value;
+                          const qopt = QUERY_OPTIONS.find(q => q.id === qid);
+                          updateCondition(idx, "queryId", qid);
+                          if (qopt?.requiresParam && qopt.paramDefault) {
+                            updateCondition(idx, "queryParam", qopt.paramDefault);
+                          } else {
+                            updateCondition(idx, "queryParam", "");
+                          }
+                          if (qopt?.hasAdvancedRules) {
+                            updateCondition(idx, "queryAdvanced", { protectionType: "any", requirePr: false, requireStatusChecks: false, enforceAdmins: false });
+                          } else {
+                            updateCondition(idx, "queryAdvanced", undefined);
+                          }
+                        }}
+                        className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                      >
+                        <option value="" disabled>Select a query...</option>
+                        {QUERY_OPTIONS.map(q => (
+                          <option key={q.id} value={q.id}>{q.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {cond.queryId && (() => {
+                      const selectedQuery = QUERY_OPTIONS.find(q => q.id === cond.queryId);
+                      return (
+                        <>
+                          {selectedQuery?.requiresParam && (
+                            <div>
+                              <label className="block text-xs font-semibold text-gh-textBase mb-1">{selectedQuery.paramLabel}</label>
+                              <input 
+                                type="text"
+                                value={cond.queryParam || ""}
+                                onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
+                                placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
+                                className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                              />
+                            </div>
+                          )}
+
+                          {selectedQuery?.hasAdvancedRules && (
+                            <div className="bg-white border border-gray-200 rounded p-3 text-sm mt-3">
+                              <h4 className="font-semibold text-xs text-gh-muted uppercase tracking-wider mb-3">Advanced Rules</h4>
+                              <div className="mb-3">
+                                <label className="block text-xs font-semibold text-gh-textBase mb-1">Protection Type</label>
+                                <select 
+                                  value={cond.queryAdvanced?.protectionType || "any"}
+                                  onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}
+                                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                                >
+                                  <option value="any">Any protection</option>
+                                  <option value="classic">Classic only</option>
+                                  <option value="ruleset">Ruleset only</option>
+                                </select>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4">
+                                <label className="flex items-center gap-2">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!cond.queryAdvanced?.requirePr}
+                                    onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requirePr: e.target.checked })}
+                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                  /> Require PRs
+                                </label>
+                                <label className="flex items-center gap-2">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!cond.queryAdvanced?.requireStatusChecks}
+                                    onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requireStatusChecks: e.target.checked })}
+                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                  /> Require Status Checks
+                                </label>
+                                <label className="flex items-center gap-2">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!cond.queryAdvanced?.enforceAdmins}
+                                    onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, enforceAdmins: e.target.checked })}
+                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                  /> Enforce Admins
+                                </label>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
+                    </div>
+                  )}
+                    </div>
+                  )}
+
+                {cond.type === ("query" as any) && (
+                  <div className="space-y-4 pt-2">
+                    <div>
+                      <label className="block text-xs font-semibold text-gh-textBase mb-1">Select Insight Query</label>
+                      <select 
+                        value={cond.queryId || ""}
+                        onChange={(e) => {
+                          const qid = e.target.value;
+                          const qopt = QUERY_OPTIONS.find(q => q.id === qid);
+                          updateCondition(idx, "queryId", qid);
+                          if (qopt?.requiresParam && qopt.paramDefault) {
+                            updateCondition(idx, "queryParam", qopt.paramDefault);
+                          } else {
+                            updateCondition(idx, "queryParam", "");
+                          }
+                          if (qopt?.hasAdvancedRules) {
+                            updateCondition(idx, "queryAdvanced", { protectionType: "any", requirePr: false, requireStatusChecks: false, enforceAdmins: false });
+                          } else {
+                            updateCondition(idx, "queryAdvanced", undefined);
+                          }
+                        }}
+                        className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                      >
+                        <option value="" disabled>Select a query...</option>
+                        {QUERY_OPTIONS.map(q => (
+                          <option key={q.id} value={q.id}>{q.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {cond.queryId && (() => {
+                      const selectedQuery = QUERY_OPTIONS.find(q => q.id === cond.queryId);
+                      return (
+                        <>
+                          {selectedQuery?.requiresParam && (
+                            <div>
+                              <label className="block text-xs font-semibold text-gh-textBase mb-1">{selectedQuery.paramLabel}</label>
+                              <input 
+                                type="text"
+                                value={cond.queryParam || ""}
+                                onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
+                                placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
+                                className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                              />
+                            </div>
+                          )}
+
+                          {selectedQuery?.hasAdvancedRules && (
+                            <div className="bg-white border border-gray-200 rounded p-3 text-sm mt-3">
+                              <h4 className="font-semibold text-xs text-gh-muted uppercase tracking-wider mb-3">Advanced Rules</h4>
+                              <div className="mb-3">
+                                <label className="block text-xs font-semibold text-gh-textBase mb-1">Protection Type</label>
+                                <select 
+                                  value={cond.queryAdvanced?.protectionType || "any"}
+                                  onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}
+                                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                                >
+                                  <option value="any">Any protection</option>
+                                  <option value="classic">Classic only</option>
+                                  <option value="ruleset">Ruleset only</option>
+                                </select>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-2 gap-x-4">
+                                <label className="flex items-center gap-2">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!cond.queryAdvanced?.requirePr}
+                                    onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requirePr: e.target.checked })}
+                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                  /> Require PRs
+                                </label>
+                                <label className="flex items-center gap-2">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!cond.queryAdvanced?.requireStatusChecks}
+                                    onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requireStatusChecks: e.target.checked })}
+                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                  /> Require Status Checks
+                                </label>
+                                <label className="flex items-center gap-2">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!cond.queryAdvanced?.enforceAdmins}
+                                    onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, enforceAdmins: e.target.checked })}
+                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                  /> Enforce Admins
+                                </label>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                 )}
 

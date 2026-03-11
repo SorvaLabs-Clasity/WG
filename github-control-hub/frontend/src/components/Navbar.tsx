@@ -20,7 +20,8 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const isSecurity = location.pathname.startsWith("/security");
   const isCompliance = location.pathname.startsWith("/compliance");
   const isDependencies = location.pathname.startsWith("/dependencies");
-  const isMonitoring = location.pathname.startsWith("/monitoring");
+  const isGraph = location.pathname.startsWith("/graph");
+  const isAnalytics = location.pathname.startsWith("/analytics");
   const isActivity = location.pathname.startsWith("/activity");
 
   return (
@@ -82,13 +83,22 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
           Dependabot
         </button>
         <button 
-          onClick={() => navigate("/monitoring")}
+          onClick={() => navigate("/analytics")}
           className={`h-full flex items-center text-sm font-medium border-b-2 px-1 gap-1.5 transition-colors ${
-            isMonitoring ? "text-white border-white" : "text-gray-400 hover:text-gray-300 border-transparent"
+            isAnalytics ? "text-white border-white" : "text-gray-400 hover:text-gray-300 border-transparent"
           }`}
         >
-          <i className="ph ph-binoculars text-lg"></i>
-          Scanners
+          <i className="ph ph-chart-bar text-lg"></i>
+          Analytics
+        </button>
+        <button 
+          onClick={() => navigate("/graph")}
+          className={`h-full flex items-center text-sm font-medium border-b-2 px-1 gap-1.5 transition-colors ${
+            isGraph ? "text-white border-white" : "text-gray-400 hover:text-gray-300 border-transparent"
+          }`}
+        >
+          <i className="ph ph-graph text-lg"></i>
+          Graph
         </button>
         <button 
           onClick={() => navigate("/activity")}

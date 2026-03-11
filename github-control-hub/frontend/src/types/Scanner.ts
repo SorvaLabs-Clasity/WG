@@ -1,7 +1,12 @@
 export interface ScannerCondition {
-  branchPatterns: string[]; // Use an array for tag-style inputs like in templates
-  requiresProtection: boolean;
-  protectionType: "any" | "classic" | "ruleset";
+  type?: "branch_protection" | "query";
+  queryId?: string;
+  queryParam?: string;
+  queryAdvanced?: any;
+
+  branchPatterns?: string[]; // Use an array for tag-style inputs like in templates
+  requiresProtection?: boolean;
+  protectionType?: "any" | "classic" | "ruleset";
   ruleMatchType?: "any" | "at_least" | "exact";
   // Granular rules to check for (if requiresProtection is true)
   rules?: {

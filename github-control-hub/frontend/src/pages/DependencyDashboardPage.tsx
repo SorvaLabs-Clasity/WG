@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useDependencies, useDependencySummary, useEnableDependabot } from "../hooks/useDependencies";
+import React, { useState, useMemo } from "react";
+import { useDependencies, useDependencySummary, useEnableDependabot, useDisableDependabot } from "../hooks/useDependencies";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
 import { DependencyAlert } from "../types/Dependabot";
@@ -8,17 +8,29 @@ export default function DependencyDashboardPage() {
   const { data: dependencies, isLoading: depsLoading } = useDependencies();
   const { data: summary, isLoading: sumLoading } = useDependencySummary();
   const enableMutation = useEnableDependabot();
+  const disableMutation = useDisableDependabot();
   const { user } = useAuth();
   
-  const [filterSeverity, setFilterSeverity] = useState<string>("all");
-  const [enablingRepo, setEnablingRepo] = useState<string | null>(null);
+  const [filterSeverity, setFilterSeverity] = useState<string>("all-alerts");
+  const [searchQuery, setSearchQuery] = useState<string>("");
+  const [loadingRepo, setLoadingRepo] = useState<string | null>(null);
 
   const handleEnable = async (repo: string) => {
-    setEnablingRepo(repo);
+    setLoadingRepo(repo);
     try {
       await enableMutation.mutateAsync(repo);
     } finally {
-      setEnablingRepo(null);
+      setLoadingRepo(null);
+    }
+  };
+
+  const handleDisable = async (repo: string) => {
+    if (!window.confirm(`Are you sure you want to disable Dependabot alerts for ${repo}?`)) return;
+    setLoadingRepo(repo);
+    try {
+      await disableMutation.mutateAsync(repo);
+    } finally {
+      setLoadingRepo(null);
     }
   };
 
@@ -39,7 +51,21 @@ export default function DependencyDashboardPage() {
   const repoGroups: Record<string, DependencyAlert[]> = {};
   
   const filteredDeps = (dependencies || []).filter(dep => {
-    if (filterSeverity !== "all" && dep.severity !== filterSeverity && !dep.disabled) return false;
+    // If there is a search query, ignore all other filters and just match the repo name
+    if (searchQuery) {
+      return dep.repo.toLowerCase().includes(searchQuery.toLowerCase());
+    }
+    
+    if (filterSeverity === "all-repos") {
+      return true;
+    } else if (filterSeverity === "all-alerts") {
+      if (dep.disabled || dep.clean) return false;
+    } else {
+      // For specific severities (critical, high, medium, low)
+      if (dep.disabled || dep.clean) return false;
+      if (dep.severity !== filterSeverity) return false;
+    }
+
     return true;
   });
 
@@ -102,20 +128,42 @@ export default function DependencyDashboardPage() {
         )}
 
         {/* Filters */}
-        <div className="flex gap-2 mb-6 border-b border-gh-border pb-4">
-          {["all", "critical", "high", "medium", "low"].map((sev) => (
-            <button
-              key={sev}
-              onClick={() => setFilterSeverity(sev)}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-full capitalize transition-colors ${
-                filterSeverity === sev
-                  ? "bg-gh-blue text-white"
-                  : "bg-white border border-gh-border text-gh-textMuted hover:text-gh-textBase"
-              }`}
-            >
-              {sev}
-            </button>
-          ))}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6 border-b border-gh-border pb-4 justify-between">
+          <div className="flex flex-wrap gap-2">
+            {[
+              { id: "all-alerts", label: "All Alerts" },
+              { id: "all-repos", label: "All Repos" },
+              { id: "critical", label: "Critical" },
+              { id: "high", label: "High" },
+              { id: "medium", label: "Medium" },
+              { id: "low", label: "Low" }
+            ].map((sev) => (
+              <button
+                key={sev.id}
+                onClick={() => setFilterSeverity(sev.id)}
+                className={`px-4 py-1.5 text-sm font-semibold rounded-full transition-colors ${
+                  filterSeverity === sev.id
+                    ? "bg-gh-blue text-white"
+                    : "bg-white border border-gh-border text-gh-textMuted hover:text-gh-textBase"
+                }`}
+              >
+                {sev.label}
+              </button>
+            ))}
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative w-64">
+              <input 
+                type="text" 
+                placeholder="Search repositories..." 
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue"
+              />
+              <i className="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+            </div>
+          </div>
         </div>
 
         {/* Repositories List */}
@@ -136,17 +184,33 @@ export default function DependencyDashboardPage() {
                     <i className="ph ph-git-repository text-gh-muted"></i>
                     <h3 className="font-bold text-gh-textBase">{repoName}</h3>
                   </div>
-                  {alerts[0]?.org && (
-                    <a
-                      href={`https://github.com/${alerts[0].org}/${repoName}/security/dependabot`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-1.5 text-xs font-semibold text-gh-textMuted hover:text-gh-blue bg-white border border-gh-border hover:border-gh-blue px-2.5 py-1.5 rounded-md transition-colors shadow-sm"
-                    >
-                      <i className="ph ph-arrow-square-out"></i>
-                      View in GitHub
-                    </a>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {alerts[0]?.org && (
+                      <a
+                        href={`https://github.com/${alerts[0].org}/${repoName}/security/dependabot`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="flex items-center gap-1.5 text-xs font-semibold text-gh-textMuted hover:text-gh-blue bg-white border border-gh-border hover:border-gh-blue px-2.5 py-1.5 rounded-md transition-colors shadow-sm"
+                      >
+                        <i className="ph ph-arrow-square-out"></i>
+                        View in GitHub
+                      </a>
+                    )}
+                    {alerts[0] && !alerts[0].disabled && (
+                      <button
+                        onClick={() => handleDisable(repoName)}
+                        disabled={loadingRepo === repoName}
+                        className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 bg-white border border-red-200 hover:border-red-300 px-2.5 py-1.5 rounded-md transition-colors shadow-sm"
+                      >
+                        {loadingRepo === repoName ? (
+                          <div className="animate-spin w-3 h-3 border-2 border-red-600 border-t-transparent rounded-full"></div>
+                        ) : (
+                          <i className="ph ph-shield-slash"></i>
+                        )}
+                        Disable
+                      </button>
+                    )}
+                  </div>
                 </div>
                 
                 <div className="p-2">
@@ -160,16 +224,28 @@ export default function DependencyDashboardPage() {
                           </div>
                           <button 
                             onClick={() => handleEnable(alert.repo)}
-                            disabled={enablingRepo === alert.repo}
+                            disabled={loadingRepo === alert.repo}
                             className="bg-white border border-gh-border px-3 py-1.5 rounded-md text-xs font-semibold hover:bg-gray-50 flex items-center gap-2"
                           >
-                            {enablingRepo === alert.repo ? (
+                            {loadingRepo === alert.repo ? (
                               <div className="animate-spin w-3 h-3 border-2 border-gh-blue border-t-transparent rounded-full"></div>
                             ) : (
                               <i className="ph ph-shield-check"></i>
                             )}
                             Enable
                           </button>
+                        </div>
+                      );
+                    }
+
+                    if (alert.clean) {
+                      return (
+                        <div key={alert.id} className="px-4 py-6 text-center text-sm text-gh-muted bg-white m-2">
+                          <div className="w-12 h-12 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <i className="ph-fill ph-shield-check text-2xl text-green-500"></i>
+                          </div>
+                          <p className="font-medium text-gh-textBase">Dependabot is active and protecting this repository.</p>
+                          <p className="text-xs mt-1">No vulnerable dependencies found.</p>
                         </div>
                       );
                     }
