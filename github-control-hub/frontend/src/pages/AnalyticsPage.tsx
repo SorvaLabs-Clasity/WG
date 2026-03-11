@@ -41,7 +41,7 @@ export default function AnalyticsPage() {
   }, [widgets]);
 
   const [showAddModal, setShowAddModal] = useState(false);
-  const [isDashboardView, setIsDashboardView] = useState(true);
+  const [isDashboardView, setIsDashboardView] = useState(false);
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -78,27 +78,25 @@ export default function AnalyticsPage() {
           <div className="flex items-center gap-3">
             <div className="bg-gray-100 p-1 rounded-lg flex items-center">
               <button 
-                onClick={() => setIsDashboardView(true)}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isDashboardView ? 'bg-white shadow-sm text-gh-textBase' : 'text-gray-500 hover:text-gray-700'}`}
-              >
-                <i className="ph-fill ph-squares-four mr-2"></i>Dashboard
-              </button>
-              <button 
                 onClick={() => setIsDashboardView(false)}
                 className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!isDashboardView ? 'bg-white shadow-sm text-gh-textBase' : 'text-gray-500 hover:text-gray-700'}`}
               >
                 <i className="ph-fill ph-list-dashes mr-2"></i>List View
               </button>
-            </div>
-            {isDashboardView && (
               <button 
-                onClick={() => setShowAddModal(true)}
-                className="bg-gh-blue hover:bg-gh-blueHover text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
+                onClick={() => setIsDashboardView(true)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isDashboardView ? 'bg-white shadow-sm text-gh-textBase' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                <i className="fa-solid fa-plus text-xs"></i>
-                Add Widget
+                <i className="ph-fill ph-squares-four mr-2"></i>Dashboard
               </button>
-            )}
+            </div>
+            <button 
+              onClick={() => setShowAddModal(true)}
+              className="bg-gh-blue hover:bg-gh-blueHover text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
+            >
+              <i className="fa-solid fa-plus text-xs"></i>
+              Add Widget
+            </button>
           </div>
         </div>
 
