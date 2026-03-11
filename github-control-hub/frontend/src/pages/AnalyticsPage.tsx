@@ -332,7 +332,7 @@ function WidgetDetailsInline({ config }: { config: WidgetConfig }) {
 }
 
 function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[] }) {
-  const [expandedItemIdx, setExpandedItemIdx] = useState<number | null>(null);
+  const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
   if (items.length === 0) {
     return (
@@ -344,49 +344,49 @@ function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[]
   }
 
   return (
-    <table className="w-full text-left text-sm whitespace-nowrap bg-white">
-      <thead className="bg-gray-50 border-b border-gh-border sticky top-0 z-10 shadow-sm">
-        <tr>
-          <th className="px-6 py-3 font-semibold text-gh-muted w-16">#</th>
-          <th className="px-6 py-3 font-semibold text-gh-muted">Entity</th>
-          
-          {config.type === "preset" && config.presetId === "dependabot" && (
-            <>
-              <th className="px-6 py-3 font-semibold text-gh-muted text-center text-red-600">Critical</th>
-              <th className="px-6 py-3 font-semibold text-gh-muted text-center text-orange-500">High</th>
-              <th className="px-6 py-3 font-semibold text-gh-muted text-center text-yellow-600">Medium</th>
-              <th className="px-6 py-3 font-semibold text-gh-muted text-center text-gray-500">Low</th>
-              <th className="px-6 py-3 font-semibold text-gh-muted text-center">Total</th>
-            </>
-          )}
-          {config.type === "preset" && config.presetId === "bypasses" && (
-            <>
-              <th className="px-6 py-3 font-semibold text-gh-muted">Bypasses</th>
-              <th className="px-6 py-3 font-semibold text-gh-muted w-full">Reason</th>
-            </>
-          )}
-          {config.type === "preset" && config.presetId === "blast" && (
-            <>
-              <th className="px-6 py-3 font-semibold text-gh-muted">Risk Level</th>
-              <th className="px-6 py-3 font-semibold text-gh-muted text-center">Score</th>
-            </>
-          )}
-          {config.type === "query" && (
-            <th className="px-6 py-3 font-semibold text-gh-muted w-full">Details</th>
-          )}
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-gray-100">
-        {items.map((item: any, idx: number) => {
-          const name = item.repo || item.user || item.team || "Unknown";
-          const entityType = item.repo ? "REPO" : item.user ? "USER" : item.team ? "TEAM" : "UNKNOWN";
-          const isExpanded = expandedItemIdx === idx;
-          
-          return (
-            <React.Fragment key={idx}>
+    <>
+      <table className="w-full text-left text-sm whitespace-nowrap bg-white">
+        <thead className="bg-gray-50 border-b border-gh-border sticky top-0 z-10 shadow-sm">
+          <tr>
+            <th className="px-6 py-3 font-semibold text-gh-muted w-16">#</th>
+            <th className="px-6 py-3 font-semibold text-gh-muted">Entity</th>
+            
+            {config.type === "preset" && config.presetId === "dependabot" && (
+              <>
+                <th className="px-6 py-3 font-semibold text-gh-muted text-center text-red-600">Critical</th>
+                <th className="px-6 py-3 font-semibold text-gh-muted text-center text-orange-500">High</th>
+                <th className="px-6 py-3 font-semibold text-gh-muted text-center text-yellow-600">Medium</th>
+                <th className="px-6 py-3 font-semibold text-gh-muted text-center text-gray-500">Low</th>
+                <th className="px-6 py-3 font-semibold text-gh-muted text-center">Total</th>
+              </>
+            )}
+            {config.type === "preset" && config.presetId === "bypasses" && (
+              <>
+                <th className="px-6 py-3 font-semibold text-gh-muted">Bypasses</th>
+                <th className="px-6 py-3 font-semibold text-gh-muted w-full">Reason</th>
+              </>
+            )}
+            {config.type === "preset" && config.presetId === "blast" && (
+              <>
+                <th className="px-6 py-3 font-semibold text-gh-muted">Risk Level</th>
+                <th className="px-6 py-3 font-semibold text-gh-muted text-center">Score</th>
+              </>
+            )}
+            {config.type === "query" && (
+              <th className="px-6 py-3 font-semibold text-gh-muted w-full">Details</th>
+            )}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100">
+          {items.map((item: any, idx: number) => {
+            const name = item.repo || item.user || item.team || "Unknown";
+            const entityType = item.repo ? "REPO" : item.user ? "USER" : item.team ? "TEAM" : "UNKNOWN";
+            
+            return (
               <tr 
-                className={`hover:bg-gray-50 transition-colors cursor-pointer ${isExpanded ? 'bg-blue-50/30' : ''}`}
-                onClick={() => setExpandedItemIdx(isExpanded ? null : idx)}
+                key={idx}
+                className="hover:bg-gray-50 transition-colors cursor-pointer group/row"
+                onClick={() => setSelectedItem(item)}
               >
                 <td className="px-6 py-3 font-mono text-gh-muted text-xs">{idx + 1}</td>
                 <td className="px-6 py-3 font-bold text-gh-textBase flex items-center gap-2">
@@ -394,7 +394,7 @@ function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[]
                   {config.type === "query" && (
                     <span className="text-[9px] font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{entityType}</span>
                   )}
-                  <i className={`ph-bold ph-caret-${isExpanded ? 'up' : 'down'} text-gray-400 ml-auto mr-2 text-xs`}></i>
+                  <i className="ph-bold ph-arrows-out-simple text-gray-300 ml-auto mr-2 text-xs opacity-0 group-hover/row:opacity-100 transition-opacity"></i>
                 </td>
 
                 {config.type === "preset" && config.presetId === "dependabot" && (
@@ -436,33 +436,46 @@ function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[]
                   </td>
                 )}
               </tr>
-              {isExpanded && (
-                <tr className="bg-gray-50/50 border-b border-gray-100">
-                  <td colSpan={10} className="px-6 py-4">
-                    <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm relative">
-                      <h4 className="font-semibold text-gray-900 mb-3 border-b border-gray-100 pb-2 flex items-center gap-2">
-                        <i className="ph-fill ph-info text-gh-blue"></i>
-                        Raw Detail Attributes
-                      </h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {Object.entries(item).filter(([k]) => !['repo', 'user', 'team'].includes(k)).map(([k, v], i) => (
-                          <div key={i} className="flex flex-col">
-                            <span className="text-xs text-gray-500 font-mono mb-1">{k}</span>
-                            <span className="text-sm font-semibold text-gray-800 break-words bg-gray-50 px-2 py-1.5 rounded border border-gray-100">
-                              {typeof v === 'object' ? JSON.stringify(v) : String(v)}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </React.Fragment>
-          );
-        })}
-      </tbody>
-    </table>
+            );
+          })}
+        </tbody>
+      </table>
+      {selectedItem && (
+        <RawDetailsModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+      )}
+    </>
+  );
+}
+
+function RawDetailsModal({ item, onClose }: { item: any, onClose: () => void }) {
+  const name = item.repo || item.user || item.team || "Unknown Entity";
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6">
+      <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
+      <div className="bg-white rounded-xl shadow-modal border border-black/10 w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
+        <div className="px-6 py-4 border-b border-gh-border flex items-center justify-between bg-white shrink-0 rounded-t-xl">
+          <h3 className="text-lg font-bold text-gray-900 tracking-tight flex items-center gap-2">
+            <i className="ph-fill ph-info text-gh-blue"></i>
+            {name} Raw Attributes
+          </h3>
+          <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors">
+            <i className="ph ph-x text-lg"></i>
+          </button>
+        </div>
+        <div className="p-6 overflow-y-auto bg-gray-50 flex-1 rounded-b-xl">
+          <div className="flex flex-col gap-4">
+            {Object.entries(item).filter(([k]) => !['repo', 'user', 'team'].includes(k)).map(([k, v], i) => (
+              <div key={i} className="flex flex-col border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                <span className="text-sm font-bold text-gray-700 mb-1">{k}</span>
+                <pre className="text-sm text-gray-800 bg-white p-3 rounded-lg border border-gray-200 overflow-x-auto whitespace-pre-wrap font-mono">
+                  {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}
+                </pre>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
