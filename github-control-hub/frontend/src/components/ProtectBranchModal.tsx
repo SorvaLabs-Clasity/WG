@@ -27,8 +27,102 @@ export const DEFAULT_PROTECTION: NonNullable<BranchRule["protection"]> = {
   codeScanningTool: "CodeQL",
   codeScanningAlertsThreshold: "errors",
   codeScanningSecurityAlertsThreshold: "high_or_higher",
+  requireCodeQuality: false,
+  codeQualitySeverity: "errors",
+  copilotCodeReview: false,
+  copilotReviewOnPush: false,
+  copilotReviewDraftPrs: false,
   enforcement: "active",
 };
+
+/**
+ * Parse a GitHub-exported ruleset JSON into our internal protection form fields.
+ * Handles the exact format you get when downloading a ruleset from GitHub.
+ */
+export function parseGitHubRulesetJson(json: any): NonNullable<BranchRule["protection"]> {
+  const result: NonNullable<BranchRule["protection"]> = { ...DEFAULT_PROTECTION, type: "ruleset" };
+
+  if (json.name) result.rulesetName = json.name;
+  if (json.enforcement) result.enforcement = json.enforcement;
+
+  result.enforceAdmins = !json.bypass_actors || json.bypass_actors.length === 0;
+
+  const rules: any[] = json.rules || [];
+
+  for (const rule of rules) {
+    switch (rule.type) {
+      case "creation":
+        result.restrictCreations = true;
+        break;
+      case "update":
+        result.restrictUpdates = true;
+        break;
+      case "deletion":
+        result.preventDeletion = true;
+        break;
+      case "non_fast_forward":
+        result.preventForcePush = true;
+        break;
+      case "required_linear_history":
+        result.requireLinearHistory = true;
+        break;
+      case "required_signatures":
+        result.requireSignedCommits = true;
+        break;
+      case "pull_request": {
+        result.requirePr = true;
+        const p = rule.parameters || {};
+        result.requiredApprovals = p.required_approving_review_count ?? 1;
+        result.dismissStaleReviews = p.dismiss_stale_reviews_on_push ?? false;
+        result.requireCodeOwnerReviews = p.require_code_owner_review ?? false;
+        result.requireLastPushApproval = p.require_last_push_approval ?? false;
+        result.requireConversationResolution = p.required_review_thread_resolution ?? false;
+        if (p.allowed_merge_methods) result.allowedMergeMethods = p.allowed_merge_methods;
+        break;
+      }
+      case "required_status_checks": {
+        result.requireStatusChecks = true;
+        const p = rule.parameters || {};
+        result.strictStatusChecks = p.strict_required_status_checks_policy ?? false;
+        result.doNotRequireStatusChecksOnCreation = p.do_not_enforce_on_create ?? false;
+        if (p.required_status_checks && Array.isArray(p.required_status_checks)) {
+          result.statusCheckContexts = p.required_status_checks.map((c: any) => c.context).filter(Boolean);
+        }
+        break;
+      }
+      case "required_deployments": {
+        result.requireDeployments = true;
+        const p = rule.parameters || {};
+        result.requiredDeploymentEnvironments = p.required_deployment_environments || [];
+        break;
+      }
+      case "required_code_scanning":
+      case "code_scanning": {
+        result.requireCodeScanning = true;
+        const tools = rule.parameters?.code_scanning_tools;
+        if (tools && tools.length > 0) {
+          result.codeScanningTool = tools[0].tool || "CodeQL";
+          result.codeScanningAlertsThreshold = tools[0].alerts_threshold || "errors";
+          result.codeScanningSecurityAlertsThreshold = tools[0].security_alerts_threshold || "high_or_higher";
+        }
+        break;
+      }
+      case "code_quality": {
+        result.requireCodeQuality = true;
+        result.codeQualitySeverity = rule.parameters?.severity || "errors";
+        break;
+      }
+      case "copilot_code_review": {
+        result.copilotCodeReview = true;
+        result.copilotReviewOnPush = rule.parameters?.review_on_push ?? false;
+        result.copilotReviewDraftPrs = rule.parameters?.review_draft_pull_requests ?? false;
+        break;
+      }
+    }
+  }
+
+  return result;
+}
 
 interface ProtectBranchModalProps {
   isOpen: boolean;
@@ -122,15 +216,37 @@ export default function ProtectBranchModal({
   hideTypeSelector = false,
 }: ProtectBranchModalProps) {
   const [protectRules, setProtectRules] = useState(DEFAULT_PROTECTION);
+  const [mode, setMode] = useState<"form" | "json">("form");
+  const [jsonText, setJsonText] = useState("");
+  const [jsonError, setJsonError] = useState("");
 
   useEffect(() => {
     if (isOpen) {
       setProtectRules(initialData || { ...DEFAULT_PROTECTION });
+      setMode("form");
+      setJsonText("");
+      setJsonError("");
     }
   }, [isOpen, initialData]);
 
   const update = (field: string, val: any) => {
     setProtectRules(prev => ({ ...prev, [field]: val }));
+  };
+
+  const handleImportJson = () => {
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (!parsed.rules || !Array.isArray(parsed.rules)) {
+        setJsonError("Invalid format: expected a GitHub ruleset JSON with a \"rules\" array.");
+        return;
+      }
+      const imported = parseGitHubRulesetJson(parsed);
+      setProtectRules(imported);
+      setJsonError("");
+      setMode("form");
+    } catch {
+      setJsonError("Invalid JSON. Please paste a valid GitHub ruleset JSON.");
+    }
   };
 
   if (!isOpen) return null;
@@ -153,341 +269,322 @@ export default function ProtectBranchModal({
           </button>
         </div>
 
+        {/* Mode Toggle: Form vs JSON Import */}
+        <div className="px-6 pt-4 pb-0 shrink-0 flex items-center justify-between">
+          <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-md border border-gray-200 w-fit">
+            <button
+              type="button"
+              onClick={() => setMode("form")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                mode === "form"
+                  ? "bg-white shadow-sm text-gh-textBase border border-gray-200/50"
+                  : "text-gh-muted hover:text-gh-textBase border border-transparent"
+              }`}
+            >
+              <i className="ph-bold ph-sliders-horizontal mr-1.5"></i>Form
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("json")}
+              className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                mode === "json"
+                  ? "bg-white shadow-sm text-gh-textBase border border-gray-200/50"
+                  : "text-gh-muted hover:text-gh-textBase border border-transparent"
+              }`}
+            >
+              <i className="ph-bold ph-code mr-1.5"></i>Import JSON
+            </button>
+          </div>
+        </div>
+
         <div className="p-6 space-y-5 overflow-y-auto">
-          {/* Type Selector */}
-          {!hideTypeSelector && (
-            <div className="flex items-center justify-between border-b border-gray-100 pb-4">
-              <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-md border border-gray-200 w-fit">
-                <button
-                  type="button"
-                  onClick={() => update('type', 'classic')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                    protectRules.type === 'classic'
-                      ? 'bg-white shadow-sm text-gh-textBase border border-gray-200/50'
-                      : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
-                  }`}
-                >
-                  Classic Branch API
-                </button>
-                <button
-                  type="button"
-                  onClick={() => update('type', 'ruleset')}
-                  className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                    protectRules.type === 'ruleset'
-                      ? 'bg-white shadow-sm text-gh-textBase border border-gray-200/50'
-                      : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
-                  }`}
-                >
-                  Repository Ruleset API
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* Ruleset Name & Enforcement (ruleset only) */}
-          {isRuleset && (
-            <div className="grid grid-cols-2 gap-4 border-b border-gray-100 pb-4">
+          {mode === "json" ? (
+            <div className="space-y-4">
               <div>
-                <label className="text-xs font-semibold text-gh-muted uppercase tracking-wider block mb-1.5">Ruleset Name</label>
-                <input
-                  type="text"
-                  value={protectRules.rulesetName || ""}
-                  onChange={e => update("rulesetName", e.target.value)}
-                  placeholder={`Ruleset for ${branch}`}
-                  className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue"
+                <p className="text-sm text-gh-muted mb-3">
+                  Paste a GitHub ruleset JSON below. You can export this from GitHub by going to a repository's
+                  <span className="font-semibold text-gh-textBase"> Settings &rarr; Rules &rarr; Rulesets</span>, selecting a ruleset,
+                  and clicking <span className="font-semibold text-gh-textBase">Export</span>.
+                </p>
+                <textarea
+                  value={jsonText}
+                  onChange={e => { setJsonText(e.target.value); setJsonError(""); }}
+                  placeholder='{"name": "...", "rules": [...], ...}'
+                  rows={16}
+                  className="w-full px-4 py-3 text-xs font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue bg-gray-50 resize-y"
                 />
               </div>
-              <div>
-                <label className="text-xs font-semibold text-gh-muted uppercase tracking-wider block mb-1.5">Enforcement Status</label>
-                <select
-                  value={protectRules.enforcement || "active"}
-                  onChange={e => update("enforcement", e.target.value)}
-                  className="w-full px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue"
-                >
-                  <option value="active">Active</option>
-                  <option value="evaluate">Evaluate (dry-run)</option>
-                  <option value="disabled">Disabled</option>
-                </select>
-              </div>
-            </div>
-          )}
-
-          {/* Branch Rules */}
-          <div className="space-y-3">
-            <h4 className="text-xs font-bold text-gh-muted uppercase tracking-wider">Branch Rules</h4>
-
-            {/* Restrict Operations (ruleset only) */}
-            {isRuleset && (
-              <Section title="Restrict Operations" icon="ph-fill ph-lock-key" defaultOpen={!!(protectRules.restrictCreations || protectRules.restrictUpdates || protectRules.preventDeletion)}>
-                <div className="space-y-3">
-                  <Toggle
-                    checked={!!protectRules.restrictCreations}
-                    onChange={v => update("restrictCreations", v)}
-                    label="Restrict creations"
-                    desc="Only allow users with bypass permission to create matching refs."
-                  />
-                  <Toggle
-                    checked={!!protectRules.restrictUpdates}
-                    onChange={v => update("restrictUpdates", v)}
-                    label="Restrict updates"
-                    desc="Only allow users with bypass permission to update matching refs."
-                  />
-                  <Toggle
-                    checked={protectRules.preventDeletion}
-                    onChange={v => update("preventDeletion", v)}
-                    label="Restrict deletions"
-                    desc="Only allow users with bypass permissions to delete matching refs."
-                  />
+              {jsonError && (
+                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <i className="ph-fill ph-warning-circle text-red-500"></i>
+                  <span className="text-sm text-red-700">{jsonError}</span>
                 </div>
-              </Section>
-            )}
+              )}
+              <button
+                type="button"
+                onClick={handleImportJson}
+                disabled={!jsonText.trim()}
+                className="w-full py-2.5 text-sm font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-lg shadow-sm transition-colors disabled:opacity-50"
+              >
+                <i className="ph-bold ph-arrow-square-in mr-1.5"></i>
+                Import & Populate Form
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Type Selector */}
+              {!hideTypeSelector && (
+                <div className="flex items-center justify-between border-b border-gray-100 pb-4">
+                  <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-md border border-gray-200 w-fit">
+                    <button
+                      type="button"
+                      onClick={() => update('type', 'classic')}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                        protectRules.type === 'classic'
+                          ? 'bg-white shadow-sm text-gh-textBase border border-gray-200/50'
+                          : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                      }`}
+                    >
+                      Classic Branch API
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => update('type', 'ruleset')}
+                      className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                        protectRules.type === 'ruleset'
+                          ? 'bg-white shadow-sm text-gh-textBase border border-gray-200/50'
+                          : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                      }`}
+                    >
+                      Repository Ruleset API
+                    </button>
+                  </div>
+                </div>
+              )}
 
-            {/* Commit Requirements */}
-            <Section title="Commit Requirements" icon="ph-fill ph-git-commit" defaultOpen={!!(protectRules.requireLinearHistory || protectRules.requireSignedCommits)}>
-              <div className="space-y-3">
-                <Toggle
-                  checked={protectRules.requireLinearHistory}
-                  onChange={v => update("requireLinearHistory", v)}
-                  label="Require linear history"
-                  desc="Prevent merge commits from being pushed to matching refs."
-                />
-                <Toggle
-                  checked={protectRules.requireSignedCommits}
-                  onChange={v => update("requireSignedCommits", v)}
-                  label="Require signed commits"
-                  desc="Commits pushed to matching refs must have verified signatures."
-                />
-              </div>
-            </Section>
-
-            {/* Deployments */}
-            {isRuleset && (
-              <Section title="Require Deployments to Succeed" icon="ph-fill ph-rocket-launch" defaultOpen={!!protectRules.requireDeployments}>
-                <Toggle
-                  checked={!!protectRules.requireDeployments}
-                  onChange={v => update("requireDeployments", v)}
-                  label="Require deployments to succeed"
-                  desc="Choose which environments must be successfully deployed to before refs can be pushed."
-                />
-                {protectRules.requireDeployments && (
-                  <div className="ml-7 mt-2">
-                    <label className="text-xs font-semibold text-gh-muted block mb-1.5">Required Deployment Environments</label>
-                    <TagInput
-                      tags={protectRules.requiredDeploymentEnvironments || []}
-                      onChange={tags => update("requiredDeploymentEnvironments", tags)}
-                      placeholder="e.g. production, staging"
+              {/* Ruleset Name & Enforcement (ruleset only) */}
+              {isRuleset && (
+                <div className="grid grid-cols-2 gap-4 border-b border-gray-100 pb-4">
+                  <div>
+                    <label className="text-xs font-semibold text-gh-muted uppercase tracking-wider block mb-1.5">Ruleset Name</label>
+                    <input
+                      type="text"
+                      value={protectRules.rulesetName || ""}
+                      onChange={e => update("rulesetName", e.target.value)}
+                      placeholder={`Ruleset for ${branch}`}
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue"
                     />
                   </div>
-                )}
-              </Section>
-            )}
-
-            {/* Pull Request Requirements */}
-            <Section title="Require a Pull Request Before Merging" icon="ph-fill ph-git-pull-request" defaultOpen={protectRules.requirePr}>
-              <Toggle
-                checked={protectRules.requirePr}
-                onChange={v => update("requirePr", v)}
-                label="Require a pull request before merging"
-                desc="All commits must be made via a pull request before they can be merged."
-              />
-              {protectRules.requirePr && (
-                <div className="ml-7 space-y-4 mt-2">
                   <div>
-                    <label className="text-xs font-semibold text-gh-muted block mb-1.5">Required Approvals</label>
+                    <label className="text-xs font-semibold text-gh-muted uppercase tracking-wider block mb-1.5">Enforcement Status</label>
                     <select
-                      value={protectRules.requiredApprovals}
-                      onChange={(e) => update('requiredApprovals', Number(e.target.value))}
-                      className="block w-40 pl-2 pr-8 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue"
+                      value={protectRules.enforcement || "active"}
+                      onChange={e => update("enforcement", e.target.value)}
+                      className="w-full px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue"
                     >
-                      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
-                        <option key={n} value={n}>{n} {n === 1 ? "approval" : "approvals"}</option>
-                      ))}
+                      <option value="active">Active</option>
+                      <option value="evaluate">Evaluate (dry-run)</option>
+                      <option value="disabled">Disabled</option>
                     </select>
                   </div>
+                </div>
+              )}
+
+              {/* Branch Rules */}
+              <div className="space-y-3">
+                <h4 className="text-xs font-bold text-gh-muted uppercase tracking-wider">Branch Rules</h4>
+
+                {/* Restrict Operations (ruleset only) */}
+                {isRuleset && (
+                  <Section title="Restrict Operations" icon="ph-fill ph-lock-key" defaultOpen={!!(protectRules.restrictCreations || protectRules.restrictUpdates || protectRules.preventDeletion)}>
+                    <div className="space-y-3">
+                      <Toggle checked={!!protectRules.restrictCreations} onChange={v => update("restrictCreations", v)} label="Restrict creations" desc="Only allow users with bypass permission to create matching refs." />
+                      <Toggle checked={!!protectRules.restrictUpdates} onChange={v => update("restrictUpdates", v)} label="Restrict updates" desc="Only allow users with bypass permission to update matching refs." />
+                      <Toggle checked={protectRules.preventDeletion} onChange={v => update("preventDeletion", v)} label="Restrict deletions" desc="Only allow users with bypass permissions to delete matching refs." />
+                    </div>
+                  </Section>
+                )}
+
+                {/* Commit Requirements */}
+                <Section title="Commit Requirements" icon="ph-fill ph-git-commit" defaultOpen={!!(protectRules.requireLinearHistory || protectRules.requireSignedCommits)}>
                   <div className="space-y-3">
-                    <Toggle
-                      checked={protectRules.dismissStaleReviews}
-                      onChange={v => update("dismissStaleReviews", v)}
-                      label="Dismiss stale pull request approvals when new commits are pushed"
-                      desc="New, reviewable commits pushed will dismiss previous PR review approvals."
-                    />
-                    <Toggle
-                      checked={protectRules.requireCodeOwnerReviews}
-                      onChange={v => update("requireCodeOwnerReviews", v)}
-                      label="Require review from Code Owners"
-                      desc="Require an approving review in PRs that modify files with a designated code owner."
-                    />
-                    <Toggle
-                      checked={!!protectRules.requireLastPushApproval}
-                      onChange={v => update("requireLastPushApproval", v)}
-                      label="Require approval of the most recent reviewable push"
-                      desc="The most recent push must be approved by someone other than the person who pushed it."
-                    />
-                    <Toggle
-                      checked={protectRules.requireConversationResolution}
-                      onChange={v => update("requireConversationResolution", v)}
-                      label="Require conversation resolution before merging"
-                      desc="All conversations on code must be resolved before a PR can be merged."
-                    />
+                    <Toggle checked={protectRules.requireLinearHistory} onChange={v => update("requireLinearHistory", v)} label="Require linear history" desc="Prevent merge commits from being pushed to matching refs." />
+                    <Toggle checked={protectRules.requireSignedCommits} onChange={v => update("requireSignedCommits", v)} label="Require signed commits" desc="Commits pushed to matching refs must have verified signatures." />
                   </div>
-                  {isRuleset && (
-                    <div>
-                      <label className="text-xs font-semibold text-gh-muted block mb-2">Allowed Merge Methods</label>
-                      <div className="flex gap-4">
-                        {(["merge", "squash", "rebase"] as const).map(method => (
-                          <label key={method} className="flex items-center gap-2 cursor-pointer">
-                            <input
-                              type="checkbox"
-                              checked={(protectRules.allowedMergeMethods || []).includes(method)}
-                              onChange={e => {
-                                const current = protectRules.allowedMergeMethods || [];
-                                update("allowedMergeMethods", e.target.checked ? [...current, method] : current.filter(m => m !== method));
-                              }}
-                              className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue"
-                            />
-                            <span className="text-sm capitalize">{method === "merge" ? "Merge commit" : method === "squash" ? "Squash" : "Rebase"}</span>
-                          </label>
-                        ))}
+                </Section>
+
+                {/* Deployments */}
+                {isRuleset && (
+                  <Section title="Require Deployments to Succeed" icon="ph-fill ph-rocket-launch" defaultOpen={!!protectRules.requireDeployments}>
+                    <Toggle checked={!!protectRules.requireDeployments} onChange={v => update("requireDeployments", v)} label="Require deployments to succeed" desc="Choose which environments must be successfully deployed to before refs can be pushed." />
+                    {protectRules.requireDeployments && (
+                      <div className="ml-7 mt-2">
+                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Required Deployment Environments</label>
+                        <TagInput tags={protectRules.requiredDeploymentEnvironments || []} onChange={tags => update("requiredDeploymentEnvironments", tags)} placeholder="e.g. production, staging" />
                       </div>
-                      <p className="text-[11px] text-gh-muted mt-1">When merging PRs, you can allow any combination. At least one must be enabled if set.</p>
-                    </div>
-                  )}
-                </div>
-              )}
-            </Section>
+                    )}
+                  </Section>
+                )}
 
-            {/* Status Checks */}
-            <Section title="Require Status Checks to Pass" icon="ph-fill ph-check-circle" defaultOpen={protectRules.requireStatusChecks}>
-              <Toggle
-                checked={protectRules.requireStatusChecks}
-                onChange={v => update("requireStatusChecks", v)}
-                label="Require status checks to pass"
-                desc="Choose which status checks must pass before the ref is updated."
-              />
-              {protectRules.requireStatusChecks && (
-                <div className="ml-7 space-y-3 mt-2">
-                  <Toggle
-                    checked={protectRules.strictStatusChecks}
-                    onChange={v => update("strictStatusChecks", v)}
-                    label="Require branches to be up to date before merging"
-                    desc="PRs targeting a matching branch must be tested with the latest code."
-                  />
-                  {isRuleset && (
-                    <Toggle
-                      checked={!!protectRules.doNotRequireStatusChecksOnCreation}
-                      onChange={v => update("doNotRequireStatusChecksOnCreation", v)}
-                      label="Do not require status checks on creation"
-                      desc="Allow repositories and branches to be created if a check would otherwise prohibit it."
-                    />
-                  )}
-                  <div>
-                    <label className="text-xs font-semibold text-gh-muted block mb-1.5">Required Status Checks</label>
-                    <TagInput
-                      tags={protectRules.statusCheckContexts || []}
-                      onChange={tags => update("statusCheckContexts", tags)}
-                      placeholder="e.g. build, test, lint"
-                    />
-                  </div>
-                </div>
-              )}
-            </Section>
-
-            {/* Force Push & Deletion (classic mode shows these here) */}
-            {!isRuleset && (
-              <Section title="Push & Deletion Restrictions" icon="ph-fill ph-shield-warning" defaultOpen={protectRules.preventForcePush || protectRules.preventDeletion}>
-                <div className="space-y-3">
-                  <Toggle
-                    checked={protectRules.preventForcePush}
-                    onChange={v => update("preventForcePush", v)}
-                    label="Block force pushes"
-                    desc="Prevent users with push access from force pushing to refs."
-                  />
-                  <Toggle
-                    checked={protectRules.preventDeletion}
-                    onChange={v => update("preventDeletion", v)}
-                    label="Prevent deletion"
-                    desc="Block branch deletion."
-                  />
-                </div>
-              </Section>
-            )}
-
-            {/* Force Push (ruleset mode) */}
-            {isRuleset && (
-              <Section title="Block Force Pushes" icon="ph-fill ph-shield-warning" defaultOpen={protectRules.preventForcePush}>
-                <Toggle
-                  checked={protectRules.preventForcePush}
-                  onChange={v => update("preventForcePush", v)}
-                  label="Block force pushes"
-                  desc="Prevent users with push access from force pushing to refs."
-                />
-              </Section>
-            )}
-
-            {/* Code Scanning (ruleset only) */}
-            {isRuleset && (
-              <Section title="Require Code Scanning Results" icon="ph-fill ph-bug" defaultOpen={!!protectRules.requireCodeScanning}>
-                <Toggle
-                  checked={!!protectRules.requireCodeScanning}
-                  onChange={v => update("requireCodeScanning", v)}
-                  label="Require code scanning results"
-                  desc="Code scanning must be enabled and have results for both the commit and the reference being updated."
-                />
-                {protectRules.requireCodeScanning && (
-                  <div className="ml-7 space-y-3 mt-2">
-                    <div>
-                      <label className="text-xs font-semibold text-gh-muted block mb-1.5">Tool</label>
-                      <input
-                        type="text"
-                        value={protectRules.codeScanningTool || "CodeQL"}
-                        onChange={e => update("codeScanningTool", e.target.value)}
-                        className="w-48 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue"
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
+                {/* Pull Request Requirements */}
+                <Section title="Require a Pull Request Before Merging" icon="ph-fill ph-git-pull-request" defaultOpen={protectRules.requirePr}>
+                  <Toggle checked={protectRules.requirePr} onChange={v => update("requirePr", v)} label="Require a pull request before merging" desc="All commits must be made via a pull request before they can be merged." />
+                  {protectRules.requirePr && (
+                    <div className="ml-7 space-y-4 mt-2">
                       <div>
-                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Alerts Threshold</label>
-                        <select
-                          value={protectRules.codeScanningAlertsThreshold || "errors"}
-                          onChange={e => update("codeScanningAlertsThreshold", e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue"
-                        >
+                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Required Approvals</label>
+                        <select value={protectRules.requiredApprovals} onChange={(e) => update('requiredApprovals', Number(e.target.value))} className="block w-40 pl-2 pr-8 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue">
+                          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                            <option key={n} value={n}>{n} {n === 1 ? "approval" : "approvals"}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-3">
+                        <Toggle checked={protectRules.dismissStaleReviews} onChange={v => update("dismissStaleReviews", v)} label="Dismiss stale pull request approvals when new commits are pushed" desc="New, reviewable commits pushed will dismiss previous PR review approvals." />
+                        <Toggle checked={protectRules.requireCodeOwnerReviews} onChange={v => update("requireCodeOwnerReviews", v)} label="Require review from Code Owners" desc="Require an approving review in PRs that modify files with a designated code owner." />
+                        <Toggle checked={!!protectRules.requireLastPushApproval} onChange={v => update("requireLastPushApproval", v)} label="Require approval of the most recent reviewable push" desc="The most recent push must be approved by someone other than the person who pushed it." />
+                        <Toggle checked={protectRules.requireConversationResolution} onChange={v => update("requireConversationResolution", v)} label="Require conversation resolution before merging" desc="All conversations on code must be resolved before a PR can be merged." />
+                      </div>
+                      {isRuleset && (
+                        <div>
+                          <label className="text-xs font-semibold text-gh-muted block mb-2">Allowed Merge Methods</label>
+                          <div className="flex gap-4">
+                            {(["merge", "squash", "rebase"] as const).map(method => (
+                              <label key={method} className="flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={(protectRules.allowedMergeMethods || []).includes(method)}
+                                  onChange={e => {
+                                    const current = protectRules.allowedMergeMethods || [];
+                                    update("allowedMergeMethods", e.target.checked ? [...current, method] : current.filter(m => m !== method));
+                                  }}
+                                  className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue"
+                                />
+                                <span className="text-sm capitalize">{method === "merge" ? "Merge commit" : method === "squash" ? "Squash" : "Rebase"}</span>
+                              </label>
+                            ))}
+                          </div>
+                          <p className="text-[11px] text-gh-muted mt-1">When merging PRs, you can allow any combination. At least one must be enabled if set.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </Section>
+
+                {/* Status Checks */}
+                <Section title="Require Status Checks to Pass" icon="ph-fill ph-check-circle" defaultOpen={protectRules.requireStatusChecks}>
+                  <Toggle checked={protectRules.requireStatusChecks} onChange={v => update("requireStatusChecks", v)} label="Require status checks to pass" desc="Choose which status checks must pass before the ref is updated." />
+                  {protectRules.requireStatusChecks && (
+                    <div className="ml-7 space-y-3 mt-2">
+                      <Toggle checked={protectRules.strictStatusChecks} onChange={v => update("strictStatusChecks", v)} label="Require branches to be up to date before merging" desc="PRs targeting a matching branch must be tested with the latest code." />
+                      {isRuleset && (
+                        <Toggle checked={!!protectRules.doNotRequireStatusChecksOnCreation} onChange={v => update("doNotRequireStatusChecksOnCreation", v)} label="Do not require status checks on creation" desc="Allow repositories and branches to be created if a check would otherwise prohibit it." />
+                      )}
+                      <div>
+                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Required Status Checks</label>
+                        <TagInput tags={protectRules.statusCheckContexts || []} onChange={tags => update("statusCheckContexts", tags)} placeholder="e.g. build, test, lint" />
+                      </div>
+                    </div>
+                  )}
+                </Section>
+
+                {/* Force Push & Deletion (classic) */}
+                {!isRuleset && (
+                  <Section title="Push & Deletion Restrictions" icon="ph-fill ph-shield-warning" defaultOpen={protectRules.preventForcePush || protectRules.preventDeletion}>
+                    <div className="space-y-3">
+                      <Toggle checked={protectRules.preventForcePush} onChange={v => update("preventForcePush", v)} label="Block force pushes" desc="Prevent users with push access from force pushing to refs." />
+                      <Toggle checked={protectRules.preventDeletion} onChange={v => update("preventDeletion", v)} label="Prevent deletion" desc="Block branch deletion." />
+                    </div>
+                  </Section>
+                )}
+
+                {/* Force Push (ruleset) */}
+                {isRuleset && (
+                  <Section title="Block Force Pushes" icon="ph-fill ph-shield-warning" defaultOpen={protectRules.preventForcePush}>
+                    <Toggle checked={protectRules.preventForcePush} onChange={v => update("preventForcePush", v)} label="Block force pushes" desc="Prevent users with push access from force pushing to refs." />
+                  </Section>
+                )}
+
+                {/* Code Scanning (ruleset only) */}
+                {isRuleset && (
+                  <Section title="Require Code Scanning Results" icon="ph-fill ph-bug" defaultOpen={!!protectRules.requireCodeScanning}>
+                    <Toggle checked={!!protectRules.requireCodeScanning} onChange={v => update("requireCodeScanning", v)} label="Require code scanning results" desc="Code scanning must be enabled and have results for both the commit and the reference being updated." />
+                    {protectRules.requireCodeScanning && (
+                      <div className="ml-7 space-y-3 mt-2">
+                        <div>
+                          <label className="text-xs font-semibold text-gh-muted block mb-1.5">Tool</label>
+                          <input type="text" value={protectRules.codeScanningTool || "CodeQL"} onChange={e => update("codeScanningTool", e.target.value)} className="w-48 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-xs font-semibold text-gh-muted block mb-1.5">Alerts Threshold</label>
+                            <select value={protectRules.codeScanningAlertsThreshold || "errors"} onChange={e => update("codeScanningAlertsThreshold", e.target.value)} className="w-full px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue">
+                              <option value="none">None</option>
+                              <option value="errors">Errors</option>
+                              <option value="errors_and_warnings">Errors & Warnings</option>
+                              <option value="all">All</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="text-xs font-semibold text-gh-muted block mb-1.5">Security Threshold</label>
+                            <select value={protectRules.codeScanningSecurityAlertsThreshold || "high_or_higher"} onChange={e => update("codeScanningSecurityAlertsThreshold", e.target.value)} className="w-full px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue">
+                              <option value="none">None</option>
+                              <option value="critical">Critical</option>
+                              <option value="high_or_higher">High or Higher</option>
+                              <option value="medium_or_higher">Medium or Higher</option>
+                              <option value="all">All</option>
+                            </select>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </Section>
+                )}
+
+                {/* Code Quality (ruleset only) */}
+                {isRuleset && (
+                  <Section title="Require Code Quality Results" icon="ph-fill ph-exam" defaultOpen={!!protectRules.requireCodeQuality}>
+                    <Toggle checked={!!protectRules.requireCodeQuality} onChange={v => update("requireCodeQuality", v)} label="Require code quality results" desc="Choose which severity levels of code quality results should block PR merges." />
+                    {protectRules.requireCodeQuality && (
+                      <div className="ml-7 mt-2">
+                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Severity</label>
+                        <select value={protectRules.codeQualitySeverity || "errors"} onChange={e => update("codeQualitySeverity", e.target.value)} className="w-48 px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue">
                           <option value="none">None</option>
                           <option value="errors">Errors</option>
                           <option value="errors_and_warnings">Errors & Warnings</option>
                           <option value="all">All</option>
                         </select>
+                        <p className="text-[11px] text-gh-muted mt-1">The lowest severity level at which code quality reviews need to be resolved before merging.</p>
                       </div>
-                      <div>
-                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Security Threshold</label>
-                        <select
-                          value={protectRules.codeScanningSecurityAlertsThreshold || "high_or_higher"}
-                          onChange={e => update("codeScanningSecurityAlertsThreshold", e.target.value)}
-                          className="w-full px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue"
-                        >
-                          <option value="none">None</option>
-                          <option value="critical">Critical</option>
-                          <option value="high_or_higher">High or Higher</option>
-                          <option value="medium_or_higher">Medium or Higher</option>
-                          <option value="all">All</option>
-                        </select>
-                      </div>
-                    </div>
-                  </div>
+                    )}
+                  </Section>
                 )}
-              </Section>
-            )}
 
-            {/* Enforce for Admins */}
-            <Section title="Enforcement" icon="ph-fill ph-crown" defaultOpen={protectRules.enforceAdmins}>
-              <Toggle
-                checked={protectRules.enforceAdmins}
-                onChange={v => update("enforceAdmins", v)}
-                label={isRuleset ? "Do not allow bypassing above rules" : "Enforce for admins"}
-                desc={isRuleset ? "When enabled, admins and repository owners cannot bypass these rules." : "Include administrators in these protection rules."}
-              />
-            </Section>
-          </div>
+                {/* Copilot Code Review (ruleset only) */}
+                {isRuleset && (
+                  <Section title="Automatically Request Copilot Code Review" icon="ph-fill ph-sparkle" defaultOpen={!!protectRules.copilotCodeReview}>
+                    <Toggle checked={!!protectRules.copilotCodeReview} onChange={v => update("copilotCodeReview", v)} label="Automatically request Copilot code review" desc="Request Copilot code review for new pull requests automatically." />
+                    {protectRules.copilotCodeReview && (
+                      <div className="ml-7 space-y-3 mt-2">
+                        <Toggle checked={!!protectRules.copilotReviewOnPush} onChange={v => update("copilotReviewOnPush", v)} label="Review new pushes" desc="Copilot automatically reviews each new push to the pull request." />
+                        <Toggle checked={!!protectRules.copilotReviewDraftPrs} onChange={v => update("copilotReviewDraftPrs", v)} label="Review draft pull requests" desc="Copilot automatically reviews draft PRs before they are marked as ready for review." />
+                      </div>
+                    )}
+                  </Section>
+                )}
+
+                {/* Enforce for Admins */}
+                <Section title="Enforcement" icon="ph-fill ph-crown" defaultOpen={protectRules.enforceAdmins}>
+                  <Toggle
+                    checked={protectRules.enforceAdmins}
+                    onChange={v => update("enforceAdmins", v)}
+                    label={isRuleset ? "Do not allow bypassing above rules" : "Enforce for admins"}
+                    desc={isRuleset ? "When enabled, admins and repository owners cannot bypass these rules." : "Include administrators in these protection rules."}
+                  />
+                </Section>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="px-6 py-4 border-t border-gh-border bg-gray-50/50 flex items-center justify-end gap-3 rounded-b-[12px] shrink-0">
@@ -497,13 +594,15 @@ export default function ProtectBranchModal({
           >
             Cancel
           </button>
-          <button
-            onClick={() => onSave(protectRules)}
-            disabled={isSaving}
-            className="px-4 py-2 text-[13px] font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gh-blue/30 active:scale-[0.98] disabled:opacity-50"
-          >
-            {isSaving ? "Applying..." : "Apply Protection"}
-          </button>
+          {mode === "form" && (
+            <button
+              onClick={() => onSave(protectRules)}
+              disabled={isSaving}
+              className="px-4 py-2 text-[13px] font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gh-blue/30 active:scale-[0.98] disabled:opacity-50"
+            >
+              {isSaving ? "Applying..." : "Apply Protection"}
+            </button>
+          )}
         </div>
       </div>
     </div>

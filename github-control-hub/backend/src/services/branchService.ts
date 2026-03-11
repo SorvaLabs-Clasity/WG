@@ -64,6 +64,25 @@ export function buildRulesetRules(protection: Protection): any[] {
     });
   }
 
+  if (protection.requireCodeQuality) {
+    rules.push({
+      type: "code_quality",
+      parameters: {
+        severity: protection.codeQualitySeverity || "errors",
+      },
+    });
+  }
+
+  if (protection.copilotCodeReview) {
+    rules.push({
+      type: "copilot_code_review",
+      parameters: {
+        review_on_push: protection.copilotReviewOnPush ?? false,
+        review_draft_pull_requests: protection.copilotReviewDraftPrs ?? false,
+      },
+    });
+  }
+
   return rules;
 }
 

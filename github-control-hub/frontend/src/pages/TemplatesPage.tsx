@@ -48,6 +48,11 @@ const DEFAULT_PROTECTION: NonNullable<BranchRule["protection"]> = {
   codeScanningTool: "CodeQL",
   codeScanningAlertsThreshold: "errors",
   codeScanningSecurityAlertsThreshold: "high_or_higher",
+  requireCodeQuality: false,
+  codeQualitySeverity: "errors",
+  copilotCodeReview: false,
+  copilotReviewOnPush: false,
+  copilotReviewDraftPrs: false,
 };
 
 export default function TemplatesPage() {
@@ -660,6 +665,8 @@ export default function TemplatesPage() {
                                       { field: 'doNotRequireStatusChecksOnCreation', label: 'Skip status checks on creation', desc: 'Allow branch creation without checks' },
                                       { field: 'requireDeployments', label: 'Require deployments to succeed', desc: 'Deployment envs must succeed' },
                                       { field: 'requireCodeScanning', label: 'Require code scanning results', desc: 'CodeQL or other tool results required' },
+                                      { field: 'requireCodeQuality', label: 'Require code quality results', desc: 'Block PRs based on code quality severity' },
+                                      { field: 'copilotCodeReview', label: 'Copilot code review', desc: 'Auto-request Copilot review for new PRs' },
                                     ] : []),
                                   ].map(({ field, label, desc }) => (
                                     <label key={field} className="flex items-start gap-2 cursor-pointer group/chk">

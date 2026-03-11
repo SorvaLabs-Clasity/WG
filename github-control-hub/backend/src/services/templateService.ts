@@ -52,6 +52,13 @@ export interface BranchRule {
     codeScanningTool?: string;
     codeScanningAlertsThreshold?: string;
     codeScanningSecurityAlertsThreshold?: string;
+
+    requireCodeQuality?: boolean;
+    codeQualitySeverity?: string;
+
+    copilotCodeReview?: boolean;
+    copilotReviewOnPush?: boolean;
+    copilotReviewDraftPrs?: boolean;
   } | null;
 }
 
