@@ -76,7 +76,7 @@ export default function AnalyticsPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 grid-flow-dense">
           {widgets.map(widget => (
             <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} />
           ))}
@@ -152,12 +152,12 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
 
   const chartData = useMemo(() => {
     if (config.type === "preset") {
-      if (config.presetId === "dependabot") return items.slice(0, 50).map(i => ({ name: i.repo, value: i.total }));
-      if (config.presetId === "bypasses") return items.slice(0, 50).map(i => ({ name: i.repo, value: i.bypasses }));
-      if (config.presetId === "blast") return items.slice(0, 50).map(i => ({ name: i.repo, value: i.score }));
+      if (config.presetId === "dependabot") return items.map(i => ({ name: i.repo, value: i.total }));
+      if (config.presetId === "bypasses") return items.map(i => ({ name: i.repo, value: i.bypasses }));
+      if (config.presetId === "blast") return items.map(i => ({ name: i.repo, value: i.score }));
     }
     // Queries
-    return items.slice(0, 50).map((i: any) => ({ name: i.repo || i.user || i.team || "Unknown", value: 1 }));
+    return items.map((i: any) => ({ name: i.repo || i.user || i.team || "Unknown", value: 1 }));
   }, [items, config]);
 
   const isRepoQuery = config.type === "preset" || (config.type === "query" && config.queryId?.startsWith("repos-"));
@@ -165,7 +165,7 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
 
   return (
     <>
-      <div className="bg-white rounded-xl border border-gh-border shadow-sm flex flex-col overflow-hidden group h-[340px]">
+      <div className={`bg-white rounded-xl border border-gh-border shadow-sm flex flex-col overflow-hidden group ${config.displayType === 'line_chart' ? 'lg:col-span-2 lg:row-span-2 h-[704px]' : 'h-[340px]'}`}>
         <div className="px-5 py-3 border-b border-gh-border bg-gray-50 flex items-center justify-between shrink-0">
           <h3 className="font-semibold text-gh-textBase truncate pr-2" title={config.title}>{config.title}</h3>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -214,7 +214,7 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
                   ) : (
                     <div className="w-full h-full pr-4">
                       <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData.slice(0, 10)} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                        <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                           <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} />
                           <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} allowDecimals={false} />
