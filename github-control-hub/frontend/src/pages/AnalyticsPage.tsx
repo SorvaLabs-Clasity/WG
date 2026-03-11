@@ -441,14 +441,26 @@ function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[]
         </tbody>
       </table>
       {selectedItem && (
-        <RawDetailsModal item={selectedItem} onClose={() => setSelectedItem(null)} />
+        <RawDetailsModal item={selectedItem} config={config} onClose={() => setSelectedItem(null)} />
       )}
     </>
   );
 }
 
-function RawDetailsModal({ item, onClose }: { item: any, onClose: () => void }) {
+function RawDetailsModal({ item, config, onClose }: { item: any, config: WidgetConfig, onClose: () => void }) {
+  const { user } = useAuth();
   const name = item.repo || item.user || item.team || "Unknown Entity";
+  
+  let githubLink = null;
+  if (item.repo) {
+    githubLink = `https://github.com/${user?.login || 'org'}/${item.repo}`;
+    if (config.type === 'preset' && config.presetId === 'dependabot') {
+      githubLink += '/security/dependabot';
+    }
+  } else if (item.user) {
+    githubLink = `https://github.com/${item.user}`;
+  }
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6">
       <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
@@ -458,9 +470,22 @@ function RawDetailsModal({ item, onClose }: { item: any, onClose: () => void }) 
             <i className="ph-fill ph-info text-gh-blue"></i>
             {name} Raw Attributes
           </h3>
-          <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors">
-            <i className="ph ph-x text-lg"></i>
-          </button>
+          <div className="flex items-center gap-3">
+            {githubLink && (
+              <a 
+                href={githubLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-semibold bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 border border-gray-200"
+              >
+                <i className="ph-fill ph-github-logo text-sm"></i>
+                View in GitHub
+              </a>
+            )}
+            <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors">
+              <i className="ph ph-x text-lg"></i>
+            </button>
+          </div>
         </div>
         <div className="p-6 overflow-y-auto bg-gray-50 flex-1 rounded-b-xl">
           <div className="flex flex-col gap-4">
