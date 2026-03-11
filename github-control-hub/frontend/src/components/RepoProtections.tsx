@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchRepoRulesets } from "../api/branches";
-import { useAllBranchProtections, useProtectBranch, useDeleteBranchProtection, useDeleteRepoRuleset } from "../hooks/useBranches";
+import { useAllBranchProtections, useProtectBranch, useDeleteBranchProtection, useDeleteRepoRuleset, useImportRepoRuleset } from "../hooks/useBranches";
 import ProtectBranchModal, { DEFAULT_PROTECTION } from "./ProtectBranchModal";
 import type { BranchRule } from "../types/Template";
 
@@ -15,10 +15,14 @@ export default function RepoProtections({ repo }: { repo: string }) {
   const protectMutation = useProtectBranch(repo);
   const deleteClassicMutation = useDeleteBranchProtection(repo);
   const deleteRulesetMutation = useDeleteRepoRuleset(repo);
+  const importMutation = useImportRepoRuleset(repo);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<string | null>(null);
   const [editingData, setEditingData] = useState<NonNullable<BranchRule["protection"]> | undefined>(undefined);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importText, setImportText] = useState("");
+  const [importError, setImportError] = useState("");
 
   const handleEditRuleset = (rs: any) => {
     // Map ruleset rules to our internal state
@@ -101,6 +105,32 @@ export default function RepoProtections({ repo }: { repo: string }) {
     deleteRulesetMutation.mutate(id);
   };
 
+  const handleImportRuleset = () => {
+    try {
+      const parsed = JSON.parse(importText);
+      if (!parsed.rules || !Array.isArray(parsed.rules)) {
+        setImportError('Invalid format: expected a GitHub ruleset JSON with a "rules" array and a "name" field.');
+        return;
+      }
+      if (!parsed.name) {
+        setImportError('Missing "name" field. The ruleset JSON must include a name.');
+        return;
+      }
+      importMutation.mutate(parsed, {
+        onSuccess: () => {
+          setImportOpen(false);
+          setImportText("");
+          setImportError("");
+        },
+        onError: (err: any) => {
+          setImportError(err?.message || "Failed to import ruleset.");
+        },
+      });
+    } catch {
+      setImportError("Invalid JSON. Please paste a valid GitHub ruleset JSON.");
+    }
+  };
+
   const handleDeleteClassic = (branch: string) => {
     if (!confirm(`Are you sure you want to remove classic branch protection from "${branch}"?`)) return;
     deleteClassicMutation.mutate(branch);
@@ -123,9 +153,17 @@ export default function RepoProtections({ repo }: { repo: string }) {
             <i className="fa-solid fa-layer-group text-gh-blue"></i>
             Repository Rulesets
           </h3>
-          <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-xs font-medium border border-gray-200">
-            {rulesets?.length || 0}
-          </span>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setImportOpen(true); setImportText(""); setImportError(""); }}
+              className="text-xs font-semibold text-gh-blue hover:text-gh-blueHover bg-white border border-gray-300 hover:bg-gray-50 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5"
+            >
+              <i className="ph-bold ph-arrow-square-in text-xs"></i> Import JSON
+            </button>
+            <span className="bg-gray-100 text-gray-600 px-2.5 py-0.5 rounded-full text-xs font-medium border border-gray-200">
+              {rulesets?.length || 0}
+            </span>
+          </div>
         </div>
         <div className="p-0">
           {rulesets && rulesets.length > 0 ? (
@@ -269,6 +307,57 @@ export default function RepoProtections({ repo }: { repo: string }) {
           isSaving={protectMutation.isPending}
           hideTypeSelector={true}
         />
+      )}
+
+      {/* Import Ruleset JSON Modal */}
+      {importOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-[3px] animate-fade-in" onClick={() => setImportOpen(false)}></div>
+          <div className="bg-white rounded-[12px] shadow-modal border border-black/10 w-full max-w-[640px] relative z-10 animate-slide-up overflow-hidden flex flex-col max-h-[85vh]">
+            <div className="px-6 py-4 border-b border-gh-border flex items-center justify-between bg-white pt-5 shrink-0">
+              <h3 className="text-lg font-bold text-gray-900 tracking-tight flex items-center gap-2">
+                <i className="ph-bold ph-arrow-square-in text-gh-blue"></i>
+                Import Ruleset from JSON
+              </h3>
+              <button onClick={() => setImportOpen(false)} className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-900 hover:bg-black/5 transition-colors">
+                <i className="ph ph-x text-lg"></i>
+              </button>
+            </div>
+            <div className="p-6 space-y-4 overflow-y-auto">
+              <p className="text-sm text-gh-muted">
+                Paste a GitHub ruleset JSON and it will be applied directly to <span className="font-semibold text-gh-textBase">{repo}</span>.
+                GitHub handles all the logic &mdash; fields like <code className="text-xs bg-gray-100 px-1 rounded font-mono">id</code>,
+                <code className="text-xs bg-gray-100 px-1 rounded font-mono">source</code>, and
+                <code className="text-xs bg-gray-100 px-1 rounded font-mono">source_type</code> are automatically ignored.
+              </p>
+              <textarea
+                value={importText}
+                onChange={e => { setImportText(e.target.value); setImportError(""); }}
+                placeholder='Paste the full GitHub ruleset JSON here...'
+                rows={14}
+                className="w-full px-4 py-3 text-xs font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue bg-gray-50 resize-y"
+              />
+              {importError && (
+                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                  <i className="ph-fill ph-warning-circle text-red-500 mt-0.5"></i>
+                  <span className="text-sm text-red-700">{importError}</span>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gh-border bg-gray-50/50 flex items-center justify-end gap-3 rounded-b-[12px] shrink-0">
+              <button onClick={() => setImportOpen(false)} className="px-4 py-2 text-[13px] font-semibold text-gh-textBase bg-white border border-gh-border hover:bg-gray-50 rounded-[6px] shadow-sm transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={handleImportRuleset}
+                disabled={!importText.trim() || importMutation.isPending}
+                className="px-4 py-2 text-[13px] font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-[6px] shadow-sm transition-colors disabled:opacity-50"
+              >
+                {importMutation.isPending ? "Importing..." : "Apply to GitHub"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

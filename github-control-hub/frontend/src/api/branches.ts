@@ -76,6 +76,14 @@ export async function deleteBranchProtection(repo: string, branch: string): Prom
   return apiDelete(`/repos/${repo}/protection/${branch}`);
 }
 
+export async function importRepoRuleset(repo: string, rulesetJson: any): Promise<{ message: string }> {
+  if (DEMO_MODE) {
+    await new Promise(r => setTimeout(r, 600));
+    return { message: `Mock imported ruleset "${rulesetJson.name || 'Untitled'}"` };
+  }
+  return apiPost(`/repos/${repo}/rulesets/import`, rulesetJson);
+}
+
 export async function deleteRepoRuleset(repo: string, rulesetId: number): Promise<{ message: string }> {
   if (DEMO_MODE) {
     await new Promise(r => setTimeout(r, 400));

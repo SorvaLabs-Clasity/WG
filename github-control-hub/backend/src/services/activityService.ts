@@ -14,6 +14,7 @@ export type ActivityAction =
   | "template.update"
   | "template.delete"
   | "repo.ruleset.delete"
+  | "repo.ruleset.import"
   | "repo.created"
   | "repo.publicized"
   | "github.push"

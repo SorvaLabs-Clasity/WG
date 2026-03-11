@@ -72,6 +72,39 @@ router.delete("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, r
   }
 });
 
+router.post("/:repo/rulesets/import", async (req: Request<{ repo: string }>, res: Response) => {
+  try {
+    const octokit = createOctokit(req.user!.accessToken);
+    const { getOrg } = require("../github/client");
+    const org = getOrg();
+    const raw = req.body;
+
+    const { id, source, source_type, node_id, _links, ...payload } = raw;
+
+    await octokit.rest.repos.createRepoRuleset({
+      owner: org,
+      repo: req.params.repo,
+      ...payload,
+    });
+
+    await logActivity(
+      "repo.ruleset.import",
+      req.user!.login,
+      req.params.repo,
+      payload.name || "Imported ruleset",
+      `Imported ruleset "${payload.name}" from JSON`
+    );
+
+    res.json({ message: `Ruleset "${payload.name}" imported successfully` });
+  } catch (err: any) {
+    console.error("Error importing ruleset:", err);
+    const ghMsg = err?.response?.data?.message || err?.message || "Unknown error";
+    const ghErrors = err?.response?.data?.errors;
+    const detail = ghErrors ? ` — ${JSON.stringify(ghErrors)}` : "";
+    res.status(500).json({ error: `Failed to import ruleset: ${ghMsg}${detail}` });
+  }
+});
+
 router.delete("/:repo/rulesets/:rulesetId", async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken);
