@@ -5,10 +5,9 @@ import { useSecurityQuery, useBlastRadiusRanking } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS } from "../utils/queryOptions";
-import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 type WidgetType = "preset" | "query";
-type DisplayType = "metric" | "table" | "line_chart";
+type DisplayType = "metric" | "table";
 type PresetId = "dependabot" | "bypasses" | "blast";
 
 interface WidgetConfig {
@@ -24,7 +23,7 @@ interface WidgetConfig {
 
 const DEFAULT_WIDGETS: WidgetConfig[] = [
   { id: "1", title: "Protection Rule Bypasses", type: "preset", presetId: "bypasses", displayType: "table" },
-  { id: "2", title: "Dependabot Issues", type: "preset", presetId: "dependabot", displayType: "line_chart" },
+  { id: "2", title: "Dependabot Issues", type: "preset", presetId: "dependabot", displayType: "table" },
   { id: "3", title: "Repos missing main branch", type: "query", queryId: "repos-missing-branch", queryParam: "main", displayType: "metric" },
   { id: "4", title: "Blast Radius Risk", type: "preset", presetId: "blast", displayType: "table" },
 ];
@@ -150,22 +149,12 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
     return { items: rawItems, isLoading: loading };
   }, [config, depsData, depsLoading, blastData, blastLoading, bypassData, bypassLoading, queryData, queryLoading]);
 
-  const chartData = useMemo(() => {
-    if (config.type === "preset") {
-      if (config.presetId === "dependabot") return items.map(i => ({ name: i.repo, value: i.total }));
-      if (config.presetId === "bypasses") return items.map(i => ({ name: i.repo, value: i.bypasses }));
-      if (config.presetId === "blast") return items.map(i => ({ name: i.repo, value: i.score }));
-    }
-    // Queries
-    return items.map((i: any) => ({ name: i.repo || i.user || i.team || "Unknown", value: 1 }));
-  }, [items, config]);
-
   const isRepoQuery = config.type === "preset" || (config.type === "query" && config.queryId?.startsWith("repos-"));
   const total = isRepoQuery && repos ? repos.length : null;
 
   return (
     <>
-      <div className={`bg-white rounded-xl border border-gh-border shadow-sm flex flex-col overflow-hidden group ${config.displayType === 'line_chart' ? 'lg:col-span-2 lg:row-span-2 h-[704px]' : 'h-[340px]'}`}>
+      <div className="bg-white rounded-xl border border-gh-border shadow-sm flex flex-col overflow-hidden group h-[340px]">
         <div className="px-5 py-3 border-b border-gh-border bg-gray-50 flex items-center justify-between shrink-0">
           <h3 className="font-semibold text-gh-textBase truncate pr-2" title={config.title}>{config.title}</h3>
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -204,28 +193,6 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
                   <div className="text-xs text-gh-blue font-semibold mt-4 flex items-center gap-1 opacity-0 group-hover/content:opacity-100 transition-opacity">
                     View Details <i className="ph-bold ph-arrow-right"></i>
                   </div>
-                </div>
-              )}
-
-              {config.displayType === "line_chart" && (
-                <div className="flex-1 min-h-0 cursor-pointer overflow-hidden" onClick={() => setShowDetails(true)}>
-                  {chartData.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-sm text-gray-400 italic">No data to display</div>
-                  ) : (
-                    <div className="w-full h-full pr-4">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
-                          <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} />
-                          <YAxis tick={{ fontSize: 10, fill: '#6b7280' }} tickLine={false} axisLine={false} allowDecimals={false} />
-                          <Tooltip 
-                            contentStyle={{ borderRadius: '8px', border: '1px solid #e1e4e8', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)' }}
-                          />
-                          <Line type="monotone" dataKey="value" stroke="#0969da" strokeWidth={2} dot={{ r: 3, fill: '#0969da' }} activeDot={{ r: 5 }} />
-                        </LineChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -496,7 +463,6 @@ function AddWidgetModal({ onClose, onSave }: { onClose: () => void, onSave: (con
               >
                 <option value="metric">Big Metric (Count)</option>
                 <option value="table">List / Table</option>
-                <option value="line_chart">Line Chart</option>
               </select>
             </div>
           </div>
