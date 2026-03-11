@@ -41,6 +41,14 @@ export default function AnalyticsPage() {
   }, [widgets]);
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [isDashboardView, setIsDashboardView] = useState(true);
+  const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!isDashboardView && widgets.length > 0 && !selectedWidgetId) {
+      setSelectedWidgetId(widgets[0].id);
+    }
+  }, [isDashboardView, widgets, selectedWidgetId]);
 
   const handleAddWidget = (config: Omit<WidgetConfig, "id">) => {
     setWidgets([...widgets, { ...config, id: Date.now().toString() }]);
@@ -49,6 +57,7 @@ export default function AnalyticsPage() {
 
   const removeWidget = (id: string) => {
     setWidgets(widgets.filter(w => w.id !== id));
+    if (selectedWidgetId === id) setSelectedWidgetId(null);
   };
 
   return (
@@ -66,33 +75,87 @@ export default function AnalyticsPage() {
               Customizable widgets for tracking security posture, rule bypasses, and structural metrics.
             </p>
           </div>
-          <button 
-            onClick={() => setShowAddModal(true)}
-            className="bg-gh-blue hover:bg-gh-blueHover text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
-          >
-            <i className="fa-solid fa-plus text-xs"></i>
-            Add Widget
-          </button>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 grid-flow-dense">
-          {widgets.map(widget => (
-            <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} />
-          ))}
-          {widgets.length === 0 && (
-            <div className="col-span-full text-center py-16 text-gray-400 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
-              <i className="ph-light ph-chart-polar text-5xl mb-3 block opacity-50"></i>
-              <p className="font-medium text-gray-500">No widgets added yet.</p>
-              <p className="text-sm mt-1 mb-4">Click "Add Widget" to create your first metric, table, or chart.</p>
+          <div className="flex items-center gap-3">
+            <div className="bg-gray-100 p-1 rounded-lg flex items-center">
               <button 
-                onClick={() => setShowAddModal(true)}
-                className="bg-white border border-gray-300 hover:bg-gray-50 text-gh-textBase px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-colors"
+                onClick={() => setIsDashboardView(true)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${isDashboardView ? 'bg-white shadow-sm text-gh-textBase' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                Add Widget
+                <i className="ph-fill ph-squares-four mr-2"></i>Dashboard
+              </button>
+              <button 
+                onClick={() => setIsDashboardView(false)}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${!isDashboardView ? 'bg-white shadow-sm text-gh-textBase' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                <i className="ph-fill ph-list-dashes mr-2"></i>List View
               </button>
             </div>
-          )}
+            {isDashboardView && (
+              <button 
+                onClick={() => setShowAddModal(true)}
+                className="bg-gh-blue hover:bg-gh-blueHover text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-colors flex items-center justify-center gap-2"
+              >
+                <i className="fa-solid fa-plus text-xs"></i>
+                Add Widget
+              </button>
+            )}
+          </div>
         </div>
+
+        {isDashboardView ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 grid-flow-dense">
+            {widgets.map(widget => (
+              <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} />
+            ))}
+            {widgets.length === 0 && (
+              <div className="col-span-full text-center py-16 text-gray-400 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
+                <i className="ph-light ph-chart-polar text-5xl mb-3 block opacity-50"></i>
+                <p className="font-medium text-gray-500">No widgets added yet.</p>
+                <p className="text-sm mt-1 mb-4">Click "Add Widget" to create your first metric, table, or chart.</p>
+                <button 
+                  onClick={() => setShowAddModal(true)}
+                  className="bg-white border border-gray-300 hover:bg-gray-50 text-gh-textBase px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-colors"
+                >
+                  Add Widget
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="flex gap-6 h-[calc(100vh-200px)] min-h-[500px]">
+            <div className="w-1/3 bg-white border border-gh-border rounded-xl shadow-sm overflow-y-auto flex flex-col">
+              <div className="px-5 py-4 border-b border-gh-border bg-gray-50 font-semibold sticky top-0 z-10">Your Analytics</div>
+              <div className="divide-y divide-gh-border flex-1">
+                {widgets.map(w => (
+                  <button
+                    key={w.id}
+                    onClick={() => setSelectedWidgetId(w.id)}
+                    className={`w-full text-left px-5 py-4 hover:bg-gray-50 transition-colors ${selectedWidgetId === w.id ? 'bg-blue-50/50 border-l-4 border-l-gh-blue' : 'border-l-4 border-l-transparent'}`}
+                  >
+                    <div className={`font-semibold text-sm ${selectedWidgetId === w.id ? 'text-gh-blue' : 'text-gh-textBase'}`}>{w.title}</div>
+                    <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
+                      <i className={`ph-fill ${w.type === 'preset' ? 'ph-star text-yellow-500' : 'ph-magnifying-glass text-blue-500'}`}></i>
+                      {w.type === 'preset' ? 'Built-in Preset' : 'Custom Query'}
+                    </div>
+                  </button>
+                ))}
+                {widgets.length === 0 && (
+                  <div className="p-8 text-center text-gray-400 text-sm">No analytics added yet.</div>
+                )}
+              </div>
+            </div>
+            <div className="flex-1 bg-white border border-gh-border rounded-xl shadow-sm overflow-hidden flex flex-col relative">
+              {selectedWidgetId ? (
+                <WidgetDetailsInline config={widgets.find(w => w.id === selectedWidgetId)!} />
+              ) : (
+                <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
+                  <i className="ph-light ph-chart-polar text-5xl mb-3 opacity-50"></i>
+                  <p>Select an analytic from the list to view details</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {showAddModal && <AddWidgetModal onClose={() => setShowAddModal(false)} onSave={handleAddWidget} />}
@@ -100,7 +163,7 @@ export default function AnalyticsPage() {
   );
 }
 
-function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () => void }) {
+function useWidgetData(config: WidgetConfig) {
   const { data: depsData, isLoading: depsLoading } = useDependencies();
   const { data: blastData, isLoading: blastLoading } = useBlastRadiusRanking();
   const isBypass = config.type === "preset" && config.presetId === "bypasses";
@@ -110,8 +173,6 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
   const { data: queryData, isLoading: queryLoading } = useSecurityQuery(isQuery ? config.queryId! : null, config.queryParam, config.queryAdvanced);
   
   const { data: repos } = useRepos();
-  
-  const [showDetails, setShowDetails] = useState(false);
 
   const { items, isLoading } = useMemo(() => {
     let rawItems: any[] = [];
@@ -151,6 +212,13 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
 
   const isRepoQuery = config.type === "preset" || (config.type === "query" && config.queryId?.startsWith("repos-"));
   const total = isRepoQuery && repos ? repos.length : null;
+
+  return { items, isLoading, total };
+}
+
+function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () => void }) {
+  const { items, isLoading, total } = useWidgetData(config);
+  const [showDetails, setShowDetails] = useState(false);
 
   return (
     <>
@@ -238,6 +306,137 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
   );
 }
 
+function WidgetDetailsInline({ config }: { config: WidgetConfig }) {
+  const { items, isLoading } = useWidgetData(config);
+  
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gh-blue"></div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex-1 flex flex-col h-full bg-white relative">
+      <div className="px-6 py-5 border-b border-gh-border flex items-center justify-between bg-white shrink-0 sticky top-0 z-10">
+        <h3 className="text-xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
+          <i className="ph-fill ph-chart-bar text-gh-blue"></i>
+          {config.title}
+        </h3>
+        <span className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full text-sm font-bold">{items.length} Total Results</span>
+      </div>
+      <div className="flex-1 overflow-y-auto bg-gray-50 h-full">
+        <WidgetDataTable config={config} items={items} />
+      </div>
+    </div>
+  );
+}
+
+function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[] }) {
+  if (items.length === 0) {
+    return (
+      <div className="p-12 text-center text-gray-500">
+        <i className="ph-fill ph-check-circle text-4xl text-green-500 mb-3 block opacity-80"></i>
+        No data matches this query or preset.
+      </div>
+    );
+  }
+
+  return (
+    <table className="w-full text-left text-sm whitespace-nowrap bg-white">
+      <thead className="bg-gray-50 border-b border-gh-border sticky top-0 z-10 shadow-sm">
+        <tr>
+          <th className="px-6 py-3 font-semibold text-gh-muted w-16">#</th>
+          <th className="px-6 py-3 font-semibold text-gh-muted">Entity</th>
+          
+          {config.type === "preset" && config.presetId === "dependabot" && (
+            <>
+              <th className="px-6 py-3 font-semibold text-gh-muted text-center text-red-600">Critical</th>
+              <th className="px-6 py-3 font-semibold text-gh-muted text-center text-orange-500">High</th>
+              <th className="px-6 py-3 font-semibold text-gh-muted text-center text-yellow-600">Medium</th>
+              <th className="px-6 py-3 font-semibold text-gh-muted text-center text-gray-500">Low</th>
+              <th className="px-6 py-3 font-semibold text-gh-muted text-center">Total</th>
+            </>
+          )}
+          {config.type === "preset" && config.presetId === "bypasses" && (
+            <>
+              <th className="px-6 py-3 font-semibold text-gh-muted">Bypasses</th>
+              <th className="px-6 py-3 font-semibold text-gh-muted w-full">Reason</th>
+            </>
+          )}
+          {config.type === "preset" && config.presetId === "blast" && (
+            <>
+              <th className="px-6 py-3 font-semibold text-gh-muted">Risk Level</th>
+              <th className="px-6 py-3 font-semibold text-gh-muted text-center">Score</th>
+            </>
+          )}
+          {config.type === "query" && (
+            <th className="px-6 py-3 font-semibold text-gh-muted w-full">Details</th>
+          )}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-gray-100">
+        {items.map((item: any, idx: number) => {
+          const name = item.repo || item.user || item.team || "Unknown";
+          const entityType = item.repo ? "REPO" : item.user ? "USER" : item.team ? "TEAM" : "UNKNOWN";
+          
+          return (
+            <tr key={idx} className="hover:bg-gray-50 transition-colors">
+              <td className="px-6 py-3 font-mono text-gh-muted text-xs">{idx + 1}</td>
+              <td className="px-6 py-3 font-bold text-gh-textBase flex items-center gap-2">
+                {name}
+                {config.type === "query" && (
+                  <span className="text-[9px] font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{entityType}</span>
+                )}
+              </td>
+
+              {config.type === "preset" && config.presetId === "dependabot" && (
+                <>
+                  <td className="px-6 py-3 text-center font-mono font-medium text-red-600">{item.critical || '-'}</td>
+                  <td className="px-6 py-3 text-center font-mono font-medium text-orange-500">{item.high || '-'}</td>
+                  <td className="px-6 py-3 text-center font-mono font-medium text-yellow-600">{item.medium || '-'}</td>
+                  <td className="px-6 py-3 text-center font-mono font-medium text-gray-500">{item.low || '-'}</td>
+                  <td className="px-6 py-3 text-center font-mono font-bold bg-gray-50/50">{item.total}</td>
+                </>
+              )}
+              
+              {config.type === "preset" && config.presetId === "bypasses" && (
+                <>
+                  <td className="px-6 py-3 font-mono font-bold text-red-600">{item.bypasses}</td>
+                  <td className="px-6 py-3 text-sm text-gh-muted truncate">{item.reason}</td>
+                </>
+              )}
+
+              {config.type === "preset" && config.presetId === "blast" && (
+                <>
+                  <td className="px-6 py-3">
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold
+                      ${item.riskLevel === 'CRITICAL' ? 'bg-red-100 text-red-800' :
+                        item.riskLevel === 'HIGH' ? 'bg-orange-100 text-orange-800' :
+                        item.riskLevel === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                        'bg-green-100 text-green-800'}`}>
+                      {item.riskLevel}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3 font-mono text-center">{item.score}</td>
+                </>
+              )}
+
+              {config.type === "query" && (
+                <td className="px-6 py-3 text-sm">
+                  <span className="text-gray-800 block truncate max-w-xl">{item.reason}</span>
+                  {item.details && <span className="text-xs text-gray-500 font-mono mt-0.5 block truncate max-w-xl">{item.details}</span>}
+                </td>
+              )}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
 function WidgetDetailsModal({ config, items, onClose }: { config: WidgetConfig, items: any[], onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
@@ -256,104 +455,8 @@ function WidgetDetailsModal({ config, items, onClose }: { config: WidgetConfig, 
           </div>
         </div>
 
-        <div className="p-0 overflow-y-auto bg-gray-50 flex-1">
-          {items.length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
-              <i className="ph-fill ph-check-circle text-4xl text-green-500 mb-3 block opacity-80"></i>
-              No data matches this query or preset.
-            </div>
-          ) : (
-            <table className="w-full text-left text-sm whitespace-nowrap bg-white">
-              <thead className="bg-gray-50 border-b border-gh-border sticky top-0 z-10 shadow-sm">
-                <tr>
-                  <th className="px-6 py-3 font-semibold text-gh-muted w-16">#</th>
-                  <th className="px-6 py-3 font-semibold text-gh-muted">Entity</th>
-                  
-                  {config.type === "preset" && config.presetId === "dependabot" && (
-                    <>
-                      <th className="px-6 py-3 font-semibold text-gh-muted text-center text-red-600">Critical</th>
-                      <th className="px-6 py-3 font-semibold text-gh-muted text-center text-orange-500">High</th>
-                      <th className="px-6 py-3 font-semibold text-gh-muted text-center text-yellow-600">Medium</th>
-                      <th className="px-6 py-3 font-semibold text-gh-muted text-center text-gray-500">Low</th>
-                      <th className="px-6 py-3 font-semibold text-gh-muted text-center">Total</th>
-                    </>
-                  )}
-                  {config.type === "preset" && config.presetId === "bypasses" && (
-                    <>
-                      <th className="px-6 py-3 font-semibold text-gh-muted">Bypasses</th>
-                      <th className="px-6 py-3 font-semibold text-gh-muted w-full">Reason</th>
-                    </>
-                  )}
-                  {config.type === "preset" && config.presetId === "blast" && (
-                    <>
-                      <th className="px-6 py-3 font-semibold text-gh-muted">Risk Level</th>
-                      <th className="px-6 py-3 font-semibold text-gh-muted text-center">Score</th>
-                    </>
-                  )}
-                  {config.type === "query" && (
-                    <th className="px-6 py-3 font-semibold text-gh-muted w-full">Details</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {items.map((item: any, idx: number) => {
-                  const name = item.repo || item.user || item.team || "Unknown";
-                  const entityType = item.repo ? "REPO" : item.user ? "USER" : item.team ? "TEAM" : "UNKNOWN";
-                  
-                  return (
-                    <tr key={idx} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-3 font-mono text-gh-muted text-xs">{idx + 1}</td>
-                      <td className="px-6 py-3 font-bold text-gh-textBase flex items-center gap-2">
-                        {name}
-                        {config.type === "query" && (
-                          <span className="text-[9px] font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{entityType}</span>
-                        )}
-                      </td>
-
-                      {config.type === "preset" && config.presetId === "dependabot" && (
-                        <>
-                          <td className="px-6 py-3 text-center font-mono font-medium text-red-600">{item.critical || '-'}</td>
-                          <td className="px-6 py-3 text-center font-mono font-medium text-orange-500">{item.high || '-'}</td>
-                          <td className="px-6 py-3 text-center font-mono font-medium text-yellow-600">{item.medium || '-'}</td>
-                          <td className="px-6 py-3 text-center font-mono font-medium text-gray-500">{item.low || '-'}</td>
-                          <td className="px-6 py-3 text-center font-mono font-bold bg-gray-50/50">{item.total}</td>
-                        </>
-                      )}
-                      
-                      {config.type === "preset" && config.presetId === "bypasses" && (
-                        <>
-                          <td className="px-6 py-3 font-mono font-bold text-red-600">{item.bypasses}</td>
-                          <td className="px-6 py-3 text-sm text-gh-muted truncate">{item.reason}</td>
-                        </>
-                      )}
-
-                      {config.type === "preset" && config.presetId === "blast" && (
-                        <>
-                          <td className="px-6 py-3">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold
-                              ${item.riskLevel === 'CRITICAL' ? 'bg-red-100 text-red-800' :
-                                item.riskLevel === 'HIGH' ? 'bg-orange-100 text-orange-800' :
-                                item.riskLevel === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                                'bg-green-100 text-green-800'}`}>
-                              {item.riskLevel}
-                            </span>
-                          </td>
-                          <td className="px-6 py-3 font-mono text-center">{item.score}</td>
-                        </>
-                      )}
-
-                      {config.type === "query" && (
-                        <td className="px-6 py-3 text-sm">
-                          <span className="text-gray-800 block truncate max-w-xl">{item.reason}</span>
-                          {item.details && <span className="text-xs text-gray-500 font-mono mt-0.5 block truncate max-w-xl">{item.details}</span>}
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
+        <div className="p-0 overflow-y-auto bg-gray-50 flex-1 relative">
+          <WidgetDataTable config={config} items={items} />
         </div>
       </div>
     </div>
