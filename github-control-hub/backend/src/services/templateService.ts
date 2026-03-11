@@ -3,6 +3,7 @@ import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { logActivity } from "./activityService";
 import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand } from "../utils/dynamo";
+import { buildRulesetRules } from "./branchService";
 
 /** Extract a readable message from a GitHub API error (Octokit). */
 function githubErrorMessage(err: unknown): string {
@@ -20,18 +21,37 @@ export interface BranchRule {
   protection: {
     type: "classic" | "ruleset";
     rulesetName?: string;
+    enforcement?: "active" | "evaluate" | "disabled";
+
+    restrictCreations?: boolean;
+    restrictUpdates?: boolean;
+
     requirePr: boolean;
     requiredApprovals: number;
     dismissStaleReviews: boolean;
     requireCodeOwnerReviews: boolean;
+    requireLastPushApproval?: boolean;
     requireConversationResolution: boolean;
+    allowedMergeMethods?: string[];
+
     requireStatusChecks: boolean;
     strictStatusChecks: boolean;
+    doNotRequireStatusChecksOnCreation?: boolean;
+    statusCheckContexts?: string[];
+
+    requireDeployments?: boolean;
+    requiredDeploymentEnvironments?: string[];
+
     requireSignedCommits: boolean;
     requireLinearHistory: boolean;
     enforceAdmins: boolean;
     preventForcePush: boolean;
     preventDeletion: boolean;
+
+    requireCodeScanning?: boolean;
+    codeScanningTool?: string;
+    codeScanningAlertsThreshold?: string;
+    codeScanningSecurityAlertsThreshold?: string;
   } | null;
 }
 
@@ -279,36 +299,7 @@ export async function applyTemplate(
 
   for (const { branchNames, protection } of rulesetGroups.values()) {
     try {
-      const rules: any[] = [];
-      if (protection.preventDeletion) rules.push({ type: "deletion" });
-      if (protection.preventForcePush) rules.push({ type: "non_fast_forward" });
-      if (protection.requireLinearHistory) rules.push({ type: "required_linear_history" });
-      if (protection.requireSignedCommits) rules.push({ type: "required_signatures" });
-      
-      if (protection.requirePr) {
-        rules.push({
-          type: "pull_request",
-          parameters: {
-            required_approving_review_count: protection.requiredApprovals,
-            dismiss_stale_reviews_on_push: protection.dismissStaleReviews,
-            require_code_owner_review: protection.requireCodeOwnerReviews,
-            require_last_push_approval: false,
-            required_review_thread_resolution: protection.requireConversationResolution,
-          },
-        });
-      }
-      
-      if (protection.requireStatusChecks) {
-        rules.push({
-          type: "required_status_checks",
-          parameters: {
-            strict_required_status_checks_policy: protection.strictStatusChecks,
-            required_status_checks: [
-              { context: "build" } // GitHub API requires at least one context for rulesets
-            ],
-          },
-        });
-      }
+      const rules: any[] = buildRulesetRules(protection);
 
       if (rules.length === 0) {
         rules.push({ type: "pull_request", parameters: { required_approving_review_count: 0 } });
@@ -317,11 +308,11 @@ export async function applyTemplate(
       await octokit.rest.repos.createRepoRuleset({
         owner: org,
         repo,
-        name: `Template Ruleset (${branchNames.join(", ")})`,
+        name: protection.rulesetName || `Template Ruleset (${branchNames.join(", ")})`,
         target: "branch",
-        enforcement: "active",
+        enforcement: (protection.enforcement as any) || "active",
         bypass_actors: protection.enforceAdmins ? [] : [
-          { actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }, // 5 = repository admin role
+          { actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" },
         ],
         conditions: {
           ref_name: {

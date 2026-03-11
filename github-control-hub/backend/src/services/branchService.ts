@@ -1,6 +1,72 @@
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 
+type Protection = NonNullable<import("./templateService").BranchRule["protection"]>;
+
+export function buildRulesetRules(protection: Protection): any[] {
+  const rules: any[] = [];
+
+  if (protection.restrictCreations) rules.push({ type: "creation" });
+  if (protection.restrictUpdates) rules.push({ type: "update", parameters: { update_allows_fetch_and_merge: true } });
+  if (protection.preventDeletion) rules.push({ type: "deletion" });
+  if (protection.preventForcePush) rules.push({ type: "non_fast_forward" });
+  if (protection.requireLinearHistory) rules.push({ type: "required_linear_history" });
+  if (protection.requireSignedCommits) rules.push({ type: "required_signatures" });
+
+  if (protection.requirePr) {
+    const prParams: any = {
+      required_approving_review_count: protection.requiredApprovals,
+      dismiss_stale_reviews_on_push: protection.dismissStaleReviews,
+      require_code_owner_review: protection.requireCodeOwnerReviews,
+      require_last_push_approval: protection.requireLastPushApproval ?? false,
+      required_review_thread_resolution: protection.requireConversationResolution,
+    };
+    if (protection.allowedMergeMethods && protection.allowedMergeMethods.length > 0) {
+      prParams.allowed_merge_methods = protection.allowedMergeMethods;
+    }
+    rules.push({ type: "pull_request", parameters: prParams });
+  }
+
+  if (protection.requireStatusChecks) {
+    const contexts = (protection.statusCheckContexts && protection.statusCheckContexts.length > 0)
+      ? protection.statusCheckContexts.map(c => ({ context: c }))
+      : [{ context: "build" }];
+
+    rules.push({
+      type: "required_status_checks",
+      parameters: {
+        strict_required_status_checks_policy: protection.strictStatusChecks,
+        do_not_enforce_on_create: protection.doNotRequireStatusChecksOnCreation ?? false,
+        required_status_checks: contexts,
+      },
+    });
+  }
+
+  if (protection.requireDeployments && protection.requiredDeploymentEnvironments && protection.requiredDeploymentEnvironments.length > 0) {
+    rules.push({
+      type: "required_deployments",
+      parameters: {
+        required_deployment_environments: protection.requiredDeploymentEnvironments,
+      },
+    });
+  }
+
+  if (protection.requireCodeScanning) {
+    rules.push({
+      type: "required_code_scanning",
+      parameters: {
+        code_scanning_tools: [{
+          tool: protection.codeScanningTool || "CodeQL",
+          alerts_threshold: protection.codeScanningAlertsThreshold || "errors",
+          security_alerts_threshold: protection.codeScanningSecurityAlertsThreshold || "high_or_higher",
+        }],
+      },
+    });
+  }
+
+  return rules;
+}
+
 export interface BranchSummary {
   name: string;
   protected: boolean;
@@ -78,46 +144,17 @@ export async function protectBranch(
   const org = getOrg();
 
   if (protection.type === "ruleset") {
-    const rules: any[] = [];
-    if (protection.preventDeletion) rules.push({ type: "deletion" });
-    if (protection.preventForcePush) rules.push({ type: "non_fast_forward" });
-    if (protection.requireLinearHistory) rules.push({ type: "required_linear_history" });
-    if (protection.requireSignedCommits) rules.push({ type: "required_signatures" });
-    
-    if (protection.requirePr) {
-      rules.push({
-        type: "pull_request",
-        parameters: {
-          required_approving_review_count: protection.requiredApprovals,
-          dismiss_stale_reviews_on_push: protection.dismissStaleReviews,
-          require_code_owner_review: protection.requireCodeOwnerReviews,
-          require_last_push_approval: false,
-          required_review_thread_resolution: protection.requireConversationResolution,
-        },
-      });
-    }
-    
-    if (protection.requireStatusChecks) {
-      rules.push({
-        type: "required_status_checks",
-        parameters: {
-          strict_required_status_checks_policy: protection.strictStatusChecks,
-          required_status_checks: [
-            { context: "build" } // GitHub API requires at least one context for rulesets
-          ],
-        },
-      });
-    }
+    const rules: any[] = buildRulesetRules(protection);
 
     await octokit.rest.repos.createRepoRuleset({
       owner: org,
       repo,
       name: protection.rulesetName || `Ruleset for ${branch}`,
       target: "branch",
-      enforcement: "active",
+      enforcement: (protection.enforcement as any) || "active",
       bypass_actors: protection.enforceAdmins ? [] : [
         {
-          actor_id: 5, // RepositoryRole: 5 = admin (2=maintain, 4=write). 1 is OrganizationAdmin, not valid for RepositoryRole.
+          actor_id: 5,
           actor_type: "RepositoryRole",
           bypass_mode: "always"
         }

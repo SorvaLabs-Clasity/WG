@@ -23,18 +23,31 @@ const EMPTY_RULE: BranchRule & { inputVal: string } = {
 
 const DEFAULT_PROTECTION: NonNullable<BranchRule["protection"]> = {
   type: "classic",
+  enforcement: "active",
+  restrictCreations: false,
+  restrictUpdates: false,
   requirePr: true,
   requiredApprovals: 1,
   dismissStaleReviews: true,
   requireCodeOwnerReviews: false,
+  requireLastPushApproval: false,
   requireConversationResolution: false,
+  allowedMergeMethods: [],
   requireStatusChecks: true,
   strictStatusChecks: true,
+  doNotRequireStatusChecksOnCreation: false,
+  statusCheckContexts: [],
+  requireDeployments: false,
+  requiredDeploymentEnvironments: [],
   requireSignedCommits: false,
   requireLinearHistory: false,
   enforceAdmins: true,
   preventForcePush: true,
   preventDeletion: true,
+  requireCodeScanning: false,
+  codeScanningTool: "CodeQL",
+  codeScanningAlertsThreshold: "errors",
+  codeScanningSecurityAlertsThreshold: "high_or_higher",
 };
 
 export default function TemplatesPage() {
@@ -634,12 +647,20 @@ export default function TemplatesPage() {
                                 <div className="pt-3 mt-2 border-t border-dashed border-gray-200 grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-3">
                                   {[
                                     { field: 'requireCodeOwnerReviews', label: 'Require Code Owner review', desc: 'If code owner is specified' },
+                                    { field: 'requireLastPushApproval', label: 'Require last push approval', desc: 'Most recent push must be approved by another person' },
                                     { field: 'requireConversationResolution', label: 'Require conversation resolution', desc: 'All comments must be resolved' },
                                     { field: 'requireStatusChecks', label: 'Require status checks', desc: 'Checks must pass' },
                                     { field: 'strictStatusChecks', label: 'Require up to date branch', desc: 'Before merging' },
                                     { field: 'requireSignedCommits', label: 'Require signed commits', desc: 'All commits must be signed' },
                                     { field: 'requireLinearHistory', label: 'Require linear history', desc: 'Prevent merge commits' },
                                     { field: 'enforceAdmins', label: 'Enforce for admins', desc: 'Rules apply to admins too' },
+                                    ...(rule.protection?.type === 'ruleset' ? [
+                                      { field: 'restrictCreations', label: 'Restrict creations', desc: 'Only bypass users can create matching refs' },
+                                      { field: 'restrictUpdates', label: 'Restrict updates', desc: 'Only bypass users can update matching refs' },
+                                      { field: 'doNotRequireStatusChecksOnCreation', label: 'Skip status checks on creation', desc: 'Allow branch creation without checks' },
+                                      { field: 'requireDeployments', label: 'Require deployments to succeed', desc: 'Deployment envs must succeed' },
+                                      { field: 'requireCodeScanning', label: 'Require code scanning results', desc: 'CodeQL or other tool results required' },
+                                    ] : []),
                                   ].map(({ field, label, desc }) => (
                                     <label key={field} className="flex items-start gap-2 cursor-pointer group/chk">
                                       <div className="flex items-center h-5">
