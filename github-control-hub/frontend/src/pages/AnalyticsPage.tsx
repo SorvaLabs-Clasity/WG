@@ -575,21 +575,6 @@ function AddWidgetModal({ onClose, onSave }: { onClose: () => void, onSave: (con
     }
   };
 
-  // Auto-generate title if empty
-  useEffect(() => {
-    if (title === "") {
-      if (type === "preset") {
-        if (presetId === "dependabot") setTitle("Dependabot Issues");
-        if (presetId === "bypasses") setTitle("Protection Rule Bypasses");
-        if (presetId === "blast") setTitle("Blast Radius Risk");
-      } else if (selectedQuery) {
-        let t = selectedQuery.label.replace("...", "");
-        if (paramValue) t += ` (${paramValue})`;
-        setTitle(t);
-      }
-    }
-  }, [type, presetId, selectedQueryId, paramValue]);
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
