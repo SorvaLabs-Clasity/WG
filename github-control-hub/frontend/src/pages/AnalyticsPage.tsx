@@ -332,6 +332,8 @@ function WidgetDetailsInline({ config }: { config: WidgetConfig }) {
 }
 
 function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[] }) {
+  const [expandedItemIdx, setExpandedItemIdx] = useState<number | null>(null);
+
   if (items.length === 0) {
     return (
       <div className="p-12 text-center text-gray-500">
@@ -378,56 +380,85 @@ function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[]
         {items.map((item: any, idx: number) => {
           const name = item.repo || item.user || item.team || "Unknown";
           const entityType = item.repo ? "REPO" : item.user ? "USER" : item.team ? "TEAM" : "UNKNOWN";
+          const isExpanded = expandedItemIdx === idx;
           
           return (
-            <tr key={idx} className="hover:bg-gray-50 transition-colors">
-              <td className="px-6 py-3 font-mono text-gh-muted text-xs">{idx + 1}</td>
-              <td className="px-6 py-3 font-bold text-gh-textBase flex items-center gap-2">
-                {name}
-                {config.type === "query" && (
-                  <span className="text-[9px] font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{entityType}</span>
-                )}
-              </td>
-
-              {config.type === "preset" && config.presetId === "dependabot" && (
-                <>
-                  <td className="px-6 py-3 text-center font-mono font-medium text-red-600">{item.critical || '-'}</td>
-                  <td className="px-6 py-3 text-center font-mono font-medium text-orange-500">{item.high || '-'}</td>
-                  <td className="px-6 py-3 text-center font-mono font-medium text-yellow-600">{item.medium || '-'}</td>
-                  <td className="px-6 py-3 text-center font-mono font-medium text-gray-500">{item.low || '-'}</td>
-                  <td className="px-6 py-3 text-center font-mono font-bold bg-gray-50/50">{item.total}</td>
-                </>
-              )}
-              
-              {config.type === "preset" && config.presetId === "bypasses" && (
-                <>
-                  <td className="px-6 py-3 font-mono font-bold text-red-600">{item.bypasses}</td>
-                  <td className="px-6 py-3 text-sm text-gh-muted truncate">{item.reason}</td>
-                </>
-              )}
-
-              {config.type === "preset" && config.presetId === "blast" && (
-                <>
-                  <td className="px-6 py-3">
-                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold
-                      ${item.riskLevel === 'CRITICAL' ? 'bg-red-100 text-red-800' :
-                        item.riskLevel === 'HIGH' ? 'bg-orange-100 text-orange-800' :
-                        item.riskLevel === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-green-100 text-green-800'}`}>
-                      {item.riskLevel}
-                    </span>
-                  </td>
-                  <td className="px-6 py-3 font-mono text-center">{item.score}</td>
-                </>
-              )}
-
-              {config.type === "query" && (
-                <td className="px-6 py-3 text-sm">
-                  <span className="text-gray-800 block truncate max-w-xl">{item.reason}</span>
-                  {item.details && <span className="text-xs text-gray-500 font-mono mt-0.5 block truncate max-w-xl">{item.details}</span>}
+            <React.Fragment key={idx}>
+              <tr 
+                className={`hover:bg-gray-50 transition-colors cursor-pointer ${isExpanded ? 'bg-blue-50/30' : ''}`}
+                onClick={() => setExpandedItemIdx(isExpanded ? null : idx)}
+              >
+                <td className="px-6 py-3 font-mono text-gh-muted text-xs">{idx + 1}</td>
+                <td className="px-6 py-3 font-bold text-gh-textBase flex items-center gap-2">
+                  {name}
+                  {config.type === "query" && (
+                    <span className="text-[9px] font-mono bg-gray-100 px-1.5 py-0.5 rounded text-gray-500">{entityType}</span>
+                  )}
+                  <i className={`ph-bold ph-caret-${isExpanded ? 'up' : 'down'} text-gray-400 ml-auto mr-2 text-xs`}></i>
                 </td>
+
+                {config.type === "preset" && config.presetId === "dependabot" && (
+                  <>
+                    <td className="px-6 py-3 text-center font-mono font-medium text-red-600">{item.critical || '-'}</td>
+                    <td className="px-6 py-3 text-center font-mono font-medium text-orange-500">{item.high || '-'}</td>
+                    <td className="px-6 py-3 text-center font-mono font-medium text-yellow-600">{item.medium || '-'}</td>
+                    <td className="px-6 py-3 text-center font-mono font-medium text-gray-500">{item.low || '-'}</td>
+                    <td className="px-6 py-3 text-center font-mono font-bold bg-gray-50/50">{item.total}</td>
+                  </>
+                )}
+                
+                {config.type === "preset" && config.presetId === "bypasses" && (
+                  <>
+                    <td className="px-6 py-3 font-mono font-bold text-red-600">{item.bypasses}</td>
+                    <td className="px-6 py-3 text-sm text-gh-muted truncate">{item.reason}</td>
+                  </>
+                )}
+
+                {config.type === "preset" && config.presetId === "blast" && (
+                  <>
+                    <td className="px-6 py-3">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-bold
+                        ${item.riskLevel === 'CRITICAL' ? 'bg-red-100 text-red-800' :
+                          item.riskLevel === 'HIGH' ? 'bg-orange-100 text-orange-800' :
+                          item.riskLevel === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-green-100 text-green-800'}`}>
+                        {item.riskLevel}
+                      </span>
+                    </td>
+                    <td className="px-6 py-3 font-mono text-center">{item.score}</td>
+                  </>
+                )}
+
+                {config.type === "query" && (
+                  <td className="px-6 py-3 text-sm">
+                    <span className="text-gray-800 block truncate max-w-xl">{item.reason}</span>
+                    {item.details && <span className="text-xs text-gray-500 font-mono mt-0.5 block truncate max-w-xl">{item.details}</span>}
+                  </td>
+                )}
+              </tr>
+              {isExpanded && (
+                <tr className="bg-gray-50/50 border-b border-gray-100">
+                  <td colSpan={10} className="px-6 py-4">
+                    <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm relative">
+                      <h4 className="font-semibold text-gray-900 mb-3 border-b border-gray-100 pb-2 flex items-center gap-2">
+                        <i className="ph-fill ph-info text-gh-blue"></i>
+                        Raw Detail Attributes
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {Object.entries(item).filter(([k]) => !['repo', 'user', 'team'].includes(k)).map(([k, v], i) => (
+                          <div key={i} className="flex flex-col">
+                            <span className="text-xs text-gray-500 font-mono mb-1">{k}</span>
+                            <span className="text-sm font-semibold text-gray-800 break-words bg-gray-50 px-2 py-1.5 rounded border border-gray-100">
+                              {typeof v === 'object' ? JSON.stringify(v) : String(v)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
               )}
-            </tr>
+            </React.Fragment>
           );
         })}
       </tbody>
