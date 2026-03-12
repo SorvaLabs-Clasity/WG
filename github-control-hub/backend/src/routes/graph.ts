@@ -162,12 +162,17 @@ router.get("/blast-radius/ranking", async (req: Request, res: Response) => {
   try {
     let allEdges: any[] = [];
     if (usesDynamo()) {
-      const result = await docClient.send(
-        new ScanCommand({
-          TableName: tableName("GRAPH_EDGES_TABLE"),
-        })
-      );
-      allEdges = result.Items || [];
+      let lastKey: any = undefined;
+      do {
+        const result: any = await docClient.send(
+          new ScanCommand({
+            TableName: tableName("GRAPH_EDGES_TABLE"),
+            ExclusiveStartKey: lastKey,
+          })
+        );
+        allEdges.push(...(result.Items || []));
+        lastKey = result.LastEvaluatedKey;
+      } while (lastKey);
     } else {
       allEdges = loadLocalEdges();
     }

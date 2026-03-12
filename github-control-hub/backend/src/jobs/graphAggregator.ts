@@ -2,6 +2,7 @@ import "dotenv/config";
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { docClient, usesDynamo, tableName, PutCommand, BatchWriteCommand, ScanCommand, DeleteCommand } from "../utils/dynamo";
+import { refreshAll } from "../services/complianceCacheService";
 
 interface GraphEdge {
   pk: string;
@@ -10,7 +11,25 @@ interface GraphEdge {
   metadata?: any;
 }
 
+async function ensureSecrets() {
+  if (process.env.SYSTEM_GITHUB_TOKEN) return;
+  const secretId = process.env.SECRET_NAME;
+  if (!secretId) return;
+  try {
+    const { SecretsManagerClient, GetSecretValueCommand } = await import("@aws-sdk/client-secrets-manager");
+    const client = new SecretsManagerClient({});
+    const result = await client.send(new GetSecretValueCommand({ SecretId: secretId }));
+    if (result.SecretString) {
+      const secrets = JSON.parse(result.SecretString) as Record<string, string>;
+      if (secrets.SYSTEM_GITHUB_TOKEN) process.env.SYSTEM_GITHUB_TOKEN = secrets.SYSTEM_GITHUB_TOKEN;
+    }
+  } catch (err) {
+    console.error("[GraphAggregator] Failed to load secrets from Secrets Manager:", err);
+  }
+}
+
 export async function aggregateGraphData() {
+  await ensureSecrets();
   const token = process.env.SYSTEM_GITHUB_TOKEN;
   if (!token) {
     console.warn("SYSTEM_GITHUB_TOKEN not set, skipping graph aggregation.");
@@ -265,6 +284,14 @@ export async function aggregateGraphData() {
 
   } catch (error) {
     console.error(`[GraphAggregator] Fatal error during aggregation:`, error);
+  }
+
+  try {
+    console.log(`[GraphAggregator] Refreshing compliance cache for all repos...`);
+    const scores = await refreshAll(token);
+    console.log(`[GraphAggregator] Compliance cache refreshed for ${scores.length} repos.`);
+  } catch (err) {
+    console.error(`[GraphAggregator] Compliance cache refresh failed:`, err);
   }
 }
 

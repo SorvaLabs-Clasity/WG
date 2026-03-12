@@ -342,230 +342,279 @@ export default function TemplatesPage() {
     setBranchRules(updated);
   };
 
+  const protectionLabel = (rule: BranchRule) => {
+    if (!rule.protection) return null;
+    const p = rule.protection;
+    if (p.type === "ruleset_json") return "Custom JSON Ruleset";
+    const kind = p.type === "ruleset" ? "Ruleset" : "Classic";
+    const details: string[] = [];
+    if (p.requiredApprovals > 0) details.push(`${p.requiredApprovals} Approval${p.requiredApprovals !== 1 ? "s" : ""}`);
+    else if (p.requirePr) details.push("Require PR");
+    return details.length ? `${kind} · ${details.join(", ")}` : kind;
+  };
+
   return (
-    <div className="bg-gh-light text-gh-text antialiased min-h-screen flex flex-col relative pt-14">
+    <div className="bg-slate-50 text-slate-900 min-h-screen pt-14 antialiased">
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-      
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 pb-32 animate-fade-in">
-        
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gh-textBase tracking-tight">Repo Initialization & Automation</h1>
-            <p className="text-gh-muted text-sm mt-1">Manage repository templates and configure automation exclusions.</p>
+
+      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-10 pb-32">
+
+        {/* --- HEADER --- */}
+        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+          <div className="flex items-center gap-4">
+            <div className="bg-slate-900 text-white w-12 h-12 rounded-xl flex items-center justify-center shadow-lg">
+              <i className="fa-solid fa-layer-group text-xl"></i>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Templates & Automation</h1>
+              <p className="text-slate-500 text-sm font-medium mt-0.5">Manage initialization standards across your organization.</p>
+            </div>
           </div>
-          <div className="flex gap-2">
-            {activeTab === "templates" ? (
-              <button 
-                onClick={() => setCreateOpen(true)}
-                className="inline-flex items-center gap-2 bg-gh-blue hover:bg-gh-blueHover text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-all"
-              >
-                <i className="fa-solid fa-plus text-xs"></i>
-                New Template
-              </button>
-            ) : (
-              <button 
-                onClick={() => setCreateExclOpen(true)}
-                className="inline-flex items-center gap-2 bg-gh-blue hover:bg-gh-blueHover text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-all"
-              >
-                <i className="fa-solid fa-plus text-xs"></i>
-                New Exclusion List
-              </button>
-            )}
+          {activeTab === "templates" ? (
+            <button
+              onClick={() => setCreateOpen(true)}
+              className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 font-medium text-sm group"
+            >
+              <i className="fa-solid fa-plus text-xs group-hover:rotate-90 transition-transform"></i>
+              New Template
+            </button>
+          ) : (
+            <button
+              onClick={() => setCreateExclOpen(true)}
+              className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 font-medium text-sm"
+            >
+              <i className="fa-solid fa-ban text-xs"></i>
+              New Exclusion List
+            </button>
+          )}
+        </header>
+
+        {/* --- TABS --- */}
+        <div className="mb-8">
+          <div className="bg-white rounded-lg border border-slate-200 p-1 shadow-sm inline-flex items-center">
+            <button
+              onClick={() => setActiveTab("templates")}
+              className={`rounded-md px-4 py-2 flex items-center gap-2.5 text-sm font-medium transition-all ${activeTab === "templates" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"}`}
+            >
+              <i className="fa-solid fa-layer-group text-xs"></i>
+              Templates
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === "templates" ? "bg-slate-700 text-slate-100" : "bg-slate-100 text-slate-600"}`}>
+                {templates?.length ?? 0}
+              </span>
+            </button>
+            <button
+              onClick={() => setActiveTab("exclusions")}
+              className={`rounded-md px-4 py-2 flex items-center gap-2.5 text-sm font-medium transition-all ml-1 ${activeTab === "exclusions" ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"}`}
+            >
+              <i className="fa-solid fa-ban text-xs"></i>
+              Exclusion Lists
+              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${activeTab === "exclusions" ? "bg-slate-700 text-slate-100" : "bg-slate-100 text-slate-600"}`}>
+                {exclusions?.length ?? 0}
+              </span>
+            </button>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 border-b border-gh-border mb-6">
-          <button
-            onClick={() => setActiveTab("templates")}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
-              activeTab === "templates" 
-                ? "border-gh-blue text-gh-textBase" 
-                : "border-transparent text-gh-muted hover:text-gh-textBase"
-            }`}
-          >
-            <i className="fa-solid fa-layer-group mr-2"></i>Templates
-          </button>
-          <button
-            onClick={() => setActiveTab("exclusions")}
-            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
-              activeTab === "exclusions" 
-                ? "border-gh-blue text-gh-textBase" 
-                : "border-transparent text-gh-muted hover:text-gh-textBase"
-            }`}
-          >
-            <i className="fa-solid fa-ban mr-2"></i>Exclusion Lists
-          </button>
-        </div>
-
+        {/* --- TEMPLATES TAB --- */}
         {activeTab === "templates" && (
           <>
             {isLoading && (
-              <div className="flex justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gh-blue"></div>
+              <div className="flex justify-center py-16">
+                <div className="animate-spin rounded-full h-8 w-8 border-4 border-slate-300 border-t-slate-700"></div>
               </div>
             )}
 
             {error && (
-              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md mb-6">
-                <p className="text-red-700">Failed to load templates: {(error as Error).message}</p>
+              <div className="bg-rose-50 border border-rose-200 px-4 py-3 rounded-xl mb-6 text-sm text-rose-700 flex items-center gap-2">
+                <i className="fa-solid fa-triangle-exclamation"></i>
+                Failed to load templates: {(error as Error).message}
               </div>
             )}
 
-            {!isLoading && !error && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {templates?.map((tmpl) => (
-              <div key={tmpl.id} className="bg-white rounded-lg border border-gh-border p-0 hover:border-gh-blue hover:shadow-card transition-all group flex flex-col h-full">
-                <div className="p-5 border-b border-gh-border bg-gradient-to-r from-white to-gray-50/50 rounded-t-lg">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-base font-bold text-gh-textBase">{tmpl.name}</h3>
+            {!isLoading && !error && templates && templates.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-fade-in">
+                {templates.map((tmpl) => (
+                  <div key={tmpl.id} className="group bg-white rounded-2xl border border-slate-200 shadow-soft hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col h-full relative overflow-hidden">
+                    {/* Card Header */}
+                    <div className="px-5 py-5 border-b border-slate-100 bg-gradient-to-r from-white to-slate-50/50">
+                      <div className="flex items-center gap-2 mb-1">
+                        <h3 className="font-bold text-lg text-slate-800">{tmpl.name}</h3>
                         {tmpl.autoApplyOnNewRepo && (
-                          <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wide flex items-center gap-1">
-                            <i className="fa-solid fa-bolt"></i> Auto-Apply
+                          <span className="bg-blue-50 text-blue-700 border border-blue-200 text-[10px] uppercase font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                            <i className="fa-solid fa-bolt text-[9px]"></i> Auto-Apply
                           </span>
                         )}
                       </div>
-                      <p className="text-sm text-gh-muted mt-1 leading-relaxed">{tmpl.description || "No description provided."}</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button 
-                        onClick={() => handleEditClick(tmpl)}
-                        className="p-1.5 text-gh-muted hover:text-gh-blue hover:bg-blue-50 rounded transition-colors" 
-                        title="Edit Template"
-                      >
-                        <i className="fa-solid fa-pen"></i>
-                      </button>
-                      <button 
-                        onClick={() => setApplyOpen(tmpl.id)}
-                        className="p-1.5 text-gh-muted hover:text-gh-blue hover:bg-blue-50 rounded transition-colors" 
-                        title="Apply Template"
-                      >
-                        <i className="fa-solid fa-play"></i>
-                      </button>
-                      <button 
-                        onClick={() => handleDelete(tmpl.id, tmpl.name)}
-                        className="p-1.5 text-gh-muted hover:text-gh-red hover:bg-red-50 rounded transition-colors" 
-                        title="Delete Template"
-                      >
-                        <i className="fa-regular fa-trash-can"></i>
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                      <p className="text-xs text-slate-500 line-clamp-2">{tmpl.description || "No description provided."}</p>
 
-                <div className="p-5">
-                  <p className="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-3">Branches</p>
-                  <div className="space-y-2">
-                    {tmpl.branches.map((rule, idx) => (
-                      <div key={idx} className="flex items-center justify-between text-sm bg-gray-50 border border-gray-100 rounded px-3 py-2">
-                        <span className="font-mono font-medium text-gh-textBase" title={rule.branchNames.join(", ")}>
-                          <i className="fa-solid fa-code-branch text-gh-muted mr-2 text-xs"></i>
-                          {rule.branchNames.join(", ") || <span className="text-gray-400 italic">unnamed</span>}
-                        </span>
-                        {rule.protection ? (
-                          <span className="inline-flex items-center gap-1.5 bg-green-50 text-green-700 border border-green-200 px-2 py-0.5 rounded text-xs font-medium">
-                            <i className="fa-solid fa-shield-halved text-[10px]"></i> 
-                            {rule.protection.requiredApprovals} {rule.protection.requiredApprovals === 1 ? 'Approval' : 'Approvals'}
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 text-gh-muted border border-gh-border px-2 py-0.5 rounded text-xs">
-                            Unprotected
-                          </span>
+                      {/* Hover-reveal action buttons */}
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute top-4 right-4 bg-white/80 backdrop-blur-sm p-1 rounded-lg border border-slate-100 shadow-sm">
+                        <button onClick={() => handleEditClick(tmpl)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors" title="Edit"><i className="fa-solid fa-pencil text-xs"></i></button>
+                        <button onClick={() => setApplyOpen(tmpl.id)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors" title="Apply"><i className="fa-solid fa-play text-[10px]"></i></button>
+                        <button onClick={() => handleDelete(tmpl.id, tmpl.name)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors" title="Delete"><i className="fa-solid fa-trash text-xs"></i></button>
+                      </div>
+                    </div>
+
+                    {/* Card Body */}
+                    <div className="p-5 flex-grow">
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Branch Rules</div>
+                      <div className="space-y-2">
+                        {tmpl.branches.map((rule, idx) => (
+                          <div key={idx} className={`bg-slate-50 rounded-lg px-3 py-2 border border-slate-100 flex items-center justify-between ${!rule.protection ? "opacity-75" : ""}`}>
+                            <div className="flex items-center gap-3 min-w-0">
+                              <i className="fa-solid fa-code-branch text-slate-400 text-xs flex-shrink-0"></i>
+                              <span className="font-mono text-xs text-slate-700 font-medium truncate">{rule.branchNames.join(", ") || "unnamed"}</span>
+                            </div>
+                            {rule.protection ? (
+                              <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] px-2 py-0.5 rounded-md font-semibold whitespace-nowrap ml-2">
+                                {protectionLabel(rule)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 border border-slate-200 text-[10px] px-2 py-0.5 rounded-md font-medium whitespace-nowrap bg-white ml-2">
+                                No Protection
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                        {tmpl.branches.length === 0 && (
+                          <div className="p-4 text-center border border-dashed border-slate-200 rounded-lg bg-slate-50/50">
+                            <p className="text-xs text-slate-400 italic">No branch rules configured.</p>
+                          </div>
                         )}
                       </div>
-                    ))}
-                    {tmpl.branches.length === 0 && (
-                      <p className="text-sm text-gh-muted italic">No branches defined.</p>
-                    )}
+                    </div>
+
+                    {/* Card Footer */}
+                    <div className="border-t border-slate-100 bg-slate-50/50 px-5 py-3 mt-auto">
+                      <span className="text-[11px] text-slate-400 font-medium">
+                        Created by <span className="text-slate-600">{tmpl.createdBy}</span> on {new Date(tmpl.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                
-                <div className="px-5 py-3 border-t border-gh-border bg-gray-50/50 rounded-b-lg mt-auto">
-                  <p className="text-xs text-gh-muted flex items-center gap-1">
-                    <i className="fa-regular fa-clock"></i> 
-                    Created by <strong className="font-medium text-gh-textBase">{tmpl.createdBy}</strong> on {new Date(tmpl.createdAt).toLocaleDateString()}
-                  </p>
+                ))}
+
+                {/* "Create New" placeholder card */}
+                <div
+                  onClick={() => setCreateOpen(true)}
+                  className="group border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center p-8 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer h-full min-h-[200px]"
+                >
+                  <div className="w-12 h-12 rounded-full bg-slate-100 group-hover:bg-white group-hover:shadow-md flex items-center justify-center mb-3 transition-all duration-300">
+                    <i className="fa-solid fa-plus text-slate-400 group-hover:text-slate-600"></i>
+                  </div>
+                  <span className="text-sm font-semibold text-slate-500 group-hover:text-slate-700">Create New Template</span>
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-        </>
+            )}
+
+            {!isLoading && !error && (!templates || templates.length === 0) && (
+              <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+                <div className="bg-slate-50 rounded-full h-32 w-32 flex items-center justify-center mb-6 shadow-inner">
+                  <i className="fa-solid fa-layer-group text-slate-200 text-5xl"></i>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">No Templates Yet</h2>
+                <p className="text-slate-500 mb-8 text-center max-w-sm">Create your first repository initialization template to automate your workflow standards.</p>
+                <button onClick={() => setCreateOpen(true)} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 font-medium">
+                  Create Template
+                </button>
+              </div>
+            )}
+          </>
         )}
 
+        {/* --- EXCLUSION LISTS TAB --- */}
         {activeTab === "exclusions" && (
-          <div className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {exclusions?.map(excl => {
-                const linkedTemplates = templates?.filter(t => t.exclusionLists?.includes(excl.id)) || [];
-                return (
-                  <div key={excl.id} className="bg-white rounded-lg border border-gh-border p-5 hover:border-gh-blue hover:shadow-card transition-all flex flex-col h-full">
-                    <div className="flex justify-between items-start mb-3">
-                      <div>
-                        <h3 className="text-base font-bold text-gh-textBase flex items-center gap-2">
-                          <i className="fa-solid fa-ban text-red-500"></i>
-                          {excl.name}
-                        </h3>
-                        <p className="text-sm text-gh-muted mt-1 leading-relaxed">{excl.description || "No description"}</p>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button 
-                          onClick={() => handleEditExclClick(excl)}
-                          className="p-1.5 text-gh-muted hover:text-gh-blue hover:bg-blue-50 rounded transition-colors" 
-                        >
-                          <i className="fa-solid fa-pen"></i>
-                        </button>
-                        <button 
-                          onClick={() => handleDeleteExcl(excl.id, excl.name)}
-                          className="p-1.5 text-gh-muted hover:text-gh-red hover:bg-red-50 rounded transition-colors" 
-                        >
-                          <i className="fa-regular fa-trash-can"></i>
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="mt-2 text-sm text-gh-textBase bg-gray-50 p-3 rounded-md border border-gray-200">
-                      <p className="font-semibold mb-2">Excluded Repositories ({excl.repos.length})</p>
-                      <div className="flex flex-wrap gap-2">
-                        {excl.repos.slice(0, 10).map(r => (
-                          <span key={r} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white border border-gray-200 text-xs">
-                            <i className="fa-solid fa-book-bookmark text-gray-400"></i> {r}
-                          </span>
-                        ))}
-                        {excl.repos.length > 10 && (
-                          <span className="text-xs text-gh-muted self-center">+{excl.repos.length - 10} more</span>
-                        )}
-                        {excl.repos.length === 0 && <span className="text-xs text-gh-muted italic">No repositories selected</span>}
-                      </div>
-                    </div>
+          <>
+            {exclusions && exclusions.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 animate-fade-in">
+                {exclusions.map(excl => {
+                  const linkedTemplates = templates?.filter(t => t.exclusionLists?.includes(excl.id)) || [];
+                  return (
+                    <div key={excl.id} className="group bg-white rounded-2xl border border-slate-200 shadow-soft hover:shadow-lg hover:-translate-y-1 transition-all duration-300 flex flex-col h-full relative overflow-hidden">
+                      {/* Header */}
+                      <div className="px-5 py-5 border-b border-slate-100 bg-gradient-to-r from-white to-rose-50/30">
+                        <div className="flex items-center gap-2 mb-1">
+                          <i className="fa-solid fa-ban text-rose-500 text-sm"></i>
+                          <h3 className="font-bold text-lg text-slate-800">{excl.name}</h3>
+                        </div>
+                        <p className="text-xs text-slate-500 line-clamp-2">{excl.description || "No description provided."}</p>
 
-                    <div className="mt-4 pt-3 border-t border-gh-border text-sm">
-                      <p className="font-semibold text-gh-textBase mb-1 text-xs uppercase tracking-wider text-gh-muted">Linked Templates</p>
-                      {linkedTemplates.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {linkedTemplates.map(t => (
-                            <span key={t.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium">
-                              <i className="fa-solid fa-layer-group text-[9px]"></i> {t.name}
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute top-4 right-4 bg-white/80 backdrop-blur-sm p-1 rounded-lg border border-slate-100 shadow-sm">
+                          <button onClick={() => handleEditExclClick(excl)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition-colors"><i className="fa-solid fa-pencil text-xs"></i></button>
+                          <button onClick={() => handleDeleteExcl(excl.id, excl.name)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><i className="fa-solid fa-trash text-xs"></i></button>
+                        </div>
+                      </div>
+
+                      {/* Body */}
+                      <div className="p-5 flex-grow">
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">Excluded Repositories ({excl.repos.length})</div>
+                        <div className="flex flex-wrap gap-2 mb-4">
+                          {excl.repos.slice(0, 8).map(r => (
+                            <span key={r} className="px-2 py-1 bg-slate-100 text-[11px] text-slate-600 rounded-md border border-slate-200 font-mono flex items-center gap-1.5">
+                              <i className="fa-regular fa-bookmark text-slate-400 text-[10px]"></i> {r}
                             </span>
                           ))}
+                          {excl.repos.length > 8 && (
+                            <span className="px-2 py-1 bg-slate-50 text-[11px] text-slate-500 rounded-md border border-slate-200 font-mono">+{excl.repos.length - 8} more</span>
+                          )}
+                          {excl.repos.length === 0 && <span className="text-xs text-slate-400 italic">No repositories selected</span>}
                         </div>
-                      ) : (
-                        <p className="text-xs text-gh-muted italic">Not linked to any templates</p>
-                      )}
+
+                        <div className="border-t border-slate-100 my-3"></div>
+
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Linked Templates</div>
+                        {linkedTemplates.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {linkedTemplates.map(t => (
+                              <span key={t.id} className="bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium px-2 py-0.5 rounded-full">{t.name}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 italic">Not linked to any templates.</p>
+                        )}
+
+                        {(excl.forceOnNewTemplates || (excl.forceTemplateIds && excl.forceTemplateIds.length > 0)) && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {excl.forceOnNewTemplates && (
+                              <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                                <i className="fa-solid fa-lock text-[9px]"></i> Auto-forced on new templates
+                              </span>
+                            )}
+                            {excl.forceTemplateIds && excl.forceTemplateIds.length > 0 && !excl.forceOnNewTemplates && (
+                              <span className="bg-amber-50 text-amber-700 border border-amber-200 text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1">
+                                <i className="fa-solid fa-lock text-[9px]"></i> Forced on {excl.forceTemplateIds.length} template{excl.forceTemplateIds.length !== 1 ? "s" : ""}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
+                  );
+                })}
+
+                {/* "Create New" placeholder card */}
+                <div
+                  onClick={() => setCreateExclOpen(true)}
+                  className="group border-2 border-dashed border-slate-200 rounded-2xl flex flex-col items-center justify-center p-8 hover:border-slate-300 hover:bg-slate-50 transition-all cursor-pointer h-full min-h-[200px]"
+                >
+                  <div className="w-12 h-12 rounded-full bg-slate-100 group-hover:bg-white group-hover:shadow-md flex items-center justify-center mb-3 transition-all duration-300">
+                    <i className="fa-solid fa-ban text-slate-400 group-hover:text-slate-600"></i>
                   </div>
-                );
-              })}
-              {exclusions?.length === 0 && (
-                <div className="col-span-full py-12 text-center border-2 border-dashed border-gray-200 rounded-lg">
-                  <i className="fa-solid fa-ban text-gray-300 text-4xl mb-3"></i>
-                  <h3 className="text-lg font-medium text-gh-textBase mb-1">No Exclusion Lists</h3>
-                  <p className="text-sm text-gh-muted">Create exclusion lists to prevent templates from applying to specific repositories.</p>
+                  <span className="text-sm font-semibold text-slate-500 group-hover:text-slate-700">Create Exclusion List</span>
                 </div>
-              )}
-            </div>
-          </div>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 animate-fade-in">
+                <div className="bg-slate-50 rounded-full h-32 w-32 flex items-center justify-center mb-6 shadow-inner">
+                  <i className="fa-solid fa-ban text-slate-200 text-5xl"></i>
+                </div>
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">No Exclusion Lists</h2>
+                <p className="text-slate-500 mb-8 text-center max-w-sm">Create exclusion lists to prevent templates from applying to specific repositories.</p>
+                <button onClick={() => setCreateExclOpen(true)} className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 font-medium">
+                  Create Exclusion List
+                </button>
+              </div>
+            )}
+          </>
         )}
       </main>
 

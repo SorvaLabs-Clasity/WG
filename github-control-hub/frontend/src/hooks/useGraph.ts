@@ -21,6 +21,7 @@ export function useBlastRadiusRanking() {
   return useQuery({
     queryKey: ["graph", "blast-radius-ranking"],
     queryFn: fetchBlastRadiusRanking,
+    staleTime: 300_000,
   });
 }
 
@@ -37,5 +38,6 @@ export function useSecurityQuery(q: string | null, param?: string, advanced?: an
     queryKey: ["graph", "security-query", q, param, advanced],
     queryFn: () => fetchSecurityQuery(q!, param, advanced),
     enabled: !!q,
+    staleTime: 300_000,
   });
 }

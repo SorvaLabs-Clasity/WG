@@ -5,6 +5,7 @@ export function useDependencies() {
   return useQuery({
     queryKey: ["dependencies"],
     queryFn: fetchDependencies,
+    staleTime: 120_000,
   });
 }
 
@@ -12,6 +13,7 @@ export function useDependencySummary() {
   return useQuery({
     queryKey: ["dependency-summary"],
     queryFn: fetchDependencySummary,
+    staleTime: 120_000,
   });
 }
 

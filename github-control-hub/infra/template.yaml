@@ -75,6 +75,7 @@ Resources:
                 - !GetAtt GraphEdgesTable.Arn
                 - !GetAtt ExclusionsTable.Arn
                 - !GetAtt WidgetsTable.Arn
+                - !GetAtt ComplianceCacheTable.Arn
       Environment:
         Variables:
           SECRET_NAME: !Ref SecretName
@@ -87,6 +88,7 @@ Resources:
           GRAPH_EDGES_TABLE: !Ref GraphEdgesTable
           EXCLUSIONS_TABLE: !Ref ExclusionsTable
           WIDGETS_TABLE: !Ref WidgetsTable
+          COMPLIANCE_CACHE_TABLE: !Ref ComplianceCacheTable
       Events:
         ProxyRoot:
           Type: Api
@@ -224,6 +226,18 @@ Resources:
           AttributeType: S
       KeySchema:
         - AttributeName: id
+          KeyType: HASH
+
+  ComplianceCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-compliance-cache"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: repo
+          AttributeType: S
+      KeySchema:
+        - AttributeName: repo
           KeyType: HASH
 
   # --- S3 Bucket for Frontend ---
@@ -391,11 +405,16 @@ Resources:
                 - dynamodb:Query
                 - dynamodb:Scan
                 - dynamodb:DeleteItem
-              Resource: !GetAtt GraphEdgesTable.Arn
+              Resource:
+                - !GetAtt GraphEdgesTable.Arn
+                - !GetAtt ComplianceCacheTable.Arn
+                - !GetAtt OrgConfigTable.Arn
       Environment:
         Variables:
           SECRET_NAME: !Ref SecretName
           GRAPH_EDGES_TABLE: !Ref GraphEdgesTable
+          COMPLIANCE_CACHE_TABLE: !Ref ComplianceCacheTable
+          ORG_CONFIG_TABLE: !Ref OrgConfigTable
       Events:
         AggregateSchedule:
           Type: Schedule

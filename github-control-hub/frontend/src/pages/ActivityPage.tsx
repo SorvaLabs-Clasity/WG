@@ -134,6 +134,12 @@ function canRetry(entry: Activity): boolean {
   return false;
 }
 
+function hasUnresolvedHold(entry: Activity): boolean {
+  if (entry.action === "conflict.pending" && !entry.conflictResolution && !entry.undone) return true;
+  if (entry.children) return entry.children.some(c => hasUnresolvedHold(c));
+  return false;
+}
+
 function allChildrenUndone(entry: Activity): boolean {
   if (!entry.children || entry.children.length === 0) return entry.undone === true;
   return entry.children.every(c => allChildrenUndone(c));
@@ -300,12 +306,16 @@ export default function ActivityPage() {
 
     const rows: React.ReactElement[] = [];
 
+    const isHold = entry.action === "conflict.pending" && !entry.conflictResolution && !entry.undone;
+    const containsHold = !isHold && hasUnresolvedHold(entry);
+    const showHoldHighlight = isHold || (containsHold && !isExpanded);
+
     const isHighlighted = highlightedId === entry.id;
     rows.push(
       <tr
         key={entry.id}
         data-activity-id={entry.id}
-        className={`transition-all group cursor-pointer hover:bg-gray-50 ${dimmed ? 'opacity-50' : ''} ${isFailedEntry ? 'bg-red-50/40' : ''} ${isHighlighted ? 'ring-2 ring-inset ring-gh-blue bg-blue-50/60 animate-pulse-once' : ''}`}
+        className={`transition-all group cursor-pointer hover:bg-gray-50 ${dimmed ? 'opacity-50' : ''} ${isFailedEntry ? 'bg-red-50/40' : ''} ${isHighlighted ? 'ring-2 ring-inset ring-gh-blue bg-blue-50/60 animate-pulse-once' : ''} ${showHoldHighlight ? 'bg-amber-50/70 border-l-2 !border-l-amber-400' : ''}`}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('[data-expand-btn]')) return;
           setSelectedEvent(entry);
@@ -350,6 +360,11 @@ export default function ActivityPage() {
                 {failedCount > 0 && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 text-red-600 border border-red-200 font-medium">
                     {failedCount} failed
+                  </span>
+                )}
+                {containsHold && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 border border-amber-200 font-semibold animate-pulse">
+                    <i className="fa-solid fa-pause text-[8px] mr-0.5"></i> Has Hold
                   </span>
                 )}
               </div>

@@ -116,6 +116,8 @@ async function evaluateRule(
       return evaluateOutsideCollaborators(octokit, org, repo, rule);
     case "query":
       return evaluateQueryRule(rule, repo, userToken);
+    case "codeowners":
+      return evaluateCodeowners(octokit, org, repo, rule);
     default:
       return { passed: true };
   }
@@ -342,4 +344,49 @@ async function evaluateQueryRule(
   } catch {
     return { passed: true, detail: "Could not evaluate query" };
   }
+}
+
+const CODEOWNERS_PATHS = ["CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"];
+
+async function evaluateCodeowners(
+  octokit: Octokit,
+  org: string,
+  repo: string,
+  rule: ComplianceRule
+): Promise<RuleEvalResult> {
+  let content: string | null = null;
+  let foundPath: string | null = null;
+
+  for (const p of CODEOWNERS_PATHS) {
+    try {
+      const { data } = await octokit.rest.repos.getContent({ owner: org, repo, path: p });
+      if ("content" in data && data.content) {
+        content = Buffer.from(data.content, "base64").toString("utf-8");
+        foundPath = p;
+        break;
+      }
+    } catch { /* try next location */ }
+  }
+
+  if (!content) {
+    return { passed: false, detail: "CODEOWNERS file not found" };
+  }
+
+  const requiredEntries = rule.codeownersRequireEntries || [];
+  if (requiredEntries.length === 0) {
+    return { passed: true, detail: `Found at ${foundPath}` };
+  }
+
+  const lines = content.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+  const missing: string[] = [];
+
+  for (const entry of requiredEntries) {
+    const found = lines.some(line => line.includes(entry));
+    if (!found) missing.push(entry);
+  }
+
+  if (missing.length > 0) {
+    return { passed: false, detail: `CODEOWNERS missing entries: ${missing.join(", ")}` };
+  }
+  return { passed: true, detail: `Found at ${foundPath} with all required entries` };
 }

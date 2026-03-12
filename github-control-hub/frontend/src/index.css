@@ -128,3 +128,19 @@ body {
 body.modal-open {
   overflow: hidden;
 }
+
+/* Compliance gauge */
+.gauge-ring {
+  position: relative;
+  border-radius: 50%;
+  background: conic-gradient(var(--gauge-color) var(--gauge-pct), #f1f5f9 0);
+  transition: background 0.8s ease-out;
+}
+.gauge-ring::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  background: white;
+  border-radius: 50%;
+}
+.gauge-ring-lg::before { inset: 10px; }

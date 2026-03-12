@@ -5,7 +5,7 @@ export interface ComplianceRule {
   name: string;
   enabled: boolean;
   weight: number;
-  type: "branch_protection" | "rulesets" | "required_files" | "outside_collaborators" | "query";
+  type: "branch_protection" | "rulesets" | "required_files" | "outside_collaborators" | "query" | "codeowners";
   branchName?: string;
   protectionType?: "any" | "classic" | "ruleset";
   rules?: {
@@ -27,6 +27,7 @@ export interface ComplianceRule {
   queryId?: string;
   queryParam?: string;
   queryAdvanced?: Record<string, unknown>;
+  codeownersRequireEntries?: string[];
 }
 
 export interface ComplianceConfig {

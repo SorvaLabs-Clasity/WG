@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
-import { calculateRepoCompliance } from "../services/complianceService";
 import { createOctokit, getOrg } from "../github/client";
 import { getComplianceConfig, updateComplianceConfig } from "../services/complianceConfigService";
+import { getCachedScores, refreshAll, refreshRepo } from "../services/complianceCacheService";
 
 const router = Router();
 
@@ -29,29 +29,46 @@ router.put("/config", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/dashboard", async (req: Request, res: Response) => {
+router.get("/dashboard", async (_req: Request, res: Response) => {
+  try {
+    const scores = await getCachedScores();
+    res.json(scores);
+  } catch (error: any) {
+    console.error("Error fetching cached compliance scores:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/dashboard/refresh", async (req: Request, res: Response) => {
   try {
     const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
-
-    const octokit = createOctokit(token);
-    const org = getOrg();
-
-    const { data: repos } = await octokit.rest.repos.listForOrg({
-      org,
-      sort: "updated",
-      per_page: 20,
-    });
-
-    const scores = await Promise.all(
-      repos.map((r: any) => calculateRepoCompliance(octokit, r.name, token))
-    );
-
+    const scores = await refreshAll(token);
     res.json(scores);
   } catch (error: any) {
-    console.error("Error generating compliance dashboard:", error);
+    if (error?.status === 403 && /rate limit/i.test(error?.message || "")) {
+      return res.status(429).json({ error: "GitHub API rate limit exceeded. Please try again later." });
+    }
+    console.error("Error refreshing compliance dashboard:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/dashboard/refresh/:repo", async (req: Request, res: Response) => {
+  try {
+    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    if (!token) {
+      return res.status(401).json({ error: "No GitHub token provided" });
+    }
+    const score = await refreshRepo(token, req.params.repo as string);
+    res.json(score);
+  } catch (error: any) {
+    if (error?.status === 403 && /rate limit/i.test(error?.message || "")) {
+      return res.status(429).json({ error: "GitHub API rate limit exceeded. Please try again later." });
+    }
+    console.error(`Error refreshing compliance for ${req.params.repo}:`, error);
     res.status(500).json({ error: error.message });
   }
 });

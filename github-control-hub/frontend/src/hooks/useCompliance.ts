@@ -1,12 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchComplianceDashboard, fetchComplianceConfig, saveComplianceConfig } from "../api/compliance";
+import { fetchComplianceDashboard, fetchComplianceConfig, saveComplianceConfig, refreshComplianceDashboard } from "../api/compliance";
 import type { ComplianceConfig } from "../types/Compliance";
 
 export function useComplianceDashboard() {
   return useQuery({
     queryKey: ["compliance-dashboard"],
     queryFn: fetchComplianceDashboard,
-    refetchInterval: 30000,
+    staleTime: 120_000,
   });
 }
 
@@ -14,6 +14,16 @@ export function useComplianceConfig() {
   return useQuery({
     queryKey: ["compliance-config"],
     queryFn: fetchComplianceConfig,
+  });
+}
+
+export function useRefreshCompliance() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: refreshComplianceDashboard,
+    onSuccess: (data) => {
+      qc.setQueryData(["compliance-dashboard"], data);
+    },
   });
 }
 

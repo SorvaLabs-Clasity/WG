@@ -48,6 +48,10 @@ router.get("/dependencies", async (req: Request, res: Response) => {
         });
         allAlerts = data.map((a: any) => mapAlert(a, a.repository?.name || "unknown", org));
       } catch (err: any) {
+        if (err.status === 403 && /rate limit/i.test(err?.message || "")) {
+          const reset = err?.response?.headers?.["x-ratelimit-reset"];
+          return res.status(429).json({ error: "GitHub API rate limit exceeded. Please wait a few minutes and try again.", resetAt: reset ? new Date(Number(reset) * 1000).toISOString() : undefined });
+        }
         if (err.status !== 403 && err.status !== 404) {
           throw err;
         }
@@ -81,6 +85,10 @@ router.get("/dependencies", async (req: Request, res: Response) => {
 
     res.json(allAlerts);
   } catch (error: any) {
+    if (error?.status === 403 && /rate limit/i.test(error?.message || "")) {
+      const reset = error?.response?.headers?.["x-ratelimit-reset"];
+      return res.status(429).json({ error: "GitHub API rate limit exceeded. Please wait a few minutes and try again.", resetAt: reset ? new Date(Number(reset) * 1000).toISOString() : undefined });
+    }
     console.error("Error fetching dependencies:", error);
     res.status(500).json({ error: error.message });
   }

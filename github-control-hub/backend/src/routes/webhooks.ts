@@ -7,6 +7,7 @@ import { createAlert, autoResolveAlerts } from "../services/alertService";
 import { logActivity } from "../services/activityService";
 import { listTemplates, applyTemplate } from "../services/templateService";
 import { listExclusions, getExclusion } from "../services/exclusionService";
+import { refreshRepo } from "../services/complianceCacheService";
 
 const router = Router();
 
@@ -221,6 +222,20 @@ router.post("/github", async (req: Request, res: Response) => {
   }
 
   res.status(202).send("Accepted");
+
+  const shouldRefreshCompliance =
+    event === "branch_protection_rule" ||
+    event === "repository_ruleset" ||
+    event === "member" ||
+    (event === "repository" && payload.action === "created") ||
+    (event === "push" && payload.ref === `refs/heads/${payload.repository?.default_branch}`);
+
+  if (repoName && SYSTEM_GITHUB_TOKEN && shouldRefreshCompliance) {
+    console.log(`[Webhook] Refreshing compliance cache for ${repoName}`);
+    refreshRepo(SYSTEM_GITHUB_TOKEN, repoName).catch((err) =>
+      console.error(`[Webhook] Compliance refresh failed for ${repoName}:`, (err as Error).message)
+    );
+  }
 
   // Background compliance scans (setTimeout is best-effort on Lambda)
   if (repoName) {

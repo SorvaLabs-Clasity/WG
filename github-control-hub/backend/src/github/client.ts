@@ -1,7 +1,14 @@
 import { Octokit } from "octokit";
 
 export function createOctokit(token: string): Octokit {
-  return new Octokit({ auth: token });
+  return new Octokit({
+    auth: token,
+    retry: { enabled: true, retries: 1 },
+    throttle: {
+      onRateLimit: () => false,
+      onSecondaryRateLimit: () => false,
+    },
+  });
 }
 
 export function getOrg(): string {

@@ -18,18 +18,25 @@ function loadLocalEdges() {
   return localEdges;
 }
 
-export async function evaluateSecurityQuery(q: string, param?: string, advanced?: any, userToken?: string) {
-  let allEdges: any[] = [];
-  if (usesDynamo()) {
-    const result = await docClient.send(
+async function scanAllEdges(): Promise<any[]> {
+  if (!usesDynamo()) return loadLocalEdges();
+  const items: any[] = [];
+  let lastKey: any = undefined;
+  do {
+    const result: any = await docClient.send(
       new ScanCommand({
         TableName: tableName("GRAPH_EDGES_TABLE"),
+        ExclusiveStartKey: lastKey,
       })
     );
-    allEdges = result.Items || [];
-  } else {
-    allEdges = loadLocalEdges();
-  }
+    items.push(...(result.Items || []));
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
+  return items;
+}
+
+export async function evaluateSecurityQuery(q: string, param?: string, advanced?: any, userToken?: string) {
+  const allEdges = await scanAllEdges();
 
   const results: any[] = [];
 
