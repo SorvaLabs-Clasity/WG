@@ -120,25 +120,32 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       }
       break;
       
-    case "repos-missing-branch":
+    case "repos-missing-branch": {
       if (!param) throw new Error("Missing 'param' for branch name");
-      const reposWithBranch = new Set();
-      const allReposForBranch = new Set();
+      const branchNames = param.split(",").map(b => b.trim()).filter(Boolean);
+      const allReposForBranch = new Set<string>();
+      const repoBranches = new Map<string, Set<string>>();
       for (const edge of allEdges) {
-        if (edge.pk.startsWith("REPO#")) allReposForBranch.add(edge.pk);
-        if (edge.type === "has_branch" && edge.sk === `BRANCH#${param}`) {
-          reposWithBranch.add(edge.pk);
+        if (edge.pk.startsWith("REPO#")) {
+          allReposForBranch.add(edge.pk);
+          if (edge.type === "has_branch") {
+            if (!repoBranches.has(edge.pk)) repoBranches.set(edge.pk, new Set());
+            repoBranches.get(edge.pk)!.add(edge.sk.replace("BRANCH#", ""));
+          }
         }
       }
       for (const repo of allReposForBranch) {
-        if (!reposWithBranch.has(repo)) {
+        const hasBranches = repoBranches.get(repo) || new Set();
+        const missing = branchNames.filter(b => !hasBranches.has(b));
+        if (missing.length > 0) {
           results.push({
             repo: (repo as string).replace("REPO#", ""),
-            reason: `Missing branch: ${param}`
+            reason: `Missing branch${missing.length > 1 ? "es" : ""}: ${missing.join(", ")}`
           });
         }
       }
       break;
+    }
 
     case "repos-with-unprotected-branch":
       if (!param) throw new Error("Missing 'param' for branch name");
@@ -152,33 +159,87 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       }
       break;
 
-    case "repos-with-branch":
+    case "repos-with-branch": {
       if (!param) throw new Error("Missing 'param' for branch name");
+      const wantedBranches = param.split(",").map(b => b.trim()).filter(Boolean);
+      const repoFoundBranches = new Map<string, Set<string>>();
       for (const edge of allEdges) {
-        if (edge.type === "has_branch" && edge.sk === `BRANCH#${param}`) {
+        if (edge.type === "has_branch") {
+          const bName = edge.sk.replace("BRANCH#", "");
+          if (wantedBranches.includes(bName)) {
+            if (!repoFoundBranches.has(edge.pk)) repoFoundBranches.set(edge.pk, new Set());
+            repoFoundBranches.get(edge.pk)!.add(bName);
+          }
+        }
+      }
+      for (const [repoPk, found] of repoFoundBranches) {
+        if (found.size === wantedBranches.length) {
           results.push({
-            repo: edge.pk.replace("REPO#", ""),
-            reason: `Has branch: ${param}`
+            repo: repoPk.replace("REPO#", ""),
+            reason: `Has branch${wantedBranches.length > 1 ? "es" : ""}: ${wantedBranches.join(", ")}`
           });
         }
       }
       break;
+    }
 
     case "repos-with-branch-rules": {
       if (!param) throw new Error("Missing 'param' for branch name");
-      const reqProtType = advanced?.protectionType as string || "any";
-      const requirePr = advanced?.requirePr === true || advanced?.requirePr === "true";
-      const requireStatusChecks = advanced?.requireStatusChecks === true || advanced?.requireStatusChecks === "true";
-      const enforceAdmins = advanced?.enforceAdmins === true || advanced?.enforceAdmins === "true";
+      const targetBranches = param.split(",").map(b => b.trim()).filter(Boolean);
+      const toBool = (v: unknown) => v === true || v === "true";
+      const reqProtType = (advanced?.protectionType as string) || "any";
+      const reqMatchMode = (advanced?.ruleMatchType as string) || "at_least";
+      const protTypeLabel = reqProtType === "classic" ? "Classic protection" : reqProtType === "ruleset" ? "Repository ruleset" : "Any protection";
 
-      const reposToCheck = [];
+      const wantRules = {
+        requirePr: toBool(advanced?.requirePr),
+        minApprovals: Number(advanced?.minApprovals) || 0,
+        dismissStaleReviews: toBool(advanced?.dismissStaleReviews),
+        requireCodeOwnerReviews: toBool(advanced?.requireCodeOwnerReviews),
+        requireConversationResolution: toBool(advanced?.requireConversationResolution),
+        requireStatusChecks: toBool(advanced?.requireStatusChecks),
+        strictStatusChecks: toBool(advanced?.strictStatusChecks),
+        requireSignedCommits: toBool(advanced?.requireSignedCommits),
+        requireLinearHistory: toBool(advanced?.requireLinearHistory),
+        enforceAdmins: toBool(advanced?.enforceAdmins),
+        preventForcePush: toBool(advanced?.preventForcePush),
+        preventDeletion: toBool(advanced?.preventDeletion),
+      };
+
+      const allRepoNames = new Set<string>();
+      const repoHasBranch = new Map<string, Set<string>>();
       for (const edge of allEdges) {
-        if (edge.type === "has_branch" && edge.sk === `BRANCH#${param}`) {
-           reposToCheck.push(edge.pk.replace("REPO#", ""));
+        if (edge.pk.startsWith("REPO#")) {
+          allRepoNames.add(edge.pk.replace("REPO#", ""));
+          if (edge.type === "has_branch") {
+            const bName = edge.sk.replace("BRANCH#", "");
+            if (targetBranches.includes(bName)) {
+              const repoName = edge.pk.replace("REPO#", "");
+              if (!repoHasBranch.has(repoName)) repoHasBranch.set(repoName, new Set());
+              repoHasBranch.get(repoName)!.add(bName);
+            }
+          }
         }
       }
 
-      // Live fetch to determine specific rules
+      for (const repo of allRepoNames) {
+        const hasBranches = repoHasBranch.get(repo) || new Set();
+        const missingBranches = targetBranches.filter(b => !hasBranches.has(b));
+        if (missingBranches.length > 0) {
+          results.push({
+            repo,
+            status: "fail",
+            reason: `Missing branch${missingBranches.length > 1 ? "es" : ""}: ${missingBranches.join(", ")}`,
+          });
+          continue;
+        }
+      }
+
+      const reposToCheck = Array.from(allRepoNames).filter(repo => {
+        const hasBranches = repoHasBranch.get(repo) || new Set();
+        return targetBranches.every(b => hasBranches.has(b));
+      });
+
       const token = userToken || process.env.SYSTEM_GITHUB_TOKEN;
       if (!token) throw new Error("Authentication required for live rule evaluation");
       const { Octokit } = await import("octokit");
@@ -187,73 +248,149 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       const org = getOrg();
 
       for (const repo of reposToCheck) {
-        let hasClassic = false;
-        let hasRuleset = false;
-        let prFound = false;
-        let statusChecksFound = false;
-        let adminsFound = false;
+        let allBranchesPass = true;
+        const branchSummaries: string[] = [];
+        const failureDetails: string[] = [];
 
-        try {
-          const { data: prot } = await octokit.rest.repos.getBranchProtection({ owner: org, repo, branch: param });
-          hasClassic = true;
-          if (prot.required_pull_request_reviews) prFound = true;
-          if (prot.required_status_checks) statusChecksFound = true;
-          if (prot.enforce_admins?.enabled) adminsFound = true;
-        } catch (e: any) {
-          // 404 means no classic protection
-        }
+        let repoRulesetsCache: any[] | null = null;
 
-        try {
-          const { data: rulesets } = await octokit.request("GET /repos/{owner}/{repo}/rulesets", { owner: org, repo });
-          for (const rs of rulesets) {
-            if (rs.target === "branch") {
-              const { data: rsDetails } = await octokit.request("GET /repos/{owner}/{repo}/rulesets/{ruleset_id}", {
-                owner: org, repo, ruleset_id: rs.id
-              });
-              
-              let applies = false;
-              const refs = rsDetails.conditions?.ref_name?.include || [];
-              if (refs.includes(`refs/heads/${param}`) || refs.some((r: string) => r.includes(param))) {
-                applies = true;
-              } else if (refs.includes("~DEFAULT_BRANCH") && param === "main") {
-                applies = true;
+        for (const branch of targetBranches) {
+          let hasClassic = false;
+          let hasRuleset = false;
+
+          const found = {
+            requirePr: false, minApprovals: 0, dismissStaleReviews: false,
+            requireCodeOwnerReviews: false, requireConversationResolution: false,
+            requireStatusChecks: false, strictStatusChecks: false,
+            requireSignedCommits: false, requireLinearHistory: false,
+            enforceAdmins: false, preventForcePush: false, preventDeletion: false,
+          };
+
+          try {
+            const { data: prot } = await octokit.rest.repos.getBranchProtection({ owner: org, repo, branch });
+            hasClassic = true;
+            if (prot.required_pull_request_reviews) {
+              found.requirePr = true;
+              found.minApprovals = Math.max(found.minApprovals, prot.required_pull_request_reviews.required_approving_review_count || 0);
+              if (prot.required_pull_request_reviews.dismiss_stale_reviews) found.dismissStaleReviews = true;
+              if (prot.required_pull_request_reviews.require_code_owner_reviews) found.requireCodeOwnerReviews = true;
+            }
+            if ((prot as any).required_conversation_resolution?.enabled) found.requireConversationResolution = true;
+            if (prot.required_status_checks) {
+              found.requireStatusChecks = true;
+              if (prot.required_status_checks.strict) found.strictStatusChecks = true;
+            }
+            if ((prot as any).required_signatures?.enabled) found.requireSignedCommits = true;
+            if ((prot as any).required_linear_history?.enabled) found.requireLinearHistory = true;
+            if (prot.enforce_admins?.enabled) found.enforceAdmins = true;
+            if ((prot as any).allow_force_pushes?.enabled === false || ((prot as any).allow_force_pushes === undefined)) found.preventForcePush = true;
+            if ((prot as any).allow_deletions?.enabled === false || ((prot as any).allow_deletions === undefined)) found.preventDeletion = true;
+          } catch { /* no classic protection */ }
+
+          try {
+            if (!repoRulesetsCache) {
+              const { data: rulesets } = await octokit.request("GET /repos/{owner}/{repo}/rulesets", { owner: org, repo });
+              repoRulesetsCache = [];
+              for (const rs of rulesets) {
+                if (rs.target === "branch") {
+                  const { data: rsDetails } = await octokit.request("GET /repos/{owner}/{repo}/rulesets/{ruleset_id}", { owner: org, repo, ruleset_id: rs.id });
+                  repoRulesetsCache.push(rsDetails);
+                }
               }
+            }
+            for (const rsDetails of repoRulesetsCache) {
+              const refs = rsDetails.conditions?.ref_name?.include || [];
+              const applies = refs.includes(`refs/heads/${branch}`) ||
+                refs.some((r: string) => r.includes(branch)) ||
+                (refs.includes("~DEFAULT_BRANCH") && branch === "main");
 
               if (applies) {
                 hasRuleset = true;
-                const rules = rsDetails.rules || [];
-                if (rules.some((r: any) => r.type === "pull_request")) prFound = true;
-                if (rules.some((r: any) => r.type === "required_status_checks")) statusChecksFound = true;
+                const rulesetRules = rsDetails.rules || [];
+                if (rulesetRules.some((r: any) => r.type === "pull_request")) {
+                  found.requirePr = true;
+                  const prRule = rulesetRules.find((r: any) => r.type === "pull_request");
+                  found.minApprovals = Math.max(found.minApprovals, prRule?.parameters?.required_approving_review_count || 0);
+                  if (prRule?.parameters?.dismiss_stale_reviews_on_push) found.dismissStaleReviews = true;
+                  if (prRule?.parameters?.require_code_owner_review) found.requireCodeOwnerReviews = true;
+                }
+                if (rulesetRules.some((r: any) => r.type === "required_status_checks")) found.requireStatusChecks = true;
+                if (rulesetRules.some((r: any) => r.type === "required_signatures")) found.requireSignedCommits = true;
+                if (rulesetRules.some((r: any) => r.type === "required_linear_history")) found.requireLinearHistory = true;
+                if (rulesetRules.some((r: any) => r.type === "non_fast_forward")) found.preventForcePush = true;
+                if (rulesetRules.some((r: any) => r.type === "deletion")) found.preventDeletion = true;
               }
             }
+          } catch { /* no rulesets */ }
+
+          let typeMatch = false;
+          let matchedType = "";
+          if (reqProtType === "classic" && hasClassic) { typeMatch = true; matchedType = "Classic"; }
+          if (reqProtType === "ruleset" && hasRuleset) { typeMatch = true; matchedType = "Ruleset"; }
+          if (reqProtType === "any" && (hasClassic || hasRuleset)) { typeMatch = true; matchedType = hasRuleset ? "Ruleset" : "Classic"; }
+
+          if (!typeMatch) {
+            allBranchesPass = false;
+            if (!hasClassic && !hasRuleset) {
+              failureDetails.push(`"${branch}": No protection rules found`);
+            } else {
+              failureDetails.push(`"${branch}": No ${protTypeLabel.toLowerCase()} found (has ${hasClassic ? "Classic" : ""}${hasClassic && hasRuleset ? " & " : ""}${hasRuleset ? "Ruleset" : ""} only)`);
+            }
+            continue;
           }
-        } catch (e) { }
 
-        let match = false;
-        let matchedType = "";
-        
-        if (reqProtType === "classic" && hasClassic) { match = true; matchedType = "Classic"; }
-        if (reqProtType === "ruleset" && hasRuleset) { match = true; matchedType = "Ruleset"; }
-        if (reqProtType === "any" && (hasClassic || hasRuleset)) { match = true; matchedType = hasRuleset ? "Ruleset" : "Classic"; }
+          if (reqMatchMode === "any") {
+            branchSummaries.push(`${branch}: ${matchedType}`);
+            continue;
+          }
 
-        if (match) {
-          if (requirePr && !prFound) match = false;
-          if (requireStatusChecks && !statusChecksFound) match = false;
-          if (enforceAdmins && !adminsFound && matchedType === "Classic") match = false;
+          const matched: string[] = [];
+          const missed: string[] = [];
+
+          const checkRule = (label: string, wanted: boolean, actual: boolean) => {
+            if (wanted) { if (actual) matched.push(label); else missed.push(label); }
+            else if (reqMatchMode === "exact" && actual) missed.push(`unexpected: ${label}`);
+          };
+
+          checkRule("PRs", wantRules.requirePr, found.requirePr);
+          checkRule("Dismiss stale reviews", wantRules.dismissStaleReviews, found.dismissStaleReviews);
+          checkRule("Code Owner reviews", wantRules.requireCodeOwnerReviews, found.requireCodeOwnerReviews);
+          checkRule("Conversation resolution", wantRules.requireConversationResolution, found.requireConversationResolution);
+          checkRule("Status checks", wantRules.requireStatusChecks, found.requireStatusChecks);
+          checkRule("Strict status checks", wantRules.strictStatusChecks, found.strictStatusChecks);
+          checkRule("Signed commits", wantRules.requireSignedCommits, found.requireSignedCommits);
+          checkRule("Linear history", wantRules.requireLinearHistory, found.requireLinearHistory);
+          checkRule("Enforce admins", wantRules.enforceAdmins, found.enforceAdmins);
+          checkRule("Prevent force push", wantRules.preventForcePush, found.preventForcePush);
+          checkRule("Prevent deletion", wantRules.preventDeletion, found.preventDeletion);
+
+          if (wantRules.minApprovals > 0 && found.minApprovals < wantRules.minApprovals) {
+            missed.push(`Min ${wantRules.minApprovals} approvals (found ${found.minApprovals})`);
+          } else if (wantRules.minApprovals > 0) {
+            matched.push(`${found.minApprovals} approvals`);
+          }
+
+          if (missed.length > 0) {
+            allBranchesPass = false;
+            failureDetails.push(`"${branch}": Missing rules — ${missed.join(", ")}`);
+          } else {
+            branchSummaries.push(`${branch}: ${matchedType}${matched.length ? ` (${matched.join(", ")})` : ""}`);
+          }
         }
 
-        if (match) {
-          const ruleReasons = [];
-          if (requirePr) ruleReasons.push("PRs");
-          if (requireStatusChecks) ruleReasons.push("Status Checks");
-          if (enforceAdmins) ruleReasons.push("Enforce Admins");
-
-          results.push({
-            repo,
-            reason: `Protected by ${matchedType} Rules${ruleReasons.length ? ` requiring: ${ruleReasons.join(", ")}` : ''}`
-          });
+        if (allBranchesPass) {
+          results.push({ repo, status: "pass", reason: branchSummaries.join(" | ") });
+        } else {
+          results.push({ repo, status: "fail", reason: failureDetails.join(" | ") });
         }
       }
+
+      results.sort((a, b) => {
+        if (a.status === "pass" && b.status !== "pass") return -1;
+        if (a.status !== "pass" && b.status === "pass") return 1;
+        return 0;
+      });
+
       break;
     }
 

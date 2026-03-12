@@ -3,6 +3,7 @@ import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { listBranches, getProtection, listRulesets, getAllProtections } from "./branchService";
 import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, QueryCommand, ScanCommand } from "../utils/dynamo";
+import { logActivity } from "./activityService";
 
 export interface ScannerCondition {
   type?: "branch_protection" | "query";
@@ -91,7 +92,7 @@ export async function getScanner(id: string): Promise<Scanner | undefined> {
   return memScanners.get(id);
 }
 
-export async function createScanner(data: Omit<Scanner, "id" | "createdAt" | "updatedAt">): Promise<Scanner> {
+export async function createScanner(data: Omit<Scanner, "id" | "createdAt" | "updatedAt">, actor?: string): Promise<Scanner> {
   const now = new Date().toISOString();
   const scanner: Scanner = {
     ...data,
@@ -111,10 +112,16 @@ export async function createScanner(data: Omit<Scanner, "id" | "createdAt" | "up
     memScanners.set(scanner.id, scanner);
   }
 
+  if (actor) {
+    await logActivity("scanner.create" as any, actor, "*", scanner.name, `Created scanner "${scanner.name}"`,
+      undefined, "app", undefined, undefined,
+      { undoPayload: { action: "delete_scanner", params: { scannerId: scanner.id, scannerData: scanner } } }
+    );
+  }
   return scanner;
 }
 
-export async function updateScanner(id: string, data: Partial<Omit<Scanner, "id" | "createdAt" | "updatedAt">>): Promise<Scanner | null> {
+export async function updateScanner(id: string, data: Partial<Omit<Scanner, "id" | "createdAt" | "updatedAt">>, actor?: string): Promise<Scanner | null> {
   const existing = await getScanner(id);
   if (!existing) return null;
 
@@ -137,19 +144,49 @@ export async function updateScanner(id: string, data: Partial<Omit<Scanner, "id"
     memScanners.set(id, updated);
   }
 
+  if (actor) {
+    await logActivity("scanner.update" as any, actor, "*", updated.name, `Updated scanner "${updated.name}"`,
+      undefined, "app", undefined, undefined,
+      { undoPayload: { action: "revert_scanner", params: { scannerId: id, previousState: existing, currentState: updated } } }
+    );
+  }
   return updated;
 }
 
-export async function deleteScanner(id: string): Promise<boolean> {
+export async function putScannerRaw(scanner: Scanner): Promise<void> {
   if (usesDynamo()) {
-    const existing = await getScanner(id);
-    if (!existing) return false;
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: { pk: "SCANNER", sk: scanner.id, ...scanner } }));
+  } else {
+    memScanners.set(scanner.id, scanner);
+  }
+}
+
+export async function deleteScannerRaw(id: string): Promise<void> {
+  if (usesDynamo()) {
+    await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { pk: "SCANNER", sk: id } }));
+  } else {
+    memScanners.delete(id);
+  }
+}
+
+export async function deleteScanner(id: string, actor?: string): Promise<boolean> {
+  const existing = await getScanner(id);
+  if (!existing) return false;
+  if (usesDynamo()) {
     await docClient.send(
       new DeleteCommand({ TableName: TABLE(), Key: { pk: "SCANNER", sk: id } })
     );
-    return true;
+  } else {
+    memScanners.delete(id);
   }
-  return memScanners.delete(id);
+
+  if (actor) {
+    await logActivity("scanner.delete" as any, actor, "*", existing.name, `Deleted scanner "${existing.name}"`,
+      undefined, "app", undefined, undefined,
+      { undoPayload: { action: "restore_scanner", params: { scannerData: existing } } }
+    );
+  }
+  return true;
 }
 
 export async function getScanResult(scannerId: string): Promise<ScanResult | undefined> {

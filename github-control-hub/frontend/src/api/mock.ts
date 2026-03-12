@@ -9,7 +9,7 @@ import type { DependencyAlert, DependencySummary } from "../types/Dependabot";
 
 export const DEMO_USER = {
   login: "demo-user",
-  avatarUrl: "https://i.pravatar.cc/150?u=demo",
+  avatarUrl: "",
 };
 
 const MOCK_REPOS: Repo[] = [
@@ -9071,6 +9071,7 @@ export async function mockCreateBranch(
     target: branchName,
     details: `Created from ${_baseBranch}`,
     timestamp: new Date().toISOString(),
+    undoPayload: { action: "delete_branch", params: { repo: _repo, branch: branchName } },
   });
   return { message: `Branch "${branchName}" created (demo)` };
 }
@@ -9087,9 +9088,30 @@ export async function mockDeleteBranch(
     actor: DEMO_USER.login,
     repo: _repo,
     target: branch,
+    details: `Deleted branch "${branch}"`,
     timestamp: new Date().toISOString(),
   });
   return { message: `Branch "${branch}" deleted (demo)` };
+}
+
+export async function mockRenameBranch(
+  _repo: string,
+  oldName: string,
+  newName: string
+): Promise<{ message: string }> {
+  await delay(500);
+  mockActivityLog.unshift({
+    id: crypto.randomUUID(),
+    source: "app",
+    action: "branch.rename",
+    actor: DEMO_USER.login,
+    repo: _repo,
+    target: oldName,
+    details: `Renamed to ${newName}`,
+    timestamp: new Date().toISOString(),
+    undoPayload: { action: "rename_branch", params: { repo: _repo, from: newName, to: oldName } },
+  });
+  return { message: `Branch "${oldName}" renamed to "${newName}" (demo)` };
 }
 
 export async function mockProtectBranch(
@@ -9108,6 +9130,7 @@ export async function mockProtectBranch(
     details: "Applied protection rules",
     diff: { protection: { old: null, new: protection } },
     timestamp: new Date().toISOString(),
+    undoPayload: { action: "delete_protection", params: { repo: _repo, branch } },
   });
   return { message: `Protection applied to "${branch}" (demo)` };
 }
@@ -9368,6 +9391,35 @@ const mockActivityLog: Activity[] = [
   },
 ];
 
+function buildActivityTree(flat: Activity[]): Activity[] {
+  const byId = new Map<string, Activity>();
+  for (const entry of flat) {
+    byId.set(entry.id, { ...entry, children: [] });
+  }
+
+  const roots: Activity[] = [];
+  for (const entry of flat) {
+    const node = byId.get(entry.id)!;
+    if (entry.parentId && byId.has(entry.parentId)) {
+      byId.get(entry.parentId)!.children!.push(node);
+    } else if (!entry.parentId) {
+      roots.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  for (const node of byId.values()) {
+    if (node.children && node.children.length === 0) {
+      delete node.children;
+    } else if (node.children) {
+      node.children.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    }
+  }
+
+  return roots;
+}
+
 export async function mockFetchActivity(
   limit = 50,
   offset = 0,
@@ -9375,12 +9427,341 @@ export async function mockFetchActivity(
 ): Promise<{ entries: Activity[]; total: number }> {
   await delay(300);
   const filtered = repo
-    ? mockActivityLog.filter((e) => e.repo === repo)
+    ? mockActivityLog.filter((e) => e.repo === repo || e.repo === "*")
     : mockActivityLog;
-  return {
-    entries: filtered.slice(offset, offset + limit),
-    total: filtered.length,
+
+  const topLevel = filtered.filter(e => !e.parentId);
+  const paginated = topLevel.slice(offset, offset + limit);
+
+  const neededIds = new Set<string>();
+  const collectIds = (entries: Activity[]) => {
+    for (const e of entries) {
+      neededIds.add(e.id);
+    }
   };
+  collectIds(paginated);
+
+  let prevSize = 0;
+  while (neededIds.size !== prevSize) {
+    prevSize = neededIds.size;
+    for (const e of filtered) {
+      if (e.parentId && neededIds.has(e.parentId)) {
+        neededIds.add(e.id);
+      }
+    }
+  }
+
+  const relevant = filtered.filter(e => neededIds.has(e.id));
+  let tree = buildActivityTree(relevant);
+
+  const nestedSigs = new Set<string>();
+  const addSigs = (entry: Activity) => {
+    const ts = Math.floor(new Date(entry.timestamp).getTime() / 60000);
+    nestedSigs.add(`${entry.repo}|${entry.target}|${ts}`);
+    nestedSigs.add(`${entry.repo}|${entry.target}|${ts - 1}`);
+    nestedSigs.add(`${entry.repo}|${entry.target}|${ts + 1}`);
+    if (entry.children) entry.children.forEach(addSigs);
+  };
+  for (const root of tree) {
+    if (root.children) root.children.forEach(addSigs);
+  }
+  tree = tree.filter(entry => {
+    if (entry.source !== "github") return true;
+    const sig = `${entry.repo}|${entry.target}|${Math.floor(new Date(entry.timestamp).getTime() / 60000)}`;
+    return !nestedSigs.has(sig);
+  });
+
+  return {
+    entries: tree,
+    total: tree.length,
+  };
+}
+
+export async function mockUndoActivity(activityId: string): Promise<{ undone: string[]; errors: string[] }> {
+  await delay(400);
+
+  const entry = mockActivityLog.find(e => e.id === activityId);
+  if (!entry) throw new Error("Activity entry not found");
+  if (entry.undone) throw new Error("This action has already been undone");
+
+  const undone: string[] = [];
+  const errors: string[] = [];
+
+  const children = mockActivityLog.filter(e => e.parentId === activityId && !e.undone);
+
+  for (const child of children) {
+    const grandchildren = mockActivityLog.filter(e => e.parentId === child.id && !e.undone);
+    for (const gc of grandchildren) {
+      try {
+        await executeUndo(gc);
+        gc.undone = true;
+        gc.undoneAt = new Date().toISOString();
+        undone.push(gc.id);
+      } catch (err) {
+        errors.push(`Failed to undo ${gc.action} on ${gc.target}: ${(err as Error).message}`);
+      }
+    }
+
+    try {
+      await executeUndo(child);
+      child.undone = true;
+      child.undoneAt = new Date().toISOString();
+      undone.push(child.id);
+    } catch (err) {
+      errors.push(`Failed to undo ${child.action} on ${child.target}: ${(err as Error).message}`);
+    }
+  }
+
+  if (entry.undoPayload) {
+    try {
+      await executeUndo(entry);
+    } catch (err) {
+      errors.push(`Failed to undo ${entry.action} on ${entry.target}: ${(err as Error).message}`);
+    }
+  }
+
+  entry.undone = true;
+  entry.undoneAt = new Date().toISOString();
+  undone.push(entry.id);
+
+  mockActivityLog.unshift({
+    id: crypto.randomUUID(),
+    source: "app",
+    action: "audit.event",
+    actor: DEMO_USER.login,
+    repo: entry.repo,
+    target: entry.target,
+    details: `Undone: ${entry.action} — "${entry.details || entry.target}"`,
+    timestamp: new Date().toISOString(),
+  });
+
+  return { undone, errors };
+}
+
+async function executeUndo(entry: Activity): Promise<void> {
+  if (!entry.undoPayload) return;
+
+  const { action, params } = entry.undoPayload;
+  switch (action) {
+    case "delete_branch":
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(), source: "app", action: "branch.delete",
+        actor: DEMO_USER.login, repo: params.repo, target: params.branch,
+        details: `Branch "${params.branch}" deleted (undo of creation)`,
+        timestamp: new Date().toISOString(),
+      });
+      break;
+    case "delete_protection":
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(), source: "app", action: "branch.unprotect",
+        actor: DEMO_USER.login, repo: params.repo, target: params.branch,
+        details: `Protection removed from "${params.branch}" (undo)`,
+        timestamp: new Date().toISOString(),
+      });
+      break;
+    case "delete_ruleset":
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(), source: "app", action: "repo.ruleset.delete",
+        actor: DEMO_USER.login, repo: params.repo, target: params.rulesetId || "Ruleset",
+        details: `Ruleset deleted (undo)`,
+        timestamp: new Date().toISOString(),
+      });
+      break;
+    case "rename_branch":
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(), source: "app", action: "branch.rename",
+        actor: DEMO_USER.login, repo: params.repo, target: params.from,
+        details: `Renamed back to "${params.to}" (undo)`,
+        timestamp: new Date().toISOString(),
+      });
+      break;
+    case "delete_template":
+      mockTemplateStore = mockTemplateStore.filter(t => t.id !== params.templateId);
+      break;
+    case "delete_exclusion":
+      mockExclusionStore = mockExclusionStore.filter(e => e.id !== params.exclusionId);
+      break;
+    case "recreate_branch":
+      break;
+    case "restore_protection":
+      break;
+    case "recreate_ruleset":
+      break;
+    case "revert_template":
+      if (params.previousState) {
+        const idx = mockTemplateStore.findIndex(t => t.id === params.templateId);
+        if (idx >= 0) mockTemplateStore[idx] = { ...params.previousState, updatedAt: new Date().toISOString() };
+      }
+      break;
+    case "restore_template":
+      if (params.templateData) {
+        mockTemplateStore.push(params.templateData);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+export async function mockRedoActivity(activityId: string): Promise<{ redone: string[]; errors: string[] }> {
+  await delay(400);
+
+  const entry = mockActivityLog.find(e => e.id === activityId);
+  if (!entry) throw new Error("Activity entry not found");
+  if (!entry.undone) throw new Error("This action has not been undone");
+
+  const redone: string[] = [];
+  const errors: string[] = [];
+
+  const children = mockActivityLog.filter(e => e.parentId === activityId).reverse();
+  for (const child of children) {
+    if (!child.undone) continue;
+
+    const grandchildren = mockActivityLog.filter(e => e.parentId === child.id).reverse();
+    for (const gc of grandchildren) {
+      if (!gc.undone) continue;
+      if (gc.undoPayload) {
+        try { await executeRedo(gc); gc.undone = false; delete (gc as any).undoneAt; redone.push(gc.id); } catch (err) {
+          errors.push(`Failed to redo ${gc.action} on ${gc.target}: ${(err as Error).message}`);
+        }
+      } else {
+        gc.undone = false; delete (gc as any).undoneAt; redone.push(gc.id);
+      }
+    }
+
+    if (child.undoPayload) {
+      try { await executeRedo(child); child.undone = false; delete (child as any).undoneAt; redone.push(child.id); } catch (err) {
+        errors.push(`Failed to redo ${child.action} on ${child.target}: ${(err as Error).message}`);
+      }
+    } else {
+      child.undone = false; delete (child as any).undoneAt; redone.push(child.id);
+    }
+  }
+
+  if (entry.undoPayload) {
+    try { await executeRedo(entry); entry.undone = false; delete (entry as any).undoneAt; redone.push(entry.id); } catch (err) {
+      errors.push(`Failed to redo ${entry.action} on ${entry.target}: ${(err as Error).message}`);
+    }
+  } else {
+    entry.undone = false; delete (entry as any).undoneAt; redone.push(entry.id);
+  }
+
+  mockActivityLog.unshift({
+    id: crypto.randomUUID(),
+    source: "app",
+    action: "audit.event",
+    actor: DEMO_USER.login,
+    repo: entry.repo,
+    target: entry.target,
+    details: `Redone: ${entry.action} — "${entry.details || entry.target}"`,
+    timestamp: new Date().toISOString(),
+  });
+
+  return { redone, errors };
+}
+
+async function executeRedo(entry: Activity): Promise<void> {
+  if (!entry.undoPayload) return;
+
+  const { action, params } = entry.undoPayload;
+  switch (action) {
+    case "delete_branch":
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(), source: "app", action: "branch.create",
+        actor: DEMO_USER.login, repo: params.repo, target: params.branch,
+        details: `Branch "${params.branch}" recreated (redo)`,
+        timestamp: new Date().toISOString(),
+      });
+      break;
+    case "delete_protection":
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(), source: "app", action: "branch.protect",
+        actor: DEMO_USER.login, repo: params.repo, target: params.branch,
+        details: `Protection re-applied to "${params.branch}" (redo)`,
+        timestamp: new Date().toISOString(),
+      });
+      break;
+    case "delete_ruleset":
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(), source: "app", action: "repo.ruleset.create",
+        actor: DEMO_USER.login, repo: params.repo, target: params.rulesetId || "Ruleset",
+        details: `Ruleset recreated (redo)`,
+        timestamp: new Date().toISOString(),
+      });
+      break;
+    case "rename_branch":
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(), source: "app", action: "branch.rename",
+        actor: DEMO_USER.login, repo: params.repo, target: params.to,
+        details: `Renamed from "${params.to}" to "${params.from}" (redo)`,
+        timestamp: new Date().toISOString(),
+      });
+      break;
+    case "recreate_branch":
+      break;
+    case "restore_protection":
+      break;
+    case "recreate_ruleset":
+      break;
+    case "revert_template":
+      if (params.currentState) {
+        const idx = mockTemplateStore.findIndex(t => t.id === params.templateId);
+        if (idx >= 0) mockTemplateStore[idx] = { ...params.currentState, updatedAt: new Date().toISOString() };
+      }
+      break;
+    case "restore_template":
+      if (params.templateData) {
+        mockTemplateStore = mockTemplateStore.filter(t => t.id !== params.templateData.id);
+      }
+      break;
+    case "delete_template":
+      if (params.templateData) {
+        mockTemplateStore.push(params.templateData);
+      }
+      break;
+    default:
+      break;
+  }
+}
+
+export async function mockRetryActivity(activityId: string): Promise<{ retried: string[]; errors: string[] }> {
+  await delay(500);
+
+  const entry = mockActivityLog.find(e => e.id === activityId);
+  if (!entry) throw new Error("Activity entry not found");
+
+  const retried: string[] = [];
+  const errors: string[] = [];
+
+  if (entry.failed && entry.retryPayload) {
+    entry.failed = false;
+    delete (entry as any).errorMessage;
+    delete (entry as any).retryPayload;
+    if (!entry.undoPayload) {
+      entry.undoPayload = { action: "delete_branch", params: { repo: entry.repo, branch: entry.target } };
+    }
+    retried.push(entry.id);
+  } else {
+    const children = mockActivityLog.filter(e => e.parentId === activityId).reverse();
+    for (const child of children) {
+      const grandchildren = mockActivityLog.filter(e => e.parentId === child.id).reverse();
+      for (const gc of grandchildren) {
+        if (!gc.failed || !gc.retryPayload) continue;
+        gc.failed = false;
+        delete (gc as any).errorMessage;
+        delete (gc as any).retryPayload;
+        retried.push(gc.id);
+      }
+      if (child.failed && child.retryPayload) {
+        child.failed = false;
+        delete (child as any).errorMessage;
+        delete (child as any).retryPayload;
+        retried.push(child.id);
+      }
+    }
+  }
+
+  return { retried, errors };
 }
 
 // ── Template mock data ───────────────────────────────────────────
@@ -9395,6 +9776,7 @@ let mockTemplateStore: RepoTemplate[] = [
         branchNames: ["main", "uat"],
         protection: {
           type: "ruleset",
+          rulesetName: "Standard Branch Protection",
           requirePr: true,
           requiredApprovals: 2,
           dismissStaleReviews: true,
@@ -9456,7 +9838,7 @@ export async function mockFetchTemplates(): Promise<RepoTemplate[]> {
 }
 
 export async function mockCreateTemplate(
-  data: { name: string; description: string; branches: BranchRule[]; autoApplyOnNewRepo: boolean }
+  data: { name: string; description: string; branches: BranchRule[]; autoApplyOnNewRepo: boolean; exclusionLists?: string[] }
 ): Promise<RepoTemplate> {
   await delay(500);
   const template: RepoTemplate = {
@@ -9476,13 +9858,14 @@ export async function mockCreateTemplate(
     target: template.name,
     details: `Created template "${template.name}"`,
     timestamp: new Date().toISOString(),
+    undoPayload: { action: "delete_template", params: { templateId: template.id } },
   });
   return template;
 }
 
 export async function mockUpdateTemplate(
   id: string,
-  data: Partial<{ name: string; description: string; branches: BranchRule[]; autoApplyOnNewRepo: boolean }>
+  data: Partial<{ name: string; description: string; branches: BranchRule[]; autoApplyOnNewRepo: boolean; exclusionLists?: string[] }>
 ): Promise<RepoTemplate> {
   await delay(400);
   const idx = mockTemplateStore.findIndex((t) => t.id === id);
@@ -9503,6 +9886,9 @@ export async function mockUpdateTemplate(
   }
   if (data.branches !== undefined && JSON.stringify(data.branches) !== JSON.stringify(existing.branches)) {
     diff.branches = { old: existing.branches, new: data.branches };
+  }
+  if (data.exclusionLists !== undefined && JSON.stringify(data.exclusionLists) !== JSON.stringify(existing.exclusionLists)) {
+    diff.exclusionLists = { old: existing.exclusionLists || [], new: data.exclusionLists };
   }
 
   mockActivityLog.unshift({
@@ -9541,51 +9927,313 @@ export async function mockDeleteTemplate(id: string): Promise<{ message: string 
 
 export async function mockApplyTemplate(
   _templateId: string,
-  repo: string
-): Promise<{ created: string[]; protected: string[]; errors: string[] }> {
+  repos: string[]
+): Promise<{ created: string[]; protected: string[]; errors: string[]; skipped?: string[] }> {
   await delay(800);
   const tmpl = mockTemplateStore.find((t) => t.id === _templateId);
   if (!tmpl) throw new Error("Template not found");
 
-  const created = tmpl.branches.map((b) => b.branchNames).flat();
-  
-  const rulesetGroups = new Map<number, string[]>();
+  const excludedRepos = new Set<string>();
+  if (tmpl.exclusionLists) {
+    for (const listId of tmpl.exclusionLists) {
+      const excl = mockExclusionStore.find(e => e.id === listId);
+      if (excl) {
+        excl.repos.forEach(r => excludedRepos.add(r));
+      }
+    }
+  }
+
+  const allBranches = tmpl.branches.map((b) => b.branchNames).flat();
+
+  const rulesetGroups = new Map<number, { names: string[]; rulesetName?: string }>();
   const classicProtected: string[] = [];
-  
+
   tmpl.branches.forEach((b, index) => {
     if (!b.protection) return;
-    
-    if (b.protection.type === 'ruleset') {
-      if (!rulesetGroups.has(index)) rulesetGroups.set(index, []);
-      rulesetGroups.get(index)!.push(...b.branchNames);
+    if (b.protection.type === 'ruleset' || b.protection.type === 'ruleset_json') {
+      if (!rulesetGroups.has(index)) rulesetGroups.set(index, { names: [], rulesetName: b.protection.rulesetName });
+      rulesetGroups.get(index)!.names.push(...b.branchNames);
     } else {
       classicProtected.push(...b.branchNames);
     }
   });
 
-  const protectedBranches = [...classicProtected, ...Array.from(rulesetGroups.values()).flat()];
-  
-  let detailsStr = `Applied template "${tmpl.name}" — created: [${created.join(", ")}]`;
-  if (classicProtected.length > 0) {
-    detailsStr += `, classic protection: [${classicProtected.join(", ")}]`;
+  const protectedBranches = [...classicProtected, ...Array.from(rulesetGroups.values()).flatMap(g => g.names)];
+
+  const merged = { created: [] as string[], protected: [] as string[], errors: [] as string[], skipped: [] as string[] };
+
+  const parentId = crypto.randomUUID();
+  const now = new Date();
+  const appliedRepos: string[] = [];
+
+  for (const repo of repos) {
+    if (excludedRepos.has(repo)) {
+      merged.skipped.push(repo);
+      continue;
+    }
+    appliedRepos.push(repo);
+
+    const repoEntryId = crypto.randomUUID();
+    const repoTs = new Date(now.getTime() - appliedRepos.length).toISOString();
+
+    mockActivityLog.unshift({
+      id: repoEntryId,
+      source: "app",
+      action: "template.apply.repo" as Activity["action"],
+      actor: DEMO_USER.login,
+      repo,
+      target: tmpl.name,
+      details: `Applied template "${tmpl.name}" to ${repo}`,
+      timestamp: repoTs,
+      parentId,
+    });
+
+    for (const branchName of allBranches) {
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(),
+        source: "app",
+        action: "branch.create",
+        actor: DEMO_USER.login,
+        repo,
+        target: branchName,
+        details: `Created branch "${branchName}" via template "${tmpl.name}"`,
+        timestamp: new Date(now.getTime() - appliedRepos.length - 1).toISOString(),
+        parentId: repoEntryId,
+        undoPayload: { action: "delete_branch", params: { repo, branch: branchName } },
+      });
+    }
+
+    for (const branchName of classicProtected) {
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(),
+        source: "app",
+        action: "branch.protect",
+        actor: DEMO_USER.login,
+        repo,
+        target: branchName,
+        details: `Applied classic protection to "${branchName}" via template "${tmpl.name}"`,
+        timestamp: new Date(now.getTime() - appliedRepos.length - 2).toISOString(),
+        parentId: repoEntryId,
+        undoPayload: { action: "delete_protection", params: { repo, branch: branchName } },
+      });
+    }
+
+    for (const [, group] of rulesetGroups) {
+      const rulesetId = `rs-${crypto.randomUUID().slice(0, 8)}`;
+      mockActivityLog.unshift({
+        id: crypto.randomUUID(),
+        source: "app",
+        action: "repo.ruleset.create" as Activity["action"],
+        actor: DEMO_USER.login,
+        repo,
+        target: group.rulesetName || "Ruleset",
+        details: `Created ruleset "${group.rulesetName || "Ruleset"}" for branches [${group.names.join(", ")}] via template "${tmpl.name}"`,
+        timestamp: new Date(now.getTime() - appliedRepos.length - 3).toISOString(),
+        parentId: repoEntryId,
+        undoPayload: { action: "delete_ruleset", params: { repo, rulesetId } },
+      });
+    }
+
+    merged.created.push(...allBranches.map(b => `${repo}:${b}`));
+    merged.protected.push(...protectedBranches.map(b => `${repo}:${b}`));
   }
-  if (rulesetGroups.size > 0) {
-    const bundles = Array.from(rulesetGroups.values()).map(g => `[${g.join(", ")}]`).join(", ");
-    detailsStr += `, ruleset bundles: ${bundles}`;
+
+  const parentDetails = appliedRepos.length === 1
+    ? `Applied template "${tmpl.name}" to ${appliedRepos[0]}`
+    : `Applied template "${tmpl.name}" to ${appliedRepos.length} repositories`;
+
+  mockActivityLog.unshift({
+    id: parentId,
+    source: "app",
+    action: "template.apply",
+    actor: DEMO_USER.login,
+    repo: appliedRepos.length === 1 ? appliedRepos[0] : "*",
+    target: tmpl.name,
+    details: parentDetails,
+    timestamp: now.toISOString(),
+  });
+
+  return merged;
+}
+
+let mockExclusionStore: import("../types/Template").ExclusionList[] = [
+  {
+    id: "excl-1",
+    name: "Core Infrastructure",
+    description: "Crucial infrastructure repositories that should not have automated templates applied.",
+    repos: ["infrastructure-as-code", "api-gateway"],
+    forceTemplateIds: [],
+    forceOnNewTemplates: false,
+    createdBy: DEMO_USER.login,
+    createdAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
+    updatedAt: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5).toISOString(),
   }
+];
+
+export async function mockFetchExclusions(): Promise<import("../types/Template").ExclusionList[]> {
+  await delay(300);
+  return [...mockExclusionStore].sort(
+    (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+  );
+}
+
+export async function mockCreateExclusion(
+  data: Omit<import("../types/Template").ExclusionList, "id" | "createdAt" | "updatedAt" | "createdBy">
+): Promise<import("../types/Template").ExclusionList> {
+  await delay(500);
+  const now = new Date().toISOString();
+  const exclusion: import("../types/Template").ExclusionList = {
+    ...data,
+    id: crypto.randomUUID(),
+    createdBy: DEMO_USER.login,
+    createdAt: now,
+    updatedAt: now,
+  };
+  mockExclusionStore.push(exclusion);
 
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
     source: "app",
-    action: "template.apply",
+    action: "exclusion.create" as any,
     actor: DEMO_USER.login,
-    repo,
-    target: tmpl.name,
-    details: detailsStr,
+    repo: "*",
+    target: exclusion.name,
+    details: `Created exclusion list "${exclusion.name}"`,
+    timestamp: now,
+    undoPayload: { action: "delete_exclusion", params: { exclusionId: exclusion.id } },
+  });
+
+  return exclusion;
+}
+
+export async function mockUpdateExclusion(
+  id: string,
+  data: Partial<Omit<import("../types/Template").ExclusionList, "id" | "createdAt" | "updatedAt">>
+): Promise<import("../types/Template").ExclusionList> {
+  await delay(500);
+  const idx = mockExclusionStore.findIndex((t) => t.id === id);
+  if (idx === -1) throw new Error("Exclusion list not found");
+
+  const old = mockExclusionStore[idx];
+  mockExclusionStore[idx] = {
+    ...old,
+    ...data,
+    updatedAt: new Date().toISOString(),
+  };
+
+  mockActivityLog.unshift({
+    id: crypto.randomUUID(),
+    source: "app",
+    action: "exclusion.update" as any,
+    actor: DEMO_USER.login,
+    repo: "*",
+    target: mockExclusionStore[idx].name,
+    details: `Updated exclusion list "${mockExclusionStore[idx].name}"`,
     timestamp: new Date().toISOString(),
   });
 
-  return { created, protected: protectedBranches, errors: [] };
+  return mockExclusionStore[idx];
+}
+
+export async function mockDeleteExclusion(id: string): Promise<{ message: string }> {
+  await delay(400);
+  const excl = mockExclusionStore.find((t) => t.id === id);
+  mockExclusionStore = mockExclusionStore.filter((t) => t.id !== id);
+  if (excl) {
+    mockActivityLog.unshift({
+      id: crypto.randomUUID(),
+      source: "app",
+      action: "exclusion.delete" as any,
+      actor: DEMO_USER.login,
+      repo: "*",
+      target: excl.name,
+      details: `Deleted exclusion list "${excl.name}"`,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  return { message: "Exclusion list deleted" };
+}
+
+// ── Widget Mock Store ──
+
+interface MockWidgetConfig {
+  id: string;
+  title: string;
+  type: "preset" | "query";
+  presetId?: string;
+  queryId?: string;
+  queryParam?: string;
+  queryAdvanced?: any;
+  displayType: "metric" | "table";
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+let mockWidgetStore: MockWidgetConfig[] = [
+  { id: "w1", title: "Protection Rule Bypasses", type: "preset", presetId: "bypasses", displayType: "table", createdBy: DEMO_USER.login, createdAt: new Date(Date.now() - 86400000 * 5).toISOString(), updatedAt: new Date(Date.now() - 86400000 * 5).toISOString() },
+  { id: "w2", title: "Dependabot Issues", type: "preset", presetId: "dependabot", displayType: "table", createdBy: DEMO_USER.login, createdAt: new Date(Date.now() - 86400000 * 4).toISOString(), updatedAt: new Date(Date.now() - 86400000 * 4).toISOString() },
+  { id: "w3", title: "Repos missing main branch", type: "query", queryId: "repos-missing-branch", queryParam: "main", displayType: "metric", createdBy: DEMO_USER.login, createdAt: new Date(Date.now() - 86400000 * 3).toISOString(), updatedAt: new Date(Date.now() - 86400000 * 3).toISOString() },
+  { id: "w4", title: "Blast Radius Risk", type: "preset", presetId: "blast", displayType: "table", createdBy: DEMO_USER.login, createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), updatedAt: new Date(Date.now() - 86400000 * 2).toISOString() },
+];
+
+export async function mockFetchWidgets(): Promise<MockWidgetConfig[]> {
+  await delay(300);
+  return [...mockWidgetStore].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+
+export async function mockCreateWidget(data: Omit<MockWidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">): Promise<MockWidgetConfig> {
+  await delay(500);
+  const now = new Date().toISOString();
+  const widget: MockWidgetConfig = {
+    ...data,
+    id: crypto.randomUUID(),
+    createdBy: DEMO_USER.login,
+    createdAt: now,
+    updatedAt: now,
+  };
+  mockWidgetStore.push(widget);
+  mockActivityLog.unshift({
+    id: crypto.randomUUID(), source: "app", action: "widget.create",
+    actor: DEMO_USER.login, repo: "*", target: widget.title,
+    details: `Created analytics widget "${widget.title}"`,
+    timestamp: now,
+    undoPayload: { action: "delete_widget", params: { widgetId: widget.id, widgetData: widget } },
+  });
+  return widget;
+}
+
+export async function mockUpdateWidget(id: string, data: Partial<Omit<MockWidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">>): Promise<MockWidgetConfig> {
+  await delay(400);
+  const idx = mockWidgetStore.findIndex(w => w.id === id);
+  if (idx < 0) throw new Error("Widget not found");
+  const existing = { ...mockWidgetStore[idx] };
+  const now = new Date().toISOString();
+  const updated = { ...existing, ...data, updatedAt: now };
+  mockWidgetStore[idx] = updated;
+  mockActivityLog.unshift({
+    id: crypto.randomUUID(), source: "app", action: "widget.update",
+    actor: DEMO_USER.login, repo: "*", target: updated.title,
+    details: `Updated analytics widget "${updated.title}"`,
+    timestamp: now,
+    undoPayload: { action: "revert_widget", params: { widgetId: id, previousState: existing, currentState: updated } },
+  });
+  return updated;
+}
+
+export async function mockDeleteWidget(id: string): Promise<{ message: string }> {
+  await delay(400);
+  const widget = mockWidgetStore.find(w => w.id === id);
+  if (!widget) throw new Error("Widget not found");
+  mockWidgetStore = mockWidgetStore.filter(w => w.id !== id);
+  mockActivityLog.unshift({
+    id: crypto.randomUUID(), source: "app", action: "widget.delete",
+    actor: DEMO_USER.login, repo: "*", target: widget.title,
+    details: `Deleted analytics widget "${widget.title}"`,
+    timestamp: new Date().toISOString(),
+    undoPayload: { action: "restore_widget", params: { widgetData: widget } },
+  });
+  return { message: "Widget deleted" };
 }
 
 let mockAlertsStore: SecurityAlert[] = [
@@ -18441,17 +19089,28 @@ export async function mockFetchSecurityQuery(q: string, param?: string, advanced
         { repo: "repo-997", reason: `Has branch: ${param || 'main'}` },
         { repo: "repo-999", reason: `Has branch: ${param || 'main'}` }
       ];
-    case "repos-with-branch-rules":
-      const reqs = [];
-      if (advanced?.protectionType && advanced.protectionType !== 'any') reqs.push(advanced.protectionType);
+    case "repos-with-branch-rules": {
+      const reqs: string[] = [];
       if (advanced?.requirePr) reqs.push("PRs");
       if (advanced?.requireStatusChecks) reqs.push("Status Checks");
       if (advanced?.enforceAdmins) reqs.push("Enforce Admins");
-      
-      return [
-        { repo: "payments-api", reason: `Branch '${param}' matches required rules: ${reqs.join(", ") || "none"}` },
-        { repo: "auth-lib", reason: `Branch '${param}' matches required rules: ${reqs.join(", ") || "none"}` }
-      ];
+      if (advanced?.preventForcePush) reqs.push("Prevent force push");
+      if (advanced?.requireSignedCommits) reqs.push("Signed commits");
+      const branches = (param || "main").split(",").map((b: string) => b.trim()).filter(Boolean);
+      const branchDetail = branches.map((b: string) => `${b}: Ruleset (${reqs.join(", ") || "any"})`).join(" | ");
+      const failDetail = branches.map((b: string) => `"${b}": Missing rules — ${reqs.join(", ") || "none specified"}`).join(" | ");
+      const mockRepos = MOCK_REPOS.slice(0, 30);
+      const results: any[] = [];
+      mockRepos.forEach((r, i) => {
+        if (i % 3 === 0) {
+          results.push({ repo: r.name, status: "fail", reason: i % 6 === 0 ? `Missing branch${branches.length > 1 ? "es" : ""}: ${branches.join(", ")}` : failDetail });
+        } else {
+          results.push({ repo: r.name, status: "pass", reason: branchDetail });
+        }
+      });
+      results.sort((a, b) => a.status === "pass" && b.status !== "pass" ? -1 : a.status !== "pass" && b.status === "pass" ? 1 : 0);
+      return results;
+    }
     case "empty-teams":
       return [
         { team: "old-project-team", reason: "Team has no members" }

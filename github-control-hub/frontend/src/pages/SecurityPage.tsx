@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useAlerts, useResolveAlert, useUnresolveAlert, useSimulateAlert, useInactiveUsers } from "../hooks/useAlerts";
+import { useAlerts, useResolveAlert, useUnresolveAlert, useInactiveUsers } from "../hooks/useAlerts";
 import { SecurityAlert } from "../types/Alert";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
@@ -30,10 +30,10 @@ export default function SecurityPage() {
   const { data: inactiveUsers, isLoading: usersLoading } = useInactiveUsers();
   const resolveMutation = useResolveAlert();
   const unresolveMutation = useUnresolveAlert();
-  const simulateMutation = useSimulateAlert();
   const [filter, setFilter] = useState<"all" | "active" | "resolved">("active");
-  const [isSimulating, setIsSimulating] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const { user } = useAuth();
+  const ALERTS_PER_PAGE = 8; // Reduced to prevent extending too far down
 
   const isLoading = alertsLoading || usersLoading;
 
@@ -54,6 +54,10 @@ export default function SecurityPage() {
     return true;
   });
 
+  const totalPages = Math.max(1, Math.ceil(filteredAlerts.length / ALERTS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const pagedAlerts = filteredAlerts.slice((safePage - 1) * ALERTS_PER_PAGE, safePage * ALERTS_PER_PAGE);
+
   const handleResolve = (id: string) => {
     resolveMutation.mutate(id);
   };
@@ -63,204 +67,248 @@ export default function SecurityPage() {
   };
 
   return (
-    <div className="bg-gh-bg text-gh-textBase min-h-screen pt-14">
+    <div className="bg-gh-bg text-gh-textBase min-h-screen pt-14 flex flex-col h-screen overflow-hidden">
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-      <main className="max-w-6xl mx-auto p-4 sm:p-8 animate-fade-in">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+      
+      <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 flex-1 flex flex-col overflow-hidden animate-fade-in">
+        {/* Header Section */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 shrink-0">
           <div>
             <h1 className="text-2xl font-bold text-gh-textBase flex items-center gap-2">
               <i className="ph-fill ph-shield-warning text-gh-textMuted"></i>
-              Security Alerts
+              Security Hub
             </h1>
             <p className="text-gh-muted text-sm mt-1">
-              Detect and respond to dangerous actions and protection drift across your organization.
+              Monitor, investigate, and resolve security events across your organization.
             </p>
           </div>
           
-          <div className="flex items-center gap-2 relative">
-            <button
-              onClick={() => setIsSimulating(!isSimulating)}
-              className="px-4 py-2 text-[13px] font-semibold text-white bg-gh-dark hover:bg-black rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gray-200 flex items-center gap-2"
-            >
-              <i className="ph-bold ph-lightning"></i>
-              Attack Simulator
-              <i className={`ph-bold ph-caret-down text-[10px] ml-1 transition-transform ${isSimulating ? "rotate-180" : ""}`}></i>
-            </button>
-            
-            {isSimulating && (
-              <div className="absolute top-full right-0 mt-2 w-64 bg-white border border-gh-border rounded-xl shadow-lg z-50 overflow-hidden text-left">
-                <div className="px-3 py-2 bg-gray-50 border-b border-gh-border font-semibold text-xs text-gh-textMuted uppercase tracking-wider">
-                  Simulate Scenarios
+        </div>
+
+        {/* Content Layout */}
+        <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
+          
+          {/* Main Alerts Panel */}
+          <div className="flex-1 flex flex-col min-w-0 bg-white rounded-xl border border-gh-border shadow-sm overflow-hidden">
+            {/* Toolbar */}
+            <div className="px-5 py-3 border-b border-gh-border bg-gray-50 flex items-center justify-between shrink-0">
+              <div className="flex gap-1 bg-gray-200/50 p-1 rounded-lg">
+                {(["active", "resolved", "all"] as const).map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => { setFilter(f); setCurrentPage(1); }}
+                    className={`px-4 py-1.5 text-[13px] font-semibold rounded-md capitalize transition-all ${
+                      filter === f
+                        ? "bg-white text-gh-textBase shadow-sm"
+                        : "text-gh-textMuted hover:text-gh-textBase hover:bg-white/50"
+                    }`}
+                  >
+                    {f}
+                    <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                      {f === "active" ? alerts?.filter(a => !a.resolved).length || 0 : f === "resolved" ? alerts?.filter(a => a.resolved).length || 0 : alerts?.length || 0}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Scrollable Alerts List */}
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-50/30">
+              {filteredAlerts.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center p-12 text-center text-gh-muted">
+                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-4">
+                    <i className="ph-fill ph-shield-check text-3xl text-green-500"></i>
+                  </div>
+                  <h3 className="text-base font-semibold text-gh-textBase">No {filter} alerts</h3>
+                  <p className="text-sm mt-1">Your organization is secure.</p>
                 </div>
-                <div className="p-1 flex flex-col">
-                  {[
-                    { id: "compromised_dev", icon: "ph-user-focus", label: "Compromised Developer", desc: "Push to 40 repos in 5m" },
-                    { id: "malicious_pr", icon: "ph-git-pull-request", label: "Malicious PR", desc: "Bypass protections" },
-                    { id: "force_push", icon: "ph-git-commit", label: "Force Push", desc: "Overwrite main history" },
-                    { id: "privilege_escalation", icon: "ph-key", label: "Privilege Escalation", desc: "User promoted to admin" },
-                  ].map(scenario => (
-                    <button
-                      key={scenario.id}
-                      onClick={() => {
-                        simulateMutation.mutate(scenario.id);
-                        setIsSimulating(false);
-                      }}
-                      className="text-left px-3 py-2.5 hover:bg-gray-50 rounded-lg group transition-colors flex items-start gap-3"
+              ) : (
+                <div className="space-y-3">
+                  {pagedAlerts.map((alert) => (
+                    <div
+                      key={alert.id}
+                      className={`bg-white rounded-lg border ${
+                        alert.resolved ? "border-gray-200 bg-gray-50/50 opacity-80" : "border-gh-border shadow-sm hover:shadow-md hover:border-gray-300"
+                      } p-4 flex flex-col sm:flex-row gap-4 justify-between transition-all`}
                     >
-                      <i className={`ph ${scenario.icon} text-gh-muted group-hover:text-gh-blue mt-0.5`}></i>
-                      <div>
-                        <div className="text-sm font-semibold text-gh-textBase group-hover:text-gh-blue">{scenario.label}</div>
-                        <div className="text-xs text-gh-muted">{scenario.desc}</div>
+                      <div className="flex gap-3 items-start min-w-0 flex-1">
+                        <div className={`mt-0.5 w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${SEVERITY_CONFIG[alert.severity].bg}`}>
+                          <i className={`text-lg ${SEVERITY_CONFIG[alert.severity].icon} ${SEVERITY_CONFIG[alert.severity].color}`}></i>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          {/* Title line with flex-wrap and whitespace-nowrap to prevent overflow */}
+                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                            <span className="text-sm font-bold text-gh-textBase truncate max-w-full" title={alert.repo}>{alert.repo}</span>
+                            <span className={`inline-flex items-center whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-full border ${alert.resolved ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                              {TYPE_LABELS[alert.type] || alert.type}
+                            </span>
+                            <span className="text-xs text-gh-muted ml-auto">
+                              {new Date(alert.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                            </span>
+                          </div>
+                          
+                          <p className={`text-[13px] leading-snug ${alert.resolved ? "text-gh-muted line-through" : "text-gh-textBase"}`}>
+                            {alert.message}
+                          </p>
+
+                          {alert.details && !alert.resolved && (
+                            <div className="mt-2.5 bg-gray-50 border border-gray-200 rounded-md p-2.5 text-[11px] font-mono text-gh-muted max-h-32 overflow-y-auto">
+                              {JSON.stringify(alert.details, null, 2)}
+                            </div>
+                          )}
+
+                          {alert.resolved && alert.resolvedBy && (
+                            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-gh-muted bg-gray-100/50 w-fit px-2 py-1 rounded border border-gray-100">
+                              <i className="ph-bold ph-check-circle text-green-600"></i>
+                              <span>Resolved by <span className="font-semibold">{alert.resolvedBy}</span> on {new Date(alert.resolvedAt!).toLocaleDateString()}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
-                    </button>
+
+                      <div className="flex shrink-0 sm:self-center">
+                        {!alert.resolved ? (
+                          <button
+                            onClick={() => handleResolve(alert.id)}
+                            disabled={resolveMutation.isPending}
+                            className="px-3 py-1.5 text-xs font-semibold text-gh-textBase bg-white border border-gh-border hover:bg-gray-50 rounded-md shadow-sm transition-colors flex items-center gap-1.5"
+                          >
+                            <i className="ph-bold ph-check text-green-600"></i>
+                            Resolve
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleUnresolve(alert.id)}
+                            disabled={unresolveMutation.isPending}
+                            className="px-3 py-1.5 text-xs font-semibold text-gh-muted bg-white border border-gh-border hover:bg-gray-50 rounded-md transition-colors flex items-center gap-1.5"
+                          >
+                            <i className="ph-bold ph-arrow-u-up-left"></i>
+                            Unresolve
+                          </button>
+                        )}
+                      </div>
+                    </div>
                   ))}
                 </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
-          {/* Main Alerts List */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Filters */}
-            <div className="flex gap-2 border-b border-gh-border pb-4">
-        {["active", "resolved", "all"].map((f) => (
-          <button
-            key={f}
-            onClick={() => setFilter(f as any)}
-            className={`px-4 py-1.5 text-sm font-semibold rounded-full capitalize transition-colors ${
-              filter === f
-                ? "bg-gh-blue text-white"
-                : "bg-white border border-gh-border text-gh-textMuted hover:text-gh-textBase"
-            }`}
-          >
-            {f}
-          </button>
-        ))}
-      </div>
-
-      {/* Alerts List */}
-      <div className="space-y-4">
-        {filteredAlerts.length === 0 ? (
-          <div className="bg-white rounded-[12px] border border-gh-border p-12 text-center">
-            <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <i className="ph-fill ph-check-circle text-3xl text-green-500"></i>
+              )}
             </div>
-            <h3 className="text-lg font-semibold text-gh-textBase">No {filter} alerts</h3>
-            <p className="text-gh-muted mt-1">Your organization is secure.</p>
-          </div>
-        ) : (
-          filteredAlerts.map((alert) => (
-            <div
-              key={alert.id}
-              className={`bg-white rounded-[12px] border ${
-                alert.resolved ? "border-gray-200 opacity-75" : "border-gh-border shadow-sm"
-              } p-5 flex flex-col sm:flex-row gap-4 sm:items-center justify-between transition-all`}
-            >
-              <div className="flex gap-4 items-start">
-                <div className={`mt-1 w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${SEVERITY_CONFIG[alert.severity].bg}`}>
-                  <i className={`text-xl ${SEVERITY_CONFIG[alert.severity].icon} ${SEVERITY_CONFIG[alert.severity].color}`}></i>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm font-bold text-gh-textBase">{alert.repo}</span>
-                    <span className="text-gh-muted text-sm">•</span>
-                    <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full border ${alert.resolved ? 'bg-gray-100 text-gray-600 border-gray-200' : 'bg-red-50 text-red-600 border-red-100'}`}>
-                      {TYPE_LABELS[alert.type] || alert.type}
-                    </span>
-                    <span className="text-xs text-gh-muted ml-2">
-                      {new Date(alert.timestamp).toLocaleString()}
-                    </span>
-                  </div>
-                  <p className={`text-sm ${alert.resolved ? "text-gh-muted line-through" : "text-gh-textBase"}`}>
-                    {alert.message}
-                  </p>
-                  
-                  {alert.details && !alert.resolved && (
-                    <div className="mt-3 bg-gray-50 border border-gray-200 rounded-md p-3 text-xs font-mono text-gh-muted">
-                      {JSON.stringify(alert.details, null, 2)}
-                    </div>
-                  )}
 
-                  {alert.resolved && alert.resolvedBy && (
-                    <p className="text-xs text-gh-muted mt-2">
-                      Resolved by <span className="font-semibold">{alert.resolvedBy}</span> on {new Date(alert.resolvedAt!).toLocaleString()}
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex shrink-0">
-                {!alert.resolved ? (
-                  <button
-                    onClick={() => handleResolve(alert.id)}
-                    disabled={resolveMutation.isPending}
-                    className="px-4 py-2 text-[13px] font-semibold text-gh-textBase bg-white border border-gh-border hover:bg-gray-50 rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gray-200 disabled:opacity-50 flex items-center gap-2"
-                  >
-                    <i className="ph-bold ph-check text-green-600"></i>
-                    Acknowledge & Resolve
-                  </button>
+            {/* Pagination Footer */}
+            <div className="px-5 py-3 border-t border-gh-border bg-white flex items-center justify-between shrink-0">
+              <span className="text-xs text-gh-muted">
+                {filteredAlerts.length > 0 ? (
+                  <>Showing {(safePage - 1) * ALERTS_PER_PAGE + 1}&ndash;{Math.min(safePage * ALERTS_PER_PAGE, filteredAlerts.length)} of {filteredAlerts.length}</>
                 ) : (
-                  <button
-                    onClick={() => handleUnresolve(alert.id)}
-                    disabled={unresolveMutation.isPending}
-                    className="px-4 py-2 text-[13px] font-semibold text-gh-muted bg-white border border-gh-border hover:bg-gray-50 rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gray-200 disabled:opacity-50 flex items-center gap-2"
-                  >
-                    <i className="ph-bold ph-arrow-u-up-left"></i>
-                    Unresolve
-                  </button>
+                  "0 alerts"
                 )}
-              </div>
+              </span>
+              
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={safePage <= 1}
+                    className="px-2 py-1 text-xs font-medium border border-gh-border rounded bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <i className="ph-bold ph-caret-double-left text-[10px]"></i>
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={safePage <= 1}
+                    className="px-2 py-1 text-xs font-medium border border-gh-border rounded bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <i className="ph-bold ph-caret-left text-[10px]"></i>
+                  </button>
+                  {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                    let page: number;
+                    if (totalPages <= 5) {
+                      page = i + 1;
+                    } else if (safePage <= 3) {
+                      page = i + 1;
+                    } else if (safePage >= totalPages - 2) {
+                      page = totalPages - 4 + i;
+                    } else {
+                      page = safePage - 2 + i;
+                    }
+                    return (
+                      <button
+                        key={page}
+                        onClick={() => setCurrentPage(page)}
+                        className={`px-2.5 py-1.5 min-w-[28px] text-xs font-medium rounded border transition-colors ${safePage === page ? 'bg-gh-blue text-white border-gh-blue' : 'border-transparent bg-transparent hover:bg-gray-100 text-gh-textBase'}`}
+                      >
+                        {page}
+                      </button>
+                    );
+                  })}
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={safePage >= totalPages}
+                    className="px-2 py-1 text-xs font-medium border border-gh-border rounded bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <i className="ph-bold ph-caret-right text-[10px]"></i>
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(totalPages)}
+                    disabled={safePage >= totalPages}
+                    className="px-2 py-1 text-xs font-medium border border-gh-border rounded bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <i className="ph-bold ph-caret-double-right text-[10px]"></i>
+                  </button>
+                </div>
+              )}
             </div>
-          ))
-        )}
-      </div>
-      </div>
+          </div>
 
-      {/* Sidebar: Inactive Users */}
-      <div className="lg:col-span-1">
-        <div className="bg-white rounded-xl border border-gh-border shadow-sm overflow-hidden">
-          <div className="px-4 py-3 bg-gray-50 border-b border-gh-border flex items-center gap-2">
-            <i className="ph-fill ph-users text-gh-muted"></i>
-            <h3 className="font-bold text-gh-textBase text-sm">Inactive Users (180+ Days)</h3>
-          </div>
-          <div className="p-0">
-            {(!inactiveUsers || inactiveUsers.length === 0) ? (
-              <div className="p-6 text-center text-sm text-gh-muted">
-                No inactive users found.
+          {/* Sidebar: Inactive Users */}
+          <div className="w-full lg:w-80 flex flex-col min-w-0 bg-white rounded-xl border border-gh-border shadow-sm overflow-hidden shrink-0 h-fit max-h-full">
+            <div className="px-4 py-3 bg-gray-50 border-b border-gh-border flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <i className="ph-fill ph-users text-gh-muted"></i>
+                <h3 className="font-bold text-gh-textBase text-[13px]">Stale Accounts</h3>
               </div>
-            ) : (
-              <ul className="divide-y divide-gray-100">
-                {inactiveUsers.map(u => (
-                  <li key={u.username} className="px-4 py-3 hover:bg-gray-50 flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-semibold text-gh-textBase">{u.username}</span>
-                        <span className="text-[10px] uppercase font-bold text-gh-muted bg-gray-100 px-1.5 py-0.5 rounded border border-gray-200">
-                          {u.role}
-                        </span>
+              <span className="bg-red-100 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded">
+                180+ Days
+              </span>
+            </div>
+            
+            <div className="overflow-y-auto flex-1">
+              {(!inactiveUsers || inactiveUsers.length === 0) ? (
+                <div className="p-8 text-center text-[13px] text-gh-muted">
+                  <i className="ph-fill ph-check-circle text-2xl text-green-500 mb-2 block mx-auto"></i>
+                  No stale accounts found.
+                </div>
+              ) : (
+                <ul className="divide-y divide-gray-100">
+                  {inactiveUsers.map(u => (
+                    <li key={u.username} className="px-4 py-3 hover:bg-gray-50 flex flex-col gap-2 transition-colors group">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[13px] font-semibold text-gh-textBase truncate">{u.username}</span>
+                          {u.role === 'admin' && (
+                            <i className="ph-fill ph-shield-star text-orange-500 text-xs" title="Admin"></i>
+                          )}
+                        </div>
+                        <button className="opacity-0 group-hover:opacity-100 text-[11px] font-semibold text-red-600 hover:text-white border border-red-200 hover:border-red-600 hover:bg-red-600 px-2 py-0.5 rounded transition-all">
+                          Revoke
+                        </button>
                       </div>
-                      <div className="text-xs text-gh-muted mt-1">
-                        Last active: {new Date(u.lastActive).toLocaleDateString()}
+                      <div className="flex items-center justify-between text-[11px] text-gh-muted">
+                        <span className="uppercase font-bold tracking-wider">{u.role}</span>
+                        <span>Active {new Date(u.lastActive).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                       </div>
-                    </div>
-                    <button className="text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-2 py-1 rounded border border-red-100 transition-colors">
-                      Remove
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            
+            <div className="px-4 py-2.5 bg-blue-50/50 border-t border-blue-100/50 text-[11px] text-blue-800 flex items-start gap-2">
+              <i className="ph-fill ph-info mt-0.5 shrink-0"></i>
+              <p>Stale accounts retain access but are unused, increasing the risk of unauthorized entry.</p>
+            </div>
           </div>
-          <div className="px-4 py-2 bg-gray-50 border-t border-gh-border text-xs text-gh-muted">
-            Old accounts are security risks. Review and remove.
-          </div>
+          
         </div>
-      </div>
-      
-      </div>
       </main>
     </div>
   );

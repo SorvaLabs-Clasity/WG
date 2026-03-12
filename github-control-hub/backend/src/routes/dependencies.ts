@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { createOctokit, getOrg } from "../github/client";
 import { listRepos } from "../services/repoService";
+import { logActivity } from "../services/activityService";
 
 const router = Router();
 
@@ -105,6 +106,12 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
       repo,
     });
 
+    await logActivity("dependabot.enable" as any, req.user?.login || "system", repo, "Dependabot",
+      `Enabled Dependabot vulnerability alerts for "${repo}"`,
+      undefined, "app", undefined, undefined,
+      { undoPayload: { action: "disable_dependabot", params: { repo } } }
+    );
+
     res.json({ success: true });
   } catch (error: any) {
     console.error(`Error enabling Dependabot for ${req.body.repo}:`, error);
@@ -131,6 +138,12 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
       owner: org,
       repo,
     });
+
+    await logActivity("dependabot.disable" as any, req.user?.login || "system", repo, "Dependabot",
+      `Disabled Dependabot vulnerability alerts for "${repo}"`,
+      undefined, "app", undefined, undefined,
+      { undoPayload: { action: "enable_dependabot", params: { repo } } }
+    );
 
     res.json({ success: true });
   } catch (error: any) {

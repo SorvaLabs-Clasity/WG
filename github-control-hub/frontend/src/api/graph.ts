@@ -64,18 +64,20 @@ export interface SecurityQueryResult {
   team?: string;
   reason: string;
   details?: string;
+  status?: "pass" | "fail";
 }
 
 export async function fetchSecurityQuery(q: string, param?: string, advanced?: any): Promise<SecurityQueryResult[]> {
   if (DEMO_MODE) return mockFetchSecurityQuery(q, param, advanced);
-  const url = new URL(window.location.origin + `/api/graph/query`); // The base doesn't matter here, just for URL object
+  const url = new URL(window.location.origin + `/api/graph/query`);
   url.searchParams.append("q", q);
   if (param) url.searchParams.append("param", param);
   if (advanced) {
-    if (advanced.protectionType) url.searchParams.append("protectionType", advanced.protectionType);
-    if (advanced.requirePr) url.searchParams.append("requirePr", "true");
-    if (advanced.requireStatusChecks) url.searchParams.append("requireStatusChecks", "true");
-    if (advanced.enforceAdmins) url.searchParams.append("enforceAdmins", "true");
+    for (const [key, value] of Object.entries(advanced)) {
+      if (value !== undefined && value !== null && value !== false && value !== "" && value !== 0) {
+        url.searchParams.append(key, String(value));
+      }
+    }
   }
   return apiGet<SecurityQueryResult[]>(`/graph/query${url.search}`);
 }

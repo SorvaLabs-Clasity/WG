@@ -4,16 +4,15 @@ interface BranchRowProps {
   branch: Branch;
   defaultBranch: string;
   onDelete: (branch: string) => void;
-  onProtect: (branch: string) => void;
+  onRename: (branch: string) => void;
   isDeleting: boolean;
-  isProtecting: boolean;
 }
 
 export default function BranchRow({
   branch,
   defaultBranch,
   onDelete,
-  onProtect,
+  onRename,
 }: BranchRowProps) {
   const isDefault = branch.name === defaultBranch;
 
@@ -48,36 +47,31 @@ export default function BranchRow({
       </td>
       <td className="py-3.5 px-5">
         <div className="flex items-center justify-end gap-1.5 w-full">
-          {!branch.protected && (
-            <div className="relative group/btn flex items-center justify-center">
-              <button 
-                onClick={() => onProtect(branch.name)}
-                className="p-1.5 rounded-md hover:bg-blue-50 text-gh-textMuted hover:text-gh-blue transition-colors" 
-              >
-                <i className="ph ph-shield-plus text-lg"></i>
-              </button>
-              <div className="absolute bottom-full mb-2 hidden group-hover/btn:block bg-gh-nav text-white text-[11px] font-medium px-2 py-1 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg -translate-x-1/2 left-1/2">
-                Apply protection
-              </div>
-            </div>
-          )}
           {!isDefault && (
-            <div className="relative group/btn flex items-center justify-center">
-              <button 
-                onClick={() => onDelete(branch.name)}
-                className="p-1.5 rounded-md hover:bg-red-50 text-gh-textMuted hover:text-red-600 transition-colors" 
-              >
-                <i className="ph ph-trash text-lg"></i>
-              </button>
-              <div className="absolute bottom-full mb-2 hidden group-hover/btn:block bg-gh-nav text-white text-[11px] font-medium px-2 py-1 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg -translate-x-1/2 left-1/2">
-                Delete branch
+            <>
+              <div className="relative group/btn flex items-center justify-center">
+                <button 
+                  onClick={() => onRename(branch.name)}
+                  className="p-1.5 rounded-md hover:bg-blue-50 text-gh-textMuted hover:text-gh-blue transition-colors" 
+                >
+                  <i className="ph ph-pencil-simple text-lg"></i>
+                </button>
+                <div className="absolute bottom-full mb-2 hidden group-hover/btn:block bg-gh-nav text-white text-[11px] font-medium px-2 py-1 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg -translate-x-1/2 left-1/2">
+                  Rename branch
+                </div>
               </div>
-            </div>
-          )}
-          {isDefault && (
-            <button className="p-1.5 rounded-md hover:bg-gray-200 hover:text-gh-textBase transition-colors opacity-50 cursor-not-allowed">
-              <i className="ph ph-gear text-lg"></i>
-            </button>
+              <div className="relative group/btn flex items-center justify-center">
+                <button 
+                  onClick={() => onDelete(branch.name)}
+                  className="p-1.5 rounded-md hover:bg-red-50 text-gh-textMuted hover:text-red-600 transition-colors" 
+                >
+                  <i className="ph ph-trash text-lg"></i>
+                </button>
+                <div className="absolute bottom-full mb-2 hidden group-hover/btn:block bg-gh-nav text-white text-[11px] font-medium px-2 py-1 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg -translate-x-1/2 left-1/2">
+                  Delete branch
+                </div>
+              </div>
+            </>
           )}
         </div>
       </td>

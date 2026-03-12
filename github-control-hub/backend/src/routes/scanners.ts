@@ -18,12 +18,12 @@ router.get("/", async (req: Request, res: Response) => {
 });
 
 router.post("/", async (req: Request, res: Response) => {
-  const scanner = await createScanner(req.body);
+  const scanner = await createScanner(req.body, req.user!.login);
   res.status(201).json(scanner);
 });
 
 router.put("/:id", async (req: Request<{id: string}>, res: Response) => {
-  const scanner = await updateScanner(req.params.id, req.body);
+  const scanner = await updateScanner(req.params.id, req.body, req.user!.login);
   if (!scanner) {
     res.status(404).json({ error: "Scanner not found" });
     return;
@@ -32,7 +32,7 @@ router.put("/:id", async (req: Request<{id: string}>, res: Response) => {
 });
 
 router.delete("/:id", async (req: Request<{id: string}>, res: Response) => {
-  const success = await deleteScanner(req.params.id);
+  const success = await deleteScanner(req.params.id, req.user!.login);
   if (!success) {
     res.status(404).json({ error: "Scanner not found" });
     return;

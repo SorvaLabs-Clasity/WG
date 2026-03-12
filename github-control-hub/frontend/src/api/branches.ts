@@ -1,9 +1,10 @@
-import { apiGet, apiPost, apiDelete, apiPut, DEMO_MODE } from "./client";
+import { apiGet, apiPost, apiDelete, apiPut, apiPatch, DEMO_MODE } from "./client";
 import {
   mockFetchBranches,
   mockCreateBranch,
   mockDeleteBranch,
   mockProtectBranch,
+  mockRenameBranch,
 } from "./mock";
 import type { Branch } from "../types/Branch";
 
@@ -24,6 +25,11 @@ export function createBranch(
 export function deleteBranch(repo: string, branch: string): Promise<{ message: string }> {
   if (DEMO_MODE) return mockDeleteBranch(repo, branch);
   return apiDelete(`/repos/${repo}/branches/${branch}`);
+}
+
+export function renameBranch(repo: string, branch: string, newName: string): Promise<{ message: string }> {
+  if (DEMO_MODE) return mockRenameBranch(repo, branch, newName);
+  return apiPatch(`/repos/${repo}/branches/${branch}/rename`, { newName });
 }
 
 export async function fetchBranchProtection(repo: string, branch: string): Promise<any> {

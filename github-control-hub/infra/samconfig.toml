@@ -4,7 +4,7 @@ version = 0.1
 stack_name = "github-control-hub"
 resolve_s3 = true
 capabilities = "CAPABILITY_IAM"
-confirm_changeset = true
+confirm_changeset = false
 region = "us-east-1"
 
 [default.build.parameters]

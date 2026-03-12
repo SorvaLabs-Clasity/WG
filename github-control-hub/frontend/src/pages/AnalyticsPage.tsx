@@ -5,42 +5,23 @@ import { useSecurityQuery, useBlastRadiusRanking } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS } from "../utils/queryOptions";
+import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget } from "../hooks/useWidgets";
+import type { WidgetConfig } from "../api/widgets";
+import { TagInput } from "../components/TagInput";
 
 type WidgetType = "preset" | "query";
 type DisplayType = "metric" | "table";
 type PresetId = "dependabot" | "bypasses" | "blast";
 
-interface WidgetConfig {
-  id: string;
-  title: string;
-  type: WidgetType;
-  presetId?: PresetId;
-  queryId?: string;
-  queryParam?: string;
-  queryAdvanced?: any;
-  displayType: DisplayType;
-}
-
-const DEFAULT_WIDGETS: WidgetConfig[] = [
-  { id: "1", title: "Protection Rule Bypasses", type: "preset", presetId: "bypasses", displayType: "table" },
-  { id: "2", title: "Dependabot Issues", type: "preset", presetId: "dependabot", displayType: "table" },
-  { id: "3", title: "Repos missing main branch", type: "query", queryId: "repos-missing-branch", queryParam: "main", displayType: "metric" },
-  { id: "4", title: "Blast Radius Risk", type: "preset", presetId: "blast", displayType: "table" },
-];
-
 export default function AnalyticsPage() {
   const { user } = useAuth();
-  
-  const [widgets, setWidgets] = useState<WidgetConfig[]>(() => {
-    const saved = localStorage.getItem("gh-control-hub-widgets");
-    return saved ? JSON.parse(saved) : DEFAULT_WIDGETS;
-  });
-
-  useEffect(() => {
-    localStorage.setItem("gh-control-hub-widgets", JSON.stringify(widgets));
-  }, [widgets]);
+  const { data: widgets = [], isLoading: widgetsLoading } = useWidgets();
+  const createWidget = useCreateWidget();
+  const updateWidget = useUpdateWidget();
+  const deleteWidgetMut = useDeleteWidget();
 
   const [showAddModal, setShowAddModal] = useState(false);
+  const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null);
   const [isDashboardView, setIsDashboardView] = useState(false);
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
 
@@ -50,13 +31,17 @@ export default function AnalyticsPage() {
     }
   }, [isDashboardView, widgets, selectedWidgetId]);
 
-  const handleAddWidget = (config: Omit<WidgetConfig, "id">) => {
-    setWidgets([...widgets, { ...config, id: Date.now().toString() }]);
-    setShowAddModal(false);
+  const handleAddWidget = (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => {
+    createWidget.mutate(config, { onSuccess: () => setShowAddModal(false) });
+  };
+
+  const handleEditWidget = (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => {
+    if (!editingWidget) return;
+    updateWidget.mutate({ id: editingWidget.id, data: config }, { onSuccess: () => setEditingWidget(null) });
   };
 
   const removeWidget = (id: string) => {
-    setWidgets(widgets.filter(w => w.id !== id));
+    deleteWidgetMut.mutate(id);
     if (selectedWidgetId === id) setSelectedWidgetId(null);
   };
 
@@ -100,10 +85,14 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {isDashboardView ? (
+        {widgetsLoading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gh-blue"></div>
+          </div>
+        ) : isDashboardView ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 grid-flow-dense">
             {widgets.map(widget => (
-              <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} />
+              <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} onEdit={() => setEditingWidget(widget)} />
             ))}
             {widgets.length === 0 && (
               <div className="col-span-full text-center py-16 text-gray-400 border-2 border-dashed border-gray-300 rounded-xl bg-gray-50">
@@ -120,22 +109,32 @@ export default function AnalyticsPage() {
             )}
           </div>
         ) : (
-          <div className="flex gap-6 h-[calc(100vh-200px)] min-h-[500px]">
-            <div className="w-1/3 bg-white border border-gh-border rounded-xl shadow-sm overflow-y-auto flex flex-col">
+          <div className="flex flex-col md:flex-row gap-4 md:gap-6 h-[calc(100vh-140px)] md:h-[calc(100vh-200px)] min-h-[500px]">
+            <div className="w-full md:w-1/3 h-1/2 md:h-full bg-white border border-gh-border rounded-xl shadow-sm overflow-y-auto flex flex-col shrink-0">
               <div className="px-5 py-4 border-b border-gh-border bg-gray-50 font-semibold sticky top-0 z-10">Your Analytics</div>
               <div className="divide-y divide-gh-border flex-1">
                 {widgets.map(w => (
-                  <button
+                  <div
                     key={w.id}
                     onClick={() => setSelectedWidgetId(w.id)}
-                    className={`w-full text-left px-5 py-4 hover:bg-gray-50 transition-colors ${selectedWidgetId === w.id ? 'bg-blue-50/50 border-l-4 border-l-gh-blue' : 'border-l-4 border-l-transparent'}`}
+                    className={`w-full text-left px-5 py-4 hover:bg-gray-50 transition-colors cursor-pointer group/item ${selectedWidgetId === w.id ? 'bg-blue-50/50 border-l-4 border-l-gh-blue' : 'border-l-4 border-l-transparent'}`}
                   >
-                    <div className={`font-semibold text-sm ${selectedWidgetId === w.id ? 'text-gh-blue' : 'text-gh-textBase'}`}>{w.title}</div>
+                    <div className="flex items-center justify-between">
+                      <div className={`font-semibold text-sm ${selectedWidgetId === w.id ? 'text-gh-blue' : 'text-gh-textBase'}`}>{w.title}</div>
+                      <div className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                        <button onClick={(e) => { e.stopPropagation(); setEditingWidget(w); }} className="text-gray-400 hover:text-gh-blue p-1 rounded" title="Edit">
+                          <i className="ph-bold ph-pencil-simple text-xs"></i>
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }} className="text-gray-400 hover:text-red-500 p-1 rounded" title="Delete">
+                          <i className="ph-bold ph-trash text-xs"></i>
+                        </button>
+                      </div>
+                    </div>
                     <div className="text-xs text-gray-500 mt-1.5 flex items-center gap-1.5">
                       <i className={`ph-fill ${w.type === 'preset' ? 'ph-star text-yellow-500' : 'ph-magnifying-glass text-blue-500'}`}></i>
                       {w.type === 'preset' ? 'Built-in Preset' : 'Custom Query'}
                     </div>
-                  </button>
+                  </div>
                 ))}
                 {widgets.length === 0 && (
                   <div className="p-8 text-center text-gray-400 text-sm">No analytics added yet.</div>
@@ -144,7 +143,7 @@ export default function AnalyticsPage() {
             </div>
             <div className="flex-1 bg-white border border-gh-border rounded-xl shadow-sm overflow-hidden flex flex-col relative">
               {selectedWidgetId ? (
-                <WidgetDetailsInline config={widgets.find(w => w.id === selectedWidgetId)!} />
+                <WidgetDetailsInline config={widgets.find(w => w.id === selectedWidgetId)!} onEdit={() => setEditingWidget(widgets.find(w => w.id === selectedWidgetId)!)} />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
                   <i className="ph-light ph-chart-polar text-5xl mb-3 opacity-50"></i>
@@ -156,7 +155,8 @@ export default function AnalyticsPage() {
         )}
       </main>
 
-      {showAddModal && <AddWidgetModal onClose={() => setShowAddModal(false)} onSave={handleAddWidget} />}
+      {showAddModal && <WidgetFormModal onClose={() => setShowAddModal(false)} onSave={handleAddWidget} isSaving={createWidget.isPending} />}
+      {editingWidget && <WidgetFormModal onClose={() => setEditingWidget(null)} onSave={handleEditWidget} isSaving={updateWidget.isPending} initialData={editingWidget} />}
     </div>
   );
 }
@@ -214,7 +214,7 @@ function useWidgetData(config: WidgetConfig) {
   return { items, isLoading, total };
 }
 
-function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () => void }) {
+function WidgetCard({ config, onRemove, onEdit }: { config: WidgetConfig, onRemove: () => void, onEdit: () => void }) {
   const { items, isLoading, total } = useWidgetData(config);
   const [showDetails, setShowDetails] = useState(false);
 
@@ -230,6 +230,13 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
               title="View Details"
             >
               <i className="ph-bold ph-arrows-out-simple"></i>
+            </button>
+            <button 
+              onClick={onEdit} 
+              className="text-gray-400 hover:text-gh-blue p-1 rounded transition-colors"
+              title="Edit Widget"
+            >
+              <i className="ph-bold ph-pencil-simple text-xs"></i>
             </button>
             <button 
               onClick={onRemove} 
@@ -248,19 +255,30 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
             </div>
           ) : (
             <div className="h-full flex flex-col group/content">
-              {config.displayType === "metric" && (
-                <div 
-                  className="flex-1 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 rounded-lg transition-colors" 
-                  onClick={() => setShowDetails(true)}
-                >
-                  <div className="text-6xl font-light text-gh-blue mb-2">
-                    {items.length} {total !== null && <span className="text-3xl text-gray-400 font-normal">/ {total}</span>}
+              {config.displayType === "metric" && (() => {
+                const hasStatus = items.some((i: any) => i.status);
+                const passCount = hasStatus ? items.filter((i: any) => i.status === "pass").length : items.length;
+                const denominator = hasStatus ? items.length : total;
+                const passRate = denominator ? Math.round((passCount / denominator) * 100) : null;
+                return (
+                  <div 
+                    className="flex-1 flex flex-col items-center justify-center cursor-pointer hover:bg-gray-50 rounded-lg transition-colors" 
+                    onClick={() => setShowDetails(true)}
+                  >
+                    <div className="text-6xl font-light text-gh-blue mb-2">
+                      {passCount} {denominator !== null && <span className="text-3xl text-gray-400 font-normal">/ {denominator}</span>}
+                    </div>
+                    {passRate !== null && (
+                      <div className={`text-sm font-bold ${passRate === 100 ? 'text-green-600' : passRate >= 80 ? 'text-yellow-600' : 'text-red-600'}`}>
+                        {passRate}% {hasStatus ? 'passing' : 'match'}
+                      </div>
+                    )}
+                    <div className="text-xs text-gh-blue font-semibold mt-4 flex items-center gap-1 opacity-0 group-hover/content:opacity-100 transition-opacity">
+                      View Details <i className="ph-bold ph-arrow-right"></i>
+                    </div>
                   </div>
-                  <div className="text-xs text-gh-blue font-semibold mt-4 flex items-center gap-1 opacity-0 group-hover/content:opacity-100 transition-opacity">
-                    View Details <i className="ph-bold ph-arrow-right"></i>
-                  </div>
-                </div>
-              )}
+                );
+              })()}
 
               {config.displayType === "table" && (
                 <div className="flex-1 overflow-hidden relative">
@@ -274,7 +292,11 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
                           const val = config.presetId === 'dependabot' ? item.total : config.presetId === 'bypasses' ? item.bypasses : config.presetId === 'blast' ? item.score : '';
                           return (
                             <div key={idx} className="flex items-center justify-between text-sm py-1.5 px-2 hover:bg-gray-50 rounded border-b border-gray-100 last:border-0 cursor-pointer" onClick={() => setShowDetails(true)}>
-                              <span className="font-medium text-gh-textBase truncate mr-3">{name}</span>
+                              <span className="font-medium text-gh-textBase truncate mr-3 flex items-center gap-1.5">
+                                {item.status === "pass" && <i className="ph-bold ph-check-circle text-green-500 text-xs shrink-0"></i>}
+                                {item.status === "fail" && <i className="ph-bold ph-x-circle text-red-500 text-xs shrink-0"></i>}
+                                {name}
+                              </span>
                               {val !== '' && <span className="font-mono text-xs bg-gray-100 px-2 py-0.5 rounded text-gray-600 font-semibold">{val}</span>}
                             </div>
                           );
@@ -304,7 +326,7 @@ function WidgetCard({ config, onRemove }: { config: WidgetConfig, onRemove: () =
   );
 }
 
-function WidgetDetailsInline({ config }: { config: WidgetConfig }) {
+function WidgetDetailsInline({ config, onEdit }: { config: WidgetConfig, onEdit: () => void }) {
   const { items, isLoading } = useWidgetData(config);
   
   if (isLoading) {
@@ -322,7 +344,18 @@ function WidgetDetailsInline({ config }: { config: WidgetConfig }) {
           <i className="ph-fill ph-chart-bar text-gh-blue"></i>
           {config.title}
         </h3>
-        <span className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full text-sm font-bold">{items.length} Total Results</span>
+        <div className="flex items-center gap-2">
+          <button onClick={onEdit} className="text-gray-400 hover:text-gh-blue p-1.5 rounded transition-colors" title="Edit Widget">
+            <i className="ph-bold ph-pencil-simple"></i>
+          </button>
+          {items.some((i: any) => i.status) && (
+            <>
+              <span className="bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 rounded-full text-xs font-bold">{items.filter((i: any) => i.status === "pass").length} Pass</span>
+              <span className="bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-full text-xs font-bold">{items.filter((i: any) => i.status === "fail").length} Fail</span>
+            </>
+          )}
+          <span className="bg-gray-100 text-gray-600 px-3 py-1.5 rounded-full text-sm font-bold">{items.length} Total</span>
+        </div>
       </div>
       <div className="flex-1 overflow-y-auto bg-gray-50 h-full">
         <WidgetDataTable config={config} items={items} />
@@ -371,6 +404,9 @@ function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[]
                 <th className="px-6 py-3 font-semibold text-gh-muted">Risk Level</th>
                 <th className="px-6 py-3 font-semibold text-gh-muted text-center">Score</th>
               </>
+            )}
+            {config.type === "query" && items.some((i: any) => i.status) && (
+              <th className="px-6 py-3 font-semibold text-gh-muted text-center w-[80px]">Status</th>
             )}
             {config.type === "query" && (
               <th className="px-6 py-3 font-semibold text-gh-muted w-full">Details</th>
@@ -429,9 +465,18 @@ function WidgetDataTable({ config, items }: { config: WidgetConfig, items: any[]
                   </>
                 )}
 
+                {config.type === "query" && items.some((i: any) => i.status) && (
+                  <td className="px-6 py-3 text-center">
+                    {item.status === "pass" ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full"><i className="ph-bold ph-check-circle text-[11px]"></i>Pass</span>
+                    ) : item.status === "fail" ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded-full"><i className="ph-bold ph-x-circle text-[11px]"></i>Fail</span>
+                    ) : null}
+                  </td>
+                )}
                 {config.type === "query" && (
                   <td className="px-6 py-3 text-sm">
-                    <span className="text-gray-800 block truncate max-w-xl">{item.reason}</span>
+                    <span className={`block truncate max-w-xl ${item.status === "fail" ? "text-red-700" : "text-gray-800"}`}>{item.reason}</span>
                     {item.details && <span className="text-xs text-gray-500 font-mono mt-0.5 block truncate max-w-xl">{item.details}</span>}
                   </td>
                 )}
@@ -489,11 +534,67 @@ function RawDetailsModal({ item, config, onClose }: { item: any, config: WidgetC
         </div>
         <div className="p-6 overflow-y-auto bg-gray-50 flex-1 rounded-b-xl">
           <div className="flex flex-col gap-4">
-            {Object.entries(item).filter(([k]) => !['repo', 'user', 'team'].includes(k)).map(([k, v], i) => (
+            {item.status && (
+              <div className="flex flex-col border-b border-gray-100 pb-3">
+                <span className="text-sm font-bold text-gray-700 mb-1">Status</span>
+                <div>
+                  {item.status === "pass" ? (
+                    <span className="inline-flex items-center gap-1.5 text-sm font-bold text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-lg"><i className="ph-bold ph-check-circle"></i>Passing</span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 text-sm font-bold text-red-700 bg-red-50 border border-red-200 px-3 py-1.5 rounded-lg"><i className="ph-bold ph-x-circle"></i>Failing</span>
+                  )}
+                </div>
+              </div>
+            )}
+            {item.status === "fail" && item.reason && (
+              <div className="flex flex-col border-b border-gray-100 pb-3">
+                <span className="text-sm font-bold text-gray-700 mb-2">Failure Details</span>
+                <div className="space-y-2">
+                  {item.reason.split(" | ").map((part: string, idx: number) => {
+                    const colonIdx = part.indexOf(":");
+                    const branchName = colonIdx > 0 ? part.substring(0, colonIdx).replace(/"/g, "").trim() : null;
+                    const detail = colonIdx > 0 ? part.substring(colonIdx + 1).trim() : part;
+                    return (
+                      <div key={idx} className="bg-red-50 border border-red-200 rounded-lg p-3">
+                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-red-800 bg-red-100 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
+                        <p className="text-sm text-red-700">{detail}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {item.status === "pass" && item.reason && (
+              <div className="flex flex-col border-b border-gray-100 pb-3">
+                <span className="text-sm font-bold text-gray-700 mb-2">Branch Details</span>
+                <div className="space-y-2">
+                  {item.reason.split(" | ").map((part: string, idx: number) => {
+                    const colonIdx = part.indexOf(":");
+                    const branchName = colonIdx > 0 ? part.substring(0, colonIdx).trim() : null;
+                    const detail = colonIdx > 0 ? part.substring(colonIdx + 1).trim() : part;
+                    return (
+                      <div key={idx} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-green-800 bg-green-100 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
+                        <p className="text-sm text-green-700">{detail}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+            {Object.entries(item).filter(([k]) => !['repo', 'user', 'team', 'status', 'reason'].includes(k)).map(([k, v], i) => (
               <div key={i} className="flex flex-col border-b border-gray-100 pb-3 last:border-0 last:pb-0">
                 <span className="text-sm font-bold text-gray-700 mb-1">{k}</span>
                 <pre className="text-sm text-gray-800 bg-white p-3 rounded-lg border border-gray-200 overflow-x-auto whitespace-pre-wrap font-mono">
                   {typeof v === 'object' ? JSON.stringify(v, null, 2) : String(v)}
+                </pre>
+              </div>
+            ))}
+            {!item.status && Object.entries(item).filter(([k]) => ['reason'].includes(k)).map(([k, v], i) => (
+              <div key={`r-${i}`} className="flex flex-col border-b border-gray-100 pb-3 last:border-0 last:pb-0">
+                <span className="text-sm font-bold text-gray-700 mb-1">{k}</span>
+                <pre className="text-sm text-gray-800 bg-white p-3 rounded-lg border border-gray-200 overflow-x-auto whitespace-pre-wrap font-mono">
+                  {String(v)}
                 </pre>
               </div>
             ))}
@@ -514,7 +615,13 @@ function WidgetDetailsModal({ config, items, onClose }: { config: WidgetConfig, 
             <i className="ph-fill ph-chart-bar text-gh-blue"></i>
             {config.title}
           </h3>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {items.some((i: any) => i.status) && (
+              <>
+                <span className="bg-green-50 text-green-700 border border-green-200 px-2.5 py-1 rounded-full text-xs font-bold">{items.filter((i: any) => i.status === "pass").length} Pass</span>
+                <span className="bg-red-50 text-red-700 border border-red-200 px-2.5 py-1 rounded-full text-xs font-bold">{items.filter((i: any) => i.status === "fail").length} Fail</span>
+              </>
+            )}
             <span className="bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full text-xs font-bold">{items.length} Total</span>
             <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-900 hover:bg-gray-100 transition-colors">
               <i className="ph ph-x text-lg"></i>
@@ -530,19 +637,35 @@ function WidgetDetailsModal({ config, items, onClose }: { config: WidgetConfig, 
   );
 }
 
-function AddWidgetModal({ onClose, onSave }: { onClose: () => void, onSave: (config: Omit<WidgetConfig, "id">) => void }) {
-  const [title, setTitle] = useState("");
-  const [type, setType] = useState<WidgetType>("preset");
-  const [presetId, setPresetId] = useState<PresetId>("dependabot");
-  const [displayType, setDisplayType] = useState<DisplayType>("metric");
+function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: () => void, onSave: (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => void, isSaving?: boolean, initialData?: WidgetConfig }) {
+  const isEditing = !!initialData;
+  const [title, setTitle] = useState(initialData?.title || "");
+  const [type, setType] = useState<WidgetType>(initialData?.type || "preset");
+  const [presetId, setPresetId] = useState<PresetId>((initialData?.presetId as PresetId) || "dependabot");
+  const [displayType, setDisplayType] = useState<DisplayType>(initialData?.displayType || "metric");
   
   // Query State
-  const [selectedQueryId, setSelectedQueryId] = useState<string>(QUERY_OPTIONS[0].id);
-  const [paramValue, setParamValue] = useState<string>("");
-  const [protectionType, setProtectionType] = useState<string>("any");
-  const [requirePr, setRequirePr] = useState(false);
-  const [requireStatusChecks, setRequireStatusChecks] = useState(false);
-  const [enforceAdmins, setEnforceAdmins] = useState(false);
+  const [selectedQueryId, setSelectedQueryId] = useState<string>(initialData?.queryId || QUERY_OPTIONS[0].id);
+  const initParam = initialData?.queryParam || "";
+  const initQuery = initialData?.queryId ? QUERY_OPTIONS.find(q => q.id === initialData.queryId) : null;
+  const initAdv = initialData?.queryAdvanced;
+  const [paramValue, setParamValue] = useState<string>(initQuery?.useTagInput ? "" : initParam);
+  const [branchTags, setBranchTags] = useState<string[]>(initQuery?.useTagInput && initParam ? initParam.split(",").map(s => s.trim()).filter(Boolean) : []);
+  const [hasPendingBranch, setHasPendingBranch] = useState(false);
+  const [protectionType, setProtectionType] = useState<string>(initAdv?.protectionType || "any");
+  const [ruleMatchType, setRuleMatchType] = useState<string>(initAdv?.ruleMatchType || "at_least");
+  const [requirePr, setRequirePr] = useState(initAdv?.requirePr || false);
+  const [minApprovals, setMinApprovals] = useState(initAdv?.minApprovals ?? 1);
+  const [dismissStaleReviews, setDismissStaleReviews] = useState(initAdv?.dismissStaleReviews || false);
+  const [requireCodeOwnerReviews, setRequireCodeOwnerReviews] = useState(initAdv?.requireCodeOwnerReviews || false);
+  const [requireConversationResolution, setRequireConversationResolution] = useState(initAdv?.requireConversationResolution || false);
+  const [requireStatusChecks, setRequireStatusChecks] = useState(initAdv?.requireStatusChecks || false);
+  const [strictStatusChecks, setStrictStatusChecks] = useState(initAdv?.strictStatusChecks || false);
+  const [requireSignedCommits, setRequireSignedCommits] = useState(initAdv?.requireSignedCommits || false);
+  const [requireLinearHistory, setRequireLinearHistory] = useState(initAdv?.requireLinearHistory || false);
+  const [enforceAdmins, setEnforceAdmins] = useState(initAdv?.enforceAdmins || false);
+  const [preventForcePush, setPreventForcePush] = useState(initAdv?.preventForcePush || false);
+  const [preventDeletion, setPreventDeletion] = useState(initAdv?.preventDeletion || false);
 
   const selectedQuery = QUERY_OPTIONS.find(q => q.id === selectedQueryId);
 
@@ -551,24 +674,45 @@ function AddWidgetModal({ onClose, onSave }: { onClose: () => void, onSave: (con
     const q = QUERY_OPTIONS.find(opt => opt.id === id);
     if (q?.requiresParam && q.paramDefault) setParamValue(q.paramDefault);
     else setParamValue("");
+    setBranchTags([]);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
+    if (type === "query" && selectedQuery?.useTagInput && (branchTags.length === 0 || hasPendingBranch)) return;
+    if (type === "query" && selectedQuery?.requiresParam && !selectedQuery?.useTagInput && !paramValue.trim()) return;
 
     if (type === "preset") {
       onSave({ title, type, presetId, displayType });
     } else {
       let advanced = undefined;
       if (selectedQuery?.hasAdvancedRules) {
-        advanced = { protectionType, requirePr, requireStatusChecks, enforceAdmins };
+        advanced = {
+          protectionType,
+          ruleMatchType,
+          requirePr,
+          minApprovals,
+          dismissStaleReviews,
+          requireCodeOwnerReviews,
+          requireConversationResolution,
+          requireStatusChecks,
+          strictStatusChecks,
+          requireSignedCommits,
+          requireLinearHistory,
+          enforceAdmins,
+          preventForcePush,
+          preventDeletion,
+        };
       }
+      const resolvedParam = selectedQuery?.useTagInput
+        ? branchTags.join(", ")
+        : paramValue.trim();
       onSave({
         title,
         type,
         queryId: selectedQueryId,
-        queryParam: selectedQuery?.requiresParam ? paramValue.trim() : undefined,
+        queryParam: selectedQuery?.requiresParam ? resolvedParam : undefined,
         queryAdvanced: advanced,
         displayType
       });
@@ -580,7 +724,7 @@ function AddWidgetModal({ onClose, onSave }: { onClose: () => void, onSave: (con
       <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
       <div className="bg-white rounded-xl shadow-modal border border-black/10 w-full max-w-xl relative z-10 animate-slide-up flex flex-col">
         <div className="px-6 py-4 border-b border-gh-border flex items-center justify-between">
-          <h3 className="text-lg font-bold text-gray-900">Add Dashboard Widget</h3>
+          <h3 className="text-lg font-bold text-gray-900">{isEditing ? 'Edit Widget' : 'Add Dashboard Widget'}</h3>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-900"><i className="ph ph-x text-lg"></i></button>
         </div>
 
@@ -654,33 +798,129 @@ function AddWidgetModal({ onClose, onSave }: { onClose: () => void, onSave: (con
                 {selectedQuery?.requiresParam && (
                   <div>
                     <label className="block text-sm font-semibold text-gh-textBase mb-1">{selectedQuery.paramLabel}</label>
-                    <input 
-                      type="text" 
-                      value={paramValue}
-                      onChange={(e) => setParamValue(e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-gh-blue outline-none text-sm"
-                      required
-                    />
+                    {selectedQuery.useTagInput ? (
+                      <TagInput 
+                        tags={branchTags} 
+                        onChange={setBranchTags} 
+                        onPendingTextChange={setHasPendingBranch}
+                        icon="ph-git-branch"
+                        colorClass="blue"
+                        placeholder="Type branch name and press Enter" 
+                      />
+                    ) : (
+                      <input 
+                        type="text" 
+                        value={paramValue}
+                        onChange={(e) => setParamValue(e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-gh-blue outline-none text-sm"
+                        required
+                      />
+                    )}
                   </div>
                 )}
 
                 {selectedQuery?.hasAdvancedRules && (
-                  <div className="pt-2 border-t border-gray-200">
-                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Advanced Rules</label>
-                    <div className="grid grid-cols-2 gap-3 text-sm">
-                      <select 
-                        value={protectionType}
-                        onChange={(e) => setProtectionType(e.target.value)}
-                        className="px-2 py-1 border border-gray-300 rounded-md text-sm"
-                      >
-                        <option value="any">Any protection</option>
-                        <option value="classic">Classic only</option>
-                        <option value="ruleset">Ruleset only</option>
-                      </select>
-                      <label className="flex items-center gap-2"><input type="checkbox" checked={requirePr} onChange={e => setRequirePr(e.target.checked)} className="rounded" /> Require PRs</label>
-                      <label className="flex items-center gap-2"><input type="checkbox" checked={requireStatusChecks} onChange={e => setRequireStatusChecks(e.target.checked)} className="rounded" /> Require Status</label>
-                      <label className="flex items-center gap-2"><input type="checkbox" checked={enforceAdmins} onChange={e => setEnforceAdmins(e.target.checked)} className="rounded" /> Enforce Admins</label>
+                  <div className="pt-3 border-t border-gray-200 space-y-3">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider">Branch Rule Configuration</label>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gh-textBase mb-1">Protection Type</label>
+                        <select
+                          value={protectionType}
+                          onChange={(e) => setProtectionType(e.target.value)}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm outline-none focus:border-gh-blue"
+                        >
+                          <option value="any">Must have ANY protection</option>
+                          <option value="classic">Must use Classic Protection</option>
+                          <option value="ruleset">Must use Repository Ruleset</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-semibold text-gh-textBase mb-1">Rule Matching Mode</label>
+                        <select
+                          value={ruleMatchType}
+                          onChange={(e) => setRuleMatchType(e.target.value)}
+                          className="w-full px-2 py-1.5 border border-gray-300 rounded-md text-sm outline-none focus:border-gh-blue"
+                        >
+                          <option value="any">Any rules (just check if protection exists)</option>
+                          <option value="at_least">Must have at least the selected rules</option>
+                          <option value="exact">Must match exactly the selected rules</option>
+                        </select>
+                      </div>
                     </div>
+
+                    {ruleMatchType !== "any" && (
+                      <div className="bg-white border border-gray-200 rounded-lg p-3">
+                        <h4 className="text-xs font-semibold text-gh-muted uppercase tracking-wider mb-2">Required Rules</h4>
+                        <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={requirePr} onChange={e => setRequirePr(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                            Require Pull Request
+                          </label>
+                          {requirePr && (
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gh-muted">Min. Approvals:</span>
+                              <input
+                                type="number" min={1} max={5}
+                                value={minApprovals}
+                                onChange={(e) => setMinApprovals(parseInt(e.target.value))}
+                                className="w-16 rounded-md border-gray-300 py-1 px-2 text-xs ring-1 ring-inset ring-gray-300 outline-none focus:border-gh-blue"
+                              />
+                            </div>
+                          )}
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={dismissStaleReviews} onChange={e => setDismissStaleReviews(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                            Dismiss stale reviews
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={preventForcePush} onChange={e => setPreventForcePush(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                            Prevent force pushing
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={preventDeletion} onChange={e => setPreventDeletion(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                            Prevent deletion
+                          </label>
+                          <label className="flex items-center gap-2">
+                            <input type="checkbox" checked={enforceAdmins} onChange={e => setEnforceAdmins(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                            Enforce for admins
+                          </label>
+                        </div>
+
+                        <details className="group/det mt-3">
+                          <summary className="text-[11px] font-semibold text-gh-blue cursor-pointer hover:underline list-none flex items-center gap-1 select-none pt-2 border-t border-gray-100">
+                            <i className="ph-bold ph-caret-right text-[10px] group-open/det:rotate-90 transition-transform"></i>
+                            Advanced Rules
+                          </summary>
+                          <div className="grid grid-cols-2 gap-y-2 gap-x-4 pt-3 mt-1 text-sm">
+                            <label className="flex items-center gap-2">
+                              <input type="checkbox" checked={requireCodeOwnerReviews} onChange={e => setRequireCodeOwnerReviews(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                              Require Code Owner review
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="checkbox" checked={requireConversationResolution} onChange={e => setRequireConversationResolution(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                              Require conversation resolution
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="checkbox" checked={requireStatusChecks} onChange={e => setRequireStatusChecks(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                              Require status checks
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="checkbox" checked={strictStatusChecks} onChange={e => setStrictStatusChecks(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                              Strict status checks (up to date)
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="checkbox" checked={requireSignedCommits} onChange={e => setRequireSignedCommits(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                              Require signed commits
+                            </label>
+                            <label className="flex items-center gap-2">
+                              <input type="checkbox" checked={requireLinearHistory} onChange={e => setRequireLinearHistory(e.target.checked)} className="rounded text-gh-blue focus:ring-gh-blue" />
+                              Require linear history
+                            </label>
+                          </div>
+                        </details>
+                      </div>
+                    )}
                   </div>
                 )}
               </>
@@ -688,8 +928,10 @@ function AddWidgetModal({ onClose, onSave }: { onClose: () => void, onSave: (con
           </div>
 
           <div className="flex justify-end gap-3 pt-4 border-t border-gh-border">
-            <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50">Cancel</button>
-            <button type="submit" className="px-4 py-2 bg-gh-blue text-white rounded-md text-sm font-medium hover:bg-gh-blueHover">Save Widget</button>
+            <button type="button" onClick={onClose} className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium hover:bg-gray-50" disabled={isSaving}>Cancel</button>
+            <button type="submit" className="px-4 py-2 bg-gh-blue text-white rounded-md text-sm font-medium hover:bg-gh-blueHover disabled:opacity-50" disabled={isSaving}>
+              {isSaving ? "Saving..." : isEditing ? "Update Widget" : "Save Widget"}
+            </button>
           </div>
         </form>
       </div>

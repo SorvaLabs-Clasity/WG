@@ -14,6 +14,8 @@ export default function DependencyDashboardPage() {
   const [filterSeverity, setFilterSeverity] = useState<string>("all-alerts");
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [loadingRepo, setLoadingRepo] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const REPOS_PER_PAGE = 20;
 
   const handleEnable = async (repo: string) => {
     setLoadingRepo(repo);
@@ -140,7 +142,7 @@ export default function DependencyDashboardPage() {
             ].map((sev) => (
               <button
                 key={sev.id}
-                onClick={() => setFilterSeverity(sev.id)}
+                onClick={() => { setFilterSeverity(sev.id); setCurrentPage(1); }}
                 className={`px-4 py-1.5 text-sm font-semibold rounded-full transition-colors ${
                   filterSeverity === sev.id
                     ? "bg-gh-blue text-white"
@@ -153,12 +155,12 @@ export default function DependencyDashboardPage() {
           </div>
           
           <div className="flex flex-wrap items-center gap-4">
-            <div className="relative w-64">
+            <div className="relative w-full sm:w-64">
               <input 
                 type="text" 
                 placeholder="Search repositories..." 
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                 className="w-full pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue"
               />
               <i className="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
@@ -167,8 +169,14 @@ export default function DependencyDashboardPage() {
         </div>
 
         {/* Repositories List */}
+        {(() => {
+          const allEntries = Object.entries(repoGroups);
+          const totalPages = Math.ceil(allEntries.length / REPOS_PER_PAGE);
+          const paginatedEntries = allEntries.slice((currentPage - 1) * REPOS_PER_PAGE, currentPage * REPOS_PER_PAGE);
+          return (
+            <>
         <div className="space-y-6">
-          {Object.keys(repoGroups).length === 0 ? (
+          {allEntries.length === 0 ? (
             <div className="bg-white rounded-[12px] border border-gh-border p-12 text-center">
               <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <i className="ph-fill ph-check-circle text-3xl text-green-500"></i>
@@ -177,7 +185,7 @@ export default function DependencyDashboardPage() {
               <p className="text-gh-muted mt-1">Great job keeping dependencies up to date.</p>
             </div>
           ) : (
-            Object.entries(repoGroups).map(([repoName, alerts]) => (
+            paginatedEntries.map(([repoName, alerts]) => (
               <div key={repoName} className="bg-white rounded-xl border border-gh-border shadow-sm overflow-hidden">
                 <div className="bg-gray-50 px-5 py-3 border-b border-gh-border flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -279,6 +287,71 @@ export default function DependencyDashboardPage() {
             ))
           )}
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-6 bg-white border border-gh-border rounded-xl px-5 py-3 shadow-sm">
+            <span className="text-sm text-gh-muted">
+              Showing {(currentPage - 1) * REPOS_PER_PAGE + 1}–{Math.min(currentPage * REPOS_PER_PAGE, allEntries.length)} of {allEntries.length} repositories
+            </span>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-2 py-1 text-xs font-semibold rounded-md border border-gray-200 text-gh-muted hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <i className="ph-bold ph-caret-double-left"></i>
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-2.5 py-1 text-xs font-semibold rounded-md border border-gray-200 text-gh-muted hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <i className="ph-bold ph-caret-left"></i>
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                .reduce<(number | "...")[]>((acc, p, i, arr) => {
+                  if (i > 0 && p - (arr[i - 1]) > 1) acc.push("...");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, i) =>
+                  p === "..." ? (
+                    <span key={`e-${i}`} className="px-1.5 text-xs text-gray-400">...</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p as number)}
+                      className={`w-8 h-8 text-xs font-bold rounded-md transition-colors ${
+                        currentPage === p
+                          ? "bg-gh-blue text-white"
+                          : "border border-gray-200 text-gh-muted hover:bg-gray-50"
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-2.5 py-1 text-xs font-semibold rounded-md border border-gray-200 text-gh-muted hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <i className="ph-bold ph-caret-right"></i>
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-2 py-1 text-xs font-semibold rounded-md border border-gray-200 text-gh-muted hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <i className="ph-bold ph-caret-double-right"></i>
+              </button>
+            </div>
+          </div>
+        )}
+            </>
+          );
+        })()}
 
       </main>
     </div>

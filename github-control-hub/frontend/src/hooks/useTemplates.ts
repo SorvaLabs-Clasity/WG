@@ -24,6 +24,7 @@ export function useCreateTemplate() {
       description: string;
       branches: BranchRule[];
       autoApplyOnNewRepo: boolean;
+      exclusionLists?: string[];
     }) => createTemplate(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["templates"] });
@@ -45,6 +46,7 @@ export function useUpdateTemplate() {
         description: string;
         branches: BranchRule[];
         autoApplyOnNewRepo: boolean;
+        exclusionLists?: string[];
       }>;
     }) => updateTemplate(id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
@@ -65,8 +67,8 @@ export function useDeleteTemplate() {
 export function useApplyTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ templateId, repo }: { templateId: string; repo: string }) =>
-      applyTemplate(templateId, repo),
+    mutationFn: ({ templateId, repos }: { templateId: string; repos: string[] }) =>
+      applyTemplate(templateId, repos),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["activity"] });
       qc.invalidateQueries({ queryKey: ["branches"] });

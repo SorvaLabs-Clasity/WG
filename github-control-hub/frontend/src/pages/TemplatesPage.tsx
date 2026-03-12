@@ -8,13 +8,17 @@ import {
   useDeleteTemplate,
   useApplyTemplate,
 } from "../hooks/useTemplates";
+import {
+  useExclusions,
+  useCreateExclusion,
+  useUpdateExclusion,
+  useDeleteExclusion,
+} from "../hooks/useExclusions";
+import { useResolveConflict } from "../hooks/useActivity";
 import { useRepos } from "../hooks/useRepos";
 import type { BranchRule } from "../types/Template";
-import { parseGitHubRulesetJson } from "../components/ProtectBranchModal";
-import Editor from "react-simple-code-editor";
-import Prism from "prismjs";
-import "prismjs/components/prism-json";
-import "prismjs/themes/prism.css";
+import { buildConflictComparison, type ConflictItem } from "../api/templates";
+import ProtectBranchModal, { DEFAULT_PROTECTION } from "../components/ProtectBranchModal";
 
 const EMPTY_RULE: BranchRule & { inputVal: string } = {
   branchNames: [],
@@ -22,39 +26,6 @@ const EMPTY_RULE: BranchRule & { inputVal: string } = {
   protection: null,
 };
 
-const DEFAULT_PROTECTION: NonNullable<BranchRule["protection"]> = {
-  type: "classic",
-  enforcement: "active",
-  restrictCreations: false,
-  restrictUpdates: false,
-  requirePr: true,
-  requiredApprovals: 1,
-  dismissStaleReviews: true,
-  requireCodeOwnerReviews: false,
-  requireLastPushApproval: false,
-  requireConversationResolution: false,
-  allowedMergeMethods: [],
-  requireStatusChecks: true,
-  strictStatusChecks: true,
-  doNotRequireStatusChecksOnCreation: false,
-  statusCheckContexts: [],
-  requireDeployments: false,
-  requiredDeploymentEnvironments: [],
-  requireSignedCommits: false,
-  requireLinearHistory: false,
-  enforceAdmins: true,
-  preventForcePush: true,
-  preventDeletion: true,
-  requireCodeScanning: false,
-  codeScanningTool: "CodeQL",
-  codeScanningAlertsThreshold: "errors",
-  codeScanningSecurityAlertsThreshold: "high_or_higher",
-  requireCodeQuality: false,
-  codeQualitySeverity: "errors",
-  copilotCodeReview: false,
-  copilotReviewOnPush: false,
-  copilotReviewDraftPrs: false,
-};
 
 export default function TemplatesPage() {
   const { user } = useAuth();
@@ -65,25 +36,113 @@ export default function TemplatesPage() {
   const deleteMutation = useDeleteTemplate();
   const applyMutation = useApplyTemplate();
 
+  const { data: exclusions } = useExclusions();
+  const createExclMutation = useCreateExclusion();
+  const updateExclMutation = useUpdateExclusion();
+  const deleteExclMutation = useDeleteExclusion();
+
+  const resolveMutation = useResolveConflict();
+
+  const [activeTab, setActiveTab] = useState<"templates" | "exclusions">("templates");
+  const [conflictItems, setConflictItems] = useState<(ConflictItem & { resolved?: "override" | "skip"; resolving?: boolean })[]>([]);
+  const [conflictOpen, setConflictOpen] = useState(false);
+  const [expandedConflicts, setExpandedConflicts] = useState<Set<number>>(new Set());
+
   const [createOpen, setCreateOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingRuleIdx, setEditingRuleIdx] = useState<number | null>(null);
   const [applyOpen, setApplyOpen] = useState<string | null>(null);
-  const [applyRepo, setApplyRepo] = useState("");
+  const [applyRepos, setApplyRepos] = useState<string[]>([]);
+  const [applySearch, setApplySearch] = useState("");
   const [snack, setSnack] = useState<{ msg: string; severity: "success" | "error" } | null>(null);
 
   // Create form state
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [autoApply, setAutoApply] = useState(false);
+  const [selectedExclusions, setSelectedExclusions] = useState<string[]>([]);
   const [branchRules, setBranchRules] = useState<(BranchRule & { inputVal: string; jsonMode?: boolean; jsonString?: string; jsonError?: string; importMode?: boolean; importText?: string; importError?: string })[]>([
     { branchNames: ["main"], inputVal: "", protection: { ...DEFAULT_PROTECTION, requiredApprovals: 2 } },
     { branchNames: ["develop"], inputVal: "", protection: null },
   ]);
 
+  // Exclusion list form state
+  const [createExclOpen, setCreateExclOpen] = useState(false);
+  const [editingExclId, setEditingExclId] = useState<string | null>(null);
+  const [exclName, setExclName] = useState("");
+  const [exclDescription, setExclDescription] = useState("");
+  const [exclRepos, setExclRepos] = useState<string[]>([]);
+  const [exclCustomRepos, setExclCustomRepos] = useState<string[]>([]);
+  const [exclSearch, setExclSearch] = useState("");
+  const [exclForceOnNew, setExclForceOnNew] = useState(false);
+  const [exclForceTemplateIds, setExclForceTemplateIds] = useState<string[]>([]);
+  const [exclCustomPending, setExclCustomPending] = useState(false);
+
+  const resetExclForm = () => {
+    setExclName("");
+    setExclDescription("");
+    setExclRepos([]);
+    setExclCustomRepos([]);
+    setExclSearch("");
+    setExclForceOnNew(false);
+    setExclForceTemplateIds([]);
+    setExclCustomPending(false);
+    setEditingExclId(null);
+  };
+
+  const handleEditExclClick = (excl: any) => {
+    setExclName(excl.name);
+    setExclDescription(excl.description || "");
+    const repoNames = (repos || []).map((r: any) => r.name);
+    const existing = (excl.repos || []).filter((r: string) => repoNames.includes(r));
+    const custom = (excl.repos || []).filter((r: string) => !repoNames.includes(r));
+    setExclRepos(existing);
+    setExclCustomRepos(custom);
+    setExclSearch("");
+    setExclForceOnNew(excl.forceOnNewTemplates || false);
+    setExclForceTemplateIds(excl.forceTemplateIds || []);
+    setEditingExclId(excl.id);
+    setCreateExclOpen(true);
+  };
+
+  const handleCreateOrUpdateExcl = () => {
+    const allRepos = Array.from(new Set([...exclRepos, ...exclCustomRepos]));
+    if (!exclName || allRepos.length === 0) return;
+    
+    if (editingExclId) {
+      updateExclMutation.mutate({ id: editingExclId, data: { name: exclName, description: exclDescription, repos: allRepos, forceTemplateIds: exclForceTemplateIds, forceOnNewTemplates: exclForceOnNew } }, {
+        onSuccess: () => {
+          setSnack({ msg: `Exclusion list updated`, severity: "success" });
+          setCreateExclOpen(false);
+          resetExclForm();
+        },
+        onError: (err) => setSnack({ msg: (err as Error).message, severity: "error" }),
+      });
+    } else {
+      createExclMutation.mutate({ name: exclName, description: exclDescription, repos: allRepos, forceTemplateIds: exclForceTemplateIds, forceOnNewTemplates: exclForceOnNew }, {
+        onSuccess: () => {
+          setSnack({ msg: `Exclusion list created`, severity: "success" });
+          setCreateExclOpen(false);
+          resetExclForm();
+        },
+        onError: (err) => setSnack({ msg: (err as Error).message, severity: "error" }),
+      });
+    }
+  };
+
+  const handleDeleteExcl = (id: string, name: string) => {
+    if (!confirm(`Delete exclusion list "${name}"?`)) return;
+    deleteExclMutation.mutate(id, {
+      onSuccess: () => setSnack({ msg: `Exclusion list deleted`, severity: "success" }),
+      onError: (err) => setSnack({ msg: (err as Error).message, severity: "error" }),
+    });
+  };
+
   const resetForm = () => {
     setName("");
     setDescription("");
     setAutoApply(false);
+    setSelectedExclusions([]);
     setBranchRules([
       { branchNames: ["main"], inputVal: "", protection: { ...DEFAULT_PROTECTION, requiredApprovals: 2 } },
       { branchNames: ["develop"], inputVal: "", protection: null },
@@ -95,6 +154,7 @@ export default function TemplatesPage() {
     setName(tmpl.name);
     setDescription(tmpl.description);
     setAutoApply(tmpl.autoApplyOnNewRepo);
+    setSelectedExclusions(tmpl.exclusionLists || []);
     // Deep clone the rules and ensure inputVal exists
     setBranchRules(JSON.parse(JSON.stringify(tmpl.branches)).map((r: any) => ({ ...r, inputVal: "" })));
     setEditingId(tmpl.id);
@@ -133,7 +193,7 @@ export default function TemplatesPage() {
 
     if (editingId) {
       updateMutation.mutate(
-        { id: editingId, data: { name, description, branches: finalRules, autoApplyOnNewRepo: autoApply } },
+        { id: editingId, data: { name, description, branches: finalRules, autoApplyOnNewRepo: autoApply, exclusionLists: selectedExclusions } },
         {
           onSuccess: () => {
             setSnack({ msg: `Template "${name}" updated`, severity: "success" });
@@ -145,7 +205,7 @@ export default function TemplatesPage() {
       );
     } else {
       createMutation.mutate(
-        { name, description, branches: finalRules, autoApplyOnNewRepo: autoApply },
+        { name, description, branches: finalRules, autoApplyOnNewRepo: autoApply, exclusionLists: selectedExclusions },
         {
           onSuccess: () => {
             setSnack({ msg: `Template "${name}" created`, severity: "success" });
@@ -167,22 +227,64 @@ export default function TemplatesPage() {
   };
 
   const handleApply = () => {
-    if (!applyOpen || !applyRepo) return;
+    if (!applyOpen || applyRepos.length === 0) return;
     applyMutation.mutate(
-      { templateId: applyOpen, repo: applyRepo },
+      { templateId: applyOpen, repos: applyRepos },
       {
         onSuccess: (result) => {
           const parts = [`Created: [${result.created.join(", ")}]`, `Protected: [${result.protected.join(", ")}]`];
           if (result.errors.length) {
             parts.push(`Errors (${result.errors.length}): ${result.errors.slice(0, 2).join("; ")}${result.errors.length > 2 ? "…" : ""}`);
           }
-          setSnack({ msg: parts.join(" · "), severity: result.errors.length ? "error" : "success" });
+          const hasConflicts = result.conflicts && result.conflicts.length > 0;
+          if (hasConflicts) {
+            parts.push(`Conflicts (${result.conflicts!.length})`);
+          }
+          setSnack({ msg: parts.join(" · "), severity: result.errors.length || hasConflicts ? "error" : "success" });
           setApplyOpen(null);
-          setApplyRepo("");
+          setApplyRepos([]);
+          setApplySearch("");
+          if (hasConflicts) {
+            setConflictItems(result.conflicts!.map(c => ({ ...c })));
+            setExpandedConflicts(new Set());
+            setConflictOpen(true);
+          }
         },
         onError: (err) => setSnack({ msg: (err as Error).message, severity: "error" }),
       }
     );
+  };
+
+  const handleResolveConflict = (idx: number, resolution: "override" | "skip") => {
+    const item = conflictItems[idx];
+    if (!item.activityId || item.resolved) return;
+    const updated = [...conflictItems];
+    updated[idx] = { ...updated[idx], resolving: true };
+    setConflictItems(updated);
+    resolveMutation.mutate(
+      { activityId: item.activityId, resolution },
+      {
+        onSuccess: () => {
+          const next = [...conflictItems];
+          next[idx] = { ...next[idx], resolved: resolution, resolving: false };
+          setConflictItems(next);
+        },
+        onError: () => {
+          const next = [...conflictItems];
+          next[idx] = { ...next[idx], resolving: false };
+          setConflictItems(next);
+          setSnack({ msg: `Failed to ${resolution} conflict for "${item.name}"`, severity: "error" });
+        },
+      }
+    );
+  };
+
+  const handleResolveAll = (resolution: "override" | "skip") => {
+    conflictItems.forEach((item, idx) => {
+      if (!item.resolved && item.activityId) {
+        handleResolveConflict(idx, resolution);
+      }
+    });
   };
 
   const addRule = () => setBranchRules([...branchRules, { ...EMPTY_RULE, branchNames: [], inputVal: "" }]);
@@ -240,132 +342,78 @@ export default function TemplatesPage() {
     setBranchRules(updated);
   };
 
-  const toggleJsonMode = (idx: number) => {
-    const updated = [...branchRules];
-    const rule = updated[idx];
-    if (!rule.jsonMode) {
-      // Switching to JSON mode
-      rule.jsonString = JSON.stringify(rule.protection || {}, null, 2);
-      rule.jsonError = "";
-    } else {
-      // Switching to Visual mode: try parsing
-      try {
-        if (rule.jsonString) {
-          const parsed = JSON.parse(rule.jsonString);
-          rule.protection = Object.keys(parsed).length === 0 ? null : parsed;
-        } else {
-          rule.protection = null;
-        }
-        rule.jsonError = "";
-      } catch (err) {
-        rule.jsonError = "Invalid JSON. Please fix errors before switching back.";
-        setBranchRules(updated);
-        return;
-      }
-    }
-    rule.jsonMode = !rule.jsonMode;
-    setBranchRules(updated);
-  };
-
-  const updateJsonString = (idx: number, val: string) => {
-    const updated = [...branchRules];
-    updated[idx].jsonString = val;
-    updated[idx].jsonError = "";
-    try {
-      const parsed = JSON.parse(val);
-      updated[idx].protection = parsed; // keep object in sync if valid
-    } catch {
-      updated[idx].jsonError = "Invalid JSON";
-    }
-    setBranchRules(updated);
-  };
-
-  const toggleImportMode = (idx: number) => {
-    const updated = [...branchRules];
-    updated[idx].importMode = !updated[idx].importMode;
-    updated[idx].importText = "";
-    updated[idx].importError = "";
-    setBranchRules(updated);
-  };
-
-  const updateImportText = (idx: number, val: string) => {
-    const updated = [...branchRules];
-    updated[idx].importText = val;
-    updated[idx].importError = "";
-    setBranchRules(updated);
-  };
-
-  const handleImportRuleset = (idx: number) => {
-    const updated = [...branchRules];
-    const rule = updated[idx];
-    try {
-      const parsed = JSON.parse(rule.importText || "");
-      const isArray = Array.isArray(parsed);
-      const hasRules = parsed.rules && Array.isArray(parsed.rules);
-      if (!isArray && !hasRules) {
-        rule.importError = 'Invalid format: paste either the full ruleset JSON or just the "rules" array.';
-        setBranchRules(updated);
-        return;
-      }
-      const imported = parseGitHubRulesetJson(parsed);
-      rule.protection = imported;
-      rule.importMode = false;
-      rule.importText = "";
-      rule.importError = "";
-      rule.jsonMode = false;
-      if (imported.rulesetName) rule.protection.rulesetName = imported.rulesetName;
-    } catch {
-      rule.importError = "Invalid JSON. Please paste a valid GitHub ruleset JSON.";
-    }
-    setBranchRules(updated);
-  };
-
-  const updateRuleProtectionField = (idx: number, field: keyof NonNullable<BranchRule["protection"]>, val: any) => {
-    const updated = [...branchRules];
-    if (updated[idx].protection) {
-      updated[idx] = {
-        ...updated[idx],
-        protection: { ...updated[idx].protection!, [field]: val },
-      };
-    }
-    setBranchRules(updated);
-  };
-
   return (
     <div className="bg-gh-light text-gh-text antialiased min-h-screen flex flex-col relative pt-14">
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
       
       <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 pb-32 animate-fade-in">
         
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-2xl font-bold text-gh-textBase tracking-tight">Repo Init Templates</h1>
-            <p className="text-gh-muted text-sm mt-1">Define branch structures and protection rules to enforce standards across your organization.</p>
+            <h1 className="text-2xl font-bold text-gh-textBase tracking-tight">Repo Initialization & Automation</h1>
+            <p className="text-gh-muted text-sm mt-1">Manage repository templates and configure automation exclusions.</p>
           </div>
-          <button 
-            onClick={() => setCreateOpen(true)}
-            className="inline-flex items-center gap-2 bg-gh-blue hover:bg-gh-blueHover text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gh-blue/50"
+          <div className="flex gap-2">
+            {activeTab === "templates" ? (
+              <button 
+                onClick={() => setCreateOpen(true)}
+                className="inline-flex items-center gap-2 bg-gh-blue hover:bg-gh-blueHover text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-all"
+              >
+                <i className="fa-solid fa-plus text-xs"></i>
+                New Template
+              </button>
+            ) : (
+              <button 
+                onClick={() => setCreateExclOpen(true)}
+                className="inline-flex items-center gap-2 bg-gh-blue hover:bg-gh-blueHover text-white px-4 py-2 rounded-md text-sm font-semibold shadow-sm transition-all"
+              >
+                <i className="fa-solid fa-plus text-xs"></i>
+                New Exclusion List
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 border-b border-gh-border mb-6">
+          <button
+            onClick={() => setActiveTab("templates")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+              activeTab === "templates" 
+                ? "border-gh-blue text-gh-textBase" 
+                : "border-transparent text-gh-muted hover:text-gh-textBase"
+            }`}
           >
-            <i className="fa-solid fa-plus text-xs"></i>
-            New Template
+            <i className="fa-solid fa-layer-group mr-2"></i>Templates
+          </button>
+          <button
+            onClick={() => setActiveTab("exclusions")}
+            className={`px-4 py-3 text-sm font-semibold border-b-2 transition-colors ${
+              activeTab === "exclusions" 
+                ? "border-gh-blue text-gh-textBase" 
+                : "border-transparent text-gh-muted hover:text-gh-textBase"
+            }`}
+          >
+            <i className="fa-solid fa-ban mr-2"></i>Exclusion Lists
           </button>
         </div>
 
-        {isLoading && (
-          <div className="flex justify-center py-12">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gh-blue"></div>
-          </div>
-        )}
+        {activeTab === "templates" && (
+          <>
+            {isLoading && (
+              <div className="flex justify-center py-12">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gh-blue"></div>
+              </div>
+            )}
 
-        {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md mb-6">
-            <p className="text-red-700">Failed to load templates: {(error as Error).message}</p>
-          </div>
-        )}
+            {error && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-md mb-6">
+                <p className="text-red-700">Failed to load templates: {(error as Error).message}</p>
+              </div>
+            )}
 
-        {!isLoading && !error && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {templates?.map((tmpl) => (
+            {!isLoading && !error && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {templates?.map((tmpl) => (
               <div key={tmpl.id} className="bg-white rounded-lg border border-gh-border p-0 hover:border-gh-blue hover:shadow-card transition-all group flex flex-col h-full">
                 <div className="p-5 border-b border-gh-border bg-gradient-to-r from-white to-gray-50/50 rounded-t-lg">
                   <div className="flex justify-between items-start">
@@ -443,12 +491,88 @@ export default function TemplatesPage() {
             ))}
           </div>
         )}
+        </>
+        )}
+
+        {activeTab === "exclusions" && (
+          <div className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {exclusions?.map(excl => {
+                const linkedTemplates = templates?.filter(t => t.exclusionLists?.includes(excl.id)) || [];
+                return (
+                  <div key={excl.id} className="bg-white rounded-lg border border-gh-border p-5 hover:border-gh-blue hover:shadow-card transition-all flex flex-col h-full">
+                    <div className="flex justify-between items-start mb-3">
+                      <div>
+                        <h3 className="text-base font-bold text-gh-textBase flex items-center gap-2">
+                          <i className="fa-solid fa-ban text-red-500"></i>
+                          {excl.name}
+                        </h3>
+                        <p className="text-sm text-gh-muted mt-1 leading-relaxed">{excl.description || "No description"}</p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={() => handleEditExclClick(excl)}
+                          className="p-1.5 text-gh-muted hover:text-gh-blue hover:bg-blue-50 rounded transition-colors" 
+                        >
+                          <i className="fa-solid fa-pen"></i>
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteExcl(excl.id, excl.name)}
+                          className="p-1.5 text-gh-muted hover:text-gh-red hover:bg-red-50 rounded transition-colors" 
+                        >
+                          <i className="fa-regular fa-trash-can"></i>
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-2 text-sm text-gh-textBase bg-gray-50 p-3 rounded-md border border-gray-200">
+                      <p className="font-semibold mb-2">Excluded Repositories ({excl.repos.length})</p>
+                      <div className="flex flex-wrap gap-2">
+                        {excl.repos.slice(0, 10).map(r => (
+                          <span key={r} className="inline-flex items-center gap-1 px-2 py-1 rounded bg-white border border-gray-200 text-xs">
+                            <i className="fa-solid fa-book-bookmark text-gray-400"></i> {r}
+                          </span>
+                        ))}
+                        {excl.repos.length > 10 && (
+                          <span className="text-xs text-gh-muted self-center">+{excl.repos.length - 10} more</span>
+                        )}
+                        {excl.repos.length === 0 && <span className="text-xs text-gh-muted italic">No repositories selected</span>}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-gh-border text-sm">
+                      <p className="font-semibold text-gh-textBase mb-1 text-xs uppercase tracking-wider text-gh-muted">Linked Templates</p>
+                      {linkedTemplates.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {linkedTemplates.map(t => (
+                            <span key={t.id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 text-[11px] font-medium">
+                              <i className="fa-solid fa-layer-group text-[9px]"></i> {t.name}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-xs text-gh-muted italic">Not linked to any templates</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              {exclusions?.length === 0 && (
+                <div className="col-span-full py-12 text-center border-2 border-dashed border-gray-200 rounded-lg">
+                  <i className="fa-solid fa-ban text-gray-300 text-4xl mb-3"></i>
+                  <h3 className="text-lg font-medium text-gh-textBase mb-1">No Exclusion Lists</h3>
+                  <p className="text-sm text-gh-muted">Create exclusion lists to prevent templates from applying to specific repositories.</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
 
       {/* CREATE TEMPLATE MODAL */}
       {createOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setCreateOpen(false)}></div>
+          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" onClick={() => { setCreateOpen(false); resetForm(); }}></div>
           
           <div className="bg-white rounded-xl shadow-modal border border-black/10 w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
             <div className="bg-white px-6 py-4 border-b border-gh-border flex justify-between items-center rounded-t-xl shrink-0">
@@ -501,6 +625,92 @@ export default function TemplatesPage() {
                 </div>
               </div>
 
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-200">
+                <label className="block text-sm font-semibold text-gh-textBase mb-2">Exclusion Lists</label>
+                <p className="text-xs text-gh-muted mb-3">Select exclusion lists to prevent this template from applying to specific repositories.</p>
+                {exclusions && exclusions.length > 0 ? (() => {
+                  const isNewTemplate = !editingId;
+                  const forcedExcl = exclusions.filter(e =>
+                    (e.forceOnNewTemplates && isNewTemplate) ||
+                    (e.forceOnNewTemplates && !isNewTemplate) ||
+                    ((e.forceTemplateIds || []).includes(editingId || ""))
+                  );
+                  const optionalExcl = exclusions.filter(e => !forcedExcl.some(f => f.id === e.id));
+                  const forcedIds = forcedExcl.map(e => e.id);
+
+                  if (!selectedExclusions.some(id => forcedIds.includes(id)) && forcedIds.length > 0) {
+                    const merged = Array.from(new Set([...selectedExclusions, ...forcedIds]));
+                    if (merged.length !== selectedExclusions.length) {
+                      setTimeout(() => setSelectedExclusions(merged), 0);
+                    }
+                  }
+
+                  return (
+                    <div className="space-y-3 max-h-48 overflow-y-auto pr-2">
+                      {forcedExcl.length > 0 && (
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-2">
+                            <i className="fa-solid fa-lock text-[10px] text-amber-500"></i>
+                            <span className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Forced</span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {forcedExcl.map(excl => (
+                              <div key={excl.id} className="flex items-start gap-2 p-2 bg-amber-50 border border-amber-200 rounded opacity-90">
+                                <div className="flex items-center h-5">
+                                  <input type="checkbox" checked disabled className="w-4 h-4 text-amber-500 border-amber-300 rounded cursor-not-allowed" />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-medium text-amber-800 flex items-center gap-1">
+                                    {excl.name}
+                                    <i className="fa-solid fa-lock text-[8px] text-amber-400"></i>
+                                  </span>
+                                  <span className="text-[10px] text-amber-600">{excl.repos.length} repos &middot; Cannot be removed</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {optionalExcl.length > 0 && (
+                        <div>
+                          {forcedExcl.length > 0 && (
+                            <div className="flex items-center gap-1.5 mb-2">
+                              <span className="text-[10px] font-bold text-gh-muted uppercase tracking-wider">Optional</span>
+                            </div>
+                          )}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {optionalExcl.map(excl => (
+                              <label key={excl.id} className="flex items-start gap-2 p-2 bg-white border border-gray-200 rounded cursor-pointer hover:border-gh-blue transition-colors group">
+                                <div className="flex items-center h-5">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedExclusions.includes(excl.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setSelectedExclusions([...selectedExclusions, excl.id]);
+                                      } else {
+                                        setSelectedExclusions(selectedExclusions.filter(id => id !== excl.id));
+                                      }
+                                    }}
+                                    className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue focus:ring-2 focus:ring-offset-1 transition-colors"
+                                  />
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className="text-xs font-medium text-gh-textBase group-hover:text-gh-blue transition-colors">{excl.name}</span>
+                                  <span className="text-[10px] text-gh-muted">{excl.repos.length} repos</span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })() : (
+                  <p className="text-xs text-gh-muted italic">No exclusion lists found. Create one in the Exclusion Lists tab.</p>
+                )}
+              </div>
+
               <hr className="border-gh-border" />
 
               <div>
@@ -550,228 +760,159 @@ export default function TemplatesPage() {
                         </button>
                       </div>
                       
-                      <div className="flex flex-col border-t border-gray-100 pt-3 mt-3">
-                        <div className="flex items-center justify-between">
-                          {!rule.jsonMode ? (
-                            <label className="inline-flex items-center cursor-pointer whitespace-nowrap shrink-0">
-                              <input 
-                                type="checkbox" 
-                                checked={!!rule.protection} 
-                                onChange={() => toggleRuleProtection(idx)}
-                                className="sr-only peer"
-                              />
-                              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600 relative"></div>
-                              <span className="ml-2 text-sm font-medium text-gh-textBase flex-1 pr-2">
-                                {rule.protection ? (
-                                  <>Protect branches</>
-                                ) : (
-                                  <span className="text-gray-500">Enable Protection</span>
-                                )}
-                              </span>
-                            </label>
-                          ) : (
-                            <div className="text-sm font-semibold text-gh-textBase">
-                              Raw JSON Configuration (Overrides visual settings)
-                            </div>
-                          )}
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={() => toggleImportMode(idx)}
-                              className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors flex items-center gap-1.5 ${
-                                rule.importMode
-                                  ? "text-white bg-gh-blue hover:bg-gh-blueHover"
-                                  : "text-gh-blue hover:text-gh-blueHover hover:bg-blue-50"
-                              }`}
-                            >
-                              <i className="ph-bold ph-arrow-square-in text-xs"></i> Import Ruleset
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => toggleJsonMode(idx)}
-                              className="px-3 py-1 text-[11px] font-semibold text-gh-blue hover:text-gh-blueHover hover:bg-blue-50 rounded-md transition-colors flex items-center gap-1.5"
-                            >
-                              {rule.jsonMode ? (
-                                <><i className="fa-solid fa-code"></i> Visual Editor</>
-                              ) : (
-                                <><i className="fa-solid fa-brackets-curly"></i> Edit JSON</>
-                              )}
-                            </button>
-                          </div>
+                      {/* Base Branch Selector */}
+                      <div className="border-t border-gray-100 pt-3 mt-3">
+                        <div className="flex items-center gap-2 mb-1.5">
+                          <i className="fa-solid fa-code-fork text-gray-400 text-xs"></i>
+                          <span className="text-xs font-semibold text-gh-textMuted uppercase tracking-wider">Base branch for new branches</span>
+                        </div>
+                        <p className="text-[11px] text-gh-muted mb-2.5">Only applies when a branch doesn&apos;t exist yet and needs to be created.</p>
+                        <div className="flex gap-2 mb-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...branchRules];
+                              updated[idx] = { ...rule, baseBranchMode: "default", baseBranch: undefined, onBaseBranchMissing: undefined };
+                              setBranchRules(updated);
+                            }}
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-all flex items-center gap-1.5 ${
+                              (!rule.baseBranchMode || rule.baseBranchMode === "default")
+                                ? "bg-gh-blue text-white border-gh-blue shadow-sm"
+                                : "bg-white text-gh-textMuted border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                            }`}
+                          >
+                            <i className="fa-solid fa-star text-[9px]"></i>
+                            Default branch
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const updated = [...branchRules];
+                              updated[idx] = { ...rule, baseBranchMode: "specific", baseBranch: rule.baseBranch || "", onBaseBranchMissing: rule.onBaseBranchMissing || "use_default" };
+                              setBranchRules(updated);
+                            }}
+                            className={`px-3 py-1.5 text-xs font-semibold rounded-md border transition-all flex items-center gap-1.5 ${
+                              rule.baseBranchMode === "specific"
+                                ? "bg-gh-blue text-white border-gh-blue shadow-sm"
+                                : "bg-white text-gh-textMuted border-gray-200 hover:border-gray-300 hover:bg-gray-50"
+                            }`}
+                          >
+                            <i className="fa-solid fa-crosshairs text-[9px]"></i>
+                            Specific branch
+                          </button>
                         </div>
 
-                        {rule.importMode && (
-                          <div className="mt-3 p-4 bg-blue-50/50 border border-blue-200 rounded-lg space-y-3">
-                            <p className="text-xs text-gh-muted">
-                              Paste the full ruleset JSON or just the <code className="text-[10px] bg-white px-1 rounded font-mono border border-gray-200">"rules"</code> array from a GitHub export.
-                            </p>
-                            <textarea
-                              value={rule.importText || ""}
-                              onChange={e => updateImportText(idx, e.target.value)}
-                              placeholder='Paste the full ruleset JSON or just the "rules" array'
-                              rows={10}
-                              className="w-full px-3 py-2 text-xs font-mono border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gh-blue bg-white resize-y"
-                            />
-                            {rule.importError && (
-                              <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded-md">
-                                <i className="ph-fill ph-warning-circle text-red-500 text-sm"></i>
-                                <span className="text-xs text-red-700">{rule.importError}</span>
+                        {rule.baseBranchMode === "specific" && (
+                          <div className="pl-4 border-l-2 border-gh-blue/20 space-y-3 mt-2">
+                            <div>
+                              <label className="block text-xs font-medium text-gh-textBase mb-1">Branch name</label>
+                              <div className="relative">
+                                <i className="fa-solid fa-code-branch absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs"></i>
+                                <input
+                                  type="text"
+                                  value={rule.baseBranch || ""}
+                                  onChange={(e) => {
+                                    const updated = [...branchRules];
+                                    updated[idx] = { ...rule, baseBranch: e.target.value };
+                                    setBranchRules(updated);
+                                  }}
+                                  placeholder="e.g. develop, staging"
+                                  className="w-full pl-8 pr-3 py-1.5 text-sm font-mono border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-gh-blue/50 focus:border-gh-blue transition-all"
+                                />
                               </div>
-                            )}
-                            <button
-                              type="button"
-                              onClick={() => handleImportRuleset(idx)}
-                              disabled={!(rule.importText || "").trim()}
-                              className="w-full py-2 text-xs font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-md shadow-sm transition-colors disabled:opacity-50"
-                            >
-                              <i className="ph-bold ph-arrow-square-in mr-1.5"></i>
-                              Import & Populate Fields
-                            </button>
-                          </div>
-                        )}
+                            </div>
 
-                        {rule.jsonMode ? (
-                          <div className="mt-3 flex flex-col gap-2">
-                            <Editor
-                              value={rule.jsonString || ""}
-                              onValueChange={(val) => updateJsonString(idx, val)}
-                              highlight={(code) => Prism.highlight(code, Prism.languages.json, "json")}
-                              padding={12}
-                              className={`font-mono text-[13px] border rounded-md bg-gray-50 text-gray-800 ${rule.jsonError ? 'border-red-400 focus-within:border-red-500 focus-within:ring-1 focus-within:ring-red-200' : 'border-gray-300 focus-within:border-gh-blue focus-within:ring-1 focus-within:ring-blue-100'}`}
-                              style={{
-                                minHeight: '200px',
-                                backgroundColor: '#f6f8fa',
-                              }}
-                            />
-                            {rule.jsonError && (
-                              <p className="text-xs text-red-600 font-medium flex items-center gap-1">
-                                <i className="fa-solid fa-triangle-exclamation"></i> {rule.jsonError}
-                              </p>
-                            )}
-                          </div>
-                        ) : (
-                          rule.protection && (
-                            <div className="mt-4 pl-4 border-l border-gray-100 space-y-3">
-                              <div className="flex items-center gap-4 bg-gray-50 p-1.5 rounded-md border border-gray-200/60 w-fit">
-                                <button
-                                  type="button"
-                                  onClick={() => updateRuleProtectionField(idx, 'type', 'classic')}
-                                  className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-                                    rule.protection.type === 'classic' 
-                                      ? 'bg-white shadow-sm text-gh-textBase border border-gray-200' 
-                                      : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
-                                  }`}
-                                >
-                                  Classic Protection
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => updateRuleProtectionField(idx, 'type', 'ruleset')}
-                                  className={`px-3 py-1 text-[11px] font-semibold rounded-md transition-colors ${
-                                    rule.protection.type === 'ruleset' 
-                                      ? 'bg-white shadow-sm text-gh-textBase border border-gray-200' 
-                                      : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
-                                  }`}
-                                >
-                                  Repository Ruleset
-                                </button>
-                              </div>
-
-                              {rule.protection.type === 'ruleset' && (
-                                <div className="flex items-center gap-3 mt-2">
-                                  <label className="text-xs font-semibold text-gh-textBase">Ruleset Name <span className="text-red-500">(required)</span></label>
-                                  <input
-                                    type="text"
-                                    required
-                                    placeholder="e.g. Branch protection"
-                                    value={rule.protection.rulesetName || ""}
-                                    onChange={(e) => updateRuleProtectionField(idx, 'rulesetName', e.target.value)}
-                                    className="block w-64 pl-2 pr-2 py-1 text-xs border border-gray-300 focus:outline-none focus:ring-1 focus:ring-gh-blue focus:border-gh-blue rounded-md bg-white shadow-sm"
-                                  />
-                                </div>
-                              )}
-
-                              <div className="flex items-center gap-3">
-                                <label className="text-xs font-semibold text-gh-textBase">Required Approvals</label>
-                                <select 
-                                  value={rule.protection.requiredApprovals}
-                                  onChange={(e) => updateRuleProtectionField(idx, 'requiredApprovals', Number(e.target.value))}
-                                  className="block w-32 pl-2 pr-8 py-1 text-xs border-gray-300 focus:outline-none focus:ring-gh-blue focus:border-gh-blue rounded-md bg-white ring-1 ring-inset ring-gray-200"
-                                >
-                                  {[1, 2, 3, 4, 5].map(n => (
-                                    <option key={n} value={n}>{n} required</option>
-                                  ))}
-                                </select>
-                              </div>
-
-                              <div className="grid grid-cols-1 gap-y-2">
-                                {[
-                                  { field: 'dismissStaleReviews', label: 'Dismiss stale reviews', desc: 'When new commits are pushed' },
-                                  { field: 'preventForcePush', label: 'Prevent force pushing', desc: 'Block force pushes' },
-                                  { field: 'preventDeletion', label: 'Prevent deletion', desc: 'Block branch deletion' },
-                                ].map(({ field, label, desc }) => (
-                                  <label key={field} className="flex items-start gap-2 cursor-pointer group/chk">
-                                    <div className="flex items-center h-5">
-                                      <input
-                                        type="checkbox"
-                                        checked={!!rule.protection?.[field as keyof NonNullable<BranchRule["protection"]>]}
-                                        onChange={(e) => updateRuleProtectionField(idx, field as any, e.target.checked)}
-                                        className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue focus:ring-2 focus:ring-offset-1 transition-colors"
-                                      />
-                                    </div>
-                                    <div className="flex flex-col">
-                                      <span className="text-xs font-medium text-gh-textBase group-hover/chk:text-gh-blue transition-colors">{label}</span>
-                                      <span className="text-[10px] text-gh-muted">{desc}</span>
+                            <div>
+                              <label className="block text-xs font-medium text-gh-textBase mb-1.5">If this branch can&apos;t be found</label>
+                              <div className="space-y-1.5">
+                                {([
+                                  { value: "use_default" as const, icon: "fa-solid fa-arrow-rotate-left", label: "Fall back to default branch", desc: "Create from the repo's default branch instead" },
+                                  { value: "skip_rule" as const, icon: "fa-solid fa-forward", label: "Skip this rule", desc: "Don't create these branches or apply protections" },
+                                  { value: "undo_repo" as const, icon: "fa-solid fa-rotate-left", label: "Abort & undo entire repo", desc: "Undo everything the template did on this repo" },
+                                ]).map(opt => (
+                                  <label
+                                    key={opt.value}
+                                    className={`flex items-start gap-2.5 p-2 rounded-md border cursor-pointer transition-all ${
+                                      (rule.onBaseBranchMissing || "use_default") === opt.value
+                                        ? "border-gh-blue bg-blue-50/50 ring-1 ring-gh-blue/20"
+                                        : "border-gray-200 bg-white hover:border-gray-300"
+                                    }`}
+                                  >
+                                    <input
+                                      type="radio"
+                                      name={`fallback-${idx}`}
+                                      checked={(rule.onBaseBranchMissing || "use_default") === opt.value}
+                                      onChange={() => {
+                                        const updated = [...branchRules];
+                                        updated[idx] = { ...rule, onBaseBranchMissing: opt.value };
+                                        setBranchRules(updated);
+                                      }}
+                                      className="mt-0.5 w-3.5 h-3.5 text-gh-blue border-gray-300 focus:ring-gh-blue"
+                                    />
+                                    <div className="flex-1">
+                                      <div className="flex items-center gap-1.5">
+                                        <i className={`${opt.icon} text-[10px] ${(rule.onBaseBranchMissing || "use_default") === opt.value ? "text-gh-blue" : "text-gray-400"}`}></i>
+                                        <span className="text-xs font-semibold text-gh-textBase">{opt.label}</span>
+                                      </div>
+                                      <p className="text-[10px] text-gh-muted mt-0.5">{opt.desc}</p>
                                     </div>
                                   </label>
                                 ))}
                               </div>
-
-                              <details className="group/details mt-2">
-                                <summary className="text-[11px] font-semibold text-gh-blue cursor-pointer hover:underline list-none flex items-center gap-1 select-none">
-                                  <i className="fa-solid fa-chevron-right text-[9px] group-open/details:rotate-90 transition-transform"></i>
-                                  Advanced Settings
-                                </summary>
-                                <div className="pt-3 mt-2 border-t border-dashed border-gray-200 grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-3">
-                                  {[
-                                    { field: 'requireCodeOwnerReviews', label: 'Require Code Owner review', desc: 'If code owner is specified' },
-                                    { field: 'requireLastPushApproval', label: 'Require last push approval', desc: 'Most recent push must be approved by another person' },
-                                    { field: 'requireConversationResolution', label: 'Require conversation resolution', desc: 'All comments must be resolved' },
-                                    { field: 'requireStatusChecks', label: 'Require status checks', desc: 'Checks must pass' },
-                                    { field: 'strictStatusChecks', label: 'Require up to date branch', desc: 'Before merging' },
-                                    { field: 'requireSignedCommits', label: 'Require signed commits', desc: 'All commits must be signed' },
-                                    { field: 'requireLinearHistory', label: 'Require linear history', desc: 'Prevent merge commits' },
-                                    { field: 'enforceAdmins', label: 'Enforce for admins', desc: 'Rules apply to admins too' },
-                                    ...(rule.protection?.type === 'ruleset' ? [
-                                      { field: 'restrictCreations', label: 'Restrict creations', desc: 'Only bypass users can create matching refs' },
-                                      { field: 'restrictUpdates', label: 'Restrict updates', desc: 'Only bypass users can update matching refs' },
-                                      { field: 'doNotRequireStatusChecksOnCreation', label: 'Skip status checks on creation', desc: 'Allow branch creation without checks' },
-                                      { field: 'requireDeployments', label: 'Require deployments to succeed', desc: 'Deployment envs must succeed' },
-                                      { field: 'requireCodeScanning', label: 'Require code scanning results', desc: 'CodeQL or other tool results required' },
-                                      { field: 'requireCodeQuality', label: 'Require code quality results', desc: 'Block PRs based on code quality severity' },
-                                      { field: 'copilotCodeReview', label: 'Copilot code review', desc: 'Auto-request Copilot review for new PRs' },
-                                    ] : []),
-                                  ].map(({ field, label, desc }) => (
-                                    <label key={field} className="flex items-start gap-2 cursor-pointer group/chk">
-                                      <div className="flex items-center h-5">
-                                        <input
-                                          type="checkbox"
-                                          checked={!!rule.protection?.[field as keyof NonNullable<BranchRule["protection"]>]}
-                                          onChange={(e) => updateRuleProtectionField(idx, field as any, e.target.checked)}
-                                          className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue focus:ring-2 focus:ring-offset-1 transition-colors"
-                                        />
-                                      </div>
-                                      <div className="flex flex-col">
-                                        <span className="text-xs font-medium text-gh-textBase group-hover/chk:text-gh-blue transition-colors">{label}</span>
-                                        <span className="text-[10px] text-gh-muted">{desc}</span>
-                                      </div>
-                                    </label>
-                                  ))}
-                                </div>
-                              </details>
                             </div>
-                          )
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col border-t border-gray-100 pt-3 mt-3">
+                        <div className="flex items-center justify-between">
+                          <label className="inline-flex items-center cursor-pointer whitespace-nowrap shrink-0">
+                            <input 
+                              type="checkbox" 
+                              checked={!!rule.protection} 
+                              onChange={() => toggleRuleProtection(idx)}
+                              className="sr-only peer"
+                            />
+                            <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600 relative"></div>
+                            <span className="ml-2 text-sm font-medium text-gh-textBase flex-1 pr-2">
+                              {rule.protection ? (
+                                <>Protect branches</>
+                              ) : (
+                                <span className="text-gray-500">Enable Protection</span>
+                              )}
+                            </span>
+                          </label>
+
+                          {rule.protection && (
+                            <button
+                              type="button"
+                              onClick={() => setEditingRuleIdx(idx)}
+                              className="px-3 py-1.5 text-xs font-semibold text-gh-blue hover:text-gh-blueHover bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors flex items-center gap-1.5 shadow-sm"
+                            >
+                              <i className="fa-solid fa-sliders text-[10px]"></i> Configure Rules
+                            </button>
+                          )}
+                        </div>
+
+                        {rule.protection && (
+                          <div className="mt-3 pl-4 border-l-2 border-gray-200 text-sm text-gh-muted">
+                            {rule.protection.type === "ruleset_json" ? (
+                              <span className="flex items-center gap-1.5 text-gh-textBase font-medium">
+                                <i className="fa-solid fa-code text-gh-blue"></i>
+                                Custom JSON Ruleset Configured
+                              </span>
+                            ) : rule.protection.type === "ruleset" ? (
+                              <span className="flex items-center gap-1.5">
+                                <i className="fa-solid fa-shield-halved text-gh-blue"></i>
+                                Ruleset: {rule.protection.rulesetName || "Unnamed"}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1.5">
+                                <i className="fa-solid fa-shield text-gh-blue"></i>
+                                Classic Protection
+                              </span>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
@@ -796,7 +937,7 @@ export default function TemplatesPage() {
               </button>
               <button 
                 onClick={handleCreateOrUpdate}
-                disabled={!name || branchRules.every((r) => r.branchNames.length === 0 && !r.inputVal.trim()) || branchRules.some(r => r.protection?.type === "ruleset" && !(r.protection.rulesetName?.trim())) || createMutation.isPending || updateMutation.isPending}
+                disabled={!name || branchRules.some(r => r.inputVal && r.inputVal.trim() !== "") || branchRules.every((r) => r.branchNames.length === 0 && !r.inputVal.trim()) || branchRules.some(r => r.protection?.type === "ruleset" && !(r.protection.rulesetName?.trim())) || createMutation.isPending || updateMutation.isPending}
                 className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gh-blue hover:bg-gh-blueHover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gh-blue/50 disabled:opacity-50"
               >
                 {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingId ? "Save Changes" : "Create Template"}
@@ -806,56 +947,529 @@ export default function TemplatesPage() {
         </div>
       )}
 
+      {editingRuleIdx !== null && branchRules[editingRuleIdx] && (
+        <ProtectBranchModal
+          isOpen={true}
+          onClose={() => setEditingRuleIdx(null)}
+          branch={branchRules[editingRuleIdx].branchNames.join(", ")}
+          initialData={branchRules[editingRuleIdx].protection!}
+          isTemplateMode={true}
+          isSaving={false}
+          onSave={(newProtection) => {
+            const updated = [...branchRules];
+            updated[editingRuleIdx].protection = newProtection;
+            setBranchRules(updated);
+            setEditingRuleIdx(null);
+          }}
+        />
+      )}
+
       {/* APPLY TEMPLATE MODAL */}
-      {applyOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setApplyOpen(null)}></div>
-          
-          <div className="bg-white rounded-lg shadow-modal border border-black/10 w-full max-w-md relative z-10 animate-slide-up flex flex-col">
-            <div className="px-6 py-5">
-              <div className="flex items-start gap-4">
-                <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-full bg-blue-100 text-blue-600">
+      {applyOpen && (() => {
+        const applyingTemplate = templates?.find(t => t.id === applyOpen);
+        const excludedReposSet = new Set<string>();
+        if (applyingTemplate?.exclusionLists) {
+          applyingTemplate.exclusionLists.forEach(listId => {
+            const excl = exclusions?.find(e => e.id === listId);
+            if (excl) excl.repos.forEach(r => excludedReposSet.add(r));
+          });
+        }
+        
+        const availableRepos = repos?.filter(r => !excludedReposSet.has(r.name)) || [];
+        const filteredAvailableRepos = availableRepos.filter(r => r.name.toLowerCase().includes(applySearch.toLowerCase()));
+        
+        return (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setApplyOpen(null)}></div>
+            
+            <div className="bg-white rounded-xl shadow-modal border border-black/10 w-full max-w-3xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
+              <div className="bg-white px-6 py-5 border-b border-gh-border flex items-center gap-4 rounded-t-xl shrink-0">
+                <div className="flex-shrink-0 flex items-center justify-center h-10 w-10 rounded-full bg-blue-50 text-blue-600 border border-blue-100">
                   <i className="fa-solid fa-layer-group text-lg"></i>
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-bold text-gh-textBase">
-                    Apply "{templates?.find(t => t.id === applyOpen)?.name}" Template
+                  <h3 className="text-xl font-bold text-gh-textBase tracking-tight">
+                    Apply Template: {applyingTemplate?.name}
                   </h3>
-                  <div className="mt-2 text-sm text-gh-muted">
-                    <p>Select a repository to apply this template's branches and protection rules. This may overwrite existing settings.</p>
+                  <p className="text-sm text-gh-muted mt-0.5">Select repositories to apply this template's branches and protection rules.</p>
+                </div>
+              </div>
+
+              <div className="px-6 py-5 flex-1 overflow-y-auto flex flex-col md:flex-row gap-6">
+                {/* Left side: Repository selection */}
+                <div className="flex-1 flex flex-col gap-3">
+                  <label className="block text-sm font-semibold text-gh-textBase uppercase tracking-wide">Target Repositories</label>
+                  <div className="relative">
+                    <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    <input 
+                      type="text"
+                      placeholder="Search repositories..."
+                      value={applySearch}
+                      onChange={e => setApplySearch(e.target.value)}
+                      className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue/50 focus:border-gh-blue transition-all"
+                    />
                   </div>
                   
-                  <div className="mt-4">
-                    <label className="block text-xs font-semibold text-gh-textBase uppercase tracking-wide mb-1">Target Repository</label>
-                    <select 
-                      value={applyRepo}
-                      onChange={(e) => setApplyRepo(e.target.value)}
-                      className="block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-gh-blue outline-none sm:text-sm rounded-md ring-1 ring-inset ring-gray-300 bg-white"
-                    >
-                      <option value="" disabled>Select a repo...</option>
-                      {repos?.map(r => (
-                        <option key={r.name} value={r.name}>{r.name}</option>
+                  <div className="border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col flex-1 min-h-[250px] md:min-h-[300px]">
+                    <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-200 flex items-center justify-between sticky top-0 z-10">
+                      <label className="flex items-center gap-2 cursor-pointer group">
+                        <input 
+                          type="checkbox" 
+                          checked={filteredAvailableRepos.length > 0 && filteredAvailableRepos.every(r => applyRepos.includes(r.name))}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              const newSelected = new Set([...applyRepos, ...filteredAvailableRepos.map(r => r.name)]);
+                              setApplyRepos(Array.from(newSelected));
+                            } else {
+                              const toRemove = new Set(filteredAvailableRepos.map(r => r.name));
+                              setApplyRepos(applyRepos.filter(name => !toRemove.has(name)));
+                            }
+                          }}
+                          className="w-4 h-4 text-gh-blue rounded border-gray-300 focus:ring-gh-blue transition-colors"
+                        />
+                        <span className="text-sm font-semibold text-gray-700 group-hover:text-gh-blue transition-colors">Select All (Visible)</span>
+                      </label>
+                      <span className="text-xs font-medium bg-blue-50 text-blue-700 px-2.5 py-0.5 rounded-full border border-blue-200">
+                        {applyRepos.length} selected
+                      </span>
+                    </div>
+                    <div className="overflow-y-auto p-1.5 flex-1">
+                      {filteredAvailableRepos.map(r => (
+                        <label key={r.name} className="flex items-center gap-3 px-3 py-2 hover:bg-blue-50/50 rounded-md cursor-pointer group transition-colors">
+                          <input 
+                            type="checkbox" 
+                            checked={applyRepos.includes(r.name)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setApplyRepos(prev => [...prev, r.name]);
+                              } else {
+                                setApplyRepos(prev => prev.filter(name => name !== r.name));
+                              }
+                            }}
+                            className="w-4 h-4 text-gh-blue rounded border-gray-300 focus:ring-gh-blue transition-colors"
+                          />
+                          <i className="fa-solid fa-book-bookmark text-gray-400 group-hover:text-gh-blue transition-colors"></i>
+                          <span className="text-sm text-gh-textBase font-medium truncate group-hover:text-gh-blue transition-colors">{r.name}</span>
+                        </label>
                       ))}
-                    </select>
+                      {filteredAvailableRepos.length === 0 && (
+                        <div className="px-4 py-8 text-center text-sm text-gh-muted italic flex flex-col items-center gap-2">
+                          <i className="fa-solid fa-inbox text-2xl text-gray-300"></i>
+                          No eligible repositories found matching "{applySearch}"
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
+
+                {/* Right side: Exclusions summary */}
+                {excludedReposSet.size > 0 && (
+                  <div className="w-full md:w-64 flex flex-col gap-3">
+                    <label className="block text-sm font-semibold text-gh-textBase uppercase tracking-wide flex items-center gap-2">
+                      <i className="fa-solid fa-ban text-red-500"></i>
+                      Excluded
+                    </label>
+                    <div className="bg-red-50/50 border border-red-100 rounded-lg p-3 flex-1 overflow-y-auto min-h-[200px] md:min-h-[300px]">
+                      <p className="text-xs text-red-800 mb-3 font-medium">
+                        {excludedReposSet.size} repositories are excluded by linked exclusion lists and cannot be selected.
+                      </p>
+                      <div className="flex flex-col gap-1.5">
+                        {Array.from(excludedReposSet).map(r => (
+                          <div key={r} className="flex items-center gap-2 text-xs text-red-700 bg-white border border-red-100 px-2 py-1.5 rounded-md shadow-sm">
+                            <i className="fa-solid fa-lock text-red-400"></i>
+                            <span className="truncate">{r}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gh-border rounded-b-xl shrink-0">
+                <button 
+                  onClick={() => { setApplyOpen(null); setApplyRepos([]); setApplySearch(""); }} 
+                  className="px-4 py-2 border border-gh-border shadow-sm text-sm font-medium rounded-md text-gh-textBase bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleApply}
+                  disabled={applyRepos.length === 0 || applyMutation.isPending}
+                  className="px-5 py-2 border border-transparent text-sm font-semibold rounded-md shadow-sm text-white bg-gh-blue hover:bg-gh-blueHover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gh-blue/50 disabled:opacity-50 transition-all active:scale-[0.98]"
+                >
+                  {applyMutation.isPending ? "Applying..." : `Apply to ${applyRepos.length} Repos`}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* CREATE EXCLUSION LIST MODAL */}
+      {createExclOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" onClick={() => { setCreateExclOpen(false); resetExclForm(); }}></div>
+          
+          <div className="bg-white rounded-xl shadow-modal border border-black/10 w-full max-w-xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
+            <div className="bg-white px-6 py-5 border-b border-gh-border flex justify-between items-center rounded-t-xl shrink-0">
+              <h3 className="text-xl font-bold text-gh-textBase flex items-center gap-2">
+                <i className="fa-solid fa-ban text-red-500"></i>
+                {editingExclId ? "Edit Exclusion List" : "New Exclusion List"}
+              </h3>
+              <button onClick={() => { setCreateExclOpen(false); resetExclForm(); }} className="text-gray-400 hover:text-gray-600 transition-colors">
+                <i className="fa-solid fa-xmark text-lg"></i>
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-6 overflow-y-auto">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-gh-textBase mb-1.5">List Name <span className="text-red-500">*</span></label>
+                  <input 
+                    type="text" 
+                    value={exclName}
+                    onChange={(e) => setExclName(e.target.value)}
+                    placeholder="e.g. Critical Infrastructure" 
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue/50 focus:border-gh-blue transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-gh-textBase mb-1.5">Description</label>
+                  <input 
+                    type="text" 
+                    value={exclDescription}
+                    onChange={(e) => setExclDescription(e.target.value)}
+                    placeholder="Optional description" 
+                    className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue/50 focus:border-gh-blue transition-all"
+                  />
+                </div>
+              </div>
+
+              {/* Existing Repos */}
+              <div className="border-t border-gh-border pt-5">
+                <label className="block text-sm font-semibold text-gh-textBase mb-3">
+                  Excluded Repositories
+                  <span className="text-xs font-normal text-gh-muted ml-2">({exclRepos.length + exclCustomRepos.length} total)</span>
+                </label>
+                <div className="relative mb-3">
+                  <i className="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                  <input 
+                    type="text"
+                    placeholder="Search existing repositories..."
+                    value={exclSearch}
+                    onChange={e => setExclSearch(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue/50 focus:border-gh-blue transition-all"
+                  />
+                </div>
+                
+                <div className="border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col h-72">
+                  {(() => {
+                    const filtered = repos?.filter(r => r.name.toLowerCase().includes(exclSearch.toLowerCase())) || [];
+                    const allSelected = filtered.length > 0 && filtered.every(r => exclRepos.includes(r.name));
+                    return (
+                      <>
+                        <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between shrink-0">
+                          <label className="flex items-center gap-2 cursor-pointer group">
+                            <input
+                              type="checkbox"
+                              checked={allSelected}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  const newRepos = new Set([...exclRepos, ...filtered.map(r => r.name)]);
+                                  setExclRepos(Array.from(newRepos));
+                                } else {
+                                  const toRemove = new Set(filtered.map(r => r.name));
+                                  setExclRepos(exclRepos.filter(n => !toRemove.has(n)));
+                                }
+                              }}
+                              className="w-4 h-4 text-red-500 rounded border-gray-300 focus:ring-red-500 transition-colors"
+                            />
+                            <span className="text-xs font-semibold text-gray-600 group-hover:text-red-600 transition-colors">
+                              {allSelected ? "Deselect All" : "Select All"}{exclSearch ? " (Visible)" : ""}
+                            </span>
+                          </label>
+                          <span className="text-[10px] font-medium bg-red-50 text-red-600 px-2 py-0.5 rounded-full border border-red-100">
+                            {exclRepos.length} selected
+                          </span>
+                        </div>
+                        <div className="overflow-y-auto p-1.5 flex-1">
+                          {filtered.map(r => (
+                            <label key={r.name} className="flex items-center gap-3 px-3 py-2 hover:bg-red-50/50 rounded-md cursor-pointer group transition-colors">
+                              <input 
+                                type="checkbox" 
+                                checked={exclRepos.includes(r.name)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setExclRepos(prev => [...prev, r.name]);
+                                  else setExclRepos(prev => prev.filter(name => name !== r.name));
+                                }}
+                                className="w-4 h-4 text-red-500 rounded border-gray-300 focus:ring-red-500 transition-colors"
+                              />
+                              <i className={`fa-solid fa-book-bookmark ${exclRepos.includes(r.name) ? "text-red-400" : "text-gray-400"} group-hover:text-red-500 transition-colors`}></i>
+                              <span className={`text-sm font-medium truncate transition-colors ${exclRepos.includes(r.name) ? "text-red-700" : "text-gh-textBase group-hover:text-red-600"}`}>{r.name}</span>
+                            </label>
+                          ))}
+                          {filtered.length === 0 && (
+                            <div className="px-4 py-8 text-center text-sm text-gh-muted italic">
+                              No repositories found matching &ldquo;{exclSearch}&rdquo;
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Custom / Future Repo Names */}
+              <div className="border-t border-gh-border pt-5">
+                <label className="block text-sm font-semibold text-gh-textBase mb-1">Custom Repository Names</label>
+                <p className="text-xs text-gh-muted mb-3">Add names of repositories that don't exist yet. These will be excluded if they are created in the future.</p>
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {exclCustomRepos.map(name => (
+                    <span key={name} className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-700 text-xs font-medium rounded-full border border-red-200">
+                      {name}
+                      <button onClick={() => setExclCustomRepos(prev => prev.filter(n => n !== name))} className="hover:text-red-900 transition-colors">
+                        <i className="fa-solid fa-xmark text-[9px]"></i>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  placeholder="Type a repo name and press Enter..."
+                  className={`w-full px-3 py-2 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue/50 transition-all ${exclCustomPending ? "border-amber-400 focus:border-amber-500 bg-amber-50/30" : "border-gray-300 focus:border-gh-blue"}`}
+                  onChange={(e) => setExclCustomPending(e.target.value.trim().length > 0)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const val = (e.target as HTMLInputElement).value.trim();
+                      if (val && !exclCustomRepos.includes(val) && !exclRepos.includes(val)) {
+                        setExclCustomRepos(prev => [...prev, val]);
+                        (e.target as HTMLInputElement).value = "";
+                        setExclCustomPending(false);
+                      }
+                    }
+                  }}
+                />
+                {exclCustomPending && (
+                  <p className="text-[11px] text-amber-600 mt-1 flex items-center gap-1">
+                    <i className="fa-solid fa-triangle-exclamation text-[9px]"></i>
+                    Press Enter to add this repo name before saving.
+                  </p>
+                )}
+              </div>
+
+              {/* Force-Apply Settings */}
+              <div className="border-t border-gh-border pt-5">
+                <label className="block text-sm font-semibold text-gh-textBase mb-1">Force-Apply Settings</label>
+                <p className="text-xs text-gh-muted mb-4">Control which templates must always include this exclusion list. Forced exclusion lists cannot be removed from the template.</p>
+
+                <label className="flex items-center gap-3 mb-4 cursor-pointer group">
+                  <input
+                    type="checkbox"
+                    checked={exclForceOnNew}
+                    onChange={e => setExclForceOnNew(e.target.checked)}
+                    className="w-4 h-4 text-red-500 rounded border-gray-300 focus:ring-red-500 transition-colors"
+                  />
+                  <div>
+                    <span className="text-sm font-medium text-gh-textBase group-hover:text-red-600 transition-colors">Force on all new templates</span>
+                    <p className="text-[11px] text-gh-muted">Every template created in the future will automatically include this exclusion list and it cannot be removed.</p>
+                  </div>
+                </label>
+
+                {templates && templates.length > 0 && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gh-textMuted uppercase tracking-wider mb-2">Force on existing templates</label>
+                    <div className="border border-gray-200 rounded-lg bg-white overflow-hidden flex flex-col max-h-40">
+                      <div className="overflow-y-auto p-1.5 flex-1">
+                        {templates.map(tmpl => (
+                          <label key={tmpl.id} className="flex items-center gap-3 px-3 py-2 hover:bg-red-50/50 rounded-md cursor-pointer group transition-colors">
+                            <input
+                              type="checkbox"
+                              checked={exclForceTemplateIds.includes(tmpl.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) setExclForceTemplateIds(prev => [...prev, tmpl.id]);
+                                else setExclForceTemplateIds(prev => prev.filter(id => id !== tmpl.id));
+                              }}
+                              className="w-4 h-4 text-red-500 rounded border-gray-300 focus:ring-red-500 transition-colors"
+                            />
+                            <i className={`fa-solid fa-file-lines ${exclForceTemplateIds.includes(tmpl.id) ? "text-red-400" : "text-gray-400"} group-hover:text-red-500 transition-colors`}></i>
+                            <span className={`text-sm font-medium truncate transition-colors ${exclForceTemplateIds.includes(tmpl.id) ? "text-red-700" : "text-gh-textBase group-hover:text-red-600"}`}>{tmpl.name}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="bg-gray-50 px-6 py-3 flex justify-end gap-3 border-t border-gh-border rounded-b-lg">
+            <div className="bg-gray-50 px-6 py-4 flex justify-end gap-3 border-t border-gh-border rounded-b-xl shrink-0">
               <button 
-                onClick={() => setApplyOpen(null)} 
-                className="inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200"
+                onClick={() => { setCreateExclOpen(false); resetExclForm(); }} 
+                className="px-4 py-2 border border-gh-border shadow-sm text-sm font-medium rounded-md text-gh-textBase bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 transition-colors"
               >
                 Cancel
               </button>
               <button 
-                onClick={handleApply}
-                disabled={!applyRepo || applyMutation.isPending}
-                className="inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-gh-blue text-sm font-medium text-white hover:bg-gh-blueHover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gh-blue/50 disabled:opacity-50"
+                onClick={handleCreateOrUpdateExcl}
+                disabled={!exclName || (exclRepos.length === 0 && exclCustomRepos.length === 0) || exclCustomPending || createExclMutation.isPending || updateExclMutation.isPending}
+                className="px-5 py-2 border border-transparent text-sm font-semibold rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 transition-all active:scale-[0.98]"
               >
-                {applyMutation.isPending ? "Applying..." : "Apply Template"}
+                {createExclMutation.isPending || updateExclMutation.isPending ? "Saving..." : editingExclId ? "Save Changes" : "Create Exclusion List"}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CONFLICT RESOLUTION MODAL */}
+      {conflictOpen && conflictItems.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setConflictOpen(false)}>
+          <div className="bg-white rounded-xl shadow-modal w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gh-border shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                  <i className="fa-solid fa-triangle-exclamation text-amber-600 text-sm"></i>
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-gh-textBase">Template Conflicts Detected</h2>
+                  <p className="text-xs text-gh-textSecondary mt-0.5">
+                    {conflictItems.filter(c => !c.resolved).length} unresolved of {conflictItems.length} total
+                  </p>
+                </div>
+              </div>
+              <button onClick={() => setConflictOpen(false)} className="text-gh-textSecondary hover:text-gh-textBase transition-colors w-8 h-8 flex items-center justify-center rounded-md hover:bg-gray-100">
+                <i className="fa-solid fa-xmark"></i>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-3">
+              {(() => {
+                const grouped = new Map<string, (typeof conflictItems)>();
+                conflictItems.forEach((item, idx) => {
+                  const key = item.repo;
+                  if (!grouped.has(key)) grouped.set(key, []);
+                  grouped.get(key)!.push({ ...item, _idx: idx } as any);
+                });
+                return Array.from(grouped.entries()).map(([repo, items]) => (
+                  <div key={repo} className="border border-gh-border rounded-lg overflow-hidden">
+                    <div className="bg-gray-50 px-4 py-2.5 border-b border-gh-border">
+                      <span className="text-sm font-semibold text-gh-textBase"><i className="fa-solid fa-code-branch text-xs text-gh-textSecondary mr-1.5"></i>{repo}</span>
+                    </div>
+                    <div className="divide-y divide-gh-border">
+                      {items.map((item: any) => (
+                        <div key={item._idx} className={`px-4 py-3 ${item.resolved ? "bg-gray-50/50" : ""}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${item.type === "ruleset" ? "bg-blue-50 text-blue-700 border border-blue-200/60" : "bg-purple-50 text-purple-700 border border-purple-200/60"}`}>
+                                  {item.type === "ruleset" ? "Ruleset" : "Classic"}
+                                </span>
+                                <span className="text-sm font-medium text-gh-textBase truncate">{item.name}</span>
+                                {item.resolved && (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold ${item.resolved === "override" ? "bg-red-50 text-red-700 border border-red-200/60" : "bg-gray-100 text-gray-600 border border-gray-200/60"}`}>
+                                    {item.resolved === "override" ? "Overridden" : "Skipped"}
+                                  </span>
+                                )}
+                              </div>
+                              <button
+                                className="text-[11px] font-medium text-gh-blue hover:text-gh-blueHover mt-0.5 flex items-center gap-1"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setExpandedConflicts(prev => {
+                                    const next = new Set(prev);
+                                    next.has(item._idx) ? next.delete(item._idx) : next.add(item._idx);
+                                    return next;
+                                  });
+                                }}
+                              >
+                                <i className={`fa-solid fa-chevron-${expandedConflicts.has(item._idx) ? 'down' : 'right'} text-[8px]`}></i>
+                                {expandedConflicts.has(item._idx) ? "Hide" : "View"} {item.differences.length} difference{item.differences.length !== 1 ? "s" : ""}
+                              </button>
+                              {expandedConflicts.has(item._idx) && (() => {
+                                const rows = buildConflictComparison(item.type, item.existingConfig, item.templateConfig);
+                                return (
+                                  <div className="mt-2 border border-gh-border rounded-md overflow-hidden text-xs">
+                                    <table className="w-full">
+                                      <thead>
+                                        <tr className="bg-gray-50 border-b border-gh-border">
+                                          <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-gh-muted uppercase tracking-wider">Setting</th>
+                                          <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-red-500 uppercase tracking-wider">Existing</th>
+                                          <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-green-600 uppercase tracking-wider">Template</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gh-border">
+                                        {rows.map((r, ri) => (
+                                          <tr key={ri} className="hover:bg-amber-50/30">
+                                            <td className="px-3 py-1.5 font-medium text-gh-textBase">{r.label}</td>
+                                            <td className="px-3 py-1.5 text-red-600 bg-red-50/30 font-mono">{r.existing}</td>
+                                            <td className="px-3 py-1.5 text-green-700 bg-green-50/30 font-mono">{r.template}</td>
+                                          </tr>
+                                        ))}
+                                        {rows.length === 0 && (
+                                          <tr><td colSpan={3} className="px-3 py-2 text-gh-muted text-center">No structured differences found</td></tr>
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                            {!item.resolved && (
+                              <div className="flex items-center gap-2 shrink-0">
+                                <button
+                                  onClick={() => handleResolveConflict(item._idx, "skip")}
+                                  disabled={item.resolving}
+                                  className="px-3 py-1.5 text-xs font-medium rounded-md border border-gh-border text-gh-textSecondary bg-white hover:bg-gray-50 disabled:opacity-50 transition-colors"
+                                >
+                                  Skip
+                                </button>
+                                <button
+                                  onClick={() => handleResolveConflict(item._idx, "override")}
+                                  disabled={item.resolving}
+                                  className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors"
+                                >
+                                  {item.resolving ? "..." : "Override"}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+
+            <div className="bg-gray-50 px-6 py-3 flex items-center justify-between border-t border-gh-border rounded-b-xl shrink-0">
+              <p className="text-xs text-gh-textSecondary">Closing this popup leaves unresolved conflicts "on hold" in Activity.</p>
+              <div className="flex items-center gap-2">
+                {conflictItems.some(c => !c.resolved) && (
+                  <>
+                    <button
+                      onClick={() => handleResolveAll("skip")}
+                      className="px-3 py-1.5 text-xs font-medium rounded-md border border-gh-border text-gh-textSecondary bg-white hover:bg-gray-50 transition-colors"
+                    >
+                      Skip All
+                    </button>
+                    <button
+                      onClick={() => handleResolveAll("override")}
+                      className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-red-600 hover:bg-red-700 transition-colors"
+                    >
+                      Override All
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={() => setConflictOpen(false)}
+                  className="px-4 py-1.5 text-xs font-medium rounded-md border border-gh-border text-gh-textBase bg-white hover:bg-gray-50 transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

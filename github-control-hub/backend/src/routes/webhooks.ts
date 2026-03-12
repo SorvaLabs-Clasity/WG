@@ -3,9 +3,10 @@ import crypto from "crypto";
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { runScan, listScanners } from "../services/scannerService";
-import { createAlert } from "../services/alertService";
+import { createAlert, autoResolveAlerts } from "../services/alertService";
 import { logActivity } from "../services/activityService";
 import { listTemplates, applyTemplate } from "../services/templateService";
+import { listExclusions, getExclusion } from "../services/exclusionService";
 
 const router = Router();
 
@@ -82,10 +83,16 @@ router.post("/github", async (req: Request, res: Response) => {
       await createAlert(repoName, "team_permission_changed", `Team ${payload.team?.name} permissions were changed in ${repoName}.`, "high");
     }
 
+    if (event === "repository" && payload.action === "privatized") {
+      await autoResolveAlerts(repoName, "repo_made_public");
+    }
+
     if (event === "branch_protection_rule") {
       if (payload.action === "deleted") {
         await createAlert(repoName, "protection_removed", `Branch protection was completely removed.`, "critical");
         await logActivity("branch.unprotect", actor, repoName, payload.changes?.name?.from || "branch", "Branch protection removed via GitHub", undefined, "github");
+      } else if (payload.action === "created") {
+        await autoResolveAlerts(repoName, "protection_removed");
       } else if (payload.action === "edited") {
         await createAlert(repoName, "protection_drift", `Branch protection rules were modified (drift detected).`, "high");
         await logActivity("github.branch_protection_edited", actor, repoName, payload.rule?.name || "branch", "Branch protection rules modified", undefined, "github");
@@ -96,10 +103,16 @@ router.post("/github", async (req: Request, res: Response) => {
       if (payload.action === "deleted") {
         await createAlert(repoName, "ruleset_disabled", `A repository ruleset was deleted.`, "critical");
         await logActivity("repo.ruleset.delete", actor, repoName, String(payload.ruleset?.id || ""), "Ruleset deleted via GitHub", undefined, "github");
+      } else if (payload.action === "created") {
+        await autoResolveAlerts(repoName, "ruleset_disabled");
       } else if (payload.action === "edited") {
         await createAlert(repoName, "protection_drift", `Repository ruleset was modified (drift detected).`, "high");
         await logActivity("github.ruleset_edited", actor, repoName, payload.ruleset?.name || "ruleset", "Repository ruleset modified", undefined, "github");
       }
+    }
+
+    if (event === "member" && payload.action === "removed") {
+      await autoResolveAlerts(repoName, "admin_added");
     }
   }
 
@@ -162,9 +175,21 @@ router.post("/github", async (req: Request, res: Response) => {
         const templates = await listTemplates();
         const autoApplyTemplates = templates.filter(t => t.autoApplyOnNewRepo);
         for (const tmpl of autoApplyTemplates) {
+          // Check exclusion lists before applying
+          const excludedRepos = new Set<string>();
+          if (tmpl.exclusionLists && tmpl.exclusionLists.length > 0) {
+            for (const listId of tmpl.exclusionLists) {
+              const excl = await getExclusion(listId);
+              if (excl) excl.repos.forEach(r => excludedRepos.add(r));
+            }
+          }
+          if (excludedRepos.has(repoName)) {
+            console.log(`[Webhook] Skipping auto-apply of "${tmpl.name}" — repo "${repoName}" is in exclusion list`);
+            continue;
+          }
+
           console.log(`[Webhook] Auto-applying template "${tmpl.name}" to new repo "${repoName}"`);
 
-          // Retry up to 3 times with increasing delays to wait for GitHub to finish initializing the repo
           let lastErr: unknown;
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {

@@ -73,7 +73,8 @@ Resources:
                 - !GetAtt OrgConfigTable.Arn
                 - !GetAtt AuthCodesTable.Arn
                 - !GetAtt GraphEdgesTable.Arn
-                - !GetAtt GraphEdgesTable.Arn
+                - !GetAtt ExclusionsTable.Arn
+                - !GetAtt WidgetsTable.Arn
       Environment:
         Variables:
           SECRET_NAME: !Ref SecretName
@@ -84,6 +85,8 @@ Resources:
           ORG_CONFIG_TABLE: !Ref OrgConfigTable
           AUTH_CODES_TABLE: !Ref AuthCodesTable
           GRAPH_EDGES_TABLE: !Ref GraphEdgesTable
+          EXCLUSIONS_TABLE: !Ref ExclusionsTable
+          WIDGETS_TABLE: !Ref WidgetsTable
       Events:
         ProxyRoot:
           Type: Api
@@ -198,6 +201,30 @@ Resources:
           KeyType: HASH
         - AttributeName: sk
           KeyType: RANGE
+
+  ExclusionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-exclusions"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  WidgetsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-widgets"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
 
   # --- S3 Bucket for Frontend ---
 

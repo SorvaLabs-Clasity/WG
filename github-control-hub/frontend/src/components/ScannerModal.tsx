@@ -3,6 +3,7 @@ import { useCreateScanner, useUpdateScanner } from "../hooks/useScanners";
 import { useRepos } from "../hooks/useRepos";
 import type { ScannerCondition } from "../types/Scanner";
 import { QUERY_OPTIONS } from "../utils/queryOptions";
+import { TagInput } from "./TagInput";
 
 export default function ScannerModal({ isOpen, onClose, scanner }: any) {
   const createMutation = useCreateScanner();
@@ -282,57 +283,17 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                   </div>
 
                   {(!cond.type || cond.type === "branch_protection") && (
-                    <div>
-                  <div className="mb-4 pr-6">
+                    <div className="space-y-4">
+                  <div>
                     <label className="block text-xs font-semibold text-gh-textBase mb-1">Branch Patterns</label>
-                    <div className="flex flex-wrap gap-2 p-1.5 min-h-[36px] bg-white border border-gray-300 rounded-md shadow-sm focus-within:ring-1 focus-within:ring-gh-blue focus-within:border-gh-blue cursor-text"
-                         onClick={(e) => {
-                           const target = e.target as HTMLElement;
-                           if (target === e.currentTarget) {
-                             const input = target.querySelector('input');
-                             if (input) input.focus();
-                           }
-                         }}>
-                        {cond.branchPatterns?.map((pattern, pIdx) => (
-                          <span key={pIdx} className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[13px] font-mono bg-white text-gh-textBase border border-gray-200 shadow-sm">
-                            {pattern}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const newPatterns = cond.branchPatterns?.filter((_, i) => i !== pIdx) || [];
-                                updateCondition(idx, "branchPatterns", newPatterns);
-                              }}
-                              className="text-gray-400 hover:text-gray-600 focus:outline-none"
-                            >
-                              <i className="ph-bold ph-x text-[10px]"></i>
-                            </button>
-                          </span>
-                        ))}
-                        <input 
-                          type="text" 
-                          value={cond.inputVal || ''}
-                          onChange={(e) => updateCondition(idx, "inputVal", e.target.value)}
-                          placeholder={!cond.branchPatterns || cond.branchPatterns.length === 0 ? "e.g. main (Press Enter)" : ""} 
-                          className="flex-1 min-w-[120px] outline-none border-none shadow-none focus:ring-0 p-0 text-sm font-mono text-gh-textBase bg-transparent"
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              e.preventDefault();
-                              const val = e.currentTarget.value.trim();
-                              const patterns = cond.branchPatterns || [];
-                              if (val && !patterns.includes(val)) {
-                                updateCondition(idx, "branchPatterns", [...patterns, val]);
-                                updateCondition(idx, "inputVal", "");
-                              }
-                            } else if (e.key === 'Backspace' && e.currentTarget.value === '' && (cond.branchPatterns?.length || 0) > 0) {
-                              const newPatterns = [...(cond.branchPatterns || [])];
-                              newPatterns.pop();
-                              updateCondition(idx, "branchPatterns", newPatterns);
-                            }
-                          }}
-                        />
-                      </div>
-                      <p className="text-[11px] text-gh-muted mt-1">Press <kbd className="px-1 py-0.5 rounded bg-gray-100 border border-gray-200 text-[10px]">Enter</kbd> to add a branch pattern</p>
+                    <TagInput
+                      tags={cond.branchPatterns || []}
+                      onChange={(tags) => updateCondition(idx, "branchPatterns", tags)}
+                      placeholder="e.g. main (Press Enter)"
+                      onPendingTextChange={(pending) => updateCondition(idx, "hasPendingBranch", pending)}
+                      icon="ph-git-branch"
+                      colorClass="blue"
+                    />
                   </div>
 
                     <div className="flex items-center gap-2 mt-4 mb-4">
@@ -545,13 +506,24 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                           {selectedQuery?.requiresParam && (
                             <div>
                               <label className="block text-xs font-semibold text-gh-textBase mb-1">{selectedQuery.paramLabel}</label>
-                              <input 
-                                type="text"
-                                value={cond.queryParam || ""}
-                                onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
-                                placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
-                                className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
-                              />
+                              {selectedQuery.useTagInput ? (
+                                <TagInput
+                                  tags={cond.queryParam ? cond.queryParam.split(",").map(s => s.trim()).filter(Boolean) : []}
+                                  onChange={(tags) => updateCondition(idx, "queryParam", tags.join(", "))}
+                                  placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'} and press Enter`}
+                                  onPendingTextChange={(pending) => updateCondition(idx, "hasPendingQuery", pending)}
+                                  icon="ph-git-branch"
+                                  colorClass="blue"
+                                />
+                              ) : (
+                                <input 
+                                  type="text"
+                                  value={cond.queryParam || ""}
+                                  onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
+                                  placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
+                                  className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                                />
+                              )}
                             </div>
                           )}
 
@@ -643,13 +615,24 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                           {selectedQuery?.requiresParam && (
                             <div>
                               <label className="block text-xs font-semibold text-gh-textBase mb-1">{selectedQuery.paramLabel}</label>
-                              <input 
-                                type="text"
-                                value={cond.queryParam || ""}
-                                onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
-                                placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
-                                className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
-                              />
+                              {selectedQuery.useTagInput ? (
+                                <TagInput
+                                  tags={cond.queryParam ? cond.queryParam.split(",").map(s => s.trim()).filter(Boolean) : []}
+                                  onChange={(tags) => updateCondition(idx, "queryParam", tags.join(", "))}
+                                  placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'} and press Enter`}
+                                  onPendingTextChange={(pending) => updateCondition(idx, "hasPendingQuery", pending)}
+                                  icon="ph-git-branch"
+                                  colorClass="blue"
+                                />
+                              ) : (
+                                <input 
+                                  type="text"
+                                  value={cond.queryParam || ""}
+                                  onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
+                                  placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
+                                  className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                                />
+                              )}
                             </div>
                           )}
 
@@ -726,7 +709,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
           </button>
           <button 
             onClick={handleSave}
-            disabled={!name || createMutation.isPending || updateMutation.isPending}
+            disabled={!name || createMutation.isPending || updateMutation.isPending || conditions.some(c => (c as any).hasPendingBranch || (c as any).hasPendingQuery)}
             className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gh-blue hover:bg-gh-blueHover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gh-blue/50 disabled:opacity-50"
           >
             {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save Scanner"}

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchBranches, createBranch, deleteBranch, protectBranch, fetchRepoRulesets, fetchBranchProtection, fetchAllBranchProtections, deleteBranchProtection, deleteRepoRuleset, importRepoRuleset } from "../api/branches";
+import { fetchBranches, createBranch, deleteBranch, renameBranch, protectBranch, fetchRepoRulesets, fetchBranchProtection, fetchAllBranchProtections, deleteBranchProtection, deleteRepoRuleset, importRepoRuleset } from "../api/branches";
 
 export function useBranches(repo: string) {
   return useQuery({
@@ -53,6 +53,18 @@ export function useDeleteBranch(repo: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (branch: string) => deleteBranch(repo, branch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["branches", repo] });
+      qc.invalidateQueries({ queryKey: ["activity"] });
+    },
+  });
+}
+
+export function useRenameBranch(repo: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ branch, newName }: { branch: string; newName: string }) =>
+      renameBranch(repo, branch, newName),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["branches", repo] });
       qc.invalidateQueries({ queryKey: ["activity"] });

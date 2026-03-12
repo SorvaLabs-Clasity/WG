@@ -154,30 +154,44 @@ export async function deleteBranch(octokit: Octokit, repo: string, branch: strin
   });
 }
 
+export async function renameBranch(octokit: Octokit, repo: string, branch: string, newName: string): Promise<void> {
+  const org = getOrg();
+
+  await octokit.rest.repos.renameBranch({
+    owner: org,
+    repo,
+    branch,
+    new_name: newName,
+  });
+}
+
 export async function protectBranch(
   octokit: Octokit,
   repo: string,
   branch: string,
   protection: NonNullable<import("./templateService").BranchRule["protection"]>
-): Promise<void> {
+): Promise<{ rulesetId?: number }> {
   const org = getOrg();
 
   if (protection.type === "ruleset") {
     const rules: any[] = buildRulesetRules(protection);
 
-    await octokit.rest.repos.createRepoRuleset({
+    let bypassActors: any[];
+    if (protection.bypassActors && protection.bypassActors.length > 0) {
+      bypassActors = protection.bypassActors;
+    } else if (protection.enforceAdmins) {
+      bypassActors = [];
+    } else {
+      bypassActors = [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }];
+    }
+
+    const { data: created } = await octokit.rest.repos.createRepoRuleset({
       owner: org,
       repo,
       name: protection.rulesetName || `Ruleset for ${branch}`,
       target: "branch",
       enforcement: (protection.enforcement as any) || "active",
-      bypass_actors: protection.enforceAdmins ? [] : [
-        {
-          actor_id: 5,
-          actor_type: "RepositoryRole",
-          bypass_mode: "always"
-        }
-      ],
+      bypass_actors: bypassActors,
       conditions: {
         ref_name: {
           include: [`refs/heads/${branch}`],
@@ -186,8 +200,16 @@ export async function protectBranch(
       },
       rules,
     });
+    return { rulesetId: created.id };
   } else {
-    // Classic Branch Protection API
+    const restrictions = protection.restrictPushes
+      ? {
+          users: protection.pushRestrictionUsers || [],
+          teams: protection.pushRestrictionTeams || [],
+          apps: protection.pushRestrictionApps || [],
+        }
+      : null;
+
     await octokit.rest.repos.updateBranchProtection({
       owner: org,
       repo,
@@ -206,14 +228,196 @@ export async function protectBranch(
             require_code_owner_reviews: protection.requireCodeOwnerReviews,
           }
         : null,
-      restrictions: null,
+      restrictions,
       required_linear_history: protection.requireLinearHistory,
       allow_force_pushes: !protection.preventForcePush,
       allow_deletions: !protection.preventDeletion,
       required_conversation_resolution: protection.requireConversationResolution,
       required_signatures: protection.requireSignedCommits,
     });
+
+    if (protection.restrictPushes && protection.restrictMatchingBranchCreation) {
+      try {
+        await (octokit as any).request("POST /repos/{owner}/{repo}/branches/{branch}/protection/restrictions", {
+          owner: org,
+          repo,
+          branch,
+        });
+      } catch { /* restrict matching branch creation may not be available */ }
+    }
+    return {};
   }
+}
+
+function deepSortedJson(obj: any): string {
+  if (obj === null || obj === undefined) return JSON.stringify(obj);
+  if (Array.isArray(obj)) return `[${obj.map(deepSortedJson).join(",")}]`;
+  if (typeof obj === "object") {
+    const keys = Object.keys(obj).sort();
+    return `{${keys.map(k => `${JSON.stringify(k)}:${deepSortedJson(obj[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(obj);
+}
+
+function normalizeRules(rules: any[]): any[] {
+  return [...rules]
+    .map((r: any) => ({ type: r.type, ...(r.parameters ? { parameters: r.parameters } : {}) }))
+    .sort((a: any, b: any) => (a.type || "").localeCompare(b.type || ""));
+}
+
+function normalizeBypass(actors: any[]): any[] {
+  return [...(actors || [])]
+    .map((a: any) => ({ actor_id: a.actor_id, actor_type: a.actor_type, bypass_mode: a.bypass_mode }))
+    .sort((a: any, b: any) => `${a.actor_type}-${a.actor_id}`.localeCompare(`${b.actor_type}-${b.actor_id}`));
+}
+
+const PARAM_LABELS: Record<string, string> = {
+  required_approving_review_count: "Required approvals",
+  dismiss_stale_reviews_on_push: "Dismiss stale reviews",
+  require_code_owner_review: "Code owner review",
+  require_last_push_approval: "Last push approval",
+  required_review_thread_resolution: "Conversation resolution",
+  allowed_merge_methods: "Allowed merge methods",
+  strict_required_status_checks_policy: "Strict status checks",
+  do_not_enforce_on_create: "Don't enforce on create",
+  required_status_checks: "Status check contexts",
+  update_allows_fetch_and_merge: "Allow fetch and merge",
+  required_deployment_environments: "Deployment environments",
+  code_scanning_tools: "Code scanning tools",
+};
+
+function fmtParam(v: any): string {
+  if (v === undefined || v === null) return "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (typeof v === "number") return String(v);
+  if (Array.isArray(v)) return v.length === 0 ? "None" : JSON.stringify(v);
+  return JSON.stringify(v);
+}
+
+export function compareRulesetConfigs(
+  existing: any,
+  templateRules: any[],
+  templateBypass: any[],
+  templateEnforcement: string
+): string[] {
+  const diffs: string[] = [];
+
+  const exRulesMap = new Map<string, any>();
+  for (const r of normalizeRules(existing.rules || [])) exRulesMap.set(r.type, r.parameters || {});
+
+  const tmplRulesMap = new Map<string, any>();
+  for (const r of normalizeRules(templateRules)) tmplRulesMap.set(r.type, r.parameters || {});
+
+  for (const [t] of tmplRulesMap) {
+    if (!exRulesMap.has(t)) diffs.push(`Template adds rule "${t}" not in existing ruleset`);
+  }
+  for (const [t] of exRulesMap) {
+    if (!tmplRulesMap.has(t)) diffs.push(`Existing ruleset has rule "${t}" not in template`);
+  }
+
+  for (const [t, tmplParams] of tmplRulesMap) {
+    if (!exRulesMap.has(t)) continue;
+    const exParams = exRulesMap.get(t) || {};
+    for (const key of Object.keys(tmplParams)) {
+      if (deepSortedJson(tmplParams[key]) !== deepSortedJson(exParams[key])) {
+        const label = PARAM_LABELS[key] || key;
+        diffs.push(`${label}: ${fmtParam(exParams[key])} → ${fmtParam(tmplParams[key])}`);
+      }
+    }
+  }
+
+  if ((existing.enforcement || "active") !== templateEnforcement) {
+    diffs.push(`Enforcement: ${existing.enforcement || "active"} → ${templateEnforcement}`);
+  }
+
+  const exBypass = normalizeBypass(existing.bypass_actors || []);
+  const tmplBypass = normalizeBypass(templateBypass);
+  if (deepSortedJson(exBypass) !== deepSortedJson(tmplBypass)) {
+    diffs.push(`Bypass actors differ (existing: ${exBypass.length}, template: ${tmplBypass.length})`);
+  }
+
+  return diffs;
+}
+
+export function compareClassicConfigs(existing: any, templateProtection: Protection): string[] {
+  const diffs: string[] = [];
+
+  const exAdmin = existing.enforce_admins?.enabled ?? existing.enforce_admins ?? false;
+  if (!!exAdmin !== !!templateProtection.enforceAdmins) {
+    diffs.push(`Enforce admins differs: existing=${exAdmin}, template=${templateProtection.enforceAdmins}`);
+  }
+
+  const exPr = existing.required_pull_request_reviews;
+  if (templateProtection.requirePr && !exPr) {
+    diffs.push("Template requires pull requests, existing does not");
+  } else if (!templateProtection.requirePr && exPr) {
+    diffs.push("Existing requires pull requests, template does not");
+  } else if (templateProtection.requirePr && exPr) {
+    if ((exPr.required_approving_review_count ?? 0) !== templateProtection.requiredApprovals) {
+      diffs.push(`Required approvals differ: existing=${exPr.required_approving_review_count}, template=${templateProtection.requiredApprovals}`);
+    }
+    if (!!exPr.dismiss_stale_reviews !== !!templateProtection.dismissStaleReviews) {
+      diffs.push("Dismiss stale reviews setting differs");
+    }
+    if (!!exPr.require_code_owner_reviews !== !!templateProtection.requireCodeOwnerReviews) {
+      diffs.push("Code owner reviews setting differs");
+    }
+    if (exPr.dismissal_restrictions && Object.keys(exPr.dismissal_restrictions).length > 0) {
+      const hasUsers = exPr.dismissal_restrictions.users?.length > 0;
+      const hasTeams = exPr.dismissal_restrictions.teams?.length > 0;
+      if (hasUsers || hasTeams) diffs.push("Existing has dismissal restrictions that template doesn't specify");
+    }
+  }
+
+  const exChecks = existing.required_status_checks;
+  if (templateProtection.requireStatusChecks && !exChecks) {
+    diffs.push("Template requires status checks, existing does not");
+  } else if (!templateProtection.requireStatusChecks && exChecks) {
+    diffs.push("Existing requires status checks, template does not");
+  } else if (templateProtection.requireStatusChecks && exChecks) {
+    if (!!exChecks.strict !== !!templateProtection.strictStatusChecks) {
+      diffs.push("Strict status checks setting differs");
+    }
+  }
+
+  const exLinear = existing.required_linear_history?.enabled ?? false;
+  if (!!exLinear !== !!templateProtection.requireLinearHistory) {
+    diffs.push("Required linear history setting differs");
+  }
+
+  const exForcePush = existing.allow_force_pushes?.enabled ?? false;
+  if (exForcePush === templateProtection.preventForcePush) {
+    diffs.push("Force push setting differs");
+  }
+
+  const exDeletion = existing.allow_deletions?.enabled ?? false;
+  if (exDeletion === templateProtection.preventDeletion) {
+    diffs.push("Branch deletion setting differs");
+  }
+
+  const exConvo = existing.required_conversation_resolution?.enabled ?? false;
+  if (!!exConvo !== !!templateProtection.requireConversationResolution) {
+    diffs.push("Required conversation resolution setting differs");
+  }
+
+  const exSigned = existing.required_signatures?.enabled ?? false;
+  if (!!exSigned !== !!templateProtection.requireSignedCommits) {
+    diffs.push("Required signed commits setting differs");
+  }
+
+  const exRestrictions = existing.restrictions;
+  if (exRestrictions && !templateProtection.restrictPushes) {
+    const hasActors = (exRestrictions.users?.length || 0) + (exRestrictions.teams?.length || 0) + (exRestrictions.apps?.length || 0) > 0;
+    if (hasActors) diffs.push("Existing has push restrictions that template doesn't specify");
+  }
+
+  return diffs;
+}
+
+export async function getRuleset(octokit: Octokit, repo: string, rulesetId: number): Promise<any> {
+  const org = getOrg();
+  const { data } = await octokit.rest.repos.getRepoRuleset({ owner: org, repo, ruleset_id: rulesetId });
+  return data;
 }
 
 export async function listRulesets(octokit: Octokit, repo: string) {

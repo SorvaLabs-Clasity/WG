@@ -59,11 +59,17 @@ export default {
         'gradientBG': 'gradientBG 15s ease infinite',
         'fadeInUp': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'fadeInDelayed': 'fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'pulse-once': 'highlightPulse 2s ease-out forwards',
       },
       keyframes: {
         fadeIn: {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
+        },
+        highlightPulse: {
+          '0%': { backgroundColor: 'rgb(219 234 254 / 0.6)' },
+          '30%': { backgroundColor: 'rgb(219 234 254 / 0.6)' },
+          '100%': { backgroundColor: 'transparent' },
         },
         slideUp: {
           '0%': { opacity: '0', transform: 'translateY(16px) scale(0.98)' },

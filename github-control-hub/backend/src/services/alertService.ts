@@ -110,6 +110,17 @@ export async function resolveAlert(id: string, user: string): Promise<SecurityAl
   return memAlertsStore[alertIndex];
 }
 
+export async function autoResolveAlerts(repo: string, type: AlertType): Promise<number> {
+  const all = await getAlerts();
+  const matching = all.filter(a => a.repo === repo && a.type === type && !a.resolved);
+  let resolved = 0;
+  for (const alert of matching) {
+    await resolveAlert(alert.id, "system (auto-resolved)");
+    resolved++;
+  }
+  return resolved;
+}
+
 export async function unresolveAlert(id: string): Promise<SecurityAlert | null> {
   if (usesDynamo()) {
     const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id } }));
