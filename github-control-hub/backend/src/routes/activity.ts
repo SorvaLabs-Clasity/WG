@@ -1,3 +1,4 @@
+/* v2: undo-event restores original for overridden conflicts */
 import { Router } from "express";
 import type { Request, Response } from "express";
 import {
@@ -154,21 +155,7 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
 
     if (entry.undoPayload) {
       try {
-        if (entry.action === "conflict.pending" && entry.conflictResolution === "override" && entry.undoPayload.action?.startsWith("undo_override_")) {
-          const octokit = createOctokit(req.user!.accessToken);
-          const org = getOrg();
-          const p = entry.undoPayload.params;
-          if (entry.undoPayload.action === "undo_override_ruleset") {
-            const newId = p.newRulesetId ? parseInt(p.newRulesetId, 10) : undefined;
-            if (newId) {
-              try { await deleteRuleset(octokit, p.repo, newId); } catch { /* may already be gone */ }
-            }
-          } else {
-            try { await deleteProtection(octokit, p.repo, p.branch); } catch { /* may already be gone */ }
-          }
-        } else {
-          await executeUndo(entry, req.user!.accessToken);
-        }
+        await executeUndo(entry, req.user!.accessToken);
       } catch (err) {
         errors.push(`Failed to undo ${entry.action} on ${entry.target}: ${(err as Error).message}`);
       }

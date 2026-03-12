@@ -634,7 +634,37 @@ export default function ActivityPage() {
                         <i className="fa-solid fa-location-arrow text-[10px] text-gray-400"></i>
                         Go to Original Event
                       </button>
-                      {canRedo(popupOriginal) && (
+                      {popupOriginal.action === "conflict.pending" && popupOriginal.conflictResolution === "skip" && !popupOriginal.undone && (
+                        <button
+                          onClick={() => handleUndoResolution(popupOriginal)}
+                          disabled={isBusy}
+                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                        >
+                          <i className="fa-solid fa-rotate-left text-[10px]"></i>
+                          Undo Skip
+                        </button>
+                      )}
+                      {popupOriginal.action === "conflict.pending" && popupOriginal.conflictResolution === "override" && !popupOriginal.undone && (
+                        <>
+                          <button
+                            onClick={() => handleUndoResolution(popupOriginal)}
+                            disabled={isBusy}
+                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                          >
+                            <i className="fa-solid fa-rotate-left text-[10px]"></i>
+                            Undo Override
+                          </button>
+                          <button
+                            onClick={() => handleUndoFromPopup(popupOriginal)}
+                            disabled={isBusy}
+                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                          >
+                            <i className="fa-solid fa-trash text-[10px]"></i>
+                            Undo Event
+                          </button>
+                        </>
+                      )}
+                      {!(popupOriginal.action === "conflict.pending" && popupOriginal.conflictResolution) && canRedo(popupOriginal) && (
                         <button
                           onClick={() => handleRedoFromPopup(popupOriginal)}
                           disabled={isBusy}
@@ -644,7 +674,7 @@ export default function ActivityPage() {
                           Redo
                         </button>
                       )}
-                      {canUndo(popupOriginal) && (
+                      {!(popupOriginal.action === "conflict.pending" && popupOriginal.conflictResolution) && canUndo(popupOriginal) && (
                         <button
                           onClick={() => handleUndoFromPopup(popupOriginal)}
                           disabled={isBusy}
