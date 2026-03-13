@@ -17,6 +17,7 @@ import orgRoutes from "./routes/org";
 import graphRoutes from "./routes/graph";
 import widgetRoutes from "./routes/widgets";
 import { authMiddleware } from "./middleware/authMiddleware";
+import { awsHealthMiddleware } from "./middleware/awsHealthMiddleware";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -37,6 +38,8 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/auth", authRoutes);
+
+app.use("/api", awsHealthMiddleware);
 
 app.use("/api/repos", authMiddleware, repoRoutes);
 app.use("/api/repos", authMiddleware, branchRoutes);

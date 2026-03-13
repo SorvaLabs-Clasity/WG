@@ -10,22 +10,12 @@ import {
   BatchWriteCommand,
 } from "@aws-sdk/lib-dynamodb";
 
-let rawClient = new DynamoDBClient({
+const rawClient = new DynamoDBClient({
   region: process.env.AWS_REGION || "us-east-1",
 });
-export let docClient = DynamoDBDocumentClient.from(rawClient, {
+export const docClient = DynamoDBDocumentClient.from(rawClient, {
   marshallOptions: { removeUndefinedValues: true },
 });
-
-export function resetDynamoClient(): void {
-  rawClient.destroy();
-  rawClient = new DynamoDBClient({
-    region: process.env.AWS_REGION || "us-east-1",
-  });
-  docClient = DynamoDBDocumentClient.from(rawClient, {
-    marshallOptions: { removeUndefinedValues: true },
-  });
-}
 
 export function tableName(envVar: string): string {
   const name = process.env[envVar];

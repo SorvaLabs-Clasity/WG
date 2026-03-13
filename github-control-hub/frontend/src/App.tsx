@@ -1,8 +1,9 @@
-import { createContext, useContext, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo } from "react";
 import { RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { router } from "./router";
-import { isAuthenticated, DEMO_MODE } from "./api/client";
+import { isAuthenticated, clearToken, DEMO_MODE } from "./api/client";
+import { fetchAuthStatus } from "./api/auth";
 import { DEMO_USER } from "./api/mock";
 
 const queryClient = new QueryClient({
@@ -50,6 +51,24 @@ export default function App() {
       login: payload.login as string,
       avatarUrl: payload.avatarUrl as string,
     };
+  }, []);
+
+  useEffect(() => {
+    if (DEMO_MODE || !isAuthenticated()) return;
+    const interval = setInterval(async () => {
+      try {
+        const status = await fetchAuthStatus();
+        if (!status.aws.dynamoReachable) {
+          clearToken();
+          window.location.href = "/login";
+        }
+      } catch {
+        // Backend unreachable — redirect to login
+        clearToken();
+        window.location.href = "/login";
+      }
+    }, 60_000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
