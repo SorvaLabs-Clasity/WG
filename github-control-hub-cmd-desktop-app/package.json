@@ -1,0 +1,72 @@
+{
+  "name": "github-control-hub-desktop",
+  "version": "1.0.0",
+  "description": "GitHub Control Hub — Desktop App (Electron)",
+  "private": true,
+  "main": "dist/main.js",
+  "scripts": {
+    "prebuild": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd ../github-control-hub/backend && npx tsc",
+    "build:frontend": "cd ../github-control-hub/frontend && npm run build",
+    "build:electron": "tsc -p tsconfig.json",
+    "dev": "npm run build:electron && electron .",
+    "start": "electron .",
+    "pack": "npm run prebuild && npm run build:electron && electron-builder --dir",
+    "dist:mac": "npm run prebuild && npm run build:electron && electron-builder --mac",
+    "dist:win": "npm run prebuild && npm run build:electron && electron-builder --win",
+    "dist": "npm run prebuild && npm run build:electron && electron-builder --mac --win"
+  },
+  "build": {
+    "appId": "com.github-control-hub.desktop",
+    "productName": "GitHub Control Hub",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "node_modules/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "../github-control-hub/backend/dist",
+        "to": "backend",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../github-control-hub/backend/node_modules",
+        "to": "backend-node_modules",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "../github-control-hub/frontend/dist",
+        "to": "frontend",
+        "filter": ["**/*"]
+      }
+    ],
+    "mac": {
+      "target": ["dmg", "zip"],
+      "category": "public.app-category.developer-tools",
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": ["nsis", "zip"],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudformation": "^3.600.0",
+    "@aws-sdk/client-secrets-manager": "^3.600.0",
+    "dotenv": "^16.4.7",
+    "electron-store": "^8.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0",
+    "typescript": "^5.8.2"
+  }
+}

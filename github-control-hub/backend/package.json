@@ -10,9 +10,10 @@
     "lint": "eslint src --ext .ts"
   },
   "dependencies": {
-    "@aws-sdk/client-secrets-manager": "^3.600.0",
-    "@aws-sdk/lib-dynamodb": "^3.600.0",
     "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/client-secrets-manager": "^3.600.0",
+    "@aws-sdk/client-sts": "^3.1008.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
     "@vendia/serverless-express": "^4.12.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",

@@ -12,8 +12,24 @@ export function getLoginUrl(): string {
 }
 
 export interface AuthStatus {
-  aws: { connected: boolean; dynamoReachable: boolean; region: string };
+  aws: {
+    connected: boolean;
+    dynamoReachable: boolean;
+    region: string;
+    accountId: string | null;
+    identity: string | null;
+    profile: string;
+  };
   github: { configured: boolean; org: string | null };
+}
+
+export interface AwsProfile {
+  name: string;
+  type: "sso" | "iam" | "static";
+  accountId?: string;
+  roleName?: string;
+  region?: string;
+  ssoStartUrl?: string;
 }
 
 export async function fetchAuthStatus(): Promise<AuthStatus> {
@@ -26,13 +42,50 @@ export async function invalidateAws(): Promise<void> {
   await fetch(`${BACKEND_URL}/auth/invalidate-aws`, { method: "POST" });
 }
 
-export async function reconnectAws(): Promise<{ ok: boolean; reachable: boolean }> {
-  const res = await fetch(`${BACKEND_URL}/auth/reconnect-aws`, { method: "POST" });
+export async function reconnectAws(profile?: string): Promise<{ ok: boolean; reachable: boolean }> {
+  const res = await fetch(`${BACKEND_URL}/auth/reconnect-aws`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  });
   return res.json();
 }
 
-export async function triggerAwsSsoLogin(): Promise<void> {
-  await fetch(`${BACKEND_URL}/auth/aws-sso-login`, { method: "POST" });
+export async function triggerAwsSsoLogin(profile?: string): Promise<void> {
+  await fetch(`${BACKEND_URL}/auth/aws-sso-login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  });
+}
+
+export async function fetchAwsProfiles(): Promise<AwsProfile[]> {
+  const res = await fetch(`${BACKEND_URL}/auth/aws-profiles`);
+  const data = await res.json();
+  return data.profiles || [];
+}
+
+export async function useAwsProfile(profile: string): Promise<{ ok: boolean; reachable: boolean }> {
+  const res = await fetch(`${BACKEND_URL}/auth/aws-use-profile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ profile }),
+  });
+  return res.json();
+}
+
+export async function setAwsAccessKeys(keys: {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+  region?: string;
+}): Promise<{ ok: boolean; reachable: boolean }> {
+  const res = await fetch(`${BACKEND_URL}/auth/aws-access-keys`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(keys),
+  });
+  return res.json();
 }
 
 export async function revokeGithub(token: string): Promise<void> {

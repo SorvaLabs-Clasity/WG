@@ -67,6 +67,9 @@ router.get("/status", async (_req: Request, res: Response) => {
   const org = process.env.GITHUB_ORG || null;
 
   let dynamoReachable = false;
+  let accountId: string | null = null;
+  let identity: string | null = null;
+
   if (awsConnected && !isAwsLocked()) {
     try {
       const { docClient, tableName } = await import("../utils/dynamo");
@@ -74,10 +77,27 @@ router.get("/status", async (_req: Request, res: Response) => {
       await docClient.send(new ScanCommand({ TableName: tableName("ACTIVITY_TABLE"), Limit: 1 }));
       dynamoReachable = true;
     } catch {}
+
+    try {
+      const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");
+      const sts = new STSClient({ region: process.env.AWS_REGION || "us-east-1" });
+      const id = await sts.send(new GetCallerIdentityCommand({}));
+      accountId = id.Account || null;
+      const arn = id.Arn || "";
+      const parts = arn.split("/");
+      identity = parts.length > 1 ? parts.slice(1).join("/") : arn;
+    } catch {}
   }
 
   res.json({
-    aws: { connected: awsConnected, dynamoReachable, region: process.env.AWS_REGION || "us-east-1" },
+    aws: {
+      connected: awsConnected,
+      dynamoReachable,
+      region: process.env.AWS_REGION || "us-east-1",
+      accountId,
+      identity,
+      profile: process.env.AWS_PROFILE || "default",
+    },
     github: { configured: githubConfigured, org },
   });
 });
@@ -85,15 +105,26 @@ router.get("/status", async (_req: Request, res: Response) => {
 router.post("/invalidate-aws", async (_req: Request, res: Response) => {
   const { lockAws } = await import("../middleware/awsHealthMiddleware");
   const { resetDynamoClient } = await import("../utils/dynamo");
+
+  delete process.env.AWS_ACCESS_KEY_ID;
+  delete process.env.AWS_SECRET_ACCESS_KEY;
+  delete process.env.AWS_SESSION_TOKEN;
+  delete process.env.AWS_PROFILE;
+
   lockAws();
   resetDynamoClient();
   res.json({ ok: true });
 });
 
-router.post("/reconnect-aws", async (_req: Request, res: Response) => {
+router.post("/reconnect-aws", async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
+
+  const profile = req.body?.profile as string | undefined;
+  if (profile) {
+    process.env.AWS_PROFILE = profile;
+  }
 
   unlockAws();
   dynamo.resetDynamoClient();
@@ -106,9 +137,96 @@ router.post("/reconnect-aws", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/aws-sso-login", async (_req: Request, res: Response) => {
+/** List all AWS profiles from ~/.aws/config and ~/.aws/credentials. */
+router.get("/aws-profiles", async (_req: Request, res: Response) => {
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const os = await import("os");
+
+    interface ProfileInfo {
+      name: string;
+      type: "sso" | "iam" | "static";
+      accountId?: string;
+      roleName?: string;
+      region?: string;
+      ssoStartUrl?: string;
+    }
+
+    const profiles: ProfileInfo[] = [];
+    const seen = new Set<string>();
+    const ssoSessions = new Map<string, { startUrl?: string }>();
+
+    const configPath = path.join(os.homedir(), ".aws", "config");
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, "utf-8");
+      const lines = content.split("\n");
+
+      for (let i = 0; i < lines.length; i++) {
+        const trimmed = lines[i].trim();
+        const sessionMatch = trimmed.match(/^\[sso-session\s+(.+)]$/);
+        if (sessionMatch) {
+          const sName = sessionMatch[1];
+          const entry: { startUrl?: string } = {};
+          for (let j = i + 1; j < lines.length; j++) {
+            const l = lines[j].trim();
+            if (l.startsWith("[")) break;
+            const [k, ...v] = l.split("=");
+            if (k?.trim() === "sso_start_url") entry.startUrl = v.join("=").trim();
+          }
+          ssoSessions.set(sName, entry);
+        }
+      }
+
+      let current: ProfileInfo | null = null;
+      for (const line of lines) {
+        const trimmed = line.trim();
+        const profileMatch = trimmed.match(/^\[profile\s+(.+)]$/) || trimmed.match(/^\[(default)]$/);
+        if (profileMatch) {
+          if (current && !seen.has(current.name)) { profiles.push(current); seen.add(current.name); }
+          current = { name: profileMatch[1], type: "iam" };
+          continue;
+        }
+        if (!current) continue;
+        const [key, ...val] = trimmed.split("=");
+        const k = key?.trim();
+        const v = val.join("=").trim();
+        if (k === "sso_account_id") { current.accountId = v; current.type = "sso"; }
+        if (k === "sso_role_name") current.roleName = v;
+        if (k === "region") current.region = v;
+        if (k === "sso_start_url") { current.ssoStartUrl = v; current.type = "sso"; }
+        if (k === "sso_session") {
+          current.type = "sso";
+          const session = ssoSessions.get(v);
+          if (session?.startUrl) current.ssoStartUrl = session.startUrl;
+        }
+      }
+      if (current && !seen.has(current.name)) { profiles.push(current); seen.add(current.name); }
+    }
+
+    const credsPath = path.join(os.homedir(), ".aws", "credentials");
+    if (fs.existsSync(credsPath)) {
+      const content = fs.readFileSync(credsPath, "utf-8");
+      for (const line of content.split("\n")) {
+        const match = line.trim().match(/^\[(.+)]$/);
+        if (match && !seen.has(match[1])) {
+          profiles.push({ name: match[1], type: "static" });
+          seen.add(match[1]);
+        }
+      }
+    }
+
+    res.json({ profiles });
+  } catch (err: any) {
+    res.json({ profiles: [], error: err.message });
+  }
+});
+
+router.post("/aws-sso-login", async (req: Request, res: Response) => {
   const { spawn } = await import("child_process");
-  const profile = process.env.AWS_PROFILE || "default";
+  const profile = (req.body?.profile as string) || process.env.AWS_PROFILE || "default";
+
+  process.env.AWS_PROFILE = profile;
 
   const child = spawn("aws", ["sso", "login", "--profile", profile], {
     stdio: "ignore",
@@ -117,7 +235,69 @@ router.post("/aws-sso-login", async (_req: Request, res: Response) => {
   });
   child.unref();
 
-  res.json({ ok: true, message: `AWS SSO login started for profile "${profile}". Check your browser.` });
+  res.json({ ok: true, profile, message: `AWS SSO login started for profile "${profile}". Check your browser.` });
+});
+
+/** Switch to an existing AWS CLI profile (non-SSO). */
+router.post("/aws-use-profile", async (req: Request, res: Response) => {
+  const { unlockAws } = await import("../middleware/awsHealthMiddleware");
+  const dynamo = await import("../utils/dynamo");
+  const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
+
+  const profile = req.body?.profile as string;
+  if (!profile) {
+    res.status(400).json({ error: "Profile name required" });
+    return;
+  }
+
+  process.env.AWS_PROFILE = profile;
+  delete process.env.AWS_ACCESS_KEY_ID;
+  delete process.env.AWS_SECRET_ACCESS_KEY;
+  delete process.env.AWS_SESSION_TOKEN;
+
+  unlockAws();
+  dynamo.resetDynamoClient();
+
+  try {
+    await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
+    res.json({ ok: true, reachable: true });
+  } catch (err: any) {
+    res.json({ ok: true, reachable: false, error: err.message });
+  }
+});
+
+/** Authenticate with explicit access keys. */
+router.post("/aws-access-keys", async (req: Request, res: Response) => {
+  const { unlockAws } = await import("../middleware/awsHealthMiddleware");
+  const dynamo = await import("../utils/dynamo");
+  const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
+
+  const { accessKeyId, secretAccessKey, sessionToken, region } = req.body || {};
+  if (!accessKeyId || !secretAccessKey) {
+    res.status(400).json({ error: "accessKeyId and secretAccessKey are required" });
+    return;
+  }
+
+  process.env.AWS_ACCESS_KEY_ID = accessKeyId;
+  process.env.AWS_SECRET_ACCESS_KEY = secretAccessKey;
+  if (sessionToken) process.env.AWS_SESSION_TOKEN = sessionToken;
+  else delete process.env.AWS_SESSION_TOKEN;
+  if (region) process.env.AWS_REGION = region;
+  delete process.env.AWS_PROFILE;
+
+  unlockAws();
+  dynamo.resetDynamoClient({
+    accessKeyId,
+    secretAccessKey,
+    ...(sessionToken ? { sessionToken } : {}),
+  });
+
+  try {
+    await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
+    res.json({ ok: true, reachable: true });
+  } catch (err: any) {
+    res.json({ ok: true, reachable: false, error: err.message });
+  }
 });
 
 /** Revoke the user's GitHub OAuth grant so next sign-in requires re-authorization. */

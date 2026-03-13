@@ -7,7 +7,11 @@ import {
   reconnectAws,
   triggerAwsSsoLogin,
   revokeGithub,
+  fetchAwsProfiles,
+  useAwsProfile,
+  setAwsAccessKeys,
   type AuthStatus,
+  type AwsProfile,
 } from "../api/auth";
 import { clearToken, isAuthenticated, getUserInfo, getToken } from "../api/client";
 
@@ -21,6 +25,15 @@ export default function LoginPage() {
   const [refreshing, setRefreshing] = useState<"aws" | "github" | null>(null);
   const [awsSsoStarted, setAwsSsoStarted] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [awsProfiles, setAwsProfiles] = useState<AwsProfile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<string>("");
+  const [awsMethod, setAwsMethod] = useState<"sso" | "profile" | "keys">("sso");
+  const [akPasteMode, setAkPasteMode] = useState(true);
+  const [akPasteBlock, setAkPasteBlock] = useState("");
+  const [akId, setAkId] = useState("");
+  const [akSecret, setAkSecret] = useState("");
+  const [akSession, setAkSession] = useState("");
+  const [akRegion, setAkRegion] = useState("");
 
   const [ghAuthed, setGhAuthed] = useState(isAuthenticated());
   const [userInfo, setLocalUserInfo] = useState(getUserInfo());
@@ -56,6 +69,15 @@ export default function LoginPage() {
 
   useEffect(() => {
     checkStatus();
+    fetchAwsProfiles().then(p => {
+      setAwsProfiles(p);
+      if (p.length > 0 && !selectedProfile) {
+        setSelectedProfile(p[0].name);
+      }
+      const hasSso = p.some(pr => pr.type === "sso");
+      if (!hasSso && p.length > 0) setAwsMethod("profile");
+      else if (!hasSso) setAwsMethod("keys");
+    }).catch(() => { setAwsMethod("keys"); });
   }, [checkStatus]);
 
   const awsOk = status?.aws.connected && status.aws.dynamoReachable;
@@ -72,14 +94,63 @@ export default function LoginPage() {
 
   const handleAwsSsoLogin = async () => {
     setAwsSsoStarted(true);
-    await triggerAwsSsoLogin();
+    await triggerAwsSsoLogin(selectedProfile || undefined);
   };
 
   const handleReconnectAws = async () => {
     setRefreshing("aws");
-    await reconnectAws();
+    await reconnectAws(selectedProfile || undefined);
     await checkStatus();
     setAwsSsoStarted(false);
+  };
+
+  const handleUseProfile = async () => {
+    if (!selectedProfile) return;
+    setRefreshing("aws");
+    await useAwsProfile(selectedProfile);
+    await checkStatus();
+  };
+
+  const parseExportBlock = (block: string) => {
+    const vals: Record<string, string> = {};
+    const re = /export\s+(AWS_\w+)\s*=\s*"?([^"\s]+)"?/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(block)) !== null) {
+      vals[m[1]] = m[2];
+    }
+    return vals;
+  };
+
+  const handlePasteBlockConnect = async () => {
+    const parsed = parseExportBlock(akPasteBlock);
+    const id = parsed.AWS_ACCESS_KEY_ID;
+    const secret = parsed.AWS_SECRET_ACCESS_KEY;
+    if (!id || !secret) return;
+    setRefreshing("aws");
+    await setAwsAccessKeys({
+      accessKeyId: id,
+      secretAccessKey: secret,
+      sessionToken: parsed.AWS_SESSION_TOKEN || undefined,
+      region: parsed.AWS_DEFAULT_REGION || parsed.AWS_REGION || undefined,
+    });
+    await checkStatus();
+  };
+
+  const pasteBlockValid = useMemo(() => {
+    const parsed = parseExportBlock(akPasteBlock);
+    return !!(parsed.AWS_ACCESS_KEY_ID && parsed.AWS_SECRET_ACCESS_KEY);
+  }, [akPasteBlock]);
+
+  const handleAccessKeys = async () => {
+    if (!akId || !akSecret) return;
+    setRefreshing("aws");
+    await setAwsAccessKeys({
+      accessKeyId: akId,
+      secretAccessKey: akSecret,
+      sessionToken: akSession || undefined,
+      region: akRegion || undefined,
+    });
+    await checkStatus();
   };
 
   /* ── GitHub handlers ── */
@@ -94,6 +165,19 @@ export default function LoginPage() {
     setLocalUserInfo(null);
     setSigningOut(false);
     setJustSignedOut(true);
+  };
+
+  const handleDisconnectAll = async () => {
+    setRefreshing("aws");
+    const token = getToken();
+    if (token) {
+      try { await revokeGithub(token); } catch {}
+    }
+    clearToken();
+    setGhAuthed(false);
+    setLocalUserInfo(null);
+    await invalidateAws();
+    await checkStatus();
   };
 
   const handleEnter = () => {
@@ -124,36 +208,147 @@ export default function LoginPage() {
 
               {/* ── AWS ── */}
               <div className="px-4 py-3.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
+                <div className="flex items-start gap-3">
+                  <div className="pt-0.5 shrink-0">
                     <StatusIcon loading={loading || refreshing === "aws"} error={error} ok={awsOk} icon="ph-fill ph-cloud" />
-                    <div>
-                      <div className="text-sm font-semibold text-slate-800">AWS</div>
-                      <div className="text-xs text-slate-500">DynamoDB + Secrets Manager</div>
-                    </div>
                   </div>
-                  <Badge loading={loading || refreshing === "aws"} error={error} ok={awsOk}
-                    okLabel="Connected" failLabel="Not Connected" />
-                </div>
-                {!loading && !error && (
-                  <div className="flex justify-end mt-2 gap-3">
-                    {awsOk ? (
-                      <SmallButton onClick={handleDisconnectAws} disabled={refreshing === "aws"}
-                        icon="ph-bold ph-sign-out" label="Disconnect" color="slate" hoverColor="red" />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 mb-0.5">
+                      <div className="text-sm font-semibold text-slate-800">AWS</div>
+                      <div className="shrink-0">
+                        <Badge loading={loading || refreshing === "aws"} error={error} ok={awsOk}
+                          okLabel="Connected" failLabel="Not Connected" />
+                      </div>
+                    </div>
+                    {awsOk && status?.aws.accountId ? (
+                      <div className="text-xs text-slate-500">
+                        <span className="break-words line-clamp-3">{status.aws.identity}</span>
+                        <span className="text-slate-400 shrink-0">({status.aws.accountId})</span>
+                      </div>
                     ) : (
-                      <>
-                        {!awsSsoStarted ? (
-                          <SmallButton onClick={handleAwsSsoLogin}
-                            icon="ph-bold ph-browser" label="Sign in with AWS" color="blue" />
-                        ) : (
-                          <SmallButton onClick={handleReconnectAws} disabled={refreshing === "aws"}
-                            icon="ph-bold ph-arrow-clockwise" label="I've signed in — Verify" color="emerald" />
-                        )}
-                      </>
+                      <div className="text-xs text-slate-500">DynamoDB + Secrets Manager</div>
                     )}
                   </div>
+                </div>
+                {!loading && !error && (
+                  <>
+                    {awsOk ? (
+                      <div className="flex justify-end mt-2 gap-3">
+                        <SmallButton onClick={handleDisconnectAws} disabled={refreshing === "aws"}
+                          icon="ph-bold ph-sign-out" label="Disconnect" color="slate" hoverColor="red" />
+                      </div>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        {/* Method tabs */}
+                        <div className="flex rounded-lg border border-slate-200 p-0.5 bg-white">
+                          {([
+                            { id: "sso" as const, label: "SSO", show: awsProfiles.some(p => p.type === "sso") },
+                            { id: "keys" as const, label: "Access Keys", show: true },
+                            { id: "profile" as const, label: "Profile", show: awsProfiles.length > 0 },
+                          ]).filter(t => t.show).map(t => (
+                            <button key={t.id} onClick={() => { setAwsMethod(t.id); setAwsSsoStarted(false); }}
+                              className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-colors ${awsMethod === t.id ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"}`}
+                            >{t.label}</button>
+                          ))}
+                        </div>
+
+                        {/* SSO method */}
+                        {awsMethod === "sso" && (
+                          <div className="space-y-2">
+                            {awsProfiles.filter(p => p.type === "sso").length > 1 && !awsSsoStarted && (
+                              <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)}
+                                className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200">
+                                {awsProfiles.filter(p => p.type === "sso").map(p => (
+                                  <option key={p.name} value={p.name}>
+                                    {p.name}{p.accountId ? ` (${p.accountId})` : ""}{p.roleName ? ` — ${p.roleName}` : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                            <div className="flex justify-end">
+                              {!awsSsoStarted ? (
+                                <SmallButton onClick={handleAwsSsoLogin}
+                                  icon="ph-bold ph-browser" label={`Sign in as ${selectedProfile || "default"}`} color="blue" />
+                              ) : (
+                                <SmallButton onClick={handleReconnectAws} disabled={refreshing === "aws"}
+                                  icon="ph-bold ph-arrow-clockwise" label="I've signed in — Verify" color="emerald" />
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Profile method */}
+                        {awsMethod === "profile" && (
+                          <div className="space-y-2">
+                            <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)}
+                              className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200">
+                              {awsProfiles.map(p => (
+                                <option key={p.name} value={p.name}>
+                                  {p.name} ({p.type}){p.accountId ? ` — ${p.accountId}` : ""}{p.roleName ? ` / ${p.roleName}` : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <div className="flex justify-end">
+                              <SmallButton onClick={handleUseProfile} disabled={refreshing === "aws" || !selectedProfile}
+                                icon="ph-bold ph-user-switch" label={`Use ${selectedProfile || "profile"}`} color="blue" />
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Access Keys method */}
+                        {awsMethod === "keys" && (
+                          <div className="space-y-2">
+                            <div className="flex items-center gap-2 mb-1">
+                              <button onClick={() => setAkPasteMode(true)}
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${akPasteMode ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"}`}
+                              >Paste Export Block</button>
+                              <button onClick={() => setAkPasteMode(false)}
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${!akPasteMode ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"}`}
+                              >Individual Fields</button>
+                            </div>
+
+                            {!akPasteMode ? (
+                              <>
+                                <input type="text" placeholder="Access Key ID" value={akId} onChange={e => setAkId(e.target.value)}
+                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                                <input type="password" placeholder="Secret Access Key" value={akSecret} onChange={e => setAkSecret(e.target.value)}
+                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                                <input type="password" placeholder="Session Token (optional)" value={akSession} onChange={e => setAkSession(e.target.value)}
+                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                                <input type="text" placeholder="Region (optional, default us-east-1)" value={akRegion} onChange={e => setAkRegion(e.target.value)}
+                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                                <div className="flex justify-end">
+                                  <SmallButton onClick={handleAccessKeys} disabled={refreshing === "aws" || !akId || !akSecret}
+                                    icon="ph-bold ph-key" label="Connect" color="blue" />
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <textarea
+                                  rows={4}
+                                  placeholder={'Paste your AWS credentials here, e.g.:\nexport AWS_ACCESS_KEY_ID="AKIA..."\nexport AWS_SECRET_ACCESS_KEY="wJal..."\nexport AWS_SESSION_TOKEN="IQoJ..."'}
+                                  value={akPasteBlock}
+                                  onChange={e => setAkPasteBlock(e.target.value)}
+                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 font-mono resize-none"
+                                />
+                                {akPasteBlock && !pasteBlockValid && (
+                                  <p className="text-[10px] text-red-500">
+                                    Could not find AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY in the pasted text.
+                                  </p>
+                                )}
+                                <div className="flex justify-end">
+                                  <SmallButton onClick={handlePasteBlockConnect} disabled={refreshing === "aws" || !pasteBlockValid}
+                                    icon="ph-bold ph-key" label="Connect" color="blue" />
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
-                {awsSsoStarted && !awsOk && (
+                {awsSsoStarted && !awsOk && awsMethod === "sso" && (
                   <div className="mt-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-100">
                     <p className="text-[11px] text-blue-700">
                       A browser tab should have opened for AWS SSO. Complete sign-in there, then click <strong>"I've signed in — Verify"</strong>.
@@ -206,13 +401,18 @@ export default function LoginPage() {
                     {ghAuthed ? (
                       <SmallButton onClick={handleSignOutGithub} disabled={signingOut}
                         icon="ph-bold ph-sign-out" label={signingOut ? "Signing out…" : "Sign out"} color="slate" hoverColor="red" />
-                    ) : ghConfigured ? (
+                    ) : ghConfigured && awsOk ? (
                       <a href={loginUrl}
                         className="text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 no-underline"
                       >
                         <i className="ph-fill ph-github-logo text-xs"></i>
                         Sign in with GitHub
                       </a>
+                    ) : ghConfigured && !awsOk ? (
+                      <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
+                        <i className="ph-fill ph-github-logo text-xs"></i>
+                        Connect AWS first
+                      </span>
                     ) : null}
                   </div>
                 )}
@@ -226,6 +426,18 @@ export default function LoginPage() {
               </div>
 
             </div>
+
+            {/* Disconnect All */}
+            {!loading && !error && (awsOk || ghAuthed) && (
+              <div className="flex justify-center mt-3">
+                <button onClick={handleDisconnectAll} disabled={refreshing !== null}
+                  className="text-[11px] font-medium text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 disabled:opacity-50"
+                >
+                  <i className="ph-bold ph-power text-xs"></i>
+                  Disconnect all sessions
+                </button>
+              </div>
+            )}
 
             {/* Contextual messages */}
             {error && (
@@ -320,7 +532,7 @@ export default function LoginPage() {
 
         <div className="text-center mt-6">
           <p className="text-xs text-slate-400">
-            Running locally &middot; No Lambda required
+            Running locally
           </p>
         </div>
       </main>

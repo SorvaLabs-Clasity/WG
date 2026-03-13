@@ -17,10 +17,15 @@ export let docClient = DynamoDBDocumentClient.from(rawClient, {
   marshallOptions: { removeUndefinedValues: true },
 });
 
-export function resetDynamoClient(): void {
+export function resetDynamoClient(credentials?: {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+}): void {
   rawClient.destroy();
   rawClient = new DynamoDBClient({
     region: process.env.AWS_REGION || "us-east-1",
+    ...(credentials ? { credentials } : {}),
   });
   docClient = DynamoDBDocumentClient.from(rawClient, {
     marshallOptions: { removeUndefinedValues: true },

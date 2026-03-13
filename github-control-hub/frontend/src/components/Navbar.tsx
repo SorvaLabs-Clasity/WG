@@ -32,7 +32,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
     { label: "Compliance", icon: "ph-check-square-offset", path: "/compliance", isActive: isCompliance },
     { label: "Dependabot", icon: "ph-bug", path: "/dependencies", isActive: isDependencies },
     { label: "Analytics", icon: "ph-chart-bar", path: "/analytics", isActive: isAnalytics },
-    { label: "Knowledge Graph", icon: "ph-graph", path: "/graph", isActive: isGraph },
+    { label: "Knowledge Map", icon: "ph-graph", path: "/graph", isActive: isGraph },
     { label: "Activity", icon: "ph-activity", path: "/activity", isActive: isActivity },
   ];
 
@@ -85,10 +85,10 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
           <button 
             onClick={handleLogout}
             className="text-slate-400 hover:text-slate-900 transition-colors flex items-center gap-1.5 text-sm font-medium"
-            title="Logout"
+            title="Session"
           >
-            <i className="ph ph-sign-out text-lg"></i>
-            <span className="hidden sm:inline">Logout</span>
+            <i className="ph ph-gear-six text-lg"></i>
+            <span className="hidden sm:inline">Session</span>
           </button>
         </div>
       </nav>

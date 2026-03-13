@@ -66,6 +66,7 @@ export default function ComplianceDashboardPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortBy, setSortBy] = useState<"score-asc" | "score-desc" | "name">("score-asc");
   const [statusFilter, setStatusFilter] = useState<"all" | "passing" | "failing">("all");
+  const [ruleFilter, setRuleFilter] = useState<{ ruleId: string; status: "passing" | "failing" } | null>(null);
 
   const [rulesOpen, setRulesOpen] = useState(false);
   const [detailRepo, setDetailRepo] = useState<RepoComplianceScore | null>(null);
@@ -114,16 +115,33 @@ export default function ComplianceDashboardPage() {
     return new Date(latest);
   }, [validScores]);
 
+  const uniqueRules = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const s of (scores || [])) {
+      for (const r of (s.ruleResults || [])) {
+        if (!map.has(r.ruleId)) map.set(r.ruleId, r.ruleName);
+      }
+    }
+    return Array.from(map, ([id, name]) => ({ id, name }));
+  }, [scores]);
+
   const filtered = useMemo(() => {
     let list = [...(scores || [])].filter(s => s.score >= 0);
     if (searchTerm) list = list.filter(s => s.repo.toLowerCase().includes(searchTerm.toLowerCase()));
     if (statusFilter === "passing") list = list.filter(s => s.score >= 90);
     if (statusFilter === "failing") list = list.filter(s => s.score < 90);
+    if (ruleFilter) {
+      list = list.filter(s => {
+        const match = (s.ruleResults || []).find(r => r.ruleId === ruleFilter.ruleId);
+        if (!match) return false;
+        return ruleFilter.status === "passing" ? match.passed : !match.passed;
+      });
+    }
     if (sortBy === "score-asc") list.sort((a, b) => a.score - b.score);
     else if (sortBy === "score-desc") list.sort((a, b) => b.score - a.score);
     else list.sort((a, b) => a.repo.localeCompare(b.repo));
     return list;
-  }, [scores, searchTerm, statusFilter, sortBy]);
+  }, [scores, searchTerm, statusFilter, sortBy, ruleFilter]);
 
   if (isLoading || configLoading) {
     return (
@@ -242,6 +260,55 @@ export default function ComplianceDashboardPage() {
             </div>
           </div>
         </div>
+
+        {/* --- RULE CONDITION FILTER --- */}
+        {uniqueRules.length > 0 && (
+          <div className="mb-6 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider mr-1">Filter by rule:</span>
+            {uniqueRules.map(r => {
+              const isActivePass = ruleFilter?.ruleId === r.id && ruleFilter.status === "passing";
+              const isActiveFail = ruleFilter?.ruleId === r.id && ruleFilter.status === "failing";
+              const isActive = isActivePass || isActiveFail;
+              return (
+                <div key={r.id} className="flex items-center">
+                  <button
+                    onClick={() => {
+                      if (isActivePass) setRuleFilter({ ruleId: r.id, status: "failing" });
+                      else if (isActiveFail) setRuleFilter(null);
+                      else setRuleFilter({ ruleId: r.id, status: "passing" });
+                    }}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+                      isActivePass
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                        : isActiveFail
+                          ? "bg-rose-50 border-rose-300 text-rose-700"
+                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50"
+                    }`}
+                  >
+                    {isActive && (
+                      <i className={`fa-solid ${isActivePass ? "fa-circle-check text-emerald-500" : "fa-circle-xmark text-rose-500"} text-[10px]`}></i>
+                    )}
+                    {r.name}
+                    {isActive && (
+                      <span className="text-[10px] opacity-70">
+                        {isActivePass ? "passing" : "failing"}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              );
+            })}
+            {ruleFilter && (
+              <button
+                onClick={() => setRuleFilter(null)}
+                className="text-[11px] text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1 ml-1"
+              >
+                <i className="fa-solid fa-xmark text-[10px]"></i>
+                Clear
+              </button>
+            )}
+          </div>
+        )}
 
         {/* --- REPO GRID --- */}
         {filtered.length === 0 ? (

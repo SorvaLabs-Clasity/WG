@@ -75,7 +75,7 @@ export default function KnowledgeGraphPage() {
               <i className="ph-fill ph-graph text-2xl"></i>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">Knowledge Graph</h1>
+              <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">Knowledge Map</h1>
               <p className="text-slate-500 text-sm max-w-lg leading-relaxed">
                 Explore repository relationships and visualize organizational risk exposure across your GitHub organization.
               </p>
