@@ -18,11 +18,24 @@
   background: #afb8c1; 
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
 /* Base Setup */
 body {
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.dark body,
+html.dark body {
+  background-color: #020617;
+  color: #e2e8f0;
 }
 
 /* Animated Mesh Gradient Background */
@@ -114,6 +127,9 @@ body {
 .table-row-hover:hover td {
   background-color: #f3f4f6;
 }
+.dark .table-row-hover:hover td {
+  background-color: #1e293b;
+}
 
 /* Toggle Switch Logic */
 .toggle-checkbox:checked {
@@ -144,3 +160,10 @@ body.modal-open {
   border-radius: 50%;
 }
 .gauge-ring-lg::before { inset: 10px; }
+
+.dark .gauge-ring::before {
+  background: #0f172a;
+}
+.dark .gauge-ring {
+  background: conic-gradient(var(--gauge-color) var(--gauge-pct), #334155 0);
+}

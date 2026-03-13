@@ -39,33 +39,33 @@ export default function DiffViewer({ oldValue, newValue }: DiffViewerProps) {
   }, [oldValue, newValue]);
 
   return (
-    <div className="w-full text-sm font-mono bg-white border border-gh-border rounded-md overflow-hidden overflow-x-auto">
+    <div className="w-full text-sm font-mono bg-white dark:bg-slate-900 border border-gh-border dark:border-slate-700 rounded-md overflow-hidden overflow-x-auto">
       <table className="w-full border-collapse text-left">
         <tbody>
           {diffLines.map((line, i) => {
-            let bgColor = "bg-white";
-            let textColor = "text-gh-textBase";
+            let bgColor = "bg-white dark:bg-slate-900";
+            let textColor = "text-gh-textBase dark:text-slate-200";
             let symbol = " ";
             
             if (line.type === "added") {
-              bgColor = "bg-[#e6ffed]";
-              textColor = "text-[#24292e]";
+              bgColor = "bg-[#e6ffed] dark:bg-[#1a2e1a]";
+              textColor = "text-[#24292e] dark:text-slate-200";
               symbol = "+";
             } else if (line.type === "removed") {
-              bgColor = "bg-[#ffeef0]";
-              textColor = "text-[#24292e]";
+              bgColor = "bg-[#ffeef0] dark:bg-[#2e1a1a]";
+              textColor = "text-[#24292e] dark:text-slate-200";
               symbol = "-";
             }
 
             return (
               <tr key={i} className={`group ${bgColor}`}>
-                <td className="w-12 py-0.5 px-2 text-right select-none border-r border-gh-border text-gray-400 opacity-70 group-hover:opacity-100 text-xs font-mono">
+                <td className="w-12 py-0.5 px-2 text-right select-none border-r border-gh-border dark:border-slate-700 text-gray-400 dark:text-slate-500 opacity-70 group-hover:opacity-100 text-xs font-mono">
                   {line.oldLineNum || ""}
                 </td>
-                <td className="w-12 py-0.5 px-2 text-right select-none border-r border-gh-border text-gray-400 opacity-70 group-hover:opacity-100 text-xs font-mono">
+                <td className="w-12 py-0.5 px-2 text-right select-none border-r border-gh-border dark:border-slate-700 text-gray-400 dark:text-slate-500 opacity-70 group-hover:opacity-100 text-xs font-mono">
                   {line.newLineNum || ""}
                 </td>
-                <td className="w-6 py-0.5 px-2 select-none text-gray-500 font-mono text-center">
+                <td className="w-6 py-0.5 px-2 select-none text-gray-500 dark:text-slate-400 font-mono text-center">
                   {symbol}
                 </td>
                 <td className={`py-0.5 px-2 whitespace-pre pr-8 ${textColor}`}>

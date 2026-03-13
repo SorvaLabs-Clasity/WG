@@ -166,12 +166,12 @@ function Toggle({ checked, onChange, label, desc }: { checked: boolean; onChange
           type="checkbox"
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
-          className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue focus:ring-2 focus:ring-offset-1 transition-colors"
+          className="w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 rounded focus:ring-gh-blue focus:ring-2 focus:ring-offset-1 transition-colors"
         />
       </div>
       <div className="flex flex-col">
-        <span className="text-sm font-medium text-gh-textBase group-hover/chk:text-gh-blue transition-colors">{label}</span>
-        <span className="text-[11px] text-gh-muted leading-snug">{desc}</span>
+        <span className="text-sm font-medium text-gh-textBase dark:text-slate-200 group-hover/chk:text-gh-blue transition-colors">{label}</span>
+        <span className="text-[11px] text-gh-muted dark:text-slate-400 leading-snug">{desc}</span>
       </div>
     </label>
   );
@@ -179,13 +179,13 @@ function Toggle({ checked, onChange, label, desc }: { checked: boolean; onChange
 
 function Section({ title, icon, children, defaultOpen = false }: { title: string; icon: string; children: React.ReactNode; defaultOpen?: boolean }) {
   return (
-    <details className="group/section border border-gray-200 rounded-lg overflow-hidden" open={defaultOpen}>
-      <summary className="px-4 py-3 bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors list-none flex items-center gap-2 select-none">
-        <i className={`ph-bold ph-caret-right text-xs text-gray-400 group-open/section:rotate-90 transition-transform`}></i>
-        <i className={`${icon} text-gray-500 text-sm`}></i>
-        <span className="text-sm font-semibold text-gh-textBase">{title}</span>
+    <details className="group/section border border-gray-200 dark:border-slate-700 rounded-lg overflow-hidden" open={defaultOpen}>
+      <summary className="px-4 py-3 bg-gray-50 dark:bg-slate-800 cursor-pointer hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors list-none flex items-center gap-2 select-none">
+        <i className={`ph-bold ph-caret-right text-xs text-gray-400 dark:text-slate-500 group-open/section:rotate-90 transition-transform`}></i>
+        <i className={`${icon} text-gray-500 dark:text-slate-400 text-sm`}></i>
+        <span className="text-sm font-semibold text-gh-textBase dark:text-slate-200">{title}</span>
       </summary>
-      <div className="p-4 space-y-4 border-t border-gray-200 bg-white">
+      <div className="p-4 space-y-4 border-t border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900">
         {children}
       </div>
     </details>
@@ -257,33 +257,33 @@ function BypassActorsSection({
 
       {!enforceAdmins && (
         <div className="mt-3 ml-7 space-y-3">
-          <p className="text-[12px] text-gh-muted">
+          <p className="text-[12px] text-gh-muted dark:text-slate-400">
             Select roles, teams, and apps that are allowed to bypass these rules.
           </p>
 
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i className="ph ph-magnifying-glass text-gray-400 text-sm"></i>
+              <i className="ph ph-magnifying-glass text-gray-400 dark:text-slate-500 text-sm"></i>
             </div>
             <input
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search roles, teams, apps..."
-              className="w-full pl-9 pr-3 py-2 text-[13px] border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-gh-blue/20 focus:border-gh-blue transition-all"
+              className="w-full pl-9 pr-3 py-2 text-[13px] border border-gray-200 dark:border-slate-700 rounded-lg bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-gh-blue/20 focus:border-gh-blue transition-all dark:text-slate-200 dark:placeholder:text-slate-500"
             />
           </div>
 
-          <div className="border border-gray-200 rounded-lg bg-white overflow-hidden max-h-56 overflow-y-auto">
+          <div className="border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 overflow-hidden max-h-56 overflow-y-auto">
             {!actors ? (
-              <div className="px-4 py-6 text-center text-sm text-gh-muted">
+              <div className="px-4 py-6 text-center text-sm text-gh-muted dark:text-slate-400">
                 <i className="ph ph-spinner ph-spin mr-2"></i>Loading...
               </div>
             ) : (
               <>
                 {filteredRoles.length > 0 && (
                   <div>
-                    <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gh-muted uppercase tracking-wider border-b border-gray-100 sticky top-0">
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-slate-800 text-[10px] font-bold text-gh-muted dark:text-slate-400 uppercase tracking-wider border-b border-gray-100 dark:border-slate-700 sticky top-0">
                       Roles
                     </div>
                     {filteredRoles.map(role => (
@@ -302,7 +302,7 @@ function BypassActorsSection({
                 )}
                 {filteredTeams.length > 0 && (
                   <div>
-                    <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gh-muted uppercase tracking-wider border-b border-gray-100 sticky top-0">
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-slate-800 text-[10px] font-bold text-gh-muted dark:text-slate-400 uppercase tracking-wider border-b border-gray-100 dark:border-slate-700 sticky top-0">
                       Teams
                     </div>
                     {filteredTeams.map(team => (
@@ -321,7 +321,7 @@ function BypassActorsSection({
                 )}
                 {filteredApps.length > 0 && (
                   <div>
-                    <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gh-muted uppercase tracking-wider border-b border-gray-100 sticky top-0">
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-slate-800 text-[10px] font-bold text-gh-muted dark:text-slate-400 uppercase tracking-wider border-b border-gray-100 dark:border-slate-700 sticky top-0">
                       Apps
                     </div>
                     {filteredApps.map(app => (
@@ -339,7 +339,7 @@ function BypassActorsSection({
                   </div>
                 )}
                 {filteredRoles.length === 0 && filteredTeams.length === 0 && filteredApps.length === 0 && (
-                  <div className="px-4 py-6 text-center text-sm text-gh-muted">
+                  <div className="px-4 py-6 text-center text-sm text-gh-muted dark:text-slate-400">
                     {search ? "No matches found" : "No actors available"}
                   </div>
                 )}
@@ -348,7 +348,7 @@ function BypassActorsSection({
           </div>
 
           {bypassActors.length > 0 && (
-            <div className="text-[11px] text-gh-muted">
+            <div className="text-[11px] text-gh-muted dark:text-slate-400">
               {bypassActors.length} bypass actor{bypassActors.length !== 1 ? "s" : ""} selected
             </div>
           )}
@@ -376,23 +376,23 @@ function ActorRow({
   onModeChange: (m: "always" | "pull_request") => void;
 }) {
   return (
-    <div className={`flex items-center gap-3 px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors ${selected ? "bg-blue-50/30" : ""}`}>
+    <div className={`flex items-center gap-3 px-3 py-2 border-b border-gray-50 dark:border-slate-800 last:border-0 hover:bg-gray-50/50 dark:hover:bg-slate-800/50 transition-colors ${selected ? "bg-blue-50/30 dark:bg-blue-950/30" : ""}`}>
       <input
         type="checkbox"
         checked={selected}
         onChange={onToggle}
-        className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue shrink-0"
+        className="w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 rounded focus:ring-gh-blue shrink-0"
       />
-      <i className={`${icon} text-gray-500 text-sm shrink-0`}></i>
+      <i className={`${icon} text-gray-500 dark:text-slate-400 text-sm shrink-0`}></i>
       <div className="flex-1 min-w-0">
-        <span className="text-sm font-medium text-gh-textBase">{name}</span>
-        <span className="text-[11px] text-gh-muted ml-2">{desc}</span>
+        <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">{name}</span>
+        <span className="text-[11px] text-gh-muted dark:text-slate-400 ml-2">{desc}</span>
       </div>
       {selected && (
         <select
           value={mode}
           onChange={e => onModeChange(e.target.value as "always" | "pull_request")}
-          className="text-[11px] px-2 py-1 border border-gray-200 rounded-md bg-white text-gh-textBase focus:outline-none focus:ring-1 focus:ring-gh-blue shrink-0"
+          className="text-[11px] px-2 py-1 border border-gray-200 dark:border-slate-700 rounded-md bg-white dark:bg-slate-800 text-gh-textBase dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-gh-blue shrink-0"
         >
           <option value="always">Always</option>
           <option value="pull_request">PRs only</option>
@@ -451,7 +451,7 @@ function PushRestrictionsSection({
         desc="Include administrators in these protection rules."
       />
 
-      <div className="border-t border-gray-100 pt-3 mt-3">
+      <div className="border-t border-gray-100 dark:border-slate-700 pt-3 mt-3">
         <Toggle
           checked={restrictPushes}
           onChange={v => {
@@ -476,8 +476,8 @@ function PushRestrictionsSection({
               desc="Only people, teams, or apps allowed to push will be able to create new branches matching this rule."
             />
 
-            <div className="border-t border-gray-100 pt-3">
-              <label className="text-xs font-semibold text-gh-muted block mb-1.5">Allowed Users</label>
+            <div className="border-t border-gray-100 dark:border-slate-700 pt-3">
+              <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-1.5">Allowed Users</label>
               <TagInput
                 tags={users}
                 onChange={onUsersChange}
@@ -486,33 +486,33 @@ function PushRestrictionsSection({
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-gh-muted block mb-2">Allowed Teams</label>
+              <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-2">Allowed Teams</label>
               <div className="relative mb-2">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <i className="ph ph-magnifying-glass text-gray-400 text-sm"></i>
+                  <i className="ph ph-magnifying-glass text-gray-400 dark:text-slate-500 text-sm"></i>
                 </div>
                 <input
                   type="text"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search teams and apps..."
-                  className="w-full pl-9 pr-3 py-2 text-[13px] border border-gray-200 rounded-lg bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-gh-blue/20 focus:border-gh-blue transition-all"
+                  className="w-full pl-9 pr-3 py-2 text-[13px] border border-gray-200 dark:border-slate-700 rounded-lg bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-900 focus:outline-none focus:ring-2 focus:ring-gh-blue/20 focus:border-gh-blue transition-all dark:text-slate-200 dark:placeholder:text-slate-500"
                 />
               </div>
-              <div className="border border-gray-200 rounded-lg bg-white overflow-hidden max-h-40 overflow-y-auto">
+              <div className="border border-gray-200 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-900 overflow-hidden max-h-40 overflow-y-auto">
                 {!actors ? (
-                  <div className="px-4 py-4 text-center text-sm text-gh-muted">
+                  <div className="px-4 py-4 text-center text-sm text-gh-muted dark:text-slate-400">
                     <i className="ph ph-spinner ph-spin mr-2"></i>Loading...
                   </div>
                 ) : (
                   <>
                     {filteredTeams.length > 0 && (
                       <div>
-                        <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gh-muted uppercase tracking-wider border-b border-gray-100 sticky top-0">
+                        <div className="px-3 py-1.5 bg-gray-50 dark:bg-slate-800 text-[10px] font-bold text-gh-muted dark:text-slate-400 uppercase tracking-wider border-b border-gray-100 dark:border-slate-700 sticky top-0">
                           Teams
                         </div>
                         {filteredTeams.map(team => (
-                          <label key={team.slug} className="flex items-center gap-3 px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 cursor-pointer transition-colors">
+                          <label key={team.slug} className="flex items-center gap-3 px-3 py-2 border-b border-gray-50 dark:border-slate-800 last:border-0 hover:bg-gray-50/50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors">
                             <input
                               type="checkbox"
                               checked={teams.includes(team.slug)}
@@ -520,22 +520,22 @@ function PushRestrictionsSection({
                                 if (e.target.checked) onTeamsChange([...teams, team.slug]);
                                 else onTeamsChange(teams.filter(t => t !== team.slug));
                               }}
-                              className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue shrink-0"
+                              className="w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 rounded focus:ring-gh-blue shrink-0"
                             />
-                            <i className="ph-fill ph-users-three text-gray-500 text-sm"></i>
-                            <span className="text-sm text-gh-textBase">{team.name}</span>
-                            <span className="text-[11px] text-gh-muted">@{team.slug}</span>
+                            <i className="ph-fill ph-users-three text-gray-500 dark:text-slate-400 text-sm"></i>
+                            <span className="text-sm text-gh-textBase dark:text-slate-200">{team.name}</span>
+                            <span className="text-[11px] text-gh-muted dark:text-slate-400">@{team.slug}</span>
                           </label>
                         ))}
                       </div>
                     )}
                     {filteredApps.length > 0 && (
                       <div>
-                        <div className="px-3 py-1.5 bg-gray-50 text-[10px] font-bold text-gh-muted uppercase tracking-wider border-b border-gray-100 sticky top-0">
+                        <div className="px-3 py-1.5 bg-gray-50 dark:bg-slate-800 text-[10px] font-bold text-gh-muted dark:text-slate-400 uppercase tracking-wider border-b border-gray-100 dark:border-slate-700 sticky top-0">
                           Apps
                         </div>
                         {filteredApps.map(app => (
-                          <label key={app.slug} className="flex items-center gap-3 px-3 py-2 border-b border-gray-50 last:border-0 hover:bg-gray-50/50 cursor-pointer transition-colors">
+                          <label key={app.slug} className="flex items-center gap-3 px-3 py-2 border-b border-gray-50 dark:border-slate-800 last:border-0 hover:bg-gray-50/50 dark:hover:bg-slate-800/50 cursor-pointer transition-colors">
                             <input
                               type="checkbox"
                               checked={apps.includes(app.slug)}
@@ -543,16 +543,16 @@ function PushRestrictionsSection({
                                 if (e.target.checked) onAppsChange([...apps, app.slug]);
                                 else onAppsChange(apps.filter(a => a !== app.slug));
                               }}
-                              className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue shrink-0"
+                              className="w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 rounded focus:ring-gh-blue shrink-0"
                             />
-                            <i className="ph-fill ph-plugs-connected text-gray-500 text-sm"></i>
-                            <span className="text-sm text-gh-textBase">{app.name}</span>
+                            <i className="ph-fill ph-plugs-connected text-gray-500 dark:text-slate-400 text-sm"></i>
+                            <span className="text-sm text-gh-textBase dark:text-slate-200">{app.name}</span>
                           </label>
                         ))}
                       </div>
                     )}
                     {filteredTeams.length === 0 && filteredApps.length === 0 && (
-                      <div className="px-4 py-4 text-center text-sm text-gh-muted">
+                      <div className="px-4 py-4 text-center text-sm text-gh-muted dark:text-slate-400">
                         {search ? "No matches found" : "No teams or apps available"}
                       </div>
                     )}
@@ -637,16 +637,16 @@ export default function ProtectBranchModal({
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-[3px] animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white rounded-[12px] shadow-modal border border-black/10 w-full max-w-[680px] relative z-10 animate-slide-up overflow-hidden flex flex-col max-h-[90vh]">
-        <div className="px-6 py-4 border-b border-gh-border flex items-center justify-between bg-white pt-5 shrink-0">
-          <h3 className="text-lg font-bold text-gray-900 tracking-tight">
+      <div className="bg-white dark:bg-slate-900 rounded-[12px] shadow-modal border border-black/10 dark:border-slate-700 w-full max-w-[680px] relative z-10 animate-slide-up overflow-hidden flex flex-col max-h-[90vh]">
+        <div className="px-6 py-4 border-b border-gh-border dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-900 pt-5 shrink-0">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">
             {isCreating ? "New Protection Rule" : (
-              <>Protect Branch: <span className="font-mono bg-gray-100 px-1 rounded text-gh-blue">{targetBranch}</span></>
+              <>Protect Branch: <span className="font-mono bg-gray-100 dark:bg-slate-700 px-1 rounded text-gh-blue">{targetBranch}</span></>
             )}
           </h3>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-900 hover:bg-black/5 transition-colors absolute right-4 top-4"
+            className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors absolute right-4 top-4"
           >
             <i className="ph ph-x text-lg"></i>
           </button>
@@ -655,16 +655,16 @@ export default function ProtectBranchModal({
         <div className="p-6 space-y-6 overflow-y-auto">
           {/* Top Controls: Target Branch & Type Selector */}
           {(isCreating || isTemplateMode) && (
-            <div className="space-y-5 border-b border-gray-100 pb-5">
+            <div className="space-y-5 border-b border-gray-100 dark:border-slate-700 pb-5">
               {!isTemplateMode && (
                 <div>
-                  <label className="block text-[13px] font-semibold text-gh-textBase mb-1.5 flex items-center gap-1.5">
+                  <label className="block text-[13px] font-semibold text-gh-textBase dark:text-slate-200 mb-1.5 flex items-center gap-1.5">
                     Target Branch
                     <span className="text-red-500">*</span>
                   </label>
                   <div className="relative">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <i className="ph ph-git-branch text-gray-400 text-lg"></i>
+                      <i className="ph ph-git-branch text-gray-400 dark:text-slate-500 text-lg"></i>
                     </div>
                     <input
                       list="branch-options"
@@ -673,8 +673,8 @@ export default function ProtectBranchModal({
                       onChange={(e) => setTargetBranch(e.target.value)}
                       disabled={mode === "json"}
                       placeholder="main or release/*"
-                      className={`block w-full pl-9 pr-3 py-2.5 text-[14px] leading-tight text-gh-textBase border border-gh-border rounded-[6px] shadow-sm outline-none focus:ring-[3px] focus:ring-gh-blue/20 focus:border-gh-blue transition-all placeholder:text-gray-400 ${
-                        mode === "json" ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white"
+                      className={`block w-full pl-9 pr-3 py-2.5 text-[14px] leading-tight text-gh-textBase dark:text-slate-200 border border-gh-border dark:border-slate-700 rounded-[6px] shadow-sm outline-none focus:ring-[3px] focus:ring-gh-blue/20 focus:border-gh-blue transition-all placeholder:text-gray-400 dark:placeholder:text-slate-500 ${
+                        mode === "json" ? "bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-500 cursor-not-allowed" : "bg-white dark:bg-slate-800"
                       }`}
                     />
                     <datalist id="branch-options">
@@ -684,29 +684,29 @@ export default function ProtectBranchModal({
                     </datalist>
                   </div>
                   {mode === "json" ? (
-                    <p className="mt-1.5 text-[12px] text-amber-600 font-medium">
-                      Target branch input is disabled because the ruleset JSON directly dictates the target branches via its <code className="text-xs bg-amber-100 px-1 rounded font-mono">conditions</code> field.
+                    <p className="mt-1.5 text-[12px] text-amber-600 dark:text-amber-400 font-medium">
+                      Target branch input is disabled because the ruleset JSON directly dictates the target branches via its <code className="text-xs bg-amber-100 dark:bg-amber-900/30 px-1 rounded font-mono">conditions</code> field.
                     </p>
                   ) : (
-                    <p className="mt-1.5 text-[12px] text-gh-textMuted">
-                      Select or type the branch name to protect. For rulesets, you can use patterns like <code className="text-xs bg-gray-100 px-1 rounded font-mono">release/*</code>.
+                    <p className="mt-1.5 text-[12px] text-gh-textMuted dark:text-slate-400">
+                      Select or type the branch name to protect. For rulesets, you can use patterns like <code className="text-xs bg-gray-100 dark:bg-slate-700 px-1 rounded font-mono">release/*</code>.
                     </p>
                   )}
                 </div>
               )}
 
               <div>
-                <label className="block text-[13px] font-semibold text-gh-textBase mb-1.5">
+                <label className="block text-[13px] font-semibold text-gh-textBase dark:text-slate-200 mb-1.5">
                   Protection Type
                 </label>
-                <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-md border border-gray-200 w-fit">
+                <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 p-1 rounded-md border border-gray-200 dark:border-slate-700 w-fit">
                   <button
                     type="button"
                     onClick={() => { update('type', 'ruleset'); setMode('form'); }}
                     className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                       protectRules.type === 'ruleset' || protectRules.type === 'ruleset_json'
-                        ? 'bg-white shadow-sm text-gh-textBase border border-gray-200/50'
-                        : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                        ? 'bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600'
+                        : 'text-gh-muted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 transparent border border-transparent'
                     }`}
                   >
                     Repository Ruleset
@@ -716,8 +716,8 @@ export default function ProtectBranchModal({
                     onClick={() => { update('type', 'classic'); setMode('form'); }}
                     className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                       protectRules.type === 'classic'
-                        ? 'bg-white shadow-sm text-gh-textBase border border-gray-200/50'
-                        : 'text-gh-muted hover:text-gh-textBase transparent border border-transparent'
+                        ? 'bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600'
+                        : 'text-gh-muted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 transparent border border-transparent'
                     }`}
                   >
                     Classic Protection
@@ -729,14 +729,14 @@ export default function ProtectBranchModal({
 
           {/* Config Mode Selector (Only when creating a ruleset or in template mode) */}
           {(isCreating || isTemplateMode) && (protectRules.type === "ruleset" || protectRules.type === "ruleset_json") && (
-            <div className="flex items-center gap-2 bg-gray-50 p-1 rounded-md border border-gray-200 w-fit">
+            <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 p-1 rounded-md border border-gray-200 dark:border-slate-700 w-fit">
               <button
                 type="button"
                 onClick={() => { setMode("form"); update("type", "ruleset"); }}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                   mode === "form"
-                    ? "bg-white shadow-sm text-gh-textBase border border-gray-200/50"
-                    : "text-gh-muted hover:text-gh-textBase border border-transparent"
+                    ? "bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600"
+                    : "text-gh-muted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 border border-transparent"
                 }`}
               >
                 <i className="ph-bold ph-sliders-horizontal mr-1.5"></i>Form Builder
@@ -746,8 +746,8 @@ export default function ProtectBranchModal({
                 onClick={() => setMode("json")}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                   mode === "json"
-                    ? "bg-white shadow-sm text-gh-textBase border border-gray-200/50"
-                    : "text-gh-muted hover:text-gh-textBase border border-transparent"
+                    ? "bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600"
+                    : "text-gh-muted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 border border-transparent"
                 }`}
               >
                 <i className="ph-bold ph-code mr-1.5"></i>Direct JSON
@@ -759,21 +759,21 @@ export default function ProtectBranchModal({
           {mode === "json" ? (
             <div className="space-y-4">
               <div>
-                <p className="text-sm text-gh-muted mb-3">
-                  Paste a GitHub ruleset JSON below. The target branch field above will be ignored; GitHub will apply the target automatically based on the JSON's <code className="text-xs bg-gray-100 px-1 rounded font-mono">conditions</code>.
+                <p className="text-sm text-gh-muted dark:text-slate-400 mb-3">
+                  Paste a GitHub ruleset JSON below. The target branch field above will be ignored; GitHub will apply the target automatically based on the JSON's <code className="text-xs bg-gray-100 dark:bg-slate-700 px-1 rounded font-mono">conditions</code>.
                 </p>
                 <textarea
                   value={jsonText}
                   onChange={e => { setJsonText(e.target.value); setJsonError(""); }}
                   placeholder='Paste the full ruleset JSON here...'
                   rows={14}
-                  className="w-full px-4 py-3 text-xs font-mono border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue bg-gray-50 resize-y"
+                  className="w-full px-4 py-3 text-xs font-mono border border-gray-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-gh-blue bg-gray-50 dark:bg-slate-800 dark:text-slate-200 resize-y"
                 />
               </div>
               {jsonError && (
-                <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <div className="flex items-center gap-2 p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-lg">
                   <i className="ph-fill ph-warning-circle text-red-500"></i>
-                  <span className="text-sm text-red-700">{jsonError}</span>
+                  <span className="text-sm text-red-700 dark:text-red-400">{jsonError}</span>
                 </div>
               )}
             </div>
@@ -781,23 +781,23 @@ export default function ProtectBranchModal({
             <div className="space-y-5">
               {/* Ruleset Name & Enforcement (ruleset only) */}
               {isRuleset && (
-                <div className="grid grid-cols-2 gap-4 border-b border-gray-100 pb-4">
+                <div className="grid grid-cols-2 gap-4 border-b border-gray-100 dark:border-slate-700 pb-4">
                   <div>
-                    <label className="text-xs font-semibold text-gh-muted uppercase tracking-wider block mb-1.5">Ruleset Name</label>
+                    <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider block mb-1.5">Ruleset Name</label>
                     <input
                       type="text"
                       value={protectRules.rulesetName || ""}
                       onChange={e => update("rulesetName", e.target.value)}
                       placeholder={targetBranch ? `Ruleset for ${targetBranch}` : "My Ruleset"}
-                      className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue"
+                      className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue dark:bg-slate-800 dark:text-slate-200"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gh-muted uppercase tracking-wider block mb-1.5">Enforcement Status</label>
+                    <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider block mb-1.5">Enforcement Status</label>
                     <select
                       value={protectRules.enforcement || "active"}
                       onChange={e => update("enforcement", e.target.value)}
-                      className="w-full px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue"
+                      className="w-full px-2 py-1.5 text-sm border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-200 dark:ring-slate-600 focus:outline-none focus:ring-gh-blue dark:text-slate-200"
                     >
                       <option value="active">Active</option>
                       <option value="evaluate">Evaluate (dry-run)</option>
@@ -809,7 +809,7 @@ export default function ProtectBranchModal({
 
               {/* Branch Rules */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold text-gh-muted uppercase tracking-wider">Branch Rules</h4>
+                <h4 className="text-xs font-bold text-gh-muted dark:text-slate-400 uppercase tracking-wider">Branch Rules</h4>
 
                 {/* Restrict Operations (ruleset only) */}
                 {isRuleset && (
@@ -836,7 +836,7 @@ export default function ProtectBranchModal({
                     <Toggle checked={!!protectRules.requireDeployments} onChange={v => update("requireDeployments", v)} label="Require deployments to succeed" desc="Choose which environments must be successfully deployed to before refs can be pushed." />
                     {protectRules.requireDeployments && (
                       <div className="ml-7 mt-2">
-                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Required Deployment Environments</label>
+                        <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-1.5">Required Deployment Environments</label>
                         <TagInput tags={protectRules.requiredDeploymentEnvironments || []} onChange={tags => update("requiredDeploymentEnvironments", tags)} onPendingTextChange={p => setPendingTags(prev => ({ ...prev, envs: p }))} placeholder="e.g. production, staging" />
                       </div>
                     )}
@@ -849,8 +849,8 @@ export default function ProtectBranchModal({
                   {protectRules.requirePr && (
                     <div className="ml-7 space-y-4 mt-2">
                       <div>
-                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Required Approvals</label>
-                        <select value={protectRules.requiredApprovals} onChange={(e) => update('requiredApprovals', Number(e.target.value))} className="block w-40 pl-2 pr-8 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue">
+                        <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-1.5">Required Approvals</label>
+                        <select value={protectRules.requiredApprovals} onChange={(e) => update('requiredApprovals', Number(e.target.value))} className="block w-40 pl-2 pr-8 py-1.5 text-sm border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-200 dark:ring-slate-600 focus:outline-none focus:ring-gh-blue dark:text-slate-200">
                           {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
                             <option key={n} value={n}>{n} {n === 1 ? "approval" : "approvals"}</option>
                           ))}
@@ -864,7 +864,7 @@ export default function ProtectBranchModal({
                       </div>
                       {isRuleset && (
                         <div>
-                          <label className="text-xs font-semibold text-gh-muted block mb-2">Allowed Merge Methods</label>
+                          <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-2">Allowed Merge Methods</label>
                           <div className="flex gap-4">
                             {(["merge", "squash", "rebase"] as const).map(method => (
                               <label key={method} className="flex items-center gap-2 cursor-pointer">
@@ -875,13 +875,13 @@ export default function ProtectBranchModal({
                                     const current = protectRules.allowedMergeMethods || [];
                                     update("allowedMergeMethods", e.target.checked ? [...current, method] : current.filter(m => m !== method));
                                   }}
-                                  className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue"
+                                  className="w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 rounded focus:ring-gh-blue"
                                 />
                                 <span className="text-sm capitalize">{method === "merge" ? "Merge commit" : method === "squash" ? "Squash" : "Rebase"}</span>
                               </label>
                             ))}
                           </div>
-                          <p className="text-[11px] text-gh-muted mt-1">When merging PRs, you can allow any combination. At least one must be enabled if set.</p>
+                          <p className="text-[11px] text-gh-muted dark:text-slate-400 mt-1">When merging PRs, you can allow any combination. At least one must be enabled if set.</p>
                         </div>
                       )}
                     </div>
@@ -898,7 +898,7 @@ export default function ProtectBranchModal({
                         <Toggle checked={!!protectRules.doNotRequireStatusChecksOnCreation} onChange={v => update("doNotRequireStatusChecksOnCreation", v)} label="Do not require status checks on creation" desc="Allow repositories and branches to be created if a check would otherwise prohibit it." />
                       )}
                       <div>
-                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Required Status Checks</label>
+                        <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-1.5">Required Status Checks</label>
                         <TagInput tags={protectRules.statusCheckContexts || []} onChange={tags => update("statusCheckContexts", tags)} onPendingTextChange={p => setPendingTags(prev => ({ ...prev, checks: p }))} placeholder="e.g. build, test, lint" />
                       </div>
                     </div>
@@ -929,13 +929,13 @@ export default function ProtectBranchModal({
                     {protectRules.requireCodeScanning && (
                       <div className="ml-7 space-y-3 mt-2">
                         <div>
-                          <label className="text-xs font-semibold text-gh-muted block mb-1.5">Tool</label>
-                          <input type="text" value={protectRules.codeScanningTool || "CodeQL"} onChange={e => update("codeScanningTool", e.target.value)} className="w-48 px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue" />
+                          <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-1.5">Tool</label>
+                          <input type="text" value={protectRules.codeScanningTool || "CodeQL"} onChange={e => update("codeScanningTool", e.target.value)} className="w-48 px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue dark:bg-slate-800 dark:text-slate-200" />
                         </div>
                         <div className="grid grid-cols-2 gap-3">
                           <div>
-                            <label className="text-xs font-semibold text-gh-muted block mb-1.5">Alerts Threshold</label>
-                            <select value={protectRules.codeScanningAlertsThreshold || "errors"} onChange={e => update("codeScanningAlertsThreshold", e.target.value)} className="w-full px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue">
+                            <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-1.5">Alerts Threshold</label>
+                            <select value={protectRules.codeScanningAlertsThreshold || "errors"} onChange={e => update("codeScanningAlertsThreshold", e.target.value)} className="w-full px-2 py-1.5 text-sm border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-200 dark:ring-slate-600 focus:outline-none focus:ring-gh-blue dark:text-slate-200">
                               <option value="none">None</option>
                               <option value="errors">Errors</option>
                               <option value="errors_and_warnings">Errors & Warnings</option>
@@ -943,8 +943,8 @@ export default function ProtectBranchModal({
                             </select>
                           </div>
                           <div>
-                            <label className="text-xs font-semibold text-gh-muted block mb-1.5">Security Threshold</label>
-                            <select value={protectRules.codeScanningSecurityAlertsThreshold || "high_or_higher"} onChange={e => update("codeScanningSecurityAlertsThreshold", e.target.value)} className="w-full px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue">
+                            <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-1.5">Security Threshold</label>
+                            <select value={protectRules.codeScanningSecurityAlertsThreshold || "high_or_higher"} onChange={e => update("codeScanningSecurityAlertsThreshold", e.target.value)} className="w-full px-2 py-1.5 text-sm border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-200 dark:ring-slate-600 focus:outline-none focus:ring-gh-blue dark:text-slate-200">
                               <option value="none">None</option>
                               <option value="critical">Critical</option>
                               <option value="high_or_higher">High or Higher</option>
@@ -964,14 +964,14 @@ export default function ProtectBranchModal({
                     <Toggle checked={!!protectRules.requireCodeQuality} onChange={v => update("requireCodeQuality", v)} label="Require code quality results" desc="Choose which severity levels of code quality results should block PR merges." />
                     {protectRules.requireCodeQuality && (
                       <div className="ml-7 mt-2">
-                        <label className="text-xs font-semibold text-gh-muted block mb-1.5">Severity</label>
-                        <select value={protectRules.codeQualitySeverity || "errors"} onChange={e => update("codeQualitySeverity", e.target.value)} className="w-48 px-2 py-1.5 text-sm border-gray-300 rounded-md bg-white ring-1 ring-inset ring-gray-200 focus:outline-none focus:ring-gh-blue">
+                        <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 block mb-1.5">Severity</label>
+                        <select value={protectRules.codeQualitySeverity || "errors"} onChange={e => update("codeQualitySeverity", e.target.value)} className="w-48 px-2 py-1.5 text-sm border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 ring-1 ring-inset ring-gray-200 dark:ring-slate-600 focus:outline-none focus:ring-gh-blue dark:text-slate-200">
                           <option value="none">None</option>
                           <option value="errors">Errors</option>
                           <option value="errors_and_warnings">Errors & Warnings</option>
                           <option value="all">All</option>
                         </select>
-                        <p className="text-[11px] text-gh-muted mt-1">The lowest severity level at which code quality reviews need to be resolved before merging.</p>
+                        <p className="text-[11px] text-gh-muted dark:text-slate-400 mt-1">The lowest severity level at which code quality reviews need to be resolved before merging.</p>
                       </div>
                     )}
                   </Section>
@@ -1022,10 +1022,10 @@ export default function ProtectBranchModal({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gh-border bg-gray-50/50 flex items-center justify-end gap-3 rounded-b-[12px] shrink-0">
+        <div className="px-6 py-4 border-t border-gh-border dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 flex items-center justify-end gap-3 rounded-b-[12px] shrink-0">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-[13px] font-semibold text-gh-textBase bg-white border border-gh-border hover:bg-gray-50 rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gray-200"
+            className="px-4 py-2 text-[13px] font-semibold text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 border border-gh-border dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-slate-600"
           >
             Cancel
           </button>

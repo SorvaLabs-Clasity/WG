@@ -14,10 +14,12 @@ import {
   type AwsProfile,
 } from "../api/auth";
 import { clearToken, isAuthenticated, getUserInfo, getToken } from "../api/client";
+import { useTheme } from "../hooks/useTheme";
 
 export default function LoginPage() {
   const navigate = useNavigate();
   const loginUrl = getLoginUrl();
+  const { theme, toggle } = useTheme();
 
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -184,27 +186,38 @@ export default function LoginPage() {
     navigate("/analytics");
   };
 
+  const inputCls = "w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800 font-mono placeholder:text-slate-400 dark:placeholder:text-slate-500";
+
   return (
-    <div className="bg-slate-50 min-h-screen flex items-center justify-center p-4">
+    <div className="bg-slate-50 dark:bg-slate-950 min-h-screen flex items-center justify-center p-4">
+      {/* Theme toggle */}
+      <button
+        onClick={toggle}
+        className="fixed top-4 right-4 z-50 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors p-2 rounded-lg hover:bg-white/80 dark:hover:bg-slate-800/80 backdrop-blur"
+        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      >
+        <i className={`ph-bold ${theme === "dark" ? "ph-sun" : "ph-moon"} text-xl`}></i>
+      </button>
+
       <main className="w-full max-w-[480px]">
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
 
           {/* Header */}
           <div className="px-8 pt-10 pb-6 text-center">
-            <div className="w-14 h-14 bg-slate-900 rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-slate-900/10">
-              <i className="ph-fill ph-github-logo text-2xl text-white"></i>
+            <div className="w-14 h-14 bg-slate-900 dark:bg-white rounded-2xl flex items-center justify-center mx-auto mb-5 shadow-lg shadow-slate-900/10 dark:shadow-black/20">
+              <i className="ph-fill ph-github-logo text-2xl text-white dark:text-slate-900"></i>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-1">
               GitHub Control Hub
             </h1>
-            <p className="text-sm text-slate-500">
+            <p className="text-sm text-slate-500 dark:text-slate-400">
               Manage repositories, compliance, and security for your organization.
             </p>
           </div>
 
           {/* Status Checks */}
           <div className="px-8 pb-4">
-            <div className="rounded-xl border border-slate-100 bg-slate-50/50 divide-y divide-slate-100">
+            <div className="rounded-xl border border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 divide-y divide-slate-100 dark:divide-slate-700">
 
               {/* ── AWS ── */}
               <div className="px-4 py-3.5">
@@ -214,19 +227,19 @@ export default function LoginPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2 mb-0.5">
-                      <div className="text-sm font-semibold text-slate-800">AWS</div>
+                      <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">AWS</div>
                       <div className="shrink-0">
                         <Badge loading={loading || refreshing === "aws"} error={error} ok={awsOk}
                           okLabel="Connected" failLabel="Not Connected" />
                       </div>
                     </div>
                     {awsOk && status?.aws.accountId ? (
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
                         <span className="break-words line-clamp-3">{status.aws.identity}</span>
-                        <span className="text-slate-400 shrink-0">({status.aws.accountId})</span>
+                        <span className="text-slate-400 dark:text-slate-500 shrink-0">({status.aws.accountId})</span>
                       </div>
                     ) : (
-                      <div className="text-xs text-slate-500">DynamoDB + Secrets Manager</div>
+                      <div className="text-xs text-slate-500 dark:text-slate-400">DynamoDB + Secrets Manager</div>
                     )}
                   </div>
                 </div>
@@ -240,14 +253,14 @@ export default function LoginPage() {
                     ) : (
                       <div className="mt-3 space-y-2">
                         {/* Method tabs */}
-                        <div className="flex rounded-lg border border-slate-200 p-0.5 bg-white">
+                        <div className="flex rounded-lg border border-slate-200 dark:border-slate-600 p-0.5 bg-white dark:bg-slate-800">
                           {([
                             { id: "sso" as const, label: "SSO", show: awsProfiles.some(p => p.type === "sso") },
                             { id: "keys" as const, label: "Access Keys", show: true },
                             { id: "profile" as const, label: "Profile", show: awsProfiles.length > 0 },
                           ]).filter(t => t.show).map(t => (
                             <button key={t.id} onClick={() => { setAwsMethod(t.id); setAwsSsoStarted(false); }}
-                              className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-colors ${awsMethod === t.id ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"}`}
+                              className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-colors ${awsMethod === t.id ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                             >{t.label}</button>
                           ))}
                         </div>
@@ -257,7 +270,7 @@ export default function LoginPage() {
                           <div className="space-y-2">
                             {awsProfiles.filter(p => p.type === "sso").length > 1 && !awsSsoStarted && (
                               <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)}
-                                className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200">
+                                className={inputCls}>
                                 {awsProfiles.filter(p => p.type === "sso").map(p => (
                                   <option key={p.name} value={p.name}>
                                     {p.name}{p.accountId ? ` (${p.accountId})` : ""}{p.roleName ? ` — ${p.roleName}` : ""}
@@ -281,7 +294,7 @@ export default function LoginPage() {
                         {awsMethod === "profile" && (
                           <div className="space-y-2">
                             <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)}
-                              className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200">
+                              className={inputCls}>
                               {awsProfiles.map(p => (
                                 <option key={p.name} value={p.name}>
                                   {p.name} ({p.type}){p.accountId ? ` — ${p.accountId}` : ""}{p.roleName ? ` / ${p.roleName}` : ""}
@@ -300,23 +313,20 @@ export default function LoginPage() {
                           <div className="space-y-2">
                             <div className="flex items-center gap-2 mb-1">
                               <button onClick={() => setAkPasteMode(true)}
-                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${akPasteMode ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"}`}
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${akPasteMode ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                               >Paste Export Block</button>
                               <button onClick={() => setAkPasteMode(false)}
-                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${!akPasteMode ? "bg-slate-900 text-white" : "text-slate-500 hover:text-slate-700"}`}
+                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${!akPasteMode ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                               >Individual Fields</button>
                             </div>
 
                             {!akPasteMode ? (
                               <>
-                                <input type="text" placeholder="Access Key ID" value={akId} onChange={e => setAkId(e.target.value)}
-                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
-                                <input type="password" placeholder="Secret Access Key" value={akSecret} onChange={e => setAkSecret(e.target.value)}
-                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
-                                <input type="password" placeholder="Session Token (optional)" value={akSession} onChange={e => setAkSession(e.target.value)}
-                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 font-mono" />
+                                <input type="text" placeholder="Access Key ID" value={akId} onChange={e => setAkId(e.target.value)} className={inputCls} />
+                                <input type="password" placeholder="Secret Access Key" value={akSecret} onChange={e => setAkSecret(e.target.value)} className={inputCls} />
+                                <input type="password" placeholder="Session Token (optional)" value={akSession} onChange={e => setAkSession(e.target.value)} className={inputCls} />
                                 <input type="text" placeholder="Region (optional, default us-east-1)" value={akRegion} onChange={e => setAkRegion(e.target.value)}
-                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200" />
+                                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800 placeholder:text-slate-400 dark:placeholder:text-slate-500" />
                                 <div className="flex justify-end">
                                   <SmallButton onClick={handleAccessKeys} disabled={refreshing === "aws" || !akId || !akSecret}
                                     icon="ph-bold ph-key" label="Connect" color="blue" />
@@ -329,7 +339,7 @@ export default function LoginPage() {
                                   placeholder={'Paste your AWS credentials here, e.g.:\nexport AWS_ACCESS_KEY_ID="AKIA..."\nexport AWS_SECRET_ACCESS_KEY="wJal..."\nexport AWS_SESSION_TOKEN="IQoJ..."'}
                                   value={akPasteBlock}
                                   onChange={e => setAkPasteBlock(e.target.value)}
-                                  className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-200 font-mono resize-none"
+                                  className="w-full text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800 font-mono resize-none placeholder:text-slate-400 dark:placeholder:text-slate-500"
                                 />
                                 {akPasteBlock && !pasteBlockValid && (
                                   <p className="text-[10px] text-red-500">
@@ -349,8 +359,8 @@ export default function LoginPage() {
                   </>
                 )}
                 {awsSsoStarted && !awsOk && awsMethod === "sso" && (
-                  <div className="mt-2 px-3 py-2 rounded-lg bg-blue-50 border border-blue-100">
-                    <p className="text-[11px] text-blue-700">
+                  <div className="mt-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950/50 border border-blue-100 dark:border-blue-800">
+                    <p className="text-[11px] text-blue-700 dark:text-blue-300">
                       A browser tab should have opened for AWS SSO. Complete sign-in there, then click <strong>"I've signed in — Verify"</strong>.
                     </p>
                   </div>
@@ -365,17 +375,17 @@ export default function LoginPage() {
                       <img
                         src={userInfo.avatarUrl}
                         alt={userInfo.login}
-                        className="w-8 h-8 rounded-lg object-cover shrink-0 border border-slate-200"
+                        className="w-8 h-8 rounded-lg object-cover shrink-0 border border-slate-200 dark:border-slate-600"
                       />
                     ) : (
                       <StatusIcon loading={loading || refreshing === "github"} error={error}
                         ok={false} icon="ph-fill ph-github-logo" neutralWhenFail />
                     )}
                     <div>
-                      <div className="text-sm font-semibold text-slate-800">
+                      <div className="text-sm font-semibold text-slate-800 dark:text-slate-200">
                         {ghAuthed && userInfo ? userInfo.login : "GitHub"}
                       </div>
-                      <div className="text-xs text-slate-500">
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
                         {ghAuthed
                           ? status?.github.org ? `Organization: ${status.github.org}` : "Authenticated"
                           : justSignedOut
@@ -387,11 +397,11 @@ export default function LoginPage() {
                     </div>
                   </div>
                   {ghAuthed ? (
-                    <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1">
+                    <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1 rounded-full flex items-center gap-1">
                       <i className="ph-fill ph-check-circle text-xs"></i> Authenticated
                     </span>
                   ) : (
-                    <span className="text-xs font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full">
+                    <span className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 px-2.5 py-1 rounded-full">
                       Unauthenticated
                     </span>
                   )}
@@ -403,13 +413,13 @@ export default function LoginPage() {
                         icon="ph-bold ph-sign-out" label={signingOut ? "Signing out…" : "Sign out"} color="slate" hoverColor="red" />
                     ) : ghConfigured && awsOk ? (
                       <a href={loginUrl}
-                        className="text-[11px] font-medium text-blue-600 hover:text-blue-700 transition-colors flex items-center gap-1 no-underline"
+                        className="text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors flex items-center gap-1 no-underline"
                       >
                         <i className="ph-fill ph-github-logo text-xs"></i>
                         Sign in with GitHub
                       </a>
                     ) : ghConfigured && !awsOk ? (
-                      <span className="text-[11px] font-medium text-slate-400 flex items-center gap-1">
+                      <span className="text-[11px] font-medium text-slate-400 dark:text-slate-500 flex items-center gap-1">
                         <i className="ph-fill ph-github-logo text-xs"></i>
                         Connect AWS first
                       </span>
@@ -417,9 +427,9 @@ export default function LoginPage() {
                   </div>
                 )}
                 {justSignedOut && !ghAuthed && (
-                  <div className="mt-2 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
-                    <p className="text-[11px] text-slate-500">
-                      To use a different account, <a href="https://github.com/logout" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline underline-offset-2">sign out of GitHub</a> in your browser first.
+                  <div className="mt-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      To use a different account, <a href="https://github.com/logout" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline underline-offset-2">sign out of GitHub</a> in your browser first.
                     </p>
                   </div>
                 )}
@@ -431,7 +441,7 @@ export default function LoginPage() {
             {!loading && !error && (awsOk || ghAuthed) && (
               <div className="flex justify-center mt-3">
                 <button onClick={handleDisconnectAll} disabled={refreshing !== null}
-                  className="text-[11px] font-medium text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 disabled:opacity-50"
+                  className="text-[11px] font-medium text-slate-400 dark:text-slate-500 hover:text-red-500 transition-colors flex items-center gap-1 disabled:opacity-50"
                 >
                   <i className="ph-bold ph-power text-xs"></i>
                   Disconnect all sessions
@@ -441,24 +451,24 @@ export default function LoginPage() {
 
             {/* Contextual messages */}
             {error && (
-              <div className="mt-4 px-4 py-3 rounded-lg bg-red-50 border border-red-100">
-                <p className="text-sm text-red-700 font-medium flex items-center gap-2">
+              <div className="mt-4 px-4 py-3 rounded-lg bg-red-50 dark:bg-red-950/50 border border-red-100 dark:border-red-800">
+                <p className="text-sm text-red-700 dark:text-red-400 font-medium flex items-center gap-2">
                   <i className="ph-fill ph-warning-circle"></i>
                   Could not reach the backend server.
                 </p>
-                <p className="text-xs text-red-600 mt-1">
-                  Make sure <code className="bg-red-100 px-1 py-0.5 rounded font-mono">ghch serve</code> is running.
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                  Make sure <code className="bg-red-100 dark:bg-red-900/50 px-1 py-0.5 rounded font-mono">ghch serve</code> is running.
                 </p>
               </div>
             )}
 
             {!error && !loading && !awsOk && !awsSsoStarted && (
-              <div className="mt-4 px-4 py-3 rounded-lg bg-amber-50 border border-amber-100">
-                <p className="text-sm text-amber-700 font-medium flex items-center gap-2">
+              <div className="mt-4 px-4 py-3 rounded-lg bg-amber-50 dark:bg-amber-950/50 border border-amber-100 dark:border-amber-800">
+                <p className="text-sm text-amber-700 dark:text-amber-400 font-medium flex items-center gap-2">
                   <i className="ph-fill ph-warning-circle"></i>
                   AWS session is not active.
                 </p>
-                <p className="text-xs text-amber-600 mt-1">
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                   Click <strong>"Sign in with AWS"</strong> above to authenticate.
                 </p>
               </div>
@@ -468,15 +478,15 @@ export default function LoginPage() {
           {/* Auth error banner */}
           {authError && !authErrorDismissed && (
             <div className="px-8 pb-4">
-              <div className="px-4 py-3.5 rounded-xl bg-red-50 border border-red-200">
+              <div className="px-4 py-3.5 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-start gap-2.5">
                     <i className="ph-fill ph-warning-circle text-red-500 text-base mt-0.5 shrink-0"></i>
                     <div>
-                      <p className="text-sm font-semibold text-red-800">
+                      <p className="text-sm font-semibold text-red-800 dark:text-red-300">
                         {authError.kind === "not_member" ? "Wrong GitHub account" : "Authentication failed"}
                       </p>
-                      <p className="text-xs text-red-700 mt-1">
+                      <p className="text-xs text-red-700 dark:text-red-400 mt-1">
                         {authError.kind === "not_member"
                           ? <>You signed in as <span className="font-mono font-semibold">@{authError.login}</span>, but that account is not a member of <span className="font-semibold">{authError.org}</span>.</>
                           : authError.detail || "Something went wrong during authentication."}
@@ -489,7 +499,7 @@ export default function LoginPage() {
                   </button>
                 </div>
                 {authError.kind === "not_member" && (
-                  <p className="text-xs text-red-600 mt-2 pl-6">
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-2 pl-6">
                     Click <strong>"Sign in with GitHub"</strong> above to try a different account.
                   </p>
                 )}
@@ -501,24 +511,24 @@ export default function LoginPage() {
           <div className="px-8 pb-10">
             {canEnter ? (
               <button onClick={handleEnter}
-                className="w-full bg-slate-900 hover:bg-slate-800 text-white font-medium py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-2.5 shadow-sm hover:shadow-md cursor-pointer"
+                className="w-full bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-100 text-white dark:text-slate-900 font-medium py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-2.5 shadow-sm hover:shadow-md cursor-pointer"
               >
                 Sign in
               </button>
             ) : (
               <button disabled
-                className="w-full bg-slate-200 text-slate-400 font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2.5 cursor-not-allowed"
+                className="w-full bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2.5 cursor-not-allowed"
               >
                 Sign in
               </button>
             )}
             {canEnter && (
-              <p className="text-center text-xs text-slate-400 mt-3">
+              <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-3">
                 Both sessions are active. Click to enter the dashboard.
               </p>
             )}
             {!canEnter && !loading && !error && (
-              <p className="text-center text-xs text-slate-400 mt-3">
+              <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-3">
                 {!awsOk && !ghAuthed
                   ? "Connect both AWS and GitHub above to continue."
                   : !awsOk
@@ -531,7 +541,7 @@ export default function LoginPage() {
         </div>
 
         <div className="text-center mt-6">
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-slate-400 dark:text-slate-500">
             Running locally
           </p>
         </div>
@@ -545,11 +555,11 @@ export default function LoginPage() {
 function StatusIcon({ loading, error, ok, icon, neutralWhenFail }: {
   loading: boolean; error: boolean; ok: boolean | undefined; icon: string; neutralWhenFail?: boolean;
 }) {
-  const bg = loading ? "bg-slate-100 text-slate-400"
-    : error ? "bg-red-50 text-red-500"
-    : ok ? "bg-emerald-50 text-emerald-600"
-    : neutralWhenFail ? "bg-slate-100 text-slate-500"
-    : "bg-red-50 text-red-500";
+  const bg = loading ? "bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500"
+    : error ? "bg-red-50 dark:bg-red-950/50 text-red-500"
+    : ok ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
+    : neutralWhenFail ? "bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400"
+    : "bg-red-50 dark:bg-red-950/50 text-red-500";
   const iconClass = loading ? "ph-bold ph-circle-notch animate-spin" : icon;
   return (
     <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${bg}`}>
@@ -561,10 +571,10 @@ function StatusIcon({ loading, error, ok, icon, neutralWhenFail }: {
 function Badge({ loading, error, ok, okLabel, failLabel }: {
   loading: boolean; error: boolean; ok: boolean | undefined; okLabel: string; failLabel: string;
 }) {
-  if (loading) return <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2.5 py-1 rounded-full">Checking…</span>;
-  if (error) return <span className="text-xs font-medium text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full">Offline</span>;
-  if (ok) return <span className="text-xs font-medium text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full flex items-center gap-1"><i className="ph-fill ph-check-circle text-xs"></i> {okLabel}</span>;
-  return <span className="text-xs font-medium text-red-600 bg-red-50 border border-red-200 px-2.5 py-1 rounded-full flex items-center gap-1"><i className="ph-fill ph-x-circle text-xs"></i> {failLabel}</span>;
+  if (loading) return <span className="text-xs font-medium text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-2.5 py-1 rounded-full">Checking…</span>;
+  if (error) return <span className="text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 px-2.5 py-1 rounded-full">Offline</span>;
+  if (ok) return <span className="text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1 rounded-full flex items-center gap-1"><i className="ph-fill ph-check-circle text-xs"></i> {okLabel}</span>;
+  return <span className="text-xs font-medium text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 px-2.5 py-1 rounded-full flex items-center gap-1"><i className="ph-fill ph-x-circle text-xs"></i> {failLabel}</span>;
 }
 
 function SmallButton({ onClick, disabled, icon, label, color, hoverColor }: {
@@ -572,14 +582,14 @@ function SmallButton({ onClick, disabled, icon, label, color, hoverColor }: {
   color: "slate" | "blue" | "emerald" | "red"; hoverColor?: "red" | "blue";
 }) {
   const colorMap: Record<string, string> = {
-    slate: "text-slate-400",
-    blue: "text-blue-600",
-    emerald: "text-emerald-600",
-    red: "text-red-600",
+    slate: "text-slate-400 dark:text-slate-500",
+    blue: "text-blue-600 dark:text-blue-400",
+    emerald: "text-emerald-600 dark:text-emerald-400",
+    red: "text-red-600 dark:text-red-400",
   };
   const hoverMap: Record<string, string> = {
-    red: "hover:text-red-600",
-    blue: "hover:text-blue-700",
+    red: "hover:text-red-600 dark:hover:text-red-400",
+    blue: "hover:text-blue-700 dark:hover:text-blue-300",
   };
   return (
     <button onClick={onClick} disabled={disabled}

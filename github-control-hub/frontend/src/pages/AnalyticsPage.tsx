@@ -54,7 +54,7 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="bg-slate-50 text-slate-900 min-h-screen pt-14 flex flex-col">
+    <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white min-h-screen pt-14 flex flex-col">
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
 
       <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-8 flex flex-col gap-0">
@@ -65,25 +65,25 @@ export default function AnalyticsPage() {
               <i className="ph-fill ph-chart-bar text-2xl"></i>
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 tracking-tight mb-1">Analytics Dashboard</h1>
-              <p className="text-slate-500 text-sm max-w-lg leading-relaxed">
+              <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-1">Analytics Dashboard</h1>
+              <p className="text-slate-500 dark:text-slate-400 text-sm max-w-lg leading-relaxed">
                 Insight into security posture, rule bypasses, and structural metrics across your GitHub organization.
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-4 shrink-0">
-            <div className="bg-white rounded-lg border border-slate-200 p-1 shadow-sm inline-flex h-10 items-center">
+            <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-1 shadow-sm inline-flex h-10 items-center">
               <button
                 onClick={() => setIsDashboardView(false)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${!isDashboardView ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${!isDashboardView ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
               >
                 <i className="ph-fill ph-list-dashes"></i>
                 <span>List</span>
               </button>
               <button
                 onClick={() => setIsDashboardView(true)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${isDashboardView ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-50'}`}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${isDashboardView ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
               >
                 <i className="ph-fill ph-squares-four"></i>
                 <span>Grid</span>
@@ -92,7 +92,7 @@ export default function AnalyticsPage() {
             <button
               onClick={() => aggregation.mutate()}
               disabled={aggregation.isPending}
-              className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-lg shadow-sm text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-lg shadow-sm text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
               title="Re-sync graph data from GitHub"
             >
               {aggregation.isPending ? (
@@ -119,13 +119,13 @@ export default function AnalyticsPage() {
 
         {/* Graph data empty banner */}
         {graphEmpty && (
-          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
+          <div className="mb-6 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
               <i className="ph-fill ph-database text-xl"></i>
             </div>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-amber-900 text-sm mb-1">Graph data not synced</h3>
-              <p className="text-amber-700 text-sm leading-relaxed">
+              <h3 className="font-semibold text-amber-900 dark:text-amber-300 text-sm mb-1">Graph data not synced</h3>
+              <p className="text-amber-700 dark:text-amber-400 text-sm leading-relaxed">
                 Analytics queries rely on graph data that hasn't been synced yet. Click "Sync Now" to pull repository, branch, team, and vulnerability data from your GitHub organization.
                 This may take a few minutes depending on the size of your org.
               </p>
@@ -151,16 +151,16 @@ export default function AnalyticsPage() {
         )}
 
         {aggregation.isSuccess && !aggregation.isPending && (
-          <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3 animate-fade-in">
-            <i className="ph-fill ph-check-circle text-emerald-600 text-xl"></i>
-            <span className="text-emerald-800 text-sm font-medium">Graph data synced successfully. Widget data will refresh automatically.</span>
+          <div className="mb-6 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 flex items-center gap-3 animate-fade-in">
+            <i className="ph-fill ph-check-circle text-emerald-600 dark:text-emerald-400 text-xl"></i>
+            <span className="text-emerald-800 dark:text-emerald-300 text-sm font-medium">Graph data synced successfully. Widget data will refresh automatically.</span>
           </div>
         )}
 
         {aggregation.isError && (
-          <div className="mb-6 bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center gap-3">
-            <i className="ph-fill ph-warning-circle text-rose-600 text-xl"></i>
-            <span className="text-rose-800 text-sm font-medium">Sync failed: {(aggregation.error as Error)?.message || "Unknown error"}. Try again later.</span>
+          <div className="mb-6 bg-rose-50 dark:bg-red-950/50 border border-rose-200 dark:border-red-800 rounded-2xl p-4 flex items-center gap-3">
+            <i className="ph-fill ph-warning-circle text-rose-600 dark:text-red-400 text-xl"></i>
+            <span className="text-rose-800 dark:text-rose-300 text-sm font-medium">Sync failed: {(aggregation.error as Error)?.message || "Unknown error"}. Try again later.</span>
           </div>
         )}
 
@@ -175,25 +175,25 @@ export default function AnalyticsPage() {
               <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} onEdit={() => setEditingWidget(widget)} graphEmpty={graphEmpty} orgName={orgName} />
             ))}
             {widgets.length === 0 && (
-              <div className="border-2 border-dashed border-slate-200 rounded-2xl h-[340px] flex flex-col items-center justify-center text-center p-8 group hover:border-slate-300 transition-colors col-span-full">
-                <div className="w-16 h-16 rounded-full bg-slate-50 text-slate-300 flex items-center justify-center mb-4 group-hover:text-slate-400 group-hover:bg-slate-100 transition-colors">
+              <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl h-[340px] flex flex-col items-center justify-center text-center p-8 group hover:border-slate-300 dark:hover:border-slate-600 transition-colors col-span-full">
+                <div className="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-950 text-slate-300 flex items-center justify-center mb-4 group-hover:text-slate-400 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 transition-colors">
                   <i className="ph-fill ph-chart-pie-slice text-3xl"></i>
                 </div>
-                <h3 className="text-slate-900 font-semibold mb-1">No widgets added yet</h3>
-                <p className="text-slate-500 text-sm mb-4">Track coverage, throughput, or custom data points.</p>
-                <button onClick={() => setShowAddModal(true)} className="text-blue-600 text-sm font-bold hover:underline">
+                <h3 className="text-slate-900 dark:text-white font-semibold mb-1">No widgets added yet</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">Track coverage, throughput, or custom data points.</p>
+                <button onClick={() => setShowAddModal(true)} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">
                   + Create Widget
                 </button>
               </div>
             )}
             {widgets.length > 0 && (
-              <div className="border-2 border-dashed border-slate-200 rounded-2xl h-[340px] flex flex-col items-center justify-center text-center p-8 group hover:border-slate-300 transition-colors">
-                <div className="w-16 h-16 rounded-full bg-slate-50 text-slate-300 flex items-center justify-center mb-4 group-hover:text-slate-400 group-hover:bg-slate-100 transition-colors">
+              <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl h-[340px] flex flex-col items-center justify-center text-center p-8 group hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+                <div className="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-950 text-slate-300 flex items-center justify-center mb-4 group-hover:text-slate-400 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 transition-colors">
                   <i className="ph-fill ph-chart-pie-slice text-3xl"></i>
                 </div>
-                <h3 className="text-slate-900 font-semibold mb-1">Add Another Metric</h3>
-                <p className="text-slate-500 text-sm mb-4">Track coverage, throughput, or custom data points.</p>
-                <button onClick={() => setShowAddModal(true)} className="text-blue-600 text-sm font-bold hover:underline">
+                <h3 className="text-slate-900 dark:text-white font-semibold mb-1">Add Another Metric</h3>
+                <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">Track coverage, throughput, or custom data points.</p>
+                <button onClick={() => setShowAddModal(true)} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">
                   + Create Widget
                 </button>
               </div>
@@ -203,24 +203,24 @@ export default function AnalyticsPage() {
           /* ─── List View ─── */
           <div className="flex flex-col lg:flex-row gap-6 h-[750px]">
             {/* Left panel: widget sidebar */}
-            <aside className="w-full lg:w-1/3 bg-white rounded-2xl border border-slate-100 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] flex flex-col overflow-hidden">
-              <div className="bg-slate-50 px-5 py-3 border-b border-slate-100 flex justify-between items-center sticky top-0 z-10">
-                <span className="font-semibold text-slate-800 text-sm tracking-wide uppercase opacity-70">Your Analytics</span>
-                <span className="text-xs font-mono text-slate-400">{widgets.length} Active</span>
+            <aside className="w-full lg:w-1/3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] flex flex-col overflow-hidden">
+              <div className="bg-slate-50 dark:bg-slate-950 px-5 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center sticky top-0 z-10">
+                <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm tracking-wide uppercase opacity-70">Your Analytics</span>
+                <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{widgets.length} Active</span>
               </div>
-              <div className="overflow-y-auto flex-1 divide-y divide-slate-100">
+              <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-700">
                 {widgets.map(w => (
                   <div
                     key={w.id}
                     onClick={() => setSelectedWidgetId(w.id)}
-                    className={`group relative px-5 py-4 cursor-pointer hover:bg-slate-50 transition-colors border-l-[3px] ${selectedWidgetId === w.id ? 'bg-blue-50/40 border-blue-600' : 'border-transparent'}`}
+                    className={`group relative px-5 py-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border-l-[3px] ${selectedWidgetId === w.id ? 'bg-blue-50/40 dark:bg-blue-950/40 border-blue-600' : 'border-transparent'}`}
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className={`font-semibold text-sm mb-1 ${selectedWidgetId === w.id ? 'text-slate-900' : 'text-slate-700 group-hover:text-slate-900'}`}>
+                        <h3 className={`font-semibold text-sm mb-1 ${selectedWidgetId === w.id ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white'}`}>
                           {w.title}
                         </h3>
-                        <div className={`flex items-center gap-1.5 text-xs font-medium ${selectedWidgetId === w.id ? 'text-blue-600' : 'text-slate-400'}`}>
+                        <div className={`flex items-center gap-1.5 text-xs font-medium ${selectedWidgetId === w.id ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>
                           {w.type === 'preset' ? (
                             <>
                               <i className="fas fa-wrench text-[10px]"></i>
@@ -235,10 +235,10 @@ export default function AnalyticsPage() {
                         </div>
                       </div>
                       <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                        <button onClick={(e) => { e.stopPropagation(); setEditingWidget(w); }} className="text-slate-400 hover:text-blue-600">
+                        <button onClick={(e) => { e.stopPropagation(); setEditingWidget(w); }} className="text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400">
                           <i className="ph-bold ph-pencil-simple"></i>
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }} className="text-slate-400 hover:text-rose-600">
+                        <button onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }} className="text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400">
                           <i className="ph-bold ph-trash"></i>
                         </button>
                       </div>
@@ -246,13 +246,13 @@ export default function AnalyticsPage() {
                   </div>
                 ))}
                 {widgets.length === 0 && (
-                  <div className="p-8 text-center text-slate-400 text-sm">No analytics added yet.</div>
+                  <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-sm">No analytics added yet.</div>
                 )}
               </div>
             </aside>
 
             {/* Right panel: selected widget detail */}
-            <section className="w-full lg:w-2/3 bg-white rounded-2xl border border-slate-100 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] flex flex-col h-full overflow-hidden">
+            <section className="w-full lg:w-2/3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] flex flex-col h-full overflow-hidden">
               {selectedWidgetId ? (
                 <WidgetDetailsInline
                   config={widgets.find(w => w.id === selectedWidgetId)!}
@@ -261,7 +261,7 @@ export default function AnalyticsPage() {
                   orgName={orgName}
                 />
               ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
+                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
                   <i className="ph-light ph-chart-polar text-5xl mb-3 opacity-50"></i>
                   <p className="text-sm">Select an analytic from the list to view details</p>
                 </div>
@@ -355,21 +355,21 @@ function WidgetCard({ config, onRemove, onEdit, graphEmpty, orgName }: { config:
 
   return (
     <>
-      <div className="bg-white rounded-2xl border border-slate-100 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] h-[340px] flex flex-col group hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] h-[340px] flex flex-col group hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
         {/* Card header */}
-        <div className="bg-gradient-to-r from-slate-50 to-white px-5 py-3 border-b border-slate-100 flex justify-between items-center rounded-t-2xl">
-          <span className="font-semibold text-slate-800 text-sm truncate flex items-center gap-2">
+        <div className="bg-gradient-to-r from-slate-50 dark:from-slate-950 to-white dark:to-slate-900 px-5 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center rounded-t-2xl">
+          <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm truncate flex items-center gap-2">
             <i className={widgetIcon.cls}></i>
             {config.title}
           </span>
           <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-            <button onClick={() => setShowDetails(true)} className="text-slate-400 hover:text-slate-900" title="Expand">
+            <button onClick={() => setShowDetails(true)} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white" title="Expand">
               <i className="ph-bold ph-arrows-out-simple"></i>
             </button>
-            <button onClick={onEdit} className="text-slate-400 hover:text-blue-600" title="Edit">
+            <button onClick={onEdit} className="text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400" title="Edit">
               <i className="ph-bold ph-pencil-simple"></i>
             </button>
-            <button onClick={onRemove} className="text-slate-400 hover:text-rose-600" title="Remove">
+            <button onClick={onRemove} className="text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400" title="Remove">
               <i className="ph-bold ph-trash"></i>
             </button>
           </div>
@@ -405,23 +405,23 @@ function MetricCardBody({ items, total, config, onExpand }: { items: any[]; tota
 
   return (
     <div
-      className={`flex-1 h-full flex flex-col items-center justify-center p-6 cursor-pointer relative overflow-hidden ${isBad ? 'bg-gradient-to-b from-white to-rose-50/30' : isGood ? 'bg-gradient-to-b from-white to-emerald-50/30' : ''}`}
+      className={`flex-1 h-full flex flex-col items-center justify-center p-6 cursor-pointer relative overflow-hidden ${isBad ? 'bg-gradient-to-b from-white dark:from-slate-900 to-rose-50/30 dark:to-red-950/30' : isGood ? 'bg-gradient-to-b from-white dark:from-slate-900 to-emerald-50/30 dark:to-emerald-950/30' : ''}`}
       onClick={onExpand}
     >
-      <div className="absolute inset-0 bg-blue-50/20 translate-y-20 rounded-full blur-3xl w-2/3 mx-auto"></div>
-      <span className={`text-7xl font-light font-mono tracking-tighter z-10 ${isBad ? 'text-rose-600' : isGood ? 'text-slate-900' : 'text-blue-600'}`}>
+      <div className="absolute inset-0 bg-blue-50/20 dark:bg-blue-950/20 translate-y-20 rounded-full blur-3xl w-2/3 mx-auto"></div>
+      <span className={`text-7xl font-light font-mono tracking-tighter z-10 ${isBad ? 'text-rose-600 dark:text-red-400' : isGood ? 'text-slate-900 dark:text-white' : 'text-blue-600 dark:text-blue-400'}`}>
         {passCount}
-        {denominator !== null && <span className="text-2xl text-slate-400">/ {denominator}</span>}
+        {denominator !== null && <span className="text-2xl text-slate-400 dark:text-slate-500">/ {denominator}</span>}
       </span>
       <div className="mt-4 flex flex-col items-center z-10">
         {passRate !== null && (
           <>
-            <span className="text-slate-400 text-sm font-mono mb-2">{passRate}% {hasStatus ? 'passing' : 'match'}</span>
+            <span className="text-slate-400 dark:text-slate-500 text-sm font-mono mb-2">{passRate}% {hasStatus ? 'passing' : 'match'}</span>
             <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold font-mono ${
-              passRate === 100 ? 'bg-emerald-100 text-emerald-800' :
-              passRate >= 80 ? 'bg-emerald-100 text-emerald-800' :
-              passRate >= 60 ? 'bg-amber-100 text-amber-800' :
-              'bg-rose-100 text-rose-800'
+              passRate === 100 ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-300' :
+              passRate >= 80 ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-300' :
+              passRate >= 60 ? 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-300' :
+              'bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-300'
             }`}>
               {passRate === 100 ? 'COMPLIANT' : passRate >= 80 ? 'GOOD' : passRate >= 60 ? 'WARNING' : 'CRITICAL'}
             </span>
@@ -435,7 +435,7 @@ function MetricCardBody({ items, total, config, onExpand }: { items: any[]; tota
 function TableCardBody({ items, config, onExpand }: { items: any[]; config: WidgetConfig; onExpand: () => void }) {
   if (items.length === 0) {
     return (
-      <div className="h-full flex items-center justify-center text-sm text-slate-400 italic cursor-pointer hover:bg-slate-50 rounded" onClick={onExpand}>
+      <div className="h-full flex items-center justify-center text-sm text-slate-400 dark:text-slate-500 italic cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 rounded" onClick={onExpand}>
         No data to display
       </div>
     );
@@ -445,20 +445,20 @@ function TableCardBody({ items, config, onExpand }: { items: any[]; config: Widg
     <div className="h-full flex flex-col">
       <div className="flex-1 overflow-auto">
         <table className="w-full text-left">
-          <tbody className="divide-y divide-slate-50">
+          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
             {items.slice(0, 5).map((item: any, idx: number) => {
               const name = item.repo || item.user || item.team || "Unknown";
               const val = config.presetId === "dependabot" ? item.total : config.presetId === "bypasses" ? item.bypasses : config.presetId === "blast" ? item.score : "";
               return (
-                <tr key={idx} className="hover:bg-slate-50 cursor-pointer" onClick={onExpand}>
-                  <td className="px-5 py-3 text-sm font-medium text-slate-700 flex items-center gap-2">
+                <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer" onClick={onExpand}>
+                  <td className="px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
                     {item.status === "pass" && <i className="ph-bold ph-check-circle text-emerald-500 text-xs shrink-0"></i>}
                     {item.status === "fail" && <i className="ph-bold ph-x-circle text-rose-500 text-xs shrink-0"></i>}
                     <span className="truncate">{name}</span>
                   </td>
                   <td className="px-5 py-3 text-right">
                     {val !== "" && (
-                      <span className="bg-slate-100 text-slate-600 text-xs font-mono px-2 py-0.5 rounded border border-slate-200">
+                      <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-mono px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                         {val}
                       </span>
                     )}
@@ -472,7 +472,7 @@ function TableCardBody({ items, config, onExpand }: { items: any[]; config: Widg
       {items.length > 5 && (
         <button
           onClick={onExpand}
-          className="w-full py-3 text-center text-sm font-medium text-blue-600 border-t border-slate-100 hover:bg-blue-50 transition-colors"
+          className="w-full py-3 text-center text-sm font-medium text-blue-600 dark:text-blue-400 border-t border-slate-100 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
         >
           View all {items.length} results
         </button>
@@ -499,24 +499,24 @@ function WidgetDetailsInline({ config, onEdit, graphEmpty, orgName }: { config: 
   const failCount = hasStatus ? items.filter((i: any) => i.status === "fail").length : 0;
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-white relative">
+    <div className="flex-1 flex flex-col h-full bg-white dark:bg-slate-900 relative">
       {/* Detail Header */}
-      <div className="p-6 border-b border-slate-100 bg-white">
+      <div className="p-6 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-900">
         <div className="flex justify-between items-start mb-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+            <div className="p-2 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 rounded-lg">
               <i className="ph-fill ph-chart-bar text-xl"></i>
             </div>
             <div>
-              <h2 className="text-xl font-bold text-slate-900">{config.title}</h2>
-              <p className="text-slate-500 text-xs mt-0.5">
+              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{config.title}</h2>
+              <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
                 {config.type === "preset"
                   ? `Built-in preset: ${config.presetId}`
                   : `Custom query: ${QUERY_OPTIONS.find(q => q.id === config.queryId)?.label || config.queryId}`}
               </p>
             </div>
           </div>
-          <button onClick={onEdit} className="text-slate-400 hover:text-slate-800 p-2 hover:bg-slate-50 rounded-lg transition-colors">
+          <button onClick={onEdit} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
             <i className="ph-bold ph-pencil-simple text-lg"></i>
           </button>
         </div>
@@ -525,17 +525,17 @@ function WidgetDetailsInline({ config, onEdit, graphEmpty, orgName }: { config: 
         <div className="flex flex-wrap gap-3">
           {hasStatus && (
             <>
-              <div className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold flex items-center gap-1.5 pointer-events-none">
+              <div className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full text-xs font-bold flex items-center gap-1.5 pointer-events-none">
                 <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
                 {passCount} Passing
               </div>
-              <div className="px-3 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-bold flex items-center gap-1.5 pointer-events-none">
+              <div className="px-3 py-1 bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border border-rose-200 dark:border-red-800 rounded-full text-xs font-bold flex items-center gap-1.5 pointer-events-none">
                 <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
                 {failCount} Failing
               </div>
             </>
           )}
-          <div className="px-3 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded-full text-xs font-bold font-mono">
+          <div className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-bold font-mono">
             Total: {items.length}
           </div>
         </div>
@@ -556,11 +556,11 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
 
   if (items.length === 0) {
     return (
-      <div className="p-12 text-center text-slate-500">
+      <div className="p-12 text-center text-slate-500 dark:text-slate-400">
         {graphEmpty ? (
           <>
             <i className="ph-fill ph-database text-4xl text-amber-500 mb-3 block opacity-80"></i>
-            <p className="font-medium text-slate-700 mb-1">No graph data available</p>
+            <p className="font-medium text-slate-700 dark:text-slate-300 mb-1">No graph data available</p>
             <p className="text-sm">Use the "Sync Now" button above to pull data from GitHub before running queries.</p>
           </>
         ) : (
@@ -578,17 +578,17 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
   return (
     <>
       <table className="w-full text-left border-collapse">
-        <thead className="bg-slate-50 sticky top-0 z-10 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-200">
+        <thead className="bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
           <tr>
             <th className="px-6 py-3 w-16">#</th>
             <th className="px-6 py-3">Entity</th>
 
             {config.type === "preset" && config.presetId === "dependabot" && (
               <>
-                <th className="px-6 py-3 text-center text-rose-600">Critical</th>
-                <th className="px-6 py-3 text-center text-orange-500">High</th>
-                <th className="px-6 py-3 text-center text-amber-600">Medium</th>
-                <th className="px-6 py-3 text-center text-slate-500">Low</th>
+                <th className="px-6 py-3 text-center text-rose-600 dark:text-red-400">Critical</th>
+                <th className="px-6 py-3 text-center text-orange-500 dark:text-orange-400">High</th>
+                <th className="px-6 py-3 text-center text-amber-600 dark:text-amber-400">Medium</th>
+                <th className="px-6 py-3 text-center text-slate-500 dark:text-slate-400">Low</th>
                 <th className="px-6 py-3 text-center">Total</th>
               </>
             )}
@@ -608,47 +608,46 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
             {config.type === "query" && <th className="px-6 py-3 w-full">Details</th>}
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-100 text-sm">
+        <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
           {items.map((item: any, idx: number) => {
             const name = item.repo || item.user || item.team || "Unknown";
             return (
               <tr
                 key={idx}
-                className="group hover:bg-slate-50 transition-colors cursor-pointer"
-                style={idx % 2 === 1 ? { backgroundColor: "#f8fafc" } : undefined}
+                className={`group hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer ${idx % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/50' : ''}`}
                 onClick={() => setSelectedItem(item)}
               >
-                <td className="px-6 py-4 font-mono text-slate-400 text-xs">{String(idx + 1).padStart(3, "0")}</td>
+                <td className="px-6 py-4 font-mono text-slate-400 dark:text-slate-500 text-xs">{String(idx + 1).padStart(3, "0")}</td>
                 <td className="px-6 py-4">
-                  <div className="font-bold text-slate-800">{name}</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-200">{name}</div>
                   {config.type === "query" && (
-                    <div className="text-xs text-slate-400 font-mono">{item.repo ? "repository" : item.user ? "user" : item.team ? "team" : "unknown"}</div>
+                    <div className="text-xs text-slate-400 dark:text-slate-500 font-mono">{item.repo ? "repository" : item.user ? "user" : item.team ? "team" : "unknown"}</div>
                   )}
                 </td>
 
                 {config.type === "preset" && config.presetId === "dependabot" && (
                   <>
-                    <td className="px-6 py-4 text-center font-mono font-medium text-rose-600">{item.critical || "-"}</td>
-                    <td className="px-6 py-4 text-center font-mono font-medium text-orange-500">{item.high || "-"}</td>
-                    <td className="px-6 py-4 text-center font-mono font-medium text-amber-600">{item.medium || "-"}</td>
-                    <td className="px-6 py-4 text-center font-mono font-medium text-slate-500">{item.low || "-"}</td>
+                    <td className="px-6 py-4 text-center font-mono font-medium text-rose-600 dark:text-red-400">{item.critical || "-"}</td>
+                    <td className="px-6 py-4 text-center font-mono font-medium text-orange-500 dark:text-orange-400">{item.high || "-"}</td>
+                    <td className="px-6 py-4 text-center font-mono font-medium text-amber-600 dark:text-amber-400">{item.medium || "-"}</td>
+                    <td className="px-6 py-4 text-center font-mono font-medium text-slate-500 dark:text-slate-400">{item.low || "-"}</td>
                     <td className="px-6 py-4 text-center font-mono font-bold">{item.total}</td>
                   </>
                 )}
                 {config.type === "preset" && config.presetId === "bypasses" && (
                   <>
-                    <td className="px-6 py-4 font-mono font-bold text-rose-600">{item.bypasses}</td>
-                    <td className="px-6 py-4 text-sm text-slate-500 truncate">{item.reason}</td>
+                    <td className="px-6 py-4 font-mono font-bold text-rose-600 dark:text-red-400">{item.bypasses}</td>
+                    <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 truncate">{item.reason}</td>
                   </>
                 )}
                 {config.type === "preset" && config.presetId === "blast" && (
                   <>
                     <td className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                        item.riskLevel === "CRITICAL" ? "bg-rose-50 text-rose-700 border-rose-200" :
-                        item.riskLevel === "HIGH" ? "bg-orange-50 text-orange-700 border-orange-200" :
-                        item.riskLevel === "MEDIUM" ? "bg-amber-50 text-amber-700 border-amber-200" :
-                        "bg-emerald-50 text-emerald-700 border-emerald-200"
+                        item.riskLevel === "CRITICAL" ? "bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border-rose-200 dark:border-red-800" :
+                        item.riskLevel === "HIGH" ? "bg-orange-50 dark:bg-orange-950/50 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800" :
+                        item.riskLevel === "MEDIUM" ? "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800" :
+                        "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
                       }`}>
                         {item.riskLevel === "CRITICAL" && <i className="fas fa-times-circle"></i>}
                         {item.riskLevel === "HIGH" && <i className="fas fa-exclamation-circle"></i>}
@@ -664,11 +663,11 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                 {config.type === "query" && hasStatus && (
                   <td className="px-6 py-4 text-center">
                     {item.status === "pass" ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
                         <i className="fas fa-check-circle"></i> Pass
                       </span>
                     ) : item.status === "fail" ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 text-rose-700 border border-rose-200">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border border-rose-200 dark:border-red-800">
                         <i className="fas fa-times-circle"></i> Fail
                       </span>
                     ) : null}
@@ -676,8 +675,8 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                 )}
                 {config.type === "query" && (
                   <td className="px-6 py-4 text-sm">
-                    <span className={`block truncate max-w-xl ${item.status === "fail" ? "text-rose-700" : "text-slate-800"}`}>{item.reason}</span>
-                    {item.details && <span className="text-xs text-slate-500 font-mono mt-0.5 block truncate max-w-xl">{item.details}</span>}
+                    <span className={`block truncate max-w-xl ${item.status === "fail" ? "text-rose-700 dark:text-red-400" : "text-slate-800 dark:text-slate-200"}`}>{item.reason}</span>
+                    {item.details && <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 block truncate max-w-xl">{item.details}</span>}
                   </td>
                 )}
               </tr>
@@ -708,10 +707,10 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0 rounded-t-2xl">
-          <h3 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <i className="ph-fill ph-info text-blue-600"></i>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0 rounded-t-2xl">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+            <i className="ph-fill ph-info text-blue-600 dark:text-blue-400"></i>
             {name}
           </h3>
           <div className="flex items-center gap-3">
@@ -720,43 +719,43 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
                 href={githubLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200"
+                className="text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200 dark:border-slate-700"
               >
                 <i className="ph-fill ph-github-logo text-sm"></i>
                 View in GitHub
               </a>
             )}
-            <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+            <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
               <i className="ph ph-x text-lg"></i>
             </button>
           </div>
         </div>
-        <div className="p-6 overflow-y-auto bg-slate-50 flex-1 rounded-b-2xl">
+        <div className="p-6 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex-1 rounded-b-2xl">
           <div className="flex flex-col gap-4">
             {item.status && (
-              <div className="flex flex-col border-b border-slate-100 pb-3">
-                <span className="text-sm font-bold text-slate-700 mb-1">Status</span>
+              <div className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">Status</span>
                 <div>
                   {item.status === "pass" ? (
-                    <span className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-lg"><i className="ph-bold ph-check-circle"></i>Passing</span>
+                    <span className="inline-flex items-center gap-1.5 text-sm font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-lg"><i className="ph-bold ph-check-circle"></i>Passing</span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 text-sm font-bold text-rose-700 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-lg"><i className="ph-bold ph-x-circle"></i>Failing</span>
+                    <span className="inline-flex items-center gap-1.5 text-sm font-bold text-rose-700 dark:text-red-400 bg-rose-50 dark:bg-red-950/50 border border-rose-200 dark:border-red-800 px-3 py-1.5 rounded-lg"><i className="ph-bold ph-x-circle"></i>Failing</span>
                   )}
                 </div>
               </div>
             )}
             {item.status === "fail" && item.reason && (
-              <div className="flex flex-col border-b border-slate-100 pb-3">
-                <span className="text-sm font-bold text-slate-700 mb-2">Failure Details</span>
+              <div className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Failure Details</span>
                 <div className="space-y-2">
                   {item.reason.split(" | ").map((part: string, idx: number) => {
                     const colonIdx = part.indexOf(":");
                     const branchName = colonIdx > 0 ? part.substring(0, colonIdx).replace(/"/g, "").trim() : null;
                     const detail = colonIdx > 0 ? part.substring(colonIdx + 1).trim() : part;
                     return (
-                      <div key={idx} className="bg-rose-50 border border-rose-200 rounded-lg p-3">
-                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-800 bg-rose-100 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
-                        <p className="text-sm text-rose-700">{detail}</p>
+                      <div key={idx} className="bg-rose-50 dark:bg-red-950/50 border border-rose-200 dark:border-red-800 rounded-lg p-3">
+                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-800 dark:text-rose-300 bg-rose-100 dark:bg-rose-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
+                        <p className="text-sm text-rose-700 dark:text-red-400">{detail}</p>
                       </div>
                     );
                   })}
@@ -764,17 +763,17 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
               </div>
             )}
             {item.status === "pass" && item.reason && (
-              <div className="flex flex-col border-b border-slate-100 pb-3">
-                <span className="text-sm font-bold text-slate-700 mb-2">Branch Details</span>
+              <div className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">Branch Details</span>
                 <div className="space-y-2">
                   {item.reason.split(" | ").map((part: string, idx: number) => {
                     const colonIdx = part.indexOf(":");
                     const branchName = colonIdx > 0 ? part.substring(0, colonIdx).trim() : null;
                     const detail = colonIdx > 0 ? part.substring(colonIdx + 1).trim() : part;
                     return (
-                      <div key={idx} className="bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
-                        <p className="text-sm text-emerald-700">{detail}</p>
+                      <div key={idx} className="bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3">
+                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
+                        <p className="text-sm text-emerald-700 dark:text-emerald-400">{detail}</p>
                       </div>
                     );
                   })}
@@ -782,17 +781,17 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
               </div>
             )}
             {Object.entries(item).filter(([k]) => !["repo", "user", "team", "status", "reason"].includes(k)).map(([k, v], i) => (
-              <div key={i} className="flex flex-col border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                <span className="text-sm font-bold text-slate-700 mb-1">{k}</span>
-                <pre className="text-sm text-slate-800 bg-white p-3 rounded-lg border border-slate-200 overflow-x-auto whitespace-pre-wrap font-mono">
+              <div key={i} className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3 last:border-0 last:pb-0">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">{k}</span>
+                <pre className="text-sm text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700 overflow-x-auto whitespace-pre-wrap font-mono">
                   {typeof v === "object" ? JSON.stringify(v, null, 2) : String(v)}
                 </pre>
               </div>
             ))}
             {!item.status && Object.entries(item).filter(([k]) => ["reason"].includes(k)).map(([k, v], i) => (
-              <div key={`r-${i}`} className="flex flex-col border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                <span className="text-sm font-bold text-slate-700 mb-1">{k}</span>
-                <pre className="text-sm text-slate-800 bg-white p-3 rounded-lg border border-slate-200 overflow-x-auto whitespace-pre-wrap font-mono">
+              <div key={`r-${i}`} className="flex flex-col border-b border-slate-100 dark:border-slate-700 pb-3 last:border-0 last:pb-0">
+                <span className="text-sm font-bold text-slate-700 dark:text-slate-300 mb-1">{k}</span>
+                <pre className="text-sm text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-3 rounded-lg border border-slate-200 dark:border-slate-700 overflow-x-auto whitespace-pre-wrap font-mono">
                   {String(v)}
                 </pre>
               </div>
@@ -814,35 +813,35 @@ function WidgetDetailsModal({ config, items, onClose, graphEmpty, orgName }: { c
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-4xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-white shrink-0 rounded-t-2xl">
-          <h3 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <i className="ph-fill ph-chart-bar text-blue-600"></i>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 w-full max-w-4xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0 rounded-t-2xl">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
+            <i className="ph-fill ph-chart-bar text-blue-600 dark:text-blue-400"></i>
             {config.title}
           </h3>
           <div className="flex items-center gap-3">
             {hasStatus && (
               <>
-                <div className="px-3 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-xs font-bold flex items-center gap-1.5">
+                <div className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full text-xs font-bold flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
                   {passCount} Pass
                 </div>
-                <div className="px-3 py-1 bg-rose-50 text-rose-700 border border-rose-200 rounded-full text-xs font-bold flex items-center gap-1.5">
+                <div className="px-3 py-1 bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border border-rose-200 dark:border-red-800 rounded-full text-xs font-bold flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
                   {failCount} Fail
                 </div>
               </>
             )}
-            <div className="px-3 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded-full text-xs font-bold font-mono">
+            <div className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-bold font-mono">
               {items.length} Total
             </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition-colors">
+            <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
               <i className="ph ph-x text-lg"></i>
             </button>
           </div>
         </div>
 
-        <div className="p-0 overflow-y-auto bg-slate-50 flex-1 relative rounded-b-2xl">
+        <div className="p-0 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex-1 relative rounded-b-2xl">
           <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
         </div>
       </div>
@@ -940,20 +939,20 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white rounded-2xl shadow-xl border border-slate-200 w-full max-w-xl relative z-10 animate-slide-up flex flex-col">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between rounded-t-2xl">
-          <h3 className="text-lg font-bold text-slate-900">{isEditing ? "Edit Widget" : "Add Dashboard Widget"}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-900"><i className="ph ph-x text-lg"></i></button>
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 w-full max-w-xl relative z-10 animate-slide-up flex flex-col">
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between rounded-t-2xl">
+          <h3 className="text-lg font-bold text-slate-900 dark:text-white">{isEditing ? "Edit Widget" : "Add Dashboard Widget"}</h3>
+          <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white"><i className="ph ph-x text-lg"></i></button>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div>
-            <label className="block text-sm font-semibold text-slate-900 mb-1">Widget Title</label>
+            <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Widget Title</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
               placeholder="e.g. My Custom Metric"
               required
             />
@@ -961,22 +960,22 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-900 mb-1">Data Source</label>
+              <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Data Source</label>
               <select
                 value={type}
                 onChange={(e) => setType(e.target.value as WidgetType)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
               >
                 <option value="preset">Built-in Ranking Presets</option>
                 <option value="query">Security Insight Query</option>
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-900 mb-1">Display Format</label>
+              <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Display Format</label>
               <select
                 value={displayType}
                 onChange={(e) => setDisplayType(e.target.value as DisplayType)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
               >
                 <option value="metric">Big Metric (Count)</option>
                 <option value="table">List / Table</option>
@@ -984,14 +983,14 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
             </div>
           </div>
 
-          <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-4">
+          <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg space-y-4">
             {type === "preset" ? (
               <div>
-                <label className="block text-sm font-semibold text-slate-900 mb-1">Select Preset</label>
+                <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Select Preset</label>
                 <select
                   value={presetId}
                   onChange={(e) => setPresetId(e.target.value as PresetId)}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                  className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
                 >
                   <option value="dependabot">Dependabot Issues Ranking</option>
                   <option value="bypasses">Protection Rule Bypasses</option>
@@ -1001,11 +1000,11 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
             ) : (
               <>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-900 mb-1">Select Insight Query</label>
+                  <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Select Insight Query</label>
                   <select
                     value={selectedQueryId}
                     onChange={(e) => handleQuerySelect(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
                   >
                     {QUERY_OPTIONS.map(q => (
                       <option key={q.id} value={q.id}>{q.label}</option>
@@ -1015,7 +1014,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
 
                 {selectedQuery?.requiresParam && (
                   <div>
-                    <label className="block text-sm font-semibold text-slate-900 mb-1">{selectedQuery.paramLabel}</label>
+                    <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">{selectedQuery.paramLabel}</label>
                     {selectedQuery.useTagInput ? (
                       <>
                         <TagInput
@@ -1044,7 +1043,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                         type="text"
                         value={paramValue}
                         onChange={(e) => setParamValue(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm"
+                        className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
                         required
                       />
                     )}
@@ -1052,16 +1051,16 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                 )}
 
                 {selectedQuery?.hasAdvancedRules && (
-                  <div className="pt-3 border-t border-slate-200 space-y-3">
-                    <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wider">Branch Rule Configuration</label>
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-700 space-y-3">
+                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Branch Rule Configuration</label>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-900 mb-1">Protection Type</label>
+                        <label className="block text-xs font-semibold text-slate-900 dark:text-white mb-1">Protection Type</label>
                         <select
                           value={protectionType}
                           onChange={(e) => setProtectionType(e.target.value)}
-                          className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-sm outline-none focus:border-blue-500"
+                          className="w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-md text-sm outline-none focus:border-blue-500 bg-white dark:bg-slate-800 dark:text-slate-200"
                         >
                           <option value="any">Must have ANY protection</option>
                           <option value="classic">Must use Classic Protection</option>
@@ -1069,11 +1068,11 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-900 mb-1">Rule Matching Mode</label>
+                        <label className="block text-xs font-semibold text-slate-900 dark:text-white mb-1">Rule Matching Mode</label>
                         <select
                           value={ruleMatchType}
                           onChange={(e) => setRuleMatchType(e.target.value)}
-                          className="w-full px-2 py-1.5 border border-slate-300 rounded-md text-sm outline-none focus:border-blue-500"
+                          className="w-full px-2 py-1.5 border border-slate-300 dark:border-slate-600 rounded-md text-sm outline-none focus:border-blue-500 bg-white dark:bg-slate-800 dark:text-slate-200"
                         >
                           <option value="any">Any rules (just check if protection exists)</option>
                           <option value="at_least">Must have at least the selected rules</option>
@@ -1083,8 +1082,8 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                     </div>
 
                     {ruleMatchType !== "any" && (
-                      <div className="bg-white border border-slate-200 rounded-lg p-3">
-                        <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Required Rules</h4>
+                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-3">
+                        <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Required Rules</h4>
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
                           <label className="flex items-center gap-2">
                             <input type="checkbox" checked={requirePr} onChange={e => setRequirePr(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" />
@@ -1092,12 +1091,12 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                           </label>
                           {requirePr && (
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-500">Min. Approvals:</span>
+                              <span className="text-xs text-slate-500 dark:text-slate-400">Min. Approvals:</span>
                               <input
                                 type="number" min={1} max={5}
                                 value={minApprovals}
                                 onChange={(e) => setMinApprovals(parseInt(e.target.value))}
-                                className="w-16 rounded-md border-slate-300 py-1 px-2 text-xs ring-1 ring-inset ring-slate-300 outline-none focus:border-blue-500"
+                                className="w-16 rounded-md border-slate-300 dark:border-slate-600 py-1 px-2 text-xs ring-1 ring-inset ring-slate-300 dark:ring-slate-600 outline-none focus:border-blue-500 bg-white dark:bg-slate-800 dark:text-slate-200"
                               />
                             </div>
                           )}
@@ -1120,7 +1119,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                         </div>
 
                         <details className="group/det mt-3">
-                          <summary className="text-[11px] font-semibold text-blue-600 cursor-pointer hover:underline list-none flex items-center gap-1 select-none pt-2 border-t border-slate-100">
+                          <summary className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 cursor-pointer hover:underline list-none flex items-center gap-1 select-none pt-2 border-t border-slate-100 dark:border-slate-700">
                             <i className="ph-bold ph-caret-right text-[10px] group-open/det:rotate-90 transition-transform"></i>
                             Advanced Rules
                           </summary>
@@ -1159,8 +1158,8 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
             )}
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200">
-            <button type="button" onClick={onClose} className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 transition-colors" disabled={isSaving}>
+          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-700">
+            <button type="button" onClick={onClose} className="px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-800 dark:text-slate-300 transition-colors" disabled={isSaving}>
               Cancel
             </button>
             <button type="submit" className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors" disabled={isSaving}>

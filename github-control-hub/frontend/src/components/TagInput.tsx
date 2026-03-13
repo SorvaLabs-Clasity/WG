@@ -39,20 +39,20 @@ export function TagInput({ tags, onChange, placeholder, onPendingTextChange, ico
   const isBlue = colorClass === "blue";
 
   const spanClass = isBlue
-    ? "inline-flex items-center gap-1 text-xs bg-blue-50 border border-blue-200 text-blue-800 px-2 py-1 rounded-md font-mono"
-    : "inline-flex items-center gap-1 text-xs bg-gray-100 border border-gray-200 text-gray-800 px-2 py-1 rounded-md font-mono";
+    ? "inline-flex items-center gap-1 text-xs bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300 px-2 py-1 rounded-md font-mono"
+    : "inline-flex items-center gap-1 text-xs bg-gray-100 dark:bg-slate-700 border border-gray-200 dark:border-slate-700 text-gray-800 dark:text-slate-200 px-2 py-1 rounded-md font-mono";
 
   const btnClass = isBlue
-    ? "text-blue-300 hover:text-red-500 ml-0.5"
-    : "text-gray-400 hover:text-red-500 ml-0.5";
+    ? "text-blue-300 dark:text-blue-500 hover:text-red-500 dark:hover:text-red-400 ml-0.5"
+    : "text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 ml-0.5";
 
   const iconClass = isBlue
-    ? `ph-bold ${icon} text-[10px] text-blue-400`
-    : `ph-bold ${icon} text-[10px] text-gray-400`;
+    ? `ph-bold ${icon} text-[10px] text-blue-400 dark:text-blue-300`
+    : `ph-bold ${icon} text-[10px] text-gray-400 dark:text-slate-500`;
 
   return (
     <div
-      className="border border-gray-300 rounded-md p-2 focus-within:ring-2 focus-within:ring-gh-blue focus-within:border-transparent bg-white min-h-[40px] cursor-text"
+      className="border border-gray-300 dark:border-slate-600 rounded-md p-2 focus-within:ring-2 focus-within:ring-gh-blue focus-within:border-transparent bg-white dark:bg-slate-800 min-h-[40px] cursor-text"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           const inputEl = e.currentTarget.querySelector("input");
@@ -76,7 +76,7 @@ export function TagInput({ tags, onChange, placeholder, onPendingTextChange, ico
           onChange={e => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={tags.length === 0 ? placeholder : ""}
-          className="flex-1 min-w-[120px] px-1 py-0.5 text-sm outline-none bg-transparent"
+          className="flex-1 min-w-[120px] px-1 py-0.5 text-sm outline-none bg-transparent dark:text-slate-200 dark:placeholder:text-slate-500"
         />
       </div>
     </div>

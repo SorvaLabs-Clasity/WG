@@ -5,10 +5,10 @@ import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
 
 const SEVERITY_CONFIG: Record<string, { color: string; icon: string; bg: string }> = {
-  critical: { color: "text-red-600", bg: "bg-red-50", icon: "ph-fill ph-warning-octagon" },
-  high: { color: "text-orange-600", bg: "bg-orange-50", icon: "ph-fill ph-warning" },
-  medium: { color: "text-yellow-600", bg: "bg-yellow-50", icon: "ph-fill ph-info" },
-  low: { color: "text-blue-600", bg: "bg-blue-50", icon: "ph-fill ph-info" },
+  critical: { color: "text-red-600 dark:text-red-400", bg: "bg-red-50 dark:bg-red-950/50", icon: "ph-fill ph-warning-octagon" },
+  high: { color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-950/50", icon: "ph-fill ph-warning" },
+  medium: { color: "text-yellow-600 dark:text-yellow-400", bg: "bg-yellow-50 dark:bg-yellow-950/50", icon: "ph-fill ph-info" },
+  low: { color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-50 dark:bg-blue-950/50", icon: "ph-fill ph-info" },
 };
 
 const TYPE_LABELS: Record<string, string> = {
@@ -39,7 +39,7 @@ export default function SecurityPage() {
 
   if (isLoading) {
     return (
-      <div className="bg-gh-bg text-gh-textBase min-h-screen pt-14">
+      <div className="bg-gh-bg dark:bg-slate-950 text-gh-textBase dark:text-slate-200 min-h-screen pt-14">
         <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
         <div className="p-8 flex justify-center">
           <div className="animate-spin w-8 h-8 border-4 border-gh-blue border-t-transparent rounded-full"></div>
@@ -67,18 +67,18 @@ export default function SecurityPage() {
   };
 
   return (
-    <div className="bg-gh-bg text-gh-textBase min-h-screen pt-14 flex flex-col h-screen overflow-hidden">
+    <div className="bg-gh-bg dark:bg-slate-950 text-gh-textBase dark:text-slate-200 min-h-screen pt-14 flex flex-col h-screen overflow-hidden">
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
       
       <main className="max-w-7xl mx-auto w-full p-4 sm:p-6 flex-1 flex flex-col overflow-hidden animate-fade-in">
         {/* Header Section */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 shrink-0">
           <div>
-            <h1 className="text-2xl font-bold text-gh-textBase flex items-center gap-2">
-              <i className="ph-fill ph-shield-warning text-gh-textMuted"></i>
+            <h1 className="text-2xl font-bold text-gh-textBase dark:text-slate-200 flex items-center gap-2">
+              <i className="ph-fill ph-shield-warning text-gh-textMuted dark:text-slate-400"></i>
               Security Hub
             </h1>
-            <p className="text-gh-muted text-sm mt-1">
+            <p className="text-gh-muted dark:text-slate-400 text-sm mt-1">
               Monitor, investigate, and resolve security events across your organization.
             </p>
           </div>
@@ -89,22 +89,22 @@ export default function SecurityPage() {
         <div className="flex flex-col lg:flex-row gap-6 flex-1 min-h-0">
           
           {/* Main Alerts Panel */}
-          <div className="flex-1 flex flex-col min-w-0 bg-white rounded-xl border border-gh-border shadow-sm overflow-hidden">
+          <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900 rounded-xl border border-gh-border dark:border-slate-700 shadow-sm overflow-hidden">
             {/* Toolbar */}
-            <div className="px-5 py-3 border-b border-gh-border bg-gray-50 flex items-center justify-between shrink-0">
-              <div className="flex gap-1 bg-gray-200/50 p-1 rounded-lg">
+            <div className="px-5 py-3 border-b border-gh-border dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-between shrink-0">
+              <div className="flex gap-1 bg-gray-200/50 dark:bg-slate-700 p-1 rounded-lg">
                 {(["active", "resolved", "all"] as const).map((f) => (
                   <button
                     key={f}
                     onClick={() => { setFilter(f); setCurrentPage(1); }}
                     className={`px-4 py-1.5 text-[13px] font-semibold rounded-md capitalize transition-all ${
                       filter === f
-                        ? "bg-white text-gh-textBase shadow-sm"
-                        : "text-gh-textMuted hover:text-gh-textBase hover:bg-white/50"
+                        ? "bg-white dark:bg-slate-900 text-gh-textBase dark:text-slate-200 shadow-sm"
+                        : "text-gh-textMuted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 hover:bg-white/50 dark:hover:bg-slate-800/50"
                     }`}
                   >
                     {f}
-                    <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">
+                    <span className="ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400">
                       {f === "active" ? alerts?.filter(a => !a.resolved).length || 0 : f === "resolved" ? alerts?.filter(a => a.resolved).length || 0 : alerts?.length || 0}
                     </span>
                   </button>
@@ -113,13 +113,13 @@ export default function SecurityPage() {
             </div>
 
             {/* Scrollable Alerts List */}
-            <div className="flex-1 overflow-y-auto p-4 bg-gray-50/30">
+            <div className="flex-1 overflow-y-auto p-4 bg-gray-50/30 dark:bg-slate-800/30">
               {filteredAlerts.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center p-12 text-center text-gh-muted">
-                  <div className="w-16 h-16 bg-green-50 rounded-full flex items-center justify-center mb-4">
+                <div className="h-full flex flex-col items-center justify-center p-12 text-center text-gh-muted dark:text-slate-400">
+                  <div className="w-16 h-16 bg-green-50 dark:bg-green-950/50 rounded-full flex items-center justify-center mb-4">
                     <i className="ph-fill ph-shield-check text-3xl text-green-500"></i>
                   </div>
-                  <h3 className="text-base font-semibold text-gh-textBase">No {filter} alerts</h3>
+                  <h3 className="text-base font-semibold text-gh-textBase dark:text-slate-200">No {filter} alerts</h3>
                   <p className="text-sm mt-1">Your organization is secure.</p>
                 </div>
               ) : (
@@ -127,8 +127,8 @@ export default function SecurityPage() {
                   {pagedAlerts.map((alert) => (
                     <div
                       key={alert.id}
-                      className={`bg-white rounded-lg border ${
-                        alert.resolved ? "border-gray-200 bg-gray-50/50 opacity-80" : "border-gh-border shadow-sm hover:shadow-md hover:border-gray-300"
+                      className={`bg-white dark:bg-slate-900 rounded-lg border ${
+                        alert.resolved ? "border-gray-200 dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 opacity-80" : "border-gh-border dark:border-slate-700 shadow-sm hover:shadow-md hover:border-gray-300 dark:hover:border-slate-600"
                       } p-4 flex flex-col sm:flex-row gap-4 justify-between transition-all`}
                     >
                       <div className="flex gap-3 items-start min-w-0 flex-1">
@@ -138,27 +138,27 @@ export default function SecurityPage() {
                         <div className="min-w-0 flex-1">
                           {/* Title line with flex-wrap and whitespace-nowrap to prevent overflow */}
                           <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                            <span className="text-sm font-bold text-gh-textBase truncate max-w-full" title={alert.repo}>{alert.repo}</span>
-                            <span className={`inline-flex items-center whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-full border ${alert.resolved ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                            <span className="text-sm font-bold text-gh-textBase dark:text-slate-200 truncate max-w-full" title={alert.repo}>{alert.repo}</span>
+                            <span className={`inline-flex items-center whitespace-nowrap text-[10px] font-bold px-2 py-0.5 rounded-full border ${alert.resolved ? 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-700' : 'bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400 border-red-100 dark:border-red-800'}`}>
                               {TYPE_LABELS[alert.type] || alert.type}
                             </span>
-                            <span className="text-xs text-gh-muted ml-auto">
+                            <span className="text-xs text-gh-muted dark:text-slate-400 ml-auto">
                               {new Date(alert.timestamp).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                             </span>
                           </div>
                           
-                          <p className={`text-[13px] leading-snug ${alert.resolved ? "text-gh-muted line-through" : "text-gh-textBase"}`}>
+                          <p className={`text-[13px] leading-snug ${alert.resolved ? "text-gh-muted dark:text-slate-400 line-through" : "text-gh-textBase dark:text-slate-200"}`}>
                             {alert.message}
                           </p>
 
                           {alert.details && !alert.resolved && (
-                            <div className="mt-2.5 bg-gray-50 border border-gray-200 rounded-md p-2.5 text-[11px] font-mono text-gh-muted max-h-32 overflow-y-auto">
+                            <div className="mt-2.5 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-md p-2.5 text-[11px] font-mono text-gh-muted dark:text-slate-400 max-h-32 overflow-y-auto">
                               {JSON.stringify(alert.details, null, 2)}
                             </div>
                           )}
 
                           {alert.resolved && alert.resolvedBy && (
-                            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-gh-muted bg-gray-100/50 w-fit px-2 py-1 rounded border border-gray-100">
+                            <div className="mt-2 flex items-center gap-1.5 text-[11px] text-gh-muted dark:text-slate-400 bg-gray-100/50 dark:bg-slate-700/50 w-fit px-2 py-1 rounded border border-gray-100 dark:border-slate-700">
                               <i className="ph-bold ph-check-circle text-green-600"></i>
                               <span>Resolved by <span className="font-semibold">{alert.resolvedBy}</span> on {new Date(alert.resolvedAt!).toLocaleDateString()}</span>
                             </div>
@@ -171,7 +171,7 @@ export default function SecurityPage() {
                           <button
                             onClick={() => handleResolve(alert.id)}
                             disabled={resolveMutation.isPending}
-                            className="px-3 py-1.5 text-xs font-semibold text-gh-textBase bg-white border border-gh-border hover:bg-gray-50 rounded-md shadow-sm transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 text-xs font-semibold text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 border border-gh-border dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-md shadow-sm transition-colors flex items-center gap-1.5"
                           >
                             <i className="ph-bold ph-check text-green-600"></i>
                             Resolve
@@ -180,7 +180,7 @@ export default function SecurityPage() {
                           <button
                             onClick={() => handleUnresolve(alert.id)}
                             disabled={unresolveMutation.isPending}
-                            className="px-3 py-1.5 text-xs font-semibold text-gh-muted bg-white border border-gh-border hover:bg-gray-50 rounded-md transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 text-xs font-semibold text-gh-muted dark:text-slate-400 bg-white dark:bg-slate-800 border border-gh-border dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-md transition-colors flex items-center gap-1.5"
                           >
                             <i className="ph-bold ph-arrow-u-up-left"></i>
                             Unresolve
@@ -194,8 +194,8 @@ export default function SecurityPage() {
             </div>
 
             {/* Pagination Footer */}
-            <div className="px-5 py-3 border-t border-gh-border bg-white flex items-center justify-between shrink-0">
-              <span className="text-xs text-gh-muted">
+            <div className="px-5 py-3 border-t border-gh-border dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-between shrink-0">
+              <span className="text-xs text-gh-muted dark:text-slate-400">
                 {filteredAlerts.length > 0 ? (
                   <>Showing {(safePage - 1) * ALERTS_PER_PAGE + 1}&ndash;{Math.min(safePage * ALERTS_PER_PAGE, filteredAlerts.length)} of {filteredAlerts.length}</>
                 ) : (
@@ -208,14 +208,14 @@ export default function SecurityPage() {
                   <button
                     onClick={() => setCurrentPage(1)}
                     disabled={safePage <= 1}
-                    className="px-2 py-1 text-xs font-medium border border-gh-border rounded bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-2 py-1 text-xs font-medium border border-gh-border dark:border-slate-600 rounded bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <i className="ph-bold ph-caret-double-left text-[10px]"></i>
                   </button>
                   <button
                     onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                     disabled={safePage <= 1}
-                    className="px-2 py-1 text-xs font-medium border border-gh-border rounded bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-2 py-1 text-xs font-medium border border-gh-border dark:border-slate-600 rounded bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <i className="ph-bold ph-caret-left text-[10px]"></i>
                   </button>
@@ -234,7 +234,7 @@ export default function SecurityPage() {
                       <button
                         key={page}
                         onClick={() => setCurrentPage(page)}
-                        className={`px-2.5 py-1.5 min-w-[28px] text-xs font-medium rounded border transition-colors ${safePage === page ? 'bg-gh-blue text-white border-gh-blue' : 'border-transparent bg-transparent hover:bg-gray-100 text-gh-textBase'}`}
+                        className={`px-2.5 py-1.5 min-w-[28px] text-xs font-medium rounded border transition-colors ${safePage === page ? 'bg-gh-blue text-white border-gh-blue' : 'border-transparent bg-transparent hover:bg-gray-100 dark:hover:bg-slate-700 text-gh-textBase dark:text-slate-200'}`}
                       >
                         {page}
                       </button>
@@ -243,14 +243,14 @@ export default function SecurityPage() {
                   <button
                     onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                     disabled={safePage >= totalPages}
-                    className="px-2 py-1 text-xs font-medium border border-gh-border rounded bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-2 py-1 text-xs font-medium border border-gh-border dark:border-slate-600 rounded bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <i className="ph-bold ph-caret-right text-[10px]"></i>
                   </button>
                   <button
                     onClick={() => setCurrentPage(totalPages)}
                     disabled={safePage >= totalPages}
-                    className="px-2 py-1 text-xs font-medium border border-gh-border rounded bg-white hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="px-2 py-1 text-xs font-medium border border-gh-border dark:border-slate-600 rounded bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <i className="ph-bold ph-caret-double-right text-[10px]"></i>
                   </button>
@@ -260,39 +260,39 @@ export default function SecurityPage() {
           </div>
 
           {/* Sidebar: Inactive Users */}
-          <div className="w-full lg:w-80 flex flex-col min-w-0 bg-white rounded-xl border border-gh-border shadow-sm overflow-hidden shrink-0 h-fit max-h-full">
-            <div className="px-4 py-3 bg-gray-50 border-b border-gh-border flex items-center justify-between">
+          <div className="w-full lg:w-80 flex flex-col min-w-0 bg-white dark:bg-slate-900 rounded-xl border border-gh-border dark:border-slate-700 shadow-sm overflow-hidden shrink-0 h-fit max-h-full">
+            <div className="px-4 py-3 bg-gray-50 dark:bg-slate-800 border-b border-gh-border dark:border-slate-700 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <i className="ph-fill ph-users text-gh-muted"></i>
-                <h3 className="font-bold text-gh-textBase text-[13px]">Stale Accounts</h3>
+                <i className="ph-fill ph-users text-gh-muted dark:text-slate-400"></i>
+                <h3 className="font-bold text-gh-textBase dark:text-slate-200 text-[13px]">Stale Accounts</h3>
               </div>
-              <span className="bg-red-100 text-red-600 text-[10px] font-bold px-1.5 py-0.5 rounded">
+              <span className="bg-red-100 dark:bg-red-950/50 text-red-600 dark:text-red-400 text-[10px] font-bold px-1.5 py-0.5 rounded">
                 180+ Days
               </span>
             </div>
             
             <div className="overflow-y-auto flex-1">
               {(!inactiveUsers || inactiveUsers.length === 0) ? (
-                <div className="p-8 text-center text-[13px] text-gh-muted">
+                <div className="p-8 text-center text-[13px] text-gh-muted dark:text-slate-400">
                   <i className="ph-fill ph-check-circle text-2xl text-green-500 mb-2 block mx-auto"></i>
                   No stale accounts found.
                 </div>
               ) : (
-                <ul className="divide-y divide-gray-100">
+                <ul className="divide-y divide-gray-100 dark:divide-slate-700">
                   {inactiveUsers.map(u => (
-                    <li key={u.username} className="px-4 py-3 hover:bg-gray-50 flex flex-col gap-2 transition-colors group">
+                    <li key={u.username} className="px-4 py-3 hover:bg-gray-50 dark:hover:bg-slate-800 flex flex-col gap-2 transition-colors group">
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className="text-[13px] font-semibold text-gh-textBase truncate">{u.username}</span>
+                          <span className="text-[13px] font-semibold text-gh-textBase dark:text-slate-200 truncate">{u.username}</span>
                           {u.role === 'admin' && (
                             <i className="ph-fill ph-shield-star text-orange-500 text-xs" title="Admin"></i>
                           )}
                         </div>
-                        <button className="opacity-0 group-hover:opacity-100 text-[11px] font-semibold text-red-600 hover:text-white border border-red-200 hover:border-red-600 hover:bg-red-600 px-2 py-0.5 rounded transition-all">
+                        <button className="opacity-0 group-hover:opacity-100 text-[11px] font-semibold text-red-600 dark:text-red-400 hover:text-white border border-red-200 dark:border-red-800 hover:border-red-600 hover:bg-red-600 px-2 py-0.5 rounded transition-all">
                           Revoke
                         </button>
                       </div>
-                      <div className="flex items-center justify-between text-[11px] text-gh-muted">
+                      <div className="flex items-center justify-between text-[11px] text-gh-muted dark:text-slate-400">
                         <span className="uppercase font-bold tracking-wider">{u.role}</span>
                         <span>Active {new Date(u.lastActive).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
                       </div>
@@ -302,7 +302,7 @@ export default function SecurityPage() {
               )}
             </div>
             
-            <div className="px-4 py-2.5 bg-blue-50/50 border-t border-blue-100/50 text-[11px] text-blue-800 flex items-start gap-2">
+            <div className="px-4 py-2.5 bg-blue-50/50 dark:bg-blue-950/50 border-t border-blue-100/50 dark:border-blue-800/50 text-[11px] text-blue-800 dark:text-blue-300 flex items-start gap-2">
               <i className="ph-fill ph-info mt-0.5 shrink-0"></i>
               <p>Stale accounts retain access but are unused, increasing the risk of unauthorized entry.</p>
             </div>

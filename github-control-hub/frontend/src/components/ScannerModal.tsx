@@ -114,15 +114,15 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-[3px] animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white rounded-[12px] shadow-modal border border-black/10 w-full max-w-3xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
+        <div className="bg-white dark:bg-slate-900 rounded-[12px] shadow-modal border border-black/10 dark:border-slate-700 w-full max-w-3xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
         
-        <div className="px-6 py-4 border-b border-gh-border flex items-center justify-between bg-white pt-5 shrink-0 rounded-t-[12px]">
-          <h3 className="text-lg font-bold text-gray-900 tracking-tight">
+        <div className="px-6 py-4 border-b border-gh-border dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-900 pt-5 shrink-0 rounded-t-[12px]">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">
             {scanner ? "Edit Scanner" : "Create Compliance Scanner"}
           </h3>
           <button 
             onClick={onClose}
-            className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 hover:text-gray-900 hover:bg-black/5 transition-colors"
+            className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
           >
             <i className="ph ph-x text-lg"></i>
           </button>
@@ -131,27 +131,27 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
         <div className="p-6 overflow-y-auto space-y-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-gh-textBase mb-1">Scanner Name</label>
+              <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1">Scanner Name</label>
               <input 
                 type="text" 
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. SOC2 Branch Compliance" 
-                className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset ring-gray-300 outline-none"
+                className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gh-textBase mb-1">Description</label>
+              <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1">Description</label>
               <input 
                 type="text" 
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What does this verify?" 
-                className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset ring-gray-300 outline-none"
+                className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
               />
             </div>
-            <div className="border border-gh-border rounded-lg p-4 bg-gray-50/30">
-              <label className="block text-sm font-semibold text-gh-textBase mb-3">Target Repositories</label>
+            <div className="border border-gh-border dark:border-slate-700 rounded-lg p-4 bg-gray-50/30 dark:bg-slate-800/30">
+              <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-3">Target Repositories</label>
               
               <div className="space-y-4">
                 <label className="flex items-start gap-2 cursor-pointer group/radio">
@@ -160,11 +160,11 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                     name="targetType"
                     checked={targetReposType === "all"}
                     onChange={() => setTargetReposType("all")}
-                    className="mt-0.5 w-4 h-4 text-gh-blue border-gray-300 focus:ring-gh-blue"
+                    className="mt-0.5 w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 focus:ring-gh-blue"
                   />
                   <div>
-                    <span className="block text-sm font-medium text-gh-textBase">All repositories (auto-include future repos)</span>
-                    <span className="block text-[11px] text-gh-muted mt-0.5">Scan all current and future repositories in the organization automatically.</span>
+                    <span className="block text-sm font-medium text-gh-textBase dark:text-slate-200">All repositories (auto-include future repos)</span>
+                    <span className="block text-[11px] text-gh-muted dark:text-slate-400 mt-0.5">Scan all current and future repositories in the organization automatically.</span>
                   </div>
                 </label>
                 
@@ -174,32 +174,32 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                     name="targetType"
                     checked={targetReposType === "selected"}
                     onChange={() => setTargetReposType("selected")}
-                    className="mt-0.5 w-4 h-4 text-gh-blue border-gray-300 focus:ring-gh-blue"
+                    className="mt-0.5 w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 focus:ring-gh-blue"
                   />
                   <div>
-                    <span className="block text-sm font-medium text-gh-textBase">Selected repositories</span>
-                    <span className="block text-[11px] text-gh-muted mt-0.5">Manually select specific repositories to scan.</span>
+                    <span className="block text-sm font-medium text-gh-textBase dark:text-slate-200">Selected repositories</span>
+                    <span className="block text-[11px] text-gh-muted dark:text-slate-400 mt-0.5">Manually select specific repositories to scan.</span>
                   </div>
                 </label>
                 
                 {targetReposType === "selected" && (
-                  <div className="ml-6 pl-3 border-l-2 border-gray-200 mt-2 space-y-4">
+                    <div className="ml-6 pl-3 border-l-2 border-gray-200 dark:border-slate-700 mt-2 space-y-4">
                     <label className="flex items-center gap-2 cursor-pointer group/chk">
                       <input 
                         type="checkbox"
                         checked={includeFutureRepos}
                         onChange={(e) => setIncludeFutureRepos(e.target.checked)}
-                        className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue"
+                        className="w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 rounded focus:ring-gh-blue"
                       />
                       <div className="flex flex-col">
-                        <span className="text-sm font-medium text-gh-textBase">Auto-include future repositories</span>
-                        <span className="text-[11px] text-gh-muted">Any repository created after this scanner will be automatically scanned.</span>
+                        <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">Auto-include future repositories</span>
+                        <span className="text-[11px] text-gh-muted dark:text-slate-400">Any repository created after this scanner will be automatically scanned.</span>
                       </div>
                     </label>
 
                     <div>
                       <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs font-semibold text-gh-muted">Select Repositories</span>
+                        <span className="text-xs font-semibold text-gh-muted dark:text-slate-400">Select Repositories</span>
                         <div className="flex gap-2">
                           <button 
                             type="button"
@@ -208,19 +208,19 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                           >
                             Select All
                           </button>
-                          <span className="text-gray-300">•</span>
+                          <span className="text-gray-300 dark:text-slate-600">•</span>
                           <button 
                             type="button"
                             onClick={() => setSelectedRepos([])}
-                            className="text-xs font-medium text-gh-muted hover:text-gray-700"
+                            className="text-xs font-medium text-gh-muted dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
                           >
                             Clear
                           </button>
                         </div>
                       </div>
-                      <div className="max-h-48 overflow-y-auto border border-gray-200 rounded-md bg-white shadow-sm ring-1 ring-inset ring-gray-300/50">
+                      <div className="max-h-48 overflow-y-auto border border-gray-200 dark:border-slate-700 rounded-md bg-white dark:bg-slate-900 shadow-sm ring-1 ring-inset ring-gray-300/50 dark:ring-slate-600">
                         {repos?.map((r: any) => (
-                          <label key={r.name} className="flex items-center gap-2.5 px-3 py-2 border-b border-gray-100 last:border-b-0 hover:bg-gray-50 cursor-pointer transition-colors">
+                          <label key={r.name} className="flex items-center gap-2.5 px-3 py-2 border-b border-gray-100 dark:border-slate-700 last:border-b-0 hover:bg-gray-50 dark:hover:bg-slate-800 cursor-pointer transition-colors">
                             <input 
                               type="checkbox"
                               checked={selectedRepos.includes(r.name)}
@@ -231,13 +231,13 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   setSelectedRepos(selectedRepos.filter(name => name !== r.name));
                                 }
                               }}
-                              className="w-4 h-4 text-gh-blue border-gray-300 rounded focus:ring-gh-blue focus:ring-offset-1 transition-all"
+                              className="w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 rounded focus:ring-gh-blue focus:ring-offset-1 transition-all"
                             />
-                            <span className="text-sm font-mono text-gh-textBase">{r.name}</span>
+                            <span className="text-sm font-mono text-gh-textBase dark:text-slate-200">{r.name}</span>
                           </label>
                         ))}
                         {!repos?.length && (
-                          <div className="p-3 text-sm text-gray-500 text-center italic">No repositories found</div>
+                          <div className="p-3 text-sm text-gray-500 dark:text-slate-400 text-center italic">No repositories found</div>
                         )}
                       </div>
                     </div>
@@ -247,11 +247,11 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
             </div>
           </div>
 
-          <hr className="border-gh-border" />
+          <hr className="border-gh-border dark:border-slate-700" />
 
           <div>
             <div className="flex justify-between items-end mb-3">
-              <label className="block text-sm font-bold text-gh-textBase">Compliance Conditions</label>
+              <label className="block text-sm font-bold text-gh-textBase dark:text-slate-200">Compliance Conditions</label>
               <button 
                 onClick={addCondition}
                 className="text-xs font-semibold text-gh-blue hover:text-gh-blueHover"
@@ -262,20 +262,20 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
             <div className="space-y-4">
               {conditions.map((cond, idx) => (
-                <div key={idx} className="border border-gh-border rounded-lg bg-gray-50/30 p-4 relative">
+                <div key={idx} className="border border-gh-border dark:border-slate-700 rounded-lg bg-gray-50/30 dark:bg-slate-800/30 p-4 relative">
                   <button 
                     onClick={() => removeCondition(idx)}
-                    className="absolute top-3 right-3 text-gray-400 hover:text-red-500"
+                    className="absolute top-3 right-3 text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400"
                   >
                     <i className="fa-solid fa-trash-can"></i>
                   </button>
 
                   <div className="mb-4 pr-6">
-                    <label className="block text-xs font-semibold text-gh-textBase mb-1">Condition Type</label>
+                    <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Condition Type</label>
                     <select 
                       value={cond.type || "branch_protection"}
                       onChange={(e) => updateCondition(idx, "type", e.target.value)}
-                      className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                      className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                     >
                       <option value="branch_protection">Branch Protection Rule</option>
                       <option value="query">Security Insight Query</option>
@@ -285,7 +285,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                   {(!cond.type || cond.type === "branch_protection") && (
                     <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gh-textBase mb-1">Branch Patterns</label>
+                    <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Branch Patterns</label>
                     <TagInput
                       tags={cond.branchPatterns || []}
                       onChange={(tags) => updateCondition(idx, "branchPatterns", tags)}
@@ -298,22 +298,22 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
                     <div className="flex items-center gap-2 mt-4 mb-4">
                       <div 
-                        className={`w-10 h-5 flex items-center rounded-full p-1 cursor-pointer transition-colors ${cond.requiresProtection ? 'bg-gh-blue' : 'bg-gray-300'}`}
+                        className={`w-10 h-5 flex items-center rounded-full p-1 cursor-pointer transition-colors ${cond.requiresProtection ? 'bg-gh-blue' : 'bg-gray-300 dark:bg-slate-600'}`}
                         onClick={() => updateCondition(idx, "requiresProtection", !cond.requiresProtection)}
                       >
                         <div className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${cond.requiresProtection ? 'translate-x-5' : ''}`}></div>
                       </div>
-                      <span className="text-sm font-medium text-gh-textBase">Check for protection rules</span>
+                      <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">Check for protection rules</span>
                     </div>
 
                   {cond.requiresProtection && (
-                    <div className="mt-3 border-t border-gh-border pt-4">
+                    <div className="mt-3 border-t border-gh-border dark:border-slate-700 pt-4">
                       <div className="mb-3">
-                        <label className="block text-xs font-semibold text-gh-textBase mb-1">Protection Type</label>
+                        <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Protection Type</label>
                         <select 
                           value={cond.protectionType || "any"}
                           onChange={(e) => updateCondition(idx, "protectionType", e.target.value)}
-                          className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                          className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                         >
                           <option value="any">Must have ANY protection</option>
                           <option value="ruleset">Must use Repository Ruleset</option>
@@ -322,11 +322,11 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                       </div>
 
                       <div className="mb-3">
-                        <label className="block text-xs font-semibold text-gh-textBase mb-1">Rule Matching Mode</label>
+                        <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Rule Matching Mode</label>
                         <select 
                           value={cond.ruleMatchType || "at_least"}
                           onChange={(e) => updateCondition(idx, "ruleMatchType", e.target.value)}
-                          className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                          className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                         >
                           <option value="any">Any rules (just check if protection exists)</option>
                           <option value="at_least">Must have at least the selected rules</option>
@@ -335,8 +335,8 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                       </div>
 
                       {(!cond.ruleMatchType || cond.ruleMatchType !== "any") && (
-                        <div className="bg-white border border-gray-200 rounded p-3 text-sm">
-                          <h4 className="font-semibold text-xs text-gh-muted uppercase tracking-wider mb-3">Required Rules</h4>
+                        <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded p-3 text-sm">
+                          <h4 className="font-semibold text-xs text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-3">Required Rules</h4>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-4">
                         <label className="flex items-center gap-2">
@@ -351,13 +351,13 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
                         {cond.rules?.requirePr && (
                           <div className="flex items-center gap-2">
-                            <span className="text-xs text-gh-muted">Min. Approvals:</span>
+                            <span className="text-xs text-gh-muted dark:text-slate-400">Min. Approvals:</span>
                             <input 
                               type="number" 
                               min="1" max="5"
                               value={cond.rules.minApprovals || 1}
                               onChange={(e) => updateRule(idx, "minApprovals", parseInt(e.target.value))}
-                              className="w-16 rounded-md border-gray-300 py-1 px-2 text-xs ring-1 ring-inset ring-gray-300 outline-none focus:border-gh-blue"
+                              className="w-16 rounded-md border-gray-300 dark:border-slate-600 py-1 px-2 text-xs ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200 focus:border-gh-blue"
                             />
                           </div>
                         )}
@@ -394,7 +394,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                       </div>
 
                       <details className="group/details mt-3">
-                        <summary className="text-xs font-semibold text-gh-blue cursor-pointer hover:underline list-none flex items-center gap-1.5 select-none pt-2 border-t border-gray-100">
+                        <summary className="text-xs font-semibold text-gh-blue cursor-pointer hover:underline list-none flex items-center gap-1.5 select-none pt-2 border-t border-gray-100 dark:border-slate-700">
                           <i className="ph-bold ph-caret-right text-[10px] group-open/details:rotate-90 transition-transform"></i>
                           Advanced Rules
                         </summary>
@@ -472,7 +472,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                 {cond.type === ("query" as any) && (
                   <div className="space-y-4 pt-2">
                     <div>
-                      <label className="block text-xs font-semibold text-gh-textBase mb-1">Select Insight Query</label>
+                      <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Select Insight Query</label>
                       <select 
                         value={cond.queryId || ""}
                         onChange={(e) => {
@@ -490,7 +490,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             updateCondition(idx, "queryAdvanced", undefined);
                           }
                         }}
-                        className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                        className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                       >
                         <option value="" disabled>Select a query...</option>
                         {QUERY_OPTIONS.map(q => (
@@ -505,7 +505,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                         <>
                           {selectedQuery?.requiresParam && (
                             <div>
-                              <label className="block text-xs font-semibold text-gh-textBase mb-1">{selectedQuery.paramLabel}</label>
+                              <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">{selectedQuery.paramLabel}</label>
                               {selectedQuery.useTagInput ? (
                                 <TagInput
                                   tags={cond.queryParam ? cond.queryParam.split(",").map(s => s.trim()).filter(Boolean) : []}
@@ -521,21 +521,21 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   value={cond.queryParam || ""}
                                   onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
                                   placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
-                                  className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                                  className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                                 />
                               )}
                             </div>
                           )}
 
                           {selectedQuery?.hasAdvancedRules && (
-                            <div className="bg-white border border-gray-200 rounded p-3 text-sm mt-3">
-                              <h4 className="font-semibold text-xs text-gh-muted uppercase tracking-wider mb-3">Advanced Rules</h4>
+                            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded p-3 text-sm mt-3">
+                              <h4 className="font-semibold text-xs text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-3">Advanced Rules</h4>
                               <div className="mb-3">
-                                <label className="block text-xs font-semibold text-gh-textBase mb-1">Protection Type</label>
+                                <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Protection Type</label>
                                 <select 
                                   value={cond.queryAdvanced?.protectionType || "any"}
                                   onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}
-                                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                                  className="block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                                 >
                                   <option value="any">Any protection</option>
                                   <option value="classic">Classic only</option>
@@ -581,7 +581,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                 {cond.type === ("query" as any) && (
                   <div className="space-y-4 pt-2">
                     <div>
-                      <label className="block text-xs font-semibold text-gh-textBase mb-1">Select Insight Query</label>
+                      <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Select Insight Query</label>
                       <select 
                         value={cond.queryId || ""}
                         onChange={(e) => {
@@ -599,7 +599,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             updateCondition(idx, "queryAdvanced", undefined);
                           }
                         }}
-                        className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                        className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                       >
                         <option value="" disabled>Select a query...</option>
                         {QUERY_OPTIONS.map(q => (
@@ -614,7 +614,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                         <>
                           {selectedQuery?.requiresParam && (
                             <div>
-                              <label className="block text-xs font-semibold text-gh-textBase mb-1">{selectedQuery.paramLabel}</label>
+                              <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">{selectedQuery.paramLabel}</label>
                               {selectedQuery.useTagInput ? (
                                 <TagInput
                                   tags={cond.queryParam ? cond.queryParam.split(",").map(s => s.trim()).filter(Boolean) : []}
@@ -630,21 +630,21 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   value={cond.queryParam || ""}
                                   onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
                                   placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
-                                  className="block w-full rounded-md border-gh-border shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                                  className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                                 />
                               )}
                             </div>
                           )}
 
                           {selectedQuery?.hasAdvancedRules && (
-                            <div className="bg-white border border-gray-200 rounded p-3 text-sm mt-3">
-                              <h4 className="font-semibold text-xs text-gh-muted uppercase tracking-wider mb-3">Advanced Rules</h4>
+                            <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded p-3 text-sm mt-3">
+                              <h4 className="font-semibold text-xs text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-3">Advanced Rules</h4>
                               <div className="mb-3">
-                                <label className="block text-xs font-semibold text-gh-textBase mb-1">Protection Type</label>
+                                <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Protection Type</label>
                                 <select 
                                   value={cond.queryAdvanced?.protectionType || "any"}
                                   onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}
-                                  className="block w-full rounded-md border-gray-300 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 outline-none"
+                                  className="block w-full rounded-md border-gray-300 dark:border-slate-600 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                                 >
                                   <option value="any">Any protection</option>
                                   <option value="classic">Classic only</option>
@@ -688,11 +688,11 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                 </div>
               ))}
               {conditions.length === 0 && (
-                <div className="text-sm text-gh-muted italic py-2">No conditions defined. Scanner will flag nothing.</div>
+                <div className="text-sm text-gh-muted dark:text-slate-400 italic py-2">No conditions defined. Scanner will flag nothing.</div>
               )}
             </div>
             {errorMsg && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-md flex items-start gap-2 animate-fade-in">
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 text-sm rounded-md flex items-start gap-2 animate-fade-in">
                 <i className="fa-solid fa-circle-exclamation mt-0.5"></i>
                 <span>{errorMsg}</span>
               </div>
@@ -700,10 +700,10 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-gh-border bg-gray-50/50 flex justify-end gap-3 rounded-b-[12px] shrink-0">
+        <div className="px-6 py-4 border-t border-gh-border dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 flex justify-end gap-3 rounded-b-[12px] shrink-0">
           <button 
             onClick={onClose}
-            className="px-4 py-2 border border-gh-border shadow-sm text-sm font-medium rounded-md text-gh-textBase bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200"
+            className="px-4 py-2 border border-gh-border dark:border-slate-700 shadow-sm text-sm font-medium rounded-md text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 dark:focus:ring-slate-600"
           >
             Cancel
           </button>
