@@ -29,6 +29,7 @@ import {
   protectBranch,
   getProtection,
   buildRulesetRules,
+  buildTagRulesetRules,
 } from "../services/branchService";
 import {
   putTemplateRaw,
@@ -369,11 +370,14 @@ router.post("/:id/resolve-conflict", async (req: Request<{ id: string }>, res: R
 
     if (resolution === "override") {
       if (cp.type === "ruleset") {
+        const isTagRuleset = !!cp.templateConfig?._isTagRuleset;
+
         let originalConfig: any;
         let currentExistingId: number | undefined;
         try {
-          const rulesets = await octokit.rest.repos.getRepoRulesets({ owner: org, repo: cp.repo });
-          const match = (rulesets.data as any[]).find((r: any) => r.name === cp.name);
+          const rulesets = await octokit.rest.repos.getRepoRulesets({ owner: org, repo: cp.repo, per_page: 100, includes_parents: false });
+          const list = Array.isArray(rulesets.data) ? rulesets.data : [];
+          const match = list.find((r: any) => r.name === cp.name);
           if (match) currentExistingId = match.id;
         } catch { /* best effort - fall back to stored ID */ }
         if (!currentExistingId && cp.existingId) currentExistingId = cp.existingId;
@@ -387,49 +391,91 @@ router.post("/:id/resolve-conflict", async (req: Request<{ id: string }>, res: R
         }
 
         const protection = cp.templateConfig;
-        const branchNames: string[] = cp.existingConfig?.conditions?.ref_name?.include?.map((ref: string) => ref.replace("refs/heads/", "")) || [cp.name];
         let createdId: number | undefined;
 
-        if (protection.type === "ruleset_json" && protection.rawJson) {
-          const { id: _id, source: _s, source_type: _st, node_id: _n, _links: _l, ...payload } = protection.rawJson;
-          const { data: created } = await octokit.rest.repos.createRepoRuleset({
-            owner: org, repo: cp.repo, ...payload,
-            name: cp.name,
-            conditions: { ref_name: { include: branchNames.map((b: string) => `refs/heads/${b}`), exclude: [] } },
-          });
-          createdId = created.id;
-        } else {
-          const rules: any[] = buildRulesetRules(protection);
-          if (rules.length === 0) rules.push({ type: "pull_request", parameters: { required_approving_review_count: 0 } });
-          let bypassActors: any[];
-          if (protection.bypassActors && protection.bypassActors.length > 0) {
-            bypassActors = protection.bypassActors;
-          } else if (protection.enforceAdmins) {
-            bypassActors = [];
-          } else {
-            bypassActors = [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }];
-          }
-          const { data: created } = await octokit.rest.repos.createRepoRuleset({
-            owner: org, repo: cp.repo,
-            name: cp.name,
-            target: "branch",
-            enforcement: (protection.enforcement as any) || "active",
-            bypass_actors: bypassActors,
-            conditions: { ref_name: { include: branchNames.map((b: string) => `refs/heads/${b}`), exclude: [] } },
-            rules,
-          });
-          createdId = created.id;
-        }
+        if (isTagRuleset) {
+          const tagPatterns: string[] = protection.tagPatterns || cp.existingConfig?.conditions?.ref_name?.include?.map((ref: string) => ref.replace("refs/tags/", "")) || [];
 
-        const undoPayload = {
-          action: "undo_override_ruleset",
-          params: { repo: cp.repo, newRulesetId: createdId, originalConfig: originalConfig || cp.existingConfig, templateConfig: cp.templateConfig, branchNames },
-        };
-        await updateActivityConflictResolution(entry.id, "override");
-        await updateActivityUndoPayload(entry.id, undoPayload);
+          if (protection.rawJson) {
+            const { id: _id, source: _s, source_type: _st, node_id: _n, _links: _l, created_at: _ca, updated_at: _ua, ...payload } = protection.rawJson;
+            if (payload.bypass_actors) {
+              payload.bypass_actors = payload.bypass_actors.map((a: any) => ({ ...a, bypass_mode: "always" }));
+            }
+            const { data: created } = await octokit.rest.repos.createRepoRuleset({
+              owner: org, repo: cp.repo, ...payload,
+              name: cp.name,
+              target: "tag",
+              conditions: { ref_name: { include: tagPatterns.map((t: string) => `refs/tags/${t}`), exclude: [] } },
+            });
+            createdId = created.id;
+          } else {
+            const rules: any[] = buildTagRulesetRules(protection);
+            if (rules.length === 0) rules.push({ type: "creation" });
+            const bypassActors = (protection.bypassActors && protection.bypassActors.length > 0)
+              ? protection.bypassActors.map((a: any) => ({ ...a, bypass_mode: "always" }))
+              : [];
+            const { data: created } = await octokit.rest.repos.createRepoRuleset({
+              owner: org, repo: cp.repo,
+              name: cp.name,
+              target: "tag",
+              enforcement: (protection.enforcement as any) || "active",
+              bypass_actors: bypassActors,
+              conditions: { ref_name: { include: tagPatterns.map((t: string) => `refs/tags/${t}`), exclude: [] } },
+              rules,
+            });
+            createdId = created.id;
+          }
+
+          const undoPayload = {
+            action: "undo_override_ruleset",
+            params: { repo: cp.repo, newRulesetId: createdId, originalConfig: originalConfig || cp.existingConfig, templateConfig: cp.templateConfig, tagPatterns, isTagRuleset: true },
+          };
+          await updateActivityConflictResolution(entry.id, "override");
+          await updateActivityUndoPayload(entry.id, undoPayload);
+        } else {
+          const branchNames: string[] = cp.existingConfig?.conditions?.ref_name?.include?.map((ref: string) => ref.replace("refs/heads/", "")) || [cp.name];
+
+          if (protection.type === "ruleset_json" && protection.rawJson) {
+            const { id: _id, source: _s, source_type: _st, node_id: _n, _links: _l, ...payload } = protection.rawJson;
+            const { data: created } = await octokit.rest.repos.createRepoRuleset({
+              owner: org, repo: cp.repo, ...payload,
+              name: cp.name,
+              conditions: { ref_name: { include: branchNames.map((b: string) => `refs/heads/${b}`), exclude: [] } },
+            });
+            createdId = created.id;
+          } else {
+            const rules: any[] = buildRulesetRules(protection);
+            if (rules.length === 0) rules.push({ type: "pull_request", parameters: { required_approving_review_count: 0 } });
+            let bypassActors: any[];
+            if (protection.bypassActors && protection.bypassActors.length > 0) {
+              bypassActors = protection.bypassActors;
+            } else if (protection.enforceAdmins) {
+              bypassActors = [];
+            } else {
+              bypassActors = [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }];
+            }
+            const { data: created } = await octokit.rest.repos.createRepoRuleset({
+              owner: org, repo: cp.repo,
+              name: cp.name,
+              target: "branch",
+              enforcement: (protection.enforcement as any) || "active",
+              bypass_actors: bypassActors,
+              conditions: { ref_name: { include: branchNames.map((b: string) => `refs/heads/${b}`), exclude: [] } },
+              rules,
+            });
+            createdId = created.id;
+          }
+
+          const undoPayload = {
+            action: "undo_override_ruleset",
+            params: { repo: cp.repo, newRulesetId: createdId, originalConfig: originalConfig || cp.existingConfig, templateConfig: cp.templateConfig, branchNames },
+          };
+          await updateActivityConflictResolution(entry.id, "override");
+          await updateActivityUndoPayload(entry.id, undoPayload);
+        }
         await logActivity(
           "conflict.override" as any, actor, cp.repo, cp.name,
-          `Overrode existing ruleset "${cp.name}" with template configuration`,
+          `Overrode existing ${isTagRuleset ? "tag " : ""}ruleset "${cp.name}" with template configuration`,
           undefined, "app", undefined, undefined,
           { linkedActivityId: entry.id }
         );
@@ -477,7 +523,7 @@ router.post("/:id/resolve-conflict", async (req: Request<{ id: string }>, res: R
       await updateActivityConflictResolution(entry.id, "skip");
       await logActivity(
         "conflict.skip" as any, actor, cp.repo, cp.name,
-        `Skipped conflict for ${cp.type === "ruleset" ? "ruleset" : "classic protection"} "${cp.name}"`,
+        `Skipped conflict for ${cp.type === "ruleset" ? (cp.templateConfig?._isTagRuleset ? "tag ruleset" : "ruleset") : "classic protection"} "${cp.name}"`,
         undefined, "app", undefined, undefined,
         { linkedActivityId: entry.id }
       );
@@ -573,6 +619,34 @@ async function executeRetry(entry: ActivityEntry, accessToken: string): Promise<
     case "rename_branch":
       await renameBranch(octokit, params.repo, params.from, params.to);
       return { action: "rename_branch", params: { repo: params.repo, from: params.to, to: params.from } };
+
+    case "create_tag_ruleset": {
+      const tagRule = params.tagRule;
+      const tagPatterns: string[] = params.tagPatterns || tagRule?.tagPatterns || [];
+      if (!tagRule || tagPatterns.length === 0) return undefined;
+
+      const rulesetName = tagRule.rulesetName || `Tag Ruleset (${tagPatterns.join(", ")})`;
+      const rules = buildTagRulesetRules(tagRule);
+      if (rules.length === 0) rules.push({ type: "creation" });
+
+      const bypassActors = (tagRule.bypassActors && tagRule.bypassActors.length > 0)
+        ? tagRule.bypassActors.map((a: any) => ({ ...a, bypass_mode: "always" }))
+        : [];
+
+      const { data: created } = await octokit.rest.repos.createRepoRuleset({
+        owner: org,
+        repo: params.repo,
+        name: rulesetName,
+        target: "tag",
+        enforcement: (tagRule.enforcement as any) || "active",
+        bypass_actors: bypassActors,
+        conditions: {
+          ref_name: { include: tagPatterns.map((t: string) => `refs/tags/${t}`), exclude: [] },
+        },
+        rules,
+      });
+      return { action: "delete_ruleset", params: { repo: params.repo, rulesetId: created.id, tagRule, tagPatterns } };
+    }
 
     default:
       return undefined;

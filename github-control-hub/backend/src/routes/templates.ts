@@ -28,7 +28,7 @@ router.get("/:id", async (req: Request<{ id: string }>, res: Response) => {
 });
 
 router.post("/", async (req: Request, res: Response) => {
-  const { name, description, branches, autoApplyOnNewRepo, exclusionLists } = req.body;
+  const { name, description, branches, tags, autoApplyOnNewRepo, exclusionLists } = req.body;
   if (!name || !branches?.length) {
     res.status(400).json({ error: "name and at least one branch rule are required" });
     return;
@@ -45,6 +45,7 @@ router.post("/", async (req: Request, res: Response) => {
       name,
       description: description ?? "",
       branches,
+      tags: Array.isArray(tags) ? tags : undefined,
       autoApplyOnNewRepo: autoApplyOnNewRepo ?? false,
       exclusionLists: mergedExclusions,
       createdBy: req.user!.login,

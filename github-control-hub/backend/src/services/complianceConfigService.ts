@@ -5,8 +5,9 @@ export interface ComplianceRule {
   name: string;
   enabled: boolean;
   weight: number;
-  type: "branch_protection" | "rulesets" | "required_files" | "outside_collaborators" | "query" | "codeowners";
+  type: "branch_protection" | "tag_protection" | "rulesets" | "required_files" | "outside_collaborators" | "query" | "codeowners";
   branchName?: string;
+  tagPatterns?: string[];
   protectionType?: "any" | "classic" | "ruleset";
   rules?: {
     requirePr?: boolean;

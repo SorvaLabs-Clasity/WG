@@ -86,6 +86,32 @@ export function buildRulesetRules(protection: Protection): any[] {
   return rules;
 }
 
+type TagProtection = import("./templateService").TagRule;
+
+export function buildTagRulesetRules(tag: TagProtection): any[] {
+  const rules: any[] = [];
+
+  if (tag.preventCreation) rules.push({ type: "creation" });
+  if (tag.preventUpdate) rules.push({ type: "update", parameters: { update_allows_fetch_and_merge: false } });
+  if (tag.preventDeletion) rules.push({ type: "deletion" });
+  if (tag.preventForcePush) rules.push({ type: "non_fast_forward" });
+  if (tag.requireSignedCommits) rules.push({ type: "required_signatures" });
+
+  if (tag.namePattern) {
+    rules.push({
+      type: "tag_name_pattern",
+      parameters: {
+        operator: tag.namePattern.operator,
+        pattern: tag.namePattern.pattern,
+        negate: tag.namePattern.negate ?? false,
+        name: tag.namePattern.name || "Tag name pattern",
+      },
+    });
+  }
+
+  return rules;
+}
+
 export interface BranchSummary {
   name: string;
   protected: boolean;
@@ -420,14 +446,25 @@ export async function getRuleset(octokit: Octokit, repo: string, rulesetId: numb
   return data;
 }
 
-export async function listRulesets(octokit: Octokit, repo: string) {
+export async function listRulesets(octokit: Octokit, repo: string): Promise<any[]> {
   const org = getOrg();
+  const all: any[] = [];
   try {
-    const { data } = await octokit.rest.repos.getRepoRulesets({
-      owner: org,
-      repo,
-    });
-    return data;
+    let page = 1;
+    for (;;) {
+      const { data } = await octokit.rest.repos.getRepoRulesets({
+        owner: org,
+        repo,
+        per_page: 100,
+        page,
+        includes_parents: false,
+      });
+      if (!Array.isArray(data)) break;
+      all.push(...data);
+      if (data.length < 100) break;
+      page++;
+    }
+    return all;
   } catch (err: unknown) {
     console.error("Error listing rulesets:", err);
     return [];

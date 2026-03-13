@@ -18,17 +18,22 @@ router.get("/actors", async (req: Request, res: Response) => {
     const octokit = createOctokit(req.user!.accessToken);
     const org = getOrg();
 
+    const WRITE_BASE_ROLES = new Set(["write", "maintain", "admin"]);
     const builtInRoles = [
-      { id: 5, name: "Admin", description: "Full access to the repository" },
-      { id: 1, name: "Maintain", description: "Manage repository without access to sensitive or destructive actions" },
-      { id: 2, name: "Write", description: "Read and write access to code, issues, and pull requests" },
+      { id: 5, name: "Admin", description: "Full access to the repository", base_role: "admin", has_write: true },
+      { id: 1, name: "Maintain", description: "Manage repository without access to sensitive or destructive actions", base_role: "maintain", has_write: true },
+      { id: 2, name: "Write", description: "Read and write access to code, issues, and pull requests", base_role: "write", has_write: true },
     ];
 
-    let customRoles: Array<{ id: number; name: string; description: string }> = [];
+    let customRoles: Array<{ id: number; name: string; description: string; base_role: string; has_write: boolean }> = [];
     try {
       const { data } = await (octokit as any).rest.orgs.listCustomRepoRoles({ org });
       if (data?.custom_roles) {
-        customRoles = data.custom_roles.map((r: any) => ({ id: r.id, name: r.name, description: r.description || "" }));
+        customRoles = data.custom_roles.map((r: any) => ({
+          id: r.id, name: r.name, description: r.description || "",
+          base_role: r.base_role || "read",
+          has_write: WRITE_BASE_ROLES.has(r.base_role || "read"),
+        }));
       }
     } catch { /* custom roles may not be available on all plans */ }
 

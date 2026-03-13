@@ -2,6 +2,8 @@ export type OnBaseBranchMissing = "skip_rule" | "use_default" | "undo_repo";
 
 export interface BranchRule {
   branchNames: string[];
+  /** When true (default), create branches that don't exist. When false, only apply protection to branches that already exist. */
+  createBranchesIfMissing?: boolean;
   baseBranchMode?: "default" | "specific";
   baseBranch?: string;
   onBaseBranchMissing?: OnBaseBranchMissing;
@@ -65,11 +67,35 @@ export interface BranchRule {
   } | null;
 }
 
+export interface TagRule {
+  tagPatterns: string[];
+  rulesetName?: string;
+  enforcement?: "active" | "evaluate" | "disabled";
+  preventCreation?: boolean;
+  preventUpdate?: boolean;
+  preventDeletion?: boolean;
+  preventForcePush?: boolean;
+  requireSignedCommits?: boolean;
+  rawJson?: any;
+  namePattern?: {
+    operator: "starts_with" | "ends_with" | "contains" | "regex";
+    pattern: string;
+    negate?: boolean;
+    name?: string;
+  };
+  bypassActors?: Array<{
+    actor_id: number;
+    actor_type: "RepositoryRole" | "Team" | "Integration" | "OrganizationAdmin";
+    bypass_mode: "always" | "pull_request";
+  }>;
+}
+
 export interface RepoTemplate {
   id: string;
   name: string;
   description: string;
   branches: BranchRule[];
+  tags?: TagRule[];
   autoApplyOnNewRepo: boolean;
   exclusionLists?: string[];
   createdBy: string;

@@ -8,6 +8,7 @@ import { TagInput } from "../components/TagInput";
 
 const RULE_TYPE_LABELS: Record<string, string> = {
   branch_protection: "Branch Protection",
+  tag_protection: "Tag Protection",
   rulesets: "Active Rulesets",
   required_files: "Required Files",
   outside_collaborators: "Outside Collaborators",
@@ -17,6 +18,7 @@ const RULE_TYPE_LABELS: Record<string, string> = {
 
 const RULE_TYPE_ICONS: Record<string, string> = {
   branch_protection: "fa-solid fa-shield-halved",
+  tag_protection: "fa-solid fa-tag",
   rulesets: "fa-solid fa-list-check",
   required_files: "fa-solid fa-file-lines",
   outside_collaborators: "fa-solid fa-user-group",
@@ -26,6 +28,7 @@ const RULE_TYPE_ICONS: Record<string, string> = {
 
 const RULE_ICON_COLORS: Record<string, { bg: string; text: string }> = {
   branch_protection: { bg: "bg-blue-50 dark:bg-blue-950/50", text: "text-blue-600 dark:text-blue-400" },
+  tag_protection: { bg: "bg-teal-50 dark:bg-teal-950/50", text: "text-teal-600 dark:text-teal-400" },
   rulesets: { bg: "bg-indigo-50 dark:bg-indigo-950/50", text: "text-indigo-600 dark:text-indigo-400" },
   required_files: { bg: "bg-cyan-50 dark:bg-cyan-950/50", text: "text-cyan-600 dark:text-cyan-400" },
   outside_collaborators: { bg: "bg-amber-50 dark:bg-amber-950/50", text: "text-amber-600 dark:text-amber-400" },
@@ -91,6 +94,7 @@ export default function ComplianceDashboardPage() {
   const addRule = (type: ComplianceRule["type"]) => {
     const base: ComplianceRule = { id: newId(), name: RULE_TYPE_LABELS[type] || "New Rule", enabled: true, weight: 10, type };
     if (type === "branch_protection") { base.branchName = "__default__"; base.protectionType = "any"; }
+    if (type === "tag_protection") base.tagPatterns = ["v*"];
     if (type === "required_files") base.requiredFiles = ["README.md"];
     if (type === "outside_collaborators") base.maxOutsideCollaborators = 0;
     if (type === "query") base.queryId = QUERY_OPTIONS[0].id;
@@ -411,7 +415,7 @@ export default function ComplianceDashboardPage() {
             <div className="p-6 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
               <p className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase mb-3">Add Rule</p>
               <div className="grid grid-cols-3 gap-3">
-                {(["branch_protection", "rulesets", "required_files", "outside_collaborators", "codeowners", "query"] as const).map(t => (
+                {(["branch_protection", "tag_protection", "rulesets", "required_files", "outside_collaborators", "codeowners", "query"] as const).map(t => (
                   <button key={t} onClick={() => addRule(t)} className="p-3 border border-dashed border-slate-300 dark:border-slate-600 rounded-lg text-slate-500 dark:text-slate-400 hover:border-blue-400 dark:hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 flex flex-col items-center gap-1 transition-colors">
                     <i className={`${RULE_TYPE_ICONS[t]} text-lg`}></i>
                     <span className="text-[10px] font-bold">{RULE_TYPE_LABELS[t]}</span>
@@ -557,6 +561,12 @@ function RuleCard({ rule, onToggle, onRemove, onUpdate, onUpdateField, onUpdateR
       {rule.enabled && (
         <div className="px-4 pb-4 border-t border-slate-100 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-800/50 pt-4">
           {rule.type === "branch_protection" && <BranchProtectionConfig rule={rule} onUpdateField={onUpdateField} onUpdateRules={onUpdateRules} onUpdate={onUpdate} />}
+          {rule.type === "tag_protection" && (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500 dark:text-slate-400">Tag patterns that must have active ruleset protection (e.g. v*, release-*).</p>
+              <TagInput tags={rule.tagPatterns || []} onChange={tags => onUpdateField("tagPatterns", tags)} placeholder="e.g. v* or release-* + Enter" icon="ph-tag" colorClass="gray" />
+            </div>
+          )}
           {rule.type === "rulesets" && <p className="text-xs text-slate-500 dark:text-slate-400">Checks that at least one active repository ruleset exists.</p>}
           {rule.type === "required_files" && <RequiredFilesConfig rule={rule} onUpdate={onUpdate} />}
           {rule.type === "outside_collaborators" && (

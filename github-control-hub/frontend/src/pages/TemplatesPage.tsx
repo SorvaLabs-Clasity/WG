@@ -16,9 +16,10 @@ import {
 } from "../hooks/useExclusions";
 import { useResolveConflict } from "../hooks/useActivity";
 import { useRepos } from "../hooks/useRepos";
-import type { BranchRule } from "../types/Template";
+import type { BranchRule, TagRule } from "../types/Template";
 import { buildConflictComparison, type ConflictItem } from "../api/templates";
 import ProtectBranchModal, { DEFAULT_PROTECTION } from "../components/ProtectBranchModal";
+import ProtectTagModal, { DEFAULT_TAG_PROTECTION } from "../components/ProtectTagModal";
 
 const EMPTY_RULE: BranchRule & { inputVal: string } = {
   branchNames: [],
@@ -65,6 +66,14 @@ export default function TemplatesPage() {
     { branchNames: ["main"], inputVal: "", protection: { ...DEFAULT_PROTECTION, requiredApprovals: 2 } },
     { branchNames: ["develop"], inputVal: "", protection: null },
   ]);
+
+  const DEFAULT_TAG_RULE: TagRule & { inputVal: string; hasProtection: boolean } = {
+    tagPatterns: [], inputVal: "",
+    hasProtection: false,
+  };
+
+  const [tagRules, setTagRules] = useState<(TagRule & { inputVal: string; hasProtection: boolean })[]>([]);
+  const [editingTagRuleIdx, setEditingTagRuleIdx] = useState<number | null>(null);
 
   // Exclusion list form state
   const [createExclOpen, setCreateExclOpen] = useState(false);
@@ -147,6 +156,7 @@ export default function TemplatesPage() {
       { branchNames: ["main"], inputVal: "", protection: { ...DEFAULT_PROTECTION, requiredApprovals: 2 } },
       { branchNames: ["develop"], inputVal: "", protection: null },
     ]);
+    setTagRules([]);
     setEditingId(null);
   };
 
@@ -157,15 +167,25 @@ export default function TemplatesPage() {
     setSelectedExclusions(tmpl.exclusionLists || []);
     // Deep clone the rules and ensure inputVal exists
     setBranchRules(JSON.parse(JSON.stringify(tmpl.branches)).map((r: any) => ({ ...r, inputVal: "" })));
+    setTagRules((tmpl.tags || []).map((t: any) => {
+      const cloned = JSON.parse(JSON.stringify(t));
+      const hasProtection = !!(cloned.preventCreation || cloned.preventUpdate || cloned.preventDeletion || cloned.preventForcePush || cloned.requireSignedCommits || cloned.namePattern?.pattern || cloned.bypassActors?.length || cloned.rawJson || cloned.rulesetName || cloned.enforcement);
+      return { ...cloned, inputVal: "", hasProtection };
+    }));
     setEditingId(tmpl.id);
     setCreateOpen(true);
   };
 
   const handleCreateOrUpdate = () => {
     // Check if there's text in the input that hasn't been submitted yet.
-    const hasPendingInput = branchRules.some(r => r.inputVal && r.inputVal.trim() !== "");
-    if (hasPendingInput) {
+    const hasPendingBranchInput = branchRules.some(r => r.inputVal && r.inputVal.trim() !== "");
+    if (hasPendingBranchInput) {
       setSnack({ msg: "Please press Enter to add all typed branch names before saving.", severity: "error" });
+      return;
+    }
+    const hasPendingTagInput = tagRules.some(t => t.inputVal && t.inputVal.trim() !== "");
+    if (hasPendingTagInput) {
+      setSnack({ msg: "Please press Enter to add all typed tag names before saving.", severity: "error" });
       return;
     }
 
@@ -188,12 +208,25 @@ export default function TemplatesPage() {
 
     const finalRules = validRules.map(r => ({
       branchNames: [...r.branchNames],
+      createBranchesIfMissing: r.createBranchesIfMissing !== false,
+      baseBranchMode: r.baseBranchMode,
+      baseBranch: r.baseBranch,
+      onBaseBranchMissing: r.onBaseBranchMissing,
       protection: r.protection
     }));
 
+    const finalTags = tagRules
+      .filter(t => t.tagPatterns.length > 0)
+      .map(({ inputVal, hasProtection, ...t }) => {
+        if (!hasProtection) {
+          return { tagPatterns: t.tagPatterns };
+        }
+        return t;
+      });
+
     if (editingId) {
       updateMutation.mutate(
-        { id: editingId, data: { name, description, branches: finalRules, autoApplyOnNewRepo: autoApply, exclusionLists: selectedExclusions } },
+        { id: editingId, data: { name, description, branches: finalRules, tags: finalTags.length > 0 ? finalTags : undefined, autoApplyOnNewRepo: autoApply, exclusionLists: selectedExclusions } },
         {
           onSuccess: () => {
             setSnack({ msg: `Template "${name}" updated`, severity: "success" });
@@ -205,7 +238,7 @@ export default function TemplatesPage() {
       );
     } else {
       createMutation.mutate(
-        { name, description, branches: finalRules, autoApplyOnNewRepo: autoApply, exclusionLists: selectedExclusions },
+        { name, description, branches: finalRules, tags: finalTags.length > 0 ? finalTags : undefined, autoApplyOnNewRepo: autoApply, exclusionLists: selectedExclusions },
         {
           onSuccess: () => {
             setSnack({ msg: `Template "${name}" created`, severity: "success" });
@@ -232,7 +265,10 @@ export default function TemplatesPage() {
       { templateId: applyOpen, repos: applyRepos },
       {
         onSuccess: (result) => {
-          const parts = [`Created: [${result.created.join(", ")}]`, `Protected: [${result.protected.join(", ")}]`];
+          const parts = [
+            result.created.length ? `Created branches: [${result.created.join(", ")}]` : null,
+            `Protected: [${result.protected.join(", ")}]`,
+          ].filter(Boolean) as string[];
           if (result.errors.length) {
             parts.push(`Errors (${result.errors.length}): ${result.errors.slice(0, 2).join("; ")}${result.errors.length > 2 ? "…" : ""}`);
           }
@@ -808,6 +844,26 @@ export default function TemplatesPage() {
                           <i className="fa-solid fa-trash-can text-sm"></i>
                         </button>
                       </div>
+
+                      {/* Create branches if missing */}
+                      <div className="border-t border-gray-100 dark:border-slate-700 pt-3 mt-3">
+                        <label className="flex items-start gap-2.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={rule.createBranchesIfMissing !== false}
+                            onChange={(e) => {
+                              const updated = [...branchRules];
+                              updated[idx] = { ...rule, createBranchesIfMissing: e.target.checked };
+                              setBranchRules(updated);
+                            }}
+                            className="mt-0.5 w-4 h-4 text-gh-blue border-gray-300 dark:border-slate-600 rounded focus:ring-gh-blue"
+                          />
+                          <span className="text-sm text-gh-textBase dark:text-slate-200">
+                            Create branches if they don&apos;t exist
+                          </span>
+                        </label>
+                        <p className="text-[11px] text-gh-muted dark:text-slate-400 mt-1 ml-6">When unchecked, protection is applied only to branches that already exist.</p>
+                      </div>
                       
                       {/* Base Branch Selector */}
                       <div className="border-t border-gray-100 dark:border-slate-700 pt-3 mt-3">
@@ -974,6 +1030,152 @@ export default function TemplatesPage() {
                     <i className="fa-solid fa-plus"></i> Add Branch
                   </button>
                 </div>
+
+                {/* ── Tag Rules Section ── */}
+                <div className="mt-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-sm font-semibold text-gh-textBase dark:text-slate-200 flex items-center gap-2">
+                      <i className="ph-bold ph-tag text-sm text-slate-400 dark:text-slate-500"></i>
+                      Tag Protection Rules
+                    </h4>
+                    <span className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">Optional</span>
+                  </div>
+
+                  {tagRules.length === 0 && (
+                    <p className="text-xs text-slate-400 dark:text-slate-500 mb-2">No tag rules configured. Add one to protect Git tags.</p>
+                  )}
+
+                  <div className="space-y-3">
+                    {tagRules.map((tag, idx) => (
+                      <div key={idx} className={"border rounded-lg p-4 transition-shadow " + (
+                        tag.hasProtection ? "border-gh-border dark:border-slate-700 bg-white dark:bg-slate-900 shadow-sm ring-1 ring-black/5" : "border-gh-border dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 border-dashed"
+                      )}>
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="flex-1 relative flex items-center bg-gray-50 dark:bg-slate-800 rounded-md border border-gray-300 dark:border-slate-600 shadow-sm focus-within:border-gh-blue focus-within:ring-1 focus-within:ring-gh-blue/30 overflow-hidden min-h-[36px] flex-wrap px-1.5 py-1 gap-1.5 transition-all">
+                            <i className="ph-bold ph-tag text-gray-400 dark:text-slate-500 text-xs ml-2 flex-shrink-0"></i>
+
+                            {tag.tagPatterns.map(p => (
+                              <span key={p} className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shadow-sm text-sm font-mono whitespace-nowrap">
+                                {p}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = [...tagRules];
+                                    updated[idx] = { ...updated[idx], tagPatterns: updated[idx].tagPatterns.filter(t => t !== p) };
+                                    setTagRules(updated);
+                                  }}
+                                  className="text-amber-400 dark:text-amber-600 hover:text-red-500 focus:outline-none"
+                                >
+                                  <i className="ph-bold ph-x text-[10px]"></i>
+                                </button>
+                              </span>
+                            ))}
+
+                            <input
+                              type="text"
+                              value={tag.inputVal}
+                              onChange={e => {
+                                const updated = [...tagRules];
+                                updated[idx] = { ...updated[idx], inputVal: e.target.value };
+                                setTagRules(updated);
+                              }}
+                              onKeyDown={e => {
+                                if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  const val = tag.inputVal.trim();
+                                  if (val && !tag.tagPatterns.includes(val)) {
+                                    const updated = [...tagRules];
+                                    updated[idx] = { ...updated[idx], tagPatterns: [...updated[idx].tagPatterns, val], inputVal: "" };
+                                    setTagRules(updated);
+                                  }
+                                } else if (e.key === "Backspace" && !tag.inputVal && tag.tagPatterns.length > 0) {
+                                  const updated = [...tagRules];
+                                  updated[idx] = { ...updated[idx], tagPatterns: updated[idx].tagPatterns.slice(0, -1) };
+                                  setTagRules(updated);
+                                }
+                              }}
+                              placeholder={tag.tagPatterns.length === 0 ? "Tag pattern (e.g. v*) + Enter" : "Add pattern..."}
+                              className="flex-1 min-w-[120px] border-none focus:ring-0 sm:text-sm py-0.5 font-mono text-sm bg-transparent outline-none m-0 p-0 shadow-none placeholder-gray-400 dark:placeholder-slate-500 dark:text-slate-200"
+                            />
+                          </div>
+                          <button
+                            onClick={() => setTagRules(tagRules.filter((_, i) => i !== idx))}
+                            className="text-gray-400 dark:text-slate-500 hover:text-red-500 p-1 rounded hover:bg-red-50 dark:hover:bg-red-950/50 transition-colors flex-shrink-0"
+                          >
+                            <i className="fa-solid fa-trash-can text-sm"></i>
+                          </button>
+                        </div>
+
+                        <div className="flex flex-col border-t border-gray-100 dark:border-slate-700 pt-3">
+                          <div className="flex items-center justify-between">
+                            <label className="inline-flex items-center cursor-pointer whitespace-nowrap shrink-0">
+                              <input
+                                type="checkbox"
+                                checked={tag.hasProtection}
+                                onChange={() => {
+                                  const updated = [...tagRules];
+                                  if (updated[idx].hasProtection) {
+                                    updated[idx] = { tagPatterns: updated[idx].tagPatterns, inputVal: updated[idx].inputVal, hasProtection: false };
+                                  } else {
+                                    updated[idx] = { ...updated[idx], ...DEFAULT_TAG_PROTECTION, tagPatterns: updated[idx].tagPatterns, inputVal: updated[idx].inputVal, hasProtection: true };
+                                  }
+                                  setTagRules(updated);
+                                }}
+                                className="sr-only peer"
+                              />
+                              <div className="w-9 h-5 bg-gray-200 dark:bg-slate-600 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white dark:after:bg-slate-300 after:border-gray-300 dark:after:border-slate-500 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-green-600 relative"></div>
+                              <span className="ml-2 text-sm font-medium text-gh-textBase dark:text-slate-200 flex-1 pr-2">
+                                {tag.hasProtection ? (
+                                  <>Protect tags</>
+                                ) : (
+                                  <span className="text-gray-500 dark:text-slate-400">Enable Protection</span>
+                                )}
+                              </span>
+                            </label>
+
+                            {tag.hasProtection && (
+                              <button
+                                type="button"
+                                onClick={() => setEditingTagRuleIdx(idx)}
+                                className="px-3 py-1.5 text-xs font-semibold text-gh-blue hover:text-gh-blueHover bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-md transition-colors flex items-center gap-1.5 shadow-sm"
+                              >
+                                <i className="fa-solid fa-sliders text-[10px]"></i> Configure Rules
+                              </button>
+                            )}
+                          </div>
+
+                          {tag.hasProtection && (
+                            <div className="mt-3 pl-4 border-l-2 border-gray-200 dark:border-slate-700 text-sm text-gh-muted dark:text-slate-400">
+                              {tag.rawJson ? (
+                                <span className="flex items-center gap-1.5 text-gh-textBase dark:text-slate-200 font-medium">
+                                  <i className="fa-solid fa-code text-gh-blue"></i>
+                                  Custom JSON Ruleset Configured
+                                </span>
+                              ) : (
+                                <span className="flex items-center gap-1.5">
+                                  <i className="fa-solid fa-shield-halved text-gh-blue"></i>
+                                  Ruleset: {tag.rulesetName || "Unnamed"}
+                                  {(() => {
+                                    const cnt = [tag.preventCreation, tag.preventUpdate, tag.preventDeletion, tag.preventForcePush, tag.requireSignedCommits, !!tag.namePattern?.pattern].filter(Boolean).length;
+                                    return cnt > 0 ? " \u2014 " + cnt + " rule" + (cnt !== 1 ? "s" : "") : "";
+                                  })()}
+                                  {(tag.bypassActors?.length || 0) > 0 && " \u2014 " + tag.bypassActors!.length + " bypass actor" + (tag.bypassActors!.length !== 1 ? "s" : "")}
+                                </span>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => setTagRules([...tagRules, { ...DEFAULT_TAG_RULE }])}
+                    className="w-full mt-3 py-2 border-2 border-dashed border-gray-300 dark:border-slate-600 rounded-lg text-sm font-medium text-gray-500 dark:text-slate-400 hover:text-amber-600 hover:border-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/50 transition-all flex items-center justify-center gap-2"
+                  >
+                    <i className="ph-bold ph-tag"></i> Add Tag Rule
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -986,7 +1188,7 @@ export default function TemplatesPage() {
               </button>
               <button 
                 onClick={handleCreateOrUpdate}
-                disabled={!name || branchRules.some(r => r.inputVal && r.inputVal.trim() !== "") || branchRules.every((r) => r.branchNames.length === 0 && !r.inputVal.trim()) || branchRules.some(r => r.protection?.type === "ruleset" && !(r.protection.rulesetName?.trim())) || createMutation.isPending || updateMutation.isPending}
+                disabled={!name || branchRules.some(r => r.inputVal && r.inputVal.trim() !== "") || tagRules.some(t => t.inputVal && t.inputVal.trim() !== "") || branchRules.every((r) => r.branchNames.length === 0 && !r.inputVal.trim()) || branchRules.some(r => r.protection?.type === "ruleset" && !(r.protection.rulesetName?.trim())) || createMutation.isPending || updateMutation.isPending}
                 className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-gh-blue hover:bg-gh-blueHover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gh-blue/50 disabled:opacity-50"
               >
                 {createMutation.isPending || updateMutation.isPending ? "Saving..." : editingId ? "Save Changes" : "Create Template"}
@@ -1009,6 +1211,23 @@ export default function TemplatesPage() {
             updated[editingRuleIdx].protection = newProtection;
             setBranchRules(updated);
             setEditingRuleIdx(null);
+          }}
+        />
+      )}
+
+      {editingTagRuleIdx !== null && tagRules[editingTagRuleIdx] && (
+        <ProtectTagModal
+          isOpen={true}
+          onClose={() => setEditingTagRuleIdx(null)}
+          tagPatterns={tagRules[editingTagRuleIdx].tagPatterns}
+          initialData={tagRules[editingTagRuleIdx]}
+          isTemplateMode={true}
+          isSaving={false}
+          onSave={(newTagRule) => {
+            const updated = [...tagRules];
+            updated[editingTagRuleIdx] = { ...newTagRule, tagPatterns: updated[editingTagRuleIdx].tagPatterns, inputVal: updated[editingTagRuleIdx].inputVal, hasProtection: true };
+            setTagRules(updated);
+            setEditingTagRuleIdx(null);
           }}
         />
       )}
@@ -1413,8 +1632,8 @@ export default function TemplatesPage() {
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-1">
-                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${item.type === "ruleset" ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60" : "bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 border border-purple-200/60 dark:border-purple-800/60"}`}>
-                                  {item.type === "ruleset" ? "Ruleset" : "Classic"}
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${item.templateConfig?._isTagRuleset ? "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60" : item.type === "ruleset" ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 border border-blue-200/60 dark:border-blue-800/60" : "bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-400 border border-purple-200/60 dark:border-purple-800/60"}`}>
+                                  {item.templateConfig?._isTagRuleset ? "Tag Ruleset" : item.type === "ruleset" ? "Ruleset" : "Classic"}
                                 </span>
                                 <span className="text-sm font-medium text-gh-textBase dark:text-slate-200 truncate">{item.name}</span>
                                 {item.resolved && (

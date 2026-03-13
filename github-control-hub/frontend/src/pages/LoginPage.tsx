@@ -196,7 +196,7 @@ export default function LoginPage() {
         className="fixed top-4 right-4 z-50 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors p-2 rounded-lg hover:bg-white/80 dark:hover:bg-slate-800/80 backdrop-blur"
         title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
       >
-        <i className={`ph-bold ${theme === "dark" ? "ph-sun" : "ph-moon"} text-xl`}></i>
+        <i className={"ph-bold " + (theme === "dark" ? "ph-sun" : "ph-moon") + " text-xl"}></i>
       </button>
 
       <main className="w-full max-w-[480px]">
@@ -260,7 +260,7 @@ export default function LoginPage() {
                             { id: "profile" as const, label: "Profile", show: awsProfiles.length > 0 },
                           ]).filter(t => t.show).map(t => (
                             <button key={t.id} onClick={() => { setAwsMethod(t.id); setAwsSsoStarted(false); }}
-                              className={`flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-colors ${awsMethod === t.id ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                              className={"flex-1 text-[11px] font-semibold py-1.5 rounded-md transition-colors " + (awsMethod === t.id ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
                             >{t.label}</button>
                           ))}
                         </div>
@@ -273,18 +273,22 @@ export default function LoginPage() {
                                 className={inputCls}>
                                 {awsProfiles.filter(p => p.type === "sso").map(p => (
                                   <option key={p.name} value={p.name}>
-                                    {p.name}{p.accountId ? ` (${p.accountId})` : ""}{p.roleName ? ` — ${p.roleName}` : ""}
+                                    {p.name}{p.accountId ? " (" + p.accountId + ")" : ""}{p.roleName ? " — " + p.roleName : ""}
                                   </option>
                                 ))}
                               </select>
                             )}
-                            <div className="flex justify-end">
+                            <div className="flex justify-end gap-3">
                               {!awsSsoStarted ? (
                                 <SmallButton onClick={handleAwsSsoLogin}
-                                  icon="ph-bold ph-browser" label={`Sign in as ${selectedProfile || "default"}`} color="blue" />
+                                  icon="ph-bold ph-browser" label={"Sign in as " + (selectedProfile || "default")} color="blue" />
                               ) : (
-                                <SmallButton onClick={handleReconnectAws} disabled={refreshing === "aws"}
-                                  icon="ph-bold ph-arrow-clockwise" label="I've signed in — Verify" color="emerald" />
+                                <>
+                                  <SmallButton onClick={handleAwsSsoLogin}
+                                    icon="ph-bold ph-browser" label="Reopen browser" color="slate" />
+                                  <SmallButton onClick={handleReconnectAws} disabled={refreshing === "aws"}
+                                    icon="ph-bold ph-arrow-clockwise" label="I've signed in — Verify" color="emerald" />
+                                </>
                               )}
                             </div>
                           </div>
@@ -297,13 +301,13 @@ export default function LoginPage() {
                               className={inputCls}>
                               {awsProfiles.map(p => (
                                 <option key={p.name} value={p.name}>
-                                  {p.name} ({p.type}){p.accountId ? ` — ${p.accountId}` : ""}{p.roleName ? ` / ${p.roleName}` : ""}
+                                  {p.name} ({p.type}){p.accountId ? " — " + p.accountId : ""}{p.roleName ? " / " + p.roleName : ""}
                                 </option>
                               ))}
                             </select>
                             <div className="flex justify-end">
                               <SmallButton onClick={handleUseProfile} disabled={refreshing === "aws" || !selectedProfile}
-                                icon="ph-bold ph-user-switch" label={`Use ${selectedProfile || "profile"}`} color="blue" />
+                                icon="ph-bold ph-user-switch" label={"Use " + (selectedProfile || "profile")} color="blue" />
                             </div>
                           </div>
                         )}
@@ -313,10 +317,10 @@ export default function LoginPage() {
                           <div className="space-y-2">
                             <div className="flex items-center gap-2 mb-1">
                               <button onClick={() => setAkPasteMode(true)}
-                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${akPasteMode ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                                className={"text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors " + (akPasteMode ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
                               >Paste Export Block</button>
                               <button onClick={() => setAkPasteMode(false)}
-                                className={`text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors ${!akPasteMode ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                                className={"text-[10px] font-semibold px-2 py-0.5 rounded-md transition-colors " + (!akPasteMode ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200")}
                               >Individual Fields</button>
                             </div>
 
@@ -387,7 +391,7 @@ export default function LoginPage() {
                       </div>
                       <div className="text-xs text-slate-500 dark:text-slate-400">
                         {ghAuthed
-                          ? status?.github.org ? `Organization: ${status.github.org}` : "Authenticated"
+                          ? status?.github.org ? "Organization: " + status.github.org : "Authenticated"
                           : justSignedOut
                             ? "Signed out — sign in again below"
                             : ghConfigured
@@ -562,8 +566,8 @@ function StatusIcon({ loading, error, ok, icon, neutralWhenFail }: {
     : "bg-red-50 dark:bg-red-950/50 text-red-500";
   const iconClass = loading ? "ph-bold ph-circle-notch animate-spin" : icon;
   return (
-    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${bg}`}>
-      <i className={`${iconClass} text-base`}></i>
+    <div className={"w-8 h-8 rounded-lg flex items-center justify-center shrink-0 " + bg}>
+      <i className={iconClass + " text-base"}></i>
     </div>
   );
 }
@@ -587,15 +591,18 @@ function SmallButton({ onClick, disabled, icon, label, color, hoverColor }: {
     emerald: "text-emerald-600 dark:text-emerald-400",
     red: "text-red-600 dark:text-red-400",
   };
-  const hoverMap: Record<string, string> = {
-    red: "hover:text-red-600 dark:hover:text-red-400",
+  const hoverColorMap: Record<string, string> = {
+    slate: "hover:text-slate-400 dark:hover:text-slate-500",
     blue: "hover:text-blue-700 dark:hover:text-blue-300",
+    emerald: "hover:text-emerald-700 dark:hover:text-emerald-300",
+    red: "hover:text-red-600 dark:hover:text-red-400",
   };
+  const hoverCls = hoverColor ? hoverColorMap[hoverColor] : hoverColorMap[color];
   return (
     <button onClick={onClick} disabled={disabled}
-      className={`text-[11px] font-medium ${colorMap[color]} ${hoverColor ? hoverMap[hoverColor] : `hover:${colorMap[color]}`} transition-colors flex items-center gap-1 disabled:opacity-50`}
+      className={"text-[11px] font-medium " + colorMap[color] + " " + hoverCls + " transition-colors flex items-center gap-1 disabled:opacity-50"}
     >
-      <i className={`${icon} text-xs`}></i>
+      <i className={icon + " text-xs"}></i>
       {label}
     </button>
   );

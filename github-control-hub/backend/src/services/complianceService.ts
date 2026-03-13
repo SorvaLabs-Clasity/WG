@@ -63,7 +63,8 @@ export async function calculateRepoCompliance(
         issues.push(result.detail || rule.name);
       }
       if (rule.type === "branch_protection") protectionsActive = protectionsActive || result.passed;
-      if (rule.type === "rulesets") rulesetsActive = result.passed;
+      if (rule.type === "tag_protection") rulesetsActive = rulesetsActive || result.passed;
+      if (rule.type === "rulesets") rulesetsActive = rulesetsActive || result.passed;
       if (rule.type === "required_files") hasRequiredFiles = hasRequiredFiles && result.passed;
       if (rule.type === "outside_collaborators" && result.collabCount !== undefined) {
         outsideCollaborators = result.collabCount;
@@ -108,6 +109,8 @@ async function evaluateRule(
   switch (rule.type) {
     case "branch_protection":
       return evaluateBranchProtection(octokit, org, repo, rule, defaultBranch);
+    case "tag_protection":
+      return evaluateTagProtection(octokit, org, repo, rule);
     case "rulesets":
       return evaluateRulesets(octokit, repo);
     case "required_files":
@@ -121,6 +124,57 @@ async function evaluateRule(
     default:
       return { passed: true };
   }
+}
+
+async function evaluateTagProtection(
+  octokit: Octokit,
+  org: string,
+  repo: string,
+  rule: ComplianceRule
+): Promise<RuleEvalResult> {
+  const patterns = (rule.tagPatterns || []).map((p) => p.trim()).filter(Boolean);
+  if (patterns.length === 0) return { passed: true, detail: "No tag patterns specified" };
+
+  let rulesets: any[] = [];
+  try {
+    rulesets = await listRulesets(octokit, repo);
+  } catch {
+    return { passed: false, detail: "Could not list rulesets" };
+  }
+
+  const tagRulesets = (rulesets as any[]).filter(
+    (rs: any) => rs.enforcement === "active" && rs.target === "tag"
+  );
+
+  const protectedRefs = new Set<string>();
+  for (const rs of tagRulesets) {
+    try {
+      const { data: details } = await octokit.request("GET /repos/{owner}/{repo}/rulesets/{ruleset_id}", {
+        owner: org, repo, ruleset_id: rs.id,
+      });
+      const refs = details.conditions?.ref_name?.include || [];
+      for (const r of refs) {
+        if (r.startsWith("refs/tags/")) protectedRefs.add(r.replace("refs/tags/", ""));
+      }
+    } catch { /* skip */ }
+  }
+
+  const missing: string[] = [];
+  for (const pattern of patterns) {
+    const hasMatch = Array.from(protectedRefs).some((ref) => {
+      if (pattern.includes("*")) {
+        const re = new RegExp("^" + pattern.replace(/\*/g, ".*") + "$");
+        return re.test(ref);
+      }
+      return ref === pattern;
+    });
+    if (!hasMatch) missing.push(pattern);
+  }
+
+  if (missing.length > 0) {
+    return { passed: false, detail: `Tag patterns without protection: ${missing.join(", ")}` };
+  }
+  return { passed: true };
 }
 
 async function evaluateBranchProtection(

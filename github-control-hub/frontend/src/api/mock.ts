@@ -9838,7 +9838,7 @@ export async function mockFetchTemplates(): Promise<RepoTemplate[]> {
 }
 
 export async function mockCreateTemplate(
-  data: { name: string; description: string; branches: BranchRule[]; autoApplyOnNewRepo: boolean; exclusionLists?: string[] }
+  data: { name: string; description: string; branches: BranchRule[]; tags?: import("../types/Template").TagRule[]; autoApplyOnNewRepo: boolean; exclusionLists?: string[] }
 ): Promise<RepoTemplate> {
   await delay(500);
   const template: RepoTemplate = {
@@ -9865,7 +9865,7 @@ export async function mockCreateTemplate(
 
 export async function mockUpdateTemplate(
   id: string,
-  data: Partial<{ name: string; description: string; branches: BranchRule[]; autoApplyOnNewRepo: boolean; exclusionLists?: string[] }>
+  data: Partial<{ name: string; description: string; branches: BranchRule[]; tags?: import("../types/Template").TagRule[]; autoApplyOnNewRepo: boolean; exclusionLists?: string[] }>
 ): Promise<RepoTemplate> {
   await delay(400);
   const idx = mockTemplateStore.findIndex((t) => t.id === id);
