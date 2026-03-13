@@ -247,13 +247,30 @@ router.get("/blast-radius/ranking", async (req: Request, res: Response) => {
   }
 });
 
-// 5. Query Engine
+// 5. Graph metadata (edge count)
+router.get("/meta", async (_req: Request, res: Response) => {
+  try {
+    let count = 0;
+    if (usesDynamo()) {
+      const result: any = await docClient.send(
+        new ScanCommand({ TableName: tableName("GRAPH_EDGES_TABLE"), Select: "COUNT" })
+      );
+      count = result.Count ?? 0;
+    } else {
+      count = loadLocalEdges().length;
+    }
+    res.json({ edgeCount: count });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 6. Query Engine
 router.get("/query", async (req: Request, res: Response) => {
   try {
     const q = req.query.q as string;
     const param = req.query.param as string;
     
-    // Create an advanced options object omitting q and param
     const advanced = { ...req.query };
     delete advanced.q;
     delete advanced.param;
@@ -265,11 +282,11 @@ router.get("/query", async (req: Request, res: Response) => {
   }
 });
 
-// Admin tool: trigger aggregation manually
+// Admin tool: trigger aggregation manually (falls back to user's token if system token unavailable)
 router.post("/aggregate", async (req: Request, res: Response) => {
   try {
     const { aggregateGraphData } = await import("../jobs/graphAggregator");
-    await aggregateGraphData();
+    await aggregateGraphData(req.user?.accessToken);
     res.json({ message: "Aggregation triggered successfully." });
   } catch (error: any) {
     res.status(500).json({ error: error.message });

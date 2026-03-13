@@ -1,6 +1,4 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
-import Dashboard from "./pages/Dashboard";
-import RepoPage from "./pages/RepoPage";
 import LoginPage from "./pages/LoginPage";
 import AuthCallback from "./pages/AuthCallback";
 import ActivityPage from "./pages/ActivityPage";
@@ -30,19 +28,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/",
-    element: (
-      <RequireAuth>
-        <Dashboard />
-      </RequireAuth>
-    ),
-  },
-  {
-    path: "/repo/:repo",
-    element: (
-      <RequireAuth>
-        <RepoPage />
-      </RequireAuth>
-    ),
+    element: <Navigate to="/analytics" replace />,
   },
   {
     path: "/activity",

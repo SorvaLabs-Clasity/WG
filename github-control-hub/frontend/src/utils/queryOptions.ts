@@ -2,7 +2,7 @@ export const QUERY_OPTIONS = [
   { id: "repos-dependent-on", label: "Repos dependent on library...", requiresParam: true, paramLabel: "Library Name", icon: "ph-package" },
   { id: "repos-deploying-to-prod", label: "Repos deploying to production", requiresParam: false, icon: "ph-rocket-launch" },
   { id: "repos-with-outside-admins", label: "Repos with admin users outside owning team", requiresParam: false, icon: "ph-user-focus" },
-  { id: "highly-privileged-users", label: "Highly privileged users...", requiresParam: true, paramLabel: "Threshold (e.g. 5)", paramDefault: "5", icon: "ph-shield-star" },
+  { id: "highly-privileged-users", label: "Highly privileged users...", requiresParam: true, paramLabel: "Min. repos with write/admin access to flag a user", paramDefault: "5", icon: "ph-shield-star" },
   { id: "unowned-repos", label: "Repos without an owning team", requiresParam: false, icon: "ph-ghost" },
   { id: "repos-with-critical-vulns", label: "Repos with critical vulnerabilities", requiresParam: false, icon: "ph-warning-octagon" },
   { id: "empty-teams", label: "Empty teams (no members)", requiresParam: false, icon: "ph-users-three" },

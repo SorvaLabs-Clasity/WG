@@ -1,4 +1,4 @@
-import { apiGet, DEMO_MODE } from "./client";
+import { apiGet, apiPost, DEMO_MODE } from "./client";
 import { mockGetGraphNode, mockGetBlastRadius, mockGetUserImpact, mockGetBlastRadiusRanking, mockFetchSecurityQuery } from "./mock";
 
 export interface GraphEdge {
@@ -36,6 +36,16 @@ export interface BlastRadiusRankingItem {
   workflowsCount: number;
   vulnerabilitiesCount: number;
   accessVectorsCount: number;
+}
+
+export async function fetchGraphMeta(): Promise<{ edgeCount: number }> {
+  if (DEMO_MODE) return { edgeCount: 100 };
+  return apiGet<{ edgeCount: number }>("/graph/meta");
+}
+
+export async function triggerGraphAggregation(): Promise<{ message: string }> {
+  if (DEMO_MODE) return { message: "Demo mode" };
+  return apiPost<{ message: string }>("/graph/aggregate", {});
 }
 
 export async function fetchGraphNode(id: string): Promise<GraphNodeResponse> {

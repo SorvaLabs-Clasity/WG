@@ -6,7 +6,8 @@ export function useComplianceDashboard() {
   return useQuery({
     queryKey: ["compliance-dashboard"],
     queryFn: fetchComplianceDashboard,
-    staleTime: 120_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
   });
 }
 
@@ -30,10 +31,14 @@ export function useRefreshCompliance() {
 export function useUpdateComplianceConfig() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (config: ComplianceConfig) => saveComplianceConfig(config),
-    onSuccess: () => {
+    mutationFn: async (config: ComplianceConfig) => {
+      await saveComplianceConfig(config);
+      const freshScores = await refreshComplianceDashboard();
+      return freshScores;
+    },
+    onSuccess: (freshScores) => {
       qc.invalidateQueries({ queryKey: ["compliance-config"] });
-      qc.invalidateQueries({ queryKey: ["compliance-dashboard"] });
+      qc.setQueryData(["compliance-dashboard"], freshScores);
     },
   });
 }

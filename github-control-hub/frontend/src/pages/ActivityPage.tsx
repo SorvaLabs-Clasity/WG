@@ -431,9 +431,26 @@ export default function ActivityPage() {
 
       <main className="flex-1 max-w-[1400px] w-full mx-auto px-6 py-8 animate-fade-in">
         <header className="flex flex-col mb-6 space-y-4">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight text-gh-textBase">Activity Log</h1>
-            <p className="text-sm text-gh-muted mt-1">Global audit trail of all organization events and security changes.</p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-gh-textBase">Activity Log</h1>
+              <p className="text-sm text-gh-muted mt-1">Global audit trail of all organization events and security changes.</p>
+            </div>
+            <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium shrink-0 ${
+              orgConfig?.features?.auditLogs
+                ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                : 'bg-amber-50 border-amber-200 text-amber-700'
+            }`}>
+              <i className={`${orgConfig?.features?.auditLogs ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'} text-xs`}></i>
+              <span>
+                {orgConfig?.features?.auditLogs
+                  ? 'Audit Log API: Connected'
+                  : 'Audit Log API: Unavailable'}
+              </span>
+              {!orgConfig?.features?.auditLogs && (
+                <span className="text-xs font-normal text-amber-600 hidden md:inline">— API access requires Enterprise Cloud</span>
+              )}
+            </div>
           </div>
           <div className="bg-white p-4 rounded-lg border border-gh-border shadow-sm">
             <div className="flex items-center gap-2 mb-3">
@@ -448,7 +465,6 @@ export default function ActivityPage() {
                   <option value="app">Control Hub App</option>
                   {orgConfig?.features?.auditLogs && <option value="github">Native GitHub</option>}
                 </select>
-                {!orgConfig?.features?.auditLogs && <span className="text-[10px] text-orange-600 flex items-center gap-1 mt-1"><i className="ph-fill ph-warning-circle"></i>Native GitHub events require Enterprise Audit Logs.</span>}
               </div>
               <div>
                 <label className="block text-[11px] font-semibold text-gh-muted uppercase tracking-wider mb-1">Repository</label>

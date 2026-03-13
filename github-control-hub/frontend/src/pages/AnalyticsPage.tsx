@@ -1,11 +1,12 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
-import { useSecurityQuery, useBlastRadiusRanking } from "../hooks/useGraph";
+import { useSecurityQuery, useBlastRadiusRanking, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS } from "../utils/queryOptions";
 import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget } from "../hooks/useWidgets";
+import { useOrgConfig } from "../hooks/useOrgConfig";
 import type { WidgetConfig } from "../api/widgets";
 import { TagInput } from "../components/TagInput";
 
@@ -20,10 +21,17 @@ export default function AnalyticsPage() {
   const updateWidget = useUpdateWidget();
   const deleteWidgetMut = useDeleteWidget();
 
+  const { data: orgConfig } = useOrgConfig();
+  const orgName = orgConfig?.org || "";
+  const { data: graphMeta } = useGraphMeta();
+  const aggregation = useTriggerAggregation();
+
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null);
   const [isDashboardView, setIsDashboardView] = useState(false);
   const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
+
+  const graphEmpty = graphMeta?.edgeCount === 0;
 
   useEffect(() => {
     if (!isDashboardView && widgets.length > 0 && !selectedWidgetId) {
@@ -82,6 +90,24 @@ export default function AnalyticsPage() {
               </button>
             </div>
             <button
+              onClick={() => aggregation.mutate()}
+              disabled={aggregation.isPending}
+              className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2.5 rounded-lg shadow-sm text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+              title="Re-sync graph data from GitHub"
+            >
+              {aggregation.isPending ? (
+                <>
+                  <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-slate-400/30 border-t-slate-600"></div>
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <i className="ph-bold ph-arrows-clockwise text-sm"></i>
+                  Sync Data
+                </>
+              )}
+            </button>
+            <button
               onClick={() => setShowAddModal(true)}
               className="group bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 font-medium text-sm flex items-center gap-2"
             >
@@ -91,6 +117,53 @@ export default function AnalyticsPage() {
           </div>
         </header>
 
+        {/* Graph data empty banner */}
+        {graphEmpty && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-2xl p-5 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 mt-0.5">
+              <i className="ph-fill ph-database text-xl"></i>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-amber-900 text-sm mb-1">Graph data not synced</h3>
+              <p className="text-amber-700 text-sm leading-relaxed">
+                Analytics queries rely on graph data that hasn't been synced yet. Click "Sync Now" to pull repository, branch, team, and vulnerability data from your GitHub organization.
+                This may take a few minutes depending on the size of your org.
+              </p>
+            </div>
+            <button
+              onClick={() => aggregation.mutate()}
+              disabled={aggregation.isPending}
+              className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
+            >
+              {aggregation.isPending ? (
+                <>
+                  <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white/30 border-t-white"></div>
+                  Syncing...
+                </>
+              ) : (
+                <>
+                  <i className="ph-bold ph-arrows-clockwise"></i>
+                  Sync Now
+                </>
+              )}
+            </button>
+          </div>
+        )}
+
+        {aggregation.isSuccess && !aggregation.isPending && (
+          <div className="mb-6 bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex items-center gap-3 animate-fade-in">
+            <i className="ph-fill ph-check-circle text-emerald-600 text-xl"></i>
+            <span className="text-emerald-800 text-sm font-medium">Graph data synced successfully. Widget data will refresh automatically.</span>
+          </div>
+        )}
+
+        {aggregation.isError && (
+          <div className="mb-6 bg-rose-50 border border-rose-200 rounded-2xl p-4 flex items-center gap-3">
+            <i className="ph-fill ph-warning-circle text-rose-600 text-xl"></i>
+            <span className="text-rose-800 text-sm font-medium">Sync failed: {(aggregation.error as Error)?.message || "Unknown error"}. Try again later.</span>
+          </div>
+        )}
+
         {widgetsLoading ? (
           <div className="flex items-center justify-center py-16">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
@@ -99,7 +172,7 @@ export default function AnalyticsPage() {
           /* ─── Grid View ─── */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {widgets.map(widget => (
-              <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} onEdit={() => setEditingWidget(widget)} />
+              <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} onEdit={() => setEditingWidget(widget)} graphEmpty={graphEmpty} orgName={orgName} />
             ))}
             {widgets.length === 0 && (
               <div className="border-2 border-dashed border-slate-200 rounded-2xl h-[340px] flex flex-col items-center justify-center text-center p-8 group hover:border-slate-300 transition-colors col-span-full">
@@ -184,6 +257,8 @@ export default function AnalyticsPage() {
                 <WidgetDetailsInline
                   config={widgets.find(w => w.id === selectedWidgetId)!}
                   onEdit={() => setEditingWidget(widgets.find(w => w.id === selectedWidgetId)!)}
+                  graphEmpty={graphEmpty}
+                  orgName={orgName}
                 />
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-slate-400">
@@ -259,7 +334,7 @@ function useWidgetData(config: WidgetConfig) {
 
 /* ─── Widget Card (Grid View) ─── */
 
-function WidgetCard({ config, onRemove, onEdit }: { config: WidgetConfig; onRemove: () => void; onEdit: () => void }) {
+function WidgetCard({ config, onRemove, onEdit, graphEmpty, orgName }: { config: WidgetConfig; onRemove: () => void; onEdit: () => void; graphEmpty?: boolean; orgName?: string }) {
   const { items, isLoading, total } = useWidgetData(config);
   const [showDetails, setShowDetails] = useState(false);
 
@@ -314,7 +389,7 @@ function WidgetCard({ config, onRemove, onEdit }: { config: WidgetConfig; onRemo
         </div>
       </div>
 
-      {showDetails && <WidgetDetailsModal config={config} items={items} onClose={() => setShowDetails(false)} />}
+      {showDetails && <WidgetDetailsModal config={config} items={items} onClose={() => setShowDetails(false)} graphEmpty={graphEmpty} orgName={orgName} />}
     </>
   );
 }
@@ -408,7 +483,7 @@ function TableCardBody({ items, config, onExpand }: { items: any[]; config: Widg
 
 /* ─── Widget Details Inline (List View right panel) ─── */
 
-function WidgetDetailsInline({ config, onEdit }: { config: WidgetConfig; onEdit: () => void }) {
+function WidgetDetailsInline({ config, onEdit, graphEmpty, orgName }: { config: WidgetConfig; onEdit: () => void; graphEmpty?: boolean; orgName?: string }) {
   const { items, isLoading } = useWidgetData(config);
 
   if (isLoading) {
@@ -468,7 +543,7 @@ function WidgetDetailsInline({ config, onEdit }: { config: WidgetConfig; onEdit:
 
       {/* Detail Table */}
       <div className="flex-1 overflow-auto">
-        <WidgetDataTable config={config} items={items} />
+        <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
       </div>
     </div>
   );
@@ -476,14 +551,24 @@ function WidgetDetailsInline({ config, onEdit }: { config: WidgetConfig; onEdit:
 
 /* ─── Widget Data Table ─── */
 
-function WidgetDataTable({ config, items }: { config: WidgetConfig; items: any[] }) {
+function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: WidgetConfig; items: any[]; graphEmpty?: boolean; orgName?: string }) {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
   if (items.length === 0) {
     return (
       <div className="p-12 text-center text-slate-500">
-        <i className="ph-fill ph-check-circle text-4xl text-emerald-500 mb-3 block opacity-80"></i>
-        No data matches this query or preset.
+        {graphEmpty ? (
+          <>
+            <i className="ph-fill ph-database text-4xl text-amber-500 mb-3 block opacity-80"></i>
+            <p className="font-medium text-slate-700 mb-1">No graph data available</p>
+            <p className="text-sm">Use the "Sync Now" button above to pull data from GitHub before running queries.</p>
+          </>
+        ) : (
+          <>
+            <i className="ph-fill ph-check-circle text-4xl text-emerald-500 mb-3 block opacity-80"></i>
+            No data matches this query or preset.
+          </>
+        )}
       </div>
     );
   }
@@ -600,20 +685,19 @@ function WidgetDataTable({ config, items }: { config: WidgetConfig; items: any[]
           })}
         </tbody>
       </table>
-      {selectedItem && <RawDetailsModal item={selectedItem} config={config} onClose={() => setSelectedItem(null)} />}
+      {selectedItem && <RawDetailsModal item={selectedItem} config={config} onClose={() => setSelectedItem(null)} orgName={orgName} />}
     </>
   );
 }
 
 /* ─── Raw Details Modal ─── */
 
-function RawDetailsModal({ item, config, onClose }: { item: any; config: WidgetConfig; onClose: () => void }) {
-  const { user } = useAuth();
+function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config: WidgetConfig; onClose: () => void; orgName?: string }) {
   const name = item.repo || item.user || item.team || "Unknown Entity";
 
   let githubLink = null;
-  if (item.repo) {
-    githubLink = `https://github.com/${user?.login || "org"}/${item.repo}`;
+  if (item.repo && orgName) {
+    githubLink = `https://github.com/${orgName}/${item.repo}`;
     if (config.type === "preset" && config.presetId === "dependabot") {
       githubLink += "/security/dependabot";
     }
@@ -722,7 +806,7 @@ function RawDetailsModal({ item, config, onClose }: { item: any; config: WidgetC
 
 /* ─── Widget Details Modal (expanded from grid card) ─── */
 
-function WidgetDetailsModal({ config, items, onClose }: { config: WidgetConfig; items: any[]; onClose: () => void }) {
+function WidgetDetailsModal({ config, items, onClose, graphEmpty, orgName }: { config: WidgetConfig; items: any[]; onClose: () => void; graphEmpty?: boolean; orgName?: string }) {
   const hasStatus = items.some((i: any) => i.status);
   const passCount = hasStatus ? items.filter((i: any) => i.status === "pass").length : 0;
   const failCount = hasStatus ? items.filter((i: any) => i.status === "fail").length : 0;
@@ -759,11 +843,12 @@ function WidgetDetailsModal({ config, items, onClose }: { config: WidgetConfig; 
         </div>
 
         <div className="p-0 overflow-y-auto bg-slate-50 flex-1 relative rounded-b-2xl">
-          <WidgetDataTable config={config} items={items} />
+          <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
         </div>
       </div>
     </div>
   );
+
 }
 
 /* ─── Widget Form Modal (Add / Edit) ─── */
@@ -782,6 +867,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
   const [paramValue, setParamValue] = useState<string>(initQuery?.useTagInput ? "" : initParam);
   const [branchTags, setBranchTags] = useState<string[]>(initQuery?.useTagInput && initParam ? initParam.split(",").map(s => s.trim()).filter(Boolean) : []);
   const [hasPendingBranch, setHasPendingBranch] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const [protectionType, setProtectionType] = useState<string>(initAdv?.protectionType || "any");
   const [ruleMatchType, setRuleMatchType] = useState<string>(initAdv?.ruleMatchType || "at_least");
   const [requirePr, setRequirePr] = useState(initAdv?.requirePr || false);
@@ -807,10 +893,14 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
     setBranchTags([]);
   };
 
+  const pendingBranchError = type === "query" && selectedQuery?.useTagInput && hasPendingBranch;
+  const emptyBranchError = type === "query" && selectedQuery?.useTagInput && branchTags.length === 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setSubmitAttempted(true);
     if (!title.trim()) return;
-    if (type === "query" && selectedQuery?.useTagInput && (branchTags.length === 0 || hasPendingBranch)) return;
+    if (pendingBranchError || emptyBranchError) return;
     if (type === "query" && selectedQuery?.requiresParam && !selectedQuery?.useTagInput && !paramValue.trim()) return;
 
     if (type === "preset") {
@@ -927,14 +1017,28 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                   <div>
                     <label className="block text-sm font-semibold text-slate-900 mb-1">{selectedQuery.paramLabel}</label>
                     {selectedQuery.useTagInput ? (
-                      <TagInput
-                        tags={branchTags}
-                        onChange={setBranchTags}
-                        onPendingTextChange={setHasPendingBranch}
-                        icon="ph-git-branch"
-                        colorClass="blue"
-                        placeholder="Type branch name and press Enter"
-                      />
+                      <>
+                        <TagInput
+                          tags={branchTags}
+                          onChange={setBranchTags}
+                          onPendingTextChange={setHasPendingBranch}
+                          icon="ph-git-branch"
+                          colorClass="blue"
+                          placeholder="Type branch name and press Enter"
+                        />
+                        {submitAttempted && pendingBranchError && (
+                          <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1">
+                            <i className="ph-bold ph-warning-circle"></i>
+                            Press Enter to confirm the branch name before saving.
+                          </p>
+                        )}
+                        {submitAttempted && emptyBranchError && !pendingBranchError && (
+                          <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1">
+                            <i className="ph-bold ph-warning-circle"></i>
+                            At least one branch name is required.
+                          </p>
+                        )}
+                      </>
                     ) : (
                       <input
                         type="text"

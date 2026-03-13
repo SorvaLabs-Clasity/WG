@@ -8,20 +8,26 @@ import { logActivity } from "../services/activityService";
 import { listTemplates, applyTemplate } from "../services/templateService";
 import { listExclusions, getExclusion } from "../services/exclusionService";
 import { refreshRepo } from "../services/complianceCacheService";
+import { addBranchEdge, removeBranchEdge, updateBranchProtection, addCollaboratorEdge, removeCollaboratorEdge, addRepoEdges } from "../services/graphEdgeService";
 
 const router = Router();
 
-const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || "";
+function getWebhookSecret(): string {
+  return process.env.GITHUB_WEBHOOK_SECRET || "";
+}
 
-const SYSTEM_GITHUB_TOKEN = process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+function getSystemToken(): string {
+  return process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+}
 
 function verifySignature(req: Request): boolean {
-  if (!WEBHOOK_SECRET) return false;
+  const secret = getWebhookSecret();
+  if (!secret) return false;
 
   const signature = req.headers["x-hub-signature-256"] as string;
   if (!signature) return false;
 
-  const hmac = crypto.createHmac("sha256", WEBHOOK_SECRET);
+  const hmac = crypto.createHmac("sha256", secret);
   const payloadStr = JSON.stringify(req.body); 
   hmac.update(payloadStr);
   
@@ -170,8 +176,8 @@ router.post("/github", async (req: Request, res: Response) => {
 
   // Auto-apply templates to newly created repos (must run before response on Lambda)
   if (event === "repository" && payload.action === "created" && repoName) {
-    if (SYSTEM_GITHUB_TOKEN) {
-      const octokit = new Octokit({ auth: SYSTEM_GITHUB_TOKEN });
+    if (getSystemToken()) {
+      const octokit = new Octokit({ auth: getSystemToken() });
       try {
         const templates = await listTemplates();
         const autoApplyTemplates = templates.filter(t => t.autoApplyOnNewRepo);
@@ -230,11 +236,58 @@ router.post("/github", async (req: Request, res: Response) => {
     (event === "repository" && payload.action === "created") ||
     (event === "push" && payload.ref === `refs/heads/${payload.repository?.default_branch}`);
 
-  if (repoName && SYSTEM_GITHUB_TOKEN && shouldRefreshCompliance) {
+  if (repoName && getSystemToken() && shouldRefreshCompliance) {
     console.log(`[Webhook] Refreshing compliance cache for ${repoName}`);
-    refreshRepo(SYSTEM_GITHUB_TOKEN, repoName).catch((err) =>
+    refreshRepo(getSystemToken(), repoName).catch((err) =>
       console.error(`[Webhook] Compliance refresh failed for ${repoName}:`, (err as Error).message)
     );
+  }
+
+  // Incremental graph edge updates
+  const org = getOrg();
+  try {
+    if (event === "create" && payload.ref_type === "branch" && repoName && payload.ref) {
+      console.log(`[Webhook] Adding graph edge: branch "${payload.ref}" in ${repoName}`);
+      await addBranchEdge(repoName, payload.ref, false);
+    }
+
+    if (event === "delete" && payload.ref_type === "branch" && repoName && payload.ref) {
+      console.log(`[Webhook] Removing graph edge: branch "${payload.ref}" from ${repoName}`);
+      await removeBranchEdge(repoName, payload.ref);
+    }
+
+    if (event === "repository" && payload.action === "created" && repoName) {
+      const token = getSystemToken() || (req as any).user?.accessToken;
+      if (token) {
+        console.log(`[Webhook] Adding all graph edges for new repo "${repoName}"`);
+        addRepoEdges(token, org, repoName).catch((err) =>
+          console.error(`[Webhook] Graph edge sync failed for new repo ${repoName}:`, (err as Error).message)
+        );
+      }
+    }
+
+    if (event === "member" && repoName && payload.member?.login) {
+      const user = payload.member.login;
+      if (payload.action === "added") {
+        const role = payload.changes?.permission?.to || "read";
+        console.log(`[Webhook] Adding graph edge: collaborator "${user}" on ${repoName}`);
+        await addCollaboratorEdge(repoName, user, role);
+      } else if (payload.action === "removed") {
+        console.log(`[Webhook] Removing graph edge: collaborator "${user}" from ${repoName}`);
+        await removeCollaboratorEdge(repoName, user);
+      }
+    }
+
+    if (event === "branch_protection_rule" && repoName) {
+      const branchName = payload.rule?.name;
+      if (branchName) {
+        const isProtected = payload.action !== "deleted";
+        console.log(`[Webhook] Updating graph edge: branch "${branchName}" protection=${isProtected} in ${repoName}`);
+        await updateBranchProtection(repoName, branchName, isProtected);
+      }
+    }
+  } catch (graphErr) {
+    console.error(`[Webhook] Graph edge update failed:`, (graphErr as Error).message);
   }
 
   // Background compliance scans (setTimeout is best-effort on Lambda)
@@ -243,12 +296,12 @@ router.post("/github", async (req: Request, res: Response) => {
     
     setTimeout(async () => {
       try {
-        if (!SYSTEM_GITHUB_TOKEN) {
+        if (!getSystemToken()) {
           console.warn("[Webhook] SYSTEM_GITHUB_TOKEN is not set. Cannot run automated background scan.");
           return;
         }
 
-        const octokit = new Octokit({ auth: SYSTEM_GITHUB_TOKEN });
+        const octokit = new Octokit({ auth: getSystemToken() });
 
         const scanners = await listScanners();
         const relevantScanners = scanners.filter(s => 

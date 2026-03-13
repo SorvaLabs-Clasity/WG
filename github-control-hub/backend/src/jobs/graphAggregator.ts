@@ -28,11 +28,11 @@ async function ensureSecrets() {
   }
 }
 
-export async function aggregateGraphData() {
+export async function aggregateGraphData(fallbackToken?: string) {
   await ensureSecrets();
-  const token = process.env.SYSTEM_GITHUB_TOKEN;
+  const token = process.env.SYSTEM_GITHUB_TOKEN || fallbackToken;
   if (!token) {
-    console.warn("SYSTEM_GITHUB_TOKEN not set, skipping graph aggregation.");
+    console.warn("No GitHub token available, skipping graph aggregation.");
     return;
   }
 
