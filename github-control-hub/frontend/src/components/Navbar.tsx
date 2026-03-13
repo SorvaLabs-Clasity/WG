@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { clearToken } from "../api/client";
 import UserAvatar from "./UserAvatar";
 
 interface NavbarProps {
@@ -14,7 +13,6 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleLogout = () => {
-    clearToken();
     navigate("/login");
   };
 
