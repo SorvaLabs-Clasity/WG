@@ -7,7 +7,7 @@
   "scripts": {
     "prebuild": "npm run build:backend && npm run build:frontend && npm run bundle:backend-deps",
     "build:backend": "cd ../github-control-hub/backend && npx tsc",
-    "bundle:backend-deps": "rm -rf .backend-modules && mkdir .backend-modules && cp ../github-control-hub/backend/package.json .backend-modules/ && cd .backend-modules && npm install --omit=dev --ignore-scripts",
+    "bundle:backend-deps": "node -e \"const fs=require('fs'),p=require('path');const d=p.join(__dirname,'.backend-modules');fs.rmSync(d,{recursive:true,force:true});fs.mkdirSync(d,{recursive:true});fs.copyFileSync(p.join(__dirname,'..','github-control-hub','backend','package.json'),p.join(d,'package.json'))\" && cd .backend-modules && npm install --omit=dev --ignore-scripts",
     "build:frontend": "cd ../github-control-hub/frontend && npm run build",
     "build:electron": "tsc -p tsconfig.json",
     "dev": "npm run prebuild && npm run build:electron && electron .",

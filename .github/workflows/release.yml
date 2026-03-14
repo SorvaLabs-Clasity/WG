@@ -20,12 +20,8 @@ jobs:
         with:
           node-version: 20
 
-      - name: Install backend dependencies
-        working-directory: github-control-hub/backend
-        run: npm ci
-
-      - name: Install frontend dependencies
-        working-directory: github-control-hub/frontend
+      - name: Install workspace dependencies
+        working-directory: github-control-hub
         run: npm ci
 
       - name: Build backend
@@ -40,7 +36,12 @@ jobs:
         working-directory: github-control-hub-cmd-desktop-app
         run: npm ci
 
-      - name: Build Electron & publish
+      - name: Bundle backend deps for packaging
+        working-directory: github-control-hub-cmd-desktop-app
+        run: node -e "const fs=require('fs'),p=require('path');const d=p.join(__dirname,'.backend-modules');fs.rmSync(d,{recursive:true,force:true});fs.mkdirSync(d,{recursive:true});fs.copyFileSync(p.join(__dirname,'..','github-control-hub','backend','package.json'),p.join(d,'package.json'))" && cd .backend-modules && npm install --omit=dev --ignore-scripts
+        shell: bash
+
+      - name: Build & publish Electron app
         working-directory: github-control-hub-cmd-desktop-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
