@@ -52,6 +52,16 @@ function createWindow(): void {
     return { action: "deny" };
   });
 
+  // Allow GitHub OAuth flow to happen inside the Electron window
+  // but open other external URLs in the system browser
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (url.startsWith("http://localhost") || url.includes("github.com/login/oauth")) {
+      return; // allow OAuth and localhost navigations
+    }
+    event.preventDefault();
+    shell.openExternal(url);
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });
@@ -103,11 +113,15 @@ function setupAutoUpdater(): void {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
-  // Private repo: use the GitHub token from env (loaded by bootstrap from Secrets Manager)
+  // Private repo: pass token so electron-updater can access GitHub Releases
   const ghToken = process.env.SYSTEM_GITHUB_TOKEN || process.env.GH_TOKEN;
-  if (ghToken) {
-    autoUpdater.requestHeaders = { Authorization: `token ${ghToken}` };
-  }
+  autoUpdater.setFeedURL({
+    provider: "github",
+    owner: "RDaou05",
+    repo: "WG",
+    private: true,
+    token: ghToken || "",
+  } as any);
 
   autoUpdater.on("update-available", (info) => {
     console.log("Update available:", info.version);
