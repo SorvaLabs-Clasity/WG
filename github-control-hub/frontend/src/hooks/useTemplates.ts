@@ -6,7 +6,7 @@ import {
   deleteTemplateApi,
   applyTemplate,
 } from "../api/templates";
-import type { BranchRule } from "../types/Template";
+import type { BranchRule, TagRule, PushRule } from "../types/Template";
 
 export function useTemplates() {
   return useQuery({
@@ -23,7 +23,10 @@ export function useCreateTemplate() {
       name: string;
       description: string;
       branches: BranchRule[];
+      tags?: TagRule[];
+      pushRules?: PushRule[];
       autoApplyOnNewRepo: boolean;
+      exclusionLists?: string[];
     }) => createTemplate(data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["templates"] });
@@ -44,7 +47,10 @@ export function useUpdateTemplate() {
         name: string;
         description: string;
         branches: BranchRule[];
+        tags?: TagRule[];
+        pushRules?: PushRule[];
         autoApplyOnNewRepo: boolean;
+        exclusionLists?: string[];
       }>;
     }) => updateTemplate(id, data),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["templates"] }),
@@ -65,8 +71,8 @@ export function useDeleteTemplate() {
 export function useApplyTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ templateId, repo }: { templateId: string; repo: string }) =>
-      applyTemplate(templateId, repo),
+    mutationFn: ({ templateId, repos }: { templateId: string; repos: string[] }) =>
+      applyTemplate(templateId, repos),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["activity"] });
       qc.invalidateQueries({ queryKey: ["branches"] });

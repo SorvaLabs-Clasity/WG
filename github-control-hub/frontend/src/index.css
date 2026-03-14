@@ -18,11 +18,24 @@
   background: #afb8c1; 
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
 /* Base Setup */
 body {
   font-family: 'Inter', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.dark body,
+html.dark body {
+  background-color: #020617;
+  color: #e2e8f0;
 }
 
 /* Animated Mesh Gradient Background */
@@ -46,6 +59,28 @@ body {
 }
 
 /* Entrance Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes gradientBG {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 .fade-in-up {
   opacity: 0;
   transform: translateY(20px);
@@ -92,6 +127,9 @@ body {
 .table-row-hover:hover td {
   background-color: #f3f4f6;
 }
+.dark .table-row-hover:hover td {
+  background-color: #1e293b;
+}
 
 /* Toggle Switch Logic */
 .toggle-checkbox:checked {
@@ -105,4 +143,27 @@ body {
 /* Hide Scrollbar when modal open */
 body.modal-open {
   overflow: hidden;
+}
+
+/* Compliance gauge */
+.gauge-ring {
+  position: relative;
+  border-radius: 50%;
+  background: conic-gradient(var(--gauge-color) var(--gauge-pct), #f1f5f9 0);
+  transition: background 0.8s ease-out;
+}
+.gauge-ring::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  background: white;
+  border-radius: 50%;
+}
+.gauge-ring-lg::before { inset: 10px; }
+
+.dark .gauge-ring::before {
+  background: #0f172a;
+}
+.dark .gauge-ring {
+  background: conic-gradient(var(--gauge-color) var(--gauge-pct), #334155 0);
 }

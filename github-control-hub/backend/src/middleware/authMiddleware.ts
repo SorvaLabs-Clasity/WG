@@ -19,7 +19,13 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction):
   try {
     req.user = verifyToken(header.slice(7));
     next();
-  } catch {
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    // Server can't verify (e.g. JWT_SECRET not loaded yet on cold start) -> 503 so client doesn't clear token
+    if (msg.includes("JWT_SECRET") || msg.includes("required in production")) {
+      res.status(503).json({ error: "Service temporarily unavailable", detail: "Auth not ready" });
+      return;
+    }
     res.status(401).json({ error: "Invalid or expired token" });
   }
 }

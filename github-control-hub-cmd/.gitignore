@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+*.js.map
+.aws-sam/
+.terraform/
+terraform.tfstate*
+*.tfvars

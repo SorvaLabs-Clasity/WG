@@ -2,24 +2,137 @@ import crypto from "crypto";
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { logActivity } from "./activityService";
+import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand } from "../utils/dynamo";
+import { buildRulesetRules, buildTagRulesetRules, buildPushRulesetRules, listRulesets, getRuleset, getProtection, compareRulesetConfigs, compareClassicConfigs } from "./branchService";
+
+export interface ConflictItem {
+  type: "ruleset" | "classic";
+  repo: string;
+  name: string;
+  existingId?: number;
+  existingConfig: any;
+  templateConfig: any;
+  differences: string[];
+  activityId?: string;
+}
+
+/** Extract a readable message from a GitHub API error (Octokit). */
+function githubErrorMessage(err: unknown): string {
+  const e = err as { response?: { data?: { message?: string; errors?: unknown[] } }; message?: string };
+  const msg = e.response?.data?.message ?? e.message ?? "Unknown error";
+  const details = e.response?.data?.errors;
+  if (Array.isArray(details) && details.length > 0) {
+    return `${msg} — ${JSON.stringify(details)}`;
+  }
+  return msg;
+}
+
+export type OnBaseBranchMissing = "skip_rule" | "use_default" | "undo_repo";
 
 export interface BranchRule {
   branchNames: string[];
+  /** When true (default), create branches that don't exist. When false, only apply protection to branches that already exist. */
+  createBranchesIfMissing?: boolean;
+  baseBranchMode?: "default" | "specific";
+  baseBranch?: string;
+  onBaseBranchMissing?: OnBaseBranchMissing;
   protection: {
-    type: "classic" | "ruleset";
+    type: "classic" | "ruleset" | "ruleset_json";
+    rawJson?: any;
+    rulesetName?: string;
+    enforcement?: "active" | "evaluate" | "disabled";
+
+    restrictCreations?: boolean;
+    restrictUpdates?: boolean;
+
     requirePr: boolean;
     requiredApprovals: number;
     dismissStaleReviews: boolean;
     requireCodeOwnerReviews: boolean;
+    requireLastPushApproval?: boolean;
     requireConversationResolution: boolean;
+    allowedMergeMethods?: string[];
+
     requireStatusChecks: boolean;
     strictStatusChecks: boolean;
+    doNotRequireStatusChecksOnCreation?: boolean;
+    statusCheckContexts?: string[];
+
+    requireDeployments?: boolean;
+    requiredDeploymentEnvironments?: string[];
+
     requireSignedCommits: boolean;
     requireLinearHistory: boolean;
     enforceAdmins: boolean;
     preventForcePush: boolean;
     preventDeletion: boolean;
+
+    requireCodeScanning?: boolean;
+    codeScanningTool?: string;
+    codeScanningAlertsThreshold?: string;
+    codeScanningSecurityAlertsThreshold?: string;
+
+    requireCodeQuality?: boolean;
+    codeQualitySeverity?: string;
+
+    copilotCodeReview?: boolean;
+    copilotReviewOnPush?: boolean;
+    copilotReviewDraftPrs?: boolean;
+
+    bypassActors?: Array<{
+      actor_id: number;
+      actor_type: "RepositoryRole" | "Team" | "Integration" | "OrganizationAdmin";
+      bypass_mode: "always" | "pull_request";
+    }>;
+
+    restrictPushes?: boolean;
+    restrictMatchingBranchCreation?: boolean;
+    pushRestrictionUsers?: string[];
+    pushRestrictionTeams?: string[];
+    pushRestrictionApps?: string[];
   } | null;
+}
+
+export interface TagRule {
+  tagPatterns: string[];
+  rulesetName?: string;
+  enforcement?: "active" | "evaluate" | "disabled";
+  preventCreation?: boolean;
+  preventUpdate?: boolean;
+  preventDeletion?: boolean;
+  preventForcePush?: boolean;
+  requireSignedCommits?: boolean;
+  rawJson?: any;
+  namePattern?: {
+    operator: "starts_with" | "ends_with" | "contains" | "regex";
+    pattern: string;
+    negate?: boolean;
+    name?: string;
+  };
+  bypassActors?: Array<{
+    actor_id: number;
+    actor_type: "RepositoryRole" | "Team" | "Integration" | "OrganizationAdmin";
+    bypass_mode: "always" | "pull_request";
+  }>;
+}
+
+export interface PushRule {
+  rulesetName?: string;
+  enforcement?: "active" | "evaluate" | "disabled";
+  filePathRestriction?: {
+    restrictedFilePaths: string[];
+  };
+  maxFilePathLength?: number;
+  maxFileSize?: number;
+  fileExtensionRestriction?: {
+    restrictedFileExtensions: string[];
+  };
+  rawJson?: any;
+  bypassActors?: Array<{
+    actor_id: number;
+    actor_type: "RepositoryRole" | "Team" | "Integration" | "OrganizationAdmin";
+    bypass_mode: "always" | "pull_request";
+  }>;
 }
 
 export interface RepoTemplate {
@@ -27,31 +140,60 @@ export interface RepoTemplate {
   name: string;
   description: string;
   branches: BranchRule[];
+  tags?: TagRule[];
+  pushRules?: PushRule[];
   autoApplyOnNewRepo: boolean;
+  exclusionLists?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
 
-/**
- * In-memory store. Swap for DynamoDB in production.
- */
-const templates: Map<string, RepoTemplate> = new Map();
+const TABLE = () => tableName("TEMPLATES_TABLE");
 
-export function listTemplates(): RepoTemplate[] {
-  return Array.from(templates.values()).sort(
+// In-memory fallback for local development
+const memTemplates: Map<string, RepoTemplate> = new Map();
+
+export async function listTemplates(): Promise<RepoTemplate[]> {
+  if (usesDynamo()) {
+    const result = await docClient.send(new ScanCommand({ TableName: TABLE() }));
+    return ((result.Items || []) as RepoTemplate[]).sort(
+      (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+  }
+  return Array.from(memTemplates.values()).sort(
     (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
   );
 }
 
-export function getTemplate(id: string): RepoTemplate | undefined {
-  return templates.get(id);
+export async function getTemplate(id: string): Promise<RepoTemplate | undefined> {
+  if (usesDynamo()) {
+    const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id } }));
+    return result.Item as RepoTemplate | undefined;
+  }
+  return memTemplates.get(id);
 }
 
-export function createTemplate(
+export async function putTemplateRaw(template: RepoTemplate): Promise<void> {
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: template }));
+  } else {
+    memTemplates.set(template.id, template);
+  }
+}
+
+export async function deleteTemplateRaw(id: string): Promise<void> {
+  if (usesDynamo()) {
+    await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { id } }));
+  } else {
+    memTemplates.delete(id);
+  }
+}
+
+export async function createTemplate(
   data: Omit<RepoTemplate, "id" | "createdAt" | "updatedAt">,
   actor: string
-): RepoTemplate {
+): Promise<RepoTemplate> {
   const now = new Date().toISOString();
   const template: RepoTemplate = {
     ...data,
@@ -59,19 +201,26 @@ export function createTemplate(
     createdAt: now,
     updatedAt: now,
   };
-  templates.set(template.id, template);
 
-  logActivity("template.create", actor, "*", template.name, `Created template "${template.name}"`);
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: template }));
+  } else {
+    memTemplates.set(template.id, template);
+  }
 
+  await logActivity("template.create", actor, "*", template.name, `Created template "${template.name}"`,
+    undefined, "app", undefined, undefined,
+    { undoPayload: { action: "delete_template", params: { templateId: template.id, templateData: template } } }
+  );
   return template;
 }
 
-export function updateTemplate(
+export async function updateTemplate(
   id: string,
   data: Partial<Omit<RepoTemplate, "id" | "createdAt" | "updatedAt">>,
   actor: string
-): RepoTemplate | null {
-  const existing = templates.get(id);
+): Promise<RepoTemplate | null> {
+  const existing = await getTemplate(id);
   if (!existing) return null;
 
   const updated: RepoTemplate = {
@@ -81,7 +230,12 @@ export function updateTemplate(
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString(),
   };
-  templates.set(id, updated);
+
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+  } else {
+    memTemplates.set(id, updated);
+  }
 
   const diff: Record<string, { old: any; new: any }> = {};
   if (data.name !== undefined && data.name !== existing.name) {
@@ -96,26 +250,37 @@ export function updateTemplate(
   if (data.branches !== undefined && JSON.stringify(data.branches) !== JSON.stringify(existing.branches)) {
     diff.branches = { old: existing.branches, new: data.branches };
   }
+  if (data.exclusionLists !== undefined && JSON.stringify(data.exclusionLists) !== JSON.stringify(existing.exclusionLists)) {
+    diff.exclusionLists = { old: existing.exclusionLists, new: data.exclusionLists };
+  }
 
-  logActivity(
+  await logActivity(
     "template.update", 
     actor, 
     "*", 
     updated.name, 
     `Updated template "${updated.name}"`,
-    Object.keys(diff).length > 0 ? diff : undefined
+    Object.keys(diff).length > 0 ? diff : undefined,
+    "app", undefined, undefined,
+    { undoPayload: { action: "revert_template", params: { templateId: id, previousState: existing, currentState: updated } } }
   );
 
   return updated;
 }
 
-export function deleteTemplate(id: string, actor: string): boolean {
-  const existing = templates.get(id);
+export async function deleteTemplate(id: string, actor: string): Promise<boolean> {
+  const existing = await getTemplate(id);
   if (!existing) return false;
 
-  templates.delete(id);
-  logActivity("template.delete", actor, "*", existing.name, `Deleted template "${existing.name}"`);
+  if (usesDynamo()) {
+    await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { id } }));
+  } else {
+    memTemplates.delete(id);
+  }
 
+  await logActivity("template.delete", actor, "*", existing.name, `Deleted template "${existing.name}"`, undefined, "app", undefined, undefined, {
+    undoPayload: { action: "restore_template", params: { templateData: existing } },
+  });
   return true;
 }
 
@@ -123,73 +288,189 @@ export async function applyTemplate(
   octokit: Octokit,
   templateId: string,
   repo: string,
-  actor: string
-): Promise<{ created: string[]; protected: string[]; errors: string[] }> {
-  const template = templates.get(templateId);
+  actor: string,
+  repoParentId?: string
+): Promise<{ created: string[]; protected: string[]; errors: string[]; conflicts: ConflictItem[]; templateName: string }> {
+  const template = await getTemplate(templateId);
   if (!template) throw new Error("Template not found");
 
   const org = getOrg();
   const created: string[] = [];
   const protectedBranches: string[] = [];
   const errors: string[] = [];
+  const conflicts: ConflictItem[] = [];
 
-  // Get the default branch SHA to base new branches on
   let defaultSha: string;
+  let defaultBranch = "main";
   try {
     const { data: repoData } = await octokit.rest.repos.get({ owner: org, repo });
-    const { data: ref } = await octokit.rest.git.getRef({
-      owner: org,
-      repo,
-      ref: `heads/${repoData.default_branch}`,
-    });
-    defaultSha = ref.object.sha;
+    defaultBranch = repoData.default_branch || "main";
+
+    try {
+      const { data: ref } = await octokit.rest.git.getRef({
+        owner: org,
+        repo,
+        ref: `heads/${defaultBranch}`,
+      });
+      defaultSha = ref.object.sha;
+    } catch {
+      const { data: blob } = await octokit.rest.git.createBlob({
+        owner: org, repo, content: Buffer.from(`# ${repo}\n`).toString("base64"), encoding: "base64",
+      });
+      const { data: tree } = await octokit.rest.git.createTree({
+        owner: org, repo, tree: [{ path: "README.md", mode: "100644", type: "blob", sha: blob.sha }],
+      });
+      const { data: commit } = await octokit.rest.git.createCommit({
+        owner: org, repo, message: "Initial commit", tree: tree.sha, parents: [],
+      });
+      try {
+        await octokit.rest.git.createRef({ owner: org, repo, ref: `refs/heads/${defaultBranch}`, sha: commit.sha });
+      } catch {
+        await octokit.rest.git.updateRef({ owner: org, repo, ref: `heads/${defaultBranch}`, sha: commit.sha });
+      }
+      defaultSha = commit.sha;
+    }
   } catch (err) {
     throw new Error(`Failed to read repo default branch: ${(err as Error).message}`);
   }
 
-  // Group branches by their protection configuration to bundle rulesets
-  const rulesetGroups = new Map<string, { branchNames: string[]; protection: NonNullable<BranchRule["protection"]> }>();
+  const rulesetGroups = new Map<number, { branchNames: string[]; protection: NonNullable<BranchRule["protection"]> }>();
+  let abortRepo = false;
 
-  for (const rule of template.branches) {
-    for (const branchName of rule.branchNames) {
-      // Create branch if it doesn't exist
+  for (let i = 0; i < template.branches.length; i++) {
+    if (abortRepo) break;
+    const rule = template.branches[i];
+
+    // Resolve the SHA to use when creating new branches for this rule
+    let ruleSha = defaultSha;
+    let ruleBaseName = defaultBranch;
+    let skipThisRule = false;
+
+    if (rule.baseBranchMode === "specific" && rule.baseBranch) {
       try {
-        await octokit.rest.git.getRef({
-          owner: org,
-          repo,
-          ref: `heads/${branchName}`,
-        });
-        // Branch already exists, skip creation
+        const { data: ref } = await octokit.rest.git.getRef({ owner: org, repo, ref: `heads/${rule.baseBranch}` });
+        ruleSha = ref.object.sha;
+        ruleBaseName = rule.baseBranch;
       } catch {
-        try {
-          await octokit.rest.git.createRef({
-            owner: org,
-            repo,
-            ref: `refs/heads/${branchName}`,
-            sha: defaultSha,
-          });
-          created.push(branchName);
-        } catch (err) {
-          errors.push(`Failed to create ${branchName}: ${(err as Error).message}`);
+        const fallback = rule.onBaseBranchMissing || "use_default";
+        const msg = `Base branch "${rule.baseBranch}" not found in ${repo}`;
+        console.warn(`[applyTemplate] ${msg}, fallback=${fallback}`);
+
+        if (fallback === "skip_rule") {
+          errors.push(`${msg} — skipped rule`);
+          if (repoParentId) {
+            await logActivity("branch.create", actor, repo, rule.branchNames.join(", "),
+              `Skipped rule: base branch "${rule.baseBranch}" not found`,
+              undefined, "app", undefined, undefined,
+              { parentId: repoParentId, failed: true, errorMessage: msg }
+            );
+          }
+          skipThisRule = true;
+        } else if (fallback === "undo_repo") {
+          errors.push(`${msg} — aborting and undoing repo`);
+          if (repoParentId) {
+            await logActivity("branch.create", actor, repo, rule.branchNames.join(", "),
+              `Aborted: base branch "${rule.baseBranch}" not found — undoing all changes on ${repo}`,
+              undefined, "app", undefined, undefined,
+              { parentId: repoParentId, failed: true, errorMessage: msg }
+            );
+          }
+          // Undo everything created so far on this repo
+          for (const b of [...created].reverse()) {
+            try { await octokit.rest.git.deleteRef({ owner: org, repo, ref: `heads/${b}` }); } catch { /* best effort */ }
+          }
+          for (const b of [...protectedBranches].reverse()) {
+            try { await octokit.rest.repos.deleteBranchProtection({ owner: org, repo, branch: b }); } catch { /* best effort */ }
+          }
+          created.length = 0;
+          protectedBranches.length = 0;
+          rulesetGroups.clear();
+          abortRepo = true;
           continue;
+        }
+        // fallback === "use_default": ruleSha already set to defaultSha
+      }
+    }
+
+    if (skipThisRule) continue;
+
+    const createBranchesIfMissing = rule.createBranchesIfMissing !== false;
+    const effectiveBranchNames: string[] = [];
+
+    for (const branchName of rule.branchNames) {
+      try {
+        await octokit.rest.git.getRef({ owner: org, repo, ref: `heads/${branchName}` });
+        effectiveBranchNames.push(branchName);
+      } catch {
+        if (createBranchesIfMissing) {
+          try {
+            await octokit.rest.git.createRef({
+              owner: org,
+              repo,
+              ref: `refs/heads/${branchName}`,
+              sha: ruleSha,
+            });
+            created.push(branchName);
+            effectiveBranchNames.push(branchName);
+            if (repoParentId) {
+              await logActivity("branch.create", actor, repo, branchName,
+                `Created branch "${branchName}" (from ${ruleBaseName}) via template "${template.name}"`,
+                undefined, "app", undefined, undefined,
+                { parentId: repoParentId, undoPayload: { action: "delete_branch", params: { repo, branch: branchName, baseBranch: ruleBaseName } } }
+              );
+            }
+          } catch (err) {
+            const msg = `Create branch ${branchName}: ${githubErrorMessage(err)}`;
+            console.error("[applyTemplate]", msg);
+            errors.push(msg);
+            if (repoParentId) {
+              await logActivity("branch.create", actor, repo, branchName,
+                `Failed to create branch "${branchName}" via template "${template.name}"`,
+                undefined, "app", undefined, undefined,
+                { parentId: repoParentId, failed: true, errorMessage: githubErrorMessage(err),
+                  retryPayload: { action: "create_branch", params: { repo, branch: branchName, baseBranch: ruleBaseName } } }
+              );
+            }
+            continue;
+          }
         }
       }
     }
 
     if (rule.protection) {
-      if (rule.protection.type === "ruleset") {
-        // Create a hash of the protection settings (excluding type) to group identical rules
-        const { type, ...settings } = rule.protection;
-        const hash = crypto.createHash("sha256").update(JSON.stringify(settings)).digest("hex");
-        
-        if (!rulesetGroups.has(hash)) {
-          rulesetGroups.set(hash, { branchNames: [], protection: rule.protection });
+      if (rule.protection.type === "ruleset" || rule.protection.type === "ruleset_json") {
+        if (!rulesetGroups.has(i)) {
+          rulesetGroups.set(i, { branchNames: [], protection: rule.protection });
         }
-        rulesetGroups.get(hash)!.branchNames.push(...rule.branchNames);
+        rulesetGroups.get(i)!.branchNames.push(...effectiveBranchNames);
       } else {
-        // Classic protection gets applied individually
-        for (const branchName of rule.branchNames) {
+        for (const branchName of effectiveBranchNames) {
           try {
+            const existingProt = await getProtection(octokit, repo, branchName);
+            if (existingProt) {
+              const diffs = compareClassicConfigs(existingProt, rule.protection as any);
+              if (diffs.length === 0) {
+                protectedBranches.push(branchName);
+                continue;
+              }
+              const conflictEntry = repoParentId ? await logActivity(
+                "conflict.pending" as any, actor, repo, branchName,
+                `Conflict: Classic protection on "${branchName}" already exists with different settings`,
+                undefined, "app", undefined, undefined,
+                { parentId: repoParentId, conflictPayload: { type: "classic", repo, name: branchName, existingConfig: existingProt, templateConfig: rule.protection, differences: diffs } } as any
+              ) : undefined;
+              conflicts.push({ type: "classic", repo, name: branchName, existingConfig: existingProt, templateConfig: rule.protection, differences: diffs, activityId: conflictEntry?.id });
+              continue;
+            }
+
+            const classicRestrictions = rule.protection.restrictPushes
+              ? {
+                  users: rule.protection.pushRestrictionUsers || [],
+                  teams: rule.protection.pushRestrictionTeams || [],
+                  apps: rule.protection.pushRestrictionApps || [],
+                }
+              : { users: [], teams: [], apps: [] };
+
             await octokit.rest.repos.updateBranchProtection({
               owner: org,
               repo,
@@ -206,9 +487,10 @@ export async function applyTemplate(
                     required_approving_review_count: rule.protection.requiredApprovals,
                     dismiss_stale_reviews: rule.protection.dismissStaleReviews,
                     require_code_owner_reviews: rule.protection.requireCodeOwnerReviews,
+                    dismissal_restrictions: {},
                   }
                 : null,
-              restrictions: null,
+              restrictions: classicRestrictions,
               required_linear_history: rule.protection.requireLinearHistory,
               allow_force_pushes: !rule.protection.preventForcePush,
               allow_deletions: !rule.protection.preventDeletion,
@@ -216,80 +498,396 @@ export async function applyTemplate(
               required_signatures: rule.protection.requireSignedCommits,
             });
             protectedBranches.push(branchName);
+            if (repoParentId) {
+              await logActivity("branch.protect", actor, repo, branchName,
+                `Applied classic protection to "${branchName}" via template "${template.name}"`,
+                undefined, "app", undefined, undefined,
+                { parentId: repoParentId, undoPayload: { action: "delete_protection", params: { repo, branch: branchName, protectionConfig: rule.protection } } }
+              );
+            }
           } catch (err) {
-            errors.push(`Failed to apply classic protection to ${branchName}: ${(err as Error).message}`);
+            const msg = `Classic protection ${branchName}: ${githubErrorMessage(err)}`;
+            console.error("[applyTemplate]", msg);
+            errors.push(msg);
+            if (repoParentId) {
+              await logActivity("branch.protect", actor, repo, branchName,
+                `Failed to apply classic protection to "${branchName}" via template "${template.name}"`,
+                undefined, "app", undefined, undefined,
+                { parentId: repoParentId, failed: true, errorMessage: githubErrorMessage(err),
+                  retryPayload: { action: "apply_protection", params: { repo, branch: branchName, protectionConfig: rule.protection } } }
+              );
+            }
           }
         }
       }
     }
   }
 
-  // Apply bundled rulesets
-  for (const { branchNames, protection } of rulesetGroups.values()) {
+  let existingRulesets: any[] | undefined;
+  if (!abortRepo && rulesetGroups.size > 0) {
+    try { existingRulesets = await listRulesets(octokit, repo); } catch { existingRulesets = []; }
+  }
+
+  for (const { branchNames, protection } of abortRepo ? [] : rulesetGroups.values()) {
     try {
-      const rules: any[] = [];
-      if (protection.preventDeletion) rules.push({ type: "deletion" });
-      if (protection.preventForcePush) rules.push({ type: "non_fast_forward" });
-      if (protection.requireLinearHistory) rules.push({ type: "required_linear_history" });
-      if (protection.requireSignedCommits) rules.push({ type: "required_signatures" });
-      
-      if (protection.requirePr) {
-        rules.push({
-          type: "pull_request",
-          parameters: {
-            required_approving_review_count: protection.requiredApprovals,
-            dismiss_stale_reviews_on_push: protection.dismissStaleReviews,
-            require_code_owner_review: protection.requireCodeOwnerReviews,
-            require_last_push_approval: false,
-            required_review_thread_resolution: protection.requireConversationResolution,
-          },
-        });
-      }
-      
-      if (protection.requireStatusChecks) {
-        rules.push({
-          type: "required_status_checks",
-          parameters: {
-            strict_required_status_checks_policy: protection.strictStatusChecks,
-            required_status_checks: [],
-          },
-        });
+      const rulesetName = protection.rulesetName || (protection.type === "ruleset_json" && protection.rawJson?.name) || `Template Ruleset (${branchNames.join(", ")})`;
+
+      const nameMatch = (existingRulesets || []).find((r: any) => r.name === rulesetName);
+      if (nameMatch) {
+        let fullExisting: any;
+        try { fullExisting = await getRuleset(octokit, repo, nameMatch.id); } catch { /* skip comparison if fetch fails */ }
+
+        if (fullExisting) {
+          const tmplRules = buildRulesetRules(protection as any);
+          let tmplBypass: any[];
+          if (protection.bypassActors && protection.bypassActors.length > 0) {
+            tmplBypass = protection.bypassActors;
+          } else if (protection.enforceAdmins) {
+            tmplBypass = [];
+          } else {
+            tmplBypass = [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }];
+          }
+          const tmplEnforcement = protection.enforcement || "active";
+          const diffs = compareRulesetConfigs(fullExisting, tmplRules, tmplBypass, tmplEnforcement);
+
+          if (diffs.length === 0) {
+            protectedBranches.push(...branchNames);
+            continue;
+          }
+
+          const conflictEntry = repoParentId ? await logActivity(
+            "conflict.pending" as any, actor, repo, rulesetName,
+            `Conflict: Ruleset "${rulesetName}" already exists with different settings`,
+            undefined, "app", undefined, undefined,
+            { parentId: repoParentId, conflictPayload: { type: "ruleset", repo, name: rulesetName, existingId: nameMatch.id, existingConfig: fullExisting, templateConfig: protection, differences: diffs } } as any
+          ) : undefined;
+          conflicts.push({ type: "ruleset", repo, name: rulesetName, existingId: nameMatch.id, existingConfig: fullExisting, templateConfig: protection, differences: diffs, activityId: conflictEntry?.id });
+          continue;
+        }
       }
 
-      await octokit.rest.repos.createRepoRuleset({
-        owner: org,
-        repo,
-        name: `Template Ruleset (${branchNames.join(', ')})`,
-        target: "branch",
-        enforcement: "active",
-        bypass_actors: protection.enforceAdmins ? [] : [
-          {
-            actor_id: 1, // pseudo ID for repository admin
-            actor_type: "RepositoryRole",
-            bypass_mode: "always"
-          }
-        ],
-        conditions: {
-          ref_name: {
-            include: branchNames.map(b => `refs/heads/${b}`),
-            exclude: [],
+      let createdRulesetId: number | undefined;
+      if (protection.type === "ruleset_json" && protection.rawJson) {
+        const { id, source, source_type, node_id, _links, ...payload } = protection.rawJson;
+        const customPayload = {
+          ...payload,
+          name: protection.rulesetName || payload.name || `Template Ruleset (${branchNames.join(", ")})`,
+          conditions: {
+            ref_name: {
+              include: branchNames.map((b) => `refs/heads/${b}`),
+              exclude: [],
+            },
           },
-        },
-        rules,
-      });
+        };
+        const { data: created } = await octokit.rest.repos.createRepoRuleset({
+          owner: org,
+          repo,
+          ...customPayload,
+        });
+        createdRulesetId = created.id;
+      } else {
+        const rules: any[] = buildRulesetRules(protection);
+
+        if (rules.length === 0) {
+          rules.push({ type: "pull_request", parameters: { required_approving_review_count: 0 } });
+        }
+
+        let bypassActors: any[];
+        if (protection.bypassActors && protection.bypassActors.length > 0) {
+          bypassActors = protection.bypassActors;
+        } else if (protection.enforceAdmins) {
+          bypassActors = [];
+        } else {
+          bypassActors = [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }];
+        }
+
+        const { data: created } = await octokit.rest.repos.createRepoRuleset({
+          owner: org,
+          repo,
+          name: protection.rulesetName || `Template Ruleset (${branchNames.join(", ")})`,
+          target: "branch",
+          enforcement: (protection.enforcement as any) || "active",
+          bypass_actors: bypassActors,
+          conditions: {
+            ref_name: {
+              include: branchNames.map((b) => `refs/heads/${b}`),
+              exclude: [],
+            },
+          },
+          rules,
+        });
+        createdRulesetId = created.id;
+      }
       protectedBranches.push(...branchNames);
+      if (repoParentId) {
+        const rulesetName = protection.rulesetName || `Template Ruleset (${branchNames.join(", ")})`;
+        await logActivity("repo.ruleset.create" as any, actor, repo, rulesetName,
+          `Created ruleset "${rulesetName}" for branches [${branchNames.join(", ")}] via template "${template.name}"`,
+          undefined, "app", undefined, undefined,
+          { parentId: repoParentId, undoPayload: { action: "delete_ruleset", params: { repo, rulesetId: createdRulesetId, protectionConfig: protection, branchNames } } }
+        );
+      }
     } catch (err) {
-      errors.push(`Failed to create ruleset for [${branchNames.join(', ')}]: ${(err as Error).message}`);
+      const msg = `Ruleset [${branchNames.join(", ")}]: ${githubErrorMessage(err)}`;
+      console.error("[applyTemplate]", msg);
+      errors.push(msg);
+      if (repoParentId) {
+        const rulesetName = protection.rulesetName || `Template Ruleset (${branchNames.join(", ")})`;
+        await logActivity("repo.ruleset.create" as any, actor, repo, rulesetName,
+          `Failed to create ruleset "${rulesetName}" via template "${template.name}"`,
+          undefined, "app", undefined, undefined,
+          { parentId: repoParentId, failed: true, errorMessage: githubErrorMessage(err),
+            retryPayload: { action: "create_ruleset", params: { repo, protectionConfig: protection, branchNames } } }
+        );
+      }
     }
   }
 
-  logActivity(
-    "template.apply",
-    actor,
-    repo,
-    template.name,
-    `Applied template "${template.name}" — created: [${created.join(", ")}], protected: [${protectedBranches.join(", ")}]`
-  );
+  /* ── Tag rulesets ── */
+  const tagRules = template.tags || [];
+  let existingTagRulesets: any[] = [];
+  if (!abortRepo && tagRules.length > 0) {
+    try {
+      existingTagRulesets = await listRulesets(octokit, repo);
+    } catch (listErr) {
+      console.error(`[applyTemplate] Failed to list rulesets for ${repo}:`, listErr);
+      existingTagRulesets = [];
+    }
+  }
 
-  return { created, protected: protectedBranches, errors };
+  for (const tag of abortRepo ? [] : tagRules) {
+    if (!tag.tagPatterns || tag.tagPatterns.length === 0) continue;
+
+    try {
+      const rulesetName = tag.rulesetName || (tag.rawJson?.name) || `Tag Ruleset (${tag.tagPatterns.join(", ")})`;
+
+      const nameMatch = existingTagRulesets.find((r: any) => r.name === rulesetName);
+      if (nameMatch) {
+        let fullExisting: any;
+        try {
+          fullExisting = await getRuleset(octokit, repo, nameMatch.id);
+        } catch {
+          fullExisting = undefined;
+        }
+
+        let diffs: string[];
+        if (fullExisting) {
+          const tmplRules = tag.rawJson?.rules || buildTagRulesetRules(tag);
+          const tmplBypass = (tag.bypassActors && tag.bypassActors.length > 0)
+            ? tag.bypassActors.map((a: any) => ({ ...a, bypass_mode: "always" }))
+            : [];
+          const tmplEnforcement = tag.enforcement || "active";
+          diffs = compareRulesetConfigs(fullExisting, tmplRules, tmplBypass, tmplEnforcement);
+
+          if (diffs.length === 0) {
+            continue;
+          }
+        } else {
+          diffs = ["Existing tag ruleset could not be fetched; override will replace it with template."];
+        }
+
+        const existingConfigForConflict = fullExisting ?? { id: nameMatch.id, name: nameMatch.name };
+        const conflictEntry = repoParentId ? await logActivity(
+          "conflict.pending" as any, actor, repo, rulesetName,
+          `Conflict: Tag ruleset "${rulesetName}" already exists with different settings`,
+          undefined, "app", undefined, undefined,
+          { parentId: repoParentId, conflictPayload: { type: "ruleset", repo, name: rulesetName, existingId: nameMatch.id, existingConfig: existingConfigForConflict, templateConfig: { ...tag, _isTagRuleset: true }, differences: diffs } } as any
+        ) : undefined;
+        conflicts.push({ type: "ruleset", repo, name: rulesetName, existingId: nameMatch.id, existingConfig: existingConfigForConflict, templateConfig: { ...tag, _isTagRuleset: true }, differences: diffs, activityId: conflictEntry?.id });
+        continue;
+      }
+
+      let createdTagId: number;
+
+      if (tag.rawJson) {
+        const { id: _id, source: _s, source_type: _st, node_id: _n, _links: _l, created_at: _ca, updated_at: _ua, ...payload } = tag.rawJson;
+        if (payload.bypass_actors) {
+          payload.bypass_actors = payload.bypass_actors.map((a: any) => ({ ...a, bypass_mode: "always" }));
+        }
+        const { data: createdTag } = await octokit.rest.repos.createRepoRuleset({
+          owner: org, repo, ...payload,
+          name: rulesetName,
+          target: "tag",
+          conditions: { ref_name: { include: tag.tagPatterns.map((t: string) => `refs/tags/${t}`), exclude: [] } },
+        });
+        createdTagId = createdTag.id;
+      } else {
+        const rules = buildTagRulesetRules(tag);
+
+        if (rules.length === 0) {
+          rules.push({ type: "creation" });
+        }
+
+        const bypassActors = (tag.bypassActors && tag.bypassActors.length > 0)
+          ? tag.bypassActors.map((a: any) => ({ ...a, bypass_mode: "always" }))
+          : [];
+
+        const { data: createdTag } = await octokit.rest.repos.createRepoRuleset({
+          owner: org,
+          repo,
+          name: rulesetName,
+          target: "tag",
+          enforcement: (tag.enforcement as any) || "active",
+          bypass_actors: bypassActors,
+          conditions: {
+            ref_name: {
+              include: tag.tagPatterns.map((t) => `refs/tags/${t}`),
+              exclude: [],
+            },
+          },
+          rules,
+        });
+        createdTagId = createdTag.id;
+      }
+
+      if (repoParentId) {
+        await logActivity("repo.ruleset.create" as any, actor, repo, rulesetName,
+          `Created tag ruleset "${rulesetName}" for patterns [${tag.tagPatterns.join(", ")}] via template "${template.name}"`,
+          undefined, "app", undefined, undefined,
+          { parentId: repoParentId, undoPayload: { action: "delete_ruleset", params: { repo, rulesetId: createdTagId, tagRule: tag, tagPatterns: tag.tagPatterns } } }
+        );
+      }
+    } catch (err) {
+      const errMsg = githubErrorMessage(err);
+      console.log(`[applyTemplate] Tag ruleset create failed: "${errMsg}"`);
+
+      if (/unique/i.test(errMsg)) {
+        console.log(`[applyTemplate] Detected name-uniqueness error, converting to conflict`);
+        try {
+          const rulesetName = tag.rulesetName || (tag.rawJson?.name) || `Tag Ruleset (${tag.tagPatterns.join(", ")})`;
+          let freshList: any[] = [];
+          try {
+            freshList = await listRulesets(octokit, repo);
+            console.log(`[applyTemplate] Fresh list has ${freshList.length} rulesets:`, freshList.map((r: any) => r?.name));
+          } catch { /* ignore */ }
+
+          const altName = `Tag Ruleset (${tag.tagPatterns.join(", ")})`;
+          const nameMatch = Array.isArray(freshList)
+            ? freshList.find((r: any) => r && (r.name === rulesetName || r.name === altName))
+            : undefined;
+
+          let conflictName = rulesetName;
+          let existingId: number | undefined;
+          let existingConfigForConflict: any = {};
+          let diffs: string[] = ["A tag ruleset with this name already exists; override will delete it and apply the template."];
+
+          if (nameMatch) {
+            conflictName = nameMatch.name;
+            existingId = nameMatch.id;
+            let fullExisting: any;
+            try { fullExisting = await getRuleset(octokit, repo, nameMatch.id); } catch { fullExisting = undefined; }
+            if (fullExisting) {
+              const tmplRules = tag.rawJson?.rules || buildTagRulesetRules(tag);
+              const tmplBypass = (tag.bypassActors && tag.bypassActors.length > 0)
+                ? tag.bypassActors.map((a: any) => ({ ...a, bypass_mode: "always" }))
+                : [];
+              diffs = compareRulesetConfigs(fullExisting, tmplRules, tmplBypass, tag.enforcement || "active");
+              if (diffs.length === 0) diffs = ["Configs appear identical but GitHub rejected duplicate name."];
+              existingConfigForConflict = fullExisting;
+            } else {
+              existingConfigForConflict = { id: nameMatch.id, name: nameMatch.name };
+            }
+          }
+
+          let conflictActivityId: string | undefined;
+          if (repoParentId) {
+            try {
+              const entry = await logActivity(
+                "conflict.pending" as any, actor, repo, conflictName,
+                `Conflict: Tag ruleset "${conflictName}" already exists`,
+                undefined, "app", undefined, undefined,
+                { parentId: repoParentId, conflictPayload: { type: "ruleset", repo, name: conflictName, existingId, existingConfig: existingConfigForConflict, templateConfig: { ...tag, _isTagRuleset: true }, differences: diffs } } as any
+              );
+              conflictActivityId = entry?.id;
+            } catch (logErr) {
+              console.error("[applyTemplate] Failed to log conflict activity:", logErr);
+            }
+          }
+          conflicts.push({ type: "ruleset", repo, name: conflictName, existingId, existingConfig: existingConfigForConflict, templateConfig: { ...tag, _isTagRuleset: true }, differences: diffs, activityId: conflictActivityId });
+          console.log(`[applyTemplate] Pushed tag ruleset conflict for "${conflictName}"`);
+          continue;
+        } catch (conflictErr) {
+          console.error("[applyTemplate] Failed to create conflict from name-uniqueness error:", conflictErr);
+        }
+      }
+
+      const msg = `Tag Ruleset [${tag.tagPatterns.join(", ")}]: ${errMsg}`;
+      console.error("[applyTemplate]", msg);
+      errors.push(msg);
+      if (repoParentId) {
+        const tagRulesetName = tag.rulesetName || `Tag Ruleset (${tag.tagPatterns.join(", ")})`;
+        try {
+          await logActivity("repo.ruleset.create" as any, actor, repo, tagRulesetName,
+            `Failed to create tag ruleset "${tagRulesetName}" via template "${template.name}"`,
+            undefined, "app", undefined, undefined,
+            { parentId: repoParentId, failed: true, errorMessage: errMsg,
+              retryPayload: { action: "create_tag_ruleset", params: { repo, tagRule: tag, tagPatterns: tag.tagPatterns } } }
+          );
+        } catch { /* ignore logging failure */ }
+      }
+    }
+  }
+
+  /* ── Push rulesets ── */
+  const pushRules = template.pushRules || [];
+  for (const push of abortRepo ? [] : pushRules) {
+    try {
+      const rulesetName = push.rulesetName || (push.rawJson?.name) || "Push Protection Ruleset";
+
+      let createdPushId: number;
+
+      if (push.rawJson) {
+        const { id: _id, source: _s, source_type: _st, node_id: _n, _links: _l, created_at: _ca, updated_at: _ua, ...payload } = push.rawJson;
+        const { data: createdPush } = await octokit.rest.repos.createRepoRuleset({
+          owner: org, repo, ...payload,
+          name: rulesetName,
+          target: "push" as any,
+        });
+        createdPushId = createdPush.id;
+      } else {
+        const rules = buildPushRulesetRules(push);
+
+        if (rules.length === 0) continue; // nothing to create
+
+        const bypassActors = (push.bypassActors && push.bypassActors.length > 0)
+          ? push.bypassActors
+          : [];
+
+        const { data: createdPush } = await octokit.rest.repos.createRepoRuleset({
+          owner: org,
+          repo,
+          name: rulesetName,
+          target: "push" as any,
+          enforcement: (push.enforcement as any) || "active",
+          bypass_actors: bypassActors,
+          rules,
+        });
+        createdPushId = createdPush.id;
+      }
+
+      if (repoParentId) {
+        await logActivity("repo.ruleset.create" as any, actor, repo, rulesetName,
+          `Created push ruleset "${rulesetName}" via template "${template.name}"`,
+          undefined, "app", undefined, undefined,
+          { parentId: repoParentId, undoPayload: { action: "delete_ruleset", params: { repo, rulesetId: createdPushId } } }
+        );
+      }
+    } catch (err) {
+      const msg = `Push Ruleset: ${githubErrorMessage(err)}`;
+      console.error("[applyTemplate]", msg);
+      errors.push(msg);
+      if (repoParentId) {
+        const pushRulesetName = push.rulesetName || "Push Protection Ruleset";
+        try {
+          await logActivity("repo.ruleset.create" as any, actor, repo, pushRulesetName,
+            `Failed to create push ruleset "${pushRulesetName}" via template "${template.name}"`,
+            undefined, "app", undefined, undefined,
+            { parentId: repoParentId, failed: true, errorMessage: githubErrorMessage(err) }
+          );
+        } catch { /* ignore logging failure */ }
+      }
+    }
+  }
+
+  return { created, protected: protectedBranches, errors, conflicts, templateName: template.name };
 }

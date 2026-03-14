@@ -1,5 +1,6 @@
 /** @type {import('tailwindcss').Config} */
 export default {
+  darkMode: 'class',
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
@@ -59,11 +60,19 @@ export default {
         'gradientBG': 'gradientBG 15s ease infinite',
         'fadeInUp': 'fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
         'fadeInDelayed': 'fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'pulse-once': 'highlightPulse 2s ease-out forwards',
+        'slide-in-right': 'slideInRight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+        'scale-in': 'scaleIn 0.2s ease-out forwards',
       },
       keyframes: {
         fadeIn: {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
+        },
+        highlightPulse: {
+          '0%': { backgroundColor: 'rgb(219 234 254 / 0.6)' },
+          '30%': { backgroundColor: 'rgb(219 234 254 / 0.6)' },
+          '100%': { backgroundColor: 'transparent' },
         },
         slideUp: {
           '0%': { opacity: '0', transform: 'translateY(16px) scale(0.98)' },
@@ -82,6 +91,14 @@ export default {
             opacity: 1,
             transform: 'translateY(0)'
           }
+        },
+        slideInRight: {
+          '0%': { transform: 'translateX(100%)' },
+          '100%': { transform: 'translateX(0)' },
+        },
+        scaleIn: {
+          '0%': { opacity: '0', transform: 'scale(0.95)' },
+          '100%': { opacity: '1', transform: 'scale(1)' },
         }
       }
     },
