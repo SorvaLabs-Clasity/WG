@@ -44,6 +44,7 @@ function resolveTableNames(): void {
     EXCLUSIONS_TABLE: `${prefix}-exclusions`,
     WIDGETS_TABLE: `${prefix}-widgets`,
     COMPLIANCE_CACHE_TABLE: `${prefix}-compliance-cache`,
+    RULE_TEMPLATES_TABLE: `${prefix}-rule-templates`,
   };
   for (const [key, val] of Object.entries(tables)) {
     if (!process.env[key]) process.env[key] = val;

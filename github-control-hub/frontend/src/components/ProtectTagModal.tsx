@@ -91,6 +91,8 @@ interface ProtectTagModalProps {
   onSave: (rule: TagRule) => void;
   isSaving: boolean;
   isTemplateMode?: boolean;
+  /** Available tag rule templates the user can pick from */
+  ruleTemplateOptions?: Array<{ id: string; name: string; tagProtection?: any }>;
 }
 
 export default function ProtectTagModal({
@@ -101,6 +103,7 @@ export default function ProtectTagModal({
   onSave,
   isSaving,
   isTemplateMode = false,
+  ruleTemplateOptions,
 }: ProtectTagModalProps) {
   const [rule, setRule] = useState<TagRule>({ ...DEFAULT_TAG_PROTECTION });
   const [mode, setMode] = useState<"form" | "json">("form");
@@ -185,7 +188,12 @@ export default function ProtectTagModal({
           <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 p-1 rounded-md border border-gray-200 dark:border-slate-700 w-fit">
             <button
               type="button"
-              onClick={() => setMode("form")}
+              onClick={() => {
+                if (mode === "json" && jsonText.trim()) {
+                  if (!confirm("Switching to form mode will discard any pasted JSON. Continue?")) return;
+                }
+                setMode("form");
+              }}
               className={"px-3 py-1.5 text-xs font-semibold rounded-md transition-colors " + (
                 mode === "form"
                   ? "bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600"
@@ -206,6 +214,35 @@ export default function ProtectTagModal({
               <i className="ph-bold ph-code mr-1.5"></i>Direct JSON
             </button>
           </div>
+
+          {/* Rule Template Picker */}
+          {ruleTemplateOptions && ruleTemplateOptions.length > 0 && (
+            <div>
+              <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                Or load from a Rule Template
+              </label>
+              <select
+                value=""
+                onChange={(e) => {
+                  const rt = ruleTemplateOptions.find(r => r.id === e.target.value);
+                  if (rt && rt.tagProtection) {
+                    const prot = JSON.parse(JSON.stringify(rt.tagProtection));
+                    setRule({ ...prot, tagPatterns: rule.tagPatterns || tagPatterns });
+                    setMode("form");
+                    setJsonText("");
+                    setJsonError("");
+                    setEnforceAdmins(!prot.bypassActors || prot.bypassActors.length === 0);
+                  }
+                }}
+                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-gh-blue dark:text-slate-200"
+              >
+                <option value="">Select a rule template...</option>
+                {ruleTemplateOptions.map(rt => (
+                  <option key={rt.id} value={rt.id}>{rt.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {mode === "json" ? (
             <div className="space-y-4">
@@ -232,13 +269,13 @@ export default function ProtectTagModal({
             <div className="space-y-5">
               <div className="grid grid-cols-2 gap-4 border-b border-gray-100 dark:border-slate-700 pb-4">
                 <div>
-                  <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider block mb-1.5">Ruleset Name</label>
+                  <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider block mb-1.5">Ruleset Name <span className="text-red-500">*</span></label>
                   <input
                     type="text"
                     value={rule.rulesetName || ""}
                     onChange={e => update("rulesetName", e.target.value)}
                     placeholder="Tag Protection Ruleset"
-                    className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue dark:bg-slate-800 dark:text-slate-200"
+                    className={`w-full px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue dark:bg-slate-800 dark:text-slate-200 ${!(rule.rulesetName?.trim()) ? "border-red-300 dark:border-red-500/50" : "border-gray-300 dark:border-slate-600"}`}
                   />
                 </div>
                 <div>
@@ -329,13 +366,20 @@ export default function ProtectTagModal({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gh-border dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 flex items-center justify-between rounded-b-[12px] shrink-0">
-          <div className="text-[11px] text-gh-muted dark:text-slate-400">
-            {mode === "form" && ruleCount > 0 && (
-              <span>{ruleCount} rule{ruleCount !== 1 ? "s" : ""} configured</span>
-            )}
+        <div className="px-6 py-4 border-t border-gh-border dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 flex flex-col gap-3 rounded-b-[12px] shrink-0">
+          {/* What you're saving */}
+          <div className={`flex items-center gap-2 text-[11px] font-medium rounded-md px-3 py-1.5 ${
+            mode === "json"
+              ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+              : "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800"
+          }`}>
+            <i className={`fa-solid ${mode === "json" ? "fa-code" : "fa-tag"} text-[10px]`}></i>
+            {mode === "json"
+              ? "This will save the raw JSON as-is"
+              : `Tag ruleset${rule.rulesetName ? `: ${rule.rulesetName}` : ""}${ruleCount > 0 ? ` \u2022 ${ruleCount} rule${ruleCount !== 1 ? "s" : ""}` : ""}`
+            }
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-end gap-3">
             <button
               onClick={onClose}
               className="px-4 py-2 text-[13px] font-semibold text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 border border-gh-border dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-slate-600"
@@ -348,7 +392,7 @@ export default function ProtectTagModal({
                   const { rawJson: _r, ...formRule } = rule;
                   onSave({ ...formRule } as TagRule);
                 }}
-                disabled={isSaving}
+                disabled={isSaving || !(rule.rulesetName?.trim())}
                 className="px-4 py-2 text-[13px] font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gh-blue/30 active:scale-[0.98] disabled:opacity-50"
               >
                 {isSaving ? "Saving..." : "Save Rules"}

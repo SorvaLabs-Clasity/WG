@@ -6,7 +6,7 @@ import {
   mockDeleteTemplate,
   mockApplyTemplate,
 } from "./mock";
-import type { RepoTemplate, BranchRule, TagRule } from "../types/Template";
+import type { RepoTemplate, BranchRule, TagRule, PushRule } from "../types/Template";
 
 export function fetchTemplates(): Promise<RepoTemplate[]> {
   if (DEMO_MODE) return mockFetchTemplates();
@@ -18,6 +18,7 @@ export function createTemplate(data: {
   description: string;
   branches: BranchRule[];
   tags?: TagRule[];
+  pushRules?: PushRule[];
   autoApplyOnNewRepo: boolean;
   exclusionLists?: string[];
 }): Promise<RepoTemplate> {
@@ -32,6 +33,7 @@ export function updateTemplate(
     description: string;
     branches: BranchRule[];
     tags?: TagRule[];
+    pushRules?: PushRule[];
     autoApplyOnNewRepo: boolean;
     exclusionLists?: string[];
   }>

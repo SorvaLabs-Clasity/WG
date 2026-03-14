@@ -6,7 +6,7 @@ import {
   deleteTemplateApi,
   applyTemplate,
 } from "../api/templates";
-import type { BranchRule, TagRule } from "../types/Template";
+import type { BranchRule, TagRule, PushRule } from "../types/Template";
 
 export function useTemplates() {
   return useQuery({
@@ -24,6 +24,7 @@ export function useCreateTemplate() {
       description: string;
       branches: BranchRule[];
       tags?: TagRule[];
+      pushRules?: PushRule[];
       autoApplyOnNewRepo: boolean;
       exclusionLists?: string[];
     }) => createTemplate(data),
@@ -47,6 +48,7 @@ export function useUpdateTemplate() {
         description: string;
         branches: BranchRule[];
         tags?: TagRule[];
+        pushRules?: PushRule[];
         autoApplyOnNewRepo: boolean;
         exclusionLists?: string[];
       }>;

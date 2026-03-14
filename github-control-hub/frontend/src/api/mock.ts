@@ -6,6 +6,7 @@ import type { Scanner, ScanResult } from "../types/Scanner";
 import type { SecurityAlert } from "../types/Alert";
 import type { RepoComplianceScore } from "../types/Compliance";
 import type { DependencyAlert, DependencySummary } from "../types/Dependabot";
+import type { RuleTemplate } from "../types/RuleTemplate";
 
 export const DEMO_USER = {
   login: "demo-user",
@@ -10054,6 +10055,158 @@ export async function mockApplyTemplate(
   });
 
   return merged;
+}
+
+/* ── Rule Templates (presets) ── */
+
+let mockRuleTemplateStore: RuleTemplate[] = [
+  {
+    id: "rt-1",
+    name: "Strict Branch Requirements",
+    description: "Requires 2 approvals, dismiss stale reviews, signed commits, no force push",
+    ruleType: "branch_ruleset",
+    branchProtection: {
+      type: "ruleset",
+      requirePr: true,
+      requiredApprovals: 2,
+      dismissStaleReviews: true,
+      requireCodeOwnerReviews: true,
+      requireLastPushApproval: true,
+      requireConversationResolution: true,
+      allowedMergeMethods: [],
+      requireStatusChecks: true,
+      strictStatusChecks: true,
+      doNotRequireStatusChecksOnCreation: false,
+      statusCheckContexts: [],
+      requireDeployments: false,
+      requiredDeploymentEnvironments: [],
+      requireSignedCommits: true,
+      requireLinearHistory: true,
+      enforceAdmins: true,
+      preventForcePush: true,
+      preventDeletion: true,
+      restrictCreations: false,
+      restrictUpdates: false,
+      requireCodeScanning: false,
+      requireCodeQuality: false,
+      copilotCodeReview: false,
+      copilotReviewOnPush: false,
+      copilotReviewDraftPrs: false,
+      enforcement: "active",
+      bypassActors: [],
+      restrictPushes: false,
+      restrictMatchingBranchCreation: false,
+      pushRestrictionUsers: [],
+      pushRestrictionTeams: [],
+      pushRestrictionApps: [],
+    },
+    createdBy: "alice",
+    createdAt: "2026-03-01T10:00:00Z",
+    updatedAt: "2026-03-01T10:00:00Z",
+  },
+  {
+    id: "rt-2",
+    name: "Basic Classic Protection",
+    description: "Simple classic protection with 1 approval required",
+    ruleType: "classic",
+    branchProtection: {
+      type: "classic",
+      requirePr: true,
+      requiredApprovals: 1,
+      dismissStaleReviews: false,
+      requireCodeOwnerReviews: false,
+      requireConversationResolution: false,
+      requireStatusChecks: false,
+      strictStatusChecks: false,
+      statusCheckContexts: [],
+      requireSignedCommits: false,
+      requireLinearHistory: false,
+      enforceAdmins: false,
+      preventForcePush: true,
+      preventDeletion: true,
+      restrictPushes: false,
+      pushRestrictionUsers: [],
+      pushRestrictionTeams: [],
+      pushRestrictionApps: [],
+    },
+    createdBy: "bob",
+    createdAt: "2026-03-02T10:00:00Z",
+    updatedAt: "2026-03-02T10:00:00Z",
+  },
+  {
+    id: "rt-3",
+    name: "Release Tag Protection",
+    description: "Prevent deletion and force push on release tags",
+    ruleType: "tag_ruleset",
+    tagProtection: {
+      rulesetName: "Release Tag Protection",
+      enforcement: "active",
+      preventCreation: false,
+      preventUpdate: false,
+      preventDeletion: true,
+      preventForcePush: true,
+      requireSignedCommits: true,
+      bypassActors: [],
+    },
+    createdBy: "alice",
+    createdAt: "2026-03-03T10:00:00Z",
+    updatedAt: "2026-03-03T10:00:00Z",
+  },
+  {
+    id: "rt-4",
+    name: "Binary File Protection",
+    description: "Block large files and restrict binary/executable uploads",
+    ruleType: "push_ruleset",
+    pushProtection: {
+      rulesetName: "Binary File Protection",
+      enforcement: "active",
+      maxFileSize: 100,
+      fileExtensionRestriction: {
+        restrictedFileExtensions: ["exe", "dll", "so", "dylib", "bin"],
+      },
+      bypassActors: [],
+    },
+    createdBy: "bob",
+    createdAt: "2026-03-04T10:00:00Z",
+    updatedAt: "2026-03-04T10:00:00Z",
+  },
+];
+
+export async function mockFetchRuleTemplates(): Promise<RuleTemplate[]> {
+  await delay(300);
+  return [...mockRuleTemplateStore];
+}
+
+export async function mockCreateRuleTemplate(
+  data: { name: string; description: string; ruleType: RuleTemplate["ruleType"]; branchProtection?: any; tagProtection?: any; pushProtection?: any }
+): Promise<RuleTemplate> {
+  await delay(500);
+  const rt: RuleTemplate = {
+    ...data,
+    id: crypto.randomUUID(),
+    createdBy: DEMO_USER.login,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  mockRuleTemplateStore.unshift(rt);
+  return rt;
+}
+
+export async function mockUpdateRuleTemplate(
+  id: string,
+  data: Partial<{ name: string; description: string; ruleType: RuleTemplate["ruleType"]; branchProtection?: any; tagProtection?: any; pushProtection?: any }>
+): Promise<RuleTemplate> {
+  await delay(400);
+  const idx = mockRuleTemplateStore.findIndex(r => r.id === id);
+  if (idx === -1) throw new Error("Rule template not found");
+  mockRuleTemplateStore[idx] = { ...mockRuleTemplateStore[idx], ...data, updatedAt: new Date().toISOString() };
+  return mockRuleTemplateStore[idx];
+}
+
+export async function mockDeleteRuleTemplate(id: string): Promise<{ message: string }> {
+  await delay(400);
+  mockRuleTemplateStore = mockRuleTemplateStore.filter(r => r.id !== id);
+  return { message: "Rule template deleted" };
 }
 
 let mockExclusionStore: import("../types/Template").ExclusionList[] = [

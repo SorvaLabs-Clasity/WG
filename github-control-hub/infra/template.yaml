@@ -76,6 +76,7 @@ Resources:
                 - !GetAtt ExclusionsTable.Arn
                 - !GetAtt WidgetsTable.Arn
                 - !GetAtt ComplianceCacheTable.Arn
+                - !GetAtt RuleTemplatesTable.Arn
       Environment:
         Variables:
           SECRET_NAME: !Ref SecretName
@@ -89,6 +90,7 @@ Resources:
           EXCLUSIONS_TABLE: !Ref ExclusionsTable
           WIDGETS_TABLE: !Ref WidgetsTable
           COMPLIANCE_CACHE_TABLE: !Ref ComplianceCacheTable
+          RULE_TEMPLATES_TABLE: !Ref RuleTemplatesTable
       Events:
         ProxyRoot:
           Type: Api
@@ -238,6 +240,18 @@ Resources:
           AttributeType: S
       KeySchema:
         - AttributeName: repo
+          KeyType: HASH
+
+  RuleTemplatesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "${AWS::StackName}-rule-templates"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
           KeyType: HASH
 
   # --- S3 Bucket for Frontend ---

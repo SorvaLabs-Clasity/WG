@@ -3,7 +3,7 @@ import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { logActivity } from "./activityService";
 import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand } from "../utils/dynamo";
-import { buildRulesetRules, buildTagRulesetRules, listRulesets, getRuleset, getProtection, compareRulesetConfigs, compareClassicConfigs } from "./branchService";
+import { buildRulesetRules, buildTagRulesetRules, buildPushRulesetRules, listRulesets, getRuleset, getProtection, compareRulesetConfigs, compareClassicConfigs } from "./branchService";
 
 export interface ConflictItem {
   type: "ruleset" | "classic";
@@ -116,12 +116,32 @@ export interface TagRule {
   }>;
 }
 
+export interface PushRule {
+  rulesetName?: string;
+  enforcement?: "active" | "evaluate" | "disabled";
+  filePathRestriction?: {
+    restrictedFilePaths: string[];
+  };
+  maxFilePathLength?: number;
+  maxFileSize?: number;
+  fileExtensionRestriction?: {
+    restrictedFileExtensions: string[];
+  };
+  rawJson?: any;
+  bypassActors?: Array<{
+    actor_id: number;
+    actor_type: "RepositoryRole" | "Team" | "Integration" | "OrganizationAdmin";
+    bypass_mode: "always" | "pull_request";
+  }>;
+}
+
 export interface RepoTemplate {
   id: string;
   name: string;
   description: string;
   branches: BranchRule[];
   tags?: TagRule[];
+  pushRules?: PushRule[];
   autoApplyOnNewRepo: boolean;
   exclusionLists?: string[];
   createdBy: string;
@@ -802,6 +822,67 @@ export async function applyTemplate(
             undefined, "app", undefined, undefined,
             { parentId: repoParentId, failed: true, errorMessage: errMsg,
               retryPayload: { action: "create_tag_ruleset", params: { repo, tagRule: tag, tagPatterns: tag.tagPatterns } } }
+          );
+        } catch { /* ignore logging failure */ }
+      }
+    }
+  }
+
+  /* ── Push rulesets ── */
+  const pushRules = template.pushRules || [];
+  for (const push of abortRepo ? [] : pushRules) {
+    try {
+      const rulesetName = push.rulesetName || (push.rawJson?.name) || "Push Protection Ruleset";
+
+      let createdPushId: number;
+
+      if (push.rawJson) {
+        const { id: _id, source: _s, source_type: _st, node_id: _n, _links: _l, created_at: _ca, updated_at: _ua, ...payload } = push.rawJson;
+        const { data: createdPush } = await octokit.rest.repos.createRepoRuleset({
+          owner: org, repo, ...payload,
+          name: rulesetName,
+          target: "push" as any,
+        });
+        createdPushId = createdPush.id;
+      } else {
+        const rules = buildPushRulesetRules(push);
+
+        if (rules.length === 0) continue; // nothing to create
+
+        const bypassActors = (push.bypassActors && push.bypassActors.length > 0)
+          ? push.bypassActors
+          : [];
+
+        const { data: createdPush } = await octokit.rest.repos.createRepoRuleset({
+          owner: org,
+          repo,
+          name: rulesetName,
+          target: "push" as any,
+          enforcement: (push.enforcement as any) || "active",
+          bypass_actors: bypassActors,
+          rules,
+        });
+        createdPushId = createdPush.id;
+      }
+
+      if (repoParentId) {
+        await logActivity("repo.ruleset.create" as any, actor, repo, rulesetName,
+          `Created push ruleset "${rulesetName}" via template "${template.name}"`,
+          undefined, "app", undefined, undefined,
+          { parentId: repoParentId, undoPayload: { action: "delete_ruleset", params: { repo, rulesetId: createdPushId } } }
+        );
+      }
+    } catch (err) {
+      const msg = `Push Ruleset: ${githubErrorMessage(err)}`;
+      console.error("[applyTemplate]", msg);
+      errors.push(msg);
+      if (repoParentId) {
+        const pushRulesetName = push.rulesetName || "Push Protection Ruleset";
+        try {
+          await logActivity("repo.ruleset.create" as any, actor, repo, pushRulesetName,
+            `Failed to create push ruleset "${pushRulesetName}" via template "${template.name}"`,
+            undefined, "app", undefined, undefined,
+            { parentId: repoParentId, failed: true, errorMessage: githubErrorMessage(err) }
           );
         } catch { /* ignore logging failure */ }
       }

@@ -158,6 +158,12 @@ interface ProtectBranchModalProps {
   isSaving: boolean;
   isCreating?: boolean;
   isTemplateMode?: boolean;
+  /** When set, locks the protection type (e.g. "classic") and hides the type switcher */
+  forceType?: "classic" | "ruleset";
+  /** Available rule templates the user can pick from */
+  ruleTemplateOptions?: Array<{ id: string; name: string; ruleType: string; branchProtection?: any }>;
+  /** Called when the user picks a rule template */
+  onPickRuleTemplate?: (rt: { id: string; name: string; branchProtection: any }) => void;
 }
 
 function PushRestrictionsSection({
@@ -336,6 +342,9 @@ export default function ProtectBranchModal({
   isSaving,
   isCreating = false,
   isTemplateMode = false,
+  forceType,
+  ruleTemplateOptions,
+  onPickRuleTemplate,
 }: ProtectBranchModalProps) {
   const [protectRules, setProtectRules] = useState(DEFAULT_PROTECTION);
   const [targetBranch, setTargetBranch] = useState("");
@@ -347,19 +356,20 @@ export default function ProtectBranchModal({
 
   useEffect(() => {
     if (isOpen) {
-      if (initialData?.type === "ruleset_json") {
+      if (initialData?.type === "ruleset_json" && forceType !== "classic") {
         setProtectRules(initialData);
         setMode("json");
         setJsonText(JSON.stringify(initialData.rawJson, null, 2));
       } else {
-        setProtectRules(initialData || { ...DEFAULT_PROTECTION, type: "ruleset" });
+        const defaultType = forceType === "classic" ? "classic" : "ruleset";
+        setProtectRules(initialData || { ...DEFAULT_PROTECTION, type: defaultType });
         setMode("form");
         setJsonText("");
       }
       setTargetBranch(branch || "");
       setJsonError("");
     }
-  }, [isOpen, initialData, branch]);
+  }, [isOpen, initialData, branch, forceType]);
 
   const update = (field: string, val: any) => {
     setProtectRules(prev => ({ ...prev, [field]: val }));
@@ -390,7 +400,8 @@ export default function ProtectBranchModal({
 
   const isRuleset = protectRules.type === "ruleset" || protectRules.type === "ruleset_json";
   const hasAnyPendingTags = Object.values(pendingTags).some(Boolean);
-  const canSaveForm = mode === "form" && !hasAnyPendingTags && (isCreating && !isTemplateMode ? targetBranch.trim().length > 0 : true);
+  const missingRulesetName = isRuleset && !(protectRules.rulesetName?.trim());
+  const canSaveForm = mode === "form" && !hasAnyPendingTags && !missingRulesetName && (isCreating && !isTemplateMode ? targetBranch.trim().length > 0 : true);
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
@@ -457,40 +468,111 @@ export default function ProtectBranchModal({
                 <label className="block text-[13px] font-semibold text-gh-textBase dark:text-slate-200 mb-1.5">
                   Protection Type
                 </label>
-                <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 p-1 rounded-md border border-gray-200 dark:border-slate-700 w-fit">
-                  <button
-                    type="button"
-                    onClick={() => { update('type', 'ruleset'); setMode('form'); }}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                      protectRules.type === 'ruleset' || protectRules.type === 'ruleset_json'
-                        ? 'bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600'
-                        : 'text-gh-muted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 transparent border border-transparent'
-                    }`}
-                  >
-                    Repository Ruleset
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { update('type', 'classic'); setMode('form'); }}
-                    className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                      protectRules.type === 'classic'
-                        ? 'bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600'
-                        : 'text-gh-muted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 transparent border border-transparent'
-                    }`}
-                  >
-                    Classic Protection
-                  </button>
-                </div>
+                {forceType ? (
+                  <div className="text-sm text-gh-textBase dark:text-slate-300 flex items-center gap-2 bg-gray-50 dark:bg-slate-800 px-3 py-2 rounded-md border border-gray-200 dark:border-slate-700 w-fit">
+                    <i className={`fa-solid ${forceType === "classic" ? "fa-shield" : "fa-shield-halved"} text-gh-blue text-xs`}></i>
+                    <span className="text-xs font-semibold">{forceType === "classic" ? "Classic Protection" : "Repository Ruleset"}</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 p-1 rounded-md border border-gray-200 dark:border-slate-700 w-fit">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProtectRules(prev => ({ ...prev, type: 'ruleset', rawJson: undefined }));
+                        setMode('form');
+                      }}
+                      className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                        protectRules.type === 'ruleset' || protectRules.type === 'ruleset_json'
+                          ? 'bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600'
+                          : 'text-gh-muted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 transparent border border-transparent'
+                      }`}
+                    >
+                      Repository Ruleset
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProtectRules(prev => ({
+                          ...prev,
+                          type: 'classic',
+                          rawJson: undefined,
+                          rulesetName: undefined,
+                          enforcement: undefined,
+                          restrictCreations: undefined,
+                          restrictUpdates: undefined,
+                          bypassActors: undefined,
+                        }));
+                        setMode('form');
+                        setJsonText('');
+                        setJsonError('');
+                      }}
+                      className={`px-4 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                        protectRules.type === 'classic'
+                          ? 'bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600'
+                          : 'text-gh-muted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 transparent border border-transparent'
+                      }`}
+                    >
+                      Classic Protection
+                    </button>
+                  </div>
+                )}
+
+                {/* Rule Template Picker — only show templates matching the current protection type */}
+                {(() => {
+                  const currentType = forceType || protectRules.type;
+                  const isClassic = currentType === "classic";
+                  const filtered = ruleTemplateOptions?.filter(rt =>
+                    isClassic ? rt.ruleType === "classic" : rt.ruleType === "branch_ruleset"
+                  );
+                  return filtered && filtered.length > 0 ? (
+                    <div className="mt-3">
+                      <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1.5">
+                        Or load from a Rule Template
+                      </label>
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const rt = filtered.find(r => r.id === e.target.value);
+                          if (rt && rt.branchProtection) {
+                            const prot = JSON.parse(JSON.stringify(rt.branchProtection));
+                            if (isClassic) prot.type = "classic";
+                            setProtectRules(prot);
+                            setMode("form");
+                            if (prot.type === "ruleset_json" && prot.rawJson) {
+                              setMode("json");
+                              setJsonText(JSON.stringify(prot.rawJson, null, 2));
+                            }
+                            if (onPickRuleTemplate) onPickRuleTemplate(rt as any);
+                          }
+                        }}
+                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-gh-blue dark:text-slate-200"
+                      >
+                        <option value="">Select a rule template...</option>
+                        {filtered.map(rt => (
+                          <option key={rt.id} value={rt.id}>
+                            {rt.name} ({rt.ruleType === "classic" ? "Classic" : "Ruleset"})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </div>
           )}
 
-          {/* Config Mode Selector (Only when creating a ruleset or in template mode) */}
-          {(isCreating || isTemplateMode) && (protectRules.type === "ruleset" || protectRules.type === "ruleset_json") && (
+          {/* Config Mode Selector (Only when creating a ruleset or in template mode; hidden for classic) */}
+          {(isCreating || isTemplateMode) && forceType !== "classic" && (protectRules.type === "ruleset" || protectRules.type === "ruleset_json") && (
             <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-800 p-1 rounded-md border border-gray-200 dark:border-slate-700 w-fit">
               <button
                 type="button"
-                onClick={() => { setMode("form"); update("type", "ruleset"); }}
+                onClick={() => {
+                  if (mode === "json" && jsonText.trim()) {
+                    if (!confirm("Switching to form mode will discard any pasted JSON. Continue?")) return;
+                  }
+                  setMode("form");
+                  if (protectRules.type === "ruleset_json") update("type", "ruleset");
+                }}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
                   mode === "form"
                     ? "bg-white dark:bg-slate-700 shadow-sm text-gh-textBase dark:text-slate-200 border border-gray-200/50 dark:border-slate-600"
@@ -541,13 +623,13 @@ export default function ProtectBranchModal({
               {isRuleset && (
                 <div className="grid grid-cols-2 gap-4 border-b border-gray-100 dark:border-slate-700 pb-4">
                   <div>
-                    <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider block mb-1.5">Ruleset Name</label>
+                    <label className="text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider block mb-1.5">Ruleset Name <span className="text-red-500">*</span></label>
                     <input
                       type="text"
                       value={protectRules.rulesetName || ""}
                       onChange={e => update("rulesetName", e.target.value)}
                       placeholder={targetBranch ? `Ruleset for ${targetBranch}` : "My Ruleset"}
-                      className="w-full px-3 py-1.5 text-sm border border-gray-300 dark:border-slate-600 rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue dark:bg-slate-800 dark:text-slate-200"
+                      className={`w-full px-3 py-1.5 text-sm border rounded-md focus:outline-none focus:ring-1 focus:ring-gh-blue dark:bg-slate-800 dark:text-slate-200 ${!(protectRules.rulesetName?.trim()) ? "border-red-300 dark:border-red-500/50" : "border-gray-300 dark:border-slate-600"}`}
                     />
                   </div>
                   <div>
@@ -780,33 +862,51 @@ export default function ProtectBranchModal({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gh-border dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 flex items-center justify-end gap-3 rounded-b-[12px] shrink-0">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-[13px] font-semibold text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 border border-gh-border dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-slate-600"
-          >
-            Cancel
-          </button>
-          {mode === "form" ? (
+        <div className="px-6 py-4 border-t border-gh-border dark:border-slate-700 bg-gray-50/50 dark:bg-slate-800/50 flex flex-col gap-3 rounded-b-[12px] shrink-0">
+          {/* What you're saving */}
+          <div className={`flex items-center gap-2 text-[11px] font-medium rounded-md px-3 py-1.5 ${
+            mode === "json"
+              ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800"
+              : protectRules.type === "classic"
+                ? "bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800"
+                : "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800"
+          }`}>
+            <i className={`fa-solid ${mode === "json" ? "fa-code" : protectRules.type === "classic" ? "fa-shield" : "fa-shield-halved"} text-[10px]`}></i>
+            {mode === "json"
+              ? "This will save the raw JSON as-is"
+              : protectRules.type === "classic"
+                ? "Classic protection (no rulesets)"
+                : `Ruleset${protectRules.rulesetName ? `: ${protectRules.rulesetName}` : ""}`
+            }
+          </div>
+          <div className="flex items-center justify-end gap-3">
             <button
-              onClick={() => {
-                const { rawJson: _r, ...formRules } = protectRules;
-                onSave({ ...formRules, type: "ruleset" } as any, targetBranch);
-              }}
-              disabled={isSaving || !canSaveForm}
-              className="px-4 py-2 text-[13px] font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gh-blue/30 active:scale-[0.98] disabled:opacity-50"
+              onClick={onClose}
+              className="px-4 py-2 text-[13px] font-semibold text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 border border-gh-border dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gray-200 dark:focus:ring-slate-600"
             >
-              {isSaving ? "Saving..." : isTemplateMode ? "Save Rules" : "Apply Protection"}
+              Cancel
             </button>
-          ) : (
-            <button
-              onClick={handleApplyJson}
-              disabled={isSaving || !jsonText.trim()}
-              className="px-4 py-2 text-[13px] font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gh-blue/30 active:scale-[0.98] disabled:opacity-50"
-            >
-              {isSaving ? "Saving..." : isTemplateMode ? "Save JSON to Template" : "Apply JSON to GitHub"}
-            </button>
-          )}
+            {mode === "form" ? (
+              <button
+                onClick={() => {
+                  const { rawJson: _r, ...formRules } = protectRules;
+                  onSave({ ...formRules } as any, targetBranch);
+                }}
+                disabled={isSaving || !canSaveForm}
+                className="px-4 py-2 text-[13px] font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gh-blue/30 active:scale-[0.98] disabled:opacity-50"
+              >
+                {isSaving ? "Saving..." : isTemplateMode ? "Save Rules" : "Apply Protection"}
+              </button>
+            ) : (
+              <button
+                onClick={handleApplyJson}
+                disabled={isSaving || !jsonText.trim()}
+                className="px-4 py-2 text-[13px] font-semibold text-white bg-gh-blue hover:bg-gh-blueHover rounded-[6px] shadow-sm transition-colors outline-none focus:ring-4 focus:ring-gh-blue/30 active:scale-[0.98] disabled:opacity-50"
+              >
+                {isSaving ? "Saving..." : isTemplateMode ? "Save JSON to Template" : "Apply JSON to GitHub"}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

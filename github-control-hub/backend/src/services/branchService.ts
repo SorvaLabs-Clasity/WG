@@ -112,6 +112,46 @@ export function buildTagRulesetRules(tag: TagProtection): any[] {
   return rules;
 }
 
+type PushProtection = import("./templateService").PushRule;
+
+export function buildPushRulesetRules(push: PushProtection): any[] {
+  const rules: any[] = [];
+
+  if (push.filePathRestriction && push.filePathRestriction.restrictedFilePaths.length > 0) {
+    rules.push({
+      type: "file_path_restriction",
+      parameters: {
+        restricted_file_paths: push.filePathRestriction.restrictedFilePaths,
+      },
+    });
+  }
+
+  if (push.maxFilePathLength && push.maxFilePathLength > 0) {
+    rules.push({
+      type: "max_file_path_length",
+      parameters: { max_file_path_length: push.maxFilePathLength },
+    });
+  }
+
+  if (push.maxFileSize && push.maxFileSize > 0) {
+    rules.push({
+      type: "max_file_size",
+      parameters: { max_file_size: push.maxFileSize },
+    });
+  }
+
+  if (push.fileExtensionRestriction && push.fileExtensionRestriction.restrictedFileExtensions.length > 0) {
+    rules.push({
+      type: "file_extension_restriction",
+      parameters: {
+        restricted_file_extensions: push.fileExtensionRestriction.restrictedFileExtensions,
+      },
+    });
+  }
+
+  return rules;
+}
+
 export interface BranchSummary {
   name: string;
   protected: boolean;

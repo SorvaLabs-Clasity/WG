@@ -90,12 +90,32 @@ export interface TagRule {
   }>;
 }
 
+export interface PushRule {
+  rulesetName?: string;
+  enforcement?: "active" | "evaluate" | "disabled";
+  filePathRestriction?: {
+    restrictedFilePaths: string[];
+  };
+  maxFilePathLength?: number;
+  maxFileSize?: number;
+  fileExtensionRestriction?: {
+    restrictedFileExtensions: string[];
+  };
+  rawJson?: any;
+  bypassActors?: Array<{
+    actor_id: number;
+    actor_type: "RepositoryRole" | "Team" | "Integration" | "OrganizationAdmin";
+    bypass_mode: "always" | "pull_request";
+  }>;
+}
+
 export interface RepoTemplate {
   id: string;
   name: string;
   description: string;
   branches: BranchRule[];
   tags?: TagRule[];
+  pushRules?: PushRule[];
   autoApplyOnNewRepo: boolean;
   exclusionLists?: string[];
   createdBy: string;
