@@ -228,10 +228,12 @@ router.post("/aws-sso-login", async (req: Request, res: Response) => {
 
   process.env.AWS_PROFILE = profile;
 
+  const env = { ...process.env, PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:/usr/bin` };
   const child = spawn("aws", ["sso", "login", "--profile", profile], {
     stdio: "ignore",
     detached: true,
     shell: true,
+    env,
   });
   child.unref();
 
