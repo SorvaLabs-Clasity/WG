@@ -108,20 +108,10 @@ function addToModulePaths(dir: string): void {
 }
 
 function setupAutoUpdater(): void {
-  if (isDev) return; // Skip auto-update in development
+  if (isDev) return;
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-
-  // Private repo: pass token so electron-updater can access GitHub Releases
-  const ghToken = process.env.SYSTEM_GITHUB_TOKEN || process.env.GH_TOKEN;
-  autoUpdater.setFeedURL({
-    provider: "github",
-    owner: "RDaou05",
-    repo: "WG",
-    private: true,
-    token: ghToken || "",
-  } as any);
 
   autoUpdater.on("update-available", (info) => {
     console.log("Update available:", info.version);
@@ -136,14 +126,48 @@ function setupAutoUpdater(): void {
     console.error("Auto-update error:", err.message);
   });
 
-  // User clicked "Restart to update" in the UI
   ipcMain.on("install-update", () => {
     autoUpdater.quitAndInstall();
   });
 
-  autoUpdater.checkForUpdates().catch((err) => {
-    console.error("Update check failed:", err.message);
-  });
+  // Wait for AWS auth, then check for updates with the GitHub token
+  waitForAwsAuthThenCheckUpdates();
+}
+
+function waitForAwsAuthThenCheckUpdates(): void {
+  let checked = false;
+  const interval = setInterval(async () => {
+    if (checked) { clearInterval(interval); return; }
+    try {
+      const http = await import("http");
+      const data: string = await new Promise((resolve, reject) => {
+        http.get(`http://localhost:${BACKEND_PORT}/auth/status`, (res) => {
+          let body = "";
+          res.on("data", (chunk: string) => body += chunk);
+          res.on("end", () => resolve(body));
+        }).on("error", reject);
+      });
+      const status = JSON.parse(data);
+      if (status.aws?.dynamoReachable) {
+        checked = true;
+        clearInterval(interval);
+        // Token should be loaded now — set it for electron-updater
+        const ghToken = process.env.SYSTEM_GITHUB_TOKEN;
+        if (ghToken) {
+          process.env.GH_TOKEN = ghToken;
+        }
+        console.log(`[updater] AWS authenticated, checking for updates (v${app.getVersion()}, token: ${ghToken ? "yes" : "no"})`);
+        autoUpdater.checkForUpdates().catch((err) => {
+          console.error("Update check failed:", err.message);
+        });
+      }
+    } catch {
+      // Backend not ready yet or AWS not authenticated — keep waiting
+    }
+  }, 5000); // Check every 5 seconds
+
+  // Stop trying after 5 minutes
+  setTimeout(() => { clearInterval(interval); }, 300_000);
 }
 
 app.whenReady().then(main);
