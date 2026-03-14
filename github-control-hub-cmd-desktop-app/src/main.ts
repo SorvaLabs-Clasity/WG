@@ -103,6 +103,12 @@ function setupAutoUpdater(): void {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
+  // Private repo: use the GitHub token from env (loaded by bootstrap from Secrets Manager)
+  const ghToken = process.env.SYSTEM_GITHUB_TOKEN || process.env.GH_TOKEN;
+  if (ghToken) {
+    autoUpdater.requestHeaders = { Authorization: `token ${ghToken}` };
+  }
+
   autoUpdater.on("update-available", (info) => {
     console.log("Update available:", info.version);
   });
