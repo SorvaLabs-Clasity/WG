@@ -1,0 +1,49 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install backend dependencies
+        working-directory: github-control-hub/backend
+        run: npm ci
+
+      - name: Install frontend dependencies
+        working-directory: github-control-hub/frontend
+        run: npm ci
+
+      - name: Build backend
+        working-directory: github-control-hub/backend
+        run: npx tsc
+
+      - name: Build frontend
+        working-directory: github-control-hub/frontend
+        run: npm run build
+
+      - name: Install desktop app dependencies
+        working-directory: github-control-hub-cmd-desktop-app
+        run: npm ci
+
+      - name: Build Electron & publish
+        working-directory: github-control-hub-cmd-desktop-app
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx tsc -p tsconfig.json
+          npx electron-builder --publish always

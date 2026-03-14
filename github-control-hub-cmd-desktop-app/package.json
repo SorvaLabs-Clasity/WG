@@ -1,12 +1,13 @@
 {
   "name": "github-control-hub-desktop",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "GitHub Control Hub — Desktop App (Electron)",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
-    "prebuild": "npm run build:backend && npm run build:frontend",
+    "prebuild": "npm run build:backend && npm run build:frontend && npm run bundle:backend-deps",
     "build:backend": "cd ../github-control-hub/backend && npx tsc",
+    "bundle:backend-deps": "rm -rf .backend-modules && mkdir .backend-modules && cp ../github-control-hub/backend/package.json .backend-modules/ && cd .backend-modules && npm install --omit=dev --ignore-scripts",
     "build:frontend": "cd ../github-control-hub/frontend && npm run build",
     "build:electron": "tsc -p tsconfig.json",
     "dev": "npm run prebuild && npm run build:electron && electron .",
@@ -29,39 +30,57 @@
     "extraResources": [
       {
         "from": "../github-control-hub/backend/dist",
-        "to": "backend",
-        "filter": ["**/*"]
+        "to": "backend/dist",
+        "filter": [
+          "**/*"
+        ]
       },
       {
-        "from": "../github-control-hub/backend/node_modules",
-        "to": "backend-node_modules",
-        "filter": ["**/*"]
+        "from": ".backend-modules/node_modules",
+        "to": "backend/node_modules",
+        "filter": [
+          "**/*"
+        ]
       },
       {
         "from": "../github-control-hub/frontend/dist",
         "to": "frontend",
-        "filter": ["**/*"]
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "mac": {
-      "target": ["dmg", "zip"],
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "category": "public.app-category.developer-tools",
       "icon": "assets/icon.icns"
     },
     "win": {
-      "target": ["nsis", "zip"],
+      "target": [
+        "nsis",
+        "zip"
+      ],
       "icon": "assets/icon.ico"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "RDaou05",
+      "repo": "WG"
     }
   },
   "dependencies": {
     "@aws-sdk/client-cloudformation": "^3.600.0",
     "@aws-sdk/client-secrets-manager": "^3.600.0",
     "dotenv": "^16.4.7",
-    "electron-store": "^8.2.0"
+    "electron-store": "^8.2.0",
+    "electron-updater": "^6.8.3"
   },
   "devDependencies": {
     "@types/node": "^22.13.10",

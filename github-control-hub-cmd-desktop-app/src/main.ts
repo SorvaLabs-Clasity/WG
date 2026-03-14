@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell, dialog } from "electron";
+import { app, BrowserWindow, shell, dialog, ipcMain } from "electron";
 import path from "path";
+import { autoUpdater } from "electron-updater";
 import { bootstrap } from "./bootstrap";
 import { startBackend } from "./server";
 
@@ -26,7 +27,7 @@ function getBackendNodeModules(): string {
   if (isDev) {
     return path.join(getBackendDir(), "node_modules");
   }
-  return path.join(process.resourcesPath, "backend-node_modules");
+  return path.join(process.resourcesPath, "backend", "node_modules");
 }
 
 function createWindow(): void {
@@ -87,12 +88,42 @@ async function main(): Promise<void> {
   }
 
   createWindow();
+  setupAutoUpdater();
 }
 
 function addToModulePaths(dir: string): void {
   const Module = require("module");
   const paths: string[] = Module.globalPaths || [];
   if (!paths.includes(dir)) paths.unshift(dir);
+}
+
+function setupAutoUpdater(): void {
+  if (isDev) return; // Skip auto-update in development
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("update-available", (info) => {
+    console.log("Update available:", info.version);
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    console.log("Update downloaded:", info.version);
+    mainWindow?.webContents.send("update-downloaded", info.version);
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("Auto-update error:", err.message);
+  });
+
+  // User clicked "Restart to update" in the UI
+  ipcMain.on("install-update", () => {
+    autoUpdater.quitAndInstall();
+  });
+
+  autoUpdater.checkForUpdates().catch((err) => {
+    console.error("Update check failed:", err.message);
+  });
 }
 
 app.whenReady().then(main);
