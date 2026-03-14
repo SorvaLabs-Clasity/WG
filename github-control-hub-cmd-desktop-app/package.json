@@ -2,6 +2,7 @@
   "name": "github-control-hub-desktop",
   "version": "1.0.1",
   "description": "GitHub Control Hub — Desktop App (Electron)",
+  "author": "RDaou05",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
