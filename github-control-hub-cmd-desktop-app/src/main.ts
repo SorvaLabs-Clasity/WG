@@ -114,16 +114,21 @@ function setupAutoUpdater(): void {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("update-available", (info) => {
-    console.log("Update available:", info.version);
+    dialog.showMessageBox({ message: `Update available: ${info.version}`, type: "info" });
+  });
+
+  autoUpdater.on("update-not-available", (info) => {
+    dialog.showMessageBox({ message: `No update. Current: ${app.getVersion()}, Latest: ${info.version}`, type: "info" });
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    console.log("Update downloaded:", info.version, "— restarting to install");
-    autoUpdater.quitAndInstall();
+    dialog.showMessageBox({ message: `Downloaded ${info.version}, restarting...`, type: "info" }).then(() => {
+      autoUpdater.quitAndInstall();
+    });
   });
 
   autoUpdater.on("error", (err) => {
-    console.error("Auto-update error:", err.message);
+    dialog.showMessageBox({ message: `Update error: ${err.message}`, type: "error" });
   });
 
   ipcMain.on("install-update", () => {
@@ -151,14 +156,13 @@ function waitForAwsAuthThenCheckUpdates(): void {
       if (status.aws?.dynamoReachable) {
         checked = true;
         clearInterval(interval);
-        // Token should be loaded now — set it for electron-updater
         const ghToken = process.env.SYSTEM_GITHUB_TOKEN;
         if (ghToken) {
           process.env.GH_TOKEN = ghToken;
         }
-        console.log(`[updater] AWS authenticated, checking for updates (v${app.getVersion()}, token: ${ghToken ? "yes" : "no"})`);
+        dialog.showMessageBox({ message: `AWS OK. Checking updates...\nVersion: ${app.getVersion()}\nToken: ${ghToken ? ghToken.slice(0, 8) + "..." : "MISSING"}`, type: "info" });
         autoUpdater.checkForUpdates().catch((err) => {
-          console.error("Update check failed:", err.message);
+          dialog.showMessageBox({ message: `Check failed: ${err.message}`, type: "error" });
         });
       }
     } catch {
