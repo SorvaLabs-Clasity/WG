@@ -9,20 +9,21 @@ exports.default = async function (context) {
     `${context.packager.appInfo.productFilename}.app`
   );
 
-  console.log(`Stripping broken code signatures from: ${appPath}`);
+  // Electron binaries come pre-signed. electron-builder modifies the app
+  // (renames binary, changes Info.plist, etc.) which BREAKS the existing
+  // signature. With identity=null, electron-builder skips re-signing,
+  // leaving a broken signature that ShipIt rejects.
+  //
+  // Fix: re-sign everything with a valid ad-hoc signature.
+  // Ad-hoc signing is free, needs no certificate, and ShipIt accepts it.
+  console.log(`Re-signing app with ad-hoc signature: ${appPath}`);
   try {
-    // Remove all _CodeSignature directories (the signature metadata)
     execSync(
-      `find "${appPath}" -name "_CodeSignature" -type d -exec rm -rf {} + 2>/dev/null || true`,
+      `codesign --force --deep --sign - "${appPath}"`,
       { stdio: "inherit" }
     );
-    // Remove any CodeResources files
-    execSync(
-      `find "${appPath}" -name "CodeResources" -type f -delete 2>/dev/null || true`,
-      { stdio: "inherit" }
-    );
-    console.log("Code signatures stripped successfully.");
+    console.log("Ad-hoc signing completed successfully.");
   } catch (err) {
-    console.warn("Warning: failed to strip signatures:", err.message);
+    console.warn("Warning: ad-hoc signing failed:", err.message);
   }
 };
