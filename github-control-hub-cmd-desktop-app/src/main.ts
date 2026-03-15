@@ -119,6 +119,7 @@ function setupAutoUpdater(): void {
 
   autoUpdater.on("update-not-available", (info) => {
     console.log(`[updater] No update. Current: ${app.getVersion()}, Latest: ${info.version}`);
+    dialog.showMessageBox({ message: `No update available. Current: ${app.getVersion()}, Latest: ${info.version}`, type: "info" });
   });
 
   autoUpdater.on("update-downloaded", (info) => {
@@ -128,6 +129,7 @@ function setupAutoUpdater(): void {
 
   autoUpdater.on("error", (err) => {
     console.error(`[updater] Error: ${err.message}`);
+    dialog.showMessageBox({ message: `Update error: ${err.message}`, type: "error" });
   });
 
   ipcMain.on("install-update", () => {
