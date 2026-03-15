@@ -112,24 +112,22 @@ function setupAutoUpdater(): void {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  (autoUpdater as any).verifyUpdateCodeSignature = () => Promise.resolve(null);
 
   autoUpdater.on("update-available", (info) => {
-    dialog.showMessageBox({ message: `Update available: ${info.version}`, type: "info" });
+    console.log(`[updater] Update available: ${info.version}`);
   });
 
   autoUpdater.on("update-not-available", (info) => {
-    dialog.showMessageBox({ message: `No update. Current: ${app.getVersion()}, Latest: ${info.version}`, type: "info" });
+    console.log(`[updater] No update. Current: ${app.getVersion()}, Latest: ${info.version}`);
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    dialog.showMessageBox({ message: `Downloaded ${info.version}, restarting...`, type: "info" }).then(() => {
-      autoUpdater.quitAndInstall();
-    });
+    console.log(`[updater] Downloaded ${info.version}, restarting...`);
+    autoUpdater.quitAndInstall();
   });
 
   autoUpdater.on("error", (err) => {
-    dialog.showMessageBox({ message: `Update error: ${err.message}`, type: "error" });
+    console.error(`[updater] Error: ${err.message}`);
   });
 
   ipcMain.on("install-update", () => {
@@ -161,9 +159,9 @@ function waitForAwsAuthThenCheckUpdates(): void {
         if (ghToken) {
           process.env.GH_TOKEN = ghToken;
         }
-        dialog.showMessageBox({ message: `AWS OK. Checking updates...\nVersion: ${app.getVersion()}\nToken: ${ghToken ? ghToken.slice(0, 8) + "..." : "MISSING"}`, type: "info" });
+        console.log(`[updater] AWS OK. Checking updates... Version: ${app.getVersion()}`);
         autoUpdater.checkForUpdates().catch((err) => {
-          dialog.showMessageBox({ message: `Check failed: ${err.message}`, type: "error" });
+          console.error(`[updater] Check failed: ${err.message}`);
         });
       }
     } catch {

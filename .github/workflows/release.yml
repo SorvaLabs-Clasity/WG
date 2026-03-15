@@ -48,6 +48,7 @@ jobs:
         working-directory: github-control-hub-cmd-desktop-app
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_IDENTITY_AUTO_DISCOVERY: false
         run: |
           npx tsc -p tsconfig.json
           npx electron-builder --publish always
