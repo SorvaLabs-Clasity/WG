@@ -52,7 +52,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
           >
             <i className="ph-fill ph-github-logo text-2xl sm:text-3xl text-slate-900 dark:text-white"></i>
             <span className="font-bold text-slate-900 dark:text-white tracking-tight text-sm hidden sm:inline-block">
-              GitHub <span className="text-slate-400 dark:text-slate-500 font-normal">Control Hub v5</span>
+              GitHub <span className="text-slate-400 dark:text-slate-500 font-normal">Control Hub v7</span>
             </span>
           </div>
         </div>
