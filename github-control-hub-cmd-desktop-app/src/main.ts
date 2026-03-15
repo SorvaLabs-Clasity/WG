@@ -118,8 +118,8 @@ function setupAutoUpdater(): void {
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    console.log("Update downloaded:", info.version);
-    mainWindow?.webContents.send("update-downloaded", info.version);
+    console.log("Update downloaded:", info.version, "— restarting to install");
+    autoUpdater.quitAndInstall();
   });
 
   autoUpdater.on("error", (err) => {
