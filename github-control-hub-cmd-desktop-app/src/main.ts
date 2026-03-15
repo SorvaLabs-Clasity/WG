@@ -114,29 +114,27 @@ function setupAutoUpdater(): void {
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on("update-available", (info) => {
-    console.log(`[updater] Update available: ${info.version}`);
+    dialog.showMessageBox({ message: `Update available: ${info.version}\nDownloading...`, type: "info" });
   });
 
   autoUpdater.on("update-not-available", (info) => {
-    console.log(`[updater] No update. Current: ${app.getVersion()}, Latest: ${info.version}`);
-    dialog.showMessageBox({ message: `No update available. Current: ${app.getVersion()}, Latest: ${info.version}`, type: "info" });
+    dialog.showMessageBox({ message: `No update available.\nCurrent: ${app.getVersion()}\nLatest: ${info.version}`, type: "info" });
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    console.log(`[updater] Downloaded ${info.version}, restarting...`);
-    autoUpdater.quitAndInstall();
+    dialog.showMessageBox({ message: `Update ${info.version} downloaded.\nRestarting now...`, type: "info" }).then(() => {
+      autoUpdater.quitAndInstall();
+    });
   });
 
   autoUpdater.on("error", (err) => {
-    console.error(`[updater] Error: ${err.message}`);
-    dialog.showMessageBox({ message: `Update error: ${err.message}`, type: "error" });
+    dialog.showMessageBox({ message: `Update error:\n${err.message}`, type: "error" });
   });
 
   ipcMain.on("install-update", () => {
     autoUpdater.quitAndInstall();
   });
 
-  // Wait for AWS auth, then check for updates with the GitHub token
   waitForAwsAuthThenCheckUpdates();
 }
 
@@ -161,17 +159,27 @@ function waitForAwsAuthThenCheckUpdates(): void {
         if (ghToken) {
           process.env.GH_TOKEN = ghToken;
         }
-        console.log(`[updater] AWS OK. Checking updates... Version: ${app.getVersion()}`);
+        const tokenStatus = ghToken ? `Token: ${ghToken.slice(0, 8)}...` : "TOKEN MISSING";
+        dialog.showMessageBox({
+          message: `AWS OK. Checking for updates...\nVersion: ${app.getVersion()}\n${tokenStatus}`,
+          type: "info",
+        });
+        if (!ghToken) {
+          dialog.showMessageBox({
+            message: "SYSTEM_GITHUB_TOKEN not found in AWS Secrets Manager.\nCannot check for updates on a private repo without a token.",
+            type: "error",
+          });
+          return;
+        }
         autoUpdater.checkForUpdates().catch((err) => {
-          console.error(`[updater] Check failed: ${err.message}`);
+          dialog.showMessageBox({ message: `Update check failed:\n${err.message}`, type: "error" });
         });
       }
     } catch {
       // Backend not ready yet or AWS not authenticated — keep waiting
     }
-  }, 5000); // Check every 5 seconds
+  }, 5000);
 
-  // Stop trying after 5 minutes
   setTimeout(() => { clearInterval(interval); }, 300_000);
 }
 
