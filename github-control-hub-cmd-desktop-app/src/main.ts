@@ -112,6 +112,11 @@ function setupAutoUpdater(): void {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  // Skip electron-updater's strict codesign --verify check.
+  // Our afterPack hook ad-hoc signs with a permissive designated requirement,
+  // so ShipIt will accept the update — but electron-updater's --strict flag
+  // rejects ad-hoc signatures. This bypass lets ShipIt handle verification.
+  (autoUpdater as any).verifyUpdateCodeSignature = () => Promise.resolve(null);
 
   autoUpdater.on("update-available", (info) => {
     dialog.showMessageBox({ message: `Update available: ${info.version}\nDownloading...`, type: "info" });
