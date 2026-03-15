@@ -21,6 +21,7 @@
   "build": {
     "appId": "com.github-control-hub.desktop",
     "productName": "GitHub Control Hub",
+    "afterPack": "./afterPack.js",
     "directories": {
       "output": "release"
     },
