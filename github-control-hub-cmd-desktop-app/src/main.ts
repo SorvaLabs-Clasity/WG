@@ -107,33 +107,32 @@ function addToModulePaths(dir: string): void {
   if (!paths.includes(dir)) paths.unshift(dir);
 }
 
+function sendUpdateStatus(status: string, detail?: string): void {
+  mainWindow?.webContents.send("update-status", status, detail);
+}
+
 function setupAutoUpdater(): void {
   if (isDev) return;
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
-  // Skip electron-updater's strict codesign --verify check.
-  // Our afterPack hook ad-hoc signs with a permissive designated requirement,
-  // so ShipIt will accept the update — but electron-updater's --strict flag
-  // rejects ad-hoc signatures. This bypass lets ShipIt handle verification.
   (autoUpdater as any).verifyUpdateCodeSignature = () => Promise.resolve(null);
 
   autoUpdater.on("update-available", (info) => {
-    dialog.showMessageBox({ message: `Update available: ${info.version}\nDownloading...`, type: "info" });
+    sendUpdateStatus("downloading", info.version);
   });
 
-  autoUpdater.on("update-not-available", (info) => {
-    dialog.showMessageBox({ message: `No update available.\nCurrent: ${app.getVersion()}\nLatest: ${info.version}`, type: "info" });
+  autoUpdater.on("update-not-available", () => {
+    sendUpdateStatus("up-to-date");
   });
 
   autoUpdater.on("update-downloaded", (info) => {
-    dialog.showMessageBox({ message: `Update ${info.version} downloaded.\nRestarting now...`, type: "info" }).then(() => {
-      autoUpdater.quitAndInstall();
-    });
+    sendUpdateStatus("installing", info.version);
+    setTimeout(() => autoUpdater.quitAndInstall(), 2000);
   });
 
-  autoUpdater.on("error", (err) => {
-    dialog.showMessageBox({ message: `Update error:\n${err.message}`, type: "error" });
+  autoUpdater.on("error", () => {
+    sendUpdateStatus("error");
   });
 
   ipcMain.on("install-update", () => {
@@ -164,20 +163,13 @@ function waitForAwsAuthThenCheckUpdates(): void {
         if (ghToken) {
           process.env.GH_TOKEN = ghToken;
         }
-        const tokenStatus = ghToken ? `Token: ${ghToken.slice(0, 8)}...` : "TOKEN MISSING";
-        dialog.showMessageBox({
-          message: `AWS OK. Checking for updates...\nVersion: ${app.getVersion()}\n${tokenStatus}`,
-          type: "info",
-        });
         if (!ghToken) {
-          dialog.showMessageBox({
-            message: "SYSTEM_GITHUB_TOKEN not found in AWS Secrets Manager.\nCannot check for updates on a private repo without a token.",
-            type: "error",
-          });
+          sendUpdateStatus("error");
           return;
         }
-        autoUpdater.checkForUpdates().catch((err) => {
-          dialog.showMessageBox({ message: `Update check failed:\n${err.message}`, type: "error" });
+        sendUpdateStatus("checking");
+        autoUpdater.checkForUpdates().catch(() => {
+          sendUpdateStatus("error");
         });
       }
     } catch {
