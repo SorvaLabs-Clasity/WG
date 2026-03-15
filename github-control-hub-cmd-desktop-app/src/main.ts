@@ -112,6 +112,7 @@ function setupAutoUpdater(): void {
 
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.forceDevUpdateConfig = true;
 
   autoUpdater.on("update-available", (info) => {
     dialog.showMessageBox({ message: `Update available: ${info.version}`, type: "info" });
