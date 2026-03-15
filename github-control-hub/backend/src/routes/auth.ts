@@ -60,6 +60,20 @@ async function consumeAuthCode(code: string): Promise<AuthCodeEntry | null> {
   return entry;
 }
 
+router.get("/verify", (req: Request, res: Response) => {
+  const header = req.headers.authorization;
+  if (!header?.startsWith("Bearer ")) {
+    res.json({ valid: false });
+    return;
+  }
+  try {
+    const payload = verifyToken(header.slice(7));
+    res.json({ valid: true, login: payload.login, avatarUrl: payload.avatarUrl });
+  } catch {
+    res.json({ valid: false });
+  }
+});
+
 router.get("/status", async (_req: Request, res: Response) => {
   const { isAwsLocked } = await import("../middleware/awsHealthMiddleware");
   const awsConnected = !!process.env.ACTIVITY_TABLE;

@@ -10,6 +10,7 @@ import {
   fetchAwsProfiles,
   useAwsProfile,
   setAwsAccessKeys,
+  verifyStoredToken,
   type AuthStatus,
   type AwsProfile,
 } from "../api/auth";
@@ -71,6 +72,17 @@ export default function LoginPage() {
 
   useEffect(() => {
     checkStatus();
+    // Validate stored token against the server (JWT_SECRET changes on restart)
+    const token = getToken();
+    if (token) {
+      verifyStoredToken(token).then((result) => {
+        if (!result.valid) {
+          clearToken();
+          setGhAuthed(false);
+          setLocalUserInfo(null);
+        }
+      });
+    }
     fetchAwsProfiles().then(p => {
       setAwsProfiles(p);
       if (p.length > 0 && !selectedProfile) {
