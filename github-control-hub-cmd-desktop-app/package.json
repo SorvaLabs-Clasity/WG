@@ -1,6 +1,6 @@
 {
   "name": "github-control-hub-desktop",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "GitHub Control Hub — Desktop App (Electron)",
   "author": "RDaou05",
   "private": true,
@@ -73,7 +73,8 @@
     "publish": {
       "provider": "github",
       "owner": "RDaou05",
-      "repo": "WG"
+      "repo": "WG",
+      "private": true
     }
   },
   "dependencies": {
