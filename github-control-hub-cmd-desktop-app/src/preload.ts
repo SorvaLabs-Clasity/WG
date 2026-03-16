@@ -16,4 +16,5 @@ contextBridge.exposeInMainWorld("electronAPI", {
   installUpdate: () => {
     ipcRenderer.send("install-update");
   },
+  clearGithubSession: () => ipcRenderer.invoke("clear-github-session"),
 });

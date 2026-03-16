@@ -22,7 +22,7 @@ export async function runAuditLogCheckJob() {
   console.log("[AuditLogChecker] Starting scheduled audit log access check...");
 
   await ensureSecrets();
-  const token = process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+  const token = process.env.SYSTEM_GITHUB_TOKEN || "";
   if (!token) {
     console.warn("[AuditLogChecker] SYSTEM_GITHUB_TOKEN is not set. Cannot perform check.");
     return;
@@ -44,7 +44,3 @@ export async function runAuditLogCheckJob() {
     console.error("[AuditLogChecker] Unexpected error during check:", error);
   }
 }
-
-export const handler = async (event: any) => {
-  await runAuditLogCheckJob();
-};

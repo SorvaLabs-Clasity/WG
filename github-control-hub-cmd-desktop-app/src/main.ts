@@ -1,10 +1,11 @@
-import { app, BrowserWindow, shell, dialog, ipcMain } from "electron";
+import { app, BrowserWindow, shell, dialog, ipcMain, session } from "electron";
 import path from "path";
 import { autoUpdater } from "electron-updater";
 import { bootstrap } from "./bootstrap";
 import { startBackend } from "./server";
 
 let mainWindow: BrowserWindow | null = null;
+let pendingOAuthClear = false;
 
 const BACKEND_PORT = 4321;
 const isDev = !app.isPackaged;
@@ -53,13 +54,30 @@ function createWindow(): void {
   });
 
   // Allow GitHub OAuth flow to happen inside the Electron window
-  // but open other external URLs in the system browser
+  // but open other external URLs in the system browser.
+  // When pendingOAuthClear is set (user signed out), open the OAuth flow
+  // in a fresh window with a temporary session so there are no GitHub cookies.
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (url.startsWith("http://localhost") || url.includes("github.com/login/oauth")) {
-      return; // allow OAuth and localhost navigations
+    if (url.startsWith("http://localhost")) {
+      // If this is the OAuth start URL and user signed out, intercept it
+      if (pendingOAuthClear && url.includes("/auth/github")) {
+        event.preventDefault();
+        pendingOAuthClear = false;
+        openFreshOAuthWindow(`http://localhost:${BACKEND_PORT}/auth/github`);
+        return;
+      }
+      return; // allow normal localhost navigations
+    }
+    if (url.includes("github.com")) {
+      return; // allow GitHub navigations within the main window
     }
     event.preventDefault();
     shell.openExternal(url);
+  });
+
+  // Register IPC handler here (not in setupAutoUpdater) so it works in dev mode too
+  ipcMain.handle("clear-github-session", async () => {
+    pendingOAuthClear = true;
   });
 
   mainWindow.on("closed", () => {
@@ -99,6 +117,50 @@ async function main(): Promise<void> {
 
   createWindow();
   setupAutoUpdater();
+}
+
+function openFreshOAuthWindow(startUrl: string): void {
+  // Use a unique partition so the window has zero cookies (fresh GitHub login)
+  const partition = `oauth-${Date.now()}`;
+  let oauthCompleted = false;
+
+  const oauthWin = new BrowserWindow({
+    width: 600,
+    height: 700,
+    title: "Sign in with GitHub",
+    parent: mainWindow || undefined,
+    modal: true,
+    webPreferences: {
+      partition,
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: false,
+    },
+  });
+
+  oauthWin.loadURL(startUrl);
+
+  // Catch the server-side redirect from /auth/callback → /login?code=...
+  // and forward the full URL (with auth code) to the main window
+  const handleUrl = (_event: any, url: string) => {
+    if (oauthCompleted) return;
+    if (url.startsWith(`http://localhost:${BACKEND_PORT}/login`)) {
+      oauthCompleted = true;
+      // Load the full URL (including ?code= param) in the main window
+      mainWindow?.loadURL(url);
+      oauthWin.close();
+    }
+  };
+
+  oauthWin.webContents.on("will-navigate", handleUrl);
+  oauthWin.webContents.on("did-navigate", handleUrl);
+  oauthWin.webContents.on("will-redirect", handleUrl);
+
+  oauthWin.on("closed", () => {
+    if (!oauthCompleted) {
+      mainWindow?.loadURL(`http://localhost:${BACKEND_PORT}/login`);
+    }
+  });
 }
 
 function addToModulePaths(dir: string): void {

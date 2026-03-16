@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { Octokit } from "octokit";
 
 async function run() {

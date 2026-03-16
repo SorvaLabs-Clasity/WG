@@ -15,7 +15,7 @@ const TABLE = () => tableName("ORG_CONFIG_TABLE");
 
 // In-memory fallback for local development
 let memConfig: OrgConfig = {
-  org: process.env.GITHUB_ORG || "default-org",
+  org: process.env.GITHUB_ORG || "",
   features: {
     auditLogs: false,
     rulesetsSupported: true,
@@ -25,7 +25,7 @@ let memConfig: OrgConfig = {
 
 export async function getOrgConfig(): Promise<OrgConfig> {
   if (usesDynamo()) {
-    const org = process.env.GITHUB_ORG || "default-org";
+    const org = process.env.GITHUB_ORG || "";
     const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { org } }));
     if (result.Item) {
       return result.Item as OrgConfig;

@@ -1,30 +1,9 @@
-import path from "path";
-import fs from "fs";
-
-const CONFIG_DIR = path.join(process.env.HOME || process.env.USERPROFILE || "~", ".ghch");
-const CONFIG_FILE = path.join(CONFIG_DIR, "config.json");
-
-interface LocalConfig {
-  org?: string;
-  region?: string;
-  prefix?: string;
-}
-
-function loadLocalConfig(): LocalConfig | null {
-  if (!fs.existsSync(CONFIG_FILE)) return null;
-  try {
-    return JSON.parse(fs.readFileSync(CONFIG_FILE, "utf-8"));
-  } catch {
-    return null;
-  }
-}
-
 function getPrefix(): string {
-  return process.env.STACK_NAME || loadLocalConfig()?.prefix || "github-control-hub";
+  return process.env.STACK_NAME || "github-control-hub";
 }
 
 function getRegion(): string {
-  return process.env.AWS_REGION || loadLocalConfig()?.region || "us-east-1";
+  return process.env.AWS_REGION || "us-east-1";
 }
 
 function getSecretName(): string {
@@ -51,12 +30,6 @@ function resolveTableNames(): void {
   }
 }
 
-function resolveOrgFromLocalConfig(): void {
-  if (process.env.GITHUB_ORG) return;
-  const cfg = loadLocalConfig();
-  if (cfg?.org) process.env.GITHUB_ORG = cfg.org;
-}
-
 async function loadSecrets(): Promise<void> {
   if (process.env.GITHUB_CLIENT_ID) return;
   try {
@@ -65,7 +38,7 @@ async function loadSecrets(): Promise<void> {
     const result = await client.send(new GetSecretValueCommand({ SecretId: getSecretName() }));
     if (result.SecretString) {
       const secrets = JSON.parse(result.SecretString) as Record<string, string>;
-      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN", "GITHUB_WEBHOOK_SECRET"]) {
+      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN", "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG"]) {
         if (secrets[key]) process.env[key] = secrets[key];
       }
     }
@@ -76,24 +49,13 @@ async function loadSecrets(): Promise<void> {
   }
 }
 
-async function resolveOrgFromStack(): Promise<void> {
-  if (process.env.GITHUB_ORG) return;
-  try {
-    const { CloudFormationClient, DescribeStacksCommand } = await import("@aws-sdk/client-cloudformation");
-    const client = new CloudFormationClient({ region: getRegion() });
-    const result = await client.send(new DescribeStacksCommand({ StackName: getPrefix() }));
-    const params = result.Stacks?.[0]?.Parameters || [];
-    const orgParam = params.find((p) => p.ParameterKey === "GitHubOrg");
-    if (orgParam?.ParameterValue) process.env.GITHUB_ORG = orgParam.ParameterValue;
-  } catch {}
-}
-
 export async function bootstrap(): Promise<void> {
   if (!process.env.AWS_REGION) process.env.AWS_REGION = getRegion();
   resolveTableNames();
-  resolveOrgFromLocalConfig();
   await loadSecrets();
-  if (!process.env.GITHUB_ORG) await resolveOrgFromStack();
 
-  if (!process.env.JWT_SECRET) process.env.JWT_SECRET = "ghch-desktop-" + Date.now();
+  if (!process.env.JWT_SECRET) {
+    const crypto = await import("crypto");
+    process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
+  }
 }

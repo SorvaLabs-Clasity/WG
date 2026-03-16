@@ -1,20 +1,17 @@
 import jwt from "jsonwebtoken";
 
-const isProduction = process.env.NODE_ENV === "production";
-
 function getSecret(): string {
   const secret = process.env.JWT_SECRET;
-  if (!secret && isProduction) {
-    throw new Error("JWT_SECRET is required in production");
+  if (!secret) {
+    throw new Error("JWT_SECRET is required");
   }
-  return secret || "dev-secret-change-me";
+  return secret;
 }
 
 export interface JwtPayload {
   githubId: number;
   login: string;
   avatarUrl: string;
-  accessToken: string;
 }
 
 export function signToken(payload: JwtPayload): string {

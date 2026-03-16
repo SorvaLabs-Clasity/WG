@@ -175,6 +175,10 @@ export default function LoginPage() {
       try { await revokeGithub(token); } catch {}
     }
     clearToken();
+    // Clear Electron's GitHub cookies so the next sign-in doesn't auto-reuse the same account
+    if ((window as any).electronAPI?.clearGithubSession) {
+      try { await (window as any).electronAPI.clearGithubSession(); } catch {}
+    }
     setGhAuthed(false);
     setLocalUserInfo(null);
     setSigningOut(false);
@@ -188,6 +192,9 @@ export default function LoginPage() {
       try { await revokeGithub(token); } catch {}
     }
     clearToken();
+    if ((window as any).electronAPI?.clearGithubSession) {
+      try { await (window as any).electronAPI.clearGithubSession(); } catch {}
+    }
     setGhAuthed(false);
     setLocalUserInfo(null);
     await invalidateAws();
@@ -245,14 +252,7 @@ export default function LoginPage() {
                           okLabel="Connected" failLabel="Not Connected" />
                       </div>
                     </div>
-                    {awsOk && status?.aws.accountId ? (
-                      <div className="text-xs text-slate-500 dark:text-slate-400">
-                        <span className="break-words line-clamp-3">{status.aws.identity}</span>
-                        <span className="text-slate-400 dark:text-slate-500 shrink-0">({status.aws.accountId})</span>
-                      </div>
-                    ) : (
-                      <div className="text-xs text-slate-500 dark:text-slate-400">DynamoDB + Secrets Manager</div>
-                    )}
+                    <div className="text-xs text-slate-500 dark:text-slate-400">DynamoDB + Secrets Manager</div>
                   </div>
                 </div>
                 {!loading && !error && (
@@ -445,7 +445,7 @@ export default function LoginPage() {
                 {justSignedOut && !ghAuthed && (
                   <div className="mt-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600">
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      To use a different account, <a href="https://github.com/logout" target="_blank" rel="noopener noreferrer" className="text-blue-600 dark:text-blue-400 underline underline-offset-2">sign out of GitHub</a> in your browser first.
+                      Signed out successfully. Click "Sign in with GitHub" to sign in with a different account.
                     </p>
                   </div>
                 )}

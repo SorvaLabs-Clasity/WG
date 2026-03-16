@@ -1,6 +1,7 @@
 /* v2: undo-event restores original for overridden conflicts */
 import { Router } from "express";
 import type { Request, Response } from "express";
+import { sanitizeError } from "../utils/errorSanitizer";
 import {
   getActivity,
   getActivityForRepo,
@@ -177,8 +178,7 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
 
     res.json({ undone, errors });
   } catch (err) {
-    console.error("Error undoing activity:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });
 
@@ -262,8 +262,7 @@ router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => 
 
     res.json({ redone, errors });
   } catch (err) {
-    console.error("Error redoing activity:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });
 
@@ -336,8 +335,7 @@ router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) =>
 
     res.json({ retried, errors });
   } catch (err) {
-    console.error("Error retrying activity:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });
 
@@ -531,8 +529,7 @@ router.post("/:id/resolve-conflict", async (req: Request<{ id: string }>, res: R
 
     res.json({ resolved: true, resolution });
   } catch (err) {
-    console.error("Error resolving conflict:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });
 
@@ -559,8 +556,7 @@ router.post("/:id/undo-resolution", async (req: Request<{ id: string }>, res: Re
 
     res.json({ success: true });
   } catch (err) {
-    console.error("Error undoing resolution:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });
 

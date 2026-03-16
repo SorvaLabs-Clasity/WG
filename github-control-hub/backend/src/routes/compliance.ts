@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { createOctokit, getOrg } from "../github/client";
 import { getComplianceConfig, updateComplianceConfig } from "../services/complianceConfigService";
 import { getCachedScores, refreshAll, refreshRepo } from "../services/complianceCacheService";
+import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
 
@@ -10,8 +11,7 @@ router.get("/config", async (_req: Request, res: Response) => {
     const config = await getComplianceConfig();
     res.json(config);
   } catch (error: any) {
-    console.error("Error fetching compliance config:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "compliance") });
   }
 });
 
@@ -24,8 +24,7 @@ router.put("/config", async (req: Request, res: Response) => {
     const config = await updateComplianceConfig(rules);
     res.json(config);
   } catch (error: any) {
-    console.error("Error updating compliance config:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "compliance") });
   }
 });
 
@@ -34,14 +33,13 @@ router.get("/dashboard", async (_req: Request, res: Response) => {
     const scores = await getCachedScores();
     res.json(scores);
   } catch (error: any) {
-    console.error("Error fetching cached compliance scores:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "compliance") });
   }
 });
 
 router.post("/dashboard/refresh", async (req: Request, res: Response) => {
   try {
-    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -51,14 +49,13 @@ router.post("/dashboard/refresh", async (req: Request, res: Response) => {
     if (error?.status === 403 && /rate limit/i.test(error?.message || "")) {
       return res.status(429).json({ error: "GitHub API rate limit exceeded. Please try again later." });
     }
-    console.error("Error refreshing compliance dashboard:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "compliance") });
   }
 });
 
 router.post("/dashboard/refresh/:repo", async (req: Request, res: Response) => {
   try {
-    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -68,8 +65,7 @@ router.post("/dashboard/refresh/:repo", async (req: Request, res: Response) => {
     if (error?.status === 403 && /rate limit/i.test(error?.message || "")) {
       return res.status(429).json({ error: "GitHub API rate limit exceeded. Please try again later." });
     }
-    console.error(`Error refreshing compliance for ${req.params.repo}:`, error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "compliance") });
   }
 });
 

@@ -1,6 +1,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { createOctokit } from "../github/client";
+import { sanitizeError } from "../utils/errorSanitizer";
 import {
   listTemplates,
   getTemplate,
@@ -58,16 +59,19 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
-  if (req.body.exclusionLists) {
+  const { name, description, branches, tags, pushRules, autoApplyOnNewRepo, exclusionLists } = req.body;
+  const data: Record<string, any> = { name, description, branches, tags, pushRules, autoApplyOnNewRepo, exclusionLists };
+
+  if (data.exclusionLists) {
     const allExclusions = await listExclusions();
     const templateId = req.params.id;
     const forcedIds = allExclusions
       .filter(e => e.forceOnNewTemplates || (e.forceTemplateIds || []).includes(templateId))
       .map(e => e.id);
-    req.body.exclusionLists = Array.from(new Set([...req.body.exclusionLists, ...forcedIds]));
+    data.exclusionLists = Array.from(new Set([...data.exclusionLists, ...forcedIds]));
   }
 
-  const updated = await updateTemplate(req.params.id, req.body, req.user!.login);
+  const updated = await updateTemplate(req.params.id, data, req.user!.login);
   if (!updated) {
     res.status(404).json({ error: "Template not found" });
     return;
@@ -108,7 +112,7 @@ router.post("/:id/apply", async (req: Request<{ id: string }>, res: Response) =>
       }
     }
 
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(process.env.SYSTEM_GITHUB_TOKEN || req.user!.accessToken);
     const merged = { created: [] as string[], protected: [] as string[], errors: [] as string[], skipped: [] as string[], conflicts: [] as any[] };
     const actor = req.user!.login;
 
@@ -146,8 +150,7 @@ router.post("/:id/apply", async (req: Request<{ id: string }>, res: Response) =>
 
     res.json(merged);
   } catch (err) {
-    console.error("Error applying template:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "templates") });
   }
 });
 

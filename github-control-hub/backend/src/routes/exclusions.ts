@@ -46,7 +46,8 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
-  const updated = await updateExclusion(req.params.id, req.body, req.user!.login);
+  const { name, description, repos, forceTemplateIds, forceOnNewTemplates } = req.body;
+  const updated = await updateExclusion(req.params.id, { name, description, repos, forceTemplateIds, forceOnNewTemplates }, req.user!.login);
   if (!updated) {
     res.status(404).json({ error: "Exclusion list not found" });
     return;

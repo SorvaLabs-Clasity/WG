@@ -80,9 +80,7 @@
     }
   },
   "dependencies": {
-    "@aws-sdk/client-cloudformation": "^3.600.0",
     "@aws-sdk/client-secrets-manager": "^3.600.0",
-    "dotenv": "^16.4.7",
     "electron-store": "^8.2.0",
     "electron-updater": "^6.8.3"
   },

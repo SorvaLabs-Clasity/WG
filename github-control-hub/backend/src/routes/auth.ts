@@ -3,9 +3,15 @@ import crypto from "crypto";
 import { buildAuthorizationUrl, exchangeCodeForToken } from "../github/oauth";
 import { createOctokit, getOrg } from "../github/client";
 import { signToken, verifyToken } from "../utils/jwt";
+import { storeToken, getToken, removeToken } from "../utils/tokenStore";
 import { docClient, tableName, usesDynamo, PutCommand, GetCommand, DeleteCommand } from "../utils/dynamo";
 
 const router = Router();
+
+// AWS profile names: alphanumeric, hyphens, underscores, dots, max 64 chars
+function isValidAwsProfile(name: string): boolean {
+  return /^[a-zA-Z0-9._-]{1,64}$/.test(name);
+}
 
 const AUTH_CODE_TTL_SEC = 300;
 
@@ -60,6 +66,45 @@ async function consumeAuthCode(code: string): Promise<AuthCodeEntry | null> {
   return entry;
 }
 
+// OAuth state storage for CSRF protection
+const OAUTH_STATE_TTL_SEC = 600;
+const memoryOAuthStates = new Map<string, number>();
+
+async function storeOAuthState(state: string): Promise<void> {
+  if (usesDynamo() && process.env.AUTH_CODES_TABLE) {
+    const table = tableName("AUTH_CODES_TABLE");
+    await docClient.send(
+      new PutCommand({
+        TableName: table,
+        Item: {
+          code: `state:${state}`,
+          ttl: Math.floor(Date.now() / 1000) + OAUTH_STATE_TTL_SEC,
+        },
+      })
+    );
+  } else {
+    memoryOAuthStates.set(state, Date.now() + OAUTH_STATE_TTL_SEC * 1000);
+  }
+}
+
+async function consumeOAuthState(state: string): Promise<boolean> {
+  if (usesDynamo() && process.env.AUTH_CODES_TABLE) {
+    const table = tableName("AUTH_CODES_TABLE");
+    const result = await docClient.send(
+      new GetCommand({ TableName: table, Key: { code: `state:${state}` } })
+    );
+    if (!result.Item) return false;
+    await docClient.send(
+      new DeleteCommand({ TableName: table, Key: { code: `state:${state}` } })
+    );
+    return true;
+  }
+  const expiry = memoryOAuthStates.get(state);
+  if (!expiry || expiry < Date.now()) return false;
+  memoryOAuthStates.delete(state);
+  return true;
+}
+
 router.get("/verify", (req: Request, res: Response) => {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
@@ -81,8 +126,6 @@ router.get("/status", async (_req: Request, res: Response) => {
   const org = process.env.GITHUB_ORG || null;
 
   let dynamoReachable = false;
-  let accountId: string | null = null;
-  let identity: string | null = null;
 
   if (awsConnected && !isAwsLocked()) {
     try {
@@ -91,16 +134,6 @@ router.get("/status", async (_req: Request, res: Response) => {
       await docClient.send(new ScanCommand({ TableName: tableName("ACTIVITY_TABLE"), Limit: 1 }));
       dynamoReachable = true;
     } catch {}
-
-    try {
-      const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");
-      const sts = new STSClient({ region: process.env.AWS_REGION || "us-east-1" });
-      const id = await sts.send(new GetCallerIdentityCommand({}));
-      accountId = id.Account || null;
-      const arn = id.Arn || "";
-      const parts = arn.split("/");
-      identity = parts.length > 1 ? parts.slice(1).join("/") : arn;
-    } catch {}
   }
 
   res.json({
@@ -108,8 +141,6 @@ router.get("/status", async (_req: Request, res: Response) => {
       connected: awsConnected,
       dynamoReachable,
       region: process.env.AWS_REGION || "us-east-1",
-      accountId,
-      identity,
       profile: process.env.AWS_PROFILE || "default",
     },
     github: { configured: githubConfigured, org },
@@ -137,6 +168,10 @@ router.post("/reconnect-aws", async (req: Request, res: Response) => {
 
   const profile = req.body?.profile as string | undefined;
   if (profile) {
+    if (!isValidAwsProfile(profile)) {
+      res.status(400).json({ error: "Invalid AWS profile name" });
+      return;
+    }
     process.env.AWS_PROFILE = profile;
   }
 
@@ -240,13 +275,17 @@ router.post("/aws-sso-login", async (req: Request, res: Response) => {
   const { spawn } = await import("child_process");
   const profile = (req.body?.profile as string) || process.env.AWS_PROFILE || "default";
 
+  if (!isValidAwsProfile(profile)) {
+    res.status(400).json({ error: "Invalid AWS profile name" });
+    return;
+  }
+
   process.env.AWS_PROFILE = profile;
 
   const env = { ...process.env, PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:/usr/bin` };
   const child = spawn("aws", ["sso", "login", "--profile", profile], {
     stdio: "ignore",
     detached: true,
-    shell: true,
     env,
   });
   child.unref();
@@ -263,6 +302,10 @@ router.post("/aws-use-profile", async (req: Request, res: Response) => {
   const profile = req.body?.profile as string;
   if (!profile) {
     res.status(400).json({ error: "Profile name required" });
+    return;
+  }
+  if (!isValidAwsProfile(profile)) {
+    res.status(400).json({ error: "Invalid AWS profile name" });
     return;
   }
 
@@ -326,10 +369,11 @@ router.post("/revoke-github", async (req: Request, res: Response) => {
 
   try {
     const payload = verifyToken(authHeader.slice(7));
+    const accessToken = getToken(payload.githubId);
     const clientId = process.env.GITHUB_CLIENT_ID;
     const clientSecret = process.env.GITHUB_CLIENT_SECRET;
 
-    if (clientId && clientSecret && payload.accessToken) {
+    if (clientId && clientSecret && accessToken) {
       const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
       await fetch(`https://api.github.com/applications/${clientId}/grant`, {
         method: "DELETE",
@@ -338,9 +382,12 @@ router.post("/revoke-github", async (req: Request, res: Response) => {
           Accept: "application/vnd.github+json",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ access_token: payload.accessToken }),
+        body: JSON.stringify({ access_token: accessToken }),
       });
     }
+
+    // Remove the token from the server-side store
+    removeToken(payload.githubId);
 
     res.json({ ok: true });
   } catch (err: any) {
@@ -361,8 +408,9 @@ router.get("/debug", (_req: Request, res: Response) => {
   });
 });
 
-router.get("/github", (_req: Request, res: Response) => {
+router.get("/github", async (_req: Request, res: Response) => {
   const state = crypto.randomBytes(16).toString("hex");
+  await storeOAuthState(state);
   const url = buildAuthorizationUrl(state);
   res.redirect(url);
 });
@@ -391,16 +439,19 @@ router.get("/token", async (req: Request, res: Response) => {
 });
 
 router.get("/callback", async (req: Request, res: Response) => {
-  const { code } = req.query;
-  const queryKeys = Object.keys(req.query || {});
-  console.log("[auth/callback] query keys:", queryKeys, "code type:", typeof code);
+  const { code, state } = req.query;
+
+  // Validate OAuth state parameter for CSRF protection
+  if (typeof state !== "string" || !(await consumeOAuthState(state))) {
+    const frontendUrl = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+    const params = new URLSearchParams({ auth_error: "invalid_state" });
+    res.redirect(`${frontendUrl}/login?${params}`);
+    return;
+  }
 
   if (typeof code !== "string") {
     res.setHeader("Cache-Control", "no-store");
-    res.status(400).json({
-      error: "Missing code parameter",
-      debug: { queryKeys, hasCode: "code" in (req.query || {}) },
-    });
+    res.status(400).json({ error: "Missing code parameter" });
     return;
   }
 
@@ -427,11 +478,13 @@ router.get("/callback", async (req: Request, res: Response) => {
       return;
     }
 
+    // Store GitHub access token server-side (never in the JWT)
+    storeToken(user.id, accessToken);
+
     const token = signToken({
       githubId: user.id,
       login: user.login,
       avatarUrl: user.avatar_url,
-      accessToken,
     });
 
     const oneTimeCode = crypto.randomBytes(24).toString("hex");

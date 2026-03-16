@@ -19,8 +19,7 @@ An internal web dashboard for managing GitHub organization repositories, branche
 | Frontend       | React, TypeScript, Vite, Material UI, TanStack Query, React Router |
 | Backend        | Node.js, TypeScript, Express, Octokit                  |
 | Auth           | GitHub OAuth, JWT                                      |
-| Infrastructure | AWS Lambda, API Gateway, Secrets Manager, DynamoDB (optional) |
-| IaC            | AWS SAM                                                |
+| Infrastructure | AWS DynamoDB, Secrets Manager                          |
 
 ## Prerequisites
 
@@ -76,19 +75,6 @@ Then open http://localhost:5173 and click **Sign in with GitHub**.
 
 All `/api/*` endpoints require `Authorization: Bearer <jwt>`.
 
-## AWS Deployment
-
-The `infra/template.yaml` SAM template deploys the backend as a Lambda behind API Gateway.
-
-```bash
-cd backend && npm run build
-cd ../infra
-sam build
-sam deploy --guided
-```
-
-Store your secrets (GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET, JWT_SECRET) in AWS Secrets Manager and pass the ARN as the `SecretsArn` parameter.
-
 ## Project Structure
 
 ```
@@ -107,7 +93,6 @@ github-control-hub/
 │       ├── routes/     # Express route handlers
 │       ├── services/   # Business logic
 │       └── utils/      # JWT utilities
-└── infra/              # AWS SAM template
 ```
 
 ## License

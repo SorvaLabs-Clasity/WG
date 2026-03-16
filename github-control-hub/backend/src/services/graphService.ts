@@ -67,16 +67,37 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       }
       break;
 
-    case "repos-with-outside-admins":
+    case "repos-with-outside-admins": {
+      // Build a map of repo -> owning team members
+      const repoTeamMembers = new Map<string, Set<string>>();
+      for (const edge of allEdges) {
+        if (edge.type === "owned_by_team") {
+          const repo = edge.pk;
+          const team = edge.sk;
+          if (!repoTeamMembers.has(repo)) repoTeamMembers.set(repo, new Set());
+          for (const memberEdge of allEdges) {
+            if (memberEdge.pk === team && memberEdge.type === "has_member") {
+              repoTeamMembers.get(repo)!.add(memberEdge.sk.replace("USER#", ""));
+            }
+          }
+        }
+      }
       for (const edge of allEdges) {
         if (edge.type === "has_collaborator" && edge.metadata?.role === "admin") {
-          results.push({
-            repo: edge.pk.replace("REPO#", ""),
-            reason: `User ${edge.sk.replace("USER#", "")} has direct admin access`
-          });
+          const repo = edge.pk;
+          const user = edge.sk.replace("USER#", "");
+          const teamMembers = repoTeamMembers.get(repo) || new Set();
+          if (!teamMembers.has(user)) {
+            results.push({
+              repo: repo.replace("REPO#", ""),
+              user,
+              reason: `User ${user} has direct admin access but is not on the owning team`
+            });
+          }
         }
       }
       break;
+    }
 
     case "highly-privileged-users":
       const userAccessMap = new Map<string, string[]>();
@@ -154,17 +175,22 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       break;
     }
 
-    case "repos-with-unprotected-branch":
+    case "repos-with-unprotected-branch": {
       if (!param) throw new Error("Missing 'param' for branch name");
+      const unprotBranchNames = param.split(",").map(b => b.trim()).filter(Boolean);
       for (const edge of allEdges) {
-        if (edge.type === "has_branch" && edge.sk === `BRANCH#${param}` && edge.metadata?.protected === false) {
-          results.push({
-            repo: edge.pk.replace("REPO#", ""),
-            reason: `Branch '${param}' exists but is NOT protected`
-          });
+        if (edge.type === "has_branch" && edge.metadata?.protected === false) {
+          const bName = edge.sk.replace("BRANCH#", "");
+          if (unprotBranchNames.includes(bName)) {
+            results.push({
+              repo: edge.pk.replace("REPO#", ""),
+              reason: `Branch '${bName}' exists but is NOT protected`
+            });
+          }
         }
       }
       break;
+    }
 
     case "repos-with-branch": {
       if (!param) throw new Error("Missing 'param' for branch name");
@@ -420,9 +446,13 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
       for (const repo of reposToCheckSBP) {
         let requiredReviews = 0;
-        
+
+        // Find the default branch from graph data, fall back to "main"
+        const sbpRepoBranches = allEdges.filter(e => e.pk === `REPO#${repo}` && e.type === "has_branch");
+        const sbpDefaultBranch = sbpRepoBranches.find(e => e.metadata?.default)?.sk.replace("BRANCH#", "") || "main";
+
         try {
-          const { data: prot } = await sbpOctokit.rest.repos.getBranchProtection({ owner: sbpOrg, repo, branch: "main" });
+          const { data: prot } = await sbpOctokit.rest.repos.getBranchProtection({ owner: sbpOrg, repo, branch: sbpDefaultBranch });
           if (prot.required_pull_request_reviews?.required_approving_review_count) {
             requiredReviews = Math.max(requiredReviews, prot.required_pull_request_reviews.required_approving_review_count);
           }
@@ -497,9 +527,13 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
       for (const repo of reposToCheckPBR) {
         let requiredReviews = 0;
-        
+
+        // Find the default branch from graph data, fall back to "main"
+        const pbrRepoBranches = allEdges.filter(e => e.pk === `REPO#${repo}` && e.type === "has_branch");
+        const pbrDefaultBranch = pbrRepoBranches.find(e => e.metadata?.default)?.sk.replace("BRANCH#", "") || "main";
+
         try {
-          const { data: prot } = await pbrOctokit.rest.repos.getBranchProtection({ owner: pbrOrg, repo, branch: "main" });
+          const { data: prot } = await pbrOctokit.rest.repos.getBranchProtection({ owner: pbrOrg, repo, branch: pbrDefaultBranch });
           if (prot.required_pull_request_reviews?.required_approving_review_count) {
             requiredReviews = Math.max(requiredReviews, prot.required_pull_request_reviews.required_approving_review_count);
           }

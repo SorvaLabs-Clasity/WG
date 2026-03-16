@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getAlerts, resolveAlert, unresolveAlert, createAlert } from "../services/alertService";
 import { createOctokit, getOrg } from "../github/client";
+import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
 
@@ -9,7 +10,7 @@ router.get("/", async (req: Request, res: Response) => {
     const alerts = await getAlerts();
     res.json(alerts);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
 
@@ -23,7 +24,7 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
     }
     res.json(alert);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
 
@@ -36,7 +37,7 @@ router.post("/:id/unresolve", async (req: Request, res: Response) => {
     }
     res.json(alert);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
 
@@ -63,13 +64,13 @@ router.post("/simulate", async (req: Request, res: Response) => {
     
     res.json({ message: "Simulation triggered" });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
 
 router.get("/inactive-users", async (req: Request, res: Response) => {
   try {
-    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token available" });
     }
@@ -84,12 +85,22 @@ router.get("/inactive-users", async (req: Request, res: Response) => {
 
     for (const member of members) {
       try {
+        // Get the user's GitHub profile to check account creation date
+        const { data: userProfile } = await octokit.rest.users.getByUsername({
+          username: member.login,
+        });
+
+        // If account was created within the cutoff period, they can't be stale
+        const accountCreated = new Date(userProfile.created_at).getTime();
+        if (accountCreated >= cutoff) continue;
+
         const { data: events } = await octokit.rest.activity.listPublicEventsForUser({
           username: member.login,
           per_page: 1,
         });
         const lastEvent = events[0];
-        const lastActive = lastEvent?.created_at || "1970-01-01T00:00:00Z";
+        // Use the later of: last public event OR account creation date (not 1970)
+        const lastActive = lastEvent?.created_at || userProfile.created_at;
 
         if (new Date(lastActive).getTime() < cutoff) {
           const { data: membership } = await octokit.rest.orgs.getMembershipForUser({
@@ -109,8 +120,7 @@ router.get("/inactive-users", async (req: Request, res: Response) => {
 
     res.json(inactiveUsers);
   } catch (error: any) {
-    console.error("Error fetching inactive users:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
 

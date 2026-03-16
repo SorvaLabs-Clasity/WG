@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { createOctokit, getOrg } from "../github/client";
 import { protectBranch, getProtection, listRulesets, getAllProtections, deleteProtection, deleteRuleset } from "../services/branchService";
 import { logActivity } from "../services/activityService";
+import { sanitizeError } from "../utils/errorSanitizer";
 
 type RepoAndBranch = { repo: string; branch: string };
 
@@ -62,8 +63,7 @@ router.put("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res:
     });
     res.json({ message: `Protection applied to ${req.params.branch}` });
   } catch (err) {
-    console.error("Error applying protection:", err);
-    const errMsg = (err as Error).message || "Failed to apply branch protection";
+    const errMsg = sanitizeError(err, "protection");
     await logActivity("branch.protect", req.user!.login, req.params.repo, req.params.branch, `Failed to apply protection to "${req.params.branch}"`, undefined, "app", undefined, undefined, {
       failed: true, errorMessage: errMsg,
       retryPayload: { action: "apply_protection", params: { repo: req.params.repo, branch: req.params.branch, protectionConfig: req.body } },
@@ -115,7 +115,6 @@ router.post("/:repo/rulesets/import", async (req: Request<{ repo: string }>, res
 
     res.json({ message: `Ruleset "${payload.name}" imported successfully` });
   } catch (err: any) {
-    console.error("Error importing ruleset:", err);
     const ghMsg = err?.response?.data?.message || err?.message || "Unknown error";
     const ghErrors = err?.response?.data?.errors;
     const detail = ghErrors ? ` — ${JSON.stringify(ghErrors)}` : "";
@@ -125,7 +124,7 @@ router.post("/:repo/rulesets/import", async (req: Request<{ repo: string }>, res
       failed: true, errorMessage: errMsg,
       retryPayload: { action: "create_ruleset", params: { repo: req.params.repo, protectionConfig: { type: "ruleset_json", rawJson: raw }, branchNames: [] } },
     });
-    res.status(500).json({ error: errMsg });
+    res.status(500).json({ error: sanitizeError(err, "protection") });
   }
 });
 

@@ -3,6 +3,7 @@ import { docClient, usesDynamo, tableName, QueryCommand, ScanCommand } from "../
 import fs from "fs";
 import path from "path";
 import { evaluateSecurityQuery } from "../services/graphService";
+import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
 
@@ -54,7 +55,7 @@ router.get("/node/:id", async (req: Request<{ id: string }>, res: Response) => {
       }))
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "graph") });
   }
 });
 
@@ -89,7 +90,7 @@ router.get("/blast-radius/repo/:repo", async (req: Request<{ repo: string }>, re
       riskScore: vulnerableDeps.length > 0 ? "High" : "Low"
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "graph") });
   }
 });
 
@@ -152,7 +153,7 @@ router.get("/user-impact/:user", async (req: Request<{ user: string }>, res: Res
       productionPipelinesReachable: workflowsReachable
     });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "graph") });
   }
 });
 
@@ -243,7 +244,7 @@ router.get("/blast-radius/ranking", async (req: Request, res: Response) => {
 
     res.json(ranking);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "graph") });
   }
 });
 
@@ -261,7 +262,7 @@ router.get("/meta", async (_req: Request, res: Response) => {
     }
     res.json({ edgeCount: count });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "graph") });
   }
 });
 
@@ -275,10 +276,10 @@ router.get("/query", async (req: Request, res: Response) => {
     delete advanced.q;
     delete advanced.param;
 
-    const results = await evaluateSecurityQuery(q, param, advanced, req.user?.accessToken);
+    const results = await evaluateSecurityQuery(q, param, advanced, process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken);
     res.json(results);
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "graph") });
   }
 });
 
@@ -289,7 +290,7 @@ router.post("/aggregate", async (req: Request, res: Response) => {
     await aggregateGraphData(req.user?.accessToken);
     res.json({ message: "Aggregation triggered successfully." });
   } catch (error: any) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "graph") });
   }
 });
 

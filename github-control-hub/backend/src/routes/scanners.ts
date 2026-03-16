@@ -10,6 +10,7 @@ import {
   runScan,
 } from "../services/scannerService";
 import { createOctokit } from "../github/client";
+import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
 
@@ -18,12 +19,14 @@ router.get("/", async (req: Request, res: Response) => {
 });
 
 router.post("/", async (req: Request, res: Response) => {
-  const scanner = await createScanner(req.body, req.user!.login);
+  const { name, description, conditions, targetRepos, includeFutureRepos } = req.body;
+  const scanner = await createScanner({ name, description, conditions, targetRepos, includeFutureRepos }, req.user!.login);
   res.status(201).json(scanner);
 });
 
 router.put("/:id", async (req: Request<{id: string}>, res: Response) => {
-  const scanner = await updateScanner(req.params.id, req.body, req.user!.login);
+  const { name, description, conditions, targetRepos, includeFutureRepos } = req.body;
+  const scanner = await updateScanner(req.params.id, { name, description, conditions, targetRepos, includeFutureRepos }, req.user!.login);
   if (!scanner) {
     res.status(404).json({ error: "Scanner not found" });
     return;
@@ -51,7 +54,7 @@ router.get("/:id/results", async (req: Request<{id: string}>, res: Response) => 
 
 router.post("/:id/run", async (req: Request<{id: string}>, res: Response) => {
   try {
-    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
     if (!token) {
       res.status(401).json({ error: "No GitHub token available. Sign in again or set SYSTEM_GITHUB_TOKEN." });
       return;
@@ -60,8 +63,7 @@ router.post("/:id/run", async (req: Request<{id: string}>, res: Response) => {
     const result = await runScan(octokit, req.params.id, undefined, token);
     res.json(result);
   } catch (err: any) {
-    console.error("Error running scan:", err);
-    res.status(500).json({ error: err.message || "Failed to run scan" });
+    res.status(500).json({ error: sanitizeError(err, "scanners") });
   }
 });
 

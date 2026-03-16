@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import { createOctokit, getOrg } from "../github/client";
 import { listBranches, createBranch, deleteBranch, renameBranch } from "../services/branchService";
 import { logActivity } from "../services/activityService";
+import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
 
@@ -36,8 +37,7 @@ router.post("/:repo/branches", async (req: Request<{ repo: string }>, res: Respo
     });
     res.status(201).json({ message: `Branch ${branchName} created` });
   } catch (err) {
-    console.error("Error creating branch:", err);
-    const errMsg = (err as Error).message || "Failed to create branch";
+    const errMsg = sanitizeError(err, "branches");
     await logActivity("branch.create", req.user!.login, req.params.repo, branchName, `Failed to create branch "${branchName}"`, undefined, "app", undefined, undefined, {
       failed: true, errorMessage: errMsg,
       retryPayload: { action: "create_branch", params: { repo: req.params.repo, branch: branchName, baseBranch } },
@@ -84,8 +84,7 @@ router.patch(
       });
       res.json({ message: `Branch renamed from "${req.params.branch}" to "${newName}"` });
     } catch (err) {
-      console.error("Error renaming branch:", err);
-      const errMsg = (err as Error).message || "Failed to rename branch";
+      const errMsg = sanitizeError(err, "branches");
       await logActivity("branch.rename", req.user!.login, req.params.repo, req.params.branch, `Failed to rename branch "${req.params.branch}"`, undefined, "app", undefined, undefined, {
         failed: true, errorMessage: errMsg,
         retryPayload: { action: "rename_branch", params: { repo: req.params.repo, from: req.params.branch, to: newName } },

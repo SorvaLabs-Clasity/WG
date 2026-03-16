@@ -1,4 +1,3 @@
-import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import authRoutes from "./routes/auth";
@@ -22,7 +21,6 @@ import { awsHealthMiddleware } from "./middleware/awsHealthMiddleware";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
-const isProduction = process.env.NODE_ENV === "production";
 
 const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
 
@@ -32,7 +30,14 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json());
+
+// Webhook route MUST be mounted before global express.json() so we can capture the raw body for HMAC verification
+app.use("/api/webhooks", express.json({
+  limit: "1mb",
+  verify: (req: any, _res, buf) => { req.rawBody = buf; },
+}), webhookRoutes);
+
+app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
@@ -56,12 +61,9 @@ app.use("/api/security", authMiddleware, dependencyRoutes);
 app.use("/api/org", authMiddleware, orgRoutes);
 app.use("/api/graph", authMiddleware, graphRoutes);
 app.use("/api/widgets", authMiddleware, widgetRoutes);
-app.use("/api/webhooks", webhookRoutes);
 
-if (!isProduction) {
-  app.listen(PORT, () => {
-    console.log(`Backend running on http://localhost:${PORT}`);
-  });
-}
+app.listen(PORT, () => {
+  console.log(`Backend running on http://localhost:${PORT}`);
+});
 
 export default app;

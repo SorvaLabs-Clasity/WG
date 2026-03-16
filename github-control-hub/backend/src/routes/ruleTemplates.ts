@@ -7,6 +7,7 @@ import {
   updateRuleTemplate,
   deleteRuleTemplate,
 } from "../services/ruleTemplateService";
+import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
 
@@ -14,8 +15,7 @@ router.get("/", async (_req: Request, res: Response) => {
   try {
     res.json(await listRuleTemplates());
   } catch (err) {
-    console.error("[rule-templates] list error:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "ruleTemplates") });
   }
 });
 
@@ -28,8 +28,7 @@ router.get("/:id", async (req: Request<{ id: string }>, res: Response) => {
     }
     res.json(rt);
   } catch (err) {
-    console.error("[rule-templates] get error:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "ruleTemplates") });
   }
 });
 
@@ -60,22 +59,21 @@ router.post("/", async (req: Request, res: Response) => {
     );
     res.status(201).json(rt);
   } catch (err) {
-    console.error("[rule-templates] create error:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "ruleTemplates") });
   }
 });
 
 router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
   try {
-    const updated = await updateRuleTemplate(req.params.id, req.body, req.user!.login);
+    const { name, description, ruleType, branchProtection, tagProtection, pushProtection } = req.body;
+    const updated = await updateRuleTemplate(req.params.id, { name, description, ruleType, branchProtection, tagProtection, pushProtection }, req.user!.login);
     if (!updated) {
       res.status(404).json({ error: "Rule template not found" });
       return;
     }
     res.json(updated);
   } catch (err) {
-    console.error("[rule-templates] update error:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "ruleTemplates") });
   }
 });
 
@@ -88,8 +86,7 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
     }
     res.json({ message: "Rule template deleted" });
   } catch (err) {
-    console.error("[rule-templates] delete error:", err);
-    res.status(500).json({ error: (err as Error).message });
+    res.status(500).json({ error: sanitizeError(err, "ruleTemplates") });
   }
 });
 

@@ -22,7 +22,8 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
-  const updated = await updateWidget(req.params.id, req.body, req.user!.login);
+  const { title, type, presetId, queryId, queryParam, queryAdvanced, displayType } = req.body;
+  const updated = await updateWidget(req.params.id, { title, type, presetId, queryId, queryParam, queryAdvanced, displayType }, req.user!.login);
   if (!updated) {
     res.status(404).json({ error: "Widget not found" });
     return;

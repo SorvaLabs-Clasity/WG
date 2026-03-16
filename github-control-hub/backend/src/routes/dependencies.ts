@@ -2,12 +2,13 @@ import { Router, Request, Response } from "express";
 import { createOctokit, getOrg } from "../github/client";
 import { listRepos } from "../services/repoService";
 import { logActivity } from "../services/activityService";
+import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
 
 router.get("/dependencies", async (req: Request, res: Response) => {
   try {
-    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -89,14 +90,13 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       const reset = error?.response?.headers?.["x-ratelimit-reset"];
       return res.status(429).json({ error: "GitHub API rate limit exceeded. Please wait a few minutes and try again.", resetAt: reset ? new Date(Number(reset) * 1000).toISOString() : undefined });
     }
-    console.error("Error fetching dependencies:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "dependencies") });
   }
 });
 
 router.post("/dependencies/enable", async (req: Request, res: Response) => {
   try {
-    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -122,14 +122,13 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error(`Error enabling Dependabot for ${req.body.repo}:`, error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "dependencies") });
   }
 });
 
 router.post("/dependencies/disable", async (req: Request, res: Response) => {
   try {
-    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -155,14 +154,13 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (error: any) {
-    console.error(`Error disabling Dependabot for ${req.body.repo}:`, error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "dependencies") });
   }
 });
 
 router.get("/summary", async (req: Request, res: Response) => {
   try {
-    const token = req.user?.accessToken || process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -203,8 +201,7 @@ router.get("/summary", async (req: Request, res: Response) => {
       repos_with_vulns: reposWithVulns.size,
     });
   } catch (error: any) {
-    console.error("Error fetching dependency summary:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: sanitizeError(error, "dependencies") });
   }
 });
 

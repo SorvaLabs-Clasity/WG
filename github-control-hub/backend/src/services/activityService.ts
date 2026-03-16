@@ -220,7 +220,7 @@ export async function getAuditLogActivity(limit: number): Promise<ActivityEntry[
   const config = await getOrgConfig();
   if (!config.features.auditLogs) return [];
 
-  const token = process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN;
+  const token = process.env.SYSTEM_GITHUB_TOKEN;
   if (!token) return [];
 
   try {

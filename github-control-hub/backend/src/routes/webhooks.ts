@@ -17,9 +17,10 @@ function getWebhookSecret(): string {
 }
 
 function getSystemToken(): string {
-  return process.env.SYSTEM_GITHUB_TOKEN || process.env.GITHUB_TOKEN || "";
+  return process.env.SYSTEM_GITHUB_TOKEN || "";
 }
 
+// Verify webhook signature against raw body bytes (set by express.json verify callback in server.ts)
 function verifySignature(req: Request): boolean {
   const secret = getWebhookSecret();
   if (!secret) return false;
@@ -27,27 +28,45 @@ function verifySignature(req: Request): boolean {
   const signature = req.headers["x-hub-signature-256"] as string;
   if (!signature) return false;
 
-  const hmac = crypto.createHmac("sha256", secret);
-  const payloadStr = JSON.stringify(req.body); 
-  hmac.update(payloadStr);
-  
-  const expectedSignature = `sha256=${hmac.digest("hex")}`;
-  
+  const rawBody = (req as any).rawBody as Buffer | undefined;
+  if (!rawBody) return false;
+
+  const expected = `sha256=${crypto.createHmac("sha256", secret).update(rawBody).digest("hex")}`;
+
   try {
-    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSignature));
-  } catch (e) {
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  } catch {
     return false;
   }
 }
 
-router.post("/github", async (req: Request, res: Response) => {
-  const isProduction = process.env.NODE_ENV === "production";
+// Replay protection: track recent delivery IDs to reject duplicates
+const DELIVERY_TTL_MS = 5 * 60 * 1000;
+const processedDeliveries = new Map<string, number>();
 
-  if (isProduction) {
-    if (!verifySignature(req)) {
-      console.error("Webhook signature verification failed");
-      return res.status(401).send("Unauthorized");
+function isDuplicateDelivery(deliveryId: string): boolean {
+  const now = Date.now();
+  // Prune expired entries when map gets large
+  if (processedDeliveries.size > 1000) {
+    for (const [id, ts] of processedDeliveries) {
+      if (now - ts > DELIVERY_TTL_MS) processedDeliveries.delete(id);
     }
+  }
+  if (processedDeliveries.has(deliveryId)) return true;
+  processedDeliveries.set(deliveryId, now);
+  return false;
+}
+
+router.post("/github", async (req: Request, res: Response) => {
+  if (!verifySignature(req)) {
+    console.error("Webhook signature verification failed");
+    return res.status(401).send("Unauthorized");
+  }
+
+  // Reject replayed webhooks
+  const deliveryId = req.headers["x-github-delivery"] as string;
+  if (!deliveryId || isDuplicateDelivery(deliveryId)) {
+    return res.status(200).send("Duplicate or missing delivery ID");
   }
 
   const event = req.headers["x-github-event"];
@@ -174,7 +193,7 @@ router.post("/github", async (req: Request, res: Response) => {
     }
   }
 
-  // Auto-apply templates to newly created repos (must run before response on Lambda)
+  // Auto-apply templates to newly created repos
   if (event === "repository" && payload.action === "created" && repoName) {
     if (getSystemToken()) {
       const octokit = new Octokit({ auth: getSystemToken() });
@@ -290,7 +309,7 @@ router.post("/github", async (req: Request, res: Response) => {
     console.error(`[Webhook] Graph edge update failed:`, (graphErr as Error).message);
   }
 
-  // Background compliance scans (setTimeout is best-effort on Lambda)
+  // Background compliance scans
   if (repoName) {
     console.log(`[Webhook] Scheduling compliance scan for repository: ${repoName}`);
     

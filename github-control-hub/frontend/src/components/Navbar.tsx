@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import UserAvatar from "./UserAvatar";
 import { useTheme } from "../hooks/useTheme";
+import { revokeGithub } from "../api/auth";
+import { clearToken, getToken } from "../api/client";
 
 interface NavbarProps {
   login?: string;
@@ -14,7 +16,15 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { theme, toggle } = useTheme();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const token = getToken();
+    if (token) {
+      try { await revokeGithub(token); } catch {}
+    }
+    clearToken();
+    if ((window as any).electronAPI?.clearGithubSession) {
+      try { await (window as any).electronAPI.clearGithubSession(); } catch {}
+    }
     navigate("/login");
   };
 

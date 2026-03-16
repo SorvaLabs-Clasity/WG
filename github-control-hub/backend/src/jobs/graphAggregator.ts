@@ -1,4 +1,3 @@
-import "dotenv/config";
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { docClient, usesDynamo, tableName, PutCommand, BatchWriteCommand, ScanCommand, DeleteCommand } from "../utils/dynamo";
@@ -203,7 +202,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
               pk: repoId,
               sk: `BRANCH#${branch.name}`,
               type: "has_branch",
-              metadata: { protected: branch.protected }
+              metadata: { protected: branch.protected, default: branch.name === repo.default_branch }
             });
           }
           if (branches.length < 100) break;
@@ -294,7 +293,3 @@ export async function aggregateGraphData(fallbackToken?: string) {
     console.error(`[GraphAggregator] Compliance cache refresh failed:`, err);
   }
 }
-
-export const handler = async () => {
-  await aggregateGraphData();
-};

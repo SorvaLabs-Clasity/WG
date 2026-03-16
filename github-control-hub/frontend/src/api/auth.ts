@@ -16,8 +16,6 @@ export interface AuthStatus {
     connected: boolean;
     dynamoReachable: boolean;
     region: string;
-    accountId: string | null;
-    identity: string | null;
     profile: string;
   };
   github: { configured: boolean; org: string | null };
