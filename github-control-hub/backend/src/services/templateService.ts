@@ -3,7 +3,7 @@ import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { logActivity } from "./activityService";
 import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand } from "../utils/dynamo";
-import { buildRulesetRules, buildTagRulesetRules, buildPushRulesetRules, listRulesets, getRuleset, getProtection, compareRulesetConfigs, compareClassicConfigs } from "./branchService";
+import { buildRulesetRules, buildTagRulesetRules, buildPushRulesetRules, listRulesets, getRuleset, getProtection, compareRulesetConfigs, compareClassicConfigs, createRulesetWithFallback } from "./branchService";
 
 export interface ConflictItem {
   type: "ruleset" | "classic";
@@ -218,7 +218,8 @@ export async function createTemplate(
 export async function updateTemplate(
   id: string,
   data: Partial<Omit<RepoTemplate, "id" | "createdAt" | "updatedAt">>,
-  actor: string
+  actor: string,
+  exclusionNameMap?: Map<string, string>
 ): Promise<RepoTemplate | null> {
   const existing = await getTemplate(id);
   if (!existing) return null;
@@ -251,7 +252,15 @@ export async function updateTemplate(
     diff.branches = { old: existing.branches, new: data.branches };
   }
   if (data.exclusionLists !== undefined && JSON.stringify(data.exclusionLists) !== JSON.stringify(existing.exclusionLists)) {
-    diff.exclusionLists = { old: existing.exclusionLists, new: data.exclusionLists };
+    const resolveNames = (ids: string[] | undefined) =>
+      (ids || []).map(id => exclusionNameMap?.get(id) || id);
+    diff.exclusionLists = { old: resolveNames(existing.exclusionLists), new: resolveNames(data.exclusionLists as string[]) };
+  }
+  if (data.tags !== undefined && JSON.stringify(data.tags) !== JSON.stringify(existing.tags)) {
+    diff.tags = { old: existing.tags || [], new: data.tags };
+  }
+  if (data.pushRules !== undefined && JSON.stringify(data.pushRules) !== JSON.stringify(existing.pushRules)) {
+    diff.pushRules = { old: existing.pushRules || [], new: data.pushRules };
   }
 
   await logActivity(
@@ -314,21 +323,26 @@ export async function applyTemplate(
       });
       defaultSha = ref.object.sha;
     } catch {
-      const { data: blob } = await octokit.rest.git.createBlob({
-        owner: org, repo, content: Buffer.from(`# ${repo}\n`).toString("base64"), encoding: "base64",
-      });
-      const { data: tree } = await octokit.rest.git.createTree({
-        owner: org, repo, tree: [{ path: "README.md", mode: "100644", type: "blob", sha: blob.sha }],
-      });
-      const { data: commit } = await octokit.rest.git.createCommit({
-        owner: org, repo, message: "Initial commit", tree: tree.sha, parents: [],
-      });
-      try {
-        await octokit.rest.git.createRef({ owner: org, repo, ref: `refs/heads/${defaultBranch}`, sha: commit.sha });
-      } catch {
-        await octokit.rest.git.updateRef({ owner: org, repo, ref: `heads/${defaultBranch}`, sha: commit.sha });
+      // Empty repo — create initial README using the Contents API (works on completely empty repos)
+      let initSha: string | null = null;
+      for (let initAttempt = 0; initAttempt < 3; initAttempt++) {
+        try {
+          const { data: fileResult } = await octokit.rest.repos.createOrUpdateFileContents({
+            owner: org,
+            repo,
+            path: "README.md",
+            message: "Initial commit",
+            content: Buffer.from(`# ${repo}\n`).toString("base64"),
+          });
+          initSha = fileResult.commit.sha!;
+          break;
+        } catch (initErr) {
+          console.warn(`[applyTemplate] Empty repo init attempt ${initAttempt + 1}/3 failed for "${repo}": ${(initErr as Error).message}`);
+          if (initAttempt < 2) await new Promise(r => setTimeout(r, 3000));
+        }
       }
-      defaultSha = commit.sha;
+      if (!initSha) throw new Error(`Failed to initialize empty repo "${repo}" after 3 attempts`);
+      defaultSha = initSha;
     }
   } catch (err) {
     throw new Error(`Failed to read repo default branch: ${(err as Error).message}`);
@@ -601,9 +615,7 @@ export async function applyTemplate(
           bypassActors = [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }];
         }
 
-        const { data: created } = await octokit.rest.repos.createRepoRuleset({
-          owner: org,
-          repo,
+        const { data: created, skippedRules } = await createRulesetWithFallback(octokit, org, repo, {
           name: protection.rulesetName || `Template Ruleset (${branchNames.join(", ")})`,
           target: "branch",
           enforcement: (protection.enforcement as any) || "active",
@@ -617,6 +629,9 @@ export async function applyTemplate(
           rules,
         });
         createdRulesetId = created.id;
+        if (skippedRules.length > 0) {
+          errors.push(`Skipped unsupported rule(s) for ruleset "${protection.rulesetName || "Template Ruleset"}": ${skippedRules.join(", ")}`);
+        }
       }
       protectedBranches.push(...branchNames);
       if (repoParentId) {
@@ -722,9 +737,7 @@ export async function applyTemplate(
           ? tag.bypassActors.map((a: any) => ({ ...a, bypass_mode: "always" }))
           : [];
 
-        const { data: createdTag } = await octokit.rest.repos.createRepoRuleset({
-          owner: org,
-          repo,
+        const { data: createdTag, skippedRules } = await createRulesetWithFallback(octokit, org, repo, {
           name: rulesetName,
           target: "tag",
           enforcement: (tag.enforcement as any) || "active",
@@ -738,6 +751,9 @@ export async function applyTemplate(
           rules,
         });
         createdTagId = createdTag.id;
+        if (skippedRules.length > 0) {
+          errors.push(`Skipped unsupported rule(s) for tag ruleset "${rulesetName}": ${skippedRules.join(", ")}`);
+        }
       }
 
       if (repoParentId) {
@@ -853,16 +869,18 @@ export async function applyTemplate(
           ? push.bypassActors
           : [];
 
-        const { data: createdPush } = await octokit.rest.repos.createRepoRuleset({
-          owner: org,
-          repo,
+        const { data: createdPush, skippedRules } = await createRulesetWithFallback(octokit, org, repo, {
           name: rulesetName,
-          target: "push" as any,
+          target: "push",
           enforcement: (push.enforcement as any) || "active",
           bypass_actors: bypassActors,
+          conditions: {},
           rules,
         });
         createdPushId = createdPush.id;
+        if (skippedRules.length > 0) {
+          errors.push(`Skipped unsupported rule(s) for push ruleset "${rulesetName}": ${skippedRules.join(", ")}`);
+        }
       }
 
       if (repoParentId) {

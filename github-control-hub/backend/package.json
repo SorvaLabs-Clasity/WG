@@ -12,9 +12,10 @@
     "@aws-sdk/client-dynamodb": "^3.600.0",
     "@aws-sdk/client-secrets-manager": "^3.600.0",
     "@aws-sdk/lib-dynamodb": "^3.600.0",
-
     "cors": "^2.8.5",
     "express": "^4.21.2",
+    "express-rate-limit": "^8.3.1",
+    "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "octokit": "^3.1.2",
     "uuid": "^8.3.2"

@@ -62,8 +62,8 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
   const { name, description, branches, tags, pushRules, autoApplyOnNewRepo, exclusionLists } = req.body;
   const data: Record<string, any> = { name, description, branches, tags, pushRules, autoApplyOnNewRepo, exclusionLists };
 
+  const allExclusions = data.exclusionLists ? await listExclusions() : [];
   if (data.exclusionLists) {
-    const allExclusions = await listExclusions();
     const templateId = req.params.id;
     const forcedIds = allExclusions
       .filter(e => e.forceOnNewTemplates || (e.forceTemplateIds || []).includes(templateId))
@@ -71,7 +71,12 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
     data.exclusionLists = Array.from(new Set([...data.exclusionLists, ...forcedIds]));
   }
 
-  const updated = await updateTemplate(req.params.id, data, req.user!.login);
+  const exclusionNameMap = new Map<string, string>();
+  for (const e of allExclusions) {
+    exclusionNameMap.set(e.id, e.name);
+  }
+
+  const updated = await updateTemplate(req.params.id, data, req.user!.login, exclusionNameMap);
   if (!updated) {
     res.status(404).json({ error: "Template not found" });
     return;

@@ -4,12 +4,13 @@ import { createOctokit, getOrg } from "../github/client";
 import { protectBranch, getProtection, listRulesets, getAllProtections, deleteProtection, deleteRuleset } from "../services/branchService";
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { validateParams } from "../utils/validation";
 
 type RepoAndBranch = { repo: string; branch: string };
 
 const router = Router();
 
-router.get("/:repo/rulesets", async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/:repo/rulesets", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken);
     const rulesets = await listRulesets(octokit, req.params.repo);
@@ -20,7 +21,7 @@ router.get("/:repo/rulesets", async (req: Request<{ repo: string }>, res: Respon
   }
 });
 
-router.get("/:repo/protections", async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/:repo/protections", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken);
     const protections = await getAllProtections(octokit, req.params.repo);
@@ -31,7 +32,7 @@ router.get("/:repo/protections", async (req: Request<{ repo: string }>, res: Res
   }
 });
 
-router.get("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res: Response) => {
+router.get("/:repo/protection/:branch", validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken);
     const protection = await getProtection(octokit, req.params.repo, req.params.branch);
@@ -46,7 +47,7 @@ router.get("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res:
   }
 });
 
-router.put("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res: Response) => {
+router.put("/:repo/protection/:branch", validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken);
     const protection = req.body;
@@ -72,7 +73,7 @@ router.put("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res:
   }
 });
 
-router.delete("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, res: Response) => {
+router.delete("/:repo/protection/:branch", validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken);
     let protectionConfig: any;
@@ -90,7 +91,7 @@ router.delete("/:repo/protection/:branch", async (req: Request<RepoAndBranch>, r
   }
 });
 
-router.post("/:repo/rulesets/import", async (req: Request<{ repo: string }>, res: Response) => {
+router.post("/:repo/rulesets/import", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   const raw = req.body;
   try {
     const octokit = createOctokit(req.user!.accessToken);
@@ -128,7 +129,7 @@ router.post("/:repo/rulesets/import", async (req: Request<{ repo: string }>, res
   }
 });
 
-router.delete("/:repo/rulesets/:rulesetId", async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
+router.delete("/:repo/rulesets/:rulesetId", validateParams("repo"), async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken);
     const org = getOrg();

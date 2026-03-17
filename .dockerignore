@@ -1,0 +1,12 @@
+node_modules
+*/node_modules
+**/node_modules
+.git
+*.md
+github-control-hub/backend/dist
+github-control-hub/frontend/dist
+github-control-hub-cmd-desktop-app
+release
+.backend-modules
+.github
+.claude

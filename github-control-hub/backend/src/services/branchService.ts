@@ -231,6 +231,63 @@ export async function renameBranch(octokit: Octokit, repo: string, branch: strin
   });
 }
 
+/**
+ * Try to create a repo ruleset, automatically retrying without rules that
+ * the org's GitHub plan doesn't support (e.g. code_quality, copilot_code_review).
+ */
+export async function createRulesetWithFallback(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  params: {
+    name: string;
+    target: string;
+    enforcement: string;
+    bypass_actors: any[];
+    conditions?: any;
+    rules: any[];
+  }
+): Promise<{ data: any; skippedRules: string[] }> {
+  let rules = [...params.rules];
+  const skippedRules: string[] = [];
+  const MAX_RETRIES = 3;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const { data } = await octokit.rest.repos.createRepoRuleset({
+        owner,
+        repo,
+        name: params.name,
+        target: params.target as any,
+        enforcement: params.enforcement as any,
+        bypass_actors: params.bypass_actors,
+        ...(params.conditions && Object.keys(params.conditions).length > 0 ? { conditions: params.conditions } : {}),
+        rules,
+      });
+      if (skippedRules.length > 0) {
+        console.warn(`[createRulesetWithFallback] Created ruleset "${params.name}" after skipping unsupported rules: ${skippedRules.join(", ")}`);
+      }
+      return { data, skippedRules };
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || "";
+      const match = msg.match(/\/rules\/(\d+)/);
+      if (match && attempt < MAX_RETRIES && rules.length > 1) {
+        const idx = parseInt(match[1], 10);
+        if (idx >= 0 && idx < rules.length) {
+          const removed = rules[idx];
+          skippedRules.push(removed.type || `unknown(index ${idx})`);
+          console.warn(`[createRulesetWithFallback] Rule "${removed.type}" at index ${idx} not supported — removing and retrying`);
+          rules = rules.filter((_, i) => i !== idx);
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+  // Unreachable, but satisfies TypeScript
+  throw new Error("createRulesetWithFallback: max retries exceeded");
+}
+
 export async function protectBranch(
   octokit: Octokit,
   repo: string,
@@ -251,9 +308,7 @@ export async function protectBranch(
       bypassActors = [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }];
     }
 
-    const { data: created } = await octokit.rest.repos.createRepoRuleset({
-      owner: org,
-      repo,
+    const { data: created, skippedRules } = await createRulesetWithFallback(octokit, org, repo, {
       name: protection.rulesetName || `Ruleset for ${branch}`,
       target: "branch",
       enforcement: (protection.enforcement as any) || "active",
@@ -266,6 +321,9 @@ export async function protectBranch(
       },
       rules,
     });
+    if (skippedRules.length > 0) {
+      console.warn(`[protectBranch] Skipped unsupported rules for ${repo}/${branch}: ${skippedRules.join(", ")}`);
+    }
     return { rulesetId: created.id };
   } else {
     const restrictions = protection.restrictPushes

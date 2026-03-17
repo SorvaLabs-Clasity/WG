@@ -95,12 +95,35 @@ export async function updateRuleTemplate(
     memStore.set(id, updated);
   }
 
+  const diff: Record<string, { old: any; new: any }> = {};
+  if (data.name !== undefined && data.name !== existing.name) {
+    diff.name = { old: existing.name, new: data.name };
+  }
+  if (data.description !== undefined && data.description !== existing.description) {
+    diff.description = { old: existing.description, new: data.description };
+  }
+  if (data.ruleType !== undefined && data.ruleType !== existing.ruleType) {
+    diff.ruleType = { old: existing.ruleType, new: data.ruleType };
+  }
+  if (data.branchProtection !== undefined && JSON.stringify(data.branchProtection) !== JSON.stringify(existing.branchProtection)) {
+    diff.branchProtection = { old: existing.branchProtection, new: data.branchProtection };
+  }
+  if (data.tagProtection !== undefined && JSON.stringify(data.tagProtection) !== JSON.stringify(existing.tagProtection)) {
+    diff.tagProtection = { old: existing.tagProtection, new: data.tagProtection };
+  }
+  if (data.pushProtection !== undefined && JSON.stringify(data.pushProtection) !== JSON.stringify(existing.pushProtection)) {
+    diff.pushProtection = { old: existing.pushProtection, new: data.pushProtection };
+  }
+
   await logActivity(
     "rule_template.update" as any,
     actor,
     "*",
     updated.name,
-    `Updated rule template "${updated.name}"`
+    `Updated rule template "${updated.name}"`,
+    Object.keys(diff).length > 0 ? diff : undefined,
+    "app", undefined, undefined,
+    { undoPayload: { action: "revert_rule_template", params: { templateId: id, previousState: existing, currentState: updated } } }
   );
   return updated;
 }

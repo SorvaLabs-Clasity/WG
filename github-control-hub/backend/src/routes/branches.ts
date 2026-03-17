@@ -4,10 +4,11 @@ import { createOctokit, getOrg } from "../github/client";
 import { listBranches, createBranch, deleteBranch, renameBranch } from "../services/branchService";
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { validateParams } from "../utils/validation";
 
 const router = Router();
 
-router.get("/:repo/branches", async (req: Request<{ repo: string }>, res: Response) => {
+router.get("/:repo/branches", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
     const octokit = createOctokit(req.user!.accessToken);
     const branches = await listBranches(octokit, req.params.repo);
@@ -18,7 +19,7 @@ router.get("/:repo/branches", async (req: Request<{ repo: string }>, res: Respon
   }
 });
 
-router.post("/:repo/branches", async (req: Request<{ repo: string }>, res: Response) => {
+router.post("/:repo/branches", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   const { branchName, baseBranch } = req.body as {
     branchName?: string;
     baseBranch?: string;
@@ -48,6 +49,7 @@ router.post("/:repo/branches", async (req: Request<{ repo: string }>, res: Respo
 
 router.delete(
   "/:repo/branches/:branch",
+  validateParams("repo", "branch"),
   async (req: Request<{ repo: string; branch: string }>, res: Response) => {
     try {
       const octokit = createOctokit(req.user!.accessToken);
@@ -70,6 +72,7 @@ router.delete(
 
 router.patch(
   "/:repo/branches/:branch/rename",
+  validateParams("repo", "branch"),
   async (req: Request<{ repo: string; branch: string }>, res: Response) => {
     const { newName } = req.body as { newName?: string };
     if (!newName) {

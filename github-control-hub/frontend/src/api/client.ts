@@ -3,15 +3,15 @@ const BASE_URL = import.meta.env.VITE_API_URL || "/api";
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
 export function getToken(): string | null {
-  return localStorage.getItem("gh_hub_token");
+  return sessionStorage.getItem("gh_hub_token");
 }
 
 export function setToken(token: string): void {
-  localStorage.setItem("gh_hub_token", token);
+  sessionStorage.setItem("gh_hub_token", token);
 }
 
 export function clearToken(): void {
-  localStorage.removeItem("gh_hub_token");
+  sessionStorage.removeItem("gh_hub_token");
   localStorage.removeItem("gh_hub_user");
 }
 

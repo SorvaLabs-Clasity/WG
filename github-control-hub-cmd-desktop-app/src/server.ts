@@ -20,6 +20,7 @@ export async function startBackend(
   }
 
   process.env.NODE_ENV = "production";
+  process.env.__STANDALONE__ = "1";
 
   const express = require(require.resolve("express", { paths: [backendDir] }));
   const expressApp = require(entryPoint).default;

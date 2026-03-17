@@ -12,6 +12,12 @@ import { addBranchEdge, removeBranchEdge, updateBranchProtection, addCollaborato
 
 const router = Router();
 
+/** Strip characters that could be used for XSS when reflected in the frontend. */
+function sanitizeField(val: string | undefined, maxLen = 200): string {
+  if (!val || typeof val !== "string") return "";
+  return val.replace(/[<>"'&]/g, "").slice(0, maxLen);
+}
+
 function getWebhookSecret(): string {
   return process.env.GITHUB_WEBHOOK_SECRET || "";
 }
@@ -75,12 +81,12 @@ router.post("/github", async (req: Request, res: Response) => {
   console.log(`[Webhook] Received GitHub event: ${event}`);
 
   let repoName: string | null = null;
-  
+
   if (payload.repository) {
-    repoName = payload.repository.name;
+    repoName = sanitizeField(payload.repository.name, 100) || null;
   }
 
-  const actor = payload.sender?.login || payload.installation?.account?.login || "github";
+  const actor = sanitizeField(payload.sender?.login || payload.installation?.account?.login, 64) || "github";
 
   if (repoName) {
     if (event === "repository" && payload.action === "publicized") {
@@ -93,20 +99,20 @@ router.post("/github", async (req: Request, res: Response) => {
     }
 
     if (event === "member" && payload.action === "added") {
-      const userAdded = payload.member?.login;
+      const userAdded = sanitizeField(payload.member?.login, 64);
       await createAlert(repoName, "admin_added", `User ${userAdded} was added to ${repoName}. Verify privileges.`, "medium");
     }
 
     if (event === "team" && payload.action === "added_to_repository") {
-      await createAlert(repoName, "team_added", `Team ${payload.team?.name} was added to ${repoName}.`, "medium");
+      await createAlert(repoName, "team_added", `Team ${sanitizeField(payload.team?.name, 100)} was added to ${repoName}.`, "medium");
     }
 
     if (event === "team" && payload.action === "removed_from_repository") {
-      await createAlert(repoName, "team_removed", `Team ${payload.team?.name} was removed from ${repoName}.`, "medium");
+      await createAlert(repoName, "team_removed", `Team ${sanitizeField(payload.team?.name, 100)} was removed from ${repoName}.`, "medium");
     }
 
     if (event === "team" && payload.action === "edited" && payload.changes?.repository?.permissions) {
-      await createAlert(repoName, "team_permission_changed", `Team ${payload.team?.name} permissions were changed in ${repoName}.`, "high");
+      await createAlert(repoName, "team_permission_changed", `Team ${sanitizeField(payload.team?.name, 100)} permissions were changed in ${repoName}.`, "high");
     }
 
     if (event === "repository" && payload.action === "privatized") {
@@ -116,12 +122,12 @@ router.post("/github", async (req: Request, res: Response) => {
     if (event === "branch_protection_rule") {
       if (payload.action === "deleted") {
         await createAlert(repoName, "protection_removed", `Branch protection was completely removed.`, "critical");
-        await logActivity("branch.unprotect", actor, repoName, payload.changes?.name?.from || "branch", "Branch protection removed via GitHub", undefined, "github");
+        await logActivity("branch.unprotect", actor, repoName, sanitizeField(payload.changes?.name?.from, 100) || "branch", "Branch protection removed via GitHub", undefined, "github");
       } else if (payload.action === "created") {
         await autoResolveAlerts(repoName, "protection_removed");
       } else if (payload.action === "edited") {
         await createAlert(repoName, "protection_drift", `Branch protection rules were modified (drift detected).`, "high");
-        await logActivity("github.branch_protection_edited", actor, repoName, payload.rule?.name || "branch", "Branch protection rules modified", undefined, "github");
+        await logActivity("github.branch_protection_edited", actor, repoName, sanitizeField(payload.rule?.name, 100) || "branch", "Branch protection rules modified", undefined, "github");
       }
     }
 
@@ -133,7 +139,7 @@ router.post("/github", async (req: Request, res: Response) => {
         await autoResolveAlerts(repoName, "ruleset_disabled");
       } else if (payload.action === "edited") {
         await createAlert(repoName, "protection_drift", `Repository ruleset was modified (drift detected).`, "high");
-        await logActivity("github.ruleset_edited", actor, repoName, payload.ruleset?.name || "ruleset", "Repository ruleset modified", undefined, "github");
+        await logActivity("github.ruleset_edited", actor, repoName, sanitizeField(payload.ruleset?.name, 100) || "ruleset", "Repository ruleset modified", undefined, "github");
       }
     }
 
@@ -143,26 +149,26 @@ router.post("/github", async (req: Request, res: Response) => {
   }
 
   if (event === "push" && payload.repository?.name && !payload.created && !payload.deleted) {
-    const repo = payload.repository.name;
-    const ref = payload.ref || "";
+    const repo = sanitizeField(payload.repository.name, 100);
+    const ref = sanitizeField(payload.ref, 255);
     const branch = ref.replace("refs/heads/", "");
-    const actorLogin = payload.sender?.login || "github";
-    await logActivity("github.push", actorLogin, repo, branch, payload.head_commit?.message?.slice(0, 200) || "Push", undefined, "github", undefined, payload.after);
+    const actorLogin = sanitizeField(payload.sender?.login, 64) || "github";
+    await logActivity("github.push", actorLogin, repo, branch, sanitizeField(payload.head_commit?.message, 200) || "Push", undefined, "github", undefined, payload.after);
   }
 
   if (event === "pull_request" && payload.repository?.name) {
-    const repo = payload.repository.name;
+    const repo = sanitizeField(payload.repository.name, 100);
     const pr = payload.pull_request;
-    const actorLogin = payload.sender?.login || pr?.user?.login || "github";
-    const branch = pr?.head?.ref || "";
+    const actorLogin = sanitizeField(payload.sender?.login || pr?.user?.login, 64) || "github";
+    const branch = sanitizeField(pr?.head?.ref, 255);
     const prNum = pr?.number;
     if (payload.action === "opened") {
-      await logActivity("github.pr_opened", actorLogin, repo, branch, pr?.title?.slice(0, 200), undefined, "github", prNum);
+      await logActivity("github.pr_opened", actorLogin, repo, branch, sanitizeField(pr?.title, 200), undefined, "github", prNum);
     } else if (payload.action === "closed") {
       if (pr?.merged) {
-        await logActivity("github.pr_merged", actorLogin, repo, branch, pr?.title?.slice(0, 200), undefined, "github", prNum);
+        await logActivity("github.pr_merged", actorLogin, repo, branch, sanitizeField(pr?.title, 200), undefined, "github", prNum);
       } else {
-        await logActivity("github.pr_closed", actorLogin, repo, branch, pr?.title?.slice(0, 200), undefined, "github", prNum);
+        await logActivity("github.pr_closed", actorLogin, repo, branch, sanitizeField(pr?.title, 200), undefined, "github", prNum);
       }
     }
   }
@@ -193,13 +199,21 @@ router.post("/github", async (req: Request, res: Response) => {
     }
   }
 
-  // Auto-apply templates to newly created repos
+  res.status(202).send("Accepted");
+
+  // Auto-apply templates to newly created repos (runs after response to avoid webhook timeouts)
   if (event === "repository" && payload.action === "created" && repoName) {
     if (getSystemToken()) {
       const octokit = new Octokit({ auth: getSystemToken() });
       try {
         const templates = await listTemplates();
         const autoApplyTemplates = templates.filter(t => t.autoApplyOnNewRepo);
+
+        // Wait for GitHub to fully provision the new repo before attempting API calls
+        if (autoApplyTemplates.length > 0) {
+          await new Promise(r => setTimeout(r, 5000));
+        }
+
         for (const tmpl of autoApplyTemplates) {
           // Check exclusion lists before applying
           const excludedRepos = new Set<string>();
@@ -216,10 +230,30 @@ router.post("/github", async (req: Request, res: Response) => {
 
           console.log(`[Webhook] Auto-applying template "${tmpl.name}" to new repo "${repoName}"`);
 
+          // Create parent activity entry (mirrors manual apply pattern)
+          const parentEntry = await logActivity(
+            "template.apply",
+            "system (auto-apply)",
+            repoName,
+            tmpl.name,
+            `Auto-applied template "${tmpl.name}" to new repo "${repoName}"`
+          );
+
+          // Create repo-level child activity entry
+          const repoEntry = await logActivity(
+            "template.apply.repo" as any,
+            "system (auto-apply)",
+            repoName,
+            tmpl.name,
+            `Auto-applied template "${tmpl.name}" to ${repoName}`,
+            undefined, "app", undefined, undefined,
+            { parentId: parentEntry.id }
+          );
+
           let lastErr: unknown;
-          for (let attempt = 1; attempt <= 3; attempt++) {
+          for (let attempt = 1; attempt <= 4; attempt++) {
             try {
-              const result = await applyTemplate(octokit, tmpl.id, repoName, "system (auto-apply)");
+              const result = await applyTemplate(octokit, tmpl.id, repoName, "system (auto-apply)", repoEntry.id);
               console.log(`[Webhook] Template "${tmpl.name}" applied to "${repoName}": created=${result.created.join(",")}, protected=${result.protected.join(",")}, errors=${result.errors.length}`);
               if (result.errors.length > 0) {
                 console.warn(`[Webhook] Template "${tmpl.name}" errors:`, result.errors);
@@ -228,9 +262,9 @@ router.post("/github", async (req: Request, res: Response) => {
               break;
             } catch (applyErr) {
               lastErr = applyErr;
-              console.warn(`[Webhook] Auto-apply attempt ${attempt}/3 failed for "${tmpl.name}" on "${repoName}":`, (applyErr as Error).message);
-              if (attempt < 3) {
-                await new Promise(r => setTimeout(r, attempt * 3000));
+              console.warn(`[Webhook] Auto-apply attempt ${attempt}/4 failed for "${tmpl.name}" on "${repoName}":`, (applyErr as Error).message);
+              if (attempt < 4) {
+                await new Promise(r => setTimeout(r, attempt * 4000));
               }
             }
           }
@@ -245,8 +279,6 @@ router.post("/github", async (req: Request, res: Response) => {
       console.warn("[Webhook] SYSTEM_GITHUB_TOKEN is not set. Cannot auto-apply templates.");
     }
   }
-
-  res.status(202).send("Accepted");
 
   const shouldRefreshCompliance =
     event === "branch_protection_rule" ||

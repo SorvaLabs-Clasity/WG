@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import authRoutes from "./routes/auth";
 import repoRoutes from "./routes/repos";
 import branchRoutes from "./routes/branches";
@@ -31,6 +33,27 @@ app.use(
   })
 );
 
+// Security headers
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// Rate limiting — strict for auth, moderate for API
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+  skip: (req) => req.path === "/verify" || req.path === "/status",
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later" },
+});
+
 // Webhook route MUST be mounted before global express.json() so we can capture the raw body for HMAC verification
 app.use("/api/webhooks", express.json({
   limit: "1mb",
@@ -43,9 +66,9 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
 
-app.use("/auth", authRoutes);
+app.use("/auth", authLimiter, authRoutes);
 
-app.use("/api", awsHealthMiddleware);
+app.use("/api", apiLimiter, awsHealthMiddleware);
 
 app.use("/api/repos", authMiddleware, repoRoutes);
 app.use("/api/repos", authMiddleware, branchRoutes);
@@ -62,8 +85,11 @@ app.use("/api/org", authMiddleware, orgRoutes);
 app.use("/api/graph", authMiddleware, graphRoutes);
 app.use("/api/widgets", authMiddleware, widgetRoutes);
 
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
-});
+// When imported by standalone.ts or the desktop app, skip auto-listen
+if (!process.env.__STANDALONE__) {
+  app.listen(PORT, () => {
+    console.log(`Backend running on http://localhost:${PORT}`);
+  });
+}
 
 export default app;

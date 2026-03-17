@@ -92,8 +92,31 @@ export async function updateExclusion(
     memExclusions.set(id, updated);
   }
 
+  const diff: Record<string, { old: any; new: any }> = {};
+  if (data.name !== undefined && data.name !== existing.name) {
+    diff.name = { old: existing.name, new: data.name };
+  }
+  if (data.description !== undefined && data.description !== existing.description) {
+    diff.description = { old: existing.description, new: data.description };
+  }
+  if (data.repos !== undefined && JSON.stringify(data.repos) !== JSON.stringify(existing.repos)) {
+    const added = data.repos!.filter(r => !existing.repos.includes(r));
+    const removed = existing.repos.filter(r => !data.repos!.includes(r));
+    diff.repos = { old: existing.repos, new: data.repos };
+    if (added.length > 0 || removed.length > 0) {
+      (diff.repos as any).added = added;
+      (diff.repos as any).removed = removed;
+    }
+  }
+  if (data.forceTemplateIds !== undefined && JSON.stringify(data.forceTemplateIds) !== JSON.stringify(existing.forceTemplateIds)) {
+    diff.forceTemplateIds = { old: existing.forceTemplateIds, new: data.forceTemplateIds };
+  }
+  if (data.forceOnNewTemplates !== undefined && data.forceOnNewTemplates !== existing.forceOnNewTemplates) {
+    diff.forceOnNewTemplates = { old: existing.forceOnNewTemplates, new: data.forceOnNewTemplates };
+  }
+
   await logActivity("exclusion.update", actor, "*", updated.name, `Updated exclusion list "${updated.name}"`,
-    undefined, "app", undefined, undefined,
+    Object.keys(diff).length > 0 ? diff : undefined, "app", undefined, undefined,
     { undoPayload: { action: "revert_exclusion", params: { exclusionId: id, previousState: existing, currentState: updated } } }
   );
 

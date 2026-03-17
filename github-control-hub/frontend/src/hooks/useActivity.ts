@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, QueryClient } from "@tanstack/react-query";
 import { fetchActivity, undoActivity, redoActivity, retryActivity, resolveConflict, undoResolution } from "../api/activity";
 
 export function useActivity(limit = 50, offset = 0, repo?: string) {
@@ -10,13 +10,25 @@ export function useActivity(limit = 50, offset = 0, repo?: string) {
   });
 }
 
+/** Undo/redo/retry can affect many domain entities — invalidate all relevant caches */
+function invalidateAll(qc: QueryClient) {
+  qc.invalidateQueries({ queryKey: ["activity"] });
+  qc.invalidateQueries({ queryKey: ["templates"] });
+  qc.invalidateQueries({ queryKey: ["exclusions"] });
+  qc.invalidateQueries({ queryKey: ["branches"] });
+  qc.invalidateQueries({ queryKey: ["rulesets"] });
+  qc.invalidateQueries({ queryKey: ["protection"] });
+  qc.invalidateQueries({ queryKey: ["all-protections"] });
+  qc.invalidateQueries({ queryKey: ["widgets"] });
+  qc.invalidateQueries({ queryKey: ["scanners"] });
+  qc.invalidateQueries({ queryKey: ["compliance-dashboard"] });
+}
+
 export function useUndoActivity() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (activityId: string) => undoActivity(activityId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["activity"] });
-    },
+    onSuccess: () => invalidateAll(qc),
   });
 }
 
@@ -24,9 +36,7 @@ export function useRedoActivity() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (activityId: string) => redoActivity(activityId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["activity"] });
-    },
+    onSuccess: () => invalidateAll(qc),
   });
 }
 
@@ -34,9 +44,7 @@ export function useRetryActivity() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (activityId: string) => retryActivity(activityId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["activity"] });
-    },
+    onSuccess: () => invalidateAll(qc),
   });
 }
 
@@ -44,9 +52,7 @@ export function useUndoResolution() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (activityId: string) => undoResolution(activityId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["activity"] });
-    },
+    onSuccess: () => invalidateAll(qc),
   });
 }
 
@@ -55,8 +61,6 @@ export function useResolveConflict() {
   return useMutation({
     mutationFn: ({ activityId, resolution }: { activityId: string; resolution: "override" | "skip" }) =>
       resolveConflict(activityId, resolution),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["activity"] });
-    },
+    onSuccess: () => invalidateAll(qc),
   });
 }

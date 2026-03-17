@@ -1,0 +1,21 @@
+{
+  "version": "52.0.0",
+  "files": {
+    "e11bab0bd8120b7df501e395ccd91235ebbbd44989be605c2bf453869151835a": {
+      "displayName": "GitHubControlHub Template",
+      "source": {
+        "path": "GitHubControlHub.template.json",
+        "packaging": "file"
+      },
+      "destinations": {
+        "315111499557-us-east-1-1e140ec0": {
+          "bucketName": "cdk-hnb659fds-assets-315111499557-us-east-1",
+          "objectKey": "e11bab0bd8120b7df501e395ccd91235ebbbd44989be605c2bf453869151835a.json",
+          "region": "us-east-1",
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::315111499557:role/cdk-hnb659fds-file-publishing-role-315111499557-us-east-1"
+        }
+      }
+    }
+  },
+  "dockerImages": {}
+}

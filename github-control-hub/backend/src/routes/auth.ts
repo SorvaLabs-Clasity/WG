@@ -5,6 +5,7 @@ import { createOctokit, getOrg } from "../github/client";
 import { signToken, verifyToken } from "../utils/jwt";
 import { storeToken, getToken, removeToken } from "../utils/tokenStore";
 import { docClient, tableName, usesDynamo, PutCommand, GetCommand, DeleteCommand } from "../utils/dynamo";
+import { authMiddleware } from "../middleware/authMiddleware";
 
 const router = Router();
 
@@ -147,7 +148,16 @@ router.get("/status", async (_req: Request, res: Response) => {
   });
 });
 
-router.post("/invalidate-aws", async (_req: Request, res: Response) => {
+// AWS credential management — only available on desktop app, blocked on EC2/server deployments
+const serverModeGuard = (_req: Request, res: Response, next: Function) => {
+  if (process.env.__SERVER_MODE__) {
+    res.status(403).json({ error: "AWS credential management is not available on this server" });
+    return;
+  }
+  next();
+};
+
+router.post("/invalidate-aws", serverModeGuard, authMiddleware, async (_req: Request, res: Response) => {
   const { lockAws } = await import("../middleware/awsHealthMiddleware");
   const { resetDynamoClient } = await import("../utils/dynamo");
 
@@ -161,7 +171,7 @@ router.post("/invalidate-aws", async (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-router.post("/reconnect-aws", async (req: Request, res: Response) => {
+router.post("/reconnect-aws", serverModeGuard, authMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
@@ -187,7 +197,7 @@ router.post("/reconnect-aws", async (req: Request, res: Response) => {
 });
 
 /** List all AWS profiles from ~/.aws/config and ~/.aws/credentials. */
-router.get("/aws-profiles", async (_req: Request, res: Response) => {
+router.get("/aws-profiles", serverModeGuard, authMiddleware, async (_req: Request, res: Response) => {
   try {
     const fs = await import("fs");
     const path = await import("path");
@@ -271,7 +281,7 @@ router.get("/aws-profiles", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/aws-sso-login", async (req: Request, res: Response) => {
+router.post("/aws-sso-login", serverModeGuard, authMiddleware, async (req: Request, res: Response) => {
   const { spawn } = await import("child_process");
   const profile = (req.body?.profile as string) || process.env.AWS_PROFILE || "default";
 
@@ -294,7 +304,7 @@ router.post("/aws-sso-login", async (req: Request, res: Response) => {
 });
 
 /** Switch to an existing AWS CLI profile (non-SSO). */
-router.post("/aws-use-profile", async (req: Request, res: Response) => {
+router.post("/aws-use-profile", serverModeGuard, authMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
@@ -326,7 +336,7 @@ router.post("/aws-use-profile", async (req: Request, res: Response) => {
 });
 
 /** Authenticate with explicit access keys. */
-router.post("/aws-access-keys", async (req: Request, res: Response) => {
+router.post("/aws-access-keys", serverModeGuard, authMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
@@ -396,7 +406,7 @@ router.post("/revoke-github", async (req: Request, res: Response) => {
   }
 });
 
-router.get("/debug", (_req: Request, res: Response) => {
+router.get("/debug", authMiddleware, (_req: Request, res: Response) => {
   res.json({
     hasClientId: !!process.env.GITHUB_CLIENT_ID,
     hasClientSecret: !!process.env.GITHUB_CLIENT_SECRET,

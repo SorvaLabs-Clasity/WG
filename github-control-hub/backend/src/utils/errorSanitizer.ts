@@ -20,6 +20,11 @@ export function sanitizeError(err: unknown, context: string): string {
     return "Service temporarily unavailable. Please try again.";
   }
 
-  // For non-sensitive errors, truncate to avoid leaking long stack traces
+  // In production, return a generic message to avoid leaking internals
+  if (process.env.NODE_ENV === "production") {
+    return "An unexpected error occurred. Please try again.";
+  }
+
+  // In development, truncate to avoid leaking long stack traces
   return message.length > 200 ? message.slice(0, 200) + "..." : message;
 }
