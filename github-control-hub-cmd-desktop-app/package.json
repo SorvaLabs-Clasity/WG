@@ -1,8 +1,8 @@
 {
   "name": "github-control-hub-desktop",
-  "version": "1.0.27",
+  "version": "1.0.28",
   "description": "GitHub Control Hub — Desktop App (Electron)",
-  "author": "RDaou05",
+  "author": "SorvaLabs-Clasity",
   "private": true,
   "main": "dist/main.js",
   "scripts": {
@@ -74,7 +74,7 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "RDaou05",
+      "owner": "SorvaLabs-Clasity",
       "repo": "WG",
       "private": true
     }
