@@ -20,6 +20,7 @@ import graphRoutes from "./routes/graph";
 import widgetRoutes from "./routes/widgets";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { awsHealthMiddleware } from "./middleware/awsHealthMiddleware";
+import { initTokenManager } from "./github/client";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -84,6 +85,13 @@ app.use("/api/security", authMiddleware, dependencyRoutes);
 app.use("/api/org", authMiddleware, orgRoutes);
 app.use("/api/graph", authMiddleware, graphRoutes);
 app.use("/api/widgets", authMiddleware, widgetRoutes);
+
+// Initialize GitHub App token manager if credentials are available
+if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
+  initTokenManager(process.env.GITHUB_APP_ID, process.env.GITHUB_APP_PRIVATE_KEY, process.env.GITHUB_APP_INSTALLATION_ID)
+    .then(() => console.log("[server] GitHub App token manager initialized"))
+    .catch((err) => console.warn("[server] Could not initialize GitHub App token manager:", (err as Error).message));
+}
 
 // When imported by standalone.ts or the desktop app, skip auto-listen
 if (!process.env.__STANDALONE__) {

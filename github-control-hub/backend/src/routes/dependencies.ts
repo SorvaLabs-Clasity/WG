@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { createOctokit, getOrg } from "../github/client";
+import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { listRepos } from "../services/repoService";
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
@@ -8,7 +8,7 @@ const router = Router();
 
 router.get("/dependencies", async (req: Request, res: Response) => {
   try {
-    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
+    const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -96,7 +96,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
 
 router.post("/dependencies/enable", async (req: Request, res: Response) => {
   try {
-    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
+    const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -128,7 +128,7 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
 
 router.post("/dependencies/disable", async (req: Request, res: Response) => {
   try {
-    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
+    const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -160,7 +160,7 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
 
 router.get("/summary", async (req: Request, res: Response) => {
   try {
-    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
+    const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }

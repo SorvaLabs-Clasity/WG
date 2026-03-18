@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { docClient, usesDynamo, tableName, PutCommand, QueryCommand } from "../utils/dynamo";
-import { createOctokit } from "../github/client";
+import { createOctokit, getSystemToken } from "../github/client";
 import { fetchOrgAuditLog, type OrgAuditLogEvent } from "../github/client";
 import { getOrgConfig } from "./orgConfigService";
 
@@ -220,7 +220,7 @@ export async function getAuditLogActivity(limit: number): Promise<ActivityEntry[
   const config = await getOrgConfig();
   if (!config.features.auditLogs) return [];
 
-  const token = process.env.SYSTEM_GITHUB_TOKEN;
+  const token = getSystemToken();
   if (!token) return [];
 
   try {

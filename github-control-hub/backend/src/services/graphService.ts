@@ -1,4 +1,5 @@
 import { docClient, usesDynamo, tableName, ScanCommand } from "../utils/dynamo";
+import { getSystemToken } from "../github/client";
 import fs from "fs";
 import path from "path";
 
@@ -273,7 +274,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         return targetBranches.every(b => hasBranches.has(b));
       });
 
-      const token = userToken || process.env.SYSTEM_GITHUB_TOKEN;
+      const token = userToken || getSystemToken();
       if (!token) throw new Error("Authentication required for live rule evaluation");
       const { Octokit } = await import("octokit");
       const { getOrg } = await import("../github/client");
@@ -428,7 +429,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     }
 
     case "stale-branch-protections": {
-      const sbpToken = userToken || process.env.SYSTEM_GITHUB_TOKEN;
+      const sbpToken = userToken || getSystemToken();
       if (!sbpToken) throw new Error("Authentication required for live evaluation");
       const { Octokit: SbpOctokit } = await import("octokit");
       const { getOrg: sbpGetOrg } = await import("../github/client");
@@ -508,7 +509,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     }
 
     case "protection-bypasses-ranking": {
-      const pbrToken = userToken || process.env.SYSTEM_GITHUB_TOKEN;
+      const pbrToken = userToken || getSystemToken();
       if (!pbrToken) throw new Error("Authentication required for live evaluation");
       const { Octokit: PbrOctokit } = await import("octokit");
       const { getOrg: pbrGetOrg } = await import("../github/client");
@@ -613,7 +614,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       break;
 
     case "users-without-mfa": {
-      const mfaToken = userToken || process.env.SYSTEM_GITHUB_TOKEN;
+      const mfaToken = userToken || getSystemToken();
       if (!mfaToken) throw new Error("Authentication required for live evaluation");
       const { Octokit: MfaOctokit } = await import("octokit");
       const { getOrg: mfaGetOrg } = await import("../github/client");
@@ -662,7 +663,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     }
 
     case "dormant-privileged-users": {
-      const dormToken = userToken || process.env.SYSTEM_GITHUB_TOKEN;
+      const dormToken = userToken || getSystemToken();
       if (!dormToken) throw new Error("Authentication required for live evaluation");
       const { Octokit: DormOctokit } = await import("octokit");
       const { getOrg: dormGetOrg } = await import("../github/client");

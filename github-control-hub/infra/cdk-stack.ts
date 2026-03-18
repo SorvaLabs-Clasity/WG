@@ -100,6 +100,7 @@ export class GitHubControlHubStack extends cdk.Stack {
       '  -keyout /etc/ssl/github-control-hub/server.key \\',
       '  -out /etc/ssl/github-control-hub/server.crt \\',
       '  -subj "/CN=github-control-hub"',
+      "chmod 644 /etc/ssl/github-control-hub/server.key /etc/ssl/github-control-hub/server.crt",
     );
 
     cdk.Tags.of(instance).add("Name", "github-control-hub");

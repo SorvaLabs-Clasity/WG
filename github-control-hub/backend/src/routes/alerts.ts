@@ -1,6 +1,6 @@
 import { Router, Request, Response } from "express";
 import { getAlerts, resolveAlert, unresolveAlert, createAlert } from "../services/alertService";
-import { createOctokit, getOrg } from "../github/client";
+import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
@@ -70,7 +70,7 @@ router.post("/simulate", async (req: Request, res: Response) => {
 
 router.get("/inactive-users", async (req: Request, res: Response) => {
   try {
-    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
+    const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token available" });
     }

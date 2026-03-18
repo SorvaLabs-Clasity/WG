@@ -3,6 +3,7 @@ import { docClient, usesDynamo, tableName, QueryCommand, ScanCommand } from "../
 import fs from "fs";
 import path from "path";
 import { evaluateSecurityQuery } from "../services/graphService";
+import { getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
@@ -276,7 +277,7 @@ router.get("/query", async (req: Request, res: Response) => {
     delete advanced.q;
     delete advanced.param;
 
-    const results = await evaluateSecurityQuery(q, param, advanced, process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken);
+    const results = await evaluateSecurityQuery(q, param, advanced, getSystemToken() || req.user?.accessToken);
     res.json(results);
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "graph") });

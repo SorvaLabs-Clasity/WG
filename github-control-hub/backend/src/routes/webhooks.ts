@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import crypto from "crypto";
 import { Octokit } from "octokit";
-import { getOrg } from "../github/client";
+import { getOrg, getSystemToken } from "../github/client";
 import { runScan, listScanners } from "../services/scannerService";
 import { createAlert, autoResolveAlerts } from "../services/alertService";
 import { logActivity } from "../services/activityService";
@@ -20,10 +20,6 @@ function sanitizeField(val: string | undefined, maxLen = 200): string {
 
 function getWebhookSecret(): string {
   return process.env.GITHUB_WEBHOOK_SECRET || "";
-}
-
-function getSystemToken(): string {
-  return process.env.SYSTEM_GITHUB_TOKEN || "";
 }
 
 // Verify webhook signature against raw body bytes (set by express.json verify callback in server.ts)
@@ -276,7 +272,7 @@ router.post("/github", async (req: Request, res: Response) => {
         console.error(`[Webhook] Error fetching templates for auto-apply:`, err);
       }
     } else {
-      console.warn("[Webhook] SYSTEM_GITHUB_TOKEN is not set. Cannot auto-apply templates.");
+      console.warn("[Webhook] No GitHub token available. Cannot auto-apply templates.");
     }
   }
 
@@ -348,7 +344,7 @@ router.post("/github", async (req: Request, res: Response) => {
     setTimeout(async () => {
       try {
         if (!getSystemToken()) {
-          console.warn("[Webhook] SYSTEM_GITHUB_TOKEN is not set. Cannot run automated background scan.");
+          console.warn("[Webhook] No GitHub token available. Cannot run automated background scan.");
           return;
         }
 

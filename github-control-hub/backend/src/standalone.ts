@@ -9,6 +9,7 @@ import fs from "fs";
 import crypto from "crypto";
 import https from "https";
 import express from "express";
+import { initTokenManager } from "./github/client";
 
 // ── Bootstrap (same logic as desktop app bootstrap.ts) ──
 
@@ -52,7 +53,7 @@ async function loadSecrets(): Promise<void> {
     const result = await client.send(new GetSecretValueCommand({ SecretId: getSecretName() }));
     if (result.SecretString) {
       const secrets = JSON.parse(result.SecretString) as Record<string, string>;
-      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN", "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET"]) {
+      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN", "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID"]) {
         if (secrets[key]) process.env[key] = secrets[key];
       }
     }
@@ -76,6 +77,16 @@ async function main(): Promise<void> {
   if (!process.env.AWS_REGION) process.env.AWS_REGION = getRegion();
   resolveTableNames();
   await loadSecrets();
+
+  // Initialize GitHub App token manager if credentials are available
+  if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
+    try {
+      await initTokenManager(process.env.GITHUB_APP_ID, process.env.GITHUB_APP_PRIVATE_KEY, process.env.GITHUB_APP_INSTALLATION_ID);
+      console.log("[standalone] GitHub App token manager initialized");
+    } catch (err: any) {
+      console.error("[standalone] GitHub App token manager failed to initialize:", err.message);
+    }
+  }
 
   if (!process.env.JWT_SECRET) {
     process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");

@@ -9,7 +9,7 @@ import {
   getScanResult,
   runScan,
 } from "../services/scannerService";
-import { createOctokit } from "../github/client";
+import { createOctokit, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 
 const router = Router();
@@ -54,9 +54,9 @@ router.get("/:id/results", async (req: Request<{id: string}>, res: Response) => 
 
 router.post("/:id/run", async (req: Request<{id: string}>, res: Response) => {
   try {
-    const token = process.env.SYSTEM_GITHUB_TOKEN || req.user?.accessToken;
+    const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
-      res.status(401).json({ error: "No GitHub token available. Sign in again or set SYSTEM_GITHUB_TOKEN." });
+      res.status(401).json({ error: "No GitHub token available. Sign in again." });
       return;
     }
     const octokit = createOctokit(token);

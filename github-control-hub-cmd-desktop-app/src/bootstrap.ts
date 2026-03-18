@@ -38,7 +38,7 @@ async function loadSecrets(): Promise<void> {
     const result = await client.send(new GetSecretValueCommand({ SecretId: getSecretName() }));
     if (result.SecretString) {
       const secrets = JSON.parse(result.SecretString) as Record<string, string>;
-      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN", "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET"]) {
+      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN", "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID"]) {
         if (secrets[key]) process.env[key] = secrets[key];
       }
     }
@@ -53,6 +53,18 @@ export async function bootstrap(): Promise<void> {
   if (!process.env.AWS_REGION) process.env.AWS_REGION = getRegion();
   resolveTableNames();
   await loadSecrets();
+
+  // Initialize GitHub App token manager if credentials are available
+  // Dynamic require to avoid rootDir boundary — backend is a sibling package
+  if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
+    try {
+      const { initTokenManager } = require("../../github-control-hub/backend/src/github/client");
+      await initTokenManager(process.env.GITHUB_APP_ID, process.env.GITHUB_APP_PRIVATE_KEY, process.env.GITHUB_APP_INSTALLATION_ID);
+      console.log("[bootstrap] GitHub App token manager initialized");
+    } catch (err: any) {
+      console.warn("[bootstrap] Could not initialize GitHub App token manager:", err.message);
+    }
+  }
 
   if (!process.env.JWT_SECRET) {
     const crypto = await import("crypto");

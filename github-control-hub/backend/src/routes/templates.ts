@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { createOctokit } from "../github/client";
+import { createOctokit, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import {
   listTemplates,
@@ -117,7 +117,7 @@ router.post("/:id/apply", async (req: Request<{ id: string }>, res: Response) =>
       }
     }
 
-    const octokit = createOctokit(process.env.SYSTEM_GITHUB_TOKEN || req.user!.accessToken);
+    const octokit = createOctokit(getSystemToken() || req.user!.accessToken);
     const merged = { created: [] as string[], protected: [] as string[], errors: [] as string[], skipped: [] as string[], conflicts: [] as any[] };
     const actor = req.user!.login;
 

@@ -221,7 +221,11 @@ function waitForAwsAuthThenCheckUpdates(): void {
       if (status.aws?.dynamoReachable) {
         checked = true;
         clearInterval(interval);
-        const ghToken = process.env.SYSTEM_GITHUB_TOKEN;
+        let ghToken = process.env.SYSTEM_GITHUB_TOKEN;
+        try {
+          const { getSystemToken } = require("../../github-control-hub/backend/src/github/client");
+          ghToken = getSystemToken() || ghToken;
+        } catch { /* fallback to env var */ }
         if (ghToken) {
           process.env.GH_TOKEN = ghToken;
         }

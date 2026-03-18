@@ -43,6 +43,7 @@ aws ssm send-command \
     'aws s3 cp s3://${BUCKET}/${IMAGE_NAME}.tar.gz /tmp/${IMAGE_NAME}.tar.gz --region ${REGION}',
     'docker load < <(gunzip -c /tmp/${IMAGE_NAME}.tar.gz)',
     'rm -f /tmp/${IMAGE_NAME}.tar.gz',
+    'chmod 644 /etc/ssl/github-control-hub/server.key /etc/ssl/github-control-hub/server.crt 2>/dev/null || true',
     'docker stop ${IMAGE_NAME} 2>/dev/null || true',
     'docker rm ${IMAGE_NAME} 2>/dev/null || true',
     'docker run -d --name ${IMAGE_NAME} --restart unless-stopped -p 443:4321 -v /etc/ssl/github-control-hub:/etc/ssl/github-control-hub:ro -e AWS_REGION=${REGION} ${IMAGE_NAME}',
