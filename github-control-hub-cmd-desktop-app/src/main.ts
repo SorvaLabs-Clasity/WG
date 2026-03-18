@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, ipcMain, session } from "electron";
+import { app, BrowserWindow, shell, dialog, ipcMain, session, Menu } from "electron";
 import path from "path";
 import { autoUpdater } from "electron-updater";
 import { bootstrap } from "./bootstrap";
@@ -9,6 +9,7 @@ let pendingOAuthClear = false;
 
 const BACKEND_PORT = 4321;
 const isDev = !app.isPackaged;
+const DEMO_MODE = process.env.DEMO_MODE === "true";
 
 function getBackendDir(): string {
   if (isDev) {
@@ -45,7 +46,7 @@ function createWindow(): void {
     },
   });
 
-  mainWindow.loadURL(`http://localhost:${BACKEND_PORT}/login`);
+  mainWindow.loadURL(`http://localhost:${BACKEND_PORT}${DEMO_MODE ? "/" : "/login"}`);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http://localhost")) return { action: "allow" };
@@ -86,6 +87,8 @@ function createWindow(): void {
 }
 
 async function main(): Promise<void> {
+  Menu.setApplicationMenu(null);
+
   try {
     await bootstrap();
   } catch (err: any) {

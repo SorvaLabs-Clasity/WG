@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep -r \"Menu\\\\|menu\\\\|File\\\\|Edit\\\\|View\" /c/Users/roni_/OneDrive/Documents/GitHub/WG/github-control-hub-cmd-desktop-app/src --include=*.ts)",
+      "Bash(grep -r \"Menu\\\\|menu\\\\|File\\\\|Edit\\\\|View\" /c/Users/roni_/OneDrive/Documents/GitHub/WG/github-control-hub/frontend/src --include=*.tsx)",
+      "Bash(grep -r DEMO /c/Users/roni_/OneDrive/Documents/GitHub/WG/github-control-hub/frontend/src --include=*.ts --include=*.tsx)",
+      "Bash(npm install:*)",
+      "Bash(./node_modules/.bin/electron --version)",
+      "Bash(node -e \"const e = require\\(''./github-control-hub-cmd-desktop-app/node_modules/electron''\\); console.log\\(typeof e, Object.keys\\(e || {}\\).slice\\(0,5\\)\\)\")",
+      "Bash(timeout 5 ./node_modules/.bin/electron .)",
+      "Bash(\"c:/Users/roni_/OneDrive/Documents/GitHub/WG/github-control-hub-cmd-desktop-app/node_modules/electron/dist/electron.exe\" --version)",
+      "Bash(timeout 3 \"node_modules/electron/dist/electron.exe\" --no-sandbox -e \"console.log\\(process.versions.electron\\)\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({k: d.get\\(k\\) for k in [''''name'''',''''version'''',''''main'''',''''exports'''',''''type'''']}, indent=2\\)\\)\")",
+      "Bash(node -e \"const p = require\\(''./node_modules/electron/package.json''\\); console.log\\(JSON.stringify\\({main: p.main, exports: p.exports, type: p.type}, null, 2\\)\\)\")",
+      "Bash(timeout 8 node_modules/electron/dist/electron.exe --no-sandbox .)",
+      "Bash(timeout 8 node_modules/electron/dist/electron.exe . --no-sandbox)",
+      "Bash(node -e \":*)",
+      "Bash(cp dist/main.js dist/main.js.bak)",
+      "Bash(cp dist/test_e7.js dist/main.js)",
+      "Bash(timeout 5 node_modules/electron/dist/electron.exe .)",
+      "Bash(cp dist/main.js.bak dist/main.js)",
+      "Bash(rm dist/main.js.bak)",
+      "Bash(echo \"ELECTRON_RUN_AS_NODE=$ELECTRON_RUN_AS_NODE\")",
+      "Bash(env)",
+      "Bash(npx tsc:*)",
+      "Bash(git fetch:*)",
+      "Bash(git stash:*)",
+      "Bash(git pull:*)"
+    ]
+  }
+}

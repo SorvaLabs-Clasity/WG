@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { buildAuthorizationUrl, exchangeCodeForToken } from "../github/oauth";
 import { createOctokit, getOrg } from "../github/client";
@@ -157,7 +157,49 @@ const serverModeGuard = (_req: Request, res: Response, next: Function) => {
   next();
 };
 
-router.post("/invalidate-aws", serverModeGuard, authMiddleware, async (_req: Request, res: Response) => {
+// During initial setup (no GitHub OAuth secrets loaded yet), allow AWS credential
+// endpoints without authentication. Once secrets are loaded, require auth.
+// This breaks the chicken-and-egg: AWS must be connected before GitHub OAuth
+// secrets can be loaded from Secrets Manager.
+const setupOrAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
+  if (!process.env.GITHUB_CLIENT_ID) {
+    next();
+    return;
+  }
+  authMiddleware(req, res, next);
+};
+
+/** After AWS credentials change, try to load GitHub OAuth secrets from Secrets Manager. */
+async function reloadSecretsIfNeeded(): Promise<boolean> {
+  if (process.env.GITHUB_CLIENT_ID) return false;
+  try {
+    const { SecretsManagerClient, GetSecretValueCommand } = await import("@aws-sdk/client-secrets-manager");
+    const region = process.env.AWS_REGION || "us-east-1";
+    const secretName = process.env.SECRET_NAME || `${process.env.STACK_NAME || "github-control-hub"}/secrets`;
+    const client = new SecretsManagerClient({ region });
+    const result = await client.send(new GetSecretValueCommand({ SecretId: secretName }));
+    if (result.SecretString) {
+      const secrets = JSON.parse(result.SecretString) as Record<string, string>;
+      for (const key of [
+        "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN",
+        "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET",
+        "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID",
+      ]) {
+        if (secrets[key]) process.env[key] = secrets[key];
+      }
+      if (!process.env.JWT_SECRET) {
+        const crypto = await import("crypto");
+        process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
+      }
+      return true;
+    }
+  } catch (err: any) {
+    console.warn("[auth] Could not reload secrets:", err.message);
+  }
+  return false;
+}
+
+router.post("/invalidate-aws", serverModeGuard, setupOrAuthMiddleware, async (_req: Request, res: Response) => {
   const { lockAws } = await import("../middleware/awsHealthMiddleware");
   const { resetDynamoClient } = await import("../utils/dynamo");
 
@@ -171,7 +213,7 @@ router.post("/invalidate-aws", serverModeGuard, authMiddleware, async (_req: Req
   res.json({ ok: true });
 });
 
-router.post("/reconnect-aws", serverModeGuard, authMiddleware, async (req: Request, res: Response) => {
+router.post("/reconnect-aws", serverModeGuard, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
@@ -190,14 +232,15 @@ router.post("/reconnect-aws", serverModeGuard, authMiddleware, async (req: Reque
 
   try {
     await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
-    res.json({ ok: true, reachable: true });
+    const secretsLoaded = await reloadSecretsIfNeeded();
+    res.json({ ok: true, reachable: true, secretsLoaded });
   } catch (err: any) {
     res.json({ ok: true, reachable: false, error: err.message });
   }
 });
 
 /** List all AWS profiles from ~/.aws/config and ~/.aws/credentials. */
-router.get("/aws-profiles", serverModeGuard, authMiddleware, async (_req: Request, res: Response) => {
+router.get("/aws-profiles", serverModeGuard, setupOrAuthMiddleware, async (_req: Request, res: Response) => {
   try {
     const fs = await import("fs");
     const path = await import("path");
@@ -281,7 +324,7 @@ router.get("/aws-profiles", serverModeGuard, authMiddleware, async (_req: Reques
   }
 });
 
-router.post("/aws-sso-login", serverModeGuard, authMiddleware, async (req: Request, res: Response) => {
+router.post("/aws-sso-login", serverModeGuard, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { spawn } = await import("child_process");
   const profile = (req.body?.profile as string) || process.env.AWS_PROFILE || "default";
 
@@ -296,6 +339,8 @@ router.post("/aws-sso-login", serverModeGuard, authMiddleware, async (req: Reque
   const child = spawn("aws", ["sso", "login", "--profile", profile], {
     stdio: "ignore",
     detached: true,
+    windowsHide: true,
+    shell: true,
     env,
   });
   child.unref();
@@ -304,7 +349,7 @@ router.post("/aws-sso-login", serverModeGuard, authMiddleware, async (req: Reque
 });
 
 /** Switch to an existing AWS CLI profile (non-SSO). */
-router.post("/aws-use-profile", serverModeGuard, authMiddleware, async (req: Request, res: Response) => {
+router.post("/aws-use-profile", serverModeGuard, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
@@ -329,14 +374,15 @@ router.post("/aws-use-profile", serverModeGuard, authMiddleware, async (req: Req
 
   try {
     await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
-    res.json({ ok: true, reachable: true });
+    const secretsLoaded = await reloadSecretsIfNeeded();
+    res.json({ ok: true, reachable: true, secretsLoaded });
   } catch (err: any) {
     res.json({ ok: true, reachable: false, error: err.message });
   }
 });
 
 /** Authenticate with explicit access keys. */
-router.post("/aws-access-keys", serverModeGuard, authMiddleware, async (req: Request, res: Response) => {
+router.post("/aws-access-keys", serverModeGuard, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
@@ -363,7 +409,8 @@ router.post("/aws-access-keys", serverModeGuard, authMiddleware, async (req: Req
 
   try {
     await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
-    res.json({ ok: true, reachable: true });
+    const secretsLoaded = await reloadSecretsIfNeeded();
+    res.json({ ok: true, reachable: true, secretsLoaded });
   } catch (err: any) {
     res.json({ ok: true, reachable: false, error: err.message });
   }

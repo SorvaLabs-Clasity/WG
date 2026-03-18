@@ -1,3 +1,5 @@
+import { getToken } from "./client";
+
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
 const BACKEND_URL =
@@ -30,6 +32,13 @@ export interface AwsProfile {
   ssoStartUrl?: string;
 }
 
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
 export async function fetchAuthStatus(): Promise<AuthStatus> {
   const res = await fetch(`${BACKEND_URL}/auth/status`);
   if (!res.ok) throw new Error("Failed to fetch auth status");
@@ -37,13 +46,13 @@ export async function fetchAuthStatus(): Promise<AuthStatus> {
 }
 
 export async function invalidateAws(): Promise<void> {
-  await fetch(`${BACKEND_URL}/auth/invalidate-aws`, { method: "POST" });
+  await fetch(`${BACKEND_URL}/auth/invalidate-aws`, { method: "POST", headers: authHeaders() });
 }
 
 export async function reconnectAws(profile?: string): Promise<{ ok: boolean; reachable: boolean }> {
   const res = await fetch(`${BACKEND_URL}/auth/reconnect-aws`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ profile }),
   });
   return res.json();
@@ -52,13 +61,13 @@ export async function reconnectAws(profile?: string): Promise<{ ok: boolean; rea
 export async function triggerAwsSsoLogin(profile?: string): Promise<void> {
   await fetch(`${BACKEND_URL}/auth/aws-sso-login`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ profile }),
   });
 }
 
 export async function fetchAwsProfiles(): Promise<AwsProfile[]> {
-  const res = await fetch(`${BACKEND_URL}/auth/aws-profiles`);
+  const res = await fetch(`${BACKEND_URL}/auth/aws-profiles`, { headers: authHeaders() });
   const data = await res.json();
   return data.profiles || [];
 }
@@ -66,7 +75,7 @@ export async function fetchAwsProfiles(): Promise<AwsProfile[]> {
 export async function useAwsProfile(profile: string): Promise<{ ok: boolean; reachable: boolean }> {
   const res = await fetch(`${BACKEND_URL}/auth/aws-use-profile`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ profile }),
   });
   return res.json();
@@ -80,7 +89,7 @@ export async function setAwsAccessKeys(keys: {
 }): Promise<{ ok: boolean; reachable: boolean }> {
   const res = await fetch(`${BACKEND_URL}/auth/aws-access-keys`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(keys),
   });
   return res.json();

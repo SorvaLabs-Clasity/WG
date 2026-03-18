@@ -11,13 +11,15 @@
     "dev:frontend": "npm run dev --workspace=frontend",
     "dev:backend": "npm run dev --workspace=backend",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "demo": "concurrently \"npm run dev:backend\" \"VITE_DEMO_MODE=true npm run dev:frontend\"",
+    "demo": "concurrently \"npm run dev:backend\" \"cross-env VITE_DEMO_MODE=true npm run dev:frontend\"",
+    "demo:no-login": "cross-env VITE_DEMO_MODE=true npm run dev:frontend",
     "build:frontend": "npm run build --workspace=frontend",
     "build:backend": "npm run build --workspace=backend",
     "build": "npm run build:backend && npm run build:frontend",
     "lint": "npm run lint --workspaces --if-present"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0"
   }
 }

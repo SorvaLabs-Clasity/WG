@@ -1,6 +1,6 @@
 {
   "name": "github-control-hub-desktop",
-  "version": "1.0.28",
+  "version": "1.0.29",
   "description": "GitHub Control Hub — Desktop App (Electron)",
   "author": "SorvaLabs-Clasity",
   "private": true,
@@ -12,6 +12,8 @@
     "build:frontend": "cd ../github-control-hub/frontend && npm run build",
     "build:electron": "tsc -p tsconfig.json",
     "dev": "npm run prebuild && npm run build:electron && electron .",
+    "demo:build-frontend:demo": "cross-env VITE_DEMO_MODE=true npm run build:frontend",
+    "demo:no-login": "npm run demo:build-frontend:demo && npm run build:electron && cross-env DEMO_MODE=true electron .",
     "start": "electron .",
     "pack": "npm run prebuild && npm run build:electron && electron-builder --dir",
     "dist:mac": "npm run prebuild && npm run build:electron && electron-builder --mac",
@@ -86,6 +88,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.13.10",
+    "cross-env": "^10.1.0",
     "electron": "^33.0.0",
     "electron-builder": "^25.0.0",
     "typescript": "^5.8.2"
