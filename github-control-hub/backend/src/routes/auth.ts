@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { buildAuthorizationUrl, exchangeCodeForToken } from "../github/oauth";
-import { createOctokit, getOrg } from "../github/client";
+import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { signToken, verifyToken } from "../utils/jwt";
 import { storeToken, getToken, removeToken } from "../utils/tokenStore";
 import { docClient, tableName, usesDynamo, PutCommand, GetCommand, DeleteCommand } from "../utils/dynamo";
@@ -148,14 +148,20 @@ router.get("/status", async (_req: Request, res: Response) => {
   });
 });
 
-// AWS credential management — only available on desktop app, blocked on EC2/server deployments
+// Desktop-only endpoints — blocked on EC2/server deployments
 const serverModeGuard = (_req: Request, res: Response, next: Function) => {
   if (process.env.__SERVER_MODE__) {
-    res.status(403).json({ error: "AWS credential management is not available on this server" });
+    res.status(403).json({ error: "This endpoint is not available on server deployments" });
     return;
   }
   next();
 };
+
+// Returns the current GitHub token for the desktop app's auto-updater
+router.get("/system-token", serverModeGuard, (_req: Request, res: Response) => {
+  const token = getSystemToken();
+  res.json({ token: token || null });
+});
 
 // During initial setup (no GitHub OAuth secrets loaded yet), allow AWS credential
 // endpoints without authentication. Once secrets are loaded, require auth.

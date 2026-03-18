@@ -207,35 +207,33 @@ function setupAutoUpdater(): void {
   waitForAwsAuthThenCheckUpdates();
 }
 
+function httpGetJson(url: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    require("http").get(url, (res: any) => {
+      let body = "";
+      res.on("data", (chunk: string) => body += chunk);
+      res.on("end", () => {
+        try { resolve(JSON.parse(body)); } catch { reject(new Error("Invalid JSON")); }
+      });
+    }).on("error", reject);
+  });
+}
+
 function waitForAwsAuthThenCheckUpdates(): void {
   let checked = false;
   const interval = setInterval(async () => {
     if (checked) { clearInterval(interval); return; }
     try {
-      const http = await import("http");
-      const data: string = await new Promise((resolve, reject) => {
-        http.get(`http://localhost:${BACKEND_PORT}/auth/status`, (res) => {
-          let body = "";
-          res.on("data", (chunk: string) => body += chunk);
-          res.on("end", () => resolve(body));
-        }).on("error", reject);
-      });
-      const status = JSON.parse(data);
+      const status = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/status`);
       if (status.aws?.dynamoReachable) {
         checked = true;
         clearInterval(interval);
-        let ghToken = process.env.SYSTEM_GITHUB_TOKEN;
-        try {
-          const { getSystemToken } = require("../../github-control-hub/backend/src/github/client");
-          ghToken = getSystemToken() || ghToken;
-        } catch { /* fallback to env var */ }
-        if (ghToken) {
-          process.env.GH_TOKEN = ghToken;
-        }
+        const { token: ghToken } = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/system-token`);
         if (!ghToken) {
           sendUpdateStatus("error");
           return;
         }
+        process.env.GH_TOKEN = ghToken;
         sendUpdateStatus("checking");
         autoUpdater.checkForUpdates().catch(() => {
           sendUpdateStatus("error");
