@@ -221,6 +221,7 @@ function httpGetJson(url: string): Promise<any> {
 
 function waitForAwsAuthThenCheckUpdates(): void {
   let checked = false;
+  console.log("[updater] Waiting for AWS auth before checking updates...");
   const interval = setInterval(async () => {
     if (checked) { clearInterval(interval); return; }
     try {
@@ -228,19 +229,23 @@ function waitForAwsAuthThenCheckUpdates(): void {
       if (status.aws?.dynamoReachable) {
         checked = true;
         clearInterval(interval);
-        const { token: ghToken } = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/system-token`);
-        if (!ghToken) {
+        console.log("[updater] AWS authenticated, fetching system token...");
+        const tokenRes = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/system-token`);
+        console.log("[updater] Token response:", tokenRes.token ? "got token" : "no token");
+        if (!tokenRes.token) {
           sendUpdateStatus("error");
           return;
         }
-        process.env.GH_TOKEN = ghToken;
+        process.env.GH_TOKEN = tokenRes.token;
         sendUpdateStatus("checking");
-        autoUpdater.checkForUpdates().catch(() => {
+        console.log("[updater] Checking for updates...");
+        autoUpdater.checkForUpdates().catch((err) => {
+          console.error("[updater] Update check failed:", err.message);
           sendUpdateStatus("error");
         });
       }
-    } catch {
-      // Backend not ready yet or AWS not authenticated — keep waiting
+    } catch (err: any) {
+      console.log("[updater] Waiting...", err?.message || "");
     }
   }, 5000);
 

@@ -86,12 +86,42 @@ app.use("/api/org", authMiddleware, orgRoutes);
 app.use("/api/graph", authMiddleware, graphRoutes);
 app.use("/api/widgets", authMiddleware, widgetRoutes);
 
-// Initialize GitHub App token manager if credentials are available
-if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
-  initTokenManager(process.env.GITHUB_APP_ID, process.env.GITHUB_APP_PRIVATE_KEY, process.env.GITHUB_APP_INSTALLATION_ID)
-    .then(() => console.log("[server] GitHub App token manager initialized"))
-    .catch((err) => console.warn("[server] Could not initialize GitHub App token manager:", (err as Error).message));
-}
+// Try to load secrets from Secrets Manager at startup (covers auto-connected AWS)
+// then initialize the GitHub App token manager
+(async () => {
+  try {
+    if (!process.env.GITHUB_CLIENT_ID) {
+      const { SecretsManagerClient, GetSecretValueCommand } = await import("@aws-sdk/client-secrets-manager");
+      const region = process.env.AWS_REGION || "us-east-1";
+      const secretName = process.env.SECRET_NAME || `${process.env.STACK_NAME || "github-control-hub"}/secrets`;
+      const client = new SecretsManagerClient({ region });
+      const result = await client.send(new GetSecretValueCommand({ SecretId: secretName }));
+      if (result.SecretString) {
+        const secrets = JSON.parse(result.SecretString) as Record<string, string>;
+        for (const key of [
+          "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN",
+          "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET",
+          "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID",
+        ]) {
+          if (secrets[key]) process.env[key] = secrets[key];
+        }
+        if (!process.env.JWT_SECRET) {
+          const crypto = await import("crypto");
+          process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
+        }
+        console.log("[server] Secrets loaded from Secrets Manager at startup");
+      }
+    }
+  } catch (err: any) {
+    console.warn("[server] Could not load secrets at startup:", err.message);
+  }
+
+  if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
+    initTokenManager(process.env.GITHUB_APP_ID, process.env.GITHUB_APP_PRIVATE_KEY, process.env.GITHUB_APP_INSTALLATION_ID)
+      .then(() => console.log("[server] GitHub App token manager initialized"))
+      .catch((err) => console.warn("[server] Could not initialize GitHub App token manager:", (err as Error).message));
+  }
+})();
 
 // When imported by standalone.ts or the desktop app, skip auto-listen
 if (!process.env.__STANDALONE__) {

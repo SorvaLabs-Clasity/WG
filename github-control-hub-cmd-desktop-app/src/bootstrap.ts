@@ -54,17 +54,7 @@ export async function bootstrap(): Promise<void> {
   resolveTableNames();
   await loadSecrets();
 
-  // Initialize GitHub App token manager if credentials are available
-  // Dynamic require to avoid rootDir boundary — backend is a sibling package
-  if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
-    try {
-      const { initTokenManager } = require("../../github-control-hub/backend/src/github/client");
-      await initTokenManager(process.env.GITHUB_APP_ID, process.env.GITHUB_APP_PRIVATE_KEY, process.env.GITHUB_APP_INSTALLATION_ID);
-      console.log("[bootstrap] GitHub App token manager initialized");
-    } catch (err: any) {
-      console.warn("[bootstrap] Could not initialize GitHub App token manager:", err.message);
-    }
-  }
+  // Token manager initialization is handled by server.ts after it loads
 
   if (!process.env.JWT_SECRET) {
     const crypto = await import("crypto");

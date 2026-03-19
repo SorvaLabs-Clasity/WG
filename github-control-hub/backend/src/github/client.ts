@@ -31,7 +31,9 @@ class GitHubTokenManager {
   private auth: any;
 
   async init(appId: string, privateKey: string, installationId: string) {
-    const { createAppAuth } = await import("@octokit/auth-app");
+    // Use indirect import to prevent tsc from converting dynamic import() to require()
+    // @octokit/auth-app is ESM-only and cannot be require()'d
+    const { createAppAuth } = await (new Function('specifier', 'return import(specifier)'))("@octokit/auth-app");
     this.auth = createAppAuth({
       appId,
       privateKey: normalizePemKey(privateKey),
