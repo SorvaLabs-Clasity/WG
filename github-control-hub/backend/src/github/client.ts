@@ -31,9 +31,10 @@ class GitHubTokenManager {
   private auth: any;
 
   async init(appId: string, privateKey: string, installationId: string) {
-    // Use indirect import to prevent tsc from converting dynamic import() to require()
-    // @octokit/auth-app is ESM-only and cannot be require()'d
-    const { createAppAuth } = await (new Function('specifier', 'return import(specifier)'))("@octokit/auth-app");
+    // @octokit/auth-app is ESM-only — use require.resolve to find the full path,
+    // then dynamic import() via new Function to prevent tsc from converting to require()
+    const resolved = require.resolve("@octokit/auth-app");
+    const { createAppAuth } = await (new Function('specifier', 'return import(specifier)'))("file://" + resolved);
     this.auth = createAppAuth({
       appId,
       privateKey: normalizePemKey(privateKey),

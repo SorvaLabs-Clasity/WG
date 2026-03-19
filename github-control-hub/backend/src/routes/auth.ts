@@ -210,7 +210,7 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
   return false;
 }
 
-router.post("/invalidate-aws", serverModeGuard, setupOrAuthMiddleware, async (_req: Request, res: Response) => {
+router.post("/invalidate-aws", serverModeGuard, async (_req: Request, res: Response) => {
   const { lockAws } = await import("../middleware/awsHealthMiddleware");
   const { resetDynamoClient } = await import("../utils/dynamo");
 
