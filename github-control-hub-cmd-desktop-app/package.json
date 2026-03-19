@@ -1,6 +1,6 @@
 {
   "name": "github-control-hub-desktop",
-  "version": "1.0.34",
+  "version": "1.0.35",
   "description": "GitHub Control Hub — Desktop App (Electron)",
   "author": "SorvaLabs-Clasity",
   "private": true,

@@ -529,13 +529,13 @@ export default function LoginPage() {
               <button onClick={handleEnter}
                 className="w-full bg-slate-900 dark:bg-white hover:bg-slate-800 dark:hover:bg-slate-100 text-white dark:text-slate-900 font-medium py-3 px-4 rounded-xl transition-all duration-200 flex items-center justify-center gap-2.5 shadow-sm hover:shadow-md cursor-pointer"
               >
-                Sign in
+                Sign in HERE
               </button>
             ) : (
               <button disabled
                 className="w-full bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 font-medium py-3 px-4 rounded-xl flex items-center justify-center gap-2.5 cursor-not-allowed"
               >
-                Sign in
+                Sign in HERE
               </button>
             )}
             {canEnter && (
