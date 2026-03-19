@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { buildAuthorizationUrl, exchangeCodeForToken } from "../github/oauth";
-import { createOctokit, getOrg, getSystemToken } from "../github/client";
+import { createOctokit, getOrg, getSystemToken, initTokenManager } from "../github/client";
 import { signToken, verifyToken } from "../utils/jwt";
 import { storeToken, getToken, removeToken } from "../utils/tokenStore";
 import { docClient, tableName, usesDynamo, PutCommand, GetCommand, DeleteCommand } from "../utils/dynamo";
@@ -196,6 +196,11 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
       if (!process.env.JWT_SECRET) {
         const crypto = await import("crypto");
         process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
+      }
+      // Initialize GitHub App token manager if credentials were loaded
+      if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
+        await initTokenManager(process.env.GITHUB_APP_ID, process.env.GITHUB_APP_PRIVATE_KEY, process.env.GITHUB_APP_INSTALLATION_ID);
+        console.log("[auth] GitHub App token manager initialized after secrets reload");
       }
       return true;
     }
