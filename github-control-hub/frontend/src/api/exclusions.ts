@@ -5,17 +5,31 @@ import {
   mockUpdateExclusion,
   mockDeleteExclusion,
 } from "./mock";
-import type { ExclusionList } from "../types/Template";
+import type { ExclusionList, ExclusionPattern } from "../types/Template";
 
 export function fetchExclusions(): Promise<ExclusionList[]> {
   if (DEMO_MODE) return mockFetchExclusions();
   return apiGet<ExclusionList[]>("/exclusions");
 }
 
+export interface ResolvedReposResponse {
+  explicitRepos: string[];
+  patternMatches: Record<string, string[]>;
+  whitelistedRepos: string[];
+  effectiveRepos: string[];
+}
+
+export function fetchResolvedRepos(exclusionId: string): Promise<ResolvedReposResponse> {
+  if (DEMO_MODE) return Promise.resolve({ explicitRepos: [], patternMatches: {}, whitelistedRepos: [], effectiveRepos: [] });
+  return apiGet<ResolvedReposResponse>(`/exclusions/${exclusionId}/resolved-repos`);
+}
+
 export function createExclusion(data: {
   name: string;
   description: string;
   repos: string[];
+  patterns: ExclusionPattern[];
+  patternWhitelist: string[];
   forceTemplateIds: string[];
   forceOnNewTemplates: boolean;
 }): Promise<ExclusionList> {
@@ -29,6 +43,8 @@ export function updateExclusion(
     name: string;
     description: string;
     repos: string[];
+    patterns: ExclusionPattern[];
+    patternWhitelist: string[];
     forceTemplateIds: string[];
     forceOnNewTemplates: boolean;
   }>

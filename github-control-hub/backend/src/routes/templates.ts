@@ -10,7 +10,7 @@ import {
   deleteTemplate,
   applyTemplate,
 } from "../services/templateService";
-import { getExclusion, listExclusions } from "../services/exclusionService";
+import { getExclusion, listExclusions, resolveExcludedReposFromIds } from "../services/exclusionService";
 import { logActivity } from "../services/activityService";
 
 const router = Router();
@@ -107,17 +107,11 @@ router.post("/:id/apply", async (req: Request<{ id: string }>, res: Response) =>
       return;
     }
 
-    const excludedRepos = new Set<string>();
-    if (template.exclusionLists && template.exclusionLists.length > 0) {
-      for (const listId of template.exclusionLists) {
-        const excl = await getExclusion(listId);
-        if (excl) {
-          excl.repos.forEach(r => excludedRepos.add(r));
-        }
-      }
-    }
-
     const octokit = createOctokit(getSystemToken() || req.user!.accessToken);
+
+    const excludedRepos = template.exclusionLists?.length
+      ? await resolveExcludedReposFromIds(template.exclusionLists, octokit)
+      : new Set<string>();
     const merged = { created: [] as string[], protected: [] as string[], errors: [] as string[], skipped: [] as string[], conflicts: [] as any[] };
     const actor = req.user!.login;
 

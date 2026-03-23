@@ -6,7 +6,10 @@ import {
   createExclusion,
   updateExclusion,
   deleteExclusion,
+  resolveExcludedRepos,
+  normalizeExclusion,
 } from "../services/exclusionService";
+import { createOctokit, getSystemToken } from "../github/client";
 
 const router = Router();
 
@@ -23,8 +26,33 @@ router.get("/:id", async (req: Request<{ id: string }>, res: Response) => {
   res.json(exclusion);
 });
 
+/** Resolve patterns against live org repos and return the breakdown. */
+router.get("/:id/resolved-repos", async (req: Request<{ id: string }>, res: Response) => {
+  const exclusion = await getExclusion(req.params.id);
+  if (!exclusion) {
+    res.status(404).json({ error: "Exclusion list not found" });
+    return;
+  }
+
+  const token = getSystemToken() || req.user?.accessToken;
+  if (!token) {
+    res.status(503).json({ error: "No GitHub token available" });
+    return;
+  }
+
+  const octokit = createOctokit(token);
+  const result = await resolveExcludedRepos(normalizeExclusion(exclusion), octokit);
+
+  res.json({
+    explicitRepos: result.explicitRepos,
+    patternMatches: result.patternMatches,
+    whitelistedRepos: result.whitelistedRepos,
+    effectiveRepos: Array.from(result.effectiveRepos),
+  });
+});
+
 router.post("/", async (req: Request, res: Response) => {
-  const { name, description, repos, forceTemplateIds, forceOnNewTemplates } = req.body;
+  const { name, description, repos, patterns, patternWhitelist, forceTemplateIds, forceOnNewTemplates } = req.body;
   if (!name) {
     res.status(400).json({ error: "name is required" });
     return;
@@ -35,6 +63,8 @@ router.post("/", async (req: Request, res: Response) => {
       name,
       description: description ?? "",
       repos: repos ?? [],
+      patterns: patterns ?? [],
+      patternWhitelist: patternWhitelist ?? [],
       forceTemplateIds: forceTemplateIds ?? [],
       forceOnNewTemplates: forceOnNewTemplates ?? false,
       createdBy: req.user!.login,
@@ -46,8 +76,12 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
-  const { name, description, repos, forceTemplateIds, forceOnNewTemplates } = req.body;
-  const updated = await updateExclusion(req.params.id, { name, description, repos, forceTemplateIds, forceOnNewTemplates }, req.user!.login);
+  const { name, description, repos, patterns, patternWhitelist, forceTemplateIds, forceOnNewTemplates } = req.body;
+  const updated = await updateExclusion(
+    req.params.id,
+    { name, description, repos, patterns, patternWhitelist, forceTemplateIds, forceOnNewTemplates },
+    req.user!.login
+  );
   if (!updated) {
     res.status(404).json({ error: "Exclusion list not found" });
     return;

@@ -123,11 +123,21 @@ export interface RepoTemplate {
   updatedAt: string;
 }
 
+export type ExclusionPatternType = "starts_with" | "contains" | "created_by" | "has_codeowners_entry";
+
+export interface ExclusionPattern {
+  id: string;
+  type: ExclusionPatternType;
+  value: string;
+}
+
 export interface ExclusionList {
   id: string;
   name: string;
   description: string;
   repos: string[];
+  patterns: ExclusionPattern[];
+  patternWhitelist: string[];
   forceTemplateIds: string[];
   forceOnNewTemplates: boolean;
   createdBy: string;

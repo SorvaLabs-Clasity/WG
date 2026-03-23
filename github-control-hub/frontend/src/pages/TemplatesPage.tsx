@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
 import {
@@ -15,6 +15,7 @@ import {
   useDeleteExclusion,
 } from "../hooks/useExclusions";
 import { useResolveConflict } from "../hooks/useActivity";
+import { fetchResolvedRepos } from "../api/exclusions";
 import { useRepos } from "../hooks/useRepos";
 import type { BranchRule, TagRule, PushRule } from "../types/Template";
 import { buildConflictComparison, type ConflictItem } from "../api/templates";
@@ -151,7 +152,48 @@ export default function TemplatesPage() {
   const [applyOpen, setApplyOpen] = useState<string | null>(null);
   const [applyRepos, setApplyRepos] = useState<string[]>([]);
   const [applySearch, setApplySearch] = useState("");
+  const [resolvedExcludedRepos, setResolvedExcludedRepos] = useState<Set<string>>(new Set());
+  const [resolvingExclusions, setResolvingExclusions] = useState(false);
   const [snack, setSnack] = useState<{ msg: string; severity: "success" | "error" } | null>(null);
+
+  // Resolve pattern-matched excluded repos when apply modal opens
+  useEffect(() => {
+    if (!applyOpen) {
+      setResolvedExcludedRepos(new Set());
+      return;
+    }
+    const tmpl = templates?.find(t => t.id === applyOpen);
+    if (!tmpl?.exclusionLists?.length) {
+      setResolvedExcludedRepos(new Set());
+      return;
+    }
+    // Start with explicit repos immediately
+    const explicit = new Set<string>();
+    for (const listId of tmpl.exclusionLists) {
+      const excl = exclusions?.find(e => e.id === listId);
+      if (excl) excl.repos.forEach(r => explicit.add(r));
+    }
+    setResolvedExcludedRepos(explicit);
+
+    // Then resolve patterns in background
+    const hasPatterns = tmpl.exclusionLists.some(id => {
+      const excl = exclusions?.find(e => e.id === id);
+      return (excl?.patterns?.length ?? 0) > 0;
+    });
+    if (hasPatterns) {
+      setResolvingExclusions(true);
+      Promise.all(
+        tmpl.exclusionLists.map(id => fetchResolvedRepos(id).catch(() => null))
+      ).then(results => {
+        const merged = new Set<string>(explicit);
+        for (const r of results) {
+          if (r) r.effectiveRepos.forEach(repo => merged.add(repo));
+        }
+        setResolvedExcludedRepos(merged);
+        setResolvingExclusions(false);
+      });
+    }
+  }, [applyOpen, templates, exclusions]);
 
   // Create form state
   const [name, setName] = useState("");
@@ -185,6 +227,10 @@ export default function TemplatesPage() {
   const [exclForceOnNew, setExclForceOnNew] = useState(false);
   const [exclForceTemplateIds, setExclForceTemplateIds] = useState<string[]>([]);
   const [exclCustomPending, setExclCustomPending] = useState(false);
+  const [exclPatterns, setExclPatterns] = useState<import("../types/Template").ExclusionPattern[]>([]);
+  const [exclPatternWhitelist, setExclPatternWhitelist] = useState<string[]>([]);
+  const [newPatternType, setNewPatternType] = useState<import("../types/Template").ExclusionPatternType>("starts_with");
+  const [newPatternValue, setNewPatternValue] = useState("");
 
   const resetExclForm = () => {
     setExclName("");
@@ -196,6 +242,10 @@ export default function TemplatesPage() {
     setExclForceTemplateIds([]);
     setExclCustomPending(false);
     setEditingExclId(null);
+    setExclPatterns([]);
+    setExclPatternWhitelist([]);
+    setNewPatternType("starts_with");
+    setNewPatternValue("");
   };
 
   const handleEditExclClick = (excl: any) => {
@@ -209,16 +259,28 @@ export default function TemplatesPage() {
     setExclSearch("");
     setExclForceOnNew(excl.forceOnNewTemplates || false);
     setExclForceTemplateIds(excl.forceTemplateIds || []);
+    setExclPatterns(excl.patterns || []);
+    setExclPatternWhitelist(excl.patternWhitelist || []);
     setEditingExclId(excl.id);
     setCreateExclOpen(true);
   };
 
   const handleCreateOrUpdateExcl = () => {
     const allRepos = Array.from(new Set([...exclRepos, ...exclCustomRepos]));
-    if (!exclName || allRepos.length === 0) return;
-    
+    if (!exclName || (allRepos.length === 0 && exclPatterns.length === 0)) return;
+
+    const payload = {
+      name: exclName,
+      description: exclDescription,
+      repos: allRepos,
+      patterns: exclPatterns,
+      patternWhitelist: exclPatternWhitelist,
+      forceTemplateIds: exclForceTemplateIds,
+      forceOnNewTemplates: exclForceOnNew,
+    };
+
     if (editingExclId) {
-      updateExclMutation.mutate({ id: editingExclId, data: { name: exclName, description: exclDescription, repos: allRepos, forceTemplateIds: exclForceTemplateIds, forceOnNewTemplates: exclForceOnNew } }, {
+      updateExclMutation.mutate({ id: editingExclId, data: payload }, {
         onSuccess: () => {
           setSnack({ msg: `Exclusion list updated`, severity: "success" });
           setCreateExclOpen(false);
@@ -227,7 +289,7 @@ export default function TemplatesPage() {
         onError: (err) => setSnack({ msg: (err as Error).message, severity: "error" }),
       });
     } else {
-      createExclMutation.mutate({ name: exclName, description: exclDescription, repos: allRepos, forceTemplateIds: exclForceTemplateIds, forceOnNewTemplates: exclForceOnNew }, {
+      createExclMutation.mutate(payload, {
         onSuccess: () => {
           setSnack({ msg: `Exclusion list created`, severity: "success" });
           setCreateExclOpen(false);
@@ -830,9 +892,33 @@ export default function TemplatesPage() {
 
                       {/* Body */}
                       <div className="p-5 flex-grow">
-                        <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">Excluded Repositories ({excl.repos.length})</div>
+                        <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3">
+                          Excluded Repositories ({excl.repos.length})
+                          {(excl.patterns?.length ?? 0) > 0 && (
+                            <span className="text-violet-500 dark:text-violet-400 ml-1.5">+ {excl.patterns.length} pattern{excl.patterns.length !== 1 ? "s" : ""}</span>
+                          )}
+                        </div>
+                        {/* Pattern pills */}
+                        {(excl.patterns?.length ?? 0) > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mb-2">
+                            {excl.patterns.map((p: any) => (
+                              <span key={p.id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-violet-50 dark:bg-violet-950/30 text-violet-700 dark:text-violet-400 text-[10px] font-medium rounded-full border border-violet-200 dark:border-violet-800/50">
+                                <i className={`text-[9px] ${
+                                  p.type === "starts_with" ? "ph-bold ph-text-aa" :
+                                  p.type === "contains" ? "ph-bold ph-magnifying-glass" :
+                                  p.type === "created_by" ? "ph-bold ph-user" :
+                                  "ph-bold ph-file-text"
+                                }`}></i>
+                                {p.type === "starts_with" && `Starts with "${p.value}"`}
+                                {p.type === "contains" && `Contains "${p.value}"`}
+                                {p.type === "created_by" && `By @${p.value}`}
+                                {p.type === "has_codeowners_entry" && `CODEOWNERS: ${p.value}`}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         <div className="flex flex-wrap gap-2 mb-4">
-                          {excl.repos.slice(0, 8).map(r => (
+                          {excl.repos.slice(0, 8).map((r: string) => (
                             <span key={r} className="px-2 py-1 bg-slate-100 dark:bg-slate-800 text-[11px] text-slate-600 dark:text-slate-400 rounded-md border border-slate-200 dark:border-slate-700 font-mono flex items-center gap-1.5">
                               <i className="fa-regular fa-bookmark text-slate-400 dark:text-slate-500 text-[10px]"></i> {r}
                             </span>
@@ -840,7 +926,7 @@ export default function TemplatesPage() {
                           {excl.repos.length > 8 && (
                             <span className="px-2 py-1 bg-slate-50 dark:bg-slate-800 text-[11px] text-slate-500 dark:text-slate-400 rounded-md border border-slate-200 dark:border-slate-700 font-mono">+{excl.repos.length - 8} more</span>
                           )}
-                          {excl.repos.length === 0 && <span className="text-xs text-slate-400 dark:text-slate-500 italic">No repositories selected</span>}
+                          {excl.repos.length === 0 && (excl.patterns?.length ?? 0) === 0 && <span className="text-xs text-slate-400 dark:text-slate-500 italic">No repositories selected</span>}
                         </div>
 
                         <div className="border-t border-slate-100 dark:border-slate-700 my-3"></div>
@@ -997,7 +1083,7 @@ export default function TemplatesPage() {
                                     {excl.name}
                                     <i className="fa-solid fa-lock text-[8px] text-amber-400"></i>
                                   </span>
-                                  <span className="text-[10px] text-amber-600 dark:text-amber-400">{excl.repos.length} repos &middot; Cannot be removed</span>
+                                  <span className="text-[10px] text-amber-600 dark:text-amber-400">{excl.repos.length} repos{(excl.patterns?.length ?? 0) > 0 ? `, ${excl.patterns.length} pattern${excl.patterns.length !== 1 ? "s" : ""}` : ""} &middot; Cannot be removed</span>
                                 </div>
                               </div>
                             ))}
@@ -1030,7 +1116,7 @@ export default function TemplatesPage() {
                                 </div>
                                 <div className="flex flex-col">
                                   <span className="text-xs font-medium text-gh-textBase dark:text-slate-200 group-hover:text-gh-blue transition-colors">{excl.name}</span>
-                                  <span className="text-[10px] text-gh-muted dark:text-slate-400">{excl.repos.length} repos</span>
+                                  <span className="text-[10px] text-gh-muted dark:text-slate-400">{excl.repos.length} repos{(excl.patterns?.length ?? 0) > 0 ? `, ${excl.patterns.length} pattern${excl.patterns.length !== 1 ? "s" : ""}` : ""}</span>
                                 </div>
                               </label>
                             ))}
@@ -1672,14 +1758,8 @@ export default function TemplatesPage() {
       {/* APPLY TEMPLATE MODAL */}
       {applyOpen && (() => {
         const applyingTemplate = templates?.find(t => t.id === applyOpen);
-        const excludedReposSet = new Set<string>();
-        if (applyingTemplate?.exclusionLists) {
-          applyingTemplate.exclusionLists.forEach(listId => {
-            const excl = exclusions?.find(e => e.id === listId);
-            if (excl) excl.repos.forEach(r => excludedReposSet.add(r));
-          });
-        }
-        
+        const excludedReposSet = resolvedExcludedRepos;
+
         const availableRepos = repos?.filter(r => !excludedReposSet.has(r.name)) || [];
         const filteredAvailableRepos = availableRepos.filter(r => r.name.toLowerCase().includes(applySearch.toLowerCase()));
         
@@ -1768,15 +1848,16 @@ export default function TemplatesPage() {
                 </div>
 
                 {/* Right side: Exclusions summary */}
-                {excludedReposSet.size > 0 && (
+                {(excludedReposSet.size > 0 || resolvingExclusions) && (
                   <div className="w-full md:w-64 flex flex-col gap-3">
                     <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 uppercase tracking-wide flex items-center gap-2">
                       <i className="fa-solid fa-ban text-red-500"></i>
                       Excluded
+                      {resolvingExclusions && <i className="fa-solid fa-circle-notch fa-spin text-xs text-slate-400 ml-1"></i>}
                     </label>
                     <div className="bg-red-50/50 dark:bg-red-950/30 border border-red-100 dark:border-red-800 rounded-lg p-3 flex-1 overflow-y-auto min-h-[200px] md:min-h-[300px]">
                       <p className="text-xs text-red-800 dark:text-red-300 mb-3 font-medium">
-                        {excludedReposSet.size} repositories are excluded by linked exclusion lists and cannot be selected.
+                        {excludedReposSet.size} repositories excluded{resolvingExclusions ? " (resolving patterns...)" : " by exclusion lists"}.
                       </p>
                       <div className="flex flex-col gap-1.5">
                         {Array.from(excludedReposSet).map(r => (
@@ -1965,6 +2046,114 @@ export default function TemplatesPage() {
                 )}
               </div>
 
+              {/* Pattern Rules */}
+              <div className="border-t border-gh-border dark:border-slate-700 pt-5">
+                <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1">Pattern Rules</label>
+                <p className="text-xs text-gh-muted dark:text-slate-400 mb-3">Dynamically exclude repos matching patterns. Matched repos are resolved live when checking exclusions.</p>
+
+                {/* Existing patterns */}
+                {exclPatterns.length > 0 && (
+                  <div className="space-y-2 mb-3">
+                    {exclPatterns.map(p => (
+                      <div key={p.id} className="flex items-center gap-2 px-3 py-2 bg-violet-50 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800/50 rounded-lg group">
+                        <i className={`text-sm text-violet-500 ${
+                          p.type === "starts_with" ? "ph-bold ph-text-aa" :
+                          p.type === "contains" ? "ph-bold ph-magnifying-glass" :
+                          p.type === "created_by" ? "ph-bold ph-user" :
+                          "ph-bold ph-file-text"
+                        }`}></i>
+                        <span className="text-xs font-medium text-violet-700 dark:text-violet-300">
+                          {p.type === "starts_with" && <>Starts with <span className="font-mono font-bold">"{p.value}"</span></>}
+                          {p.type === "contains" && <>Contains <span className="font-mono font-bold">"{p.value}"</span></>}
+                          {p.type === "created_by" && <>Created by <span className="font-mono font-bold">@{p.value}</span></>}
+                          {p.type === "has_codeowners_entry" && <>CODEOWNERS includes <span className="font-mono font-bold">{p.value}</span></>}
+                        </span>
+                        <button
+                          onClick={() => setExclPatterns(prev => prev.filter(x => x.id !== p.id))}
+                          className="ml-auto text-violet-400 hover:text-red-500 transition-colors opacity-0 group-hover:opacity-100"
+                        >
+                          <i className="fa-solid fa-xmark text-xs"></i>
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add new pattern */}
+                <div className="flex gap-2">
+                  <select
+                    value={newPatternType}
+                    onChange={e => setNewPatternType(e.target.value as any)}
+                    className="text-xs bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg px-2.5 py-2 text-gh-textBase dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
+                  >
+                    <option value="starts_with">Name starts with</option>
+                    <option value="contains">Name contains</option>
+                    <option value="created_by">Created by user</option>
+                    <option value="has_codeowners_entry">CODEOWNERS includes</option>
+                  </select>
+                  <input
+                    type="text"
+                    value={newPatternValue}
+                    onChange={e => setNewPatternValue(e.target.value)}
+                    placeholder={
+                      newPatternType === "starts_with" ? 'e.g. "DEV"' :
+                      newPatternType === "contains" ? 'e.g. "test"' :
+                      newPatternType === "created_by" ? 'e.g. "octocat"' :
+                      'e.g. "@org/team-name"'
+                    }
+                    className="flex-1 text-xs bg-white dark:bg-slate-800 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-gh-textBase dark:text-slate-200 font-mono focus:outline-none focus:ring-2 focus:ring-violet-500/30 focus:border-violet-500"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newPatternValue.trim()) {
+                        e.preventDefault();
+                        setExclPatterns(prev => [...prev, { id: crypto.randomUUID(), type: newPatternType, value: newPatternValue.trim() }]);
+                        setNewPatternValue("");
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (!newPatternValue.trim()) return;
+                      setExclPatterns(prev => [...prev, { id: crypto.randomUUID(), type: newPatternType, value: newPatternValue.trim() }]);
+                      setNewPatternValue("");
+                    }}
+                    disabled={!newPatternValue.trim()}
+                    className="px-3 py-2 text-xs font-semibold bg-violet-600 hover:bg-violet-700 text-white rounded-lg disabled:opacity-50 transition-all active:scale-[0.97]"
+                  >
+                    Add
+                  </button>
+                </div>
+
+                {newPatternType === "created_by" && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                    <i className="ph-bold ph-info text-xs"></i>
+                    "Created by" requires org audit log access (Enterprise plan). May not work for all orgs.
+                  </p>
+                )}
+                {newPatternType === "has_codeowners_entry" && (
+                  <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                    <i className="ph-bold ph-info text-xs"></i>
+                    Checks CODEOWNERS, .github/CODEOWNERS, and docs/CODEOWNERS. May be slow for large orgs.
+                  </p>
+                )}
+
+                {/* Pattern whitelist */}
+                {exclPatternWhitelist.length > 0 && (
+                  <div className="mt-3">
+                    <label className="block text-xs font-semibold text-gh-textMuted dark:text-slate-400 uppercase tracking-wider mb-1.5">Whitelisted from patterns</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {exclPatternWhitelist.map(r => (
+                        <span key={r} className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 text-[11px] font-medium rounded-full border border-emerald-200 dark:border-emerald-800">
+                          {r}
+                          <button onClick={() => setExclPatternWhitelist(prev => prev.filter(x => x !== r))} className="hover:text-red-500 transition-colors">
+                            <i className="fa-solid fa-xmark text-[8px]"></i>
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Force-Apply Settings */}
               <div className="border-t border-gh-border dark:border-slate-700 pt-5">
                 <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1">Force-Apply Settings</label>
@@ -2019,7 +2208,7 @@ export default function TemplatesPage() {
               </button>
               <button 
                 onClick={handleCreateOrUpdateExcl}
-                disabled={!exclName || (exclRepos.length === 0 && exclCustomRepos.length === 0) || exclCustomPending || createExclMutation.isPending || updateExclMutation.isPending}
+                disabled={!exclName || (exclRepos.length === 0 && exclCustomRepos.length === 0 && exclPatterns.length === 0) || exclCustomPending || createExclMutation.isPending || updateExclMutation.isPending}
                 className="px-5 py-2 border border-transparent text-sm font-semibold rounded-md shadow-sm text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 transition-all active:scale-[0.98]"
               >
                 {createExclMutation.isPending || updateExclMutation.isPending ? "Saving..." : editingExclId ? "Save Changes" : "Create Exclusion List"}

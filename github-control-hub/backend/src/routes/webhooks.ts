@@ -6,7 +6,7 @@ import { runScan, listScanners } from "../services/scannerService";
 import { createAlert, autoResolveAlerts } from "../services/alertService";
 import { logActivity } from "../services/activityService";
 import { listTemplates, applyTemplate } from "../services/templateService";
-import { listExclusions, getExclusion } from "../services/exclusionService";
+import { listExclusions, getExclusion, resolveExcludedReposFromIds } from "../services/exclusionService";
 import { refreshRepo } from "../services/complianceCacheService";
 import { addBranchEdge, removeBranchEdge, updateBranchProtection, addCollaboratorEdge, removeCollaboratorEdge, addRepoEdges } from "../services/graphEdgeService";
 
@@ -210,15 +210,13 @@ router.post("/github", async (req: Request, res: Response) => {
           await new Promise(r => setTimeout(r, 5000));
         }
 
+        const webhookCreator = payload.sender?.login;
+
         for (const tmpl of autoApplyTemplates) {
-          // Check exclusion lists before applying
-          const excludedRepos = new Set<string>();
-          if (tmpl.exclusionLists && tmpl.exclusionLists.length > 0) {
-            for (const listId of tmpl.exclusionLists) {
-              const excl = await getExclusion(listId);
-              if (excl) excl.repos.forEach(r => excludedRepos.add(r));
-            }
-          }
+          // Check exclusion lists (explicit repos + patterns) before applying
+          const excludedRepos: Set<string> = tmpl.exclusionLists?.length
+            ? await resolveExcludedReposFromIds(tmpl.exclusionLists, octokit, { repoName, creator: webhookCreator })
+            : new Set<string>();
           if (excludedRepos.has(repoName)) {
             console.log(`[Webhook] Skipping auto-apply of "${tmpl.name}" — repo "${repoName}" is in exclusion list`);
             continue;

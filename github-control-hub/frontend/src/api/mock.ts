@@ -10215,6 +10215,8 @@ let mockExclusionStore: import("../types/Template").ExclusionList[] = [
     name: "Core Infrastructure",
     description: "Crucial infrastructure repositories that should not have automated templates applied.",
     repos: ["infrastructure-as-code", "api-gateway"],
+    patterns: [],
+    patternWhitelist: [],
     forceTemplateIds: [],
     forceOnNewTemplates: false,
     createdBy: DEMO_USER.login,

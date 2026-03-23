@@ -1,13 +1,25 @@
 import crypto from "crypto";
+import { Octokit } from "octokit";
 import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand } from "../utils/dynamo";
 import { logActivity } from "./activityService";
 import { listTemplates, putTemplateRaw } from "./templateService";
+import { getOrg } from "../github/client";
+
+export type ExclusionPatternType = "starts_with" | "contains" | "created_by" | "has_codeowners_entry";
+
+export interface ExclusionPattern {
+  id: string;
+  type: ExclusionPatternType;
+  value: string;
+}
 
 export interface ExclusionList {
   id: string;
   name: string;
   description: string;
   repos: string[];
+  patterns: ExclusionPattern[];
+  patternWhitelist: string[];
   forceTemplateIds: string[];
   forceOnNewTemplates: boolean;
   createdBy: string;
@@ -194,4 +206,216 @@ export async function deleteExclusion(id: string, actor: string): Promise<boolea
   }
 
   return true;
+}
+
+// ── Normalization ──
+
+/** Ensure old records without patterns/patternWhitelist still work. */
+export function normalizeExclusion(excl: ExclusionList): ExclusionList {
+  return {
+    ...excl,
+    patterns: excl.patterns ?? [],
+    patternWhitelist: excl.patternWhitelist ?? [],
+  };
+}
+
+// ── Pattern Resolution Engine ──
+
+/** Fetch all org repo names (cached for 2 min within process). */
+let repoNamesCache: { names: string[]; ts: number } | null = null;
+const REPO_CACHE_TTL = 120_000;
+
+async function getAllRepoNames(octokit: Octokit): Promise<string[]> {
+  if (repoNamesCache && Date.now() - repoNamesCache.ts < REPO_CACHE_TTL) {
+    return repoNamesCache.names;
+  }
+  const org = getOrg();
+  const names: string[] = [];
+  let page = 1;
+  while (true) {
+    const { data } = await octokit.rest.repos.listForOrg({ org, per_page: 100, page });
+    if (data.length === 0) break;
+    names.push(...data.map(r => r.name));
+    if (data.length < 100) break;
+    page++;
+  }
+  repoNamesCache = { names, ts: Date.now() };
+  return names;
+}
+
+/** CODEOWNERS content cache (per repo, 5 min TTL). */
+const codeownersCache = new Map<string, { content: string | null; ts: number }>();
+const CODEOWNERS_CACHE_TTL = 300_000;
+
+async function getCodeownersContent(octokit: Octokit, repo: string): Promise<string | null> {
+  const cached = codeownersCache.get(repo);
+  if (cached && Date.now() - cached.ts < CODEOWNERS_CACHE_TTL) return cached.content;
+
+  const org = getOrg();
+  const paths = ["CODEOWNERS", ".github/CODEOWNERS", "docs/CODEOWNERS"];
+  for (const p of paths) {
+    try {
+      const { data } = await octokit.rest.repos.getContent({ owner: org, repo, path: p }) as any;
+      if (data.content) {
+        const content = Buffer.from(data.content, "base64").toString("utf-8");
+        codeownersCache.set(repo, { content, ts: Date.now() });
+        return content;
+      }
+    } catch {
+      // File not found at this path, try next
+    }
+  }
+  codeownersCache.set(repo, { content: null, ts: Date.now() });
+  return null;
+}
+
+/** Resolve which repos match a single pattern. */
+async function resolvePatternMatches(
+  octokit: Octokit,
+  pattern: ExclusionPattern,
+  allRepoNames: string[],
+  webhookContext?: { repoName: string; creator?: string }
+): Promise<string[]> {
+  const val = pattern.value.toLowerCase();
+
+  switch (pattern.type) {
+    case "starts_with":
+      return allRepoNames.filter(n => n.toLowerCase().startsWith(val));
+
+    case "contains":
+      return allRepoNames.filter(n => n.toLowerCase().includes(val));
+
+    case "created_by": {
+      // For webhook context, check the creator directly
+      if (webhookContext?.creator && webhookContext.creator.toLowerCase() === val) {
+        // Also check existing repos via audit log if available
+        const matched = [webhookContext.repoName];
+        try {
+          const org = getOrg();
+          const { data } = await octokit.request("GET /orgs/{org}/audit-log", {
+            org,
+            phrase: `action:repo.create actor:${pattern.value}`,
+            per_page: 100,
+          });
+          for (const entry of data as any[]) {
+            if (entry.repo) {
+              const name = entry.repo.includes("/") ? entry.repo.split("/")[1] : entry.repo;
+              if (allRepoNames.includes(name) && !matched.includes(name)) matched.push(name);
+            }
+          }
+        } catch {
+          // Audit log not available — fall through with just webhook match
+        }
+        return matched;
+      }
+      // Without webhook context, use audit log
+      try {
+        const org = getOrg();
+        const { data } = await octokit.request("GET /orgs/{org}/audit-log", {
+          org,
+          phrase: `action:repo.create actor:${pattern.value}`,
+          per_page: 100,
+        });
+        const matched: string[] = [];
+        for (const entry of data as any[]) {
+          if (entry.repo) {
+            const name = entry.repo.includes("/") ? entry.repo.split("/")[1] : entry.repo;
+            if (allRepoNames.includes(name)) matched.push(name);
+          }
+        }
+        return matched;
+      } catch {
+        // Audit log not accessible (requires Enterprise/org audit access)
+        return [];
+      }
+    }
+
+    case "has_codeowners_entry": {
+      const matched: string[] = [];
+      // Process in batches of 10 to avoid rate limits
+      for (let i = 0; i < allRepoNames.length; i += 10) {
+        const batch = allRepoNames.slice(i, i + 10);
+        const results = await Promise.allSettled(
+          batch.map(async (repo) => {
+            const content = await getCodeownersContent(octokit, repo);
+            if (content && content.toLowerCase().includes(val)) return repo;
+            return null;
+          })
+        );
+        for (const r of results) {
+          if (r.status === "fulfilled" && r.value) matched.push(r.value);
+        }
+      }
+      return matched;
+    }
+
+    default:
+      return [];
+  }
+}
+
+/** Resolve all excluded repos for a single exclusion list. */
+export async function resolveExcludedRepos(
+  excl: ExclusionList,
+  octokit: Octokit,
+  webhookContext?: { repoName: string; creator?: string }
+): Promise<{
+  explicitRepos: string[];
+  patternMatches: Record<string, string[]>;
+  whitelistedRepos: string[];
+  effectiveRepos: Set<string>;
+}> {
+  const normalized = normalizeExclusion(excl);
+  const explicitRepos = normalized.repos;
+  const patternMatches: Record<string, string[]> = {};
+  const allPatternMatched = new Set<string>();
+
+  if (normalized.patterns.length > 0) {
+    let allRepoNames: string[];
+    try {
+      allRepoNames = await getAllRepoNames(octokit);
+    } catch {
+      allRepoNames = [];
+    }
+    // If webhook context provides a new repo not yet in the cached list, add it
+    if (webhookContext?.repoName && !allRepoNames.includes(webhookContext.repoName)) {
+      allRepoNames = [...allRepoNames, webhookContext.repoName];
+    }
+
+    for (const pattern of normalized.patterns) {
+      const matches = await resolvePatternMatches(octokit, pattern, allRepoNames, webhookContext);
+      patternMatches[pattern.id] = matches;
+      matches.forEach(r => allPatternMatched.add(r));
+    }
+  }
+
+  // Remove whitelisted repos from pattern matches
+  const whitelist = new Set(normalized.patternWhitelist);
+  const effectiveRepos = new Set<string>(explicitRepos);
+  for (const repo of allPatternMatched) {
+    if (!whitelist.has(repo)) effectiveRepos.add(repo);
+  }
+
+  return {
+    explicitRepos,
+    patternMatches,
+    whitelistedRepos: normalized.patternWhitelist,
+    effectiveRepos,
+  };
+}
+
+/** Resolve excluded repos from multiple exclusion list IDs. */
+export async function resolveExcludedReposFromIds(
+  exclusionListIds: string[],
+  octokit: Octokit,
+  webhookContext?: { repoName: string; creator?: string }
+): Promise<Set<string>> {
+  const all = new Set<string>();
+  for (const listId of exclusionListIds) {
+    const excl = await getExclusion(listId);
+    if (!excl) continue;
+    const { effectiveRepos } = await resolveExcludedRepos(excl, octokit, webhookContext);
+    effectiveRepos.forEach(r => all.add(r));
+  }
+  return all;
 }
