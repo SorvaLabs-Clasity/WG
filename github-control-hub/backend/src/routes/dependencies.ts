@@ -3,6 +3,7 @@ import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { listRepos } from "../services/repoService";
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { sendIfPermissionDenied } from "../utils/permissionError";
 
 const router = Router();
 
@@ -96,7 +97,8 @@ router.get("/dependencies", async (req: Request, res: Response) => {
 
 router.post("/dependencies/enable", async (req: Request, res: Response) => {
   try {
-    const token = getSystemToken() || req.user?.accessToken;
+    // A write against a specific repo — act as the user so GitHub authorises it.
+    const token = req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -109,10 +111,12 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
     const octokit = createOctokit(token);
     const org = getOrg();
 
-    await octokit.rest.repos.enableVulnerabilityAlerts({
-      owner: org,
-      repo,
-    });
+    try {
+      await octokit.rest.repos.enableVulnerabilityAlerts({ owner: org, repo });
+    } catch (err) {
+      if (sendIfPermissionDenied(res, err, req.user!.login, "enable Dependabot alerts", repo)) return;
+      throw err;
+    }
 
     await logActivity("dependabot.enable" as any, req.user?.login || "system", repo, "Dependabot",
       `Enabled Dependabot vulnerability alerts for "${repo}"`,
@@ -128,7 +132,8 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
 
 router.post("/dependencies/disable", async (req: Request, res: Response) => {
   try {
-    const token = getSystemToken() || req.user?.accessToken;
+    // A write against a specific repo — act as the user so GitHub authorises it.
+    const token = req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
@@ -141,10 +146,12 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
     const octokit = createOctokit(token);
     const org = getOrg();
 
-    await octokit.rest.repos.disableVulnerabilityAlerts({
-      owner: org,
-      repo,
-    });
+    try {
+      await octokit.rest.repos.disableVulnerabilityAlerts({ owner: org, repo });
+    } catch (err) {
+      if (sendIfPermissionDenied(res, err, req.user!.login, "disable Dependabot alerts", repo)) return;
+      throw err;
+    }
 
     await logActivity("dependabot.disable" as any, req.user?.login || "system", repo, "Dependabot",
       `Disabled Dependabot vulnerability alerts for "${repo}"`,

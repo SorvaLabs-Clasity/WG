@@ -39,6 +39,22 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
   return headers;
 }
 
+export interface UserPermissions {
+  login: string;
+  isControlHubAdmin: boolean;
+  adminTeam: string;
+}
+
+/**
+ * Org-wide capabilities only. Per-repo permissions are not reported: those
+ * actions run with the user's own GitHub token, so GitHub decides at call time.
+ */
+export async function fetchUserPermissions(): Promise<UserPermissions> {
+  const res = await fetch(`${BACKEND_URL}/auth/permissions`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch permissions");
+  return res.json();
+}
+
 export async function fetchAuthStatus(): Promise<AuthStatus> {
   const res = await fetch(`${BACKEND_URL}/auth/status`);
   if (!res.ok) throw new Error("Failed to fetch auth status");

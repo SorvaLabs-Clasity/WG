@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
+import { usePermissions } from "../hooks/usePermissions";
 import {
   useTemplates,
   useCreateTemplate,
@@ -194,6 +195,12 @@ export default function TemplatesPage() {
       });
     }
   }, [applyOpen, templates, exclusions]);
+
+  // Auto-apply affects every repo created from now on, so it is restricted to
+  // the admin team. Repo-level actions need no such check — they run with the
+  // user's own GitHub token and GitHub refuses them directly.
+  const { data: permissions } = usePermissions();
+  const canAutoApply = permissions?.isControlHubAdmin ?? false;
 
   // Create form state
   const [name, setName] = useState("");
@@ -1026,20 +1033,29 @@ export default function TemplatesPage() {
                   ></textarea>
                 </div>
                 
-                <div className="flex items-center justify-between bg-gray-50 dark:bg-slate-800 p-3 rounded-lg border border-gray-200 dark:border-slate-700">
+                <div className={`flex items-center justify-between bg-gray-50 dark:bg-slate-800 p-3 rounded-lg border border-gray-200 dark:border-slate-700 ${!canAutoApply ? "opacity-70" : ""}`}>
                   <div>
-                    <span className="block text-sm font-medium text-gh-textBase dark:text-slate-200">Auto-apply to new repositories</span>
-                    <span className="block text-xs text-gh-muted dark:text-slate-400">Automatically use this template when a repo is created in the org.</span>
+                    <span className="block text-sm font-medium text-gh-textBase dark:text-slate-200">
+                      Auto-apply to new repositories
+                      {!canAutoApply && <i className="ph-fill ph-lock-simple text-xs ml-1.5 text-gh-muted dark:text-slate-400"></i>}
+                    </span>
+                    <span className="block text-xs text-gh-muted dark:text-slate-400">
+                      {canAutoApply
+                        ? "Automatically use this template when a repo is created in the org."
+                        : `Only members of the "${permissions?.adminTeam ?? "control-hub-admins"}" team can change this — it affects every repo created from now on.`}
+                    </span>
                   </div>
                   <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                    <input 
-                      type="checkbox" 
-                      id="toggle" 
+                    <input
+                      type="checkbox"
+                      id="toggle"
                       checked={autoApply}
+                      disabled={!canAutoApply}
+                      title={canAutoApply ? undefined : `Requires membership of the "${permissions?.adminTeam ?? "control-hub-admins"}" team`}
                       onChange={(e) => setAutoApply(e.target.checked)}
-                      className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white dark:bg-slate-300 border-4 appearance-none cursor-pointer border-gray-300 dark:border-slate-600 transition-all duration-300 peer z-10"
+                      className={`toggle-checkbox absolute block w-5 h-5 rounded-full bg-white dark:bg-slate-300 border-4 appearance-none border-gray-300 dark:border-slate-600 transition-all duration-300 peer z-10 ${canAutoApply ? "cursor-pointer" : "cursor-not-allowed"}`}
                     />
-                    <label htmlFor="toggle" className="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 dark:bg-slate-600 cursor-pointer peer-checked:bg-gh-blue transition-colors duration-300"></label>
+                    <label htmlFor="toggle" className={`toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 dark:bg-slate-600 peer-checked:bg-gh-blue transition-colors duration-300 ${canAutoApply ? "cursor-pointer" : "cursor-not-allowed"}`}></label>
                   </div>
                 </div>
               </div>

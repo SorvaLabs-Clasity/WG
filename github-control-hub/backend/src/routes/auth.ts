@@ -120,6 +120,27 @@ router.get("/verify", (req: Request, res: Response) => {
   }
 });
 
+/**
+ * What the signed-in user is allowed to do beyond ordinary repo work.
+ *
+ * Per-repo permissions deliberately are NOT reported here: those calls run with
+ * the user's own token and GitHub decides, so there is nothing to mirror. This
+ * only covers org-wide Control Hub settings, which have no GitHub equivalent.
+ */
+router.get("/permissions", authMiddleware, async (req: Request, res: Response) => {
+  const { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } = await import("../services/authorizationService");
+  try {
+    res.json({
+      login: req.user!.login,
+      isControlHubAdmin: await isControlHubAdmin(req.user!.login),
+      adminTeam: CONTROL_HUB_ADMIN_TEAM,
+    });
+  } catch (err: any) {
+    console.error("[auth/permissions]", err?.message ?? err);
+    res.json({ login: req.user!.login, isControlHubAdmin: false, adminTeam: CONTROL_HUB_ADMIN_TEAM });
+  }
+});
+
 router.get("/status", async (_req: Request, res: Response) => {
   const { isAwsLocked } = await import("../middleware/awsHealthMiddleware");
   const awsConnected = !!process.env.ACTIVITY_TABLE;
