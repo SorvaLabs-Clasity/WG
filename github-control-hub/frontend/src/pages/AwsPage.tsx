@@ -258,7 +258,7 @@ export default function AwsPage() {
                       <tr key={r.rule.id}
                         onClick={() => setView({ kind: "rule", id: r.rule.id })}
                         className="cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors">
-                        <td className="pl-6 py-4 pr-4">
+                        <td className="pl-6 py-5 pr-6">
                           <p className={`text-[15px] font-semibold ${r.rule.enabled ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500"}`}>
                             {r.rule.name}
                           </p>
@@ -266,20 +266,20 @@ export default function AwsPage() {
                             {r.entry?.summary ?? r.rule.kind}
                           </p>
                         </td>
-                        <td className="py-4 pr-4 text-[14px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        <td className="py-5 pr-6 text-[14px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
                           {resourceLabel(r.entry?.resourceType)}
                         </td>
-                        <td className="py-4 pr-4 whitespace-nowrap">
+                        <td className="py-5 pr-6 whitespace-nowrap">
                           {!r.rule.enabled
                             ? <span className="text-[14px] text-slate-400">Paused</span>
                             : r.rule.mode === "enforce"
                               ? <span className="text-[14px] text-blue-600 dark:text-blue-400 font-medium">Auto-fixing</span>
                               : <span className="text-[14px] text-slate-600 dark:text-slate-300">Report only</span>}
                         </td>
-                        <td className="py-4 pr-4 text-[14px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                        <td className="py-5 pr-6 text-[14px] text-slate-600 dark:text-slate-300 whitespace-nowrap">
                           {!r.entry?.createEvents.length ? "—" : r.rule.applyOnCreate ? "Immediate" : "Next sweep"}
                         </td>
-                        <td className="py-4 pr-6 whitespace-nowrap">
+                        <td className="py-5 pr-6 whitespace-nowrap">
                           <StatusCell failing={r.failing} checked={r.checked} excluded={r.excluded} />
                         </td>
                       </tr>
@@ -317,7 +317,7 @@ function Card({ children }: { children: React.ReactNode }) {
 
 function Th({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
-    <th className={`text-left text-[11px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500 py-3 pr-4 ${className}`}>
+    <th className={`text-left text-[11px] uppercase tracking-wider font-semibold text-slate-400 dark:text-slate-500 py-3.5 pr-6 ${className}`}>
       {children}
     </th>
   );
@@ -329,7 +329,7 @@ function AttentionRow({ icon, tone, label, value }: { icon: string; tone: string
       <span className="flex items-center gap-2.5 text-[14px] text-slate-700 dark:text-slate-300">
         <i className={`ph-fill ${icon} ${tone} text-lg`}></i>{label}
       </span>
-      <span className="text-[15px] font-semibold text-slate-900 dark:text-white tabular-nums">{value}</span>
+      <span className="text-[15px] font-semibold leading-snug text-slate-900 dark:text-white tabular-nums">{value}</span>
     </div>
   );
 }
@@ -366,16 +366,36 @@ function StatusCell({ failing, checked, excluded }: { failing: number; checked: 
 function Chip({ label, value, options, onChange }: {
   label: string; value: string; options: [string, string][]; onChange: (v: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
   const on = value !== "all";
+  const current = options.find(([v]) => v === value)?.[1];
+
   return (
     <div className="relative">
-      <select value={value} onChange={e => onChange(e.target.value)}
-        className={`appearance-none pl-3 pr-8 py-2 text-sm font-semibold rounded-lg border cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/30 ${
+      <button onClick={() => setOpen(o => !o)}
+        className={`inline-flex items-center gap-2 pl-3.5 pr-3 py-2 text-sm font-semibold rounded-lg border transition-colors ${
           on ? "border-blue-300 dark:border-blue-700 bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300"
-             : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200"}`}>
-        {options.map(([v, text]) => <option key={v} value={v}>{v === "all" ? label : text}</option>)}
-      </select>
-      <i className="ph-bold ph-caret-down absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 pointer-events-none"></i>
+             : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"}`}>
+        {on ? current : label}
+        <i className={`ph-bold ph-caret-${open ? "up" : "down"} text-[10px] opacity-60`}></i>
+      </button>
+      {open && (
+        <>
+          {/* Click-away catcher, so the menu closes without a document listener. */}
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute left-0 top-full mt-1.5 z-20 min-w-[180px] py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg">
+            {options.map(([v, text]) => (
+              <button key={v} onClick={() => { onChange(v); setOpen(false); }}
+                className={`w-full text-left px-3.5 py-2 text-sm transition-colors flex items-center justify-between gap-3 ${
+                  v === value ? "text-slate-900 dark:text-white font-semibold" : "text-slate-600 dark:text-slate-300"
+                } hover:bg-slate-50 dark:hover:bg-slate-800`}>
+                {text}
+                {v === value && <i className="ph-bold ph-check text-xs text-blue-600 dark:text-blue-400"></i>}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }
