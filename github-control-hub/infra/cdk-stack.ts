@@ -1,6 +1,12 @@
+import * as path from "path";
 import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as iam from "aws-cdk-lib/aws-iam";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
+import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 
 interface GitHubControlHubProps extends cdk.StackProps {
@@ -115,7 +121,116 @@ export class GitHubControlHubStack extends cdk.Stack {
       tags: [{ key: "Name", value: "github-control-hub" }],
     });
 
+    // ── AWS guardrails ──
+    // Enforcement runs here rather than on the instance: it needs no inbound
+    // connectivity, so the security group stays closed to everything but
+    // GitHub's webhook ranges.
+    const guardrailDlq = new sqs.Queue(this, "GuardrailDlq", {
+      retentionPeriod: cdk.Duration.days(14),
+    });
+
+    const guardrailFn = new NodejsFunction(this, "GuardrailEnforcer", {
+      functionName: `${stackPrefix}-guardrail-enforcer`,
+      runtime: lambda.Runtime.NODEJS_20_X,
+      entry: path.join(__dirname, "..", "backend", "src", "aws-guardrails", "handler.ts"),
+      handler: "handler",
+      // A full sweep walks every bucket, log group, instance and DB in the
+      // account, each needing several describe calls.
+      timeout: cdk.Duration.minutes(10),
+      memorySize: 512,
+      environment: {
+        STACK_NAME: stackPrefix,
+        GUARDRAILS_TABLE: `${stackPrefix}-aws-guardrails`,
+        GUARDRAIL_EXCLUSIONS_TABLE: `${stackPrefix}-aws-exclusions`,
+        GUARDRAIL_FINDINGS_TABLE: `${stackPrefix}-aws-findings`,
+        ACTIVITY_TABLE: `${stackPrefix}-activity`,
+      },
+      deadLetterQueue: guardrailDlq,
+      bundling: {
+        // The Node 20 Lambda runtime ships AWS SDK v3, so bundling it would
+        // only make the artifact larger and slower to cold-start.
+        externalModules: ["@aws-sdk/*"],
+        minify: false,
+        sourceMap: true,
+      },
+    });
+
+    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "ReadState",
+      actions: [
+        "s3:ListAllMyBuckets", "s3:GetBucketPolicy", "s3:GetBucketPublicAccessBlock",
+        "s3:GetEncryptionConfiguration", "s3:GetBucketVersioning", "s3:GetBucketTagging",
+        "logs:DescribeLogGroups", "logs:ListTagsForResource",
+        "ec2:DescribeSecurityGroups", "ec2:DescribeInstances", "ec2:GetEbsEncryptionByDefault",
+        "rds:DescribeDBInstances", "rds:ListTagsForResource",
+        "iam:GetAccountPasswordPolicy",
+        "cloudtrail:DescribeTrails", "cloudtrail:GetTrailStatus",
+      ],
+      resources: ["*"], // every one of these is a List/Describe with no resource-level scoping
+    }));
+
+    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "Remediate",
+      actions: [
+        "s3:PutBucketPolicy", "s3:PutBucketPublicAccessBlock",
+        "s3:PutEncryptionConfiguration", "s3:PutBucketVersioning",
+        "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy",
+        "ec2:EnableEbsEncryptionByDefault",
+        "rds:ModifyDBInstance",
+        "iam:UpdateAccountPasswordPolicy",
+      ],
+      resources: ["*"],
+    }));
+
+    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "GuardrailTables",
+      actions: [
+        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchWriteItem",
+      ],
+      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+    }));
+
+    // Creation events. These only exist if a CloudTrail trail logs management
+    // events in this region — the cloudtrail_enabled rule reports when it does
+    // not, and the scheduled sweep below covers the gap either way.
+    new events.Rule(this, "GuardrailCreateEvents", {
+      description: "Run guardrails when a covered resource is created",
+      eventPattern: {
+        source: ["aws.s3", "aws.logs", "aws.ec2", "aws.rds"],
+        detailType: ["AWS API Call via CloudTrail"],
+        detail: {
+          eventName: [
+            "CreateBucket", "CreateLogGroup", "CreateDBInstance",
+            "CreateSecurityGroup", "AuthorizeSecurityGroupIngress", "RunInstances",
+          ],
+        },
+      },
+      targets: [new targets.LambdaFunction(guardrailFn, { deadLetterQueue: guardrailDlq })],
+    });
+
+    // The sweep is the floor, not an optimisation: it catches drift, covers
+    // anything the event path missed, and works with no trail at all.
+    new events.Rule(this, "GuardrailSweep", {
+      description: "Periodic guardrail sweep across the account",
+      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      targets: [new targets.LambdaFunction(guardrailFn, { deadLetterQueue: guardrailDlq })],
+    });
+
+    // The app invokes this directly for manual runs and previews.
+    guardrailFn.grantInvoke(role);
+
     // ── Outputs ──
+    new cdk.CfnOutput(this, "GuardrailFunctionName", {
+      value: guardrailFn.functionName,
+      description: "Guardrail enforcer Lambda (invoked by the app for manual runs)",
+    });
+
+    new cdk.CfnOutput(this, "GuardrailDlqUrl", {
+      value: guardrailDlq.queueUrl,
+      description: "Dead-letter queue for failed guardrail invocations",
+    });
+
     new cdk.CfnOutput(this, "InstanceId", {
       value: instance.instanceId,
       description: "EC2 instance ID (use with: aws ssm start-session --target <id>)",

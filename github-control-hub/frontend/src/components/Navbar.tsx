@@ -33,6 +33,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const isCompliance = location.pathname.startsWith("/compliance");
   const isDependencies = location.pathname.startsWith("/dependencies");
   const isGraph = location.pathname.startsWith("/graph");
+  const isAws = location.pathname.startsWith("/aws");
   const isAnalytics = location.pathname === "/" || location.pathname.startsWith("/analytics");
   const isActivity = location.pathname.startsWith("/activity");
 
@@ -41,6 +42,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
     { label: "Security", icon: "ph-shield-warning", path: "/security", isActive: isSecurity },
     { label: "Compliance", icon: "ph-check-square-offset", path: "/compliance", isActive: isCompliance },
     { label: "Dependabot", icon: "ph-bug", path: "/dependencies", isActive: isDependencies },
+    { label: "AWS", icon: "ph-cloud", path: "/aws", isActive: isAws },
     { label: "Analytics", icon: "ph-chart-bar", path: "/analytics", isActive: isAnalytics },
     { label: "Knowledge Map", icon: "ph-graph", path: "/graph", isActive: isGraph },
     { label: "Activity", icon: "ph-activity", path: "/activity", isActive: isActivity },

@@ -3,6 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import authRoutes from "./routes/auth";
+import awsGuardrailRoutes from "./routes/awsGuardrails";
 import repoRoutes from "./routes/repos";
 import branchRoutes from "./routes/branches";
 import protectionRoutes from "./routes/protection";
@@ -85,6 +86,7 @@ app.use("/api/security", authMiddleware, dependencyRoutes);
 app.use("/api/org", authMiddleware, orgRoutes);
 app.use("/api/graph", authMiddleware, graphRoutes);
 app.use("/api/widgets", authMiddleware, widgetRoutes);
+app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
 
 // Try to load secrets from Secrets Manager at startup (covers auto-connected AWS)
 // then initialize the GitHub App token manager

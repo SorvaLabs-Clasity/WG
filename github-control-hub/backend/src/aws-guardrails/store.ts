@@ -11,9 +11,9 @@ import { Guardrail, AwsExclusionList, Finding } from "./types";
 const REGION = process.env.AWS_REGION || "us-east-1";
 const PREFIX = process.env.STACK_NAME || "github-control-hub";
 
-export const GUARDRAILS_TABLE = process.env.AWS_GUARDRAILS_TABLE || `${PREFIX}-aws-guardrails`;
-export const AWS_EXCLUSIONS_TABLE = process.env.AWS_EXCLUSIONS_TABLE || `${PREFIX}-aws-exclusions`;
-export const FINDINGS_TABLE = process.env.AWS_FINDINGS_TABLE || `${PREFIX}-aws-findings`;
+export const GUARDRAILS_TABLE = process.env.GUARDRAILS_TABLE || `${PREFIX}-aws-guardrails`;
+export const AWS_EXCLUSIONS_TABLE = process.env.GUARDRAIL_EXCLUSIONS_TABLE || `${PREFIX}-aws-exclusions`;
+export const FINDINGS_TABLE = process.env.GUARDRAIL_FINDINGS_TABLE || `${PREFIX}-aws-findings`;
 
 let cached: any;
 async function docClient() {

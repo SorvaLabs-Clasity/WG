@@ -8,6 +8,7 @@ import ComplianceDashboardPage from "./pages/ComplianceDashboardPage";
 import DependencyDashboardPage from "./pages/DependencyDashboardPage";
 import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
+import AwsPage from "./pages/AwsPage";
 import { isAuthenticated } from "./api/client";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -75,6 +76,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <DependencyDashboardPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/aws",
+    element: (
+      <RequireAuth>
+        <AwsPage />
       </RequireAuth>
     ),
   },
