@@ -87,6 +87,8 @@ export interface Finding {
   resourceType: string;
   verdict: Verdict;
   summary: string;
+  /** What remediation would do. Present on violations that can be fixed. */
+  proposedFix?: string;
   excluded: boolean;
   excludedBy?: string;
   remediated: boolean;

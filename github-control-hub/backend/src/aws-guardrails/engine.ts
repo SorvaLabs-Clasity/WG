@@ -105,6 +105,7 @@ export async function run(
         ruleId: rule.id, ruleName: rule.name, kind: rule.kind,
         resourceId: resource.id, resourceType: resource.type,
         verdict: evaluation.verdict, summary: evaluation.summary,
+        ...(evaluation.fix && { proposedFix: evaluation.fix.description }),
         excluded: false, remediated: false, checkedAt,
       };
 

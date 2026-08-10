@@ -357,7 +357,12 @@ function FindingsList({ findings }: { findings: Finding[] }) {
             <code className="font-mono text-slate-700 dark:text-slate-300 truncate max-w-[46ch]" title={f.resourceId}>
               {f.resourceId}
             </code>
-            <span className="text-slate-400 dark:text-slate-500 truncate">{f.summary}</span>
+            <span className="text-slate-400 dark:text-slate-500 truncate">
+              {f.summary}
+              {f.proposedFix && !f.remediated && !f.excluded && (
+                <span className="text-slate-500 dark:text-slate-400"> — would {f.proposedFix.charAt(0).toLowerCase() + f.proposedFix.slice(1)}</span>
+              )}
+            </span>
             {f.error && <span className="text-rose-500 shrink-0">{f.error}</span>}
           </li>
         ))}

@@ -51,6 +51,7 @@ export interface Finding {
   resourceType: string;
   verdict: "compliant" | "violation" | "not_applicable";
   summary: string;
+  proposedFix?: string;
   excluded: boolean;
   excludedBy?: string;
   remediated: boolean;
