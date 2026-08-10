@@ -1,7 +1,7 @@
 import { Router, Request, Response, RequestHandler } from "express";
 import crypto from "crypto";
 import { sanitizeError } from "../utils/errorSanitizer";
-import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
 import { logActivity } from "../services/activityService";
 import { CATALOG } from "../aws-guardrails/catalog";
 import { canRemediate } from "../aws-guardrails/remediators";
@@ -27,12 +27,12 @@ const FUNCTION_NAME = process.env.GUARDRAIL_FUNCTION_NAME
  * Reading is deliberately open: anyone signed in can see rules and findings.
  */
 const requireAdmin: RequestHandler = (req, res, next) => {
-  isControlHubAdmin(req.user!.login)
+  isAwsAdmin(req.user!.login)
     .then(allowed => {
       if (allowed) return next();
       res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can change or run ` +
+        error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can change or run ` +
           `AWS guardrails. They act on the whole account, so they are not scoped to what you personally can reach. ` +
           `Viewing rules and findings is open to everyone.`,
       });

@@ -15,13 +15,15 @@
 process.env.GITHUB_ORG = "test-org";
 process.env.SYSTEM_GITHUB_TOKEN = "ghp_system";
 
-import { isControlHubAdmin, invalidateAdminCache } from "./src/services/authorizationService";
+import { isControlHubAdmin, isAwsAdmin, invalidateAdminCache, CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "./src/services/authorizationService";
 
 type Scenario = {
   orgRole?: "admin" | "member";
   orgError?: number;
   teamState?: "active" | "pending";
   teamError?: number;
+  /** Team slugs the user is an active member of, for the two-team tests. */
+  memberOf?: string[];
 };
 
 let scenario: Scenario = {};
@@ -32,6 +34,12 @@ const json = (status: number, body: unknown) =>
 globalThis.fetch = (async (input: any) => {
   const url = typeof input === "string" ? input : input.url;
   if (url.includes("/teams/")) {
+    if (scenario.memberOf) {
+      const slug = decodeURIComponent(url.split("/teams/")[1].split("/")[0]);
+      return scenario.memberOf.includes(slug)
+        ? json(200, { state: "active" })
+        : json(404, { message: "Not Found" });
+    }
     if (scenario.teamError) return json(scenario.teamError, { message: "team error" });
     return json(200, { state: scenario.teamState ?? "active" });
   }
@@ -80,6 +88,46 @@ globalThis.fetch = (async (input: any) => {
   console.log((cacheOk ? "  PASS  " : "  FAIL  ") + "cache is keyed per user"
     + (cacheOk ? "" : ` -> got ${adminAnswer}/${otherAnswer}`));
   if (!cacheOk) failures++;
+
+  // ── the two teams are genuinely independent ─────────────────────────
+  {
+    const assert = (name: string, ok: boolean, got?: unknown) => {
+      console.log((ok ? "  PASS  " : "  FAIL  ") + name + (ok ? "" : ` -> got: ${JSON.stringify(got)}`));
+      if (!ok) failures++;
+    };
+    const both = async (login: string) => {
+      invalidateAdminCache();
+      return [await isControlHubAdmin(login), await isAwsAdmin(login)];
+    };
+
+    assert("the two teams are not the same slug", CONTROL_HUB_ADMIN_TEAM !== AWS_ADMIN_TEAM,
+      [CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM]);
+
+    scenario = { orgRole: "member", memberOf: [CONTROL_HUB_ADMIN_TEAM] };
+    let [gh, aws] = await both("github-only-person");
+    assert("GitHub admin is NOT automatically an AWS admin", gh === true && aws === false, { gh, aws });
+
+    scenario = { orgRole: "member", memberOf: [AWS_ADMIN_TEAM] };
+    [gh, aws] = await both("aws-only-person");
+    assert("AWS admin is NOT automatically a GitHub admin", gh === false && aws === true, { gh, aws });
+
+    scenario = { orgRole: "member", memberOf: [CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM] };
+    [gh, aws] = await both("both-person");
+    assert("membership of both grants both", gh === true && aws === true, { gh, aws });
+
+    scenario = { orgRole: "admin", memberOf: [] };
+    [gh, aws] = await both("org-owner");
+    assert("an org owner still gets both", gh === true && aws === true, { gh, aws });
+
+    // The cache is keyed per team as well as per user, so one answer must not
+    // stand in for the other.
+    scenario = { orgRole: "member", memberOf: [AWS_ADMIN_TEAM] };
+    invalidateAdminCache();
+    const awsFirst = await isAwsAdmin("cache-person");
+    const ghAfter = await isControlHubAdmin("cache-person");
+    assert("cache does not leak one team's answer to the other", awsFirst === true && ghAfter === false,
+      { awsFirst, ghAfter });
+  }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);

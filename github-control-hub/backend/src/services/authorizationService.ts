@@ -15,14 +15,28 @@ import { createOctokit, getSystemToken, getOrg } from "../github/client";
  */
 export const CONTROL_HUB_ADMIN_TEAM = process.env.CONTROL_HUB_ADMIN_TEAM || "control-hub-admins";
 
+/**
+ * Who may change AWS guardrails.
+ *
+ * Deliberately a separate team from CONTROL_HUB_ADMIN_TEAM. The two answer to
+ * different people: GitHub auto-apply is the repo owners' concern, while
+ * account-wide AWS changes belong to whoever administers the account. Sharing
+ * one team would mean granting both to grant either.
+ *
+ * Org owners always qualify, so an unset or deleted team cannot lock everyone
+ * out of their own account settings.
+ */
+export const AWS_ADMIN_TEAM = process.env.AWS_ADMIN_TEAM || "aws-guardrail-admins";
+
 interface CacheEntry { value: boolean; expires: number }
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 60_000;
 
-/** Drop a user's cached answer — call after their membership could have changed. */
+/** Drop cached answers — call after membership could have changed. */
 export function invalidateAdminCache(login?: string): void {
-  if (login) cache.delete(login.toLowerCase());
-  else cache.clear();
+  if (!login) { cache.clear(); return; }
+  const suffix = `:${login.toLowerCase()}`;
+  for (const key of [...cache.keys()]) if (key.endsWith(suffix)) cache.delete(key);
 }
 
 /**
@@ -33,16 +47,25 @@ export function invalidateAdminCache(login?: string): void {
  * would otherwise be indistinguishable from "is not in it".
  */
 export async function isControlHubAdmin(login: string): Promise<boolean> {
-  const key = login.toLowerCase();
+  return isTeamMember(login, CONTROL_HUB_ADMIN_TEAM);
+}
+
+/** Who may create, edit, run or delete AWS guardrails. */
+export async function isAwsAdmin(login: string): Promise<boolean> {
+  return isTeamMember(login, AWS_ADMIN_TEAM);
+}
+
+async function isTeamMember(login: string, team: string): Promise<boolean> {
+  const key = `${team}:${login.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expires) return hit.value;
 
-  const value = await resolve(login);
+  const value = await resolve(login, team);
   cache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
   return value;
 }
 
-async function resolve(login: string): Promise<boolean> {
+async function resolve(login: string, team: string): Promise<boolean> {
   const org = getOrg();
   const token = getSystemToken();
   if (!token) {
@@ -65,14 +88,14 @@ async function resolve(login: string): Promise<boolean> {
   try {
     const { data } = await octokit.rest.teams.getMembershipForUserInOrg({
       org,
-      team_slug: CONTROL_HUB_ADMIN_TEAM,
+      team_slug: team,
       username: login,
     });
     return data.state === "active";
   } catch (err: any) {
     // 404 is the normal "not a member" answer, and also what a missing team returns.
     if (err?.status !== 404) {
-      console.warn(`[authorization] Team membership check failed for "${login}": ${err?.message ?? err}`);
+      console.warn(`[authorization] Team membership check failed for "${login}" in "${team}": ${err?.message ?? err}`);
     }
     return false;
   }

@@ -128,16 +128,27 @@ router.get("/verify", (req: Request, res: Response) => {
  * only covers org-wide Control Hub settings, which have no GitHub equivalent.
  */
 router.get("/permissions", authMiddleware, async (req: Request, res: Response) => {
-  const { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } = await import("../services/authorizationService");
+  const { isControlHubAdmin, isAwsAdmin, CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } =
+    await import("../services/authorizationService");
   try {
+    const [github, aws] = await Promise.all([
+      isControlHubAdmin(req.user!.login),
+      isAwsAdmin(req.user!.login),
+    ]);
     res.json({
       login: req.user!.login,
-      isControlHubAdmin: await isControlHubAdmin(req.user!.login),
+      isControlHubAdmin: github,
       adminTeam: CONTROL_HUB_ADMIN_TEAM,
+      isAwsAdmin: aws,
+      awsAdminTeam: AWS_ADMIN_TEAM,
     });
   } catch (err: any) {
     console.error("[auth/permissions]", err?.message ?? err);
-    res.json({ login: req.user!.login, isControlHubAdmin: false, adminTeam: CONTROL_HUB_ADMIN_TEAM });
+    res.json({
+      login: req.user!.login,
+      isControlHubAdmin: false, adminTeam: CONTROL_HUB_ADMIN_TEAM,
+      isAwsAdmin: false, awsAdminTeam: AWS_ADMIN_TEAM,
+    });
   }
 });
 

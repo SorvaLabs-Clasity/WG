@@ -13,7 +13,7 @@ export function usePermissions() {
   return useQuery({
     queryKey: ["permissions"],
     queryFn: async () => {
-      if (DEMO_MODE) return { login: "demo-user", isControlHubAdmin: true, adminTeam: "control-hub-admins" };
+      if (DEMO_MODE) return { login: "demo-user", isControlHubAdmin: true, adminTeam: "control-hub-admins", isAwsAdmin: true, awsAdminTeam: "aws-guardrail-admins" };
       return fetchUserPermissions();
     },
     staleTime: 5 * 60_000,

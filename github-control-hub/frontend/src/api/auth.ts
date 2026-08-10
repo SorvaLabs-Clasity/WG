@@ -41,8 +41,13 @@ function authHeaders(extra?: Record<string, string>): Record<string, string> {
 
 export interface UserPermissions {
   login: string;
+  /** Governs GitHub auto-apply. */
   isControlHubAdmin: boolean;
   adminTeam: string;
+  /** Governs AWS guardrails — a separate team, usually owned by whoever
+   *  administers the AWS account rather than the repos. */
+  isAwsAdmin: boolean;
+  awsAdminTeam: string;
 }
 
 /**

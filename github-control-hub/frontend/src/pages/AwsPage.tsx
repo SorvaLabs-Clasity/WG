@@ -31,8 +31,8 @@ const relTime = (iso?: string) => {
 export default function AwsPage() {
   const { user } = useAuth();
   const { data: permissions } = usePermissions();
-  const isAdmin = permissions?.isControlHubAdmin ?? false;
-  const adminTeam = permissions?.adminTeam ?? "control-hub-admins";
+  const isAdmin = permissions?.isAwsAdmin ?? false;
+  const adminTeam = permissions?.awsAdminTeam ?? "aws-guardrail-admins";
 
   const { data: catalog } = useCatalog();
   const { data: rules, isLoading } = useGuardrails();
