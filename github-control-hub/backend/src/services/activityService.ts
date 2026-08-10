@@ -469,6 +469,45 @@ export async function clearConflictResolution(id: string): Promise<void> {
   }
 }
 
+/**
+ * Rewrite an entry once the work it describes has actually finished.
+ *
+ * Long-running actions (auto-apply) must log up front so child entries have a
+ * parent to attach to, but that entry is a claim about work not yet done. Call
+ * this afterwards so the log reflects the real outcome instead of the intent.
+ */
+export async function updateActivityOutcome(
+  id: string,
+  outcome: { details: string; failed: boolean; errorMessage?: string }
+): Promise<void> {
+  if (usesDynamo()) {
+    const entry = await getActivityById(id);
+    if (!entry) return;
+    const { children: _c, failed: _f, errorMessage: _e, ...rest } = entry as any;
+    await docClient.send(
+      new PutCommand({
+        TableName: TABLE(),
+        Item: {
+          pk: "ACTIVITY",
+          sk: `${entry.timestamp}#${entry.id}`,
+          ...rest,
+          details: outcome.details,
+          ...(outcome.failed && { failed: true }),
+          ...(outcome.errorMessage && { errorMessage: outcome.errorMessage }),
+        },
+      })
+    );
+  } else {
+    const entry = memoryLog.find(e => e.id === id);
+    if (entry) {
+      entry.details = outcome.details;
+      if (outcome.failed) entry.failed = true;
+      else { delete (entry as any).failed; delete (entry as any).errorMessage; }
+      if (outcome.errorMessage) (entry as any).errorMessage = outcome.errorMessage;
+    }
+  }
+}
+
 export async function updateActivityError(id: string, errorMessage: string): Promise<void> {
   if (usesDynamo()) {
     const entry = await getActivityById(id);

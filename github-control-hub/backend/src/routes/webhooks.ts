@@ -4,7 +4,7 @@ import { Octokit } from "octokit";
 import { getOrg, getSystemToken } from "../github/client";
 import { runScan, listScanners } from "../services/scannerService";
 import { createAlert, autoResolveAlerts } from "../services/alertService";
-import { logActivity } from "../services/activityService";
+import { logActivity, updateActivityOutcome } from "../services/activityService";
 import { listTemplates, applyTemplate } from "../services/templateService";
 import { listExclusions, getExclusion, resolveExcludedReposFromIds } from "../services/exclusionService";
 import { refreshRepo } from "../services/complianceCacheService";
@@ -224,13 +224,16 @@ router.post("/github", async (req: Request, res: Response) => {
 
           console.log(`[Webhook] Auto-applying template "${tmpl.name}" to new repo "${repoName}"`);
 
-          // Create parent activity entry (mirrors manual apply pattern)
+          // These entries are written before the work runs so that child entries
+          // logged inside applyTemplate have a parent to hang off. They therefore
+          // describe intent, not outcome — both are rewritten below once the
+          // result is known, so a failed apply never reads as a success.
           const parentEntry = await logActivity(
             "template.apply",
             "system (auto-apply)",
             repoName,
             tmpl.name,
-            `Auto-applied template "${tmpl.name}" to new repo "${repoName}"`
+            `Applying template "${tmpl.name}" to new repo "${repoName}"…`
           );
 
           // Create repo-level child activity entry
@@ -239,31 +242,41 @@ router.post("/github", async (req: Request, res: Response) => {
             "system (auto-apply)",
             repoName,
             tmpl.name,
-            `Auto-applied template "${tmpl.name}" to ${repoName}`,
+            `Applying template "${tmpl.name}" to ${repoName}…`,
             undefined, "app", undefined, undefined,
             { parentId: parentEntry.id }
           );
 
-          let lastErr: unknown;
+          // A partial failure (errors returned rather than thrown) is still a
+          // failure — retry it, otherwise a half-applied repo is never revisited.
+          let failureMessage: string | null = null;
           for (let attempt = 1; attempt <= 4; attempt++) {
+            failureMessage = null;
             try {
               const result = await applyTemplate(octokit, tmpl.id, repoName, "system (auto-apply)", repoEntry.id);
               console.log(`[Webhook] Template "${tmpl.name}" applied to "${repoName}": created=${result.created.join(",")}, protected=${result.protected.join(",")}, errors=${result.errors.length}`);
               if (result.errors.length > 0) {
-                console.warn(`[Webhook] Template "${tmpl.name}" errors:`, result.errors);
+                failureMessage = result.errors.join("; ");
+                console.warn(`[Webhook] Auto-apply attempt ${attempt}/4 incomplete for "${tmpl.name}" on "${repoName}":`, result.errors);
               }
-              lastErr = null;
-              break;
             } catch (applyErr) {
-              lastErr = applyErr;
-              console.warn(`[Webhook] Auto-apply attempt ${attempt}/4 failed for "${tmpl.name}" on "${repoName}":`, (applyErr as Error).message);
-              if (attempt < 4) {
-                await new Promise(r => setTimeout(r, attempt * 4000));
-              }
+              failureMessage = (applyErr as Error).message;
+              console.warn(`[Webhook] Auto-apply attempt ${attempt}/4 failed for "${tmpl.name}" on "${repoName}":`, failureMessage);
+            }
+            if (!failureMessage) break;
+            if (attempt < 4) {
+              await new Promise(r => setTimeout(r, attempt * 4000));
             }
           }
-          if (lastErr) {
+
+          if (failureMessage) {
             console.error(`[Webhook] All attempts to auto-apply template "${tmpl.name}" to "${repoName}" failed.`);
+            const failDetails = `Failed to auto-apply template "${tmpl.name}" to "${repoName}"`;
+            await updateActivityOutcome(parentEntry.id, { details: failDetails, failed: true, errorMessage: failureMessage });
+            await updateActivityOutcome(repoEntry.id, { details: failDetails, failed: true, errorMessage: failureMessage });
+          } else {
+            await updateActivityOutcome(parentEntry.id, { details: `Auto-applied template "${tmpl.name}" to new repo "${repoName}"`, failed: false });
+            await updateActivityOutcome(repoEntry.id, { details: `Auto-applied template "${tmpl.name}" to ${repoName}`, failed: false });
           }
         }
       } catch (err) {

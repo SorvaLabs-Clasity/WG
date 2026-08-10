@@ -24,10 +24,14 @@ function normalizePemKey(key: string): string {
 
 let tokenManager: GitHubTokenManager | null = null;
 
+/** Refresh this long before expiry, and treat a token inside the window as stale. */
+const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
+
 class GitHubTokenManager {
   private cachedToken = "";
   private expiresAt = 0;
   private refreshPromise: Promise<string> | null = null;
+  private refreshTimer: NodeJS.Timeout | null = null;
   private auth: any;
 
   async init(appId: string, privateKey: string, installationId: string) {
@@ -43,13 +47,21 @@ class GitHubTokenManager {
     await this.getTokenAsync(); // eagerly fetch first token
   }
 
+  /** Cached token present and not yet inside the expiry buffer. */
+  private isFresh(): boolean {
+    return !!this.cachedToken && Date.now() < this.expiresAt - TOKEN_EXPIRY_BUFFER_MS;
+  }
+
   getToken(): string {
-    return this.cachedToken || process.env.SYSTEM_GITHUB_TOKEN || "";
+    // Most call sites are synchronous and cannot await a refresh, so returning an
+    // expired token here surfaces as 401 Bad credentials across the whole app.
+    // scheduleRefresh() normally keeps the cache warm; this is the safety net.
+    if (this.isFresh()) return this.cachedToken;
+    return process.env.SYSTEM_GITHUB_TOKEN || "";
   }
 
   async getTokenAsync(): Promise<string> {
-    // Return cached token if still valid (with 5-min buffer)
-    if (this.cachedToken && Date.now() < this.expiresAt - 5 * 60 * 1000) {
+    if (this.isFresh()) {
       return this.cachedToken;
     }
     // Deduplicate concurrent refresh calls
@@ -62,11 +74,28 @@ class GitHubTokenManager {
     }
   }
 
+  /**
+   * Re-fetch shortly before expiry so the synchronous getToken() always has a
+   * live token. Without this the cache goes stale after an hour and every sync
+   * caller starts getting 401s until the process restarts.
+   */
+  private scheduleRefresh(): void {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+    const delay = Math.max(60_000, this.expiresAt - Date.now() - TOKEN_EXPIRY_BUFFER_MS);
+    this.refreshTimer = setTimeout(() => {
+      this.getTokenAsync().catch((err) =>
+        console.error("[TokenManager] Background refresh failed:", (err as Error).message)
+      );
+    }, delay);
+    this.refreshTimer.unref?.(); // never hold the process open
+  }
+
   private async _refresh(): Promise<string> {
     const result = await this.auth({ type: "installation" });
     this.cachedToken = result.token;
     this.expiresAt = new Date(result.expiresAt!).getTime();
     console.log(`[TokenManager] GitHub App token refreshed, expires at ${result.expiresAt}`);
+    this.scheduleRefresh();
     return result.token;
   }
 }

@@ -16,6 +16,21 @@ export interface ConflictItem {
   activityId?: string;
 }
 
+/**
+ * True when createRef failed only because the ref is already there.
+ *
+ * GitHub's refs API is read-after-write inconsistent on a freshly initialized
+ * repo: getRef can still 404 for a moment after the ref exists (e.g. right after
+ * the empty-repo README init below creates `main`), while createRef correctly
+ * reports 422 "Reference already exists". The branch is present either way, so
+ * this is a success case, not a failure.
+ */
+export function isRefAlreadyExists(err: unknown): boolean {
+  const e = err as { status?: number; response?: { data?: { message?: string } } };
+  const msg = e.response?.data?.message ?? "";
+  return e.status === 422 && /reference already exists/i.test(msg);
+}
+
 /** Extract a readable message from a GitHub API error (Octokit). */
 function githubErrorMessage(err: unknown): string {
   const e = err as { response?: { data?: { message?: string; errors?: unknown[] } }; message?: string };
@@ -434,6 +449,13 @@ export async function applyTemplate(
               );
             }
           } catch (err) {
+            // The branch already exists (getRef just hadn't caught up yet) — not a
+            // failure. Treat it as present so protection still gets applied to it.
+            if (isRefAlreadyExists(err)) {
+              console.warn(`[applyTemplate] Branch "${branchName}" already existed on ${repo} despite getRef 404 — proceeding to protect it`);
+              effectiveBranchNames.push(branchName);
+              continue;
+            }
             const msg = `Create branch ${branchName}: ${githubErrorMessage(err)}`;
             console.error("[applyTemplate]", msg);
             errors.push(msg);
