@@ -1,4 +1,4 @@
-import { Router, Request, Response } from "express";
+import { Router, Request, Response, RequestHandler } from "express";
 import crypto from "crypto";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
@@ -18,20 +18,35 @@ const FUNCTION_NAME = process.env.GUARDRAIL_FUNCTION_NAME
   || `${process.env.STACK_NAME || "github-control-hub"}-guardrail-enforcer`;
 
 /**
- * Enforce mode lets the app write to AWS on a schedule with no human present,
- * which is the same class of decision as auto-applying a GitHub template — so
- * it carries the same gate.
+ * Everything that changes or triggers a guardrail is restricted to the admin
+ * team. Unlike the GitHub side — where a repo action is authorised by GitHub
+ * itself, because the call is made with the user's own token — these calls run
+ * as the Lambda's role, which holds account-wide write permissions. There is no
+ * per-user AWS identity to delegate to, so the app has to decide.
+ *
+ * Reading is deliberately open: anyone signed in can see rules and findings.
  */
-async function denyEnforce(login: string): Promise<string | null> {
-  if (await isControlHubAdmin(login)) return null;
-  return `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can put a ` +
-    `guardrail into enforce mode, because it changes AWS resources automatically.`;
-}
+const requireAdmin: RequestHandler = (req, res, next) => {
+  isControlHubAdmin(req.user!.login)
+    .then(allowed => {
+      if (allowed) return next();
+      res.status(403).json({
+        code: "CONTROL_HUB_ADMIN_REQUIRED",
+        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can change or run ` +
+          `AWS guardrails. They act on the whole account, so they are not scoped to what you personally can reach. ` +
+          `Viewing rules and findings is open to everyone.`,
+      });
+    })
+    .catch(() => res.status(503).json({ error: "Could not verify team membership" }));
+};
 
 /** The rule kinds the UI can offer, with their defaults. */
 router.get("/catalog", (_req: Request, res: Response) => {
   res.json(CATALOG.map(k => ({
     kind: k.kind,
+    title: k.title,
+    summary: k.summary,
+    paramSchema: k.paramSchema,
     resourceType: k.resourceType,
     defaultMode: k.defaultMode,
     defaultParams: k.defaultParams,
@@ -50,7 +65,7 @@ router.get("/guardrails", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/guardrails", async (req: Request, res: Response) => {
+router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { name, description, kind, mode, enabled, applyOnCreate, params, exclusionLists } = req.body ?? {};
     if (!name || !kind) {
@@ -62,8 +77,6 @@ router.post("/guardrails", async (req: Request, res: Response) => {
       return;
     }
     if (mode === "enforce") {
-      const denied = await denyEnforce(req.user!.login);
-      if (denied) { res.status(403).json({ error: denied, code: "CONTROL_HUB_ADMIN_REQUIRED" }); return; }
       if (!canRemediate(kind)) {
         res.status(400).json({ error: `"${kind}" is report-only — remediating it automatically could cut live access.` });
         return;
@@ -90,7 +103,7 @@ router.post("/guardrails", async (req: Request, res: Response) => {
   }
 });
 
-router.put("/guardrails/:id", async (req: Request<{ id: string }>, res: Response) => {
+router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
   try {
     const existing = await getGuardrail(req.params.id);
     if (!existing) { res.status(404).json({ error: "Guardrail not found" }); return; }
@@ -100,8 +113,6 @@ router.put("/guardrails/:id", async (req: Request<{ id: string }>, res: Response
     // Only a change INTO enforce is gated — an admin-set rule must stay editable
     // by others for its name or thresholds without silently losing its mode.
     if (mode && mode !== existing.mode && mode === "enforce") {
-      const denied = await denyEnforce(req.user!.login);
-      if (denied) { res.status(403).json({ error: denied, code: "CONTROL_HUB_ADMIN_REQUIRED" }); return; }
       if (!canRemediate(existing.kind)) {
         res.status(400).json({ error: `"${existing.kind}" is report-only.` });
         return;
@@ -128,7 +139,7 @@ router.put("/guardrails/:id", async (req: Request<{ id: string }>, res: Response
   }
 });
 
-router.delete("/guardrails/:id", async (req: Request<{ id: string }>, res: Response) => {
+router.delete("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
   try {
     const existing = await getGuardrail(req.params.id);
     if (!existing) { res.status(404).json({ error: "Guardrail not found" }); return; }
@@ -173,7 +184,7 @@ async function invokeEngine(payload: Record<string, unknown>): Promise<any> {
   return body;
 }
 
-router.post("/run", async (req: Request, res: Response) => {
+router.post("/run", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { ruleIds, resourceIds } = req.body ?? {};
     const result = await invokeEngine({ ruleIds, resourceIds });
@@ -187,7 +198,7 @@ router.post("/run", async (req: Request, res: Response) => {
 });
 
 /** Evaluate without writing, whatever mode the rules are in. */
-router.post("/preview", async (req: Request, res: Response) => {
+router.post("/preview", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { ruleIds, resourceIds } = req.body ?? {};
     res.json(await invokeEngine({ ruleIds, resourceIds, dryRun: true }));
@@ -206,7 +217,7 @@ router.get("/exclusions", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/exclusions", async (req: Request, res: Response) => {
+router.post("/exclusions", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { name, description, resources, patterns, whitelist } = req.body ?? {};
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
@@ -223,7 +234,7 @@ router.post("/exclusions", async (req: Request, res: Response) => {
   }
 });
 
-router.put("/exclusions/:id", async (req: Request<{ id: string }>, res: Response) => {
+router.put("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
   try {
     const all = await listAwsExclusions();
     const existing = all.find(l => l.id === req.params.id);
@@ -245,7 +256,7 @@ router.put("/exclusions/:id", async (req: Request<{ id: string }>, res: Response
   }
 });
 
-router.delete("/exclusions/:id", async (req: Request<{ id: string }>, res: Response) => {
+router.delete("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
   try {
     await deleteAwsExclusion(req.params.id);
     res.json({ message: "Exclusion list deleted" });

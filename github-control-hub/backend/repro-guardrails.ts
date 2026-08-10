@@ -7,6 +7,7 @@
  * that was deliberately set longer.
  */
 import { evaluateResource, httpsOnlyStatement, CATALOG, kindsForEvent } from "./src/aws-guardrails/catalog";
+import { snapRetention, CLOUDWATCH_RETENTION_DAYS } from "./src/aws-guardrails/types";
 import { isExcluded } from "./src/aws-guardrails/exclusions";
 import type { ResourceSnapshot, AwsExclusionList } from "./src/aws-guardrails/types";
 
@@ -137,6 +138,46 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
   check("exclusion reports which list and clause matched",
     (isExcluded(res("tmp-x", {}), [list({ patterns: [{ id: "p", type: "starts_with", value: "tmp-" }] })]).reason ?? "").includes("Sandbox"));
   check("no lists means not excluded", !isExcluded(res("anything", {}), []).excluded);
+}
+
+// ── threshold vs target, and CloudWatch's fixed retention values ──────
+{
+  // minDays says what counts as a violation; setToDays says what to set.
+  // Conflating them means you cannot flag at 1 year but store for 2.
+  const split = { minDays: 365, setToDays: 731, leaveLongerAlone: true, neverExpireIsCompliant: true };
+  const v = evaluateResource("log_retention_min", res("lg", { retentionInDays: 30 }), split);
+  check("flags against minDays", v.verdict === "violation", v);
+  check("but proposes setToDays, not minDays", v.fix?.after === "731 days", v.fix);
+
+  const between = evaluateResource("log_retention_min", res("lg", { retentionInDays: 400 }), split);
+  check("retention above minDays is compliant even if below setToDays", between.verdict === "compliant", between);
+
+  const noTarget = evaluateResource("log_retention_min", res("lg", { retentionInDays: 30 }), { minDays: 365 });
+  check("setToDays defaults to minDays when omitted", noTarget.fix?.after === "365 days", noTarget.fix);
+
+  // CloudWatch rejects anything not in its fixed list, so values round up.
+  check("snapRetention rounds up to an accepted value", snapRetention(500) === 545, snapRetention(500));
+  check("snapRetention leaves an accepted value alone", snapRetention(365) === 365, snapRetention(365));
+  check("snapRetention caps at the maximum", snapRetention(99999) === 3653, snapRetention(99999));
+  check("every allowed value is accepted by CloudWatch",
+    CLOUDWATCH_RETENTION_DAYS.every(d => snapRetention(d) === d));
+
+  const odd = evaluateResource("log_retention_min", res("lg", { retentionInDays: 30 }),
+    { minDays: 365, setToDays: 500 });
+  check("an unaccepted target rounds up in the proposed fix", odd.fix?.after === "545 days", odd.fix);
+}
+
+// ── every rule kind is presentable in the UI ──────────────────────────
+{
+  check("every kind has a human title", CATALOG.every(k => !!k.title && !k.title.includes("_")),
+    CATALOG.filter(k => !k.title || k.title.includes("_")).map(k => k.kind));
+  check("every kind has a summary", CATALOG.every(k => !!k.summary));
+  check("every kind declares a param schema", CATALOG.every(k => Array.isArray(k.paramSchema)));
+  check("every default param is described in the schema",
+    CATALOG.every(k => Object.keys(k.defaultParams).every(key => k.paramSchema.some(p => p.key === key))),
+    CATALOG.filter(k => !Object.keys(k.defaultParams).every(key => k.paramSchema.some(p => p.key === key))).map(k => k.kind));
+  check("every schema entry has a label and no raw key leaking into it",
+    CATALOG.every(k => k.paramSchema.every(p => !!p.label && !p.label.includes("_"))));
 }
 
 // ── wiring ────────────────────────────────────────────────────────────

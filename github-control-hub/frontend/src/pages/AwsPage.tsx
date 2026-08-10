@@ -7,29 +7,32 @@ import {
   useCreateGuardrail, useUpdateGuardrail, useDeleteGuardrail, useRunGuardrails,
   useSaveAwsExclusion, useDeleteAwsExclusion,
 } from "../hooks/useAws";
-import type { Guardrail, CatalogEntry, Finding, AwsExclusionList } from "../api/aws";
+import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec } from "../api/aws";
 
-const KIND_LABELS: Record<string, string> = {
-  s3_https_only: "S3 — deny non-TLS requests",
-  log_retention_min: "CloudWatch Logs — minimum retention",
-  s3_block_public_access: "S3 — block public access",
-  s3_default_encryption: "S3 — default encryption",
-  s3_versioning: "S3 — versioning enabled",
-  ebs_encryption_default: "EBS — encryption by default",
-  rds_backup_retention_min: "RDS — minimum backup retention",
-  iam_password_policy: "IAM — account password policy",
-  sg_no_public_admin_ingress: "Security groups — no public admin ports",
-  rds_no_public_access: "RDS — not publicly accessible",
-  ec2_imdsv2_required: "EC2 — IMDSv2 required",
-  cloudtrail_enabled: "CloudTrail — enabled and logging",
+/**
+ * AWS guardrails.
+ *
+ * Laid out as a ledger rather than a dashboard: one dense posture line at the
+ * top, then rules that expand in place. Settings come from each rule kind's
+ * paramSchema, so the person configuring a compliance rule reads labels like
+ * "Flag anything retaining less than" instead of editing JSON keys.
+ */
+
+const relTime = (iso?: string) => {
+  if (!iso) return "never";
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const h = Math.floor(mins / 60);
+  if (h < 24) return `${h}h ago`;
+  return `${Math.floor(h / 24)}d ago`;
 };
-
-const label = (kind: string) => KIND_LABELS[kind] ?? kind;
 
 export default function AwsPage() {
   const { user } = useAuth();
   const { data: permissions } = usePermissions();
   const isAdmin = permissions?.isControlHubAdmin ?? false;
+  const adminTeam = permissions?.adminTeam ?? "control-hub-admins";
 
   const { data: catalog } = useCatalog();
   const { data: rules, isLoading } = useGuardrails();
@@ -37,356 +40,591 @@ export default function AwsPage() {
   const { data: exclusions } = useAwsExclusions();
 
   const runRules = useRunGuardrails();
-  const deleteRule = useDeleteGuardrail();
-  const updateRule = useUpdateGuardrail();
+  const [creating, setCreating] = useState(false);
+  const [openRule, setOpenRule] = useState<string | null>(null);
+  const [showExclusions, setShowExclusions] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const [tab, setTab] = useState<"rules" | "findings" | "exclusions">("rules");
-  const [editing, setEditing] = useState<Guardrail | "new" | null>(null);
-  const [runError, setRunError] = useState<string | null>(null);
-
-  const stats = useMemo(() => {
+  const posture = useMemo(() => {
     const f = findings ?? [];
-    return {
-      violations: f.filter(x => x.verdict === "violation").length,
-      compliant: f.filter(x => x.verdict === "compliant").length,
-      excluded: f.filter(x => x.excluded).length,
-      enforcing: (rules ?? []).filter(r => r.enabled && r.mode === "enforce").length,
-    };
-  }, [findings, rules]);
+    const violation = f.filter(x => x.verdict === "violation" && !x.excluded).length;
+    const compliant = f.filter(x => x.verdict === "compliant").length;
+    const excluded = f.filter(x => x.excluded).length;
+    const lastRun = f.reduce<string | undefined>((acc, x) => (!acc || x.checkedAt > acc ? x.checkedAt : acc), undefined);
+    return { violation, compliant, excluded, total: f.length, lastRun };
+  }, [findings]);
 
-  const doRun = async (ruleIds?: string[]) => {
-    setRunError(null);
-    try {
-      await runRules.mutateAsync({ ruleIds });
-    } catch (e) {
-      setRunError((e as Error).message);
-    }
+  const byRule = useMemo(() => {
+    const m = new Map<string, Finding[]>();
+    (findings ?? []).forEach(f => m.set(f.ruleId, [...(m.get(f.ruleId) ?? []), f]));
+    return m;
+  }, [findings]);
+
+  const run = async (ruleIds?: string[]) => {
+    setError(null);
+    try { await runRules.mutateAsync({ ruleIds }); }
+    catch (e) { setError((e as Error).message); }
   };
 
+  const pct = (n: number) => (posture.total ? (n / posture.total) * 100 : 0);
+
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen bg-[#fbfbfd] dark:bg-[#0b0d12]">
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-      <main className="max-w-[1500px] mx-auto px-6 py-6">
-        <div className="flex items-start justify-between gap-4 mb-5">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">AWS Guardrails</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Rules that keep AWS resources compliant — checked on creation, on a 15-minute sweep, and on demand.
-            </p>
-          </div>
-          <button
-            onClick={() => doRun()}
-            disabled={runRules.isPending}
-            className="shrink-0 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-semibold hover:opacity-90 disabled:opacity-50 transition"
-          >
-            <i className={runRules.isPending ? "ph-bold ph-circle-notch animate-spin" : "ph-bold ph-play"}></i>
-            {runRules.isPending ? "Running…" : "Run all now"}
-          </button>
-        </div>
+      <main className="max-w-[1180px] mx-auto px-6 pt-8 pb-20">
 
-        {runError && (
-          <div className="mb-4 px-4 py-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-sm text-rose-700 dark:text-rose-300">
-            {runError}
-          </div>
-        )}
-        {runRules.isSuccess && !runError && (
-          <div className="mb-4 px-4 py-3 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900 text-sm text-emerald-700 dark:text-emerald-300">
-            Checked {runRules.data.findings.length} resources — {runRules.data.violations} violation(s),
-            {" "}{runRules.data.remediated} remediated, {runRules.data.excluded} excluded.
-            {runRules.data.errors.length > 0 && ` ${runRules.data.errors.length} error(s).`}
-          </div>
-        )}
+        {/* Masthead — one sentence of posture, not a row of identical cards */}
+        <header className="border-b border-slate-900/10 dark:border-white/10 pb-6 mb-8">
+          <div className="flex items-end justify-between gap-6 flex-wrap">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500 font-semibold mb-1.5">
+                Account guardrails
+              </p>
+              <h1 className="text-[2.1rem] leading-none font-semibold text-slate-900 dark:text-white tracking-tight">
+                {posture.violation === 0 && posture.total > 0
+                  ? "Everything checked is compliant"
+                  : posture.total === 0
+                    ? "Nothing checked yet"
+                    : <>{posture.violation} <span className="text-slate-400 dark:text-slate-500 font-normal">of {posture.total} checks failing</span></>}
+              </h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-2">
+                {rules?.filter(r => r.enabled).length ?? 0} active {(rules?.filter(r => r.enabled).length ?? 0) === 1 ? "rule" : "rules"}
+                {" · "}swept {relTime(posture.lastRun)}
+                {" · "}re-checks every 15 min
+              </p>
+            </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          {[
-            { label: "Violations", value: stats.violations, icon: "ph-warning", tone: "text-rose-500" },
-            { label: "Compliant", value: stats.compliant, icon: "ph-check-circle", tone: "text-emerald-500" },
-            { label: "Excluded", value: stats.excluded, icon: "ph-prohibit", tone: "text-slate-400" },
-            { label: "Enforcing rules", value: stats.enforcing, icon: "ph-lock-key", tone: "text-blue-500" },
-          ].map(s => (
-            <div key={s.label} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-700 px-4 py-3 flex items-center gap-3">
-              <i className={`ph-fill ${s.icon} text-lg ${s.tone}`}></i>
-              <div>
-                <div className="text-xl font-bold text-slate-900 dark:text-white font-mono leading-none">{s.value}</div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{s.label}</div>
+            {isAdmin && (
+              <div className="flex items-center gap-2">
+                <button onClick={() => setCreating(v => !v)}
+                  className="px-3.5 py-2 text-sm font-medium text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors">
+                  New rule
+                </button>
+                <button onClick={() => run()} disabled={runRules.isPending}
+                  className="px-4 py-2 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-medium hover:opacity-85 disabled:opacity-40 transition-opacity">
+                  {runRules.isPending ? "Sweeping…" : "Sweep now"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Posture bar — proportional, replaces four number tiles */}
+          {posture.total > 0 && (
+            <div className="mt-6">
+              <div className="flex h-1.5 rounded-full overflow-hidden bg-slate-200/60 dark:bg-white/5">
+                {posture.violation > 0 && <div className="bg-rose-500" style={{ width: `${pct(posture.violation)}%` }} />}
+                {posture.compliant > 0 && <div className="bg-emerald-500" style={{ width: `${pct(posture.compliant)}%` }} />}
+                {posture.excluded > 0 && <div className="bg-slate-300 dark:bg-slate-600" style={{ width: `${pct(posture.excluded)}%` }} />}
+              </div>
+              <div className="flex gap-5 mt-2.5 text-[11px] text-slate-500 dark:text-slate-400">
+                <Legend colour="bg-rose-500" n={posture.violation} label="failing" />
+                <Legend colour="bg-emerald-500" n={posture.compliant} label="passing" />
+                <Legend colour="bg-slate-300 dark:bg-slate-600" n={posture.excluded} label="excluded" />
               </div>
             </div>
-          ))}
-        </div>
+          )}
+        </header>
 
-        <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
-          {([["rules", "Rules"], ["findings", "Findings"], ["exclusions", "Exclusion lists"]] as const).map(([id, text]) => (
-            <button key={id} onClick={() => setTab(id)}
-              className={`px-4 py-1.5 text-sm font-semibold rounded-md transition ${
-                tab === id ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                           : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
-            >{text}</button>
-          ))}
-        </div>
+        {error && (
+          <p className="mb-6 text-sm text-rose-600 dark:text-rose-400 border-l-2 border-rose-500 pl-3">{error}</p>
+        )}
+        {runRules.isSuccess && !error && (
+          <p className="mb-6 text-sm text-slate-600 dark:text-slate-300 border-l-2 border-emerald-500 pl-3">
+            Swept {runRules.data.findings.length} resources — {runRules.data.violations} failing
+            {runRules.data.remediated > 0 && `, ${runRules.data.remediated} fixed`}
+            {runRules.data.excluded > 0 && `, ${runRules.data.excluded} excluded`}.
+          </p>
+        )}
 
-        {tab === "rules" && (
-          <RulesTab
-            rules={rules} catalog={catalog} isLoading={isLoading} isAdmin={isAdmin}
-            adminTeam={permissions?.adminTeam ?? "control-hub-admins"}
-            onEdit={setEditing} onNew={() => setEditing("new")}
-            onDelete={(id) => deleteRule.mutate(id)}
-            onToggleEnabled={(r) => updateRule.mutate({ id: r.id, body: { enabled: !r.enabled } })}
-            onRun={(id) => doRun([id])}
-            running={runRules.isPending}
+        {!isAdmin && (
+          <p className="mb-6 text-sm text-slate-500 dark:text-slate-400 border-l-2 border-slate-300 dark:border-slate-600 pl-3">
+            You can see every rule and finding here. Creating, editing and running guardrails is limited to the{" "}
+            <span className="font-medium text-slate-700 dark:text-slate-200">{adminTeam}</span> team, because they act
+            on the whole AWS account rather than on anything scoped to you.
+          </p>
+        )}
+
+        {creating && isAdmin && (
+          <RuleForm
+            rule={null} catalog={catalog ?? []} exclusions={exclusions ?? []}
+            onDone={() => setCreating(false)} onCancel={() => setCreating(false)}
           />
         )}
-        {tab === "findings" && <FindingsTab findings={findings} />}
-        {tab === "exclusions" && <ExclusionsTab lists={exclusions} />}
 
-        {editing && (
-          <RuleEditor
-            rule={editing === "new" ? null : editing}
-            catalog={catalog ?? []}
-            exclusions={exclusions ?? []}
-            isAdmin={isAdmin}
-            adminTeam={permissions?.adminTeam ?? "control-hub-admins"}
-            onClose={() => setEditing(null)}
-          />
+        {/* Rules */}
+        {isLoading ? (
+          <p className="text-sm text-slate-400 py-10">Loading…</p>
+        ) : !rules?.length ? (
+          <EmptyRules isAdmin={isAdmin} count={catalog?.length ?? 0} onNew={() => setCreating(true)} />
+        ) : (
+          <ul className="divide-y divide-slate-900/[0.07] dark:divide-white/[0.07] border-y border-slate-900/[0.07] dark:border-white/[0.07]">
+            {rules.map(r => (
+              <RuleRow
+                key={r.id} rule={r}
+                entry={(catalog ?? []).find(c => c.kind === r.kind)}
+                findings={byRule.get(r.id) ?? []}
+                exclusions={exclusions ?? []}
+                catalog={catalog ?? []}
+                isAdmin={isAdmin}
+                open={openRule === r.id}
+                onToggle={() => setOpenRule(o => (o === r.id ? null : r.id))}
+                onRun={() => run([r.id])}
+                running={runRules.isPending}
+              />
+            ))}
+          </ul>
         )}
+
+        {/* Exclusions — secondary, folded away until wanted */}
+        <section className="mt-12">
+          <button onClick={() => setShowExclusions(v => !v)}
+            className="flex items-baseline gap-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors">
+            <span className="text-[11px] uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500 font-semibold">
+              Exclusion lists
+            </span>
+            <span className="text-slate-400 dark:text-slate-500">{exclusions?.length ?? 0}</span>
+            <i className={`ph-bold ph-caret-${showExclusions ? "up" : "down"} text-[10px] text-slate-400`}></i>
+          </button>
+          {showExclusions && <ExclusionsSection lists={exclusions ?? []} isAdmin={isAdmin} />}
+        </section>
       </main>
     </div>
   );
 }
 
-// ── Rules ─────────────────────────────────────────────────────────────
+function Legend({ colour, n, label }: { colour: string; n: number; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`w-1.5 h-1.5 rounded-full ${colour}`} />
+      <span className="tabular-nums font-medium text-slate-700 dark:text-slate-300">{n}</span> {label}
+    </span>
+  );
+}
 
-function RulesTab({ rules, catalog, isLoading, isAdmin, adminTeam, onEdit, onNew, onDelete, onToggleEnabled, onRun, running }: {
-  rules?: Guardrail[]; catalog?: CatalogEntry[]; isLoading: boolean; isAdmin: boolean; adminTeam: string;
-  onEdit: (r: Guardrail) => void; onNew: () => void; onDelete: (id: string) => void;
-  onToggleEnabled: (r: Guardrail) => void; onRun: (id: string) => void; running: boolean;
+function EmptyRules({ isAdmin, count, onNew }: { isAdmin: boolean; count: number; onNew: () => void }) {
+  return (
+    <div className="py-16 border-y border-slate-900/[0.07] dark:border-white/[0.07]">
+      <p className="text-lg text-slate-700 dark:text-slate-200 font-medium">No guardrails yet</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 max-w-md">
+        A guardrail describes how a kind of AWS resource must be configured. It checks on creation,
+        on a 15-minute sweep, and whenever you ask. {count} rule types are available.
+      </p>
+      {isAdmin && (
+        <button onClick={onNew} className="mt-4 px-4 py-2 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-medium hover:opacity-85 transition-opacity">
+          Add the first one
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ── one rule ──────────────────────────────────────────────────────────
+
+function RuleRow({ rule, entry, findings, exclusions, catalog, isAdmin, open, onToggle, onRun, running }: {
+  rule: Guardrail; entry?: CatalogEntry; findings: Finding[]; exclusions: AwsExclusionList[];
+  catalog: CatalogEntry[]; isAdmin: boolean; open: boolean;
+  onToggle: () => void; onRun: () => void; running: boolean;
 }) {
-  const byKind = new Map((catalog ?? []).map(c => [c.kind, c]));
+  const update = useUpdateGuardrail();
+  const remove = useDeleteGuardrail();
+  const [editing, setEditing] = useState(false);
 
-  if (isLoading) {
-    return <div className="p-10 flex justify-center"><div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 dark:border-slate-700 border-t-slate-600"></div></div>;
+  const failing = findings.filter(f => f.verdict === "violation" && !f.excluded).length;
+  const excluded = findings.filter(f => f.excluded).length;
+
+  return (
+    <li className="group">
+      <div className="flex items-start gap-4 py-4">
+        <button onClick={onToggle} className="flex-1 text-left min-w-0">
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+              !rule.enabled ? "bg-slate-300 dark:bg-slate-600"
+                : failing > 0 ? "bg-rose-500" : "bg-emerald-500"}`} />
+            <span className={`text-[15px] font-medium ${rule.enabled ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500"}`}>
+              {rule.name}
+            </span>
+            {rule.mode === "enforce" && (
+              <span className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                auto-fixes
+              </span>
+            )}
+            {!rule.enabled && <span className="text-[11px] text-slate-400">paused</span>}
+          </div>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1 ml-4">
+            {entry?.summary ?? rule.kind}
+          </p>
+          <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-1 ml-4 tabular-nums">
+            {findings.length === 0 ? "not yet checked"
+              : failing > 0
+                ? <><span className="text-rose-600 dark:text-rose-400 font-medium">{failing} failing</span> of {findings.length - excluded} checked</>
+                : `all ${findings.length - excluded} passing`}
+            {excluded > 0 && ` · ${excluded} excluded`}
+          </p>
+        </button>
+
+        {isAdmin && (
+          <div className="flex items-center gap-3 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+            <button onClick={onRun} disabled={running}
+              className="text-[13px] text-slate-500 hover:text-slate-900 dark:hover:text-white disabled:opacity-40">Run</button>
+            <button onClick={() => { setEditing(true); if (!open) onToggle(); }}
+              className="text-[13px] text-slate-500 hover:text-slate-900 dark:hover:text-white">Edit</button>
+            <button onClick={() => update.mutate({ id: rule.id, body: { enabled: !rule.enabled } })}
+              className="text-[13px] text-slate-500 hover:text-slate-900 dark:hover:text-white">
+              {rule.enabled ? "Pause" : "Resume"}
+            </button>
+            <button onClick={() => { if (confirm(`Delete "${rule.name}"? Its findings are removed too.`)) remove.mutate(rule.id); }}
+              className="text-[13px] text-slate-400 hover:text-rose-600 dark:hover:text-rose-400">Delete</button>
+          </div>
+        )}
+      </div>
+
+      {open && (
+        <div className="pb-6 pl-4 animate-fade-in">
+          {editing && isAdmin ? (
+            <RuleForm rule={rule} catalog={catalog} exclusions={exclusions}
+              onDone={() => setEditing(false)} onCancel={() => setEditing(false)} />
+          ) : (
+            <>
+              <SettingsSummary rule={rule} entry={entry} exclusions={exclusions} />
+              <FindingsList findings={findings} />
+            </>
+          )}
+        </div>
+      )}
+    </li>
+  );
+}
+
+/** Reads back the configured values in the schema's own words. */
+function SettingsSummary({ rule, entry, exclusions }: {
+  rule: Guardrail; entry?: CatalogEntry; exclusions: AwsExclusionList[];
+}) {
+  const specs = entry?.paramSchema ?? [];
+  const used = exclusions.filter(l => rule.exclusionLists?.includes(l.id));
+
+  return (
+    <dl className="mb-5 grid grid-cols-[max-content_1fr] gap-x-6 gap-y-1.5 text-[13px]">
+      {specs.map(spec => (
+        <div key={spec.key} className="contents">
+          <dt className="text-slate-400 dark:text-slate-500">{spec.label}</dt>
+          <dd className="text-slate-700 dark:text-slate-300 tabular-nums">
+            {formatValue(rule.params?.[spec.key] ?? spec.default, spec)}
+          </dd>
+        </div>
+      ))}
+      <div className="contents">
+        <dt className="text-slate-400 dark:text-slate-500">On resource creation</dt>
+        <dd className="text-slate-700 dark:text-slate-300">
+          {!entry?.createEvents.length ? "n/a — swept only" : rule.applyOnCreate ? "checked immediately" : "waits for the sweep"}
+        </dd>
+      </div>
+      {used.length > 0 && (
+        <div className="contents">
+          <dt className="text-slate-400 dark:text-slate-500">Excluding</dt>
+          <dd className="text-slate-700 dark:text-slate-300">{used.map(l => l.name).join(", ")}</dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+function formatValue(value: any, spec: ParamSpec): string {
+  if (spec.type === "boolean") return value ? "yes" : "no";
+  if (spec.type === "ports") return Array.isArray(value) ? value.join(", ") : String(value);
+  if (spec.type === "choice") return spec.options?.find(o => o.value === value)?.label ?? String(value);
+  return spec.unit ? `${value} ${spec.unit}` : String(value);
+}
+
+function FindingsList({ findings }: { findings: Finding[] }) {
+  const [showAll, setShowAll] = useState(false);
+  const failing = findings.filter(f => f.verdict === "violation" && !f.excluded);
+  const rest = findings.filter(f => !(f.verdict === "violation" && !f.excluded));
+  const shown = showAll ? [...failing, ...rest] : failing;
+
+  if (findings.length === 0) {
+    return <p className="text-[13px] text-slate-400">No results yet — run this rule to populate it.</p>;
   }
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{rules?.length ?? 0} rule(s)</span>
-        <button onClick={onNew} className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline">
-          <i className="ph-bold ph-plus mr-1"></i>New rule
+    <div>
+      <ul className="space-y-1">
+        {shown.slice(0, 60).map(f => (
+          <li key={f.resourceId} className="flex items-baseline gap-3 text-[13px] py-0.5">
+            <span className={`w-1 h-1 rounded-full shrink-0 translate-y-[-2px] ${
+              f.remediated ? "bg-sky-500"
+                : f.excluded ? "bg-slate-300 dark:bg-slate-600"
+                  : f.verdict === "violation" ? "bg-rose-500" : "bg-emerald-500"}`} />
+            <code className="font-mono text-slate-700 dark:text-slate-300 truncate max-w-[46ch]" title={f.resourceId}>
+              {f.resourceId}
+            </code>
+            <span className="text-slate-400 dark:text-slate-500 truncate">{f.summary}</span>
+            {f.error && <span className="text-rose-500 shrink-0">{f.error}</span>}
+          </li>
+        ))}
+      </ul>
+      {rest.length > 0 && (
+        <button onClick={() => setShowAll(v => !v)}
+          className="mt-2 text-[12px] text-slate-400 hover:text-slate-700 dark:hover:text-slate-200">
+          {showAll ? "Hide passing" : `Show ${rest.length} passing and excluded`}
         </button>
-      </div>
-
-      {!rules?.length ? (
-        <div className="p-12 text-center text-slate-400 dark:text-slate-500">
-          <i className="ph-fill ph-shield-check text-4xl mb-3 block"></i>
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No guardrails yet</p>
-          <p className="text-xs mt-1">Add one from the {catalog?.length ?? 0} available rule types.</p>
-        </div>
-      ) : (
-        <div className="divide-y divide-slate-50 dark:divide-slate-800">
-          {rules.map(r => {
-            const entry = byKind.get(r.kind);
-            return (
-              <div key={r.id} className="px-5 py-4 flex items-start gap-4">
-                <button
-                  onClick={() => onToggleEnabled(r)}
-                  title={r.enabled ? "Disable" : "Enable"}
-                  className={`mt-1 w-9 h-5 rounded-full shrink-0 transition relative ${r.enabled ? "bg-emerald-500" : "bg-slate-300 dark:bg-slate-600"}`}
-                >
-                  <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${r.enabled ? "left-[18px]" : "left-0.5"}`}></span>
-                </button>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-semibold text-slate-800 dark:text-slate-100">{r.name}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase ${
-                      r.mode === "enforce"
-                        ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800"
-                        : "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700"}`}>
-                      {r.mode}
-                    </span>
-                    {r.applyOnCreate && <span className="text-[10px] px-1.5 py-0.5 rounded border bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700">on create</span>}
-                    {entry && !entry.canRemediate && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded border bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900" title="Fixing this automatically could cut live access">report-only</span>
-                    )}
-                  </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{label(r.kind)}</p>
-                  {Object.keys(r.params ?? {}).length > 0 && (
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono mt-1">
-                      {Object.entries(r.params).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join("  ")}
-                    </p>
-                  )}
-                  {r.exclusionLists?.length > 0 && (
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                      <i className="ph-bold ph-prohibit mr-1"></i>{r.exclusionLists.length} exclusion list(s)
-                    </p>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-3 shrink-0">
-                  <button onClick={() => onRun(r.id)} disabled={running}
-                    className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 disabled:opacity-40">Run</button>
-                  <button onClick={() => onEdit(r)}
-                    className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">Edit</button>
-                  <button onClick={() => { if (confirm(`Delete "${r.name}"?`)) onDelete(r.id); }}
-                    className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline">Delete</button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
-      {!isAdmin && (
-        <div className="px-5 py-3 border-t border-slate-100 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400">
-          <i className="ph-fill ph-lock-simple mr-1"></i>
-          You can create and edit rules in report mode. Putting a rule into <strong>enforce</strong> mode — which changes
-          AWS resources automatically — requires the <span className="font-mono">{adminTeam}</span> team.
-        </div>
       )}
     </div>
   );
 }
 
-// ── Findings ──────────────────────────────────────────────────────────
+// ── rule form: controls come from paramSchema ─────────────────────────
 
-function FindingsTab({ findings }: { findings?: Finding[] }) {
-  const [showCompliant, setShowCompliant] = useState(false);
-  const rows = (findings ?? []).filter(f => showCompliant || f.verdict !== "compliant");
+function RuleForm({ rule, catalog, exclusions, onDone, onCancel }: {
+  rule: Guardrail | null; catalog: CatalogEntry[]; exclusions: AwsExclusionList[];
+  onDone: () => void; onCancel: () => void;
+}) {
+  const create = useCreateGuardrail();
+  const update = useUpdateGuardrail();
+
+  const [kind, setKind] = useState(rule?.kind ?? catalog[0]?.kind ?? "");
+  const entry = catalog.find(c => c.kind === kind);
+  const [name, setName] = useState(rule?.name ?? entry?.title ?? "");
+  const [mode, setMode] = useState(rule?.mode ?? "report");
+  const [applyOnCreate, setApplyOnCreate] = useState(rule?.applyOnCreate ?? true);
+  const [params, setParams] = useState<Record<string, any>>(rule?.params ?? entry?.defaultParams ?? {});
+  const [selected, setSelected] = useState<string[]>(rule?.exclusionLists ?? []);
+  const [error, setError] = useState<string | null>(null);
+
+  const pickKind = (k: string) => {
+    const e = catalog.find(c => c.kind === k);
+    setKind(k);
+    setParams(e?.defaultParams ?? {});
+    if (!e?.canRemediate) setMode("report");
+    setName(e?.title ?? k);
+  };
+
+  const submit = async () => {
+    setError(null);
+    try {
+      const body = { name, description: entry?.summary ?? "", kind, mode, applyOnCreate, params, exclusionLists: selected };
+      if (rule) await update.mutateAsync({ id: rule.id, body });
+      else await create.mutateAsync(body);
+      onDone();
+    } catch (e) { setError((e as Error).message); }
+  };
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{rows.length} finding(s)</span>
-        <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-          <input type="checkbox" checked={showCompliant} onChange={e => setShowCompliant(e.target.checked)}
-            className="rounded border-slate-300 dark:border-slate-600" />
-          Show compliant
-        </label>
-      </div>
+    <div className="my-6 pl-4 border-l-2 border-slate-900 dark:border-white animate-fade-in">
+      <div className="max-w-xl space-y-5">
+        {!rule && (
+          <label className="block">
+            <span className="block text-[11px] uppercase tracking-[0.18em] text-slate-400 font-semibold mb-2">What to check</span>
+            <select value={kind} onChange={e => pickKind(e.target.value)}
+              className="w-full bg-transparent border-0 border-b border-slate-300 dark:border-slate-600 pb-1.5 text-[15px] text-slate-900 dark:text-white focus:outline-none focus:border-slate-900 dark:focus:border-white">
+              {catalog.map(c => <option key={c.kind} value={c.kind} className="bg-white dark:bg-slate-900">{c.title}</option>)}
+            </select>
+            {entry && <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-2">{entry.summary}</p>}
+          </label>
+        )}
 
-      {rows.length === 0 ? (
-        <div className="p-12 text-center text-slate-400 dark:text-slate-500">
-          <i className="ph-fill ph-check-circle text-4xl mb-3 block text-emerald-400"></i>
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Nothing to report</p>
-          <p className="text-xs mt-1">Run the guardrails to populate this.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 dark:bg-slate-800/60 text-[11px] uppercase text-slate-500 dark:text-slate-400">
-              <tr>
-                <th className="text-left font-semibold px-5 py-2">Status</th>
-                <th className="text-left font-semibold px-3 py-2">Resource</th>
-                <th className="text-left font-semibold px-3 py-2">Rule</th>
-                <th className="text-left font-semibold px-3 py-2">Detail</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-              {rows.map(f => (
-                <tr key={`${f.ruleId}#${f.resourceId}`} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
-                  <td className="px-5 py-2.5 whitespace-nowrap">
-                    {f.remediated ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">fixed</span>
-                    ) : f.excluded ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700">excluded</span>
-                    ) : f.verdict === "violation" ? (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800">violation</span>
-                    ) : (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">ok</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5 font-mono text-xs text-slate-700 dark:text-slate-300 max-w-[320px] truncate" title={f.resourceId}>{f.resourceId}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap">{f.ruleName}</td>
-                  <td className="px-3 py-2.5 text-xs text-slate-500 dark:text-slate-400">
-                    {f.summary}
-                    {f.error && <span className="block text-rose-500 mt-0.5">{f.error}</span>}
-                  </td>
-                </tr>
+        <label className="block">
+          <span className="block text-[11px] uppercase tracking-[0.18em] text-slate-400 font-semibold mb-2">Name</span>
+          <input value={name} onChange={e => setName(e.target.value)}
+            className="w-full bg-transparent border-0 border-b border-slate-300 dark:border-slate-600 pb-1.5 text-[15px] text-slate-900 dark:text-white focus:outline-none focus:border-slate-900 dark:focus:border-white" />
+        </label>
+
+        {/* The whole point: real controls, described in the rule's own words */}
+        {(entry?.paramSchema ?? []).length > 0 && (
+          <div>
+            <span className="block text-[11px] uppercase tracking-[0.18em] text-slate-400 font-semibold mb-3">Settings</span>
+            <div className="space-y-4">
+              {entry!.paramSchema.map(spec => (
+                <ParamControl key={spec.key} spec={spec}
+                  value={params[spec.key] ?? spec.default}
+                  onChange={v => setParams(p => ({ ...p, [spec.key]: v }))} />
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
+        )}
+
+        <div>
+          <span className="block text-[11px] uppercase tracking-[0.18em] text-slate-400 font-semibold mb-3">When it finds a problem</span>
+          <div className="space-y-2">
+            <ModeChoice active={mode === "report"} onClick={() => setMode("report")}
+              title="Report it" body="Records the finding and leaves the resource alone." />
+            <ModeChoice active={mode === "enforce"} onClick={() => entry?.canRemediate && setMode("enforce")}
+              disabled={!entry?.canRemediate} title="Fix it automatically"
+              body={entry?.canRemediate
+                ? "Changes the resource on every sweep, with no one watching."
+                : "Not available for this check — fixing it automatically could cut live access."} />
+          </div>
         </div>
-      )}
+
+        {!!entry?.createEvents.length && (
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={applyOnCreate} onChange={e => setApplyOnCreate(e.target.checked)}
+              className="mt-0.5 rounded border-slate-300 dark:border-slate-600" />
+            <span className="text-[13px] text-slate-700 dark:text-slate-300">
+              Check as soon as a resource is created
+              <span className="block text-slate-400 dark:text-slate-500">
+                Otherwise it waits for the next sweep, up to 15 minutes later.
+              </span>
+            </span>
+          </label>
+        )}
+
+        {exclusions.length > 0 && (
+          <div>
+            <span className="block text-[11px] uppercase tracking-[0.18em] text-slate-400 font-semibold mb-2">Skip resources in</span>
+            <div className="space-y-1.5">
+              {exclusions.map(l => (
+                <label key={l.id} className="flex items-center gap-2.5 text-[13px] text-slate-700 dark:text-slate-300 cursor-pointer">
+                  <input type="checkbox" checked={selected.includes(l.id)}
+                    onChange={e => setSelected(s => e.target.checked ? [...s, l.id] : s.filter(x => x !== l.id))}
+                    className="rounded border-slate-300 dark:border-slate-600" />
+                  {l.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {error && <p className="text-[13px] text-rose-600 dark:text-rose-400">{error}</p>}
+
+        <div className="flex items-center gap-3 pt-1">
+          <button onClick={submit}
+            className="px-4 py-2 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-medium hover:opacity-85 transition-opacity">
+            {rule ? "Save" : "Create rule"}
+          </button>
+          <button onClick={onCancel} className="text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white">Cancel</button>
+        </div>
+      </div>
     </div>
   );
 }
 
-// ── Exclusion lists ───────────────────────────────────────────────────
+function ModeChoice({ active, onClick, title, body, disabled }: {
+  active: boolean; onClick: () => void; title: string; body: string; disabled?: boolean;
+}) {
+  return (
+    <button type="button" onClick={onClick} disabled={disabled}
+      className={`w-full text-left px-3.5 py-2.5 rounded-lg border transition-colors ${
+        active
+          ? "border-slate-900 dark:border-white bg-slate-900/[0.03] dark:bg-white/[0.06]"
+          : "border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500"
+      } ${disabled ? "opacity-45 cursor-not-allowed hover:border-slate-200 dark:hover:border-slate-700" : ""}`}>
+      <span className="block text-[13px] font-medium text-slate-900 dark:text-white">{title}</span>
+      <span className="block text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">{body}</span>
+    </button>
+  );
+}
 
-function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
+function ParamControl({ spec, value, onChange }: {
+  spec: ParamSpec; value: any; onChange: (v: any) => void;
+}) {
+  if (spec.type === "boolean") {
+    return (
+      <label className="flex items-start gap-2.5 cursor-pointer">
+        <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)}
+          className="mt-0.5 rounded border-slate-300 dark:border-slate-600" />
+        <span className="text-[13px] text-slate-700 dark:text-slate-300">
+          {spec.label}
+          {spec.help && <span className="block text-slate-400 dark:text-slate-500">{spec.help}</span>}
+        </span>
+      </label>
+    );
+  }
+
+  const field = "bg-transparent border-0 border-b border-slate-300 dark:border-slate-600 pb-1 text-[15px] text-slate-900 dark:text-white tabular-nums focus:outline-none focus:border-slate-900 dark:focus:border-white";
+
+  return (
+    <label className="block">
+      <span className="block text-[13px] text-slate-700 dark:text-slate-300 mb-1">{spec.label}</span>
+      <span className="flex items-baseline gap-2">
+        {spec.type === "number" && spec.allowed ? (
+          <select value={value} onChange={e => onChange(Number(e.target.value))} className={`${field} w-32`}>
+            {spec.allowed.map(v => <option key={v} value={v} className="bg-white dark:bg-slate-900">{v}</option>)}
+          </select>
+        ) : spec.type === "number" ? (
+          <input type="number" min={spec.min} value={value} onChange={e => onChange(Number(e.target.value))} className={`${field} w-32`} />
+        ) : spec.type === "choice" ? (
+          <select value={value} onChange={e => onChange(e.target.value)} className={`${field} w-full`}>
+            {spec.options?.map(o => <option key={o.value} value={o.value} className="bg-white dark:bg-slate-900">{o.label}</option>)}
+          </select>
+        ) : spec.type === "ports" ? (
+          <input value={Array.isArray(value) ? value.join(", ") : value}
+            onChange={e => onChange(e.target.value.split(",").map(x => Number(x.trim())).filter(n => !Number.isNaN(n)))}
+            className={`${field} w-full`} />
+        ) : (
+          <input value={value ?? ""} onChange={e => onChange(e.target.value)} className={`${field} w-full`} />
+        )}
+        {spec.unit && <span className="text-[13px] text-slate-400 dark:text-slate-500">{spec.unit}</span>}
+      </span>
+      {spec.help && <span className="block text-[12px] text-slate-400 dark:text-slate-500 mt-1">{spec.help}</span>}
+    </label>
+  );
+}
+
+// ── exclusions ────────────────────────────────────────────────────────
+
+function ExclusionsSection({ lists, isAdmin }: { lists: AwsExclusionList[]; isAdmin: boolean }) {
   const save = useSaveAwsExclusion();
   const remove = useDeleteAwsExclusion();
   const [editing, setEditing] = useState<AwsExclusionList | "new" | null>(null);
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{lists?.length ?? 0} list(s)</span>
-        <button onClick={() => setEditing("new")} className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline">
-          <i className="ph-bold ph-plus mr-1"></i>New list
-        </button>
-      </div>
+    <div className="mt-4">
+      <p className="text-[13px] text-slate-500 dark:text-slate-400 max-w-lg mb-4">
+        Resources matched by a list are skipped by any rule using it. A “keep anyway” entry wins over the patterns.
+      </p>
 
-      {!lists?.length ? (
-        <div className="p-12 text-center text-slate-400 dark:text-slate-500">
-          <i className="ph-fill ph-prohibit text-4xl mb-3 block"></i>
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No exclusion lists</p>
-          <p className="text-xs mt-1">Exclude resources by exact name, name prefix, substring, or tag.</p>
-        </div>
-      ) : (
-        <div className="divide-y divide-slate-50 dark:divide-slate-800">
+      {lists.length > 0 && (
+        <ul className="divide-y divide-slate-900/[0.07] dark:divide-white/[0.07] border-t border-slate-900/[0.07] dark:border-white/[0.07] mb-4">
           {lists.map(l => (
-            <div key={l.id} className="px-5 py-4 flex items-start justify-between gap-4">
+            <li key={l.id} className="py-3 flex items-start justify-between gap-4 group">
               <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{l.name}</div>
-                {l.description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{l.description}</p>}
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {l.resources.map(r => (
-                    <span key={r} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">{r}</span>
-                  ))}
-                  {l.patterns.map(p => (
-                    <span key={p.id} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900">{p.type} {p.value}</span>
-                  ))}
-                  {l.whitelist.map(w => (
-                    <span key={w} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">keep {w}</span>
-                  ))}
+                <span className="text-[14px] font-medium text-slate-800 dark:text-slate-100">{l.name}</span>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1 text-[12px] font-mono">
+                  {l.resources.map(r => <span key={r} className="text-slate-500 dark:text-slate-400">{r}</span>)}
+                  {l.patterns.map(p => <span key={p.id} className="text-amber-700 dark:text-amber-500">{p.type.replace("_", " ")} {p.value}</span>)}
+                  {l.whitelist.map(w => <span key={w} className="text-emerald-700 dark:text-emerald-500">keep {w}</span>)}
                 </div>
               </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <button onClick={() => setEditing(l)} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">Edit</button>
-                <button onClick={() => { if (confirm(`Delete "${l.name}"?`)) remove.mutate(l.id); }}
-                  className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline">Delete</button>
-              </div>
-            </div>
+              {isAdmin && (
+                <div className="flex gap-3 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => setEditing(l)} className="text-[13px] text-slate-500 hover:text-slate-900 dark:hover:text-white">Edit</button>
+                  <button onClick={() => { if (confirm(`Delete "${l.name}"?`)) remove.mutate(l.id); }}
+                    className="text-[13px] text-slate-400 hover:text-rose-600">Delete</button>
+                </div>
+              )}
+            </li>
           ))}
-        </div>
+        </ul>
       )}
 
-      {editing && (
-        <ExclusionEditor
-          list={editing === "new" ? null : editing}
-          onClose={() => setEditing(null)}
-          onSave={(body, id) => save.mutateAsync({ id, body }).then(() => setEditing(null))}
-        />
+      {isAdmin && !editing && (
+        <button onClick={() => setEditing("new")} className="text-sm text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white">
+          + New list
+        </button>
+      )}
+
+      {editing && isAdmin && (
+        <ExclusionForm list={editing === "new" ? null : editing}
+          onCancel={() => setEditing(null)}
+          onSave={(body, id) => save.mutateAsync({ id, body }).then(() => setEditing(null))} />
       )}
     </div>
   );
 }
 
-function ExclusionEditor({ list, onClose, onSave }: {
+function ExclusionForm({ list, onCancel, onSave }: {
   list: AwsExclusionList | null;
-  onClose: () => void;
+  onCancel: () => void;
   onSave: (body: Partial<AwsExclusionList>, id?: string) => Promise<unknown>;
 }) {
   const [name, setName] = useState(list?.name ?? "");
-  const [description, setDescription] = useState(list?.description ?? "");
   const [resources, setResources] = useState((list?.resources ?? []).join("\n"));
   const [whitelist, setWhitelist] = useState((list?.whitelist ?? []).join("\n"));
-  const [patterns, setPatterns] = useState(
-    (list?.patterns ?? []).map(p => `${p.type}:${p.value}`).join("\n"));
+  const [patterns, setPatterns] = useState((list?.patterns ?? []).map(p => `${p.type}:${p.value}`).join("\n"));
   const [error, setError] = useState<string | null>(null);
 
   const lines = (s: string) => s.split("\n").map(x => x.trim()).filter(Boolean);
+  const field = "w-full bg-transparent border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-[13px] font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:border-slate-900 dark:focus:border-white";
 
   const submit = async () => {
     setError(null);
@@ -398,198 +636,40 @@ function ExclusionEditor({ list, onClose, onSave }: {
       return { id: `p${i}`, type: type as any, value };
     });
     if (parsed.some(p => p === null)) {
-      setError('Each pattern must be "starts_with:value", "contains:value" or "tag_equals:Key=Value".');
+      setError('Each line must read starts_with:tmp- · contains:sandbox · tag_equals:Env=dev');
       return;
     }
     try {
-      await onSave({
-        name, description,
-        resources: lines(resources),
-        whitelist: lines(whitelist),
-        patterns: parsed as any,
-      }, list?.id);
-    } catch (e) {
-      setError((e as Error).message);
-    }
+      await onSave({ name, description: "", resources: lines(resources), whitelist: lines(whitelist), patterns: parsed as any }, list?.id);
+    } catch (e) { setError((e as Error).message); }
   };
 
-  const input = "w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
-
   return (
-    <Modal title={list ? "Edit exclusion list" : "New exclusion list"} onClose={onClose} onSubmit={submit} error={error}>
-      <Field label="Name"><input className={input} value={name} onChange={e => setName(e.target.value)} /></Field>
-      <Field label="Description"><input className={input} value={description} onChange={e => setDescription(e.target.value)} /></Field>
-      <Field label="Exact resource names" hint="One per line — bucket names, log group names.">
-        <textarea rows={3} className={`${input} font-mono`} value={resources} onChange={e => setResources(e.target.value)} />
-      </Field>
-      <Field label="Patterns" hint='One per line: starts_with:tmp- · contains:sandbox · tag_equals:Env=dev'>
-        <textarea rows={3} className={`${input} font-mono`} value={patterns} onChange={e => setPatterns(e.target.value)} />
-      </Field>
-      <Field label="Keep anyway" hint="Wins over the patterns above, so one resource can be pulled back in.">
-        <textarea rows={2} className={`${input} font-mono`} value={whitelist} onChange={e => setWhitelist(e.target.value)} />
-      </Field>
-    </Modal>
-  );
-}
-
-// ── Rule editor ───────────────────────────────────────────────────────
-
-function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: {
-  rule: Guardrail | null; catalog: CatalogEntry[]; exclusions: AwsExclusionList[];
-  isAdmin: boolean; adminTeam: string; onClose: () => void;
-}) {
-  const create = useCreateGuardrail();
-  const update = useUpdateGuardrail();
-
-  const [kind, setKind] = useState(rule?.kind ?? catalog[0]?.kind ?? "");
-  const entry = catalog.find(c => c.kind === kind);
-
-  const [name, setName] = useState(rule?.name ?? "");
-  const [description, setDescription] = useState(rule?.description ?? "");
-  const [mode, setMode] = useState(rule?.mode ?? "report");
-  const [applyOnCreate, setApplyOnCreate] = useState(rule?.applyOnCreate ?? true);
-  const [paramsText, setParamsText] = useState(
-    JSON.stringify(rule?.params ?? entry?.defaultParams ?? {}, null, 2));
-  const [selected, setSelected] = useState<string[]>(rule?.exclusionLists ?? []);
-  const [error, setError] = useState<string | null>(null);
-
-  const enforceBlocked = !isAdmin || !(entry?.canRemediate ?? true);
-
-  const onKindChange = (k: string) => {
-    setKind(k);
-    const e = catalog.find(c => c.kind === k);
-    setParamsText(JSON.stringify(e?.defaultParams ?? {}, null, 2));
-    if (!e?.canRemediate) setMode("report");
-    if (!name) setName(label(k));
-  };
-
-  const submit = async () => {
-    setError(null);
-    let params: Record<string, any>;
-    try {
-      params = paramsText.trim() ? JSON.parse(paramsText) : {};
-    } catch {
-      setError("Parameters must be valid JSON.");
-      return;
-    }
-    const body = { name, description, kind, mode, applyOnCreate, params, exclusionLists: selected };
-    try {
-      if (rule) await update.mutateAsync({ id: rule.id, body });
-      else await create.mutateAsync(body);
-      onClose();
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const input = "w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
-
-  return (
-    <Modal title={rule ? "Edit guardrail" : "New guardrail"} onClose={onClose} onSubmit={submit} error={error}>
-      <Field label="Rule type">
-        <select className={input} value={kind} onChange={e => onKindChange(e.target.value)} disabled={!!rule}>
-          {catalog.map(c => <option key={c.kind} value={c.kind}>{label(c.kind)}</option>)}
-        </select>
-        {rule && <p className="text-[11px] text-slate-400 mt-1">Rule type can't be changed after creation — delete and recreate instead.</p>}
-      </Field>
-
-      <Field label="Name"><input className={input} value={name} onChange={e => setName(e.target.value)} /></Field>
-      <Field label="Description"><input className={input} value={description} onChange={e => setDescription(e.target.value)} /></Field>
-
-      <Field label="Mode" hint={
-        !entry?.canRemediate
-          ? "This rule is report-only: fixing it automatically could cut live access."
-          : !isAdmin
-            ? `Enforce mode requires the "${adminTeam}" team.`
-            : "Report finds violations. Enforce also fixes them, automatically."
-      }>
-        <div className="flex gap-2">
-          {(["report", "enforce"] as const).map(m => (
-            <button key={m} type="button"
-              onClick={() => !(m === "enforce" && enforceBlocked) && setMode(m)}
-              disabled={m === "enforce" && enforceBlocked}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition ${
-                mode === m
-                  ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
-              } ${m === "enforce" && enforceBlocked ? "opacity-40 cursor-not-allowed" : ""}`}
-            >
-              {m === "enforce" && enforceBlocked && <i className="ph-fill ph-lock-simple mr-1"></i>}
-              {m}
-            </button>
-          ))}
-        </div>
-      </Field>
-
-      <Field label="Run when a resource is created" hint={
-        entry?.createEvents.length ? `Triggers on ${entry.createEvents.join(", ")}` : "This rule type has no creation event — the sweep covers it."
-      }>
-        <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
-          <input type="checkbox" checked={applyOnCreate} onChange={e => setApplyOnCreate(e.target.checked)}
-            disabled={!entry?.createEvents.length} className="rounded border-slate-300 dark:border-slate-600" />
-          Enabled
-        </label>
-      </Field>
-
-      <Field label="Parameters" hint="JSON. Defaults are filled in from the rule type.">
-        <textarea rows={5} className={`${input} font-mono text-xs`} value={paramsText} onChange={e => setParamsText(e.target.value)} />
-      </Field>
-
-      <Field label="Exclusion lists">
-        {exclusions.length === 0 ? (
-          <p className="text-xs text-slate-400">None defined yet.</p>
-        ) : (
-          <div className="space-y-1">
-            {exclusions.map(l => (
-              <label key={l.id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
-                <input type="checkbox" checked={selected.includes(l.id)}
-                  onChange={e => setSelected(s => e.target.checked ? [...s, l.id] : s.filter(x => x !== l.id))}
-                  className="rounded border-slate-300 dark:border-slate-600" />
-                {l.name}
-              </label>
-            ))}
-          </div>
-        )}
-      </Field>
-    </Modal>
-  );
-}
-
-// ── shared bits ───────────────────────────────────────────────────────
-
-function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
-  return (
-    <div className="mb-4">
-      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">{label}</label>
-      {children}
-      {hint && <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{hint}</p>}
-    </div>
-  );
-}
-
-function Modal({ title, onClose, onSubmit, error, children }: {
-  title: string; onClose: () => void; onSubmit: () => void; error: string | null; children: React.ReactNode;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
-        onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900">
-          <h3 className="font-bold text-slate-900 dark:text-white">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"><i className="ph-bold ph-x"></i></button>
-        </div>
-        <div className="p-5">
-          {children}
-          {error && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300">
-              {error}
-            </div>
-          )}
-          <div className="flex justify-end gap-2 pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200">Cancel</button>
-            <button onClick={onSubmit} className="px-4 py-2 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-semibold hover:opacity-90">Save</button>
-          </div>
-        </div>
+    <div className="mt-4 pl-4 border-l-2 border-slate-900 dark:border-white max-w-xl space-y-4 animate-fade-in">
+      <label className="block">
+        <span className="block text-[11px] uppercase tracking-[0.18em] text-slate-400 font-semibold mb-2">Name</span>
+        <input value={name} onChange={e => setName(e.target.value)}
+          className="w-full bg-transparent border-0 border-b border-slate-300 dark:border-slate-600 pb-1.5 text-[15px] text-slate-900 dark:text-white focus:outline-none focus:border-slate-900 dark:focus:border-white" />
+      </label>
+      <label className="block">
+        <span className="block text-[13px] text-slate-700 dark:text-slate-300 mb-1.5">Exact names, one per line</span>
+        <textarea rows={2} value={resources} onChange={e => setResources(e.target.value)} className={field} />
+      </label>
+      <label className="block">
+        <span className="block text-[13px] text-slate-700 dark:text-slate-300 mb-1.5">Patterns, one per line</span>
+        <textarea rows={3} value={patterns} onChange={e => setPatterns(e.target.value)} className={field}
+          placeholder={"starts_with:tmp-\ncontains:sandbox\ntag_equals:Env=dev"} />
+      </label>
+      <label className="block">
+        <span className="block text-[13px] text-slate-700 dark:text-slate-300 mb-1.5">
+          Keep anyway <span className="text-slate-400">— overrides the patterns above</span>
+        </span>
+        <textarea rows={2} value={whitelist} onChange={e => setWhitelist(e.target.value)} className={field} />
+      </label>
+      {error && <p className="text-[13px] text-rose-600 dark:text-rose-400">{error}</p>}
+      <div className="flex items-center gap-3">
+        <button onClick={submit} className="px-4 py-2 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-medium hover:opacity-85">Save</button>
+        <button onClick={onCancel} className="text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white">Cancel</button>
       </div>
     </div>
   );

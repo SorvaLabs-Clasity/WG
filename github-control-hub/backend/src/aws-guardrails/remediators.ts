@@ -1,5 +1,6 @@
 import { GuardrailKind, ResourceSnapshot } from "./types";
 import { httpsOnlyStatement } from "./catalog";
+import { snapRetention } from "./types";
 
 /**
  * The only code in the engine that writes to AWS.
@@ -53,14 +54,15 @@ const remediators: Partial<Record<GuardrailKind, Remediator>> = {
     const { CloudWatchLogsClient, PutRetentionPolicyCommand, DeleteRetentionPolicyCommand } =
       await import("@aws-sdk/client-cloudwatch-logs");
     const logs = new CloudWatchLogsClient({ region: REGION });
-    const minDays: number = params.minDays ?? 365;
+    // CloudWatch rejects arbitrary retention values, so round up to one it takes.
+    const target = snapRetention(params.setToDays ?? params.minDays ?? 365);
     const previous: number | undefined = resource.state.retentionInDays;
 
-    await logs.send(new PutRetentionPolicyCommand({ logGroupName: resource.id, retentionInDays: minDays }));
+    await logs.send(new PutRetentionPolicyCommand({ logGroupName: resource.id, retentionInDays: target }));
     void DeleteRetentionPolicyCommand; // referenced by the undo action below
     return {
       changed: true,
-      description: `Set retention on ${resource.id} to ${minDays} days (was ${previous ?? "never expire"})`,
+      description: `Set retention on ${resource.id} to ${target} days (was ${previous ?? "never expire"})`,
       undo: { action: "logs_restore_retention", params: { logGroup: resource.id, retentionInDays: previous ?? null } },
     };
   },
@@ -128,14 +130,14 @@ const remediators: Partial<Record<GuardrailKind, Remediator>> = {
   async rds_backup_retention_min(resource, params) {
     const { RDSClient, ModifyDBInstanceCommand } = await import("@aws-sdk/client-rds");
     const rds = new RDSClient({ region: REGION });
-    const minDays: number = params.minDays ?? 7;
+    const target: number = params.setToDays ?? params.minDays ?? 7;
     const before = resource.state.backupRetentionPeriod ?? 0;
     await rds.send(new ModifyDBInstanceCommand({
-      DBInstanceIdentifier: resource.id, BackupRetentionPeriod: minDays, ApplyImmediately: true,
+      DBInstanceIdentifier: resource.id, BackupRetentionPeriod: target, ApplyImmediately: true,
     }));
     return {
       changed: true,
-      description: `Set backup retention on ${resource.id} to ${minDays} days (was ${before})`,
+      description: `Set backup retention on ${resource.id} to ${target} days (was ${before})`,
       undo: { action: "rds_restore_backup_retention", params: { instance: resource.id, days: before } },
     };
   },

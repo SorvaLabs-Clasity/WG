@@ -2,8 +2,24 @@ import { apiGet, apiPost, apiPut, apiDelete } from "./client";
 
 export type GuardrailMode = "report" | "enforce";
 
+export interface ParamSpec {
+  key: string;
+  label: string;
+  help?: string;
+  type: "number" | "boolean" | "text" | "ports" | "choice";
+  default: any;
+  allowed?: number[];
+  options?: { value: string; label: string }[];
+  unit?: string;
+  min?: number;
+}
+
 export interface CatalogEntry {
   kind: string;
+  /** Human title — `kind` is an internal identifier and should not be shown. */
+  title: string;
+  summary: string;
+  paramSchema: ParamSpec[];
   resourceType: string;
   defaultMode: GuardrailMode;
   defaultParams: Record<string, any>;

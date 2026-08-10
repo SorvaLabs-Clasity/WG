@@ -95,6 +95,27 @@ export interface Finding {
 }
 
 /**
+ * Describes one setting on a rule so the UI can render a real control for it.
+ *
+ * Without this the editor falls back to a raw JSON blob, which asks the person
+ * configuring a compliance rule to know the internal key names. The schema is
+ * the contract: label and help are what the user reads, `key` never appears.
+ */
+export interface ParamSpec {
+  key: string;
+  label: string;
+  help?: string;
+  type: "number" | "boolean" | "text" | "ports" | "choice";
+  default: any;
+  /** For type "number": restrict to these values (CloudWatch retention, etc.). */
+  allowed?: number[];
+  /** For type "choice". */
+  options?: { value: string; label: string }[];
+  unit?: string;
+  min?: number;
+}
+
+/**
  * One rule kind.
  *
  * `evaluate` is pure — state and params in, verdict out — which is what makes
@@ -103,11 +124,27 @@ export interface Finding {
  */
 export interface RuleKind {
   kind: GuardrailKind;
+  /** Shown in the UI. The `kind` string is an internal identifier. */
+  title: string;
+  summary: string;
   resourceType: string;
   /** Sensible default when a rule of this kind is created. */
   defaultMode: GuardrailMode;
   defaultParams: Record<string, any>;
+  /** One entry per configurable setting, in the order the UI should show them. */
+  paramSchema: ParamSpec[];
   /** CloudTrail event names that should trigger this rule immediately. */
   createEvents: string[];
   evaluate(resource: ResourceSnapshot, params: Record<string, any>): Evaluation;
+}
+
+/** CloudWatch Logs only accepts these retention periods. */
+export const CLOUDWATCH_RETENTION_DAYS = [
+  1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731,
+  1096, 1827, 2192, 2557, 2922, 3288, 3653,
+];
+
+/** Round up to the nearest value CloudWatch will accept. */
+export function snapRetention(days: number): number {
+  return CLOUDWATCH_RETENTION_DAYS.find(d => d >= days) ?? 3653;
 }

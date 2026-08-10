@@ -1,4 +1,4 @@
-import { RuleKind, Evaluation, ResourceSnapshot, GuardrailKind } from "./types";
+import { RuleKind, Evaluation, ResourceSnapshot, GuardrailKind, CLOUDWATCH_RETENTION_DAYS, snapRetention } from "./types";
 
 /**
  * The rule catalog.
@@ -29,9 +29,15 @@ export function httpsOnlyStatement(bucket: string, sid: string) {
 
 const s3HttpsOnly: RuleKind = {
   kind: "s3_https_only",
+  title: "S3 — deny non-TLS requests",
+  summary: "Every bucket policy must deny requests that arrive over plain HTTP.",
   resourceType: "s3:bucket",
   defaultMode: "report",
   defaultParams: { sid: "EnforceHTTPSOnly" },
+  paramSchema: [
+    { key: "sid", label: "Statement name", type: "text", default: "EnforceHTTPSOnly",
+      help: "The Sid written into the bucket policy. Statements with this name are replaced; everything else is left alone." },
+  ],
   createEvents: ["CreateBucket"],
   evaluate(resource, params) {
     const sid = params.sid || "EnforceHTTPSOnly";
@@ -61,12 +67,27 @@ const s3HttpsOnly: RuleKind = {
 
 const logRetentionMin: RuleKind = {
   kind: "log_retention_min",
+  title: "CloudWatch Logs — minimum retention",
+  summary: "Log groups must keep logs for at least a set period.",
   resourceType: "logs:log-group",
   defaultMode: "report",
-  defaultParams: { minDays: 365, leaveLongerAlone: true, neverExpireIsCompliant: true },
+  defaultParams: { minDays: 365, setToDays: 365, leaveLongerAlone: true, neverExpireIsCompliant: true },
+  paramSchema: [
+    { key: "minDays", label: "Flag anything retaining less than", type: "number", default: 365,
+      unit: "days", allowed: CLOUDWATCH_RETENTION_DAYS,
+      help: "The threshold a log group must meet to count as compliant." },
+    { key: "setToDays", label: "When fixing, set retention to", type: "number", default: 365,
+      unit: "days", allowed: CLOUDWATCH_RETENTION_DAYS,
+      help: "Usually the same as the threshold, but you can raise it higher. CloudWatch only accepts specific values, so anything else rounds up to the next one it allows." },
+    { key: "neverExpireIsCompliant", label: "Treat \u201cnever expire\u201d as compliant", type: "boolean", default: true,
+      help: "Off means a log group set to keep logs forever gets pulled down to the value above." },
+    { key: "leaveLongerAlone", label: "Leave longer retention untouched", type: "boolean", default: true,
+      help: "Off means retention longer than the threshold is reduced to it \u2014 rarely what you want." },
+  ],
   createEvents: ["CreateLogGroup"],
   evaluate(resource, params) {
     const minDays: number = params.minDays ?? 365;
+    const setTo: number = snapRetention(params.setToDays ?? minDays);
     const leaveLongerAlone: boolean = params.leaveLongerAlone !== false;
     const neverExpireIsCompliant: boolean = params.neverExpireIsCompliant !== false;
     const current: number | undefined = resource.state.retentionInDays;
@@ -76,9 +97,9 @@ const logRetentionMin: RuleKind = {
       return neverExpireIsCompliant
         ? ok("Never expires")
         : bad("Set to never expire", {
-            description: `Set retention to ${minDays} days`,
+            description: `Set retention to ${setTo} days`,
             before: "never expires",
-            after: `${minDays} days`,
+            after: `${setTo} days`,
           });
     }
 
@@ -88,16 +109,16 @@ const logRetentionMin: RuleKind = {
         : current === minDays
           ? ok(`Retention is exactly ${minDays}d`)
           : bad(`Retention ${current}d exceeds the required ${minDays}d`, {
-              description: `Set retention to ${minDays} days`,
+              description: `Set retention to ${setTo} days`,
               before: `${current} days`,
-              after: `${minDays} days`,
+              after: `${setTo} days`,
             });
     }
 
     return bad(`Retention ${current}d is below the ${minDays}d minimum`, {
-      description: `Raise retention from ${current} to ${minDays} days`,
+      description: `Raise retention from ${current} to ${setTo} days`,
       before: `${current} days`,
-      after: `${minDays} days`,
+      after: `${setTo} days`,
     });
   },
 };
@@ -106,6 +127,9 @@ const logRetentionMin: RuleKind = {
 
 const s3BlockPublicAccess: RuleKind = {
   kind: "s3_block_public_access",
+  title: "S3 — block public access",
+  summary: "All four Block Public Access settings must be on.",
+  paramSchema: [],
   resourceType: "s3:bucket",
   defaultMode: "report",
   defaultParams: {},
@@ -127,6 +151,16 @@ const s3BlockPublicAccess: RuleKind = {
 
 const s3DefaultEncryption: RuleKind = {
   kind: "s3_default_encryption",
+  title: "S3 — default encryption",
+  summary: "Buckets must encrypt objects at rest by default.",
+  paramSchema: [
+    { key: "algorithm", label: "Encryption to apply when fixing", type: "choice", default: "AES256",
+      options: [
+        { value: "AES256", label: "SSE-S3 (AES256) \u2014 no key management" },
+        { value: "aws:kms", label: "SSE-KMS \u2014 uses your KMS key" },
+      ],
+      help: "A bucket already encrypted with either algorithm counts as compliant; this only decides what to set on ones that are not." },
+  ],
   resourceType: "s3:bucket",
   defaultMode: "report",
   defaultParams: { algorithm: "AES256" },
@@ -146,6 +180,9 @@ const s3DefaultEncryption: RuleKind = {
 
 const s3Versioning: RuleKind = {
   kind: "s3_versioning",
+  title: "S3 — versioning enabled",
+  summary: "Object versions must be retained, so deletions are recoverable.",
+  paramSchema: [],
   resourceType: "s3:bucket",
   defaultMode: "report",
   defaultParams: {},
@@ -165,6 +202,9 @@ const s3Versioning: RuleKind = {
 
 const ebsEncryptionDefault: RuleKind = {
   kind: "ebs_encryption_default",
+  title: "EBS — encryption by default",
+  summary: "New EBS volumes in this region must be encrypted automatically.",
+  paramSchema: [],
   resourceType: "ec2:account",
   defaultMode: "report",
   defaultParams: {},
@@ -184,9 +224,17 @@ const ebsEncryptionDefault: RuleKind = {
 
 const rdsBackupRetentionMin: RuleKind = {
   kind: "rds_backup_retention_min",
+  title: "RDS — minimum backup retention",
+  summary: "Database instances must keep automated backups for a set period.",
+  paramSchema: [
+    { key: "minDays", label: "Flag anything retaining less than", type: "number", default: 7, unit: "days", min: 1,
+      help: "RDS allows 1\u201335 days. Zero disables automated backups entirely." },
+    { key: "setToDays", label: "When fixing, set retention to", type: "number", default: 7, unit: "days", min: 1,
+      help: "Applied immediately, which can cause a brief I/O pause on some engines." },
+  ],
   resourceType: "rds:db-instance",
   defaultMode: "report",
-  defaultParams: { minDays: 7 },
+  defaultParams: { minDays: 7, setToDays: 7 },
   createEvents: ["CreateDBInstance"],
   evaluate(resource, params) {
     const minDays: number = params.minDays ?? 7;
@@ -204,6 +252,14 @@ const rdsBackupRetentionMin: RuleKind = {
 
 const iamPasswordPolicy: RuleKind = {
   kind: "iam_password_policy",
+  title: "IAM — account password policy",
+  summary: "The account password policy must meet minimum strength rules.",
+  paramSchema: [
+    { key: "minLength", label: "Minimum password length", type: "number", default: 14, unit: "characters", min: 6 },
+    { key: "maxAgeDays", label: "Force rotation after", type: "number", default: 90, unit: "days", min: 1,
+      help: "Set 0 to not require rotation." },
+    { key: "reusePrevention", label: "Block reuse of the last", type: "number", default: 24, unit: "passwords", min: 0 },
+  ],
   resourceType: "iam:account",
   defaultMode: "report",
   defaultParams: { minLength: 14, maxAgeDays: 90, reusePrevention: 24 },
@@ -234,6 +290,12 @@ const iamPasswordPolicy: RuleKind = {
 
 const sgNoPublicAdminIngress: RuleKind = {
   kind: "sg_no_public_admin_ingress",
+  title: "Security groups — no public admin ports",
+  summary: "Admin ports must not be reachable from the whole internet.",
+  paramSchema: [
+    { key: "ports", label: "Ports that must not be open to 0.0.0.0/0", type: "ports", default: [22, 3389],
+      help: "Comma separated. A rule spanning a port range that covers any of these is flagged too." },
+  ],
   resourceType: "ec2:security-group",
   defaultMode: "report",
   defaultParams: { ports: [22, 3389] },
@@ -261,6 +323,9 @@ const sgNoPublicAdminIngress: RuleKind = {
 
 const rdsNoPublicAccess: RuleKind = {
   kind: "rds_no_public_access",
+  title: "RDS — not publicly accessible",
+  summary: "Database instances must not have a public endpoint.",
+  paramSchema: [],
   resourceType: "rds:db-instance",
   defaultMode: "report",
   defaultParams: {},
@@ -280,6 +345,9 @@ const rdsNoPublicAccess: RuleKind = {
 
 const ec2Imdsv2Required: RuleKind = {
   kind: "ec2_imdsv2_required",
+  title: "EC2 — IMDSv2 required",
+  summary: "Instances must require session tokens on the metadata endpoint.",
+  paramSchema: [],
   resourceType: "ec2:instance",
   defaultMode: "report",
   defaultParams: {},
@@ -299,6 +367,12 @@ const ec2Imdsv2Required: RuleKind = {
 
 const cloudtrailEnabled: RuleKind = {
   kind: "cloudtrail_enabled",
+  title: "CloudTrail — enabled and logging",
+  summary: "An active trail must exist. Also the prerequisite for creation events reaching this app.",
+  paramSchema: [
+    { key: "requireMultiRegion", label: "Require the trail to be multi-region", type: "boolean", default: true,
+      help: "A single-region trail leaves activity in other regions unrecorded." },
+  ],
   resourceType: "cloudtrail:account",
   defaultMode: "report",
   defaultParams: { requireMultiRegion: true },
