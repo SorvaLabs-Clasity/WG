@@ -37,7 +37,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const isActivity = location.pathname.startsWith("/activity");
 
   const navItems = [
-    { label: "Templates", icon: "ph-copy", path: "/templates", isActive: isTemplates },
+    { label: "Templates & Automation", icon: "ph-copy", path: "/templates", isActive: isTemplates },
     { label: "Security", icon: "ph-shield-warning", path: "/security", isActive: isSecurity },
     { label: "Compliance", icon: "ph-check-square-offset", path: "/compliance", isActive: isCompliance },
     { label: "Dependabot", icon: "ph-bug", path: "/dependencies", isActive: isDependencies },

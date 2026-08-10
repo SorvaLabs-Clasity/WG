@@ -1,0 +1,153 @@
+/**
+ * Tests for the AWS guardrail catalog and exclusion matching.
+ *
+ * Every evaluate() is pure, so the whole catalog is testable without AWS. The
+ * cases that matter are the ones where a wrong answer causes real damage:
+ * flagging a bucket that is already correct, or lowering a retention period
+ * that was deliberately set longer.
+ */
+import { evaluateResource, httpsOnlyStatement, CATALOG, kindsForEvent } from "./src/aws-guardrails/catalog";
+import { isExcluded } from "./src/aws-guardrails/exclusions";
+import type { ResourceSnapshot, AwsExclusionList } from "./src/aws-guardrails/types";
+
+let failures = 0;
+function check(name: string, ok: boolean, got?: unknown) {
+  console.log((ok ? "  PASS  " : "  FAIL  ") + name + (ok ? "" : ` -> got: ${JSON.stringify(got)}`));
+  if (!ok) failures++;
+}
+
+const res = (id: string, state: Record<string, any>, tags: Record<string, string> = {}): ResourceSnapshot =>
+  ({ id, type: "test", tags, state });
+
+// ── log_retention_min: the rule most likely to do harm if wrong ───────
+{
+  const p = { minDays: 365, leaveLongerAlone: true, neverExpireIsCompliant: true };
+
+  const low = evaluateResource("log_retention_min", res("lg", { retentionInDays: 30 }), p);
+  check("retention below minimum is a violation", low.verdict === "violation", low);
+  check("  and proposes raising it to the minimum", low.fix?.after === "365 days", low.fix);
+
+  const exact = evaluateResource("log_retention_min", res("lg", { retentionInDays: 365 }), p);
+  check("retention exactly at minimum is compliant", exact.verdict === "compliant", exact);
+
+  const high = evaluateResource("log_retention_min", res("lg", { retentionInDays: 3653 }), p);
+  check("LONGER retention is left alone", high.verdict === "compliant", high);
+  check("  and proposes no change", high.fix === undefined, high.fix);
+
+  const never = evaluateResource("log_retention_min", res("lg", {}), p);
+  check("never-expire is left alone", never.verdict === "compliant", never);
+
+  const strictNever = evaluateResource("log_retention_min", res("lg", {}),
+    { ...p, neverExpireIsCompliant: false });
+  check("never-expire flagged when configured to be", strictNever.verdict === "violation", strictNever);
+
+  const clamp = evaluateResource("log_retention_min", res("lg", { retentionInDays: 3653 }),
+    { ...p, leaveLongerAlone: false });
+  check("longer retention flagged when leaveLongerAlone is off", clamp.verdict === "violation", clamp);
+}
+
+// ── s3_https_only: must not clobber existing policy ───────────────────
+{
+  const sid = "EnforceHTTPSOnly";
+  const existing = {
+    Version: "2012-10-17",
+    Statement: [{ Sid: "AllowReads", Effect: "Allow", Principal: "*", Action: "s3:GetObject", Resource: "arn:aws:s3:::b/*" }],
+  };
+
+  const v = evaluateResource("s3_https_only", res("b", { policy: existing }), { sid });
+  check("bucket without TLS deny is a violation", v.verdict === "violation", v);
+  const after: any = v.fix?.after;
+  check("  keeps the unrelated statement", after.Statement.some((s: any) => s.Sid === "AllowReads"), after);
+  check("  adds the deny statement", after.Statement.some((s: any) => s.Sid === sid), after);
+  check("  deny targets bucket and objects",
+    JSON.stringify(after.Statement.find((s: any) => s.Sid === sid).Resource) ===
+    JSON.stringify(["arn:aws:s3:::b", "arn:aws:s3:::b/*"]), after);
+
+  const already = evaluateResource("s3_https_only",
+    res("b", { policy: { Version: "2012-10-17", Statement: [httpsOnlyStatement("b", sid)] } }), { sid });
+  check("already-correct bucket is compliant", already.verdict === "compliant", already);
+
+  // Someone else's equivalent statement under a different name must also count.
+  const foreign = evaluateResource("s3_https_only",
+    res("b", { policy: { Statement: [{ ...httpsOnlyStatement("b", "SomeoneElsesName") }] } }), { sid });
+  check("equivalent deny under another Sid is compliant", foreign.verdict === "compliant", foreign);
+
+  const none = evaluateResource("s3_https_only", res("b", { policy: null }), { sid });
+  check("bucket with no policy is a violation", none.verdict === "violation", none);
+  check("  and builds a fresh document", (none.fix?.after as any).Statement.length === 1, none.fix);
+}
+
+// ── a sample of the rest ──────────────────────────────────────────────
+{
+  check("block public access: all on is compliant",
+    evaluateResource("s3_block_public_access", res("b", { publicAccessBlock: { BlockPublicAcls: true, IgnorePublicAcls: true, BlockPublicPolicy: true, RestrictPublicBuckets: true } }), {}).verdict === "compliant");
+  check("block public access: partial is a violation",
+    evaluateResource("s3_block_public_access", res("b", { publicAccessBlock: { BlockPublicAcls: true } }), {}).verdict === "violation");
+
+  check("sg: 0.0.0.0/0 on 22 is a violation",
+    evaluateResource("sg_no_public_admin_ingress", res("sg", { ingress: [{ fromPort: 22, toPort: 22, ipRanges: ["0.0.0.0/0"] }] }), { ports: [22, 3389] }).verdict === "violation");
+  check("sg: 0.0.0.0/0 on 443 is fine",
+    evaluateResource("sg_no_public_admin_ingress", res("sg", { ingress: [{ fromPort: 443, toPort: 443, ipRanges: ["0.0.0.0/0"] }] }), { ports: [22, 3389] }).verdict === "compliant");
+  check("sg: wide port range covering 22 is caught",
+    evaluateResource("sg_no_public_admin_ingress", res("sg", { ingress: [{ fromPort: 0, toPort: 65535, ipRanges: ["0.0.0.0/0"] }] }), { ports: [22] }).verdict === "violation");
+  check("sg: 22 open to a specific CIDR is fine",
+    evaluateResource("sg_no_public_admin_ingress", res("sg", { ingress: [{ fromPort: 22, toPort: 22, ipRanges: ["10.0.0.0/8"] }] }), { ports: [22] }).verdict === "compliant");
+
+  check("cloudtrail: no trail is a violation",
+    evaluateResource("cloudtrail_enabled", res("acct", { trails: [] }), { requireMultiRegion: true }).verdict === "violation");
+  check("cloudtrail: logging multi-region trail is compliant",
+    evaluateResource("cloudtrail_enabled", res("acct", { trails: [{ isLogging: true, isMultiRegion: true }] }), { requireMultiRegion: true }).verdict === "compliant");
+  check("cloudtrail: trail that is not logging is a violation",
+    evaluateResource("cloudtrail_enabled", res("acct", { trails: [{ isLogging: false, isMultiRegion: true }] }), { requireMultiRegion: true }).verdict === "violation");
+
+  check("imdsv2: required is compliant",
+    evaluateResource("ec2_imdsv2_required", res("i", { httpTokens: "required" }), {}).verdict === "compliant");
+  check("imdsv2: optional is a violation",
+    evaluateResource("ec2_imdsv2_required", res("i", { httpTokens: "optional" }), {}).verdict === "violation");
+
+  check("rds: public access is a violation",
+    evaluateResource("rds_no_public_access", res("db", { publiclyAccessible: true }), {}).verdict === "violation");
+  check("rds: backup retention below minimum is a violation",
+    evaluateResource("rds_backup_retention_min", res("db", { backupRetentionPeriod: 1 }), { minDays: 7 }).verdict === "violation");
+}
+
+// ── exclusions ────────────────────────────────────────────────────────
+{
+  const list = (over: Partial<AwsExclusionList>): AwsExclusionList => ({
+    id: "l1", name: "Sandbox", description: "", resources: [], patterns: [], whitelist: [],
+    createdBy: "t", createdAt: "", updatedAt: "", ...over,
+  });
+
+  check("explicit resource is excluded",
+    isExcluded(res("my-bucket", {}), [list({ resources: ["my-bucket"] })]).excluded);
+  check("starts_with excludes",
+    isExcluded(res("tmp-scratch", {}), [list({ patterns: [{ id: "p", type: "starts_with", value: "tmp-" }] })]).excluded);
+  check("starts_with does not over-match",
+    !isExcluded(res("prod-tmp", {}), [list({ patterns: [{ id: "p", type: "starts_with", value: "tmp-" }] })]).excluded);
+  check("contains excludes",
+    isExcluded(res("acme-sandbox-logs", {}), [list({ patterns: [{ id: "p", type: "contains", value: "sandbox" }] })]).excluded);
+  check("tag_equals excludes",
+    isExcluded(res("b", {}, { Env: "dev" }), [list({ patterns: [{ id: "p", type: "tag_equals", value: "Env=dev" }] })]).excluded);
+  check("tag_equals does not match a different value",
+    !isExcluded(res("b", {}, { Env: "prod" }), [list({ patterns: [{ id: "p", type: "tag_equals", value: "Env=dev" }] })]).excluded);
+  check("bare tag key matches presence",
+    isExcluded(res("b", {}, { Temporary: "yes" }), [list({ patterns: [{ id: "p", type: "tag_equals", value: "Temporary" }] })]).excluded);
+  check("whitelist beats a matching pattern",
+    !isExcluded(res("tmp-keepme", {}), [list({ whitelist: ["tmp-keepme"], patterns: [{ id: "p", type: "starts_with", value: "tmp-" }] })]).excluded);
+  check("exclusion reports which list and clause matched",
+    (isExcluded(res("tmp-x", {}), [list({ patterns: [{ id: "p", type: "starts_with", value: "tmp-" }] })]).reason ?? "").includes("Sandbox"));
+  check("no lists means not excluded", !isExcluded(res("anything", {}), []).excluded);
+}
+
+// ── wiring ────────────────────────────────────────────────────────────
+{
+  check("catalog has 12 rule kinds", CATALOG.length === 12, CATALOG.length);
+  check("CreateBucket triggers the S3 rules", kindsForEvent("CreateBucket").length >= 4, kindsForEvent("CreateBucket").map(k => k.kind));
+  check("CreateLogGroup triggers retention", kindsForEvent("CreateLogGroup").some(k => k.kind === "log_retention_min"));
+  check("unknown event triggers nothing", kindsForEvent("SomethingElse").length === 0);
+  check("every kind declares a resource type", CATALOG.every(k => !!k.resourceType));
+  check("every kind defaults to report mode", CATALOG.every(k => k.defaultMode === "report"));
+}
+
+console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
+process.exit(failures === 0 ? 0 : 1);

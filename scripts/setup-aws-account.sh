@@ -6,7 +6,7 @@ set -euo pipefail
 #
 # Creates every resource the app expects in whichever account
 # your credentials currently point at:
-#   - 11 DynamoDB tables (PAY_PER_REQUEST)
+#   - 14 DynamoDB tables (PAY_PER_REQUEST)
 #   - TTL on the auth-codes table
 #   - the Secrets Manager secret holding GitHub credentials
 #
@@ -111,9 +111,25 @@ create_table "${PREFIX}-auth-codes" \
   --attribute-definitions AttributeName=code,AttributeType=S \
   --key-schema AttributeName=code,KeyType=HASH
 
+# ── AWS guardrails ──
+# aws-guardrails / aws-exclusions are keyed on `id`   aws-guardrails/store.ts
+create_table "${PREFIX}-aws-guardrails" \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH
+
+create_table "${PREFIX}-aws-exclusions" \
+  --attribute-definitions AttributeName=id,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH
+
+# findings are keyed pk="FINDING", sk="<ruleId>#<resourceId>" so a re-run
+# overwrites in place rather than accumulating   aws-guardrails/store.ts
+create_table "${PREFIX}-aws-findings" \
+  --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
+  --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE
+
 # ── 2. TTL on auth-codes ──
 echo "==> Waiting for tables to become ACTIVE"
-for t in "${TABLES[@]}" activity scanners graph-edges org-config compliance-cache auth-codes; do
+for t in "${TABLES[@]}" activity scanners graph-edges org-config compliance-cache auth-codes aws-guardrails aws-exclusions aws-findings; do
   $AWS dynamodb wait table-exists --table-name "${PREFIX}-${t}"
 done
 
