@@ -9,6 +9,22 @@ export interface RepoSummary {
   description: string | null;
   language: string | null;
   updated_at: string | null;
+  /**
+   * Everything below already arrives in the listForOrg payload and used to be
+   * discarded. The repo browser filters and sorts on these, so returning them
+   * costs no extra API calls.
+   */
+  pushed_at: string | null;
+  created_at: string | null;
+  archived: boolean;
+  fork: boolean;
+  visibility: string | null;
+  size: number;
+  open_issues_count: number;
+  stargazers_count: number;
+  forks_count: number;
+  topics: string[];
+  html_url: string | null;
 }
 
 export async function listRepos(octokit: Octokit): Promise<RepoSummary[]> {
@@ -36,6 +52,17 @@ export async function listRepos(octokit: Octokit): Promise<RepoSummary[]> {
         description: r.description ?? null,
         language: r.language ?? null,
         updated_at: r.updated_at ?? null,
+        pushed_at: r.pushed_at ?? null,
+        created_at: r.created_at ?? null,
+        archived: !!r.archived,
+        fork: !!r.fork,
+        visibility: (r as any).visibility ?? (r.private ? "private" : "public"),
+        size: r.size ?? 0,
+        open_issues_count: r.open_issues_count ?? 0,
+        stargazers_count: r.stargazers_count ?? 0,
+        forks_count: r.forks_count ?? 0,
+        topics: (r as any).topics ?? [],
+        html_url: r.html_url ?? null,
       });
     }
 

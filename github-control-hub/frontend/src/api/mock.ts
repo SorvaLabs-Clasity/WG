@@ -1,4 +1,4 @@
-import type { Repo } from "../types/Repo";
+import type { Repo, RepoDetails } from "../types/Repo";
 import type { Branch } from "../types/Branch";
 import type { Activity } from "../types/Activity";
 import type { RepoTemplate, BranchRule } from "../types/Template";
@@ -9047,6 +9047,68 @@ function delay(ms = 400): Promise<void> {
 export async function mockFetchRepos(): Promise<Repo[]> {
   await delay();
   return MOCK_REPOS;
+}
+
+export async function mockFetchRepoDetails(repo: string): Promise<RepoDetails> {
+  await delay(300);
+  const base = MOCK_REPOS.find(r => r.name === repo);
+  const seed = repo.length;
+  return {
+    name: repo,
+    full_name: base?.full_name ?? `demo-org/${repo}`,
+    description: base?.description ?? "Demo repository used in offline mode.",
+    html_url: `https://github.com/demo-org/${repo}`,
+    homepage: null,
+    visibility: base?.private ? "private" : "public",
+    default_branch: base?.default_branch ?? "main",
+    archived: false,
+    fork: false,
+    is_template: false,
+    license: "MIT",
+    topics: ["demo", "internal"],
+    size_kb: 1024 + seed * 137,
+    created_at: "2024-02-11T09:20:00Z",
+    updated_at: base?.updated_at ?? "2026-08-01T12:00:00Z",
+    pushed_at: "2026-08-08T17:42:00Z",
+    stargazers_count: seed,
+    watchers_count: seed * 2,
+    forks_count: Math.max(0, seed - 3),
+    open_issues_count: seed * 2,
+    features: { issues: true, projects: false, wiki: false, pages: false, discussions: false },
+    mergeSettings: {
+      allowSquashMerge: true, allowMergeCommit: false, allowRebaseMerge: true,
+      allowAutoMerge: true, deleteBranchOnMerge: true,
+    },
+    languages: [
+      { name: "TypeScript", bytes: 812_344, percent: 78.2 },
+      { name: "JavaScript", bytes: 141_002, percent: 13.6 },
+      { name: "CSS", bytes: 85_112, percent: 8.2 },
+    ],
+    branches: [
+      { name: base?.default_branch ?? "main", protected: true, isDefault: true },
+      { name: "uat", protected: true, isDefault: false },
+      { name: "dev", protected: false, isDefault: false },
+    ],
+    contributors: [
+      { login: "demo-user", contributions: 214, avatarUrl: null },
+      { login: "aisha-k", contributions: 98, avatarUrl: null },
+      { login: "marco-p", contributions: 41, avatarUrl: null },
+    ],
+    contributorCount: 3,
+    openPullRequests: {
+      count: 4,
+      oldest: { number: 112, title: "Bump build toolchain", createdAt: "2026-06-02T10:15:00Z", author: "aisha-k" },
+    },
+    latestRelease: { tag: "v2.4.0", name: "Summer release", publishedAt: "2026-07-19T08:00:00Z" },
+    releaseCount: 12,
+    commitsLast30Days: 47,
+    workflows: [
+      { name: "CI", state: "active", path: ".github/workflows/ci.yml" },
+      { name: "Release", state: "active", path: ".github/workflows/release.yml" },
+    ],
+    environments: ["production", "staging"],
+    hygiene: { hasReadme: true, hasLicense: true, hasCodeowners: false, hasDescription: true, hasTopics: true },
+  };
 }
 
 export async function mockFetchBranches(repo: string): Promise<Branch[]> {
