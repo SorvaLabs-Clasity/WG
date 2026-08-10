@@ -41,7 +41,7 @@
       "ToPort": 443
      }
     ],
-    "VpcId": "vpc-0b23aaa6691e66f1c"
+    "VpcId": "vpc-0172a8c2692c00208"
    },
    "Metadata": {
     "aws:cdk:path": "GitHubControlHub/SecurityGroup/Resource"
@@ -89,12 +89,12 @@
       {
        "Action": "s3:GetObject",
        "Effect": "Allow",
-       "Resource": "arn:aws:s3:::github-control-hub-deploy-315111499557/*"
+       "Resource": "arn:aws:s3:::github-control-hub-deploy-774941662655/*"
       },
       {
        "Action": "secretsmanager:GetSecretValue",
        "Effect": "Allow",
-       "Resource": "arn:aws:secretsmanager:us-east-1:315111499557:secret:github-control-hub/secrets*"
+       "Resource": "arn:aws:secretsmanager:us-east-1:774941662655:secret:github-control-hub/secrets*"
       },
       {
        "Action": [
@@ -108,7 +108,7 @@
         "dynamodb:BatchWriteItem"
        ],
        "Effect": "Allow",
-       "Resource": "arn:aws:dynamodb:us-east-1:315111499557:table/github-control-hub-*"
+       "Resource": "arn:aws:dynamodb:us-east-1:774941662655:table/github-control-hub-*"
       }
      ],
      "Version": "2012-10-17"
@@ -165,7 +165,7 @@
       ]
      }
     ],
-    "SubnetId": "subnet-050dbb3438dc3b662",
+    "SubnetId": "subnet-0a50c95c027d679ca",
     "Tags": [
      {
       "Key": "Name",
@@ -173,7 +173,7 @@
      }
     ],
     "UserData": {
-     "Fn::Base64": "#!/bin/bash\nyum update -y\nyum install -y docker\nsystemctl enable docker\nsystemctl start docker\nusermod -aG docker ec2-user\n\n# Generate self-signed SSL certificate\nmkdir -p /etc/ssl/github-control-hub\nopenssl req -x509 -nodes -days 365 -newkey rsa:2048 \\\n  -keyout /etc/ssl/github-control-hub/server.key \\\n  -out /etc/ssl/github-control-hub/server.crt \\\n  -subj \"/CN=github-control-hub\""
+     "Fn::Base64": "#!/bin/bash\nyum update -y\nyum install -y docker\nsystemctl enable docker\nsystemctl start docker\nusermod -aG docker ec2-user\n\n# Generate self-signed SSL certificate\nmkdir -p /etc/ssl/github-control-hub\nopenssl req -x509 -nodes -days 365 -newkey rsa:2048 \\\n  -keyout /etc/ssl/github-control-hub/server.key \\\n  -out /etc/ssl/github-control-hub/server.crt \\\n  -subj \"/CN=github-control-hub\"\nchmod 644 /etc/ssl/github-control-hub/server.key /etc/ssl/github-control-hub/server.crt"
     }
    },
    "DependsOn": [
@@ -184,10 +184,28 @@
     "aws:cdk:path": "GitHubControlHub/Instance/Resource"
    }
   },
+  "Eip": {
+   "Type": "AWS::EC2::EIP",
+   "Properties": {
+    "Domain": "vpc",
+    "InstanceId": {
+     "Ref": "InstanceC1063A87"
+    },
+    "Tags": [
+     {
+      "Key": "Name",
+      "Value": "github-control-hub"
+     }
+    ]
+   },
+   "Metadata": {
+    "aws:cdk:path": "GitHubControlHub/Eip"
+   }
+  },
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
-    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1WLSw6CMBRF18K8PLV+NuDAOJLUBZhaHsmD0pJ+NIR07xYMMY7u59zLgR/2sC3k25eq7kpNT5juQaqOCfQ2OoUss8eEimeAKjoK48XZOLBzY/6Lq/FBmvzIZPWJkexhElYv9aKV1aTGOf7cuq+cbUhjSguWTvYY0M3hFsMQQ2LG1git37z4EU6wK1pPVLpoAvUI4qsfIi5okNcAAAA="
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/1WLWw6CMBRE18J/uWp9bMAYw5cEF2BquSQXSkv60BDSvVswRv2amXMyHPhuC+tMPF0u6y5XdIfp6oXsWIXOBCuRJXebUPIkUAZLfjxbEwZ2bPQ/KLTzQqdHMr/9VJSRkehhqoxayJKlUSTHeX7b51Za05DCGBctrOjRo53HJfgh+Mi0qRFat3rwPRxgk7WOKLdBe+oRqne+AJykm1veAAAA"
    },
    "Metadata": {
     "aws:cdk:path": "GitHubControlHub/CDKMetadata/Default"
@@ -213,12 +231,9 @@
    }
   },
   "PublicIp": {
-   "Description": "EC2 public IP",
+   "Description": "Elastic IP — stable across instance restarts",
    "Value": {
-    "Fn::GetAtt": [
-     "InstanceC1063A87",
-     "PublicIp"
-    ]
+    "Ref": "Eip"
    }
   },
   "WebhookUrl": {
@@ -229,10 +244,7 @@
      [
       "https://",
       {
-       "Fn::GetAtt": [
-        "InstanceC1063A87",
-        "PublicIp"
-       ]
+       "Ref": "Eip"
       },
       "/api/webhooks/github"
      ]

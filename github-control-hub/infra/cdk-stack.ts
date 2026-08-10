@@ -105,6 +105,16 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     cdk.Tags.of(instance).add("Name", "github-control-hub");
 
+    // ── Elastic IP ──
+    // Without this the instance's public IP changes on every stop/start, which
+    // silently breaks the GitHub webhook (it points at a bare IP, not a DNS name).
+    // Free while associated with a running instance.
+    const eip = new ec2.CfnEIP(this, "Eip", {
+      domain: "vpc",
+      instanceId: instance.instanceId,
+      tags: [{ key: "Name", value: "github-control-hub" }],
+    });
+
     // ── Outputs ──
     new cdk.CfnOutput(this, "InstanceId", {
       value: instance.instanceId,
@@ -112,12 +122,12 @@ export class GitHubControlHubStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "PublicIp", {
-      value: instance.instancePublicIp,
-      description: "EC2 public IP",
+      value: eip.ref,
+      description: "Elastic IP — stable across instance restarts",
     });
 
     new cdk.CfnOutput(this, "WebhookUrl", {
-      value: `https://${instance.instancePublicIp}/api/webhooks/github`,
+      value: `https://${eip.ref}/api/webhooks/github`,
       description: "GitHub webhook payload URL",
     });
 

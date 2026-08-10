@@ -1,18 +1,18 @@
 {
   "version": "52.0.0",
   "files": {
-    "e11bab0bd8120b7df501e395ccd91235ebbbd44989be605c2bf453869151835a": {
+    "6f14b6e7a40f992beeb1ec20016e8e8633e4ac1fb400a9dafe90db923df02306": {
       "displayName": "GitHubControlHub Template",
       "source": {
         "path": "GitHubControlHub.template.json",
         "packaging": "file"
       },
       "destinations": {
-        "315111499557-us-east-1-1e140ec0": {
-          "bucketName": "cdk-hnb659fds-assets-315111499557-us-east-1",
-          "objectKey": "e11bab0bd8120b7df501e395ccd91235ebbbd44989be605c2bf453869151835a.json",
+        "774941662655-us-east-1-27e842ce": {
+          "bucketName": "cdk-hnb659fds-assets-774941662655-us-east-1",
+          "objectKey": "6f14b6e7a40f992beeb1ec20016e8e8633e4ac1fb400a9dafe90db923df02306.json",
           "region": "us-east-1",
-          "assumeRoleArn": "arn:${AWS::Partition}:iam::315111499557:role/cdk-hnb659fds-file-publishing-role-315111499557-us-east-1"
+          "assumeRoleArn": "arn:${AWS::Partition}:iam::774941662655:role/cdk-hnb659fds-file-publishing-role-774941662655-us-east-1"
         }
       }
     }
