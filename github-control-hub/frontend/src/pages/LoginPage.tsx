@@ -59,6 +59,31 @@ export default function LoginPage() {
   const [ghAuthed, setGhAuthed] = useState(isAuthenticated());
   const [userInfo, setLocalUserInfo] = useState(getUserInfo());
   const [justSignedOut, setJustSignedOut] = useState(false);
+  const [switchingAccount, setSwitchingAccount] = useState(false);
+
+  /**
+   * The account this machine last signed in with. Survives quitting the app —
+   * the token lives in sessionStorage and goes, the identity is kept — but is
+   * cleared by an explicit sign-out, which is the difference between "you were
+   * here a moment ago" and "you deliberately left".
+   */
+  const remembered = !ghAuthed && !justSignedOut && userInfo?.login ? userInfo : null;
+
+  /** Only the desktop app can drop GitHub's cookies; a web page cannot. */
+  const canSwitchAccount = typeof (window as any).electronAPI?.clearGithubSession === "function";
+
+  const handleUseDifferentAccount = async () => {
+    setSwitchingAccount(true);
+    try {
+      // Must finish before navigating: the main process uses this to decide to
+      // open the next OAuth attempt in a cookie-free window, and a navigation
+      // that beats the IPC lands straight back on the same account.
+      await (window as any).electronAPI.clearGithubSession();
+    } catch { /* fall through — the worst case is the usual instant sign-in */ }
+    clearToken();
+    setLocalUserInfo(null);
+    window.location.href = loginUrl;
+  };
 
   const authError = useMemo(() => {
     const params = new URLSearchParams(window.location.search);
@@ -484,13 +509,48 @@ export default function LoginPage() {
             {!loading && !error && !ghAuthed && ghConfigured && awsOk && (
               <div className="space-y-2.5">
                 {justSignedOut && <Hint intent="neutral">Signed out. Sign in below to use a different account.</Hint>}
-                <a
-                  href={loginUrl}
-                  className="flex items-center justify-center gap-2.5 w-full py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-bold no-underline shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
-                >
-                  <i className="ph-fill ph-github-logo text-base"></i>
-                  Sign in with GitHub
-                </a>
+
+                {remembered ? (
+                  /* GitHub still holds a session for this account, so signing in
+                     completes the moment it is asked — no page, no choice. Say
+                     whose account it will be before that happens, rather than
+                     announcing it afterwards. */
+                  <>
+                    <a
+                      href={loginUrl}
+                      className="flex items-center gap-3 w-full p-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 no-underline shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                    >
+                      {remembered.avatarUrl
+                        ? <img src={remembered.avatarUrl} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />
+                        : <span className="w-9 h-9 rounded-lg bg-white/15 dark:bg-slate-900/10 flex items-center justify-center shrink-0">
+                            <i className="ph-fill ph-github-logo text-lg"></i>
+                          </span>}
+                      <span className="flex-1 min-w-0 text-left">
+                        <span className="block text-[11px] uppercase tracking-[0.14em] font-bold opacity-60">Continue with</span>
+                        <span className="block text-sm font-bold truncate">{remembered.login}</span>
+                      </span>
+                      <i className="ph-bold ph-arrow-right text-sm mr-1 opacity-70"></i>
+                    </a>
+
+                    {canSwitchAccount && (
+                      <button
+                        onClick={handleUseDifferentAccount}
+                        disabled={switchingAccount}
+                        className="w-full py-2.5 rounded-xl text-[13px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                      >
+                        {switchingAccount ? "Signing out of GitHub…" : "Use a different account"}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <a
+                    href={loginUrl}
+                    className="flex items-center justify-center gap-2.5 w-full py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-bold no-underline shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                  >
+                    <i className="ph-fill ph-github-logo text-base"></i>
+                    Sign in with GitHub
+                  </a>
+                )}
               </div>
             )}
           </KeyCard>
