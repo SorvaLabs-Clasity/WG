@@ -445,7 +445,7 @@ export async function applyTemplate(
               await logActivity("branch.create", actor, repo, branchName,
                 `Created branch "${branchName}" (from ${ruleBaseName}) via template "${template.name}"`,
                 undefined, "app", undefined, undefined,
-                { parentId: repoParentId, undoPayload: { action: "delete_branch", params: { repo, branch: branchName, baseBranch: ruleBaseName } } }
+                { parentId: repoParentId, undoPayload: { action: "delete_branch", params: { repo, branch: branchName, baseBranch: ruleBaseName, createdFromSha: ruleSha } } }
               );
             }
           } catch (err) {

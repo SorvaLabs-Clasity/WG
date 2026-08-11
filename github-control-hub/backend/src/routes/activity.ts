@@ -27,6 +27,7 @@ import { permissionMessage } from "../utils/permissionError";
 import {
   createBranch,
   deleteBranch,
+  inspectBranchWork,
   deleteProtection,
   deleteRuleset,
   renameBranch,
@@ -179,6 +180,14 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
       }
     }
 
+    // A parent stands for its children. If any of them was refused — a branch
+    // holding commits, most likely — the group was not undone, and saying it
+    // was would hide exactly the thing the user needs to see.
+    if (errors.length > 0) {
+      res.status(502).json({ error: errors[0], undone, errors });
+      return;
+    }
+
     // Only claim the entry is undone if it is. Marking it regardless is how the
     // log came to disagree with the account.
     if (entry.undoPayload) {
@@ -186,7 +195,7 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
         await executeUndo(entry, req.user!.accessToken);
       } catch (err) {
         errors.push(`Failed to undo ${entry.action} on ${entry.target}: ${(err as Error).message}`);
-        res.status(502).json({ undone, errors });
+        res.status(502).json({ error: errors[0], undone, errors });
         return;
       }
     }
@@ -279,7 +288,7 @@ router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => 
         await executeRedo(entry, accessToken);
       } catch (err) {
         errors.push(`Failed to redo ${entry.action} on ${entry.target}: ${(err as Error).message}`);
-        res.status(502).json({ redone, errors });
+        res.status(502).json({ error: errors[0], redone, errors });
         return;
       }
     }
@@ -697,10 +706,27 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
 
   switch (action) {
     case "delete_branch": {
-      try {
-        const ref = await octokit.rest.git.getRef({ owner: org, repo: params.repo, ref: `heads/${params.branch}` });
-        params.latestSha = ref.data.object.sha;
-      } catch { /* branch may already be gone */ }
+      // Undoing a branch creation deletes the branch, which is fine while it is
+      // still the empty pointer the template made. Once someone has committed
+      // to it, this is the one undo path that can destroy work, and GitHub
+      // offers no way back. Refuse and let a human decide.
+      const work = await inspectBranchWork(octokit, params.repo, params.branch, {
+        createdFromSha: params.createdFromSha,
+        baseBranch: params.baseBranch,
+      });
+
+      if (work && (work.movedSinceCreation || work.unmergedCommits > 0)) {
+        const detail = work.unmergedCommits > 0
+          ? `${work.unmergedCommits} commit${work.unmergedCommits === 1 ? "" : "s"} that ${work.unmergedCommits === 1 ? "is" : "are"} not in "${params.baseBranch}"`
+          : "commits";
+        throw new Error(
+          `"${params.branch}" in ${params.repo} has ${detail} beyond the point of creation. ` +
+          `Undoing would delete the branch and discard that work, so it was left alone. ` +
+          `Merge or move the commits first, then delete the branch in GitHub.`
+        );
+      }
+
+      if (work) params.latestSha = work.tip;
       await deleteBranch(octokit, params.repo, params.branch);
       if (params.latestSha) {
         await updateActivityUndoPayload(entry.id, { action, params: { ...params } });

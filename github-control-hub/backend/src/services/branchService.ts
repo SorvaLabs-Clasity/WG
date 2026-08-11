@@ -188,12 +188,13 @@ export async function listBranches(octokit: Octokit, repo: string): Promise<Bran
   return branches;
 }
 
+/** Creates the branch and returns the commit it was created at. */
 export async function createBranch(
   octokit: Octokit,
   repo: string,
   branchName: string,
   baseBranch: string
-): Promise<void> {
+): Promise<string> {
   const org = getOrg();
 
   const { data: ref } = await octokit.rest.git.getRef({
@@ -208,6 +209,64 @@ export async function createBranch(
     ref: `refs/heads/${branchName}`,
     sha: ref.object.sha,
   });
+
+  // Recorded on the undo payload so undo can tell whether anyone has committed
+  // to the branch since. Without it, undo cannot distinguish an empty branch
+  // from one holding work.
+  return ref.object.sha;
+}
+
+export interface BranchWork {
+  /** Commits on the branch that exist nowhere else. */
+  unmergedCommits: number;
+  /** True when the tip has moved since the branch was created. */
+  movedSinceCreation: boolean;
+  tip?: string;
+}
+
+/**
+ * Whether deleting this branch would discard anything.
+ *
+ * Two questions, because they are not the same one. `movedSinceCreation`
+ * answers "has anyone committed here" and needs the SHA recorded at creation.
+ * `unmergedCommits` answers "would deleting lose those commits" — a branch
+ * whose work has since been merged is safe to delete even though it moved.
+ *
+ * Returns null when the branch is already gone, which makes deleting it a
+ * no-op rather than an error.
+ */
+export async function inspectBranchWork(
+  octokit: Octokit, repo: string, branch: string,
+  opts: { createdFromSha?: string; baseBranch?: string }
+): Promise<BranchWork | null> {
+  const org = getOrg();
+
+  let tip: string;
+  try {
+    const { data: ref } = await octokit.rest.git.getRef({ owner: org, repo, ref: `heads/${branch}` });
+    tip = ref.object.sha;
+  } catch (err) {
+    if ((err as { status?: number })?.status === 404) return null;
+    throw err;
+  }
+
+  let unmergedCommits = 0;
+  if (opts.baseBranch && opts.baseBranch !== branch) {
+    try {
+      const { data } = await octokit.rest.repos.compareCommitsWithBasehead({
+        owner: org, repo, basehead: `${opts.baseBranch}...${branch}`,
+      });
+      unmergedCommits = data.ahead_by ?? 0;
+    } catch {
+      // A missing or unrelated base tells us nothing; fall back to the SHA.
+    }
+  }
+
+  return {
+    unmergedCommits,
+    movedSinceCreation: !!opts.createdFromSha && opts.createdFromSha !== tip,
+    tip,
+  };
 }
 
 export async function deleteBranch(octokit: Octokit, repo: string, branch: string): Promise<void> {

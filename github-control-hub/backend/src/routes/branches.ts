@@ -32,9 +32,9 @@ router.post("/:repo/branches", validateParams("repo"), async (req: Request<{ rep
 
   try {
     const octokit = createOctokit(req.user!.accessToken);
-    await createBranch(octokit, req.params.repo, branchName, baseBranch);
+    const createdFromSha = await createBranch(octokit, req.params.repo, branchName, baseBranch);
     await logActivity("branch.create", req.user!.login, req.params.repo, branchName, `Created from ${baseBranch}`, undefined, "app", undefined, undefined, {
-      undoPayload: { action: "delete_branch", params: { repo: req.params.repo, branch: branchName, baseBranch } },
+      undoPayload: { action: "delete_branch", params: { repo: req.params.repo, branch: branchName, baseBranch, createdFromSha } },
     });
     res.status(201).json({ message: `Branch ${branchName} created` });
   } catch (err) {

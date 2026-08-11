@@ -194,7 +194,11 @@ export default function ActivityPage() {
   const handleUndoFromPopup = useCallback((entry: Activity) => {
     undoMutation.mutate(entry.id, {
       onSuccess: (result) => {
-        setSnack({ msg: `Undone ${result.undone.length} action${result.undone.length !== 1 ? 's' : ''}`, severity: result.errors.length > 0 ? "error" : "success" });
+        // The reason matters more than the count — a refusal here is usually
+        // "that branch has commits on it", which the user has to act on.
+        setSnack(result.errors.length > 0
+          ? { msg: result.errors[0], severity: "error" }
+          : { msg: `Undone ${result.undone.length} action${result.undone.length !== 1 ? 's' : ''}`, severity: "success" });
         setSelectedEvent(null);
       },
       onError: (err) => { setSnack({ msg: (err as Error).message, severity: "error" }); },

@@ -13,6 +13,7 @@ import {
 import type { ActivityEntry } from "./src/services/activityService";
 
 let failures = 0;
+
 function check(name: string, ok: boolean, got?: unknown) {
   console.log((ok ? "  PASS  " : "  FAIL  ") + name + (ok ? "" : ` -> got: ${JSON.stringify(got)}`));
   if (!ok) failures++;
@@ -23,6 +24,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   repo: "acme-api", target: "main", timestamp: new Date().toISOString(), ...over,
 } as ActivityEntry);
 
+(async () => {
 // ── code history is refused, whatever else is true ────────────────────
 {
   for (const action of ["github.push", "github.pr_merged", "github.pr_opened", "github.pr_closed"]) {
@@ -112,5 +114,65 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   check("every handler is on the allow-list", extra.length === 0, extra);
 }
 
+// ── deleting a branch must not discard commits ────────────────────────
+{
+  const { inspectBranchWork } = require("./src/services/branchService");
+  process.env.GITHUB_ORG = process.env.GITHUB_ORG || "test-org";
+
+  // A stand-in for Octokit that answers only what inspectBranchWork asks.
+  const fake = (tip: string | null, aheadBy?: number) => ({
+    rest: {
+      git: {
+        getRef: async () => {
+          if (tip === null) { const e: any = new Error("Not Found"); e.status = 404; throw e; }
+          return { data: { object: { sha: tip } } };
+        },
+      },
+      repos: {
+        compareCommitsWithBasehead: async () => {
+          if (aheadBy === undefined) throw new Error("no base");
+          return { data: { ahead_by: aheadBy } };
+        },
+      },
+    },
+  }) as any;
+
+  const untouched = await inspectBranchWork(fake("abc123", 0), "acme-api", "dev",
+    { createdFromSha: "abc123", baseBranch: "main" });
+  check("a branch still at its creation commit is safe to delete",
+    untouched.movedSinceCreation === false && untouched.unmergedCommits === 0, untouched);
+
+  const moved = await inspectBranchWork(fake("def456", 2), "acme-api", "dev",
+    { createdFromSha: "abc123", baseBranch: "main" });
+  check("a branch with commits since creation is refused",
+    moved.movedSinceCreation === true && moved.unmergedCommits === 2, moved);
+
+  // Rows written before the SHA was recorded still have to be judged.
+  const legacy = await inspectBranchWork(fake("def456", 3), "acme-api", "dev",
+    { baseBranch: "main" });
+  check("without a recorded SHA, unmerged commits still block it",
+    legacy.movedSinceCreation === false && legacy.unmergedCommits === 3, legacy);
+
+  const legacyEmpty = await inspectBranchWork(fake("abc123", 0), "acme-api", "dev",
+    { baseBranch: "main" });
+  check("  and an untouched legacy branch is still deletable",
+    legacyEmpty.unmergedCommits === 0, legacyEmpty);
+
+  // Work that has been merged into the base is not lost by deleting the branch.
+  const merged = await inspectBranchWork(fake("def456", 0), "acme-api", "feature",
+    { baseBranch: "main" });
+  check("a merged branch reports nothing unmerged", merged.unmergedCommits === 0, merged);
+
+  const gone = await inspectBranchWork(fake(null), "acme-api", "dev", { baseBranch: "main" });
+  check("an already-deleted branch is a no-op, not an error", gone === null, gone);
+
+  const noBase = await inspectBranchWork(fake("def456"), "acme-api", "dev",
+    { createdFromSha: "abc123" });
+  check("an unusable base still leaves the SHA check working",
+    noBase.movedSinceCreation === true, noBase);
+}
+
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
+})();
