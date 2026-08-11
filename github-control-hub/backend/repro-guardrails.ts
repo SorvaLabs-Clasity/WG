@@ -6,7 +6,7 @@
  * flagging a bucket that is already correct, or lowering a retention period
  * that was deliberately set longer.
  */
-import { evaluateResource, httpsOnlyStatement, CATALOG, kindsForEvent } from "./src/aws-guardrails/catalog";
+import { evaluateResource, httpsOnlyStatement, coversWholeBucket, CATALOG, kindsForEvent } from "./src/aws-guardrails/catalog";
 import { snapRetention, CLOUDWATCH_RETENTION_DAYS } from "./src/aws-guardrails/types";
 import { isExcluded } from "./src/aws-guardrails/exclusions";
 import type { ResourceSnapshot, AwsExclusionList } from "./src/aws-guardrails/types";
@@ -80,11 +80,34 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
       Condition: { Bool: { "aws:SecureTransport": false } } }] } }), { sid });
   check("an ALLOW conditioned on non-TLS is not compliant", allowNonTls.verdict === "violation", allowNonTls);
 
-  // IAM accepts the condition value as a boolean as well as a string.
+  // IAM accepts the condition value as a boolean as well as a string. Resource
+  // is required in a bucket policy, so a valid statement always names it.
   const boolDeny = evaluateResource("s3_https_only",
     res("b", { policy: { Statement: [{ Sid: "X", Effect: "Deny", Principal: "*", Action: "s3:*",
+      Resource: ["arn:aws:s3:::b", "arn:aws:s3:::b/*"],
       Condition: { Bool: { "aws:SecureTransport": false } } }] } }), { sid });
   check("a DENY using boolean false is compliant", boolDeny.verdict === "compliant", boolDeny);
+
+  // A bucket has two addressable halves. Denying non-TLS on only one of them
+  // still leaves the other reachable over plain HTTP.
+  const objectsOnly = evaluateResource("s3_https_only",
+    res("b", { policy: { Statement: [{ Sid: "Half", Effect: "Deny", Principal: "*", Action: "s3:*",
+      Resource: "arn:aws:s3:::b/*", Condition: { Bool: { "aws:SecureTransport": "false" } } }] } }), { sid });
+  check("a deny covering only objects is a violation", objectsOnly.verdict === "violation", objectsOnly);
+  check("  and says which half is missing", /only part of the bucket/.test(objectsOnly.summary), objectsOnly.summary);
+
+  const bucketOnly = evaluateResource("s3_https_only",
+    res("b", { policy: { Statement: [{ Sid: "Half", Effect: "Deny", Principal: "*", Action: "s3:*",
+      Resource: "arn:aws:s3:::b", Condition: { Bool: { "aws:SecureTransport": "false" } } }] } }), { sid });
+  check("a deny covering only the bucket is a violation", bucketOnly.verdict === "violation", bucketOnly);
+
+  check("coversWholeBucket: both ARNs", coversWholeBucket(["arn:aws:s3:::b", "arn:aws:s3:::b/*"], "b"));
+  check("coversWholeBucket: objects only", !coversWholeBucket(["arn:aws:s3:::b/*"], "b"));
+  check("coversWholeBucket: bucket only", !coversWholeBucket("arn:aws:s3:::b", "b"));
+  check("coversWholeBucket: global wildcard", coversWholeBucket("*", "b"));
+  check("coversWholeBucket: s3 wildcard", coversWholeBucket("arn:aws:s3:::*", "b"));
+  check("coversWholeBucket: prefix wildcard", coversWholeBucket("arn:aws:s3:::b*", "b"));
+  check("coversWholeBucket: another bucket does not count", !coversWholeBucket(["arn:aws:s3:::other", "arn:aws:s3:::other/*"], "b"));
 
   const none = evaluateResource("s3_https_only", res("b", { policy: null }), { sid });
   check("bucket with no policy is a violation", none.verdict === "violation", none);

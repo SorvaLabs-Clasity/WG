@@ -15,6 +15,27 @@ const bad = (summary: string, fix?: Evaluation["fix"]): Evaluation => ({ verdict
 
 // ── S3: deny non-TLS access ───────────────────────────────────────────
 
+/**
+ * Does this statement's Resource cover both the bucket and its objects?
+ *
+ * A bucket has two addressable halves — "arn:aws:s3:::b" for operations on the
+ * bucket (ListBucket, GetBucketPolicy) and "arn:aws:s3:::b/*" for the objects
+ * in it. A deny naming only the objects still leaves filenames listable over
+ * plain HTTP, so a statement that covers one half is not protection.
+ */
+export function coversWholeBucket(resource: unknown, bucket: string): boolean {
+  const arns = (Array.isArray(resource) ? resource : [resource]).filter((r): r is string => typeof r === "string");
+  const bucketArn = `arn:aws:s3:::${bucket}`;
+  const matches = (target: string) => arns.some(a => {
+    if (a === "*" || a === "arn:aws:s3:::*") return true;
+    if (a === target) return true;
+    // Trailing wildcard, e.g. "arn:aws:s3:::b*" or "arn:aws:s3:::b/*"
+    if (a.endsWith("*")) return target.startsWith(a.slice(0, -1));
+    return false;
+  });
+  return matches(bucketArn) && matches(`${bucketArn}/`);
+}
+
 /** The statement we manage. Merged by Sid so unrelated statements survive. */
 export function httpsOnlyStatement(bucket: string, sid: string) {
   return {
@@ -55,12 +76,24 @@ const s3HttpsOnly: RuleKind = {
     const already = statements.some(s => {
       if (s?.Effect !== "Deny") return false;
       const v = s?.Condition?.Bool?.["aws:SecureTransport"];
-      return v === "false" || v === false;
+      if (v !== "false" && v !== false) return false;
+      // A deny that names only the objects leaves the bucket itself listable
+      // over plain HTTP, so half-coverage does not count.
+      return coversWholeBucket(s?.Resource, resource.id);
     });
     if (already) return ok("Denies non-TLS requests");
 
+    // Distinguish "no protection at all" from "protection that misses half the
+    // bucket" — the second is easy to look at and believe is fine.
+    const partial = statements.some(s =>
+      s?.Effect === "Deny"
+      && (s?.Condition?.Bool?.["aws:SecureTransport"] === "false" || s?.Condition?.Bool?.["aws:SecureTransport"] === false)
+    );
+
     const next = [...statements.filter(s => s?.Sid !== sid), httpsOnlyStatement(resource.id, sid)];
-    return bad("No policy statement denying non-TLS requests", {
+    return bad(partial
+      ? "Denies non-TLS for only part of the bucket — the other half is still reachable over HTTP"
+      : "No policy statement denying non-TLS requests", {
       description: `Add "${sid}" deny statement to the bucket policy`,
       before: policy,
       after: { Version: policy?.["Version" as keyof typeof policy] ?? "2012-10-17", Statement: next },
