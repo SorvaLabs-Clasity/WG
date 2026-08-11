@@ -10,3 +10,11 @@ cdk.out/
 # CDK caches account-specific lookups (VPC/subnet ids) here. Committing it
 # carries one account's topology into every clone; CDK re-looks-up when absent.
 github-control-hub/infra/cdk.context.json
+
+# Vite layers env files: .env.<mode> holds app defaults and is committed,
+# .env.<mode>.local is the per-install layer and is not. The migration script
+# writes the .local one (company name, region), which must not travel with a
+# clone into another organisation.
+.env.local
+.env.*.local
+github-control-hub/frontend/.env
