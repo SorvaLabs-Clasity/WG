@@ -89,8 +89,11 @@ export async function triggerAwsSsoLogin(profile?: string): Promise<void> {
 
 export async function fetchAwsProfiles(): Promise<AwsProfile[]> {
   const res = await fetch(`${BACKEND_URL}/auth/aws-profiles`, { headers: authHeaders() });
-  const data = await res.json();
-  return data.profiles || [];
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error((data as { error?: string }).error ?? `Could not read AWS profiles (${res.status})`);
+  }
+  return (data as { profiles?: AwsProfile[] }).profiles ?? [];
 }
 
 export async function useAwsProfile(profile: string): Promise<{ ok: boolean; reachable: boolean }> {

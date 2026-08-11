@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   getLoginUrl,
@@ -47,6 +47,8 @@ export default function LoginPage() {
   const [awsProfiles, setAwsProfiles] = useState<AwsProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<string>("");
   const [awsMethod, setAwsMethod] = useState<"sso" | "profile" | "keys">("sso");
+  const [profilesError, setProfilesError] = useState<string | null>(null);
+  const touchedMethod = useRef(false);
   const [akPasteMode, setAkPasteMode] = useState(true);
   const [akPasteBlock, setAkPasteBlock] = useState("");
   const [akId, setAkId] = useState("");
@@ -74,6 +76,10 @@ export default function LoginPage() {
 
   const [authErrorDismissed, setAuthErrorDismissed] = useState(false);
 
+  const awsOk = !!(status?.aws.connected && status.aws.dynamoReachable);
+  const ghConfigured = status?.github.configured;
+  const canEnter = awsOk && ghAuthed;
+
   const checkStatus = useCallback(async () => {
     try {
       const s = await fetchAuthStatus();
@@ -84,6 +90,29 @@ export default function LoginPage() {
     }
     setLoading(false);
     setRefreshing(null);
+  }, []);
+
+  /**
+   * Read the profiles from ~/.aws/config.
+   *
+   * `pickMethod` only on the first load: once someone has chosen a tab, a
+   * refresh must not move them off it.
+   */
+  const loadProfiles = useCallback(async (pickMethod: boolean) => {
+    try {
+      const list = await fetchAwsProfiles();
+      setAwsProfiles(list);
+      setProfilesError(null);
+      setSelectedProfile(prev => prev || list[0]?.name || "");
+      if (pickMethod) {
+        const hasSso = list.some(pr => pr.type === "sso");
+        if (!hasSso) setAwsMethod(list.length > 0 ? "profile" : "keys");
+      }
+    } catch (err) {
+      setAwsProfiles([]);
+      setProfilesError((err as Error).message);
+      if (pickMethod) setAwsMethod("keys");
+    }
   }, []);
 
   useEffect(() => {
@@ -98,20 +127,17 @@ export default function LoginPage() {
         }
       });
     }
-    fetchAwsProfiles().then(p => {
-      setAwsProfiles(p);
-      if (p.length > 0 && !selectedProfile) {
-        setSelectedProfile(p[0].name);
-      }
-      const hasSso = p.some(pr => pr.type === "sso");
-      if (!hasSso && p.length > 0) setAwsMethod("profile");
-      else if (!hasSso) setAwsMethod("keys");
-    }).catch(() => { setAwsMethod("keys"); });
   }, [checkStatus]);
 
-  const awsOk = !!(status?.aws.connected && status.aws.dynamoReachable);
-  const ghConfigured = status?.github.configured;
-  const canEnter = awsOk && ghAuthed;
+  // Re-read whenever AWS is not connected — on first load, and again the moment
+  // Disconnect is pressed. The list was previously fetched once at mount, so a
+  // disconnect showed whatever had been cached, and only relaunching the app
+  // brought the SSO profiles back.
+  useEffect(() => {
+    if (awsOk) return;
+    loadProfiles(!touchedMethod.current);
+  }, [awsOk, loadProfiles]);
+
 
   const stage: Stage =
     loading ? "loading"
@@ -300,9 +326,14 @@ export default function LoginPage() {
           >
             {!loading && !error && !awsOk && (
               <div className="space-y-3">
+                {profilesError && (
+                  <Hint intent="warn">
+                    Could not read your AWS profiles — {profilesError}. Access keys still work.
+                  </Hint>
+                )}
                 <Segmented
                   value={awsMethod}
-                  onChange={(v) => { setAwsMethod(v); setAwsSsoStarted(false); }}
+                  onChange={(v) => { touchedMethod.current = true; setAwsMethod(v); setAwsSsoStarted(false); }}
                   options={([
                     ["sso", "SSO"] as [typeof awsMethod, string],
                     ["keys", "Access keys"] as [typeof awsMethod, string],
