@@ -221,7 +221,14 @@ export interface BranchWork {
   unmergedCommits: number;
   /** True when the tip has moved since the branch was created. */
   movedSinceCreation: boolean;
+  /** Commits landed after the branch was created, by committer date. */
+  commitsSince: number;
   tip?: string;
+}
+
+/** True when the branch has been changed in any way since the app made it. */
+export function branchWasTouched(w: BranchWork): boolean {
+  return w.movedSinceCreation || w.unmergedCommits > 0 || w.commitsSince > 0;
 }
 
 /**
@@ -237,7 +244,7 @@ export interface BranchWork {
  */
 export async function inspectBranchWork(
   octokit: Octokit, repo: string, branch: string,
-  opts: { createdFromSha?: string; baseBranch?: string }
+  opts: { createdFromSha?: string; baseBranch?: string; createdAt?: string }
 ): Promise<BranchWork | null> {
   const org = getOrg();
 
@@ -250,6 +257,8 @@ export async function inspectBranchWork(
     throw err;
   }
 
+  // Does the branch hold commits that exist nowhere else? A branch whose work
+  // was merged away is safe to delete even though it moved.
   let unmergedCommits = 0;
   if (opts.baseBranch && opts.baseBranch !== branch) {
     try {
@@ -258,13 +267,34 @@ export async function inspectBranchWork(
       });
       unmergedCommits = data.ahead_by ?? 0;
     } catch {
-      // A missing or unrelated base tells us nothing; fall back to the SHA.
+      // A missing or unrelated base tells us nothing; the other two signals hold.
+    }
+  }
+
+  // Has anything landed since the app created it? This is the signal that
+  // covers rows written before createdFromSha was recorded, and it uses
+  // committer date, which a rebase or a squash resets to the time of the
+  // rewrite even when author dates are preserved.
+  let commitsSince = 0;
+  if (opts.createdAt) {
+    try {
+      const { data } = await octokit.rest.repos.listCommits({
+        owner: org, repo, sha: branch,
+        since: new Date(new Date(opts.createdAt).getTime() + 1000).toISOString(),
+        per_page: 5,
+      });
+      commitsSince = data.length;
+    } catch {
+      // An empty or unreadable branch tells us nothing either way.
     }
   }
 
   return {
     unmergedCommits,
+    // Any mutation moves the tip: a commit, a merge, a squash, a rebase, a
+    // force-push. This is the strongest signal and needs no interpretation.
     movedSinceCreation: !!opts.createdFromSha && opts.createdFromSha !== tip,
+    commitsSince,
     tip,
   };
 }

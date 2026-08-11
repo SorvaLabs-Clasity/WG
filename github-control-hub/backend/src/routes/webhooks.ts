@@ -144,42 +144,22 @@ router.post("/github", async (req: Request, res: Response) => {
     }
   }
 
-  if (event === "push" && payload.repository?.name && !payload.created && !payload.deleted) {
-    const repo = sanitizeField(payload.repository.name, 100);
-    const ref = sanitizeField(payload.ref, 255);
-    const branch = ref.replace("refs/heads/", "");
-    const actorLogin = sanitizeField(payload.sender?.login, 64) || "github";
-    await logActivity("github.push", actorLogin, repo, branch, sanitizeField(payload.head_commit?.message, 200) || "Push", undefined, "github", undefined, payload.after);
-  }
-
-  if (event === "pull_request" && payload.repository?.name) {
-    const repo = sanitizeField(payload.repository.name, 100);
-    const pr = payload.pull_request;
-    const actorLogin = sanitizeField(payload.sender?.login || pr?.user?.login, 64) || "github";
-    const branch = sanitizeField(pr?.head?.ref, 255);
-    const prNum = pr?.number;
-    if (payload.action === "opened") {
-      await logActivity("github.pr_opened", actorLogin, repo, branch, sanitizeField(pr?.title, 200), undefined, "github", prNum);
-    } else if (payload.action === "closed") {
-      if (pr?.merged) {
-        await logActivity("github.pr_merged", actorLogin, repo, branch, sanitizeField(pr?.title, 200), undefined, "github", prNum);
-      } else {
-        await logActivity("github.pr_closed", actorLogin, repo, branch, sanitizeField(pr?.title, 200), undefined, "github", prNum);
-      }
-    }
-  }
-
-  if (event === "issues" && payload.action === "opened" && payload.repository?.name) {
-    const repo = payload.repository.name;
-    const actorLogin = payload.sender?.login || payload.issue?.user?.login || "github";
-    await logActivity("github.issue_opened", actorLogin, repo, String(payload.issue?.number || ""), payload.issue?.title?.slice(0, 200), undefined, "github");
-  }
-
-  if (event === "create" && payload.ref_type === "branch" && payload.repository?.name) {
-    const repo = payload.repository.name;
-    const actorLogin = payload.sender?.login || "github";
-    await logActivity("branch.create", actorLogin, repo, payload.ref || "branch", "Branch created via GitHub", undefined, "github");
-  }
+  // Nothing about the code itself is recorded here.
+  //
+  // push, pull_request and issues are subscribed because other parts of this
+  // file react to them, but they describe what developers are building, not
+  // what the Control Hub or anyone else did to the org's configuration. Mixing
+  // the two buries a branch-protection change under a hundred commits.
+  //
+  // Branch creation is deliberately not recorded either. GitHub fires `create`
+  // for every branch anyone makes, including the ones this app made a moment
+  // earlier from a template — which is where the duplicate rows came from. The
+  // app logs its own template branches directly, with the undo payload
+  // attached, and those are the only branch creations worth a row.
+  //
+  // Undo does not depend on any of this. It asks GitHub for the branch's
+  // current state at the moment it runs, so it still sees commits, merges,
+  // squashes and rebases that were never written here.
 
   if (event === "delete" && payload.ref_type === "branch" && payload.repository?.name) {
     const repo = payload.repository.name;

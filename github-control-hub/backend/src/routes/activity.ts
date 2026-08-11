@@ -28,6 +28,7 @@ import {
   createBranch,
   deleteBranch,
   inspectBranchWork,
+  branchWasTouched,
   deleteProtection,
   deleteRuleset,
   renameBranch,
@@ -713,16 +714,21 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
       const work = await inspectBranchWork(octokit, params.repo, params.branch, {
         createdFromSha: params.createdFromSha,
         baseBranch: params.baseBranch,
+        createdAt: entry.timestamp,
       });
 
-      if (work && (work.movedSinceCreation || work.unmergedCommits > 0)) {
+      if (work && branchWasTouched(work)) {
+        // Named precisely where we can be: unmerged commits are the case where
+        // deleting definitely destroys work. Otherwise the branch moved — a
+        // merge, a squash, a rebase, a force-push — and we say so rather than
+        // guessing which.
         const detail = work.unmergedCommits > 0
           ? `${work.unmergedCommits} commit${work.unmergedCommits === 1 ? "" : "s"} that ${work.unmergedCommits === 1 ? "is" : "are"} not in "${params.baseBranch}"`
-          : "commits";
+          : "commits, merges or rewritten history";
         throw new Error(
           `"${params.branch}" in ${params.repo} has ${detail} beyond the point of creation. ` +
           `Undoing would delete the branch and discard that work, so it was left alone. ` +
-          `Merge or move the commits first, then delete the branch in GitHub.`
+          `Merge or move the work first, then delete the branch in GitHub.`
         );
       }
 

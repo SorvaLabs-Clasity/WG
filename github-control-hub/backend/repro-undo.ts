@@ -114,13 +114,15 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   check("every handler is on the allow-list", extra.length === 0, extra);
 }
 
-// ── deleting a branch must not discard commits ────────────────────────
+// ── deleting a branch must not discard work, however it got there ─────
 {
-  const { inspectBranchWork } = require("./src/services/branchService");
+  const { inspectBranchWork, branchWasTouched } = require("./src/services/branchService");
   process.env.GITHUB_ORG = process.env.GITHUB_ORG || "test-org";
 
-  // A stand-in for Octokit that answers only what inspectBranchWork asks.
-  const fake = (tip: string | null, aheadBy?: number) => ({
+  const CREATED = "2026-01-01T00:00:00Z";
+
+  /** Octokit stand-in answering only what inspectBranchWork asks. */
+  const fake = (tip: string | null, aheadBy?: number, commitsSince = 0) => ({
     rest: {
       git: {
         getRef: async () => {
@@ -133,45 +135,57 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
           if (aheadBy === undefined) throw new Error("no base");
           return { data: { ahead_by: aheadBy } };
         },
+        listCommits: async () => ({ data: Array.from({ length: commitsSince }, (_, i) => ({ sha: "c" + i })) }),
       },
     },
   }) as any;
 
-  const untouched = await inspectBranchWork(fake("abc123", 0), "acme-api", "dev",
-    { createdFromSha: "abc123", baseBranch: "main" });
-  check("a branch still at its creation commit is safe to delete",
-    untouched.movedSinceCreation === false && untouched.unmergedCommits === 0, untouched);
+  const look = (o: any, opts: any = {}) => inspectBranchWork(o, "acme-api", "dev",
+    { createdFromSha: "abc123", baseBranch: "main", createdAt: CREATED, ...opts });
 
-  const moved = await inspectBranchWork(fake("def456", 2), "acme-api", "dev",
-    { createdFromSha: "abc123", baseBranch: "main" });
-  check("a branch with commits since creation is refused",
-    moved.movedSinceCreation === true && moved.unmergedCommits === 2, moved);
+  const untouched = await look(fake("abc123", 0, 0));
+  check("a branch still at its creation commit is deletable", !branchWasTouched(untouched), untouched);
 
-  // Rows written before the SHA was recorded still have to be judged.
-  const legacy = await inspectBranchWork(fake("def456", 3), "acme-api", "dev",
-    { baseBranch: "main" });
-  check("without a recorded SHA, unmerged commits still block it",
-    legacy.movedSinceCreation === false && legacy.unmergedCommits === 3, legacy);
+  // Every way a branch can change moves the tip, so one signal covers them all.
+  for (const [name, tip, ahead, since] of [
+    ["a plain commit",        "def456", 1, 1],
+    ["a merge into it",       "def456", 3, 2],
+    ["a squash merge",        "def456", 1, 1],
+    ["a rebase",              "def456", 2, 2],
+    ["a force-push",          "def456", 0, 0],
+  ] as [string, string, number, number][]) {
+    const w = await look(fake(tip, ahead, since));
+    check(`${name} blocks the undo`, branchWasTouched(w), w);
+  }
 
-  const legacyEmpty = await inspectBranchWork(fake("abc123", 0), "acme-api", "dev",
-    { baseBranch: "main" });
-  check("  and an untouched legacy branch is still deletable",
-    legacyEmpty.unmergedCommits === 0, legacyEmpty);
+  // Rows written before createdFromSha existed still have to be judged.
+  const legacyRebased = await look(fake("def456", 0, 2), { createdFromSha: undefined });
+  check("without a recorded SHA, commits landed since creation still block it",
+    branchWasTouched(legacyRebased) && legacyRebased.commitsSince === 2, legacyRebased);
 
-  // Work that has been merged into the base is not lost by deleting the branch.
-  const merged = await inspectBranchWork(fake("def456", 0), "acme-api", "feature",
-    { baseBranch: "main" });
-  check("a merged branch reports nothing unmerged", merged.unmergedCommits === 0, merged);
+  const legacyUnmerged = await look(fake("def456", 3, 0), { createdFromSha: undefined });
+  check("  as do unmerged commits", branchWasTouched(legacyUnmerged), legacyUnmerged);
 
-  const gone = await inspectBranchWork(fake(null), "acme-api", "dev", { baseBranch: "main" });
+  const legacyClean = await look(fake("abc123", 0, 0), { createdFromSha: undefined });
+  check("  and an untouched legacy branch stays deletable", !branchWasTouched(legacyClean), legacyClean);
+
+  // A branch whose work is already in the base loses nothing by being deleted,
+  // but it still moved, so the SHA check must be the one that speaks.
+  const merged = await look(fake("def456", 0, 0));
+  check("a branch whose work was merged away still reports it moved",
+    merged.movedSinceCreation && merged.unmergedCommits === 0, merged);
+
+  const gone = await look(fake(null));
   check("an already-deleted branch is a no-op, not an error", gone === null, gone);
 
-  const noBase = await inspectBranchWork(fake("def456"), "acme-api", "dev",
-    { createdFromSha: "abc123" });
-  check("an unusable base still leaves the SHA check working",
-    noBase.movedSinceCreation === true, noBase);
-}
+  const noBase = await look(fake("def456"), { baseBranch: undefined });
+  check("an unusable base leaves the other signals working",
+    branchWasTouched(noBase), noBase);
 
+  const noTimestamp = await look(fake("abc123", 0, 9), { createdAt: undefined });
+  check("without a creation time, commitsSince is not guessed",
+    noTimestamp.commitsSince === 0 && !branchWasTouched(noTimestamp), noTimestamp);
+}
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
