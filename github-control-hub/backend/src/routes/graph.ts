@@ -60,6 +60,13 @@ router.get("/node/:id", async (req: Request<{ id: string }>, res: Response) => {
   }
 });
 
+// 2. Blast Radius Analysis for a Repo
+// If a repo is compromised, what else is affected?
+// e.g. downstream dependencies, workflows, teams that own it.
+router.get("/blast-radius/repo/:repo", async (req: Request<{ repo: string }>, res: Response) => {
+  try {
+    const repoId = `REPO#${req.params.repo}`;
+    const edges = await getEdgesForNode(repoId);
 
     const workflows = edges.filter(e => e.type === "uses_workflow").map(e => e.sk.replace("WORKFLOW#", ""));
     const vulnerableDeps = edges.filter(e => e.type === "has_vulnerable_dependency").map(e => ({

@@ -52,6 +52,8 @@ export interface Finding {
   verdict: "compliant" | "violation" | "not_applicable";
   summary: string;
   proposedFix?: string;
+  /** Region the resource lives in, used to build the AWS console link. */
+  region?: string;
   excluded: boolean;
   excludedBy?: string;
   remediated: boolean;

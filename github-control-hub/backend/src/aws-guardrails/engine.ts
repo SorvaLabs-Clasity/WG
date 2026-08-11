@@ -50,6 +50,7 @@ export async function run(
   const doRemediate = deps.remediate ?? remediate;
   const isRemediable = deps.canRemediate ?? canRemediate;
   const result: RunResult = { findings: [], remediated: 0, violations: 0, excluded: 0, errors: [] };
+  const region = process.env.AWS_REGION || "us-east-1";
 
   const active = rules.filter(r =>
     r.enabled && (!options.ruleIds?.length || options.ruleIds.includes(r.id))
@@ -95,7 +96,7 @@ export async function run(
           ruleId: rule.id, ruleName: rule.name, kind: rule.kind,
           resourceId: resource.id, resourceType: resource.type,
           verdict: "not_applicable", summary: `Excluded — ${exclusion.reason}`,
-          excluded: true, excludedBy: exclusion.reason, remediated: false, checkedAt,
+          excluded: true, excludedBy: exclusion.reason, remediated: false, checkedAt, region,
         });
         continue;
       }
@@ -106,7 +107,7 @@ export async function run(
         resourceId: resource.id, resourceType: resource.type,
         verdict: evaluation.verdict, summary: evaluation.summary,
         ...(evaluation.fix && { proposedFix: evaluation.fix.description }),
-        excluded: false, remediated: false, checkedAt,
+        excluded: false, remediated: false, checkedAt, region,
       };
 
       if (evaluation.verdict !== "violation") {

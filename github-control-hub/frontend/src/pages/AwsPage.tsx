@@ -8,6 +8,7 @@ import {
   useSaveAwsExclusion, useDeleteAwsExclusion,
 } from "../hooks/useAws";
 import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec } from "../api/aws";
+import { awsConsoleUrl, consoleLinkLabel } from "../utils/awsConsole";
 
 const KIND_LABELS: Record<string, string> = {
   s3_https_only: "S3 — deny non-TLS requests",
@@ -331,12 +332,17 @@ function RuleDetail({ rule, entry, findings, exclusions, isAdmin, running, onRun
                 const fi: Intent = f.remediated ? "info"
                   : f.excluded ? "neutral"
                     : f.verdict === "violation" ? "danger" : "good";
+                // "auto-fixed" only where this rule did the fixing. A resource
+                // someone corrected by hand comes back as plain compliant on the
+                // next sweep, and should read the same as one that was never wrong.
+                const label = f.remediated ? "auto-fixed"
+                  : f.excluded ? "skipped"
+                    : f.verdict === "violation" ? "failing" : "ok";
+                const href = awsConsoleUrl(f.resourceType, f.resourceId, f.region);
                 return (
                   <InsetRow key={f.resourceId} intent={fi} index={i}>
                     <div className="flex items-start gap-3 flex-wrap">
-                      <Pill intent={fi}>
-                        {f.remediated ? "fixed" : f.excluded ? "skipped" : f.verdict === "violation" ? "failing" : "ok"}
-                      </Pill>
+                      <Pill intent={fi}>{label}</Pill>
                       <div className="min-w-0 flex-1">
                         <p className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-white break-all">{f.resourceId}</p>
                         <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -347,6 +353,13 @@ function RuleDetail({ rule, entry, findings, exclusions, isAdmin, running, onRun
                         </p>
                         {f.error && <p className="text-[12.5px] text-rose-500 mt-0.5">{f.error}</p>}
                       </div>
+                      {href && (
+                        <a href={href} target="_blank" rel="noreferrer"
+                          title={consoleLinkLabel(f.resourceType)}
+                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.07] border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
+                          AWS<i className="ph-bold ph-arrow-square-out text-[11px]"></i>
+                        </a>
+                      )}
                     </div>
                   </InsetRow>
                 );

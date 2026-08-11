@@ -89,6 +89,8 @@ export interface Finding {
   summary: string;
   /** What remediation would do. Present on violations that can be fixed. */
   proposedFix?: string;
+  /** Region the resource lives in, so the UI can build a console link. */
+  region?: string;
   excluded: boolean;
   excludedBy?: string;
   remediated: boolean;
