@@ -378,7 +378,18 @@ router.post("/aws-sso-login", serverModeGuard, setupOrAuthMiddleware, async (req
 
   process.env.AWS_PROFILE = profile;
 
-  const env = { ...process.env, PATH: `${process.env.PATH}:/usr/local/bin:/opt/homebrew/bin:/usr/bin` };
+  // GUI-launched apps inherit a minimal PATH, so add the usual CLI install dirs.
+  // Join with the platform separator — using ":" on Windows corrupts the last
+  // real PATH entry and can leave "aws" unresolvable.
+  const nodePath = await import("path");
+  const extraPathDirs =
+    process.platform === "win32"
+      ? [`${process.env.ProgramFiles || "C:\\Program Files"}\\Amazon\\AWSCLIV2`]
+      : ["/usr/local/bin", "/opt/homebrew/bin", "/usr/bin"];
+  const env = {
+    ...process.env,
+    PATH: [process.env.PATH, ...extraPathDirs].filter(Boolean).join(nodePath.delimiter),
+  };
   const child = spawn("aws", ["sso", "login", "--profile", profile], {
     stdio: "ignore",
     detached: true,
