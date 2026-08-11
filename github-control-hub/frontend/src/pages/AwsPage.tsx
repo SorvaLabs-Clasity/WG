@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "../App";
-import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Back, Note, Pill, Button, Empty, Spinner, Figure, InsetRow, TYPE, enter, type Intent } from "../design";
+import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Back, Note, Pill, Button, Empty, Spinner, Figure, InsetRow, TYPE, SURFACE, INTENT, enter, type Intent } from "../design";
 import { usePermissions } from "../hooks/usePermissions";
 import {
   useCatalog, useGuardrails, useFindings, useAwsExclusions,
@@ -377,127 +377,6 @@ function formatParam(value: any, spec: ParamSpec): string {
 
 // ── Exclusion lists ───────────────────────────────────────────────────
 
-function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
-  const save = useSaveAwsExclusion();
-  const remove = useDeleteAwsExclusion();
-  const [editing, setEditing] = useState<AwsExclusionList | "new" | null>(null);
-
-  return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-      <div className="px-5 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
-        <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{lists?.length ?? 0} list(s)</span>
-        <button onClick={() => setEditing("new")} className="text-sm font-semibold text-blue-600 dark:text-blue-400 hover:underline">
-          <i className="ph-bold ph-plus mr-1"></i>New list
-        </button>
-      </div>
-
-      {!lists?.length ? (
-        <div className="p-12 text-center text-slate-400 dark:text-slate-500">
-          <i className="ph-fill ph-prohibit text-4xl mb-3 block"></i>
-          <p className="text-sm font-medium text-slate-600 dark:text-slate-300">No exclusion lists</p>
-          <p className="text-xs mt-1">Exclude resources by exact name, name prefix, substring, or tag.</p>
-        </div>
-      ) : (
-        <div className="divide-y divide-slate-50 dark:divide-slate-800">
-          {lists.map(l => (
-            <div key={l.id} className="px-5 py-4 flex items-start justify-between gap-4">
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-slate-800 dark:text-slate-100">{l.name}</div>
-                {l.description && <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{l.description}</p>}
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {l.resources.map(r => (
-                    <span key={r} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">{r}</span>
-                  ))}
-                  {l.patterns.map(p => (
-                    <span key={p.id} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900">{p.type} {p.value}</span>
-                  ))}
-                  {l.whitelist.map(w => (
-                    <span key={w} className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">keep {w}</span>
-                  ))}
-                </div>
-              </div>
-              <div className="flex items-center gap-3 shrink-0">
-                <button onClick={() => setEditing(l)} className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline">Edit</button>
-                <button onClick={() => { if (confirm(`Delete "${l.name}"?`)) remove.mutate(l.id); }}
-                  className="text-xs font-semibold text-rose-600 dark:text-rose-400 hover:underline">Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {editing && (
-        <ExclusionEditor
-          list={editing === "new" ? null : editing}
-          onClose={() => setEditing(null)}
-          onSave={(body, id) => save.mutateAsync({ id, body }).then(() => setEditing(null))}
-        />
-      )}
-    </div>
-  );
-}
-
-function ExclusionEditor({ list, onClose, onSave }: {
-  list: AwsExclusionList | null;
-  onClose: () => void;
-  onSave: (body: Partial<AwsExclusionList>, id?: string) => Promise<unknown>;
-}) {
-  const [name, setName] = useState(list?.name ?? "");
-  const [description, setDescription] = useState(list?.description ?? "");
-  const [resources, setResources] = useState((list?.resources ?? []).join("\n"));
-  const [whitelist, setWhitelist] = useState((list?.whitelist ?? []).join("\n"));
-  const [patterns, setPatterns] = useState(
-    (list?.patterns ?? []).map(p => `${p.type}:${p.value}`).join("\n"));
-  const [error, setError] = useState<string | null>(null);
-
-  const lines = (s: string) => s.split("\n").map(x => x.trim()).filter(Boolean);
-
-  const submit = async () => {
-    setError(null);
-    const parsed = lines(patterns).map((line, i) => {
-      const idx = line.indexOf(":");
-      const type = line.slice(0, idx).trim();
-      const value = line.slice(idx + 1).trim();
-      if (!["starts_with", "contains", "tag_equals"].includes(type) || !value) return null;
-      return { id: `p${i}`, type: type as any, value };
-    });
-    if (parsed.some(p => p === null)) {
-      setError('Each pattern must be "starts_with:value", "contains:value" or "tag_equals:Key=Value".');
-      return;
-    }
-    try {
-      await onSave({
-        name, description,
-        resources: lines(resources),
-        whitelist: lines(whitelist),
-        patterns: parsed as any,
-      }, list?.id);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  };
-
-  const input = "w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
-
-  return (
-    <Modal title={list ? "Edit exclusion list" : "New exclusion list"} onClose={onClose} onSubmit={submit} error={error}>
-      <Field label="Name"><input className={input} value={name} onChange={e => setName(e.target.value)} /></Field>
-      <Field label="Description"><input className={input} value={description} onChange={e => setDescription(e.target.value)} /></Field>
-      <Field label="Exact resource names" hint="One per line — bucket names, log group names.">
-        <textarea rows={3} className={`${input} font-mono`} value={resources} onChange={e => setResources(e.target.value)} />
-      </Field>
-      <Field label="Patterns" hint='One per line: starts_with:tmp- · contains:sandbox · tag_equals:Env=dev'>
-        <textarea rows={3} className={`${input} font-mono`} value={patterns} onChange={e => setPatterns(e.target.value)} />
-      </Field>
-      <Field label="Keep anyway" hint="Wins over the patterns above, so one resource can be pulled back in.">
-        <textarea rows={2} className={`${input} font-mono`} value={whitelist} onChange={e => setWhitelist(e.target.value)} />
-      </Field>
-    </Modal>
-  );
-}
-
-// ── Rule editor ───────────────────────────────────────────────────────
-
 function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: {
   rule: Guardrail | null; catalog: CatalogEntry[]; exclusions: AwsExclusionList[];
   isAdmin: boolean; adminTeam: string; onClose: () => void;
@@ -697,6 +576,361 @@ function Modal({ title, onClose, onSubmit, error, children }: {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * Exclusion lists.
+ *
+ * The previous editor asked people to type "starts_with:tmp-" into a textarea,
+ * which requires knowing the rule syntax and gives no feedback until a guardrail
+ * runs. Rules are now built one at a time from a dropdown and a value, each
+ * explains itself in plain words, and a live preview shows exactly which of your
+ * real resources the list currently catches.
+ */
+
+type MatchType = "starts_with" | "contains" | "tag_equals";
+
+const MATCH_KINDS: { id: MatchType; label: string; help: string; placeholder: string; example: string }[] = [
+  { id: "starts_with", label: "Name starts with", help: "Matches resources whose name begins with this text.", placeholder: "tmp-", example: "tmp- catches tmp-scratch, tmp-build" },
+  { id: "contains", label: "Name contains", help: "Matches resources with this text anywhere in the name.", placeholder: "sandbox", example: "sandbox catches acme-sandbox-logs" },
+  { id: "tag_equals", label: "Has tag", help: "Matches resources carrying this tag. Leave the value blank to match the tag however it is set.", placeholder: "Env", example: "Env = dev catches anything tagged Env=dev" },
+];
+
+function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
+  const save = useSaveAwsExclusion();
+  const remove = useDeleteAwsExclusion();
+  const [editing, setEditing] = useState<AwsExclusionList | "new" | null>(null);
+
+  if (editing) {
+    return (
+      <ExclusionEditor
+        list={editing === "new" ? null : editing}
+        onClose={() => setEditing(null)}
+        onSave={(body, id) => save.mutateAsync({ id, body }).then(() => setEditing(null))}
+      />
+    );
+  }
+
+  return (
+    <>
+      <Note intent="neutral">
+        An exclusion list is a set of resources your guardrails should skip. Attach a list to a rule and
+        anything it matches is left alone — useful for scratch buckets, sandbox log groups, or anything
+        deliberately configured differently.
+      </Note>
+
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {lists?.length ?? 0} {(lists?.length ?? 0) === 1 ? "list" : "lists"}
+        </p>
+        <Button variant="primary" onClick={() => setEditing("new")}>New list</Button>
+      </div>
+
+      {!lists?.length ? (
+        <Empty
+          title="No exclusion lists"
+          body="Create one to stop guardrails flagging resources you have deliberately left as they are."
+          action={<Button variant="primary" onClick={() => setEditing("new")}>Create a list</Button>}
+        />
+      ) : (
+        <div className="grid gap-3">
+          {lists.map((l, i) => {
+            const rules = l.patterns?.length ?? 0;
+            const named = l.resources?.length ?? 0;
+            const kept = l.whitelist?.length ?? 0;
+            return (
+              <RailCard key={l.id} intent="neutral" index={i}>
+                <div className="flex items-start justify-between gap-5 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>{l.name}</h3>
+                    {l.description && (
+                      <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>{l.description}</p>
+                    )}
+                    <ul className="mt-3 grid gap-1.5">
+                      {(l.patterns ?? []).map(p => (
+                        <li key={p.id} className="text-[13px] text-slate-600 dark:text-slate-300">
+                          <span className="text-slate-400 dark:text-slate-500">Skip anything whose </span>
+                          {describeRule(p.type as MatchType, p.value)}
+                        </li>
+                      ))}
+                      {(l.resources ?? []).map(r => (
+                        <li key={r} className="text-[13px] text-slate-600 dark:text-slate-300">
+                          <span className="text-slate-400 dark:text-slate-500">Skip exactly </span>
+                          <span className="font-mono font-semibold">{r}</span>
+                        </li>
+                      ))}
+                      {(l.whitelist ?? []).map(w => (
+                        <li key={w} className="text-[13px] text-emerald-700 dark:text-emerald-400">
+                          <span className="opacity-70">But always check </span>
+                          <span className="font-mono font-semibold">{w}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {rules + named + kept === 0 && (
+                      <p className="text-[13px] text-amber-600 dark:text-amber-400 mt-2">
+                        This list is empty, so it excludes nothing.
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex gap-4 shrink-0">
+                    <button onClick={() => setEditing(l)}
+                      className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">Edit</button>
+                    <button onClick={() => { if (confirm(`Delete "${l.name}"? Rules using it will start checking those resources again.`)) remove.mutate(l.id); }}
+                      className="text-sm font-bold text-rose-600 dark:text-rose-400 hover:opacity-70">Delete</button>
+                  </div>
+                </div>
+              </RailCard>
+            );
+          })}
+        </div>
+      )}
+    </>
+  );
+}
+
+function describeRule(type: MatchType, value: string) {
+  if (type === "tag_equals") {
+    const [k, v] = value.includes("=") ? [value.slice(0, value.indexOf("=")), value.slice(value.indexOf("=") + 1)] : [value, null];
+    return v
+      ? <>tag <span className="font-mono font-semibold">{k}</span> equals <span className="font-mono font-semibold">{v}</span></>
+      : <>tag <span className="font-mono font-semibold">{k}</span> is set</>;
+  }
+  return (
+    <>name {type === "starts_with" ? "starts with" : "contains"}{" "}
+      <span className="font-mono font-semibold">{value}</span></>
+  );
+}
+
+function ExclusionEditor({ list, onClose, onSave }: {
+  list: AwsExclusionList | null; onClose: () => void;
+  onSave: (body: Partial<AwsExclusionList>, id?: string) => Promise<unknown>;
+}) {
+  const [name, setName] = useState(list?.name ?? "");
+  const [description, setDescription] = useState(list?.description ?? "");
+  const [rules, setRules] = useState<{ id: string; type: MatchType; value: string; tagValue?: string }[]>(
+    (list?.patterns ?? []).map(p => {
+      if (p.type === "tag_equals" && p.value.includes("=")) {
+        const i = p.value.indexOf("=");
+        return { id: p.id, type: "tag_equals" as MatchType, value: p.value.slice(0, i), tagValue: p.value.slice(i + 1) };
+      }
+      return { id: p.id, type: p.type as MatchType, value: p.value };
+    })
+  );
+  const [names, setNames] = useState<string[]>(list?.resources ?? []);
+  const [nameDraft, setNameDraft] = useState("");
+  const [keep, setKeep] = useState<string[]>(list?.whitelist ?? []);
+  const [keepDraft, setKeepDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  // Preview against the resources guardrails have actually seen.
+  const { data: findings } = useFindings();
+  const known = useMemo(() => {
+    const set = new Set<string>();
+    (findings ?? []).forEach(f => set.add(f.resourceId));
+    return [...set].sort();
+  }, [findings]);
+
+  const matched = useMemo(() => known.filter(id => {
+    if (keep.includes(id)) return false;
+    if (names.includes(id)) return true;
+    return rules.some(r => {
+      if (!r.value.trim()) return false;
+      if (r.type === "starts_with") return id.startsWith(r.value);
+      if (r.type === "contains") return id.includes(r.value);
+      return false; // tags are not carried on findings, so they cannot be previewed
+    });
+  }), [known, rules, names, keep]);
+
+  const hasTagRule = rules.some(r => r.type === "tag_equals" && r.value.trim());
+
+  const addRule = () => setRules(rs => [...rs, { id: `p${Date.now()}`, type: "starts_with", value: "" }]);
+
+  const submit = async () => {
+    setError(null);
+    if (!name.trim()) { setError("Give the list a name so you can recognise it later."); return; }
+    const patterns = rules
+      .filter(r => r.value.trim())
+      .map(r => ({
+        id: r.id,
+        type: r.type,
+        value: r.type === "tag_equals" && r.tagValue?.trim() ? `${r.value.trim()}=${r.tagValue.trim()}` : r.value.trim(),
+      }));
+    if (patterns.length === 0 && names.length === 0) {
+      setError("Add at least one rule or one exact name, or the list will not exclude anything.");
+      return;
+    }
+    try {
+      await onSave({ name: name.trim(), description: description.trim(), patterns: patterns as any, resources: names, whitelist: keep }, list?.id);
+    } catch (e) { setError((e as Error).message); }
+  };
+
+  const field = SURFACE.input;
+
+  return (
+    <>
+      <Back onClick={onClose}>Exclusion lists</Back>
+      <div className="grid lg:grid-cols-[minmax(0,1fr)_360px] gap-5 items-start">
+        <Sheet>
+          <SheetHeader intent="neutral" title={list ? list.name : "New exclusion list"}
+            subtitle="Resources this list matches are skipped by every rule that uses it." />
+
+          <Block title="Name this list">
+            <input value={name} onChange={e => setName(e.target.value)} className={field}
+              placeholder="Sandbox and scratch resources" />
+            <input value={description} onChange={e => setDescription(e.target.value)} className={`${field} mt-2`}
+              placeholder="Optional — why these are excluded" />
+          </Block>
+
+          <Block title="Matching rules" action={<Button onClick={addRule}>Add rule</Button>}>
+            {rules.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                No rules yet. Add one to skip resources by name or tag, or list exact names below.
+              </p>
+            ) : (
+              <div className="grid gap-3">
+                {rules.map((r, i) => {
+                  const kind = MATCH_KINDS.find(k => k.id === r.type)!;
+                  return (
+                    <div key={r.id} className={`rounded-xl p-3.5 ${SURFACE.inset}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <select value={r.type}
+                          onChange={e => setRules(rs => rs.map((x, j) => j === i ? { ...x, type: e.target.value as MatchType } : x))}
+                          className={`${field} w-auto min-w-[170px]`}>
+                          {MATCH_KINDS.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
+                        </select>
+                        <input value={r.value} placeholder={kind.placeholder}
+                          onChange={e => setRules(rs => rs.map((x, j) => j === i ? { ...x, value: e.target.value } : x))}
+                          className={`${field} flex-1 min-w-[140px] font-mono`} />
+                        {r.type === "tag_equals" && (
+                          <>
+                            <span className="text-slate-400 font-bold">=</span>
+                            <input value={r.tagValue ?? ""} placeholder="dev (optional)"
+                              onChange={e => setRules(rs => rs.map((x, j) => j === i ? { ...x, tagValue: e.target.value } : x))}
+                              className={`${field} flex-1 min-w-[120px] font-mono`} />
+                          </>
+                        )}
+                        <button onClick={() => setRules(rs => rs.filter((_, j) => j !== i))}
+                          title="Remove this rule"
+                          className="w-9 h-9 rounded-xl grid place-items-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors shrink-0">
+                          <i className="ph-bold ph-trash"></i>
+                        </button>
+                      </div>
+                      <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
+                        {kind.help} <span className="text-slate-400 dark:text-slate-500">e.g. {kind.example}</span>
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Block>
+
+          <Block title="Exact names">
+            <TokenInput
+              values={names} draft={nameDraft} setDraft={setNameDraft}
+              onAdd={v => setNames(n => n.includes(v) ? n : [...n, v])}
+              onRemove={v => setNames(n => n.filter(x => x !== v))}
+              placeholder="my-bucket-name — press Enter"
+              intent="neutral"
+            />
+            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
+              Skip these specific resources, whatever the rules above say.
+            </p>
+          </Block>
+
+          <Block title="Always check anyway">
+            <TokenInput
+              values={keep} draft={keepDraft} setDraft={setKeepDraft}
+              onAdd={v => setKeep(k => k.includes(v) ? k : [...k, v])}
+              onRemove={v => setKeep(k => k.filter(x => x !== v))}
+              placeholder="prod-logs — press Enter"
+              intent="good"
+            />
+            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
+              These win over everything above — use one when a rule casts too wide a net and you want a
+              single resource pulled back in.
+            </p>
+          </Block>
+
+          <div className="px-7 py-5 flex items-center gap-3 flex-wrap">
+            <Button variant="primary" onClick={submit}>{list ? "Save list" : "Create list"}</Button>
+            <Button variant="ghost" onClick={onClose}>Cancel</Button>
+            {error && <span className="text-[13px] font-semibold text-rose-600 dark:text-rose-400">{error}</span>}
+          </div>
+        </Sheet>
+
+        {/* Live preview against resources guardrails have actually seen. */}
+        <div className="lg:sticky lg:top-24">
+          <Sheet>
+            <SheetHeader intent={matched.length > 0 ? "warn" : "neutral"}
+              title="What this skips"
+              aside={
+                <div>
+                  <p className="text-[34px] font-black text-white leading-none tabular-nums">{matched.length}</p>
+                  <p className={`${TYPE.label} text-white/70 mt-1`}>of {known.length}</p>
+                </div>
+              } />
+            <div className="px-6 py-5">
+              {known.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Run a guardrail first and this will show exactly which of your resources the list catches.
+                </p>
+              ) : matched.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">
+                  Nothing matches yet. Everything stays covered by your rules.
+                </p>
+              ) : (
+                <ul className="grid gap-1.5 max-h-[380px] overflow-y-auto">
+                  {matched.slice(0, 100).map(id => (
+                    <li key={id} className="font-mono text-[12.5px] text-slate-600 dark:text-slate-300 truncate" title={id}>
+                      {id}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {hasTagRule && (
+                <p className="text-[12.5px] text-amber-600 dark:text-amber-400 mt-3">
+                  Tag rules are not previewed here — tags are read when a guardrail runs, not stored with findings.
+                  They will still apply.
+                </p>
+              )}
+            </div>
+          </Sheet>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/** Chip input: type, press Enter. Avoids a textarea whose format has to be learned. */
+function TokenInput({ values, draft, setDraft, onAdd, onRemove, placeholder, intent }: {
+  values: string[]; draft: string; setDraft: (v: string) => void;
+  onAdd: (v: string) => void; onRemove: (v: string) => void;
+  placeholder: string; intent: Intent;
+}) {
+  const commit = () => {
+    const v = draft.trim();
+    if (v) { onAdd(v); setDraft(""); }
+  };
+  return (
+    <div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {values.map(v => (
+          <span key={v} className={`inline-flex items-center gap-1.5 text-[12px] font-mono font-semibold px-2.5 py-1 rounded-lg ${INTENT[intent].soft} ${INTENT[intent].text}`}>
+            {v}
+            <button onClick={() => onRemove(v)} className="opacity-50 hover:opacity-100" title="Remove">
+              <i className="ph-bold ph-x text-[10px]"></i>
+            </button>
+          </span>
+        ))}
+      </div>
+      <input value={draft} onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
+        onBlur={commit}
+        placeholder={placeholder} className={`${SURFACE.input} font-mono`} />
     </div>
   );
 }

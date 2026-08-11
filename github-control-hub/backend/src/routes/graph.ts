@@ -60,13 +60,6 @@ router.get("/node/:id", async (req: Request<{ id: string }>, res: Response) => {
   }
 });
 
-// 2. Blast Radius Analysis for a Repo
-// If a repo is compromised, what else is affected?
-// e.g. downstream dependencies, workflows, teams that own it.
-router.get("/blast-radius/repo/:repo", async (req: Request<{ repo: string }>, res: Response) => {
-  try {
-    const repoId = `REPO#${req.params.repo}`;
-    const edges = await getEdgesForNode(repoId);
 
     const workflows = edges.filter(e => e.type === "uses_workflow").map(e => e.sk.replace("WORKFLOW#", ""));
     const vulnerableDeps = edges.filter(e => e.type === "has_vulnerable_dependency").map(e => ({
@@ -159,95 +152,6 @@ router.get("/user-impact/:user", async (req: Request<{ user: string }>, res: Res
 });
 
 // 4. Blast Radius Ranking
-// Returns all repositories ranked by their calculated blast radius score.
-router.get("/blast-radius/ranking", async (req: Request, res: Response) => {
-  try {
-    let allEdges: any[] = [];
-    if (usesDynamo()) {
-      let lastKey: any = undefined;
-      do {
-        const result: any = await docClient.send(
-          new ScanCommand({
-            TableName: tableName("GRAPH_EDGES_TABLE"),
-            ExclusiveStartKey: lastKey,
-          })
-        );
-        allEdges.push(...(result.Items || []));
-        lastKey = result.LastEvaluatedKey;
-      } while (lastKey);
-    } else {
-      allEdges = loadLocalEdges();
-    }
-
-    // Group edges by repository
-    const repoEdgesMap = new Map<string, any[]>();
-    for (const edge of allEdges) {
-      if (edge.pk.startsWith("REPO#")) {
-        const repoName = edge.pk.replace("REPO#", "");
-        if (!repoEdgesMap.has(repoName)) {
-          repoEdgesMap.set(repoName, []);
-        }
-        repoEdgesMap.get(repoName)!.push(edge);
-      }
-    }
-
-    const ranking = [];
-    for (const [repoName, edges] of repoEdgesMap.entries()) {
-      const workflows = edges.filter(e => e.type === "uses_workflow").map(e => e.sk.replace("WORKFLOW#", ""));
-      const vulnerableDeps = edges.filter(e => e.type === "has_vulnerable_dependency").map(e => ({
-        name: e.sk.replace("DEPENDENCY#", ""),
-        severity: e.metadata?.severity
-      }));
-      const teams = edges.filter(e => e.type === "owned_by_team").map(e => ({
-        name: e.sk.replace("TEAM#", ""),
-        permission: e.metadata?.permission
-      }));
-      const directCollaborators = edges.filter(e => e.type === "has_collaborator").map(e => ({
-        name: e.sk.replace("USER#", ""),
-        role: e.metadata?.role
-      }));
-
-      // Calculate score
-      let score = 0;
-      
-      // Workflows (2 points each)
-      score += workflows.length * 2;
-      
-      // Vulnerabilities
-      for (const dep of vulnerableDeps) {
-        if (dep.severity === "critical") score += 10;
-        else if (dep.severity === "high") score += 5;
-        else if (dep.severity === "medium" || dep.severity === "moderate") score += 3;
-        else score += 1;
-      }
-      
-      // Access Vectors
-      score += teams.length * 1;
-      score += directCollaborators.length * 1;
-
-      let riskLevel = "LOW";
-      if (score >= 30) riskLevel = "CRITICAL";
-      else if (score >= 15) riskLevel = "HIGH";
-      else if (score >= 5) riskLevel = "MEDIUM";
-
-      ranking.push({
-        repo: repoName,
-        score,
-        riskLevel,
-        workflowsCount: workflows.length,
-        vulnerabilitiesCount: vulnerableDeps.length,
-        accessVectorsCount: teams.length + directCollaborators.length
-      });
-    }
-
-    // Sort highest to lowest
-    ranking.sort((a, b) => b.score - a.score);
-
-    res.json(ranking);
-  } catch (error: any) {
-    res.status(500).json({ error: sanitizeError(error, "graph") });
-  }
-});
 
 // 5. Graph metadata (edge count)
 router.get("/meta", async (_req: Request, res: Response) => {

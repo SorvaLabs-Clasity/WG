@@ -1,5 +1,5 @@
 import { apiGet, apiPost, DEMO_MODE } from "./client";
-import { mockGetGraphNode, mockGetBlastRadius, mockGetUserImpact, mockGetBlastRadiusRanking, mockFetchSecurityQuery } from "./mock";
+import { mockGetGraphNode, mockGetUserImpact, mockFetchSecurityQuery } from "./mock";
 
 export interface GraphEdge {
   target: string;
@@ -12,30 +12,12 @@ export interface GraphNodeResponse {
   edges: GraphEdge[];
 }
 
-export interface BlastRadiusResponse {
-  repo: string;
-  workflows: string[];
-  vulnerableDependencies: { name: string; severity: string }[];
-  teamsWithAccess: { name: string; permission: string }[];
-  directCollaborators: { name: string; role: string }[];
-  riskScore: string;
-}
-
 export interface UserImpactResponse {
   user: string;
   teams: string[];
   repos: { repo: string; access: string; team?: string; permission: string }[];
   writeOrAdminReposCount: number;
   productionPipelinesReachable: number;
-}
-
-export interface BlastRadiusRankingItem {
-  repo: string;
-  score: number;
-  riskLevel: string;
-  workflowsCount: number;
-  vulnerabilitiesCount: number;
-  accessVectorsCount: number;
 }
 
 export async function fetchGraphMeta(): Promise<{ edgeCount: number }> {
@@ -51,16 +33,6 @@ export async function triggerGraphAggregation(): Promise<{ message: string }> {
 export async function fetchGraphNode(id: string): Promise<GraphNodeResponse> {
   if (DEMO_MODE) return mockGetGraphNode(id);
   return apiGet<GraphNodeResponse>(`/graph/node/${encodeURIComponent(id)}`);
-}
-
-export async function fetchBlastRadius(repo: string): Promise<BlastRadiusResponse> {
-  if (DEMO_MODE) return mockGetBlastRadius(repo);
-  return apiGet<BlastRadiusResponse>(`/graph/blast-radius/repo/${encodeURIComponent(repo)}`);
-}
-
-export async function fetchBlastRadiusRanking(): Promise<BlastRadiusRankingItem[]> {
-  if (DEMO_MODE) return mockGetBlastRadiusRanking();
-  return apiGet<BlastRadiusRankingItem[]>(`/graph/blast-radius/ranking`);
 }
 
 export async function fetchUserImpact(user: string): Promise<UserImpactResponse> {

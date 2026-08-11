@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { Page } from "../design";
 import { useAuth } from "../App";
-import { useSecurityQuery, useBlastRadiusRanking, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
+import { useSecurityQuery, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS } from "../utils/queryOptions";
@@ -12,7 +12,7 @@ import { TagInput } from "../components/TagInput";
 
 type WidgetType = "preset" | "query";
 type DisplayType = "metric" | "table";
-type PresetId = "dependabot" | "bypasses" | "blast";
+type PresetId = "dependabot" | "bypasses";
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
@@ -272,7 +272,6 @@ export default function AnalyticsPage() {
 
 function useWidgetData(config: WidgetConfig) {
   const { data: depsData, isLoading: depsLoading } = useDependencies();
-  const { data: blastData, isLoading: blastLoading } = useBlastRadiusRanking();
   const isBypass = config.type === "preset" && config.presetId === "bypasses";
   const { data: bypassData, isLoading: bypassLoading } = useSecurityQuery(isBypass ? "protection-bypasses-ranking" : null);
 
@@ -305,9 +304,6 @@ function useWidgetData(config: WidgetConfig) {
       } else if (config.presetId === "bypasses") {
         loading = bypassLoading;
         rawItems = bypassData || [];
-      } else if (config.presetId === "blast") {
-        loading = blastLoading;
-        rawItems = blastData || [];
       }
     } else {
       loading = queryLoading;
@@ -315,7 +311,7 @@ function useWidgetData(config: WidgetConfig) {
     }
 
     return { items: rawItems, isLoading: loading };
-  }, [config, depsData, depsLoading, blastData, blastLoading, bypassData, bypassLoading, queryData, queryLoading]);
+  }, [config, depsData, depsLoading, bypassData, bypassLoading, queryData, queryLoading]);
 
   const isRepoQuery = config.type === "preset" || (config.type === "query" && config.queryId?.startsWith("repos-"));
   const total = isRepoQuery && repos ? repos.length : null;
@@ -333,7 +329,6 @@ function WidgetCard({ config, onRemove, onEdit, graphEmpty, orgName }: { config:
     if (config.type === "preset") {
       if (config.presetId === "dependabot") return { cls: "ph-fill ph-bug text-rose-500", color: "rose" };
       if (config.presetId === "bypasses") return { cls: "ph-fill ph-shield-warning text-amber-500", color: "amber" };
-      if (config.presetId === "blast") return { cls: "ph-fill ph-target text-orange-500", color: "orange" };
     }
     const hasStatus = items.some((i: any) => i.status);
     if (hasStatus) {
@@ -439,7 +434,7 @@ function TableCardBody({ items, config, onExpand }: { items: any[]; config: Widg
           <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
             {items.slice(0, 5).map((item: any, idx: number) => {
               const name = item.repo || item.user || item.team || "Unknown";
-              const val = config.presetId === "dependabot" ? item.total : config.presetId === "bypasses" ? item.bypasses : config.presetId === "blast" ? item.score : "";
+              const val = config.presetId === "dependabot" ? item.total : config.presetId === "bypasses" ? item.bypasses : "";
               return (
                 <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer" onClick={onExpand}>
                   <td className="px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
@@ -589,12 +584,6 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                 <th className="px-6 py-3 w-full">Reason</th>
               </>
             )}
-            {config.type === "preset" && config.presetId === "blast" && (
-              <>
-                <th className="px-6 py-3">Risk Level</th>
-                <th className="px-6 py-3 text-center">Score</th>
-              </>
-            )}
             {config.type === "query" && hasStatus && <th className="px-6 py-3 text-center w-[80px]">Status</th>}
             {config.type === "query" && <th className="px-6 py-3 w-full">Details</th>}
           </tr>
@@ -629,25 +618,6 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                   <>
                     <td className="px-6 py-4 font-mono font-bold text-rose-600 dark:text-red-400">{item.bypasses}</td>
                     <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 truncate">{item.reason}</td>
-                  </>
-                )}
-                {config.type === "preset" && config.presetId === "blast" && (
-                  <>
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                        item.riskLevel === "CRITICAL" ? "bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border-rose-200 dark:border-red-800" :
-                        item.riskLevel === "HIGH" ? "bg-orange-50 dark:bg-orange-950/50 text-orange-700 dark:text-orange-400 border-orange-200 dark:border-orange-800" :
-                        item.riskLevel === "MEDIUM" ? "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800" :
-                        "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
-                      }`}>
-                        {item.riskLevel === "CRITICAL" && <i className="fas fa-times-circle"></i>}
-                        {item.riskLevel === "HIGH" && <i className="fas fa-exclamation-circle"></i>}
-                        {item.riskLevel === "MEDIUM" && <i className="fas fa-exclamation-triangle"></i>}
-                        {item.riskLevel === "LOW" && <i className="fas fa-check-circle"></i>}
-                        {item.riskLevel}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 font-mono text-center font-bold">{item.score}</td>
                   </>
                 )}
 
@@ -985,7 +955,6 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                 >
                   <option value="dependabot">Dependabot Issues Ranking</option>
                   <option value="bypasses">Protection Rule Bypasses</option>
-                  <option value="blast">Blast Radius Risk</option>
                 </select>
               </div>
             ) : (
