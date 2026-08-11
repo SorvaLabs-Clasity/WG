@@ -4,6 +4,7 @@ import UserAvatar from "./UserAvatar";
 import { useTheme } from "../hooks/useTheme";
 import { revokeGithub } from "../api/auth";
 import { clearToken, getToken } from "../api/client";
+import { COMPANY_NAME } from "../design";
 
 interface NavbarProps {
   login?: string;
@@ -60,7 +61,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
             </span>
             <span className="hidden sm:block text-left leading-tight">
               <span className="block text-[13px] font-black text-slate-900 dark:text-white tracking-tight">Control Hub</span>
-              <span className="block text-[10px] text-slate-400 dark:text-white/40 font-medium">Sorva Studios</span>
+              <span className="block text-[10px] text-slate-400 dark:text-white/40 font-medium">{COMPANY_NAME}</span>
             </span>
           </button>
 

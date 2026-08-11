@@ -16,7 +16,7 @@ import {
 } from "../api/auth";
 import { clearToken, isAuthenticated, getUserInfo, getToken } from "../api/client";
 import { useTheme } from "../hooks/useTheme";
-import { INTENT, TYPE, SURFACE, EASE, enter, type Intent, Button, Segmented } from "../design";
+import { INTENT, TYPE, SURFACE, EASE, enter, COMPANY_NAME, type Intent, Button, Segmented } from "../design";
 
 /**
  * Sign-in.
@@ -246,7 +246,7 @@ export default function LoginPage() {
             </div>
             <div>
               <div className="text-[15px] font-black tracking-tight leading-none">GitHub Control Hub</div>
-              <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">Sorva Studios</div>
+              <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">{COMPANY_NAME}</div>
             </div>
           </div>
 

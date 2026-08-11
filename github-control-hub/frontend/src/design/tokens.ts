@@ -98,6 +98,13 @@ export const TYPE = {
   mono: "font-mono text-[13.5px]",
 };
 
+/**
+ * Whose install this is. Set VITE_COMPANY_NAME at build time; the app is meant
+ * to be handed to another company without editing components to do it.
+ */
+export const COMPANY_NAME: string =
+  (import.meta.env.VITE_COMPANY_NAME as string | undefined) || "Control Hub";
+
 export const SURFACE = {
   /** Page ground. Tinted toward blue rather than pure grey. */
   page: "bg-[#f6f7fa] dark:bg-[#0b0e14]",

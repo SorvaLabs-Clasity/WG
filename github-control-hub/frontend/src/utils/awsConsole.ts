@@ -6,7 +6,13 @@
  * stored, so a new rule kind only needs an entry here.
  */
 
-const DEFAULT_REGION = "us-east-1";
+/**
+ * Used only when a finding carries no region of its own. Every other
+ * "us-east-1" in this codebase is a fallback for AWS_REGION; this one built
+ * links to the wrong console entirely in another region.
+ */
+const DEFAULT_REGION: string =
+  (import.meta.env.VITE_AWS_REGION as string | undefined) || "us-east-1";
 
 /**
  * CloudWatch's console encodes log group names twice — a `/` becomes `$252F`,
