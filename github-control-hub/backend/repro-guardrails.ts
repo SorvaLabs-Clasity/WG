@@ -73,6 +73,19 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
     res("b", { policy: { Statement: [{ ...httpsOnlyStatement("b", "SomeoneElsesName") }] } }), { sid });
   check("equivalent deny under another Sid is compliant", foreign.verdict === "compliant", foreign);
 
+  // An Allow conditioned on non-TLS must NOT count as denying it. A precedence
+  // slip once made this pass, which is a false clean bill of health.
+  const allowNonTls = evaluateResource("s3_https_only",
+    res("b", { policy: { Statement: [{ Sid: "Weird", Effect: "Allow", Principal: "*", Action: "s3:*",
+      Condition: { Bool: { "aws:SecureTransport": false } } }] } }), { sid });
+  check("an ALLOW conditioned on non-TLS is not compliant", allowNonTls.verdict === "violation", allowNonTls);
+
+  // IAM accepts the condition value as a boolean as well as a string.
+  const boolDeny = evaluateResource("s3_https_only",
+    res("b", { policy: { Statement: [{ Sid: "X", Effect: "Deny", Principal: "*", Action: "s3:*",
+      Condition: { Bool: { "aws:SecureTransport": false } } }] } }), { sid });
+  check("a DENY using boolean false is compliant", boolDeny.verdict === "compliant", boolDeny);
+
   const none = evaluateResource("s3_https_only", res("b", { policy: null }), { sid });
   check("bucket with no policy is a violation", none.verdict === "violation", none);
   check("  and builds a fresh document", (none.fix?.after as any).Statement.length === 1, none.fix);

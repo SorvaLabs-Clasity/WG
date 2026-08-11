@@ -47,11 +47,16 @@ const s3HttpsOnly: RuleKind = {
     // Any statement denying non-TLS traffic satisfies this, however it is named —
     // we should not flag a bucket that is already correct just because someone
     // else wrote the rule.
-    const already = statements.some(s =>
-      s?.Effect === "Deny" &&
-      s?.Condition?.Bool?.["aws:SecureTransport"] === "false" ||
-      s?.Condition?.Bool?.["aws:SecureTransport"] === false
-    );
+    //
+    // Effect must be checked on BOTH branches. IAM accepts the condition value
+    // as the string "false" or the boolean false, and an earlier version bound
+    // these with && / || such that a statement ALLOWING non-TLS traffic counted
+    // as compliant.
+    const already = statements.some(s => {
+      if (s?.Effect !== "Deny") return false;
+      const v = s?.Condition?.Bool?.["aws:SecureTransport"];
+      return v === "false" || v === false;
+    });
     if (already) return ok("Denies non-TLS requests");
 
     const next = [...statements.filter(s => s?.Sid !== sid), httpsOnlyStatement(resource.id, sid)];
