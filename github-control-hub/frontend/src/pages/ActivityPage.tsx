@@ -90,8 +90,21 @@ function isUndoRedoTracker(entry: Activity): boolean {
   ) && !!entry.linkedActivityId;
 }
 
+/**
+ * Records of something that happened to code. The server refuses to undo these
+ * outright; the button is hidden so nobody is invited to try. Kept in step with
+ * CODE_HISTORY_ACTIONS in backend/src/services/undoPolicy.ts.
+ */
+const CODE_HISTORY_ACTIONS = new Set([
+  "github.push", "github.pr_opened", "github.pr_merged", "github.pr_closed",
+]);
+
+function isCodeHistory(entry: Activity): boolean {
+  return CODE_HISTORY_ACTIONS.has(entry.action) || entry.source === "github";
+}
+
 function canUndo(entry: Activity): boolean {
-  if (isUndoRedoTracker(entry)) return false;
+  if (isUndoRedoTracker(entry) || isCodeHistory(entry)) return false;
   if (entry.undone || entry.failed) return false;
   if (entry.undoPayload) return true;
   if (entry.children && entry.children.length > 0) return entry.children.some(c => canUndo(c));
@@ -99,11 +112,12 @@ function canUndo(entry: Activity): boolean {
 }
 
 function canRedo(entry: Activity): boolean {
-  if (isUndoRedoTracker(entry)) return false;
+  if (isUndoRedoTracker(entry) || isCodeHistory(entry)) return false;
   if (!entry.undone) return false;
   if (entry.undoPayload) return true;
-  if (entry.children && entry.children.length > 0) return entry.children.some(c => canRedo(c));
-  return true;
+  // Without a payload there is nothing to reapply. Offering redo here only
+  // ever cleared a flag the old undo path should not have set.
+  return entry.children?.some(canRedo) ?? false;
 }
 
 function findActivityById(entries: Activity[], id: string): Activity | undefined {

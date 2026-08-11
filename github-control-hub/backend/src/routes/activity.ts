@@ -21,6 +21,9 @@ import {
 } from "../services/activityService";
 import type { ActivityEntry } from "../services/activityService";
 import { createOctokit, getOrg } from "../github/client";
+import { assertWritable, RepoAccessDenied } from "../github/permissions";
+import { undoBlockedReason, reposNeedingWrite, isReversible, ALLOWED_UNDO_ACTIONS } from "../services/undoPolicy";
+import { permissionMessage } from "../utils/permissionError";
 import {
   createBranch,
   deleteBranch,
@@ -132,34 +135,59 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
     const undone: string[] = [];
     const errors: string[] = [];
 
-    const children = await getChildActivities(entry.id);
+    // Gather the whole tree first. An undo of a template application touches
+    // many repositories, and finding out halfway through that the caller
+    // cannot write to the fourth one leaves three repositories changed and
+    // nothing to point at explaining why the rest were not.
+    const children = (await getChildActivities(entry.id)).filter(c => !c.undone);
+    const descendants: ActivityEntry[] = [];
     for (const child of children) {
-      if (child.undone) continue;
-      const grandchildren = await getChildActivities(child.id);
-      for (const gc of grandchildren) {
-        if (gc.undone) continue;
-        try {
-          await executeUndo(gc, req.user!.accessToken);
-          await markActivityUndone(gc.id);
-          undone.push(gc.id);
-        } catch (err) {
-          errors.push(`Failed to undo ${gc.action} on ${gc.target}: ${(err as Error).message}`);
-        }
+      descendants.push(...(await getChildActivities(child.id)).filter(gc => !gc.undone));
+      descendants.push(child);
+    }
+
+    const blocked = undoBlockedReason(entry, descendants);
+    if (blocked) {
+      res.status(400).json({ error: blocked, code: "NOT_UNDOABLE" });
+      return;
+    }
+
+    try {
+      await assertWritable(
+        createOctokit(req.user!.accessToken), getOrg(),
+        reposNeedingWrite([...descendants, entry]),
+      );
+    } catch (err) {
+      if (err instanceof RepoAccessDenied) {
+        res.status(403).json({
+          error: permissionMessage(req.user!.login, "undo this change", err.repos.join(", ")),
+          code: "GITHUB_PERMISSION_DENIED",
+          repos: err.repos,
+        });
+        return;
       }
+      throw err;
+    }
+
+    for (const target of descendants) {
       try {
-        await executeUndo(child, req.user!.accessToken);
-        await markActivityUndone(child.id);
-        undone.push(child.id);
+        await executeUndo(target, req.user!.accessToken);
+        await markActivityUndone(target.id);
+        undone.push(target.id);
       } catch (err) {
-        errors.push(`Failed to undo ${child.action} on ${child.target}: ${(err as Error).message}`);
+        errors.push(`Failed to undo ${target.action} on ${target.target}: ${(err as Error).message}`);
       }
     }
 
+    // Only claim the entry is undone if it is. Marking it regardless is how the
+    // log came to disagree with the account.
     if (entry.undoPayload) {
       try {
         await executeUndo(entry, req.user!.accessToken);
       } catch (err) {
         errors.push(`Failed to undo ${entry.action} on ${entry.target}: ${(err as Error).message}`);
+        res.status(502).json({ undone, errors });
+        return;
       }
     }
 
@@ -198,57 +226,65 @@ router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => 
     const errors: string[] = [];
     const accessToken = req.user!.accessToken;
 
-    const children = await getChildActivities(entry.id);
-    children.reverse();
-
+    // Same shape as undo, in reverse: whole tree gathered and access checked
+    // before anything is written.
+    const children = (await getChildActivities(entry.id)).filter(c => c.undone).reverse();
+    const descendants: ActivityEntry[] = [];
     for (const child of children) {
-      if (!child.undone) continue;
+      descendants.push(...(await getChildActivities(child.id)).filter(gc => gc.undone).reverse());
+      descendants.push(child);
+    }
 
-      const grandchildren = await getChildActivities(child.id);
-      grandchildren.reverse();
+    if (!isReversible(entry) && !descendants.some(isReversible)) {
+      res.status(400).json({ error: "This action cannot be redone.", code: "NOT_UNDOABLE" });
+      return;
+    }
 
-      for (const gc of grandchildren) {
-        if (!gc.undone) continue;
-        if (gc.undoPayload) {
-          try {
-            await executeRedo(gc, accessToken);
-            await markActivityRedone(gc.id);
-            redone.push(gc.id);
-          } catch (err) {
-            errors.push(`Failed to redo ${gc.action} on ${gc.target}: ${(err as Error).message}`);
-          }
-        } else {
-          await markActivityRedone(gc.id);
-          redone.push(gc.id);
-        }
+    try {
+      await assertWritable(
+        createOctokit(accessToken), getOrg(),
+        reposNeedingWrite([...descendants, entry]),
+      );
+    } catch (err) {
+      if (err instanceof RepoAccessDenied) {
+        res.status(403).json({
+          error: permissionMessage(req.user!.login, "redo this change", err.repos.join(", ")),
+          code: "GITHUB_PERMISSION_DENIED",
+          repos: err.repos,
+        });
+        return;
       }
+      throw err;
+    }
 
-      if (child.undoPayload) {
-        try {
-          await executeRedo(child, accessToken);
-          await markActivityRedone(child.id);
-          redone.push(child.id);
-        } catch (err) {
-          errors.push(`Failed to redo ${child.action} on ${child.target}: ${(err as Error).message}`);
-        }
-      } else {
-        await markActivityRedone(child.id);
-        redone.push(child.id);
+    for (const target of descendants) {
+      if (!target.undoPayload) {
+        // Rows the old undo path flagged without touching anything. Clearing
+        // the flag is the repair, not a redo — there is nothing to reapply.
+        await markActivityRedone(target.id);
+        redone.push(target.id);
+        continue;
+      }
+      try {
+        await executeRedo(target, accessToken);
+        await markActivityRedone(target.id);
+        redone.push(target.id);
+      } catch (err) {
+        errors.push(`Failed to redo ${target.action} on ${target.target}: ${(err as Error).message}`);
       }
     }
 
     if (entry.undoPayload) {
       try {
         await executeRedo(entry, accessToken);
-        await markActivityRedone(entry.id);
-        redone.push(entry.id);
       } catch (err) {
         errors.push(`Failed to redo ${entry.action} on ${entry.target}: ${(err as Error).message}`);
+        res.status(502).json({ redone, errors });
+        return;
       }
-    } else {
-      await markActivityRedone(entry.id);
-      redone.push(entry.id);
     }
+    await markActivityRedone(entry.id);
+    redone.push(entry.id);
 
     await logActivity(
       "activity.redo",
@@ -655,6 +691,10 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
   const octokit = createOctokit(accessToken);
   const org = getOrg();
 
+  if (!ALLOWED_UNDO_ACTIONS.has(action)) {
+    throw new Error(`"${action}" is not something the Control Hub can reverse`);
+  }
+
   switch (action) {
     case "delete_branch": {
       try {
@@ -825,7 +865,9 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
       break;
     }
     default:
-      break;
+      // ALLOWED_UNDO_ACTIONS is checked above, so reaching here means the two
+      // lists have drifted apart.
+      throw new Error(`No handler for "${action}"`);
   }
 }
 
@@ -834,6 +876,10 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
   const { action, params } = entry.undoPayload;
   const octokit = createOctokit(accessToken);
   const org = getOrg();
+
+  if (!ALLOWED_UNDO_ACTIONS.has(action)) {
+    throw new Error(`"${action}" is not something the Control Hub can reverse`);
+  }
 
   switch (action) {
     case "delete_branch":
@@ -1074,7 +1120,9 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
     }
 
     default:
-      break;
+      // ALLOWED_UNDO_ACTIONS is checked above, so reaching here means the two
+      // lists have drifted apart.
+      throw new Error(`No handler for "${action}"`);
   }
 }
 
