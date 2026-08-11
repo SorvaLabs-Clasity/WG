@@ -158,7 +158,7 @@ export default function KnowledgeGraphPage() {
               </div>
             </div>
 
-            <div className="max-h-[calc(100vh-330px)] overflow-y-auto divide-y divide-slate-50 dark:divide-slate-800">
+            <div className="max-h-[calc(100vh-300px)] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
               {isLoading ? (
                 <div className="p-10 flex justify-center">
                   <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 dark:border-slate-700 border-t-slate-600 dark:border-t-slate-300"></div>
@@ -197,25 +197,44 @@ function RepoRow({ repo, selected, onSelect }: { repo: Repo; selected: boolean; 
   return (
     <button
       onClick={onSelect}
-      className={`w-full text-left px-5 py-3 transition-colors ${selected ? "bg-blue-50 dark:bg-blue-950/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60"}`}
+      className={`w-full text-left px-5 py-4 transition-colors border-l-[3px] ${
+        selected
+          ? "bg-blue-50 dark:bg-blue-950/30 border-blue-500"
+          : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60"}`}
     >
-      <div className="flex items-start gap-3">
-        <span className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: languageHue(repo.language) }} title={repo.language ?? "No language"}></span>
+      <div className="flex items-start gap-3.5">
+        {/* Language swatch, sized to anchor the row rather than punctuate it. */}
+        <span className="w-9 h-9 rounded-xl shrink-0 grid place-items-center text-white font-black text-[13px] mt-0.5"
+          style={{ backgroundColor: languageHue(repo.language) }}
+          title={repo.language ?? "No language"}>
+          {(repo.language ?? repo.name).slice(0, 2).toUpperCase()}
+        </span>
+
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{repo.name}</span>
-            {repo.private && <i className="ph-fill ph-lock-simple text-[11px] text-slate-400 dark:text-slate-500" title="Private"></i>}
-            {repo.archived && <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700">Archived</span>}
-            {repo.fork && <i className="ph-bold ph-git-fork text-[11px] text-slate-400 dark:text-slate-500" title="Fork"></i>}
+            <span className="text-[15px] font-bold text-slate-900 dark:text-white truncate tracking-tight">{repo.name}</span>
+            {repo.private && <i className="ph-fill ph-lock-simple text-xs text-slate-400 dark:text-slate-500 shrink-0" title="Private"></i>}
+            {repo.fork && <i className="ph-bold ph-git-fork text-xs text-slate-400 dark:text-slate-500 shrink-0" title="Fork"></i>}
+            {repo.archived && (
+              <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">
+                archived
+              </span>
+            )}
           </div>
+
           {repo.description && (
-            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{repo.description}</p>
+            <p className="text-[13px] text-slate-500 dark:text-slate-400 line-clamp-2 mt-1 leading-snug">{repo.description}</p>
           )}
-          <div className="flex items-center gap-3 mt-1 text-[11px] text-slate-400 dark:text-slate-500 font-mono">
-            {repo.language && <span>{repo.language}</span>}
+
+          <div className="flex items-center gap-2.5 mt-2 text-[12px] text-slate-400 dark:text-slate-500">
+            {repo.language && <span className="font-semibold text-slate-500 dark:text-slate-400">{repo.language}</span>}
             <span>{formatSize(repo.size)}</span>
-            {!!repo.open_issues_count && <span>{repo.open_issues_count} issues</span>}
-            <span>pushed {relativeTime(repo.pushed_at ?? repo.updated_at)}</span>
+            {!!repo.open_issues_count && (
+              <span className="inline-flex items-center gap-1">
+                <i className="ph-fill ph-circle-dashed text-[11px]"></i>{repo.open_issues_count}
+              </span>
+            )}
+            <span className="ml-auto shrink-0">{relativeTime(repo.pushed_at ?? repo.updated_at)}</span>
           </div>
         </div>
       </div>

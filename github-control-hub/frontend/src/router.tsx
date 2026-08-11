@@ -4,7 +4,6 @@ import AuthCallback from "./pages/AuthCallback";
 import ActivityPage from "./pages/ActivityPage";
 import TemplatesPage from "./pages/TemplatesPage";
 import SecurityPage from "./pages/SecurityPage";
-import ComplianceDashboardPage from "./pages/ComplianceDashboardPage";
 import DependencyDashboardPage from "./pages/DependencyDashboardPage";
 import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
@@ -60,14 +59,6 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <SecurityPage />
-      </RequireAuth>
-    ),
-  },
-  {
-    path: "/compliance",
-    element: (
-      <RequireAuth>
-        <ComplianceDashboardPage />
       </RequireAuth>
     ),
   },

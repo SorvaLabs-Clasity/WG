@@ -22,7 +22,6 @@ const ITEMS = [
   { label: "Templates", short: "Templates", icon: "ph-stack", path: "/templates", match: (p: string) => p.startsWith("/templates") },
   { label: "AWS", short: "AWS", icon: "ph-cloud", path: "/aws", match: (p: string) => p.startsWith("/aws") },
   { label: "Security", short: "Security", icon: "ph-shield-warning", path: "/security", match: (p: string) => p.startsWith("/security") },
-  { label: "Compliance", short: "Compliance", icon: "ph-seal-check", path: "/compliance", match: (p: string) => p.startsWith("/compliance") },
   { label: "Dependabot", short: "Deps", icon: "ph-bug-beetle", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies") },
   { label: "Repos", short: "Repos", icon: "ph-books", path: "/graph", match: (p: string) => p.startsWith("/graph") },
   { label: "Activity", short: "Activity", icon: "ph-pulse", path: "/activity", match: (p: string) => p.startsWith("/activity") },
