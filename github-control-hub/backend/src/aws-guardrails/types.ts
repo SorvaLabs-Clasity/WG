@@ -1,7 +1,6 @@
 /** Shared types for the AWS guardrail engine. */
 
 export type GuardrailKind =
-  // Safe to auto-remediate
   | "s3_https_only"
   | "log_retention_min"
   | "s3_block_public_access"
@@ -9,18 +8,7 @@ export type GuardrailKind =
   | "s3_versioning"
   | "ebs_encryption_default"
   | "rds_backup_retention_min"
-  | "iam_password_policy"
-  // Report-only by default — remediation can cut live access
-  | "sg_no_public_admin_ingress"
-  | "rds_no_public_access"
-  | "ec2_imdsv2_required"
-  | "cloudtrail_enabled"
-  // Added from the company's Vanta control set. All report-only: each fix
-  // needs a reboot, a destination bucket, or an irreversible setting.
-  | "rds_pgaudit_enabled"
-  | "rds_ssl_enforced"
-  | "s3_cross_region_replication"
-  | "cloudtrail_bucket_protected";
+  | "iam_password_policy";
 
 export type GuardrailMode = "report" | "enforce";
 

@@ -25,29 +25,12 @@ async function optional<T>(fn: () => Promise<T>, fallback: T, notConfigured: str
   }
 }
 
-/**
- * Buckets CloudTrail delivers to.
- *
- * Fetched once per collection rather than per bucket: the delete-protection
- * rule only applies to these, and asking CloudTrail 350 times would be absurd.
- */
-async function cloudTrailBuckets(): Promise<Set<string>> {
-  try {
-    const { CloudTrailClient, DescribeTrailsCommand } = await import("@aws-sdk/client-cloudtrail");
-    const ct = new CloudTrailClient({ region: REGION });
-    const { trailList = [] } = await ct.send(new DescribeTrailsCommand({}));
-    return new Set(trailList.map(t => t.S3BucketName).filter((b): b is string => !!b));
-  } catch {
-    return new Set();
-  }
-}
 
 export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[]> {
   const { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetPublicAccessBlockCommand,
           GetBucketEncryptionCommand, GetBucketVersioningCommand, GetBucketTaggingCommand,
-          GetBucketReplicationCommand, GetObjectLockConfigurationCommand } = await import("@aws-sdk/client-s3");
+        } = await import("@aws-sdk/client-s3");
   const s3 = new S3Client({ region: REGION });
-  const trailBuckets = await cloudTrailBuckets();
 
   const listed = only?.length
     ? only.map(name => ({ Name: name }))
@@ -79,13 +62,7 @@ export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[
       async () => (await s3.send(new GetBucketTaggingCommand({ Bucket: name }))).TagSet,
       [], ["NoSuchTagSet"]);
 
-    const replication = await optional(
-      async () => (await s3.send(new GetBucketReplicationCommand({ Bucket: name }))).ReplicationConfiguration,
-      undefined, ["ReplicationConfigurationNotFoundError"]);
 
-    const objectLock = await optional(
-      async () => (await s3.send(new GetObjectLockConfigurationCommand({ Bucket: name }))).ObjectLockConfiguration,
-      undefined, ["ObjectLockConfigurationNotFoundError"]);
 
     out.push({
       id: name,
@@ -96,13 +73,6 @@ export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[
         publicAccessBlock: pab ?? {},
         encryptionAlgorithm: enc,
         versioning: versioning ?? "Disabled",
-        replicationRules: (replication?.Rules ?? []).map(r => ({
-          id: r.ID,
-          status: r.Status,
-          destinationBucket: r.Destination?.Bucket,
-        })),
-        objectLockEnabled: objectLock?.ObjectLockEnabled === "Enabled",
-        isCloudTrailBucket: trailBuckets.has(name),
       },
     });
   }
@@ -149,76 +119,7 @@ function stripTrailingColonStar(arn: string | undefined): string | undefined {
   return arn?.endsWith(":*") ? arn.slice(0, -2) : arn;
 }
 
-export async function collectSecurityGroups(only?: string[]): Promise<ResourceSnapshot[]> {
-  const { EC2Client, DescribeSecurityGroupsCommand } = await import("@aws-sdk/client-ec2");
-  const ec2 = new EC2Client({ region: REGION });
-  const { SecurityGroups = [] } = await ec2.send(new DescribeSecurityGroupsCommand({
-    ...(only?.length ? { GroupIds: only } : {}),
-  }));
-  return SecurityGroups.map(sg => ({
-    id: sg.GroupId!,
-    type: "ec2:security-group",
-    tags: Object.fromEntries((sg.Tags ?? []).map(t => [t.Key!, t.Value!])),
-    state: {
-      name: sg.GroupName,
-      ingress: (sg.IpPermissions ?? []).map(p => ({
-        fromPort: p.FromPort,
-        toPort: p.ToPort,
-        protocol: p.IpProtocol,
-        ipRanges: (p.IpRanges ?? []).map(r => r.CidrIp!),
-        ipv6Ranges: (p.Ipv6Ranges ?? []).map(r => r.CidrIpv6!),
-      })),
-    },
-  }));
-}
 
-export async function collectInstances(only?: string[]): Promise<ResourceSnapshot[]> {
-  const { EC2Client, DescribeInstancesCommand } = await import("@aws-sdk/client-ec2");
-  const ec2 = new EC2Client({ region: REGION });
-  const { Reservations = [] } = await ec2.send(new DescribeInstancesCommand({
-    ...(only?.length ? { InstanceIds: only } : {}),
-  }));
-  const out: ResourceSnapshot[] = [];
-  for (const r of Reservations) {
-    for (const i of r.Instances ?? []) {
-      if (i.State?.Name === "terminated") continue;
-      out.push({
-        id: i.InstanceId!,
-        type: "ec2:instance",
-        tags: Object.fromEntries((i.Tags ?? []).map(t => [t.Key!, t.Value!])),
-        state: { httpTokens: i.MetadataOptions?.HttpTokens },
-      });
-    }
-  }
-  return out;
-}
-
-/** Parameters we read, resolved per parameter group and cached across instances. */
-const RDS_PARAMS_OF_INTEREST = ["rds.force_ssl", "require_secure_transport", "shared_preload_libraries"];
-
-async function parameterGroupValues(rds: any, groupName: string, cache: Map<string, Record<string, string>>) {
-  const hit = cache.get(groupName);
-  if (hit) return hit;
-
-  const { DescribeDBParametersCommand } = await import("@aws-sdk/client-rds");
-  const values: Record<string, string> = {};
-  try {
-    let marker: string | undefined;
-    do {
-      const page = await rds.send(new DescribeDBParametersCommand({ DBParameterGroupName: groupName, Marker: marker, MaxRecords: 100 }));
-      for (const prm of page.Parameters ?? []) {
-        if (prm.ParameterName && RDS_PARAMS_OF_INTEREST.includes(prm.ParameterName)) {
-          values[prm.ParameterName] = String(prm.ParameterValue ?? "");
-        }
-      }
-      marker = page.Marker;
-    } while (marker);
-  } catch (err: any) {
-    console.warn(`[collectors] Could not read parameter group "${groupName}": ${err?.message ?? err}`);
-  }
-  cache.set(groupName, values);
-  return values;
-}
 
 export async function collectDbInstances(only?: string[]): Promise<ResourceSnapshot[]> {
   const { RDSClient, DescribeDBInstancesCommand } = await import("@aws-sdk/client-rds");
@@ -226,13 +127,9 @@ export async function collectDbInstances(only?: string[]): Promise<ResourceSnaps
   const { DBInstances = [] } = await rds.send(new DescribeDBInstancesCommand({}));
   const filtered = only?.length ? DBInstances.filter(d => only.includes(d.DBInstanceIdentifier!)) : DBInstances;
 
-  // Instances usually share parameter groups, so resolve each group once.
-  const cache = new Map<string, Record<string, string>>();
   const out: ResourceSnapshot[] = [];
 
   for (const d of filtered) {
-    const groupName = d.DBParameterGroups?.[0]?.DBParameterGroupName;
-    const params = groupName ? await parameterGroupValues(rds, groupName, cache) : {};
     out.push({
       id: d.DBInstanceIdentifier!,
       type: "rds:db-instance",
@@ -240,9 +137,6 @@ export async function collectDbInstances(only?: string[]): Promise<ResourceSnaps
       state: {
         backupRetentionPeriod: d.BackupRetentionPeriod ?? 0,
         publiclyAccessible: d.PubliclyAccessible === true,
-        engine: d.Engine ?? "",
-        parameterGroup: groupName ?? null,
-        parameters: params,
       },
     });
   }
@@ -267,28 +161,12 @@ export async function collectIamAccount(): Promise<ResourceSnapshot[]> {
   return [{ id: "iam-account", type: "iam:account", tags: {}, state: { passwordPolicy: policy ?? null } }];
 }
 
-export async function collectCloudTrail(): Promise<ResourceSnapshot[]> {
-  const { CloudTrailClient, DescribeTrailsCommand, GetTrailStatusCommand } = await import("@aws-sdk/client-cloudtrail");
-  const ct = new CloudTrailClient({ region: REGION });
-  const { trailList = [] } = await ct.send(new DescribeTrailsCommand({}));
-  const trails = [];
-  for (const t of trailList) {
-    const isLogging = await optional(
-      async () => !!(await ct.send(new GetTrailStatusCommand({ Name: t.TrailARN! }))).IsLogging,
-      false, ["TrailNotFoundException"]);
-    trails.push({ name: t.Name, isMultiRegion: !!t.IsMultiRegionTrail, isLogging });
-  }
-  return [{ id: `cloudtrail-${REGION}`, type: "cloudtrail:account", tags: {}, state: { trails } }];
-}
 
 /** Collector for a resource type, so the engine can dispatch by rule kind. */
 export const COLLECTORS: Record<string, (only?: string[]) => Promise<ResourceSnapshot[]>> = {
   "s3:bucket": collectBuckets,
   "logs:log-group": collectLogGroups,
-  "ec2:security-group": collectSecurityGroups,
-  "ec2:instance": collectInstances,
   "rds:db-instance": collectDbInstances,
   "ec2:account": collectEc2Account,
   "iam:account": collectIamAccount,
-  "cloudtrail:account": collectCloudTrail,
 };

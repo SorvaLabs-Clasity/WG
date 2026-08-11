@@ -9,6 +9,7 @@
 import { evaluateResource, httpsOnlyStatement, coversWholeBucket, CATALOG, kindsForEvent } from "./src/aws-guardrails/catalog";
 import { snapRetention, CLOUDWATCH_RETENTION_DAYS } from "./src/aws-guardrails/types";
 import { isExcluded } from "./src/aws-guardrails/exclusions";
+import { canRemediate } from "./src/aws-guardrails/remediators";
 import type { ResourceSnapshot, AwsExclusionList } from "./src/aws-guardrails/types";
 
 let failures = 0;
@@ -121,84 +122,11 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
   check("block public access: partial is a violation",
     evaluateResource("s3_block_public_access", res("b", { publicAccessBlock: { BlockPublicAcls: true } }), {}).verdict === "violation");
 
-  check("sg: 0.0.0.0/0 on 22 is a violation",
-    evaluateResource("sg_no_public_admin_ingress", res("sg", { ingress: [{ fromPort: 22, toPort: 22, ipRanges: ["0.0.0.0/0"] }] }), { ports: [22, 3389] }).verdict === "violation");
-  check("sg: 0.0.0.0/0 on 443 is fine",
-    evaluateResource("sg_no_public_admin_ingress", res("sg", { ingress: [{ fromPort: 443, toPort: 443, ipRanges: ["0.0.0.0/0"] }] }), { ports: [22, 3389] }).verdict === "compliant");
-  check("sg: wide port range covering 22 is caught",
-    evaluateResource("sg_no_public_admin_ingress", res("sg", { ingress: [{ fromPort: 0, toPort: 65535, ipRanges: ["0.0.0.0/0"] }] }), { ports: [22] }).verdict === "violation");
-  check("sg: 22 open to a specific CIDR is fine",
-    evaluateResource("sg_no_public_admin_ingress", res("sg", { ingress: [{ fromPort: 22, toPort: 22, ipRanges: ["10.0.0.0/8"] }] }), { ports: [22] }).verdict === "compliant");
 
-  check("cloudtrail: no trail is a violation",
-    evaluateResource("cloudtrail_enabled", res("acct", { trails: [] }), { requireMultiRegion: true }).verdict === "violation");
-  check("cloudtrail: logging multi-region trail is compliant",
-    evaluateResource("cloudtrail_enabled", res("acct", { trails: [{ isLogging: true, isMultiRegion: true }] }), { requireMultiRegion: true }).verdict === "compliant");
-  check("cloudtrail: trail that is not logging is a violation",
-    evaluateResource("cloudtrail_enabled", res("acct", { trails: [{ isLogging: false, isMultiRegion: true }] }), { requireMultiRegion: true }).verdict === "violation");
 
-  check("imdsv2: required is compliant",
-    evaluateResource("ec2_imdsv2_required", res("i", { httpTokens: "required" }), {}).verdict === "compliant");
-  check("imdsv2: optional is a violation",
-    evaluateResource("ec2_imdsv2_required", res("i", { httpTokens: "optional" }), {}).verdict === "violation");
 
-  check("rds: public access is a violation",
-    evaluateResource("rds_no_public_access", res("db", { publiclyAccessible: true }), {}).verdict === "violation");
   check("rds: backup retention below minimum is a violation",
     evaluateResource("rds_backup_retention_min", res("db", { backupRetentionPeriod: 1 }), { minDays: 7 }).verdict === "violation");
-}
-
-// ── the Vanta-derived rules ───────────────────────────────────────────
-{
-  const db = (state: Record<string, any>) => res("db-1", state);
-
-  // pgaudit — only meaningful on PostgreSQL engines.
-  check("pgaudit: non-Postgres engine is not applicable",
-    evaluateResource("rds_pgaudit_enabled", db({ engine: "mysql", parameters: {} }), {}).verdict === "not_applicable");
-  check("pgaudit: loaded is compliant",
-    evaluateResource("rds_pgaudit_enabled", db({ engine: "postgres", parameters: { shared_preload_libraries: "pg_stat_statements,pgaudit" } }), {}).verdict === "compliant");
-  check("pgaudit: missing is a violation",
-    evaluateResource("rds_pgaudit_enabled", db({ engine: "aurora-postgresql", parameters: { shared_preload_libraries: "pg_stat_statements" } }), {}).verdict === "violation");
-  check("pgaudit: proposed fix appends rather than replacing",
-    evaluateResource("rds_pgaudit_enabled", db({ engine: "postgres", parameters: { shared_preload_libraries: "pg_stat_statements" } }), {}).fix?.after === "pg_stat_statements,pgaudit");
-  check("pgaudit: a library merely containing the name does not count",
-    evaluateResource("rds_pgaudit_enabled", db({ engine: "postgres", parameters: { shared_preload_libraries: "pgaudit_extra" } }), {}).verdict === "violation");
-
-  // TLS enforcement — the parameter differs by engine.
-  check("tls: postgres with force_ssl=1 is compliant",
-    evaluateResource("rds_ssl_enforced", db({ engine: "postgres", parameters: { "rds.force_ssl": "1" } }), {}).verdict === "compliant");
-  check("tls: postgres with force_ssl=0 is a violation",
-    evaluateResource("rds_ssl_enforced", db({ engine: "postgres", parameters: { "rds.force_ssl": "0" } }), {}).verdict === "violation");
-  check("tls: mysql uses require_secure_transport",
-    evaluateResource("rds_ssl_enforced", db({ engine: "mysql", parameters: { require_secure_transport: "ON" } }), {}).verdict === "compliant");
-  check("tls: mysql unset is a violation",
-    evaluateResource("rds_ssl_enforced", db({ engine: "mysql", parameters: {} }), {}).verdict === "violation");
-  check("tls: an engine with no such parameter is not applicable",
-    evaluateResource("rds_ssl_enforced", db({ engine: "oracle-se2", parameters: {} }), {}).verdict === "not_applicable");
-
-  // Cross-region replication.
-  const bucket = (state: Record<string, any>, tags: Record<string, string> = {}) => res("b", state, tags);
-  check("replication: an enabled rule is compliant",
-    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [{ status: "Enabled", destinationBucket: "arn:aws:s3:::dr-bucket" }] }), {}).verdict === "compliant");
-  check("replication: none configured is a violation",
-    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [] }), {}).verdict === "violation");
-  check("replication: a disabled rule does not count",
-    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [{ status: "Disabled" }] }), {}).verdict === "violation");
-  check("replication: untagged buckets skipped when a tag is required",
-    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [] }), { onlyTagged: "Backup" }).verdict === "not_applicable");
-  check("replication: tagged buckets are still checked",
-    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [] }, { Backup: "yes" }), { onlyTagged: "Backup" }).verdict === "violation");
-
-  // CloudTrail bucket protection.
-  check("trail bucket: ordinary buckets are not applicable",
-    evaluateResource("cloudtrail_bucket_protected", bucket({ isCloudTrailBucket: false }), {}).verdict === "not_applicable");
-  check("trail bucket: versioning + object lock is compliant",
-    evaluateResource("cloudtrail_bucket_protected", bucket({ isCloudTrailBucket: true, versioning: "Enabled", objectLockEnabled: true }), {}).verdict === "compliant");
-  check("trail bucket: versioning alone is a violation",
-    evaluateResource("cloudtrail_bucket_protected", bucket({ isCloudTrailBucket: true, versioning: "Enabled", objectLockEnabled: false }), {}).verdict === "violation");
-  check("trail bucket: names exactly what is missing",
-    (evaluateResource("cloudtrail_bucket_protected", bucket({ isCloudTrailBucket: true, versioning: "Suspended", objectLockEnabled: false }), {}).summary ?? "")
-      .includes("versioning and Object Lock"));
 }
 
 // ── exclusions ────────────────────────────────────────────────────────
@@ -271,8 +199,10 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
 
 // ── wiring ────────────────────────────────────────────────────────────
 {
-  check("catalog has 16 rule kinds", CATALOG.length === 16, CATALOG.length);
+  check("catalog has 8 rule kinds — all of them auto-fixable", CATALOG.length === 8, CATALOG.length);
   check("CreateBucket triggers the S3 rules", kindsForEvent("CreateBucket").length >= 4, kindsForEvent("CreateBucket").map(k => k.kind));
+  check("every kind can be remediated — report-only kinds were removed",
+    CATALOG.every(k => canRemediate(k.kind)), CATALOG.filter(k => !canRemediate(k.kind)).map(k => k.kind));
   check("CreateLogGroup triggers retention", kindsForEvent("CreateLogGroup").some(k => k.kind === "log_retention_min"));
   check("unknown event triggers nothing", kindsForEvent("SomethingElse").length === 0);
   check("every kind declares a resource type", CATALOG.every(k => !!k.resourceType));

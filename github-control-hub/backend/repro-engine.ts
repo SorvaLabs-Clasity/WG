@@ -97,16 +97,18 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
     check("non-excluded resource still remediated", r.remediated === 1, r.remediated);
   }
 
-  // ── report-only kinds are never auto-fixed ──────────────────────────
+  // ── a kind with no remediator is never auto-fixed ──────────────────
+  // Every catalog entry can be remediated now, but the engine must still
+  // refuse to call a remediator that does not exist rather than assuming one.
   {
     let called = 0;
-    const r = await run([rule({ kind: "sg_no_public_admin_ingress", mode: "enforce", params: { ports: [22] } })], [], {}, undefined, {
-      collectors: { "ec2:security-group": async () => [{ id: "sg-1", type: "ec2:security-group", tags: {}, state: { ingress: [{ fromPort: 22, toPort: 22, ipRanges: ["0.0.0.0/0"] }] } }] } as any,
+    const r = await run([rule({ mode: "enforce" })], [], {}, undefined, {
+      collectors: fakeCollectors([logGroup("app-logs", 1)]),
       remediate: async () => { called++; return { changed: false, description: "report only" }; },
-      canRemediate: () => false,   // no remediator registered for this kind
-      });
-    check("report-only kind is not remediated even in enforce mode", called === 0, called);
-    check("report-only kind still reports the violation", r.violations === 1, r.violations);
+      canRemediate: () => false,
+    });
+    check("a kind without a remediator is not remediated in enforce mode", called === 0, called);
+    check("  and the violation is still reported", r.violations === 1, r.violations);
   }
 
   // ── disabled rules do nothing ───────────────────────────────────────
