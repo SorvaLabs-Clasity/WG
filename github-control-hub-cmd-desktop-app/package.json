@@ -1,7 +1,7 @@
 {
   "name": "github-control-hub-desktop",
   "version": "1.0.39",
-  "description": "GitHub Control Hub — Desktop App (Electron)",
+  "description": "GitHub Control Hub \u2014 Desktop App (Electron)",
   "author": "GitHub Control Hub",
   "private": true,
   "main": "dist/main.js",
@@ -18,7 +18,8 @@
     "pack": "npm run prebuild && npm run build:electron && electron-builder --dir",
     "dist:mac": "npm run prebuild && npm run build:electron && electron-builder --mac",
     "dist:win": "npm run prebuild && npm run build:electron && electron-builder --win",
-    "dist": "npm run prebuild && npm run build:electron && electron-builder --mac --win"
+    "dist": "npm run prebuild && npm run build:electron && electron-builder --mac --win",
+    "icons": "node ../scripts/make-icon.mjs"
   },
   "build": {
     "appId": "com.github-control-hub.desktop",
@@ -29,7 +30,8 @@
     },
     "files": [
       "dist/**/*",
-      "node_modules/**/*"
+      "node_modules/**/*",
+      "assets/**/*"
     ],
     "extraResources": [
       {
@@ -77,6 +79,13 @@
     "publish": {
       "provider": "github",
       "private": true
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "icon": "assets/icon.png",
+      "category": "Development"
     }
   },
   "dependencies": {

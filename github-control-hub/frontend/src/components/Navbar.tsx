@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import UserAvatar from "./UserAvatar";
 import { useTheme } from "../hooks/useTheme";
@@ -35,7 +35,22 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
   const { theme, toggle } = useTheme();
+
+  // Sign out used to be an unlabelled icon in the corner, which is the same as
+  // not having one — nobody hovers a glyph to find out what it does.
+  useEffect(() => {
+    if (!accountOpen) return;
+    const close = (e: MouseEvent) => {
+      if (!accountRef.current?.contains(e.target as Node)) setAccountOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setAccountOpen(false); };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
+  }, [accountOpen]);
 
   const logout = async () => {
     const token = getToken();
@@ -88,13 +103,33 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
               <i className={`ph-bold ${theme === "dark" ? "ph-sun" : "ph-moon"} text-base`}></i>
             </button>
             {login && (
-              <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-slate-200 dark:border-white/10">
-                <UserAvatar login={login} avatarUrl={avatarUrl} size={28} className="ring-2 ring-slate-200 dark:ring-white/15" />
-                <span className="hidden md:block text-[13px] font-semibold text-slate-700 dark:text-white/80">{login}</span>
-                <button onClick={logout} title="Sign out"
-                  className="w-9 h-9 rounded-xl text-slate-400 dark:text-white/40 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.07] flex items-center justify-center transition-colors">
-                  <i className="ph-bold ph-sign-out text-base"></i>
+              <div ref={accountRef} className="relative pl-2 sm:pl-3 border-l border-slate-200 dark:border-white/10">
+                <button
+                  onClick={() => setAccountOpen(o => !o)}
+                  aria-haspopup="menu"
+                  aria-expanded={accountOpen}
+                  className="flex items-center gap-2.5 pl-1 pr-2 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-white/[0.07] transition-colors"
+                >
+                  <UserAvatar login={login} avatarUrl={avatarUrl} size={28} className="ring-2 ring-slate-200 dark:ring-white/15" />
+                  <span className="hidden md:block text-[13px] font-semibold text-slate-700 dark:text-white/80">{login}</span>
+                  <i className={`ph-bold ph-caret-down text-[11px] text-slate-400 dark:text-white/40 transition-transform ${accountOpen ? "rotate-180" : ""}`}></i>
                 </button>
+
+                {accountOpen && (
+                  <div role="menu"
+                    className="absolute right-0 top-full mt-2 w-60 rounded-2xl bg-white dark:bg-[#151a23] border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden animate-fade-in">
+                    <div className="px-4 py-3 border-b border-slate-100 dark:border-white/[0.07]">
+                      <p className="text-[10px] uppercase tracking-[0.16em] font-bold text-slate-400 dark:text-white/35">Signed in as</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">{login}</p>
+                      <p className="text-[11px] text-slate-400 dark:text-white/40 mt-0.5">{COMPANY_NAME}</p>
+                    </div>
+                    <button role="menuitem" onClick={logout}
+                      className="w-full px-4 py-3 flex items-center gap-2.5 text-[13px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors text-left">
+                      <i className="ph-bold ph-sign-out text-base"></i>
+                      Sign out
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -118,6 +153,18 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
                 </button>
               );
             })}
+
+            {login && (
+              <>
+                <div className="h-px bg-slate-200 dark:bg-white/10 my-2" />
+                <button
+                  onClick={() => { setMenuOpen(false); logout(); }}
+                  className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-left font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors">
+                  <i className="ph-bold ph-sign-out text-lg"></i>
+                  Sign out
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}

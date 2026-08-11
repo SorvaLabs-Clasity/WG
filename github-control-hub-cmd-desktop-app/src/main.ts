@@ -39,6 +39,9 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 700,
     title: "GitHub Control Hub",
+    // macOS reads the window icon from the app bundle; Windows and Linux need
+    // it named here, including when running unpackaged in dev.
+    icon: path.join(__dirname, "..", "assets", "icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
