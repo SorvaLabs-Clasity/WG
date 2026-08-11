@@ -5,8 +5,13 @@
  * every page read as flat. See /.impeccable.md — the agreed direction is
  * saturated colour, depth and motion, with colour only ever carrying meaning.
  *
- * Everything here is a Tailwind class string rather than a CSS variable so the
+ * Everything is a Tailwind class string rather than a CSS variable so the
  * existing utility-first pages can adopt it a piece at a time.
+ *
+ * Dark mode is specified explicitly rather than leaning on Tailwind's slate
+ * ramp. slate-900 cards on a slate-950 page differ by about 4% luminance,
+ * which reads as one flat sheet — the surfaces below step far enough apart to
+ * be legible, and status colours are brightened so they survive a dark ground.
  */
 
 /** Semantic state. Nothing else in the app should be this saturated. */
@@ -17,49 +22,62 @@ interface IntentStyle {
   solid: string;
   /** Tinted surface for inline notes and chips. */
   soft: string;
-  /** Text colour on a light background. */
+  /** Text on a light background, brightened for dark. */
   text: string;
   /** Small solid marker: rails, dots. */
   mark: string;
   border: string;
+  /** Loud fill for badges that must not be missed. */
+  loud: string;
+  /** Large numbers. Needs more punch than body text at the same hue. */
+  figure: string;
 }
 
 export const INTENT: Record<Intent, IntentStyle> = {
-  // Deep, slightly desaturated so large fills read as serious rather than alarming.
   danger: {
-    solid: "bg-[#8d1d2c]",
-    soft: "bg-rose-50 dark:bg-rose-950/40",
+    solid: "bg-[#9f1239] dark:bg-[#8d1d2c]",
+    soft: "bg-rose-50 dark:bg-rose-500/[0.14]",
     text: "text-rose-700 dark:text-rose-300",
-    mark: "bg-rose-500",
-    border: "border-rose-200 dark:border-rose-900",
+    mark: "bg-rose-500 dark:bg-rose-400",
+    border: "border-rose-200 dark:border-rose-500/30",
+    loud: "bg-rose-600 text-white",
+    figure: "text-rose-600 dark:text-rose-350 dark:[color:#ff8095]",
   },
   warn: {
-    solid: "bg-[#8a5a00]",
-    soft: "bg-amber-50 dark:bg-amber-950/40",
+    solid: "bg-[#9a5b00] dark:bg-[#8a5a00]",
+    soft: "bg-amber-50 dark:bg-amber-500/[0.14]",
     text: "text-amber-700 dark:text-amber-300",
-    mark: "bg-amber-500",
-    border: "border-amber-200 dark:border-amber-900",
+    mark: "bg-amber-500 dark:bg-amber-400",
+    border: "border-amber-200 dark:border-amber-500/30",
+    loud: "bg-amber-500 text-white",
+    figure: "text-amber-600 dark:[color:#ffc14d]",
   },
   good: {
-    solid: "bg-[#0b6b3a]",
-    soft: "bg-emerald-50 dark:bg-emerald-950/40",
+    solid: "bg-[#0b6b3a] dark:bg-[#0b6b3a]",
+    soft: "bg-emerald-50 dark:bg-emerald-500/[0.14]",
     text: "text-emerald-700 dark:text-emerald-300",
-    mark: "bg-emerald-500",
-    border: "border-emerald-200 dark:border-emerald-900",
+    mark: "bg-emerald-500 dark:bg-emerald-400",
+    border: "border-emerald-200 dark:border-emerald-500/30",
+    loud: "bg-emerald-600 text-white",
+    figure: "text-emerald-600 dark:[color:#3ddc97]",
   },
   info: {
-    solid: "bg-[#123a6b]",
-    soft: "bg-blue-50 dark:bg-blue-950/40",
+    solid: "bg-[#123a6b] dark:bg-[#123a6b]",
+    soft: "bg-blue-50 dark:bg-blue-500/[0.14]",
     text: "text-blue-700 dark:text-blue-300",
-    mark: "bg-blue-500",
-    border: "border-blue-200 dark:border-blue-900",
+    mark: "bg-blue-500 dark:bg-blue-400",
+    border: "border-blue-200 dark:border-blue-500/30",
+    loud: "bg-blue-600 text-white",
+    figure: "text-blue-600 dark:[color:#6bb4ff]",
   },
   neutral: {
-    solid: "bg-slate-800",
-    soft: "bg-slate-50 dark:bg-slate-800",
+    solid: "bg-slate-700 dark:bg-[#1c2230]",
+    soft: "bg-slate-50 dark:bg-white/[0.05]",
     text: "text-slate-600 dark:text-slate-300",
     mark: "bg-slate-300 dark:bg-slate-600",
-    border: "border-slate-200 dark:border-slate-700",
+    border: "border-slate-200 dark:border-white/10",
+    loud: "bg-slate-500 text-white",
+    figure: "text-slate-500 dark:text-slate-400",
   },
 };
 
@@ -68,37 +86,31 @@ export const INTENT: Record<Intent, IntentStyle> = {
  * between 12px and 16px, which is why nothing had presence.
  */
 export const TYPE = {
-  /** Oversized display number for a hero surface. */
   display: "text-[64px] sm:text-[80px] font-black tabular-nums leading-[0.82] tracking-[-0.03em]",
-  /** Hero metric on a status surface. */
   metric: "text-[56px] sm:text-[68px] font-black tabular-nums leading-[0.85] tracking-tighter",
-  metricSm: "text-[30px] font-black tabular-nums leading-none",
-  /** Page title. */
+  /** Count on a card. Large enough to be the first thing the eye lands on. */
+  metricSm: "text-[38px] font-black tabular-nums leading-none tracking-tight",
   title: "text-2xl font-black tracking-tight",
-  /** Card and panel headings. */
   heading: "text-[17px] font-bold tracking-tight",
   body: "text-sm",
-  /** Supporting line under a heading. */
   sub: "text-[13.5px]",
-  /** Section label above a group. */
   label: "text-[11px] uppercase tracking-[0.18em] font-bold",
   mono: "font-mono text-[13.5px]",
 };
 
 export const SURFACE = {
-  /** Page background. Tinted toward the brand blue rather than pure grey. */
-  page: "bg-[#f7f8fb] dark:bg-[#0a0c11]",
-  /** Dark surface used for headers and the nav. */
-  ink: "bg-[#11131a] dark:bg-[#11131a]",
-  /** Standard raised surface. */
-  card: "bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/70 dark:border-slate-700/70 shadow-sm",
-  /** Interactive card — lifts on hover. */
-  cardHover: "hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200",
-  /** Panel that sits above the page. */
-  sheet: "bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-lg overflow-hidden",
-  /** Deep shadow for hero surfaces. */
-  raised: "shadow-[0_18px_40px_-12px_rgba(15,23,42,0.35)]",
-  input: "w-full px-3.5 py-2.5 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-900/10 dark:focus:ring-white/20",
+  /** Page ground. Tinted toward blue rather than pure grey. */
+  page: "bg-[#f6f7fa] dark:bg-[#0b0e14]",
+  /** Raised surface. In dark this is LIGHTER than the page, not darker. */
+  card: "bg-white dark:bg-[#151a23] rounded-2xl border border-slate-200/80 dark:border-white/[0.09] shadow-sm",
+  cardHover: "hover:shadow-xl hover:-translate-y-0.5 hover:border-slate-300 dark:hover:border-white/20 transition-all duration-200",
+  sheet: "bg-white dark:bg-[#151a23] rounded-2xl border border-slate-200 dark:border-white/[0.09] shadow-lg overflow-hidden",
+  /** Recessed surface, for rows inside a card. */
+  inset: "bg-slate-50 dark:bg-white/[0.04] border border-slate-200/70 dark:border-white/[0.07]",
+  raised: "shadow-[0_18px_40px_-12px_rgba(15,23,42,0.35)] dark:shadow-[0_18px_50px_-12px_rgba(0,0,0,0.7)]",
+  input: "w-full px-3.5 py-2.5 text-sm bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/10 rounded-xl text-slate-700 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-900/10 dark:focus:ring-white/25",
+  /** Navigation. Follows the theme rather than being permanently dark. */
+  nav: "bg-white dark:bg-[#11141c] border-b border-slate-200 dark:border-white/[0.08]",
 };
 
 /** Motion confirms; it never loops. Curve is ease-out-quart throughout. */

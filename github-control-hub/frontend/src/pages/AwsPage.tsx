@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "../App";
-import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Back, Note, Pill, Button, Empty, Spinner, TYPE, enter, type Intent } from "../design";
+import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Back, Note, Pill, Button, Empty, Spinner, Figure, InsetRow, TYPE, enter, type Intent } from "../design";
 import { usePermissions } from "../hooks/usePermissions";
 import {
   useCatalog, useGuardrails, useFindings, useAwsExclusions,
@@ -214,21 +214,9 @@ function RulesTab({ rules, catalog, findings, isLoading, isAdmin, adminTeam, onO
                   )}
                 </div>
 
-                <div className="shrink-0 text-right">
-                  {failing > 0 ? (
-                    <>
-                      <p className={`${TYPE.metricSm} text-rose-600 dark:text-rose-400`}>{failing}</p>
-                      <p className="text-[11px] uppercase tracking-wider font-bold text-rose-600/70 dark:text-rose-400/70 mt-0.5">failing</p>
-                    </>
-                  ) : checked > 0 ? (
-                    <>
-                      <p className={`${TYPE.metricSm} text-emerald-600 dark:text-emerald-400`}>{checked}</p>
-                      <p className="text-[11px] uppercase tracking-wider font-bold text-emerald-600/70 dark:text-emerald-400/70 mt-0.5">passing</p>
-                    </>
-                  ) : (
-                    <p className="text-[13px] font-semibold text-slate-400">Not checked</p>
-                  )}
-                </div>
+                {failing > 0 ? <Figure intent="danger" value={failing} label="failing" />
+                  : checked > 0 ? <Figure intent="good" value={checked} label="passing" />
+                    : <Figure intent="neutral" value="—" label="not checked" />}
 
                 <i className="ph-bold ph-caret-right text-slate-300 dark:text-slate-600 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0"></i>
               </div>
@@ -339,25 +327,30 @@ function RuleDetail({ rule, entry, findings, exclusions, isAdmin, running, onRun
             <p className="text-sm text-slate-500 dark:text-slate-400">Not checked yet. Run this rule to populate it.</p>
           ) : (
             <ul className="grid gap-2">
-              {shown.slice(0, 200).map((f, i) => (
-                <li key={f.resourceId} style={enter(i, 18, 260)}
-                  className="relative overflow-hidden rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60">
-                  <span className={`absolute left-0 top-0 bottom-0 w-1 ${
-                    f.remediated ? "bg-blue-500"
-                      : f.excluded ? "bg-slate-300 dark:bg-slate-600"
-                        : f.verdict === "violation" ? "bg-rose-500" : "bg-emerald-500"}`} />
-                  <div className="pl-4 pr-3.5 py-3">
-                    <p className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-white break-all">{f.resourceId}</p>
-                    <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      {f.summary}
-                      {f.proposedFix && !f.remediated && !f.excluded && (
-                        <span className="text-slate-400 dark:text-slate-500"> — would {f.proposedFix.charAt(0).toLowerCase() + f.proposedFix.slice(1)}</span>
-                      )}
-                    </p>
-                    {f.error && <p className="text-[12.5px] text-rose-500 mt-0.5">{f.error}</p>}
-                  </div>
-                </li>
-              ))}
+              {shown.slice(0, 200).map((f, i) => {
+                const fi: Intent = f.remediated ? "info"
+                  : f.excluded ? "neutral"
+                    : f.verdict === "violation" ? "danger" : "good";
+                return (
+                  <InsetRow key={f.resourceId} intent={fi} index={i}>
+                    <div className="flex items-start gap-3 flex-wrap">
+                      <Pill intent={fi}>
+                        {f.remediated ? "fixed" : f.excluded ? "skipped" : f.verdict === "violation" ? "failing" : "ok"}
+                      </Pill>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-white break-all">{f.resourceId}</p>
+                        <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          {f.summary}
+                          {f.proposedFix && !f.remediated && !f.excluded && (
+                            <span className="text-slate-400 dark:text-slate-500"> — would {f.proposedFix.charAt(0).toLowerCase() + f.proposedFix.slice(1)}</span>
+                          )}
+                        </p>
+                        {f.error && <p className="text-[12.5px] text-rose-500 mt-0.5">{f.error}</p>}
+                      </div>
+                    </div>
+                  </InsetRow>
+                );
+              })}
             </ul>
           )}
         </Block>

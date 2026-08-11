@@ -24,7 +24,7 @@ export function Page({ user, width = "wide", children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className="min-h-screen pt-16 bg-slate-50 dark:bg-slate-950">
+    <div className={`min-h-screen pt-16 ${SURFACE.page}`}>
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
       <main className={`${width === "wide" ? "max-w-[1400px]" : "max-w-[1000px]"} mx-auto px-6 py-6`}>
         {children}
@@ -228,9 +228,41 @@ export function RailCard({ intent, index = 0, onClick, children }: {
   return (
     <Tag onClick={onClick} style={enter(index)}
       className={`group relative w-full text-left ${SURFACE.card} ${onClick ? SURFACE.cardHover : ""} overflow-hidden block`}>
-      <span className={`absolute left-0 top-0 bottom-0 w-1.5 ${INTENT[intent].mark}`} />
-      <div className="pl-7 pr-6 py-5">{children}</div>
+      <span className={`absolute left-0 top-0 bottom-0 w-[5px] ${INTENT[intent].mark}`} />
+      {/* A wash of the state colour so the whole card carries it, not just the edge. */}
+      {intent !== "neutral" && (
+        <span className={`pointer-events-none absolute inset-0 opacity-[0.045] dark:opacity-[0.09] ${INTENT[intent].mark}`} />
+      )}
+      <div className="relative pl-7 pr-6 py-5">{children}</div>
     </Tag>
+  );
+}
+
+/**
+ * A count, sized to be the first thing the eye lands on.
+ *
+ * Cards previously set these at body weight, so the number a page exists to
+ * communicate carried no more emphasis than its label.
+ */
+export function Figure({ intent, value, label }: { intent: Intent; value: number | string; label: string }) {
+  return (
+    <div className="text-right shrink-0">
+      <p className={`${TYPE.metricSm} ${INTENT[intent].figure}`}>{value}</p>
+      <p className={`text-[10px] uppercase tracking-[0.14em] font-black mt-1 ${INTENT[intent].text} opacity-70`}>{label}</p>
+    </div>
+  );
+}
+
+/** Recessed row for findings and vulnerabilities, with a state edge. */
+export function InsetRow({ intent, index = 0, children }: {
+  intent: Intent; index?: number; children: React.ReactNode;
+}) {
+  return (
+    <li style={enter(index, 18, 260)}
+      className={`relative overflow-hidden rounded-xl ${SURFACE.inset}`}>
+      <span className={`absolute left-0 top-0 bottom-0 w-1 ${INTENT[intent].mark}`} />
+      <div className="relative pl-4 pr-3.5 py-3">{children}</div>
+    </li>
   );
 }
 
@@ -249,8 +281,7 @@ export function Chip({ intent = "neutral", children }: { intent?: Intent; childr
 }
 
 export function Pill({ intent = "info", children }: { intent?: Intent; children: React.ReactNode }) {
-  const solid = { danger: "bg-rose-600", warn: "bg-amber-600", good: "bg-emerald-600", info: "bg-blue-600", neutral: "bg-slate-500" }[intent];
-  return <span className={`text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded-full text-white ${solid}`}>{children}</span>;
+  return <span className={`text-[10px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full ${INTENT[intent].loud}`}>{children}</span>;
 }
 
 export function Back({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {

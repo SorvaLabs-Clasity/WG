@@ -3,7 +3,7 @@ import { useAlerts, useResolveAlert, useUnresolveAlert, useInactiveUsers } from 
 import { useAuth } from "../App";
 import {
   Page, PageHeader, StatusSlab, SlabPercent, Button, Segmented, Sheet, Block,
-  RailCard, Note, Pill, Empty, Spinner, TYPE, INTENT, enter, type Intent,
+  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, INTENT, enter, type Intent,
 } from "../design";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -140,7 +140,7 @@ export default function SecurityPage() {
                           {a.resolved && a.resolvedBy && <> · resolved by <span className="font-semibold">{a.resolvedBy}</span></>}
                         </p>
                         {a.details && !a.resolved && (
-                          <pre className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800 text-[11px] font-mono text-slate-500 dark:text-slate-400 max-h-32 overflow-auto">
+                          <pre className="mt-3 p-3 rounded-xl bg-slate-50 dark:bg-white/[0.05] text-[11px] font-mono text-slate-500 dark:text-slate-300 max-h-32 overflow-auto">
                             {JSON.stringify(a.details, null, 2)}
                           </pre>
                         )}

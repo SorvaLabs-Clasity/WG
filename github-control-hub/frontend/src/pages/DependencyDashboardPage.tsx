@@ -4,7 +4,7 @@ import { useAuth } from "../App";
 import type { DependencyAlert } from "../types/Dependabot";
 import {
   Page, PageHeader, StatusSlab, SlabPercent, Button, Segmented, SearchInput,
-  RailCard, Note, Pill, Empty, Spinner, TYPE, enter, type Intent,
+  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, enter, type Intent,
 } from "../design";
 
 /** Severity maps onto the shared intents so colour means one thing app-wide. */
@@ -177,14 +177,8 @@ export default function DependencyDashboardPage() {
 
                   <div className="shrink-0 flex items-center gap-3">
                     {!off && !clean && (
-                      <div className="text-right mr-1">
-                        <p className={`${TYPE.metricSm} ${critical > 0 ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}>
-                          {real.length}
-                        </p>
-                        <p className="text-[11px] uppercase tracking-wider font-bold text-slate-400 mt-0.5">
-                          {real.length === 1 ? "alert" : "alerts"}
-                        </p>
-                      </div>
+                      <Figure intent={critical > 0 ? "danger" : "warn"} value={real.length}
+                        label={real.length === 1 ? "alert" : "alerts"} />
                     )}
                     {org && (
                       <a href={`https://github.com/${org}/${repo}/security/dependabot`} target="_blank" rel="noreferrer"
@@ -245,7 +239,7 @@ export default function DependencyDashboardPage() {
 function VulnRow({ alert: a }: { alert: DependencyAlert }) {
   const sev = SEV_STYLE[a.severity] ?? SEV_STYLE.low;
   return (
-    <li className="relative overflow-hidden rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/70 dark:border-slate-700/60">
+    <li className="relative overflow-hidden rounded-xl bg-slate-50 dark:bg-white/[0.05] border border-slate-200/70 dark:border-white/[0.08]">
       <span className={`absolute left-0 top-0 bottom-0 w-1 ${sev.bar}`} />
       <div className="pl-4 pr-3.5 py-3 flex items-center gap-4 flex-wrap">
         <span className={`text-[10px] uppercase tracking-wider font-black px-2 py-1 rounded-md shrink-0 ${sev.chip}`}>
@@ -269,7 +263,7 @@ function VulnRow({ alert: a }: { alert: DependencyAlert }) {
           <a href={`https://github.com/advisories?query=${encodeURIComponent(a.cve)}`}
             target="_blank" rel="noreferrer"
             title="Look up this advisory on GitHub"
-            className="shrink-0 font-mono text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 transition-colors inline-flex items-center gap-1.5">
+            className="shrink-0 font-mono text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.07] border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 transition-colors inline-flex items-center gap-1.5">
             {a.cve}<i className="ph-bold ph-arrow-square-out text-[11px]"></i>
           </a>
         )}
