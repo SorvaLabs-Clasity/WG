@@ -7,7 +7,7 @@
  *
  *   node scripts/make-icon.mjs
  *
- * Writes into github-control-hub-cmd-desktop-app/assets/:
+ * Writes into github-control-hub/desktop/assets/:
  *   icon.icns   macOS bundle       (via iconutil)
  *   icon.ico    Windows installer  (PNG-in-ICO, Vista and later)
  *   icon.png    1024px, for Linux and anything else
@@ -19,7 +19,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..",
-                 "github-control-hub-cmd-desktop-app", "assets");
+                 "github-control-hub", "desktop", "assets");
 
 // Navbar light mode: slate-900 tile, white shield. Dark-on-light survives both
 // a light and a dark taskbar; a white tile would vanish against a pale one.

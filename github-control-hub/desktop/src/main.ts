@@ -13,14 +13,14 @@ const DEMO_MODE = process.env.DEMO_MODE === "true";
 
 function getBackendDir(): string {
   if (isDev) {
-    return path.resolve(__dirname, "..", "..", "github-control-hub", "backend");
+    return path.resolve(__dirname, "..", "..", "backend");
   }
   return path.join(process.resourcesPath, "backend");
 }
 
 function getFrontendDir(): string {
   if (isDev) {
-    return path.resolve(__dirname, "..", "..", "github-control-hub", "frontend", "dist");
+    return path.resolve(__dirname, "..", "..", "frontend", "dist");
   }
   return path.join(process.resourcesPath, "frontend");
 }

@@ -5,7 +5,7 @@ node_modules
 *.md
 github-control-hub/backend/dist
 github-control-hub/frontend/dist
-github-control-hub-cmd-desktop-app
+github-control-hub/desktop
 release
 .backend-modules
 .github

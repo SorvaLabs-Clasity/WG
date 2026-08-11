@@ -275,7 +275,7 @@ ok "Wrote $(basename "$ENV_FILE") (company name, console-link region)"
 
 echo
 echo "  Build and run it with:"
-echo "    ${bold}cd github-control-hub-cmd-desktop-app && npm run dev${off}"
+echo "    ${bold}cd github-control-hub/desktop && npm run dev${off}"
 echo
 echo "  Everyone running the desktop app needs AWS credentials for account"
 echo "  $ACCOUNT, because that build carries the backend and talks to"

@@ -140,7 +140,7 @@ cd ../frontend
 npm install
 
 # Desktop App
-cd ../../github-control-hub-cmd-desktop-app
+cd ../../github-control-hub/desktop
 npm install
 ```
 
@@ -153,7 +153,7 @@ npm install
 This starts the backend, serves the frontend, and opens the Electron window — all in one:
 
 ```bash
-cd github-control-hub-cmd-desktop-app
+cd github-control-hub/desktop
 npm run dev
 ```
 
@@ -187,7 +187,7 @@ For web mode, the backend still loads secrets (including `GITHUB_ORG`) from AWS 
 ### Build for your platform
 
 ```bash
-cd github-control-hub-cmd-desktop-app
+cd github-control-hub/desktop
 
 # macOS
 npm run dist:mac
@@ -203,7 +203,7 @@ The installer will be in the `release/` folder.
 
 ### Update the publish target
 
-In `github-control-hub-cmd-desktop-app/package.json`, update the `publish` section to point to your repo:
+In `github-control-hub/desktop/package.json`, update the `publish` section to point to your repo:
 
 ```json
 "publish": {
@@ -241,7 +241,7 @@ When the desktop app starts:
 
 Before pushing a release:
 ```bash
-cd github-control-hub-cmd-desktop-app
+cd github-control-hub/desktop
 npm version patch  # or minor, or major
 ```
 
@@ -289,7 +289,7 @@ WG/
 │       │   ├── api/       # API client functions
 │       │   └── types/     # TypeScript types
 │       └── package.json
-├── github-control-hub-cmd-desktop-app/  # Electron wrapper
+├── github-control-hub/desktop/  # Electron wrapper
 │   ├── src/
 │   │   ├── main.ts        # Electron main process
 │   │   ├── preload.ts     # Context bridge

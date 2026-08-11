@@ -94,7 +94,7 @@ This builds the Docker image, uploads it to EC2 via S3, and restarts the contain
 
 ### 2. Desktop App (Local Development)
 
-An Electron app (`github-control-hub-cmd-desktop-app/`) that runs the backend locally on port 4321. Includes AWS credential management UI (profiles, SSO login, access keys) and auto-updates.
+An Electron app (`github-control-hub/desktop/`) that runs the backend locally on port 4321. Includes AWS credential management UI (profiles, SSO login, access keys) and auto-updates.
 
 ## GitHub App Setup
 
@@ -183,7 +183,7 @@ github-control-hub/
 ├── infra/                   # AWS CDK infrastructure stack
 ├── scripts/                 # Deploy script
 └── Dockerfile               # Production container build
-github-control-hub-cmd-desktop-app/  # Electron desktop app
+github-control-hub/desktop/  # Electron desktop app
 ```
 
 ## API Overview

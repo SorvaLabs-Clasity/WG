@@ -7,9 +7,9 @@
   "main": "dist/main.js",
   "scripts": {
     "prebuild": "npm run build:backend && npm run build:frontend && npm run bundle:backend-deps",
-    "build:backend": "cd ../github-control-hub/backend && npx tsc",
-    "bundle:backend-deps": "node -e \"const fs=require('fs'),p=require('path');const d=p.join(__dirname,'.backend-modules');fs.rmSync(d,{recursive:true,force:true});fs.mkdirSync(d,{recursive:true});fs.copyFileSync(p.join(__dirname,'..','github-control-hub','backend','package.json'),p.join(d,'package.json'))\" && cd .backend-modules && npm install --omit=dev --ignore-scripts",
-    "build:frontend": "cd ../github-control-hub/frontend && npm run build",
+    "build:backend": "cd ../backend && npx tsc",
+    "bundle:backend-deps": "node -e \"const fs=require('fs'),p=require('path');const d=p.join(__dirname,'.backend-modules');fs.rmSync(d,{recursive:true,force:true});fs.mkdirSync(d,{recursive:true});fs.copyFileSync(p.join(__dirname,'..','backend','package.json'),p.join(d,'package.json'))\" && cd .backend-modules && npm install --omit=dev --ignore-scripts",
+    "build:frontend": "cd ../frontend && npm run build",
     "build:electron": "tsc -p tsconfig.json",
     "dev": "npm run prebuild && npm run build:electron && electron .",
     "demo:build-frontend:demo": "cross-env VITE_DEMO_MODE=true npm run build:frontend",
@@ -19,7 +19,7 @@
     "dist:mac": "npm run prebuild && npm run build:electron && electron-builder --mac",
     "dist:win": "npm run prebuild && npm run build:electron && electron-builder --win",
     "dist": "npm run prebuild && npm run build:electron && electron-builder --mac --win",
-    "icons": "node ../scripts/make-icon.mjs"
+    "icons": "node ../../scripts/make-icon.mjs"
   },
   "build": {
     "appId": "com.github-control-hub.desktop",
@@ -35,7 +35,7 @@
     ],
     "extraResources": [
       {
-        "from": "../github-control-hub/backend/dist",
+        "from": "../backend/dist",
         "to": "backend/dist",
         "filter": [
           "**/*"
@@ -49,7 +49,7 @@
         ]
       },
       {
-        "from": "../github-control-hub/frontend/dist",
+        "from": "../frontend/dist",
         "to": "frontend",
         "filter": [
           "**/*"

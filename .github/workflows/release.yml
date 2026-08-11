@@ -36,16 +36,16 @@ jobs:
         run: npm run build
 
       - name: Install desktop app dependencies
-        working-directory: github-control-hub-cmd-desktop-app
+        working-directory: github-control-hub/desktop
         run: npm ci
 
       - name: Bundle backend deps for packaging
-        working-directory: github-control-hub-cmd-desktop-app
+        working-directory: github-control-hub/desktop
         run: node -e "const fs=require('fs'),p=require('path');const d=p.join(__dirname,'.backend-modules');fs.rmSync(d,{recursive:true,force:true});fs.mkdirSync(d,{recursive:true});fs.copyFileSync(p.join(__dirname,'..','github-control-hub','backend','package.json'),p.join(d,'package.json'))" && cd .backend-modules && npm install --omit=dev --ignore-scripts
         shell: bash
 
       - name: Build & publish Electron app
-        working-directory: github-control-hub-cmd-desktop-app
+        working-directory: github-control-hub/desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
@@ -69,7 +69,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(node -p "require('./github-control-hub-cmd-desktop-app/package.json').version")
+          VERSION=$(node -p "require('./github-control-hub/desktop/package.json').version")
           TAG="v${VERSION}"
           echo "Publishing release ${TAG}..."
           # Wait a moment for assets to finish uploading

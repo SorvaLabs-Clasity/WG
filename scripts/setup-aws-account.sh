@@ -240,4 +240,4 @@ fi
 
 echo
 echo "Done. Launch the app with:"
-echo "  cd github-control-hub-cmd-desktop-app && npm run dev"
+echo "  cd github-control-hub/desktop && npm run dev"
