@@ -2,7 +2,7 @@ import { createContext, useContext, useCallback, useEffect, useMemo, useState } 
 import { RouterProvider } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { router } from "./router";
-import { isAuthenticated, clearToken, DEMO_MODE } from "./api/client";
+import { isAuthenticated, clearToken, getToken, getUserInfo, DEMO_MODE } from "./api/client";
 import { fetchAuthStatus } from "./api/auth";
 import { DEMO_USER } from "./api/mock";
 import { ThemeContext, getInitialTheme, applyTheme, type Theme } from "./hooks/useTheme";
@@ -34,8 +34,16 @@ export function useAuth() {
 
 function parseJwt(token: string): Record<string, unknown> | null {
   try {
-    const payload = token.split(".")[1];
-    return JSON.parse(atob(payload));
+    // JWTs are base64url — "-" and "_" instead of "+" and "/", padding dropped.
+    // atob rejects both, so decoding worked only for payloads that happened to
+    // produce neither character.
+    const part = token.split(".")[1];
+    if (!part) return null;
+    const b64 = part.replace(/-/g, "+").replace(/_/g, "/")
+      .padEnd(part.length + ((4 - (part.length % 4)) % 4), "=");
+    return JSON.parse(decodeURIComponent(
+      atob(b64).split("").map(c => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("")
+    ));
   } catch {
     return null;
   }
@@ -54,15 +62,22 @@ export default function App() {
 
   const user = useMemo<User | null>(() => {
     if (DEMO_MODE) return DEMO_USER;
-    if (!isAuthenticated()) return null;
-    const token = localStorage.getItem("gh_hub_token");
+    // Read through getToken rather than reaching into storage directly. This
+    // used to call localStorage.getItem("gh_hub_token") while setToken wrote to
+    // sessionStorage — same key, different store — so isAuthenticated() said
+    // yes and this said no. The navbar's whole account block is gated on the
+    // result, which is why the avatar and sign-out never appeared.
+    const token = getToken();
     if (!token) return null;
+
     const payload = parseJwt(token);
-    if (!payload) return null;
-    return {
-      login: payload.login as string,
-      avatarUrl: payload.avatarUrl as string,
-    };
+    if (payload?.login) {
+      return { login: payload.login as string, avatarUrl: (payload.avatarUrl as string) || "" };
+    }
+    // A token we cannot read is still a session. The login is stored separately
+    // at sign-in, so fall back to that instead of rendering as signed out.
+    const stored = getUserInfo();
+    return stored ? { login: stored.login, avatarUrl: stored.avatarUrl } : null;
   }, []);
 
   useEffect(() => {
