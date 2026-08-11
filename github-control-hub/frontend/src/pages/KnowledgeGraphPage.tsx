@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
+import { Page, PageHeader, StatusSlab, SlabPercent, SearchInput, Sheet, Empty, Spinner, TYPE, enter } from "../design";
 import { useGraphNode } from "../hooks/useGraph";
 import { useRepos, useRepoDetails } from "../hooks/useRepos";
 import type { Repo, RepoDetails } from "../types/Repo";
@@ -103,34 +103,23 @@ export default function KnowledgeGraphPage() {
   const selectCls = "text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
 
   return (
-    <div className="min-h-screen pt-14 bg-slate-50 dark:bg-slate-950">
-      <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-      <main className="max-w-[1600px] mx-auto px-6 py-6">
-        {/* Header */}
-        <div className="mb-5">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Repo Knowledge Center</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Browse every repository in the organization and inspect its full profile.
-          </p>
-        </div>
+    <Page user={user}>
+      <PageHeader
+        title="Repositories"
+        subtitle="Every repository in the organization, and everything worth knowing about each one."
+      />
 
-        {/* Org summary */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          {[
-            { label: "Repositories", value: orgStats.total, icon: "ph-git-repository" },
-            { label: "Languages", value: orgStats.languages, icon: "ph-code" },
-            { label: "Private", value: orgStats.private, icon: "ph-lock-simple" },
-            { label: "Archived", value: orgStats.archived, icon: "ph-archive" },
-          ].map(s => (
-            <div key={s.label} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-700 px-4 py-3 flex items-center gap-3">
-              <i className={`ph-fill ${s.icon} text-lg text-slate-400 dark:text-slate-500`}></i>
-              <div>
-                <div className="text-xl font-bold text-slate-900 dark:text-white font-mono leading-none">{s.value}</div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{s.label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+      <StatusSlab
+        intent="info"
+        eyebrow="Organization"
+        metrics={[
+          { value: orgStats.total, label: "repositories", emphasis: true },
+          { value: orgStats.languages, label: "languages" },
+          { value: orgStats.archived, label: "archived" },
+        ]}
+        aside={<SlabPercent value={orgStats.total ? Math.round((orgStats.private / orgStats.total) * 100) : 0} label="private" />}
+        footer={<>{orgStats.private} private · {orgStats.total - orgStats.private} public</>}
+      />
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_460px] gap-5 items-start">
           {/* Browser */}
@@ -198,8 +187,7 @@ export default function KnowledgeGraphPage() {
             </div>
           )}
         </div>
-      </main>
-    </div>
+    </Page>
   );
 }
 

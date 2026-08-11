@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import Navbar from "../components/Navbar";
+import { Page } from "../design";
 import { useAuth } from "../App";
 import { usePermissions } from "../hooks/usePermissions";
 import {
@@ -584,20 +584,13 @@ export default function TemplatesPage() {
   };
 
   return (
-    <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white min-h-screen pt-14 antialiased">
-      <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-
-      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-10 pb-32">
-
+    <Page user={user}>
         {/* --- HEADER --- */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
           <div className="flex items-center gap-4">
-            <div className="bg-slate-900 text-white w-12 h-12 rounded-xl flex items-center justify-center shadow-lg">
-              <i className="fa-solid fa-layer-group text-xl"></i>
-            </div>
             <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Templates & Automation</h1>
-              <p className="text-slate-500 dark:text-slate-400 text-sm font-medium mt-0.5">Manage initialization standards across your organization.</p>
+              <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Templates &amp; Automation</h1>
+              <p className="text-slate-500 dark:text-slate-400 text-sm mt-1">Branch protection standards, applied by hand or the moment a repo is created.</p>
             </div>
           </div>
           {activeTab === "templates" ? (
@@ -993,7 +986,6 @@ export default function TemplatesPage() {
             )}
           </>
         )}
-      </main>
 
       {/* CREATE TEMPLATE MODAL */}
       {createOpen && (
@@ -2639,6 +2631,6 @@ export default function TemplatesPage() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

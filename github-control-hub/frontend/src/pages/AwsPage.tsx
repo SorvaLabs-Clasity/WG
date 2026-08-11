@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
-import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
+import { Page, PageHeader, StatusSlab, SlabPercent, Note as DNote } from "../design";
 import { usePermissions } from "../hooks/usePermissions";
 import {
   useCatalog, useGuardrails, useFindings, useAwsExclusions,
@@ -64,9 +64,7 @@ export default function AwsPage() {
   };
 
   return (
-    <div className="min-h-screen pt-14 bg-slate-50 dark:bg-slate-950">
-      <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-      <main className="max-w-[1500px] mx-auto px-6 py-6">
+    <Page user={user}>
         <div className="flex items-start justify-between gap-4 mb-5">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 dark:text-white">AWS Guardrails</h1>
@@ -97,22 +95,19 @@ export default function AwsPage() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
-          {[
-            { label: "Violations", value: stats.violations, icon: "ph-warning", tone: "text-rose-500" },
-            { label: "Compliant", value: stats.compliant, icon: "ph-check-circle", tone: "text-emerald-500" },
-            { label: "Excluded", value: stats.excluded, icon: "ph-prohibit", tone: "text-slate-400" },
-            { label: "Enforcing rules", value: stats.enforcing, icon: "ph-lock-key", tone: "text-blue-500" },
-          ].map(s => (
-            <div key={s.label} className="bg-white dark:bg-slate-900 rounded-xl border border-slate-100 dark:border-slate-700 px-4 py-3 flex items-center gap-3">
-              <i className={`ph-fill ${s.icon} text-lg ${s.tone}`}></i>
-              <div>
-                <div className="text-xl font-bold text-slate-900 dark:text-white font-mono leading-none">{s.value}</div>
-                <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{s.label}</div>
-              </div>
-            </div>
-          ))}
-        </div>
+        <StatusSlab
+          intent={stats.violations > 0 ? "danger" : stats.compliant > 0 ? "good" : "neutral"}
+          eyebrow={stats.violations > 0 ? "Action required" : stats.compliant > 0 ? "All clear" : "Not yet swept"}
+          metrics={[
+            { value: stats.violations, label: "failing", emphasis: true },
+            { value: stats.compliant, label: "passing" },
+            { value: stats.excluded, label: "excluded" },
+          ]}
+          aside={<SlabPercent
+            value={stats.violations + stats.compliant ? Math.round((stats.compliant / (stats.violations + stats.compliant)) * 100) : 100}
+            label="compliant" />}
+          footer={<>{stats.enforcing} {stats.enforcing === 1 ? "rule fixes" : "rules fix"} problems automatically</>}
+        />
 
         <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-slate-800 p-1 rounded-lg w-fit">
           {([["rules", "Rules"], ["findings", "Findings"], ["exclusions", "Exclusion lists"]] as const).map(([id, text]) => (
@@ -148,8 +143,7 @@ export default function AwsPage() {
             onClose={() => setEditing(null)}
           />
         )}
-      </main>
-    </div>
+    </Page>
   );
 }
 

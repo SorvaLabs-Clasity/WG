@@ -10,128 +10,107 @@ interface NavbarProps {
   avatarUrl?: string;
 }
 
+/**
+ * Primary navigation.
+ *
+ * A dark bar against the light page — the app's frame, not another card. The
+ * active item is marked by a solid pill rather than an underline, so the
+ * current location is obvious at a glance instead of needing to be hunted for.
+ */
+const ITEMS = [
+  { label: "Overview", short: "Overview", icon: "ph-chart-line-up", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics") },
+  { label: "Templates", short: "Templates", icon: "ph-stack", path: "/templates", match: (p: string) => p.startsWith("/templates") },
+  { label: "AWS", short: "AWS", icon: "ph-cloud", path: "/aws", match: (p: string) => p.startsWith("/aws") },
+  { label: "Security", short: "Security", icon: "ph-shield-warning", path: "/security", match: (p: string) => p.startsWith("/security") },
+  { label: "Compliance", short: "Compliance", icon: "ph-seal-check", path: "/compliance", match: (p: string) => p.startsWith("/compliance") },
+  { label: "Dependabot", short: "Deps", icon: "ph-bug-beetle", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies") },
+  { label: "Repos", short: "Repos", icon: "ph-books", path: "/graph", match: (p: string) => p.startsWith("/graph") },
+  { label: "Activity", short: "Activity", icon: "ph-pulse", path: "/activity", match: (p: string) => p.startsWith("/activity") },
+];
+
 export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const navigate = useNavigate();
-  const location = useLocation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { pathname } = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
   const { theme, toggle } = useTheme();
 
-  const handleLogout = async () => {
+  const logout = async () => {
     const token = getToken();
-    if (token) {
-      try { await revokeGithub(token); } catch {}
-    }
+    if (token) { try { await revokeGithub(token); } catch { /* best effort */ } }
     clearToken();
     if ((window as any).electronAPI?.clearGithubSession) {
-      try { await (window as any).electronAPI.clearGithubSession(); } catch {}
+      try { await (window as any).electronAPI.clearGithubSession(); } catch { /* best effort */ }
     }
     navigate("/login");
   };
 
-  const isTemplates = location.pathname.startsWith("/templates");
-  const isSecurity = location.pathname.startsWith("/security");
-  const isCompliance = location.pathname.startsWith("/compliance");
-  const isDependencies = location.pathname.startsWith("/dependencies");
-  const isGraph = location.pathname.startsWith("/graph");
-  const isAws = location.pathname.startsWith("/aws");
-  const isAnalytics = location.pathname === "/" || location.pathname.startsWith("/analytics");
-  const isActivity = location.pathname.startsWith("/activity");
-
-  const navItems = [
-    { label: "Templates & Automation", icon: "ph-copy", path: "/templates", isActive: isTemplates },
-    { label: "Security", icon: "ph-shield-warning", path: "/security", isActive: isSecurity },
-    { label: "Compliance", icon: "ph-check-square-offset", path: "/compliance", isActive: isCompliance },
-    { label: "Dependabot", icon: "ph-bug", path: "/dependencies", isActive: isDependencies },
-    { label: "AWS", icon: "ph-cloud", path: "/aws", isActive: isAws },
-    { label: "Analytics", icon: "ph-chart-bar", path: "/analytics", isActive: isAnalytics },
-    { label: "Knowledge Map", icon: "ph-graph", path: "/graph", isActive: isGraph },
-    { label: "Activity", icon: "ph-activity", path: "/activity", isActive: isActivity },
-  ];
-
   return (
     <>
-      <nav className="bg-white dark:bg-slate-900 fixed top-0 left-0 right-0 h-14 z-40 flex items-center px-4 sm:px-6 border-b border-slate-200 dark:border-slate-700">
-        <div className="flex items-center gap-3 shrink-0">
-          <button 
-            className="xl:hidden p-1 -ml-1 text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            <i className={`ph ${mobileMenuOpen ? 'ph-x' : 'ph-list'} text-2xl`}></i>
+      <nav className="fixed top-0 left-0 right-0 h-16 z-40 bg-[#11131a] border-b border-white/[0.08]">
+        <div className="h-full max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center gap-6">
+          <button className="xl:hidden text-white/60 hover:text-white p-1 -ml-1" onClick={() => setMenuOpen(o => !o)}>
+            <i className={`ph-bold ${menuOpen ? "ph-x" : "ph-list"} text-xl`}></i>
           </button>
-          <div 
-            className="flex items-center gap-2 cursor-pointer group"
-            onClick={() => navigate("/")}
-          >
-            <i className="ph-fill ph-github-logo text-2xl sm:text-3xl text-slate-900 dark:text-white"></i>
-            <span className="font-bold text-slate-900 dark:text-white tracking-tight text-sm hidden sm:inline-block">
-              GitHub <span className="text-slate-400 dark:text-slate-500 font-normal">Control Hub</span>
+
+          <button onClick={() => navigate("/")} className="flex items-center gap-2.5 shrink-0 group">
+            <span className="w-8 h-8 rounded-xl bg-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+              <i className="ph-fill ph-shield-check text-[#11131a] text-lg"></i>
             </span>
+            <span className="hidden sm:block text-left leading-tight">
+              <span className="block text-[13px] font-black text-white tracking-tight">Control Hub</span>
+              <span className="block text-[10px] text-white/40 font-medium">Sorva Studios</span>
+            </span>
+          </button>
+
+          <div className="hidden xl:flex items-center gap-0.5">
+            {ITEMS.map(item => {
+              const on = item.match(pathname);
+              return (
+                <button key={item.path} onClick={() => navigate(item.path)}
+                  className={`px-3.5 py-2 rounded-xl text-[13px] font-bold transition-all flex items-center gap-2 ${
+                    on ? "bg-white text-[#11131a]" : "text-white/55 hover:text-white hover:bg-white/[0.07]"}`}>
+                  <i className={`${on ? "ph-fill" : "ph-bold"} ${item.icon} text-[15px]`}></i>
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
-        </div>
 
-        <div className="hidden xl:flex items-center gap-6 ml-8 h-full">
-          {navItems.map(item => (
-            <button 
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              className={`h-full flex items-center text-sm font-medium border-b-2 px-0.5 transition-colors ${
-                item.isActive
-                  ? "text-slate-900 dark:text-white border-slate-900 dark:border-white"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white border-transparent"
-              }`}
-            >
-              {item.label}
+          <div className="ml-auto flex items-center gap-2 sm:gap-3">
+            <button onClick={toggle}
+              className="w-9 h-9 rounded-xl text-white/50 hover:text-white hover:bg-white/[0.07] flex items-center justify-center transition-colors"
+              title={theme === "dark" ? "Switch to light" : "Switch to dark"}>
+              <i className={`ph-bold ${theme === "dark" ? "ph-sun" : "ph-moon"} text-base`}></i>
             </button>
-          ))}
-        </div>
-
-        <div className="ml-auto flex items-center gap-3 sm:gap-4">
-          <button
-            onClick={toggle}
-            className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-          >
-            <i className={`ph-bold ${theme === "dark" ? "ph-sun" : "ph-moon"} text-lg`}></i>
-          </button>
-          {login && (
-            <div className="flex items-center gap-2">
-              <UserAvatar login={login} avatarUrl={avatarUrl} size={28} className="border border-slate-200 dark:border-slate-700" />
-              <span className="text-slate-600 dark:text-slate-300 text-sm font-medium hidden md:block">
-                {login}
-              </span>
-            </div>
-          )}
-          <button 
-            onClick={handleLogout}
-            className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white transition-colors flex items-center gap-1.5 text-sm font-medium"
-            title="Session"
-          >
-            <i className="ph ph-gear-six text-lg"></i>
-            <span className="hidden sm:inline">Session</span>
-          </button>
+            {login && (
+              <div className="flex items-center gap-2.5 pl-2 sm:pl-3 border-l border-white/10">
+                <UserAvatar login={login} avatarUrl={avatarUrl} size={28} className="ring-2 ring-white/15" />
+                <span className="hidden md:block text-[13px] font-semibold text-white/80">{login}</span>
+                <button onClick={logout} title="Sign out"
+                  className="w-9 h-9 rounded-xl text-white/40 hover:text-white hover:bg-white/[0.07] flex items-center justify-center transition-colors">
+                  <i className="ph-bold ph-sign-out text-base"></i>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
-      {/* Mobile Menu */}
-      {mobileMenuOpen && (
-        <div className="fixed inset-0 top-14 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm xl:hidden border-t border-slate-200 dark:border-slate-700 animate-fade-in overflow-y-auto">
-          <div className="flex flex-col p-4 gap-1">
-            {navItems.map(item => (
-              <button
-                key={item.path}
-                onClick={() => {
-                  navigate(item.path);
-                  setMobileMenuOpen(false);
-                }}
-                className={`flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
-                  item.isActive
-                    ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white font-semibold"
-                    : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white"
-                }`}
-              >
-                {item.label}
-              </button>
-            ))}
+      {menuOpen && (
+        <div className="fixed inset-0 top-16 z-30 bg-[#11131a] xl:hidden overflow-y-auto animate-fade-in">
+          <div className="p-4 grid gap-1">
+            {ITEMS.map(item => {
+              const on = item.match(pathname);
+              return (
+                <button key={item.path}
+                  onClick={() => { navigate(item.path); setMenuOpen(false); }}
+                  className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-left font-bold transition-colors ${
+                    on ? "bg-white text-[#11131a]" : "text-white/60 hover:bg-white/[0.07] hover:text-white"}`}>
+                  <i className={`${on ? "ph-fill" : "ph-bold"} ${item.icon} text-lg`}></i>
+                  {item.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}

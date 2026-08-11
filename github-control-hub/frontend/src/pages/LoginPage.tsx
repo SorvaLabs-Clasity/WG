@@ -206,11 +206,14 @@ export default function LoginPage() {
   const inputCls = "w-full text-[13px] bg-white dark:bg-[#0c1222] border border-slate-200 dark:border-slate-700/80 rounded-lg px-3.5 py-2.5 text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 dark:focus:ring-blue-400/20 dark:focus:border-blue-400/40 font-mono placeholder:text-slate-400 dark:placeholder:text-slate-600 transition-all";
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-slate-100 dark:bg-[#060a14]">
+    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden bg-[#11131a]">
       {/* Ambient background glow */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-[-40%] left-[-20%] w-[80%] h-[80%] rounded-full bg-blue-500/[0.04] dark:bg-blue-500/[0.06] blur-[120px]" />
-        <div className="absolute bottom-[-30%] right-[-10%] w-[60%] h-[60%] rounded-full bg-violet-500/[0.03] dark:bg-violet-500/[0.05] blur-[100px]" />
+        {/* Flat geometry rather than blurred colour blobs — the gradient-orb
+            look is the thing that dates an interface fastest. */}
+        <div className="absolute -top-40 -left-40 w-[520px] h-[520px] rounded-full border border-white/[0.06]" />
+        <div className="absolute -top-24 -left-24 w-[420px] h-[420px] rounded-full border border-white/[0.05]" />
+        <div className="absolute -bottom-52 -right-40 w-[560px] h-[560px] rounded-full bg-white/[0.02]" />
       </div>
 
       {/* Grid pattern overlay */}

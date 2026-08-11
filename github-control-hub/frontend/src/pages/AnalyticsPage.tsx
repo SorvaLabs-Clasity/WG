@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import Navbar from "../components/Navbar";
+import { Page } from "../design";
 import { useAuth } from "../App";
 import { useSecurityQuery, useBlastRadiusRanking, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
@@ -54,22 +54,14 @@ export default function AnalyticsPage() {
   };
 
   return (
-    <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white min-h-screen pt-14 flex flex-col">
-      <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 py-8 flex flex-col gap-0">
+    <Page user={user}>
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
-          <div className="flex items-start gap-5">
-            <div className="w-14 h-14 rounded-2xl bg-slate-900 text-white flex items-center justify-center shadow-lg shadow-slate-900/20 shrink-0">
-              <i className="ph-fill ph-chart-bar text-2xl"></i>
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight mb-1">Analytics Dashboard</h1>
-              <p className="text-slate-500 dark:text-slate-400 text-sm max-w-lg leading-relaxed">
-                Insight into security posture, rule bypasses, and structural metrics across your GitHub organization.
-              </p>
-            </div>
+          <div>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Overview</h1>
+            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 max-w-lg">
+              Security posture, rule bypasses and structural metrics across the organization.
+            </p>
           </div>
 
           <div className="flex items-center gap-4 shrink-0">
@@ -269,11 +261,10 @@ export default function AnalyticsPage() {
             </section>
           </div>
         )}
-      </main>
 
       {showAddModal && <WidgetFormModal onClose={() => setShowAddModal(false)} onSave={handleAddWidget} isSaving={createWidget.isPending} />}
       {editingWidget && <WidgetFormModal onClose={() => setEditingWidget(null)} onSave={handleEditWidget} isSaving={updateWidget.isPending} initialData={editingWidget} />}
-    </div>
+    </Page>
   );
 }
 

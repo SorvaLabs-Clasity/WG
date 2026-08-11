@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import Navbar from "../components/Navbar";
+import { Page } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import UserAvatar from "../components/UserAvatar";
 import { useAuth } from "../App";
@@ -426,15 +426,12 @@ export default function ActivityPage() {
   const popupCanRetry = popupEntry ? canRetry(popupEntry) : false;
 
   return (
-    <div className="bg-gh-bg dark:bg-slate-950 text-gh-text dark:text-slate-200 font-sans antialiased min-h-screen flex flex-col pt-14">
-      <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-6 py-8 animate-fade-in">
+    <Page user={user}>
         <header className="flex flex-col mb-6 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-gh-textBase dark:text-slate-200">Activity Log</h1>
-              <p className="text-sm text-gh-muted dark:text-slate-400 mt-1">Global audit trail of all organization events and security changes.</p>
+              <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Activity</h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Everything that has changed across the organization, newest first.</p>
             </div>
             <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium shrink-0 ${
               orgConfig?.features?.auditLogs
@@ -572,7 +569,6 @@ export default function ActivityPage() {
             </div>
           </div>
         )}
-      </main>
 
       {/* EVENT DETAIL / UNDO-REDO-RETRY POPUP */}
       {popupEntry && popupCfg && (
@@ -999,6 +995,6 @@ export default function ActivityPage() {
           </div>
         </div>
       )}
-    </div>
+    </Page>
   );
 }

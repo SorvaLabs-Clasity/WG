@@ -1,317 +1,216 @@
-import React, { useState, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { useDependencies, useDependencySummary, useEnableDependabot, useDisableDependabot } from "../hooks/useDependencies";
-import Navbar from "../components/Navbar";
 import { useAuth } from "../App";
-import { DependencyAlert } from "../types/Dependabot";
+import type { DependencyAlert } from "../types/Dependabot";
+import {
+  Page, PageHeader, StatusSlab, SlabPercent, Button, Segmented, SearchInput,
+  RailCard, Note, Chip, Pill, Empty, Spinner, TYPE, enter, type Intent,
+} from "../design";
 
-const SEVERITY_BADGE: Record<string, { bg: string; text: string; border: string; dot: string }> = {
-  critical: { bg: "bg-rose-50 dark:bg-rose-950/50", text: "text-rose-600 dark:text-rose-400", border: "border-rose-100 dark:border-rose-800", dot: "bg-rose-500" },
-  high:     { bg: "bg-orange-50 dark:bg-orange-950/50", text: "text-orange-600 dark:text-orange-400", border: "border-orange-100 dark:border-orange-800", dot: "bg-orange-500" },
-  medium:   { bg: "bg-amber-50 dark:bg-amber-950/50", text: "text-amber-600 dark:text-amber-400", border: "border-amber-100 dark:border-amber-800", dot: "bg-amber-500" },
-  low:      { bg: "bg-blue-50 dark:bg-blue-950/50", text: "text-blue-600 dark:text-blue-400", border: "border-blue-100 dark:border-blue-800", dot: "bg-blue-500" },
+/** Severity maps onto the shared intents so colour means one thing app-wide. */
+const SEVERITY: Record<string, Intent> = {
+  critical: "danger", high: "danger", medium: "warn", low: "info",
 };
 
-const STAT_CARDS: { key: string; label: string; borderColor: string; textColor: string; icon: string; pulse?: boolean }[] = [
-  { key: "critical", label: "Critical", borderColor: "border-l-rose-500", textColor: "text-rose-600 dark:text-rose-400", icon: "fa-solid fa-skull-crossbones", pulse: true },
-  { key: "high", label: "High", borderColor: "border-l-orange-500", textColor: "text-orange-600 dark:text-orange-400", icon: "fa-solid fa-fire" },
-  { key: "medium", label: "Medium", borderColor: "border-l-amber-500", textColor: "text-amber-600 dark:text-amber-400", icon: "fa-solid fa-triangle-exclamation" },
-  { key: "low", label: "Low", borderColor: "border-l-blue-500", textColor: "text-blue-600 dark:text-blue-400", icon: "fa-solid fa-info-circle" },
-  { key: "repos_with_vulns", label: "Affected Repos", borderColor: "border-l-slate-400", textColor: "text-slate-800 dark:text-slate-200", icon: "fa-solid fa-code-branch" },
-];
+const REPOS_PER_PAGE = 15;
 
 export default function DependencyDashboardPage() {
-  const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj } = useDependencies();
-  const { data: summary, isLoading: sumLoading, isError: sumError } = useDependencySummary();
-  const enableMutation = useEnableDependabot();
-  const disableMutation = useDisableDependabot();
   const { user } = useAuth();
+  const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj } = useDependencies();
+  const { data: summary, isLoading: sumLoading } = useDependencySummary();
+  const enable = useEnableDependabot();
+  const disable = useDisableDependabot();
 
-  const [filterSeverity, setFilterSeverity] = useState<string>("all-alerts");
-  const [searchQuery, setSearchQuery] = useState<string>("");
-  const [loadingRepo, setLoadingRepo] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const REPOS_PER_PAGE = 20;
+  const [filter, setFilter] = useState<"alerts" | "critical" | "high" | "off" | "all">("alerts");
+  const [search, setSearch] = useState("");
+  const [busyRepo, setBusyRepo] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
-  const handleEnable = async (repo: string) => {
-    setLoadingRepo(repo);
-    try { await enableMutation.mutateAsync(repo); } finally { setLoadingRepo(null); }
-  };
+  const groups = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const matching = (dependencies ?? []).filter(d => {
+      if (q && !d.repo.toLowerCase().includes(q)) return false;
+      switch (filter) {
+        case "all": return true;
+        case "off": return !!d.disabled;
+        case "critical": return !d.disabled && !d.clean && d.severity === "critical";
+        case "high": return !d.disabled && !d.clean && (d.severity === "critical" || d.severity === "high");
+        default: return !d.disabled && !d.clean;
+      }
+    });
+    const by = new Map<string, DependencyAlert[]>();
+    matching.forEach(d => by.set(d.repo, [...(by.get(d.repo) ?? []), d]));
+    // Worst first — a repo with criticals should never be below a clean one.
+    return [...by.entries()].sort((a, b) => {
+      const sev = (xs: DependencyAlert[]) => xs.filter(x => x.severity === "critical").length * 1000 + xs.length;
+      return sev(b[1]) - sev(a[1]) || a[0].localeCompare(b[0]);
+    });
+  }, [dependencies, search, filter]);
 
-  const handleDisable = async (repo: string) => {
-    if (!window.confirm(`Are you sure you want to disable Dependabot alerts for ${repo}?`)) return;
-    setLoadingRepo(repo);
-    try { await disableMutation.mutateAsync(repo); } finally { setLoadingRepo(null); }
-  };
+  const counts = useMemo(() => {
+    const all = dependencies ?? [];
+    const off = new Set(all.filter(d => d.disabled).map(d => d.repo)).size;
+    const clean = new Set(all.filter(d => d.clean).map(d => d.repo)).size;
+    const vulnerable = new Set(all.filter(d => !d.clean && !d.disabled).map(d => d.repo)).size;
+    const repos = off + clean + vulnerable;
+    return {
+      off, clean, vulnerable, repos,
+      critical: summary?.critical ?? 0,
+      high: summary?.high ?? 0,
+      total: (summary?.critical ?? 0) + (summary?.high ?? 0) + (summary?.medium ?? 0) + (summary?.low ?? 0),
+      pct: repos ? Math.round((clean / repos) * 100) : 100,
+    };
+  }, [dependencies, summary]);
 
-  const isLoading = depsLoading || sumLoading;
-
-  if (isLoading) {
-    return (
-      <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white min-h-screen pt-14 antialiased">
-        <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-        <div className="p-16 flex justify-center"><div className="animate-spin w-8 h-8 border-4 border-slate-300 dark:border-slate-600 border-t-slate-700 dark:border-t-slate-300 rounded-full"></div></div>
-      </div>
-    );
-  }
+  if (depsLoading || sumLoading) return <Page user={user}><Spinner /></Page>;
 
   const rateLimited = depsError && (depsErrorObj as any)?.message?.includes("429");
-
-  const repoGroups: Record<string, DependencyAlert[]> = {};
-  const filteredDeps = (dependencies || []).filter(dep => {
-    if (searchQuery) return dep.repo.toLowerCase().includes(searchQuery.toLowerCase());
-    if (filterSeverity === "all-repos") return true;
-    if (filterSeverity === "all-alerts") { if (dep.disabled || dep.clean) return false; }
-    else { if (dep.disabled || dep.clean) return false; if (dep.severity !== filterSeverity) return false; }
-    return true;
-  });
-  filteredDeps.forEach(dep => { if (!repoGroups[dep.repo]) repoGroups[dep.repo] = []; repoGroups[dep.repo].push(dep); });
-
-  const allEntries = Object.entries(repoGroups);
-  const totalPages = Math.ceil(allEntries.length / REPOS_PER_PAGE);
-  const paginatedEntries = allEntries.slice((currentPage - 1) * REPOS_PER_PAGE, currentPage * REPOS_PER_PAGE);
-
-  const criticalCountForRepo = (alerts: DependencyAlert[]) => alerts.filter(a => a.severity === "critical").length;
+  const totalPages = Math.max(1, Math.ceil(groups.length / REPOS_PER_PAGE));
+  const safePage = Math.min(page, totalPages);
+  const shown = groups.slice((safePage - 1) * REPOS_PER_PAGE, safePage * REPOS_PER_PAGE);
 
   return (
-    <div className="bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white min-h-screen pt-14 antialiased">
-      <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
+    <Page user={user}>
+      <PageHeader
+        title="Dependabot"
+        subtitle="Known vulnerabilities in dependencies, and which repositories are watching for them."
+      />
 
-      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-20">
+      <StatusSlab
+        intent={counts.critical > 0 ? "danger" : counts.total > 0 ? "warn" : "good"}
+        eyebrow={counts.critical > 0 ? "Critical vulnerabilities" : counts.total > 0 ? "Vulnerabilities open" : "Nothing outstanding"}
+        metrics={[
+          { value: counts.critical, label: "critical", emphasis: true },
+          { value: counts.high, label: "high" },
+          { value: counts.vulnerable, label: "repos affected" },
+        ]}
+        aside={<SlabPercent value={counts.pct} label="repos clean" />}
+        footer={
+          counts.off > 0
+            ? <><strong className="font-bold">{counts.off}</strong> {counts.off === 1 ? "repository has" : "repositories have"} Dependabot switched off — nothing is being detected there</>
+            : <>{counts.total} open alerts across {counts.repos} repositories</>
+        }
+      />
 
-        {/* Error Banner */}
-        {(depsError || sumError) && (
-          <div className="mb-6 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-sm flex items-center gap-2">
-            <i className="fa-solid fa-triangle-exclamation"></i>
-            {rateLimited ? "GitHub API rate limit exceeded. Data will reload automatically when the limit resets." : "Failed to load dependency data. Please try refreshing."}
-          </div>
-        )}
+      {rateLimited && (
+        <Note intent="warn">
+          GitHub rate-limited the alert fetch. Counts may be incomplete until the limit resets.
+        </Note>
+      )}
 
-        {/* Header */}
-        <header className="flex items-start gap-5 mb-10">
-          <div className="bg-slate-900 dark:bg-slate-800 text-white w-14 h-14 rounded-2xl shadow-lg shadow-slate-900/10 flex items-center justify-center shrink-0">
-            <i className="fa-solid fa-bug text-2xl"></i>
-          </div>
-          <div className="flex flex-col justify-center">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">Dependency Security</h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 font-medium">Aggregate vulnerability data across all repositories using GitHub Dependabot alerts.</p>
-          </div>
-        </header>
-
-        {/* Summary Stats */}
-        {summary && (
-          <section className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-10">
-            {STAT_CARDS.map(card => {
-              const val = (summary as any)[card.key] ?? 0;
-              const isAffected = card.key === "repos_with_vulns";
-              return (
-                <div key={card.key} className={`relative rounded-2xl p-5 group hover:-translate-y-1 transition-all duration-300 border-l-4 ${card.borderColor} ${isAffected ? "bg-slate-50/80 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 shadow-sm" : "bg-white dark:bg-slate-900 shadow-soft"}`}>
-                  <div className="absolute top-4 right-4 text-slate-200 dark:text-slate-700 text-xl opacity-50 group-hover:opacity-100 transition-opacity">
-                    <i className={card.icon}></i>
-                  </div>
-                  <div className="flex items-baseline gap-2">
-                    <span className={`text-3xl font-bold ${card.textColor} block mb-1`}>{val}</span>
-                    {card.pulse && val > 0 && <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>}
-                  </div>
-                  <div className={`text-[10px] font-bold uppercase tracking-wider ${isAffected ? "text-slate-500 dark:text-slate-400" : "text-slate-400 dark:text-slate-500"}`}>{card.label}</div>
-                </div>
-              );
-            })}
-          </section>
-        )}
-
-        {/* Filter / Search */}
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-1 shadow-sm inline-flex overflow-x-auto max-w-full">
-            {[
-              { id: "all-alerts", label: "All Alerts" },
-              { id: "all-repos", label: "All Repos" },
-              { id: "critical", label: "Critical" },
-              { id: "high", label: "High" },
-              { id: "medium", label: "Medium" },
-              { id: "low", label: "Low" },
-            ].map(f => (
-              <button
-                key={f.id}
-                onClick={() => { setFilterSeverity(f.id); setCurrentPage(1); }}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${filterSeverity === f.id ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
-              >
-                {SEVERITY_BADGE[f.id] && <span className={`w-1.5 h-1.5 rounded-full ${SEVERITY_BADGE[f.id].dot}`}></span>}
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="relative w-full md:w-80">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <i className="fa-solid fa-magnifying-glass text-slate-400 dark:text-slate-500 text-sm"></i>
-            </div>
-            <input
-              type="text" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
-              className="block w-full pl-10 pr-3 py-2 border border-slate-200 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-800 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-900 dark:focus:ring-slate-400 focus:border-transparent text-sm shadow-sm transition-all dark:text-slate-200"
-              placeholder="Search repositories..."
-            />
-          </div>
-        </div>
-
-        {/* Repo List */}
-        <div className="space-y-6">
-          {allEntries.length === 0 ? (
-            <div className="py-20 flex flex-col items-center justify-center text-center animate-fade-in">
-              <div className="w-24 h-24 bg-emerald-50 dark:bg-emerald-950/50 rounded-full flex items-center justify-center mb-6">
-                <i className="fa-solid fa-shield-check text-4xl text-emerald-400"></i>
-              </div>
-              <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">No vulnerabilities found</h3>
-              <p className="text-slate-500 dark:text-slate-400">Great job keeping dependencies up to date.</p>
-            </div>
-          ) : (
-            paginatedEntries.map(([repoName, alerts]) => {
-              const isDisabled = alerts[0]?.disabled;
-              const isClean = alerts[0]?.clean;
-              const critCount = criticalCountForRepo(alerts);
-
-              return (
-                <div key={repoName} className={`bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-soft overflow-hidden transition-shadow duration-300 ${isDisabled ? "opacity-90 hover:opacity-100" : "hover:shadow-lg"}`}>
-                  {/* Repo Header */}
-                  <div className={`px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between ${isClean ? "bg-gradient-to-r from-emerald-50/30 to-white dark:from-emerald-950/30 dark:to-slate-900" : isDisabled ? "bg-slate-50 dark:bg-slate-800" : "bg-gradient-to-r from-slate-50 via-white to-white dark:from-slate-800 dark:via-slate-900 dark:to-slate-900"}`}>
-                    <div className="flex items-center gap-3">
-                      <i className="fa-solid fa-book-bookmark text-slate-400 dark:text-slate-500 text-lg"></i>
-                      <span className={`font-bold text-lg ${isDisabled ? "text-slate-600 dark:text-slate-400" : "text-slate-800 dark:text-slate-200"}`}>{repoName}</span>
-                      {critCount > 0 && (
-                        <span className="bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-rose-100 dark:border-rose-800 uppercase tracking-wide">{critCount} Critical</span>
-                      )}
-                      {isClean && (
-                        <span className="bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-emerald-100 dark:border-emerald-800 uppercase tracking-wide">Secure</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {alerts[0]?.org && !isDisabled && (
-                        <a
-                          href={`https://github.com/${alerts[0].org}/${repoName}/security/dependabot`}
-                          target="_blank" rel="noreferrer"
-                          className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-600 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors"
-                        >
-                          <i className="fa-solid fa-up-right-from-square"></i> View in GitHub
-                        </a>
-                      )}
-                      {!isDisabled && !isClean && (
-                        <button
-                          onClick={() => handleDisable(repoName)}
-                          disabled={loadingRepo === repoName}
-                          className="flex items-center gap-1.5 bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-800 text-rose-500 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:border-rose-300 dark:hover:border-rose-600 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors disabled:opacity-50"
-                        >
-                          {loadingRepo === repoName ? <div className="animate-spin w-3 h-3 border-2 border-rose-500 border-t-transparent rounded-full"></div> : <i className="fa-solid fa-shield-halved"></i>}
-                          Disable
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Body */}
-                  {isDisabled ? (
-                    <div className="p-6">
-                      <div className="border-2 border-dashed border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50/50 dark:bg-slate-800/50 p-6 flex flex-col md:flex-row items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                          <div className="w-10 h-10 rounded-full bg-amber-100 dark:bg-amber-950/50 flex items-center justify-center text-amber-500 dark:text-amber-400 shrink-0">
-                            <i className="fa-solid fa-triangle-exclamation"></i>
-                          </div>
-                          <div>
-                            <p className="text-slate-800 dark:text-slate-200 font-bold text-sm">Dependabot alerts disabled</p>
-                            <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Enable alerts to scan for vulnerabilities.</p>
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => handleEnable(repoName)}
-                          disabled={loadingRepo === repoName}
-                          className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:border-slate-300 dark:hover:border-slate-500 shadow-sm rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wide transition-all disabled:opacity-50 flex items-center gap-2"
-                        >
-                          {loadingRepo === repoName && <div className="animate-spin w-3 h-3 border-2 border-slate-600 border-t-transparent rounded-full"></div>}
-                          Enable Alerts
-                        </button>
-                      </div>
-                    </div>
-                  ) : isClean ? (
-                    <div className="p-8 flex flex-col items-center justify-center text-center">
-                      <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-950/50 rounded-full flex items-center justify-center text-emerald-500 mb-3">
-                        <i className="fa-solid fa-shield-check text-xl"></i>
-                      </div>
-                      <h3 className="text-slate-800 dark:text-slate-200 font-bold text-sm">No vulnerable dependencies found</h3>
-                      <p className="text-slate-400 dark:text-slate-500 text-xs mt-1">Dependabot is active and protecting this repository.</p>
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-slate-50 dark:divide-slate-700">
-                      {alerts.map(alert => {
-                        const sev = SEVERITY_BADGE[alert.severity] || SEVERITY_BADGE.low;
-                        return (
-                          <div key={alert.id} className="px-6 py-4 flex flex-col md:flex-row md:items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                            <div className="flex items-center gap-3 mb-2 md:mb-0">
-                              <span className="font-mono text-sm font-semibold text-slate-700 dark:text-slate-300">{alert.dependency}</span>
-                              <span className={`text-[10px] font-bold ${sev.bg} ${sev.text} border ${sev.border} px-2 py-0.5 rounded-full uppercase tracking-wider`}>
-                                {alert.severity}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-4 text-sm">
-                              {alert.cve && (
-                                <span className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 rounded-md px-2 py-1 font-mono text-[11px]">{alert.cve}</span>
-                              )}
-                              <div className="flex items-center gap-2 font-mono text-xs">
-                                <span className="text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/50 px-2 py-1 rounded border border-rose-100 dark:border-rose-800">{alert.vulnerable_version}</span>
-                                <i className="fa-solid fa-arrow-right text-slate-300 dark:text-slate-600 text-[10px]"></i>
-                                <span className={`px-2 py-1 rounded border ${alert.patched_version ? "text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 border-emerald-100 dark:border-emerald-800" : "text-slate-400 dark:text-slate-500 bg-slate-50 dark:bg-slate-800 border-slate-200 dark:border-slate-700"}`}>
-                                  {alert.patched_version || "No patch"}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* Pagination */}
+      <div className="flex items-center gap-3 flex-wrap mb-5">
+        <SearchInput value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search repositories" />
+        <Segmented value={filter} onChange={f => { setFilter(f); setPage(1); }} options={[
+          ["alerts", "With alerts"],
+          ["critical", `Critical ${counts.critical}`],
+          ["high", "Critical + high"],
+          ["off", `Not watching ${counts.off}`],
+          ["all", "All"],
+        ]} />
         {totalPages > 1 && (
-          <div className="mt-10 bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm px-5 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
-            <span className="text-sm text-slate-500 dark:text-slate-400 font-mono font-medium">
-              Showing <span className="text-slate-900 dark:text-white">{(currentPage - 1) * REPOS_PER_PAGE + 1}-{Math.min(currentPage * REPOS_PER_PAGE, allEntries.length)}</span> of <span className="text-slate-900 dark:text-white">{allEntries.length}</span> repositories
-            </span>
-            <nav className="flex items-center gap-1">
-              <button onClick={() => setCurrentPage(1)} disabled={currentPage === 1} className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                <i className="fa-solid fa-angles-left text-xs"></i>
-              </button>
-              <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 bg-white dark:bg-slate-900 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                <i className="fa-solid fa-chevron-left text-xs"></i>
-              </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
-                .reduce<(number | "...")[]>((acc, p, i, arr) => {
-                  if (i > 0 && p - (arr[i - 1]) > 1) acc.push("...");
-                  acc.push(p);
-                  return acc;
-                }, [])
-                .map((p, i) =>
-                  p === "..." ? (
-                    <span key={`e-${i}`} className="px-2 text-slate-400 dark:text-slate-500 text-xs">...</span>
-                  ) : (
-                    <button key={p} onClick={() => setCurrentPage(p as number)} className={`w-8 h-8 flex items-center justify-center rounded-md font-medium text-xs transition-colors ${currentPage === p ? "bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 font-bold shadow-sm shadow-slate-900/20" : "border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 bg-white dark:bg-slate-900"}`}>
-                      {p}
-                    </button>
-                  )
-                )}
-              <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 bg-white dark:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                <i className="fa-solid fa-chevron-right text-xs"></i>
-              </button>
-              <button onClick={() => setCurrentPage(totalPages)} disabled={currentPage === totalPages} className="w-8 h-8 flex items-center justify-center rounded-md border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800 bg-white dark:bg-slate-900 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
-                <i className="fa-solid fa-angles-right text-xs"></i>
-              </button>
-            </nav>
+          <div className="ml-auto flex items-center gap-2 text-sm">
+            <Button variant="ghost" disabled={safePage <= 1} onClick={() => setPage(p => p - 1)}>
+              <i className="ph-bold ph-caret-left"></i>
+            </Button>
+            <span className="text-slate-500 dark:text-slate-400 tabular-nums font-semibold">{safePage} / {totalPages}</span>
+            <Button variant="ghost" disabled={safePage >= totalPages} onClick={() => setPage(p => p + 1)}>
+              <i className="ph-bold ph-caret-right"></i>
+            </Button>
           </div>
         )}
+      </div>
 
-      </main>
-    </div>
+      {shown.length === 0 ? (
+        <Empty
+          title={filter === "off" ? "Every repository is watching" : "Nothing to show"}
+          body={filter === "off"
+            ? "Dependabot alerts are enabled everywhere."
+            : "No repositories match this filter."}
+        />
+      ) : (
+        <div className="grid gap-3">
+          {shown.map(([repo, alerts], i) => {
+            const off = alerts.some(a => a.disabled);
+            const clean = !off && alerts.every(a => a.clean);
+            const critical = alerts.filter(a => a.severity === "critical").length;
+            const real = alerts.filter(a => !a.clean && !a.disabled);
+            const intent: Intent = off ? "neutral" : critical > 0 ? "danger" : real.length > 0 ? "warn" : "good";
+
+            return (
+              <RailCard key={repo} intent={intent} index={i}>
+                <div className="flex items-start justify-between gap-5 flex-wrap">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>{repo}</h3>
+                      {off && <Pill intent="neutral">not watching</Pill>}
+                      {clean && <Pill intent="good">clean</Pill>}
+                      {critical > 0 && <Pill intent="danger">{critical} critical</Pill>}
+                    </div>
+
+                    {off ? (
+                      <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1.5`}>
+                        Dependabot is switched off, so vulnerabilities here go undetected.
+                      </p>
+                    ) : clean ? (
+                      <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1.5`}>
+                        No known vulnerabilities.
+                      </p>
+                    ) : (
+                      <ul className="mt-3 space-y-1.5">
+                        {real.slice(0, 6).map(a => (
+                          <li key={a.id} className="flex items-baseline gap-2.5 flex-wrap">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 translate-y-[-1px] ${
+                              a.severity === "critical" ? "bg-rose-500"
+                                : a.severity === "high" ? "bg-orange-500"
+                                  : a.severity === "medium" ? "bg-amber-500" : "bg-blue-500"}`} />
+                            <span className={`${TYPE.mono} font-medium text-slate-800 dark:text-slate-100`}>{a.dependency}</span>
+                            <span className="text-[12px] text-slate-400 dark:text-slate-500">{a.ecosystem}</span>
+                            <Chip intent={SEVERITY[a.severity] ?? "info"}>{a.cve}</Chip>
+                            <span className="text-[12px] text-slate-500 dark:text-slate-400">
+                              {a.patched_version ? <>fixed in {a.patched_version}</> : "no fix available"}
+                            </span>
+                          </li>
+                        ))}
+                        {real.length > 6 && (
+                          <li className="text-[12px] text-slate-400 dark:text-slate-500 pl-4">
+                            and {real.length - 6} more
+                          </li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-4">
+                    {!off && !clean && (
+                      <div className="text-right">
+                        <p className={`${TYPE.metricSm} ${critical > 0 ? "text-rose-600 dark:text-rose-400" : "text-amber-600 dark:text-amber-400"}`}>
+                          {real.length}
+                        </p>
+                        <p className="text-[11px] uppercase tracking-wider font-bold text-slate-400 mt-1">alerts</p>
+                      </div>
+                    )}
+                    {off ? (
+                      <Button variant="primary" disabled={busyRepo === repo}
+                        onClick={async () => { setBusyRepo(repo); try { await enable.mutateAsync(repo); } finally { setBusyRepo(null); } }}>
+                        {busyRepo === repo ? "Enabling…" : "Start watching"}
+                      </Button>
+                    ) : (
+                      <Button variant="secondary" disabled={busyRepo === repo}
+                        onClick={async () => {
+                          if (!window.confirm(`Stop watching ${repo} for vulnerable dependencies?`)) return;
+                          setBusyRepo(repo);
+                          try { await disable.mutateAsync(repo); } finally { setBusyRepo(null); }
+                        }}>
+                        {busyRepo === repo ? "…" : "Stop watching"}
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </RailCard>
+            );
+          })}
+        </div>
+      )}
+    </Page>
   );
 }
