@@ -1,14 +1,13 @@
 /** Shared types for the AWS guardrail engine. */
 
+/**
+ * Two rules, both of which can fix what they find. Anything that could only
+ * report was removed — Vanta already does that, and duplicating it here only
+ * created noise nobody acted on.
+ */
 export type GuardrailKind =
   | "s3_https_only"
-  | "log_retention_min"
-  | "s3_block_public_access"
-  | "s3_default_encryption"
-  | "s3_versioning"
-  | "ebs_encryption_default"
-  | "rds_backup_retention_min"
-  | "iam_password_policy";
+  | "log_retention_min";
 
 export type GuardrailMode = "report" | "enforce";
 

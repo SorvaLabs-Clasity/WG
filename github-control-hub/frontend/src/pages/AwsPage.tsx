@@ -13,16 +13,6 @@ import { awsConsoleUrl, consoleLinkLabel } from "../utils/awsConsole";
 const KIND_LABELS: Record<string, string> = {
   s3_https_only: "S3 — deny non-TLS requests",
   log_retention_min: "CloudWatch Logs — minimum retention",
-  s3_block_public_access: "S3 — block public access",
-  s3_default_encryption: "S3 — default encryption",
-  s3_versioning: "S3 — versioning enabled",
-  ebs_encryption_default: "EBS — encryption by default",
-  rds_backup_retention_min: "RDS — minimum backup retention",
-  iam_password_policy: "IAM — account password policy",
-  sg_no_public_admin_ingress: "Security groups — no public admin ports",
-  rds_no_public_access: "RDS — not publicly accessible",
-  ec2_imdsv2_required: "EC2 — IMDSv2 required",
-  cloudtrail_enabled: "CloudTrail — enabled and logging",
 };
 
 const label = (kind: string) => KIND_LABELS[kind] ?? kind;

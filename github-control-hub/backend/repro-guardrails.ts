@@ -115,20 +115,6 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
   check("  and builds a fresh document", (none.fix?.after as any).Statement.length === 1, none.fix);
 }
 
-// ── a sample of the rest ──────────────────────────────────────────────
-{
-  check("block public access: all on is compliant",
-    evaluateResource("s3_block_public_access", res("b", { publicAccessBlock: { BlockPublicAcls: true, IgnorePublicAcls: true, BlockPublicPolicy: true, RestrictPublicBuckets: true } }), {}).verdict === "compliant");
-  check("block public access: partial is a violation",
-    evaluateResource("s3_block_public_access", res("b", { publicAccessBlock: { BlockPublicAcls: true } }), {}).verdict === "violation");
-
-
-
-
-  check("rds: backup retention below minimum is a violation",
-    evaluateResource("rds_backup_retention_min", res("db", { backupRetentionPeriod: 1 }), { minDays: 7 }).verdict === "violation");
-}
-
 // ── exclusions ────────────────────────────────────────────────────────
 {
   const list = (over: Partial<AwsExclusionList>): AwsExclusionList => ({
@@ -199,9 +185,12 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
 
 // ── wiring ────────────────────────────────────────────────────────────
 {
-  check("catalog has 8 rule kinds — all of them auto-fixable", CATALOG.length === 8, CATALOG.length);
-  check("CreateBucket triggers the S3 rules", kindsForEvent("CreateBucket").length >= 4, kindsForEvent("CreateBucket").map(k => k.kind));
-  check("every kind can be remediated — report-only kinds were removed",
+  check("catalog is exactly the two enforceable rules",
+    CATALOG.length === 2 && CATALOG.every(k => ["s3_https_only", "log_retention_min"].includes(k.kind)),
+    CATALOG.map(k => k.kind));
+  check("CreateBucket triggers the HTTPS rule",
+    kindsForEvent("CreateBucket").map(k => k.kind).join() === "s3_https_only", kindsForEvent("CreateBucket").map(k => k.kind));
+  check("both kinds can be remediated, so enforce mode has something to call",
     CATALOG.every(k => canRemediate(k.kind)), CATALOG.filter(k => !canRemediate(k.kind)).map(k => k.kind));
   check("CreateLogGroup triggers retention", kindsForEvent("CreateLogGroup").some(k => k.kind === "log_retention_min"));
   check("unknown event triggers nothing", kindsForEvent("SomethingElse").length === 0);

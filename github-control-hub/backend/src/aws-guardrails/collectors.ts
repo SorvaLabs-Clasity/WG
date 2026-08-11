@@ -28,8 +28,7 @@ async function optional<T>(fn: () => Promise<T>, fallback: T, notConfigured: str
 
 export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[]> {
   const { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetPublicAccessBlockCommand,
-          GetBucketEncryptionCommand, GetBucketVersioningCommand, GetBucketTaggingCommand,
-        } = await import("@aws-sdk/client-s3");
+          GetBucketTaggingCommand } = await import("@aws-sdk/client-s3");
   const s3 = new S3Client({ region: REGION });
 
   const listed = only?.length
@@ -45,18 +44,8 @@ export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[
       async () => (await s3.send(new GetBucketPolicyCommand({ Bucket: name }))).Policy,
       undefined, ["NoSuchBucketPolicy"]);
 
-    const pab = await optional(
-      async () => (await s3.send(new GetPublicAccessBlockCommand({ Bucket: name }))).PublicAccessBlockConfiguration,
-      undefined, ["NoSuchPublicAccessBlockConfiguration"]);
 
-    const enc = await optional(
-      async () => (await s3.send(new GetBucketEncryptionCommand({ Bucket: name })))
-        .ServerSideEncryptionConfiguration?.Rules?.[0]?.ApplyServerSideEncryptionByDefault?.SSEAlgorithm,
-      undefined, ["ServerSideEncryptionConfigurationNotFoundError"]);
 
-    const versioning = await optional(
-      async () => (await s3.send(new GetBucketVersioningCommand({ Bucket: name }))).Status,
-      undefined, []);
 
     const tagSet = await optional(
       async () => (await s3.send(new GetBucketTaggingCommand({ Bucket: name }))).TagSet,
@@ -70,9 +59,6 @@ export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[
       tags: Object.fromEntries((tagSet ?? []).map(t => [t.Key!, t.Value!])),
       state: {
         policy: policyRaw ? safeJson(policyRaw) : null,
-        publicAccessBlock: pab ?? {},
-        encryptionAlgorithm: enc,
-        versioning: versioning ?? "Disabled",
       },
     });
   }
@@ -121,52 +107,14 @@ function stripTrailingColonStar(arn: string | undefined): string | undefined {
 
 
 
-export async function collectDbInstances(only?: string[]): Promise<ResourceSnapshot[]> {
-  const { RDSClient, DescribeDBInstancesCommand } = await import("@aws-sdk/client-rds");
-  const rds = new RDSClient({ region: REGION });
-  const { DBInstances = [] } = await rds.send(new DescribeDBInstancesCommand({}));
-  const filtered = only?.length ? DBInstances.filter(d => only.includes(d.DBInstanceIdentifier!)) : DBInstances;
-
-  const out: ResourceSnapshot[] = [];
-
-  for (const d of filtered) {
-    out.push({
-      id: d.DBInstanceIdentifier!,
-      type: "rds:db-instance",
-      tags: Object.fromEntries((d.TagList ?? []).map(t => [t.Key!, t.Value!])),
-      state: {
-        backupRetentionPeriod: d.BackupRetentionPeriod ?? 0,
-        publiclyAccessible: d.PubliclyAccessible === true,
-      },
-    });
-  }
-  return out;
-}
 
 /** Account-level singletons. Each returns exactly one snapshot. */
 
-export async function collectEc2Account(): Promise<ResourceSnapshot[]> {
-  const { EC2Client, GetEbsEncryptionByDefaultCommand } = await import("@aws-sdk/client-ec2");
-  const ec2 = new EC2Client({ region: REGION });
-  const { EbsEncryptionByDefault } = await ec2.send(new GetEbsEncryptionByDefaultCommand({}));
-  return [{ id: `ec2-account-${REGION}`, type: "ec2:account", tags: {}, state: { ebsEncryptionByDefault: !!EbsEncryptionByDefault } }];
-}
 
-export async function collectIamAccount(): Promise<ResourceSnapshot[]> {
-  const { IAMClient, GetAccountPasswordPolicyCommand } = await import("@aws-sdk/client-iam");
-  const iam = new IAMClient({ region: REGION });
-  const policy = await optional(
-    async () => (await iam.send(new GetAccountPasswordPolicyCommand({}))).PasswordPolicy,
-    null, ["NoSuchEntity"]);
-  return [{ id: "iam-account", type: "iam:account", tags: {}, state: { passwordPolicy: policy ?? null } }];
-}
 
 
 /** Collector for a resource type, so the engine can dispatch by rule kind. */
 export const COLLECTORS: Record<string, (only?: string[]) => Promise<ResourceSnapshot[]>> = {
   "s3:bucket": collectBuckets,
   "logs:log-group": collectLogGroups,
-  "rds:db-instance": collectDbInstances,
-  "ec2:account": collectEc2Account,
-  "iam:account": collectIamAccount,
 };

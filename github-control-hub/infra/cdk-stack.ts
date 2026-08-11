@@ -158,12 +158,8 @@ export class GitHubControlHubStack extends cdk.Stack {
     guardrailFn.addToRolePolicy(new iam.PolicyStatement({
       sid: "ReadState",
       actions: [
-        "s3:ListAllMyBuckets", "s3:GetBucketPolicy", "s3:GetBucketPublicAccessBlock",
-        "s3:GetEncryptionConfiguration", "s3:GetBucketVersioning", "s3:GetBucketTagging",
+        "s3:ListAllMyBuckets", "s3:GetBucketPolicy", "s3:GetBucketTagging",
         "logs:DescribeLogGroups", "logs:ListTagsForResource",
-        "ec2:GetEbsEncryptionByDefault",
-        "rds:DescribeDBInstances", "rds:ListTagsForResource",
-        "iam:GetAccountPasswordPolicy",
       ],
       resources: ["*"], // every one of these is a List/Describe with no resource-level scoping
     }));
@@ -171,12 +167,8 @@ export class GitHubControlHubStack extends cdk.Stack {
     guardrailFn.addToRolePolicy(new iam.PolicyStatement({
       sid: "Remediate",
       actions: [
-        "s3:PutBucketPolicy", "s3:PutBucketPublicAccessBlock",
-        "s3:PutEncryptionConfiguration", "s3:PutBucketVersioning",
+        "s3:PutBucketPolicy",
         "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy",
-        "ec2:EnableEbsEncryptionByDefault",
-        "rds:ModifyDBInstance",
-        "iam:UpdateAccountPasswordPolicy",
       ],
       resources: ["*"],
     }));
@@ -191,18 +183,15 @@ export class GitHubControlHubStack extends cdk.Stack {
     }));
 
     // Creation events. These only exist if a CloudTrail trail logs management
-    // events in this region — the cloudtrail_enabled rule reports when it does
-    // not, and the scheduled sweep below covers the gap either way.
+    // events in this region; without one, the scheduled sweep below is the only
+    // path and a new resource waits up to its interval to be checked.
     new events.Rule(this, "GuardrailCreateEvents", {
       description: "Run guardrails when a covered resource is created",
       eventPattern: {
-        source: ["aws.s3", "aws.logs", "aws.ec2", "aws.rds"],
+        source: ["aws.s3", "aws.logs"],
         detailType: ["AWS API Call via CloudTrail"],
         detail: {
-          eventName: [
-            "CreateBucket", "CreateLogGroup", "CreateDBInstance",
-            "CreateSecurityGroup", "AuthorizeSecurityGroupIngress", "RunInstances",
-          ],
+          eventName: ["CreateBucket", "CreateLogGroup"],
         },
       },
       targets: [new targets.LambdaFunction(guardrailFn, { deadLetterQueue: guardrailDlq })],
