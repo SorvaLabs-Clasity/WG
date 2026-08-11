@@ -299,8 +299,8 @@ function RuleDetail({ rule, entry, findings, exclusions, isAdmin, running, onRun
             {(entry?.paramSchema ?? []).map(sp => (
               <DetailRow key={sp.key} label={sp.label}>{formatParam(rule.params?.[sp.key] ?? sp.default, sp)}</DetailRow>
             ))}
-            <DetailRow label="On resource creation">
-              {!entry?.createEvents.length ? "Swept only" : rule.applyOnCreate ? "Checked immediately" : "Waits for the sweep"}
+            <DetailRow label="Reacts to changes">
+              {!entry?.triggerEvents.length ? "Swept only" : rule.applyOnCreate ? "Within seconds" : "Waits for the sweep"}
             </DetailRow>
             {used.length > 0 && <DetailRow label="Skipping">{used.map(l => l.name).join(", ")}</DetailRow>}
           </dl>
@@ -459,12 +459,14 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
         </div>
       </Field>
 
-      <Field label="Run when a resource is created" hint={
-        entry?.createEvents.length ? `Triggers on ${entry.createEvents.join(", ")}` : "This rule type has no creation event — the sweep covers it."
+      <Field label="Run the moment something changes" hint={
+        entry?.triggerEvents.length
+          ? `Runs within seconds of ${entry.triggerEvents.join(", ")}. Needs a CloudTrail trail; without one the sweep is the only path.`
+          : "No live trigger for this rule — the sweep covers it."
       }>
         <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
           <input type="checkbox" checked={applyOnCreate} onChange={e => setApplyOnCreate(e.target.checked)}
-            disabled={!entry?.createEvents.length} className="rounded border-slate-300 dark:border-slate-600" />
+            disabled={!entry?.triggerEvents.length} className="rounded border-slate-300 dark:border-slate-600" />
           Enabled
         </label>
       </Field>

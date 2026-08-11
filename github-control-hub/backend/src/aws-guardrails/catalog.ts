@@ -59,7 +59,7 @@ const s3HttpsOnly: RuleKind = {
     { key: "sid", label: "Statement name", type: "text", default: "EnforceHTTPSOnly",
       help: "The Sid written into the bucket policy. Statements with this name are replaced; everything else is left alone." },
   ],
-  createEvents: ["CreateBucket"],
+  triggerEvents: ["CreateBucket", "PutBucketPolicy", "DeleteBucketPolicy"],
   evaluate(resource, params) {
     const sid = params.sid || "EnforceHTTPSOnly";
     const policy = resource.state.policy as { Statement?: any[] } | null;
@@ -122,7 +122,7 @@ const logRetentionMin: RuleKind = {
     { key: "leaveLongerAlone", label: "Leave longer retention untouched", type: "boolean", default: true,
       help: "Off means retention longer than the threshold is reduced to it \u2014 rarely what you want." },
   ],
-  createEvents: ["CreateLogGroup"],
+  triggerEvents: ["CreateLogGroup", "PutRetentionPolicy", "DeleteRetentionPolicy"],
   evaluate(resource, params) {
     const minDays: number = params.minDays ?? 365;
     const setTo: number = snapRetention(params.setToDays ?? minDays);
@@ -181,7 +181,7 @@ export function getRuleKind(kind: GuardrailKind): RuleKind | undefined {
 
 /** Rule kinds a given CloudTrail event should trigger. */
 export function kindsForEvent(eventName: string): RuleKind[] {
-  return CATALOG.filter(r => r.createEvents.includes(eventName));
+  return CATALOG.filter(r => r.triggerEvents.includes(eventName));
 }
 
 export function evaluateResource(

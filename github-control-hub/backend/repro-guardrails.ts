@@ -6,6 +6,8 @@
  * flagging a bucket that is already correct, or lowering a retention period
  * that was deliberately set longer.
  */
+import { readFileSync } from "fs";
+import { join } from "path";
 import { evaluateResource, httpsOnlyStatement, coversWholeBucket, CATALOG, kindsForEvent } from "./src/aws-guardrails/catalog";
 import { snapRetention, CLOUDWATCH_RETENTION_DAYS } from "./src/aws-guardrails/types";
 import { isExcluded } from "./src/aws-guardrails/exclusions";
@@ -190,6 +192,30 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
     CATALOG.map(k => k.kind));
   check("CreateBucket triggers the HTTPS rule",
     kindsForEvent("CreateBucket").map(k => k.kind).join() === "s3_https_only", kindsForEvent("CreateBucket").map(k => k.kind));
+  // Drift matters more than creation: most bad state arrives by someone
+  // loosening a resource that already existed.
+  check("editing a bucket policy triggers the HTTPS rule",
+    kindsForEvent("PutBucketPolicy").some(k => k.kind === "s3_https_only"));
+  check("removing a bucket policy triggers the HTTPS rule",
+    kindsForEvent("DeleteBucketPolicy").some(k => k.kind === "s3_https_only"));
+  check("changing retention triggers the retention rule",
+    kindsForEvent("PutRetentionPolicy").some(k => k.kind === "log_retention_min"));
+  check("removing retention triggers the retention rule",
+    kindsForEvent("DeleteRetentionPolicy").some(k => k.kind === "log_retention_min"));
+
+  // The EventBridge pattern lives in CDK, so a rule can declare a trigger the
+  // infrastructure never delivers. That failure is silent — the rule simply
+  // never runs early — so assert the two lists agree.
+  {
+    const cdk = readFileSync(join(__dirname, "../infra/cdk-stack.ts"), "utf8");
+    const block = cdk.match(/eventName: \[([\s\S]*?)\]/)?.[1] ?? "";
+    const subscribed = new Set([...block.matchAll(/"([A-Za-z]+)"/g)].map(m => m[1]));
+    const declared = new Set(CATALOG.flatMap(k => k.triggerEvents));
+    check("every declared trigger event is subscribed to in CDK",
+      [...declared].every(e => subscribed.has(e)), [...declared].filter(e => !subscribed.has(e)));
+    check("CDK subscribes to no event no rule wants",
+      [...subscribed].every(e => declared.has(e)), [...subscribed].filter(e => !declared.has(e)));
+  }
   check("both kinds can be remediated, so enforce mode has something to call",
     CATALOG.every(k => canRemediate(k.kind)), CATALOG.filter(k => !canRemediate(k.kind)).map(k => k.kind));
   check("CreateLogGroup triggers retention", kindsForEvent("CreateLogGroup").some(k => k.kind === "log_retention_min"));

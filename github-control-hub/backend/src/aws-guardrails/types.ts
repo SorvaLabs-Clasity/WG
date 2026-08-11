@@ -131,7 +131,12 @@ export interface RuleKind {
   /** One entry per configurable setting, in the order the UI should show them. */
   paramSchema: ParamSpec[];
   /** CloudTrail event names that should trigger this rule immediately. */
-  createEvents: string[];
+  /**
+   * CloudTrail event names that should run this rule immediately. Covers
+   * both creating a resource and changing the setting the rule cares about
+   * — drift is the more common way an account goes wrong.
+   */
+  triggerEvents: string[];
   evaluate(resource: ResourceSnapshot, params: Record<string, any>): Evaluation;
 }
 

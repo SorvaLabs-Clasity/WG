@@ -186,12 +186,20 @@ export class GitHubControlHubStack extends cdk.Stack {
     // events in this region; without one, the scheduled sweep below is the only
     // path and a new resource waits up to its interval to be checked.
     new events.Rule(this, "GuardrailCreateEvents", {
-      description: "Run guardrails when a covered resource is created",
+      description: "Run guardrails when a covered resource is created or drifts",
       eventPattern: {
         source: ["aws.s3", "aws.logs"],
         detailType: ["AWS API Call via CloudTrail"],
         detail: {
-          eventName: ["CreateBucket", "CreateLogGroup"],
+          // Creation is not the only moment worth reacting to. Someone
+          // loosening an existing resource is the more common way an account
+          // drifts, and waiting a sweep interval to notice reads as the app
+          // being broken. Our own remediation re-triggers this, but the second
+          // run finds the resource compliant and writes nothing, so it stops.
+          eventName: [
+            "CreateBucket", "PutBucketPolicy", "DeleteBucketPolicy",
+            "CreateLogGroup", "PutRetentionPolicy", "DeleteRetentionPolicy",
+          ],
         },
       },
       targets: [new targets.LambdaFunction(guardrailFn, { deadLetterQueue: guardrailDlq })],

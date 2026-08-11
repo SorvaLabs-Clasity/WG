@@ -50,7 +50,7 @@ router.get("/catalog", (_req: Request, res: Response) => {
     resourceType: k.resourceType,
     defaultMode: k.defaultMode,
     defaultParams: k.defaultParams,
-    createEvents: k.createEvents,
+    triggerEvents: k.triggerEvents,
     // Report-only kinds have no remediator: fixing them automatically could cut
     // live access, so the UI should not offer enforce mode for them.
     canRemediate: canRemediate(k.kind),

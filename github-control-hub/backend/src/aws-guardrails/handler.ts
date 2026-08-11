@@ -82,14 +82,12 @@ function isDirect(e: Incoming): e is DirectInvoke {
   return (e as DirectInvoke)?.source === "manual";
 }
 
-/** Pull the created resource's identifier out of a CloudTrail event. */
+/** Pull the affected resource's identifier out of a CloudTrail event. */
 function resourceIdFromEvent(event: EventBridgeEvent): string | undefined {
   const rp = event.detail?.requestParameters ?? {};
   return (
-    rp.bucketName ||        // CreateBucket
-    rp.logGroupName ||      // CreateLogGroup
-    rp.groupId ||           // AuthorizeSecurityGroupIngress
-    rp.dBInstanceIdentifier // CreateDBInstance
+    rp.bucketName ||  // Create/Put/DeleteBucketPolicy
+    rp.logGroupName   // Create/Put/DeleteRetentionPolicy
   );
 }
 

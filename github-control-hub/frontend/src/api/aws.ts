@@ -23,7 +23,7 @@ export interface CatalogEntry {
   resourceType: string;
   defaultMode: GuardrailMode;
   defaultParams: Record<string, any>;
-  createEvents: string[];
+  triggerEvents: string[];
   /** False for kinds whose remediation could cut live access — report-only. */
   canRemediate: boolean;
 }
