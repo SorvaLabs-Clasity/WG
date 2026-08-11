@@ -199,11 +199,30 @@ router.get("/system-token", serverModeGuard, (_req: Request, res: Response) => {
 // endpoints without authentication. Once secrets are loaded, require auth.
 // This breaks the chicken-and-egg: AWS must be connected before GitHub OAuth
 // secrets can be loaded from Secrets Manager.
-const setupOrAuthMiddleware = (req: Request, res: Response, next: NextFunction) => {
+const setupOrAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
+  // Never yet configured: the original chicken-and-egg, since the GitHub OAuth
+  // secrets these endpoints would authenticate against live in Secrets Manager,
+  // which needs AWS.
   if (!process.env.GITHUB_CLIENT_ID) {
     next();
     return;
   }
+
+  // The same knot, retied. Once secrets had loaded, this demanded a GitHub
+  // session — but disconnecting AWS (or "Reset both connections", which also
+  // drops the session) left no way to list AWS profiles and so no way to
+  // reconnect except by pasting access keys. Whenever AWS is not usable, these
+  // endpoints are the only route back and must stay open.
+  //
+  // Safe because of where they can run: serverModeGuard blocks all of them on
+  // EC2, so the only caller is the desktop app on the user's own machine,
+  // reading the ~/.aws/config that machine already owns.
+  const { isAwsLocked } = await import("../middleware/awsHealthMiddleware");
+  if (!process.env.ACTIVITY_TABLE || isAwsLocked()) {
+    next();
+    return;
+  }
+
   authMiddleware(req, res, next);
 };
 
