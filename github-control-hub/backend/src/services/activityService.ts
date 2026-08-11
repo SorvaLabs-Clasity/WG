@@ -245,44 +245,61 @@ export async function getActivityMerged(limit: number, offset: number): Promise<
   return merged.slice(offset, offset + limit);
 }
 
+/**
+ * Every row shares one partition key, so neither of the lookups below can be
+ * expressed as a key condition on the base table. They used to scan the newest
+ * rows and filter — and in DynamoDB a Limit applies BEFORE the filter, so both
+ * were really asking "is it among the most recent N?" rather than "does it
+ * exist?". That answer changes as the log grows: correct at 170 rows, wrong at
+ * 200, and wrong silently — an empty result is indistinguishable from a parent
+ * that genuinely has no children.
+ *
+ * Both now go through sparse indexes keyed on the attribute being looked up.
+ * Sparse because only rows carrying the attribute are indexed: ID_INDEX covers
+ * everything, PARENT_INDEX contains only child rows, which is exactly the set
+ * getChildActivities wants.
+ */
+export const ID_INDEX = "id-index";
+export const PARENT_INDEX = "parentId-index";
+
 export async function getActivityById(id: string): Promise<ActivityEntry | undefined> {
   if (usesDynamo()) {
-    let lastKey: any = undefined;
-    for (let page = 0; page < 5; page++) {
-      const result = await docClient.send(
-        new QueryCommand({
-          TableName: TABLE(),
-          KeyConditionExpression: "pk = :pk",
-          FilterExpression: "id = :id",
-          ExpressionAttributeValues: { ":pk": "ACTIVITY", ":id": id },
-          ScanIndexForward: false,
-          Limit: 200,
-          ...(lastKey && { ExclusiveStartKey: lastKey }),
-        })
-      );
-      const match = (result.Items || [])[0] as ActivityEntry | undefined;
-      if (match) return match;
-      lastKey = result.LastEvaluatedKey;
-      if (!lastKey) break;
-    }
-    return undefined;
+    const result = await docClient.send(
+      new QueryCommand({
+        TableName: TABLE(),
+        IndexName: ID_INDEX,
+        KeyConditionExpression: "id = :id",
+        ExpressionAttributeValues: { ":id": id },
+        Limit: 1,
+      })
+    );
+    return (result.Items || [])[0] as ActivityEntry | undefined;
   }
   return memoryLog.find(e => e.id === id);
 }
 
 export async function getChildActivities(parentId: string): Promise<ActivityEntry[]> {
   if (usesDynamo()) {
-    const result = await docClient.send(
-      new QueryCommand({
-        TableName: TABLE(),
-        KeyConditionExpression: "pk = :pk",
-        FilterExpression: "parentId = :pid",
-        ExpressionAttributeValues: { ":pk": "ACTIVITY", ":pid": parentId },
-        ScanIndexForward: false,
-        Limit: 200,
-      })
-    );
-    return (result.Items || []) as ActivityEntry[];
+    // Paged rather than capped: a template applied across every repo in a large
+    // org produces more children than one page holds, and quietly returning the
+    // first page would undo part of a group while reporting all of it.
+    const items: ActivityEntry[] = [];
+    let lastKey: any = undefined;
+    do {
+      const result: any = await docClient.send(
+        new QueryCommand({
+          TableName: TABLE(),
+          IndexName: PARENT_INDEX,
+          KeyConditionExpression: "parentId = :pid",
+          ExpressionAttributeValues: { ":pid": parentId },
+          ScanIndexForward: false,
+          ...(lastKey && { ExclusiveStartKey: lastKey }),
+        })
+      );
+      items.push(...((result.Items || []) as ActivityEntry[]));
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+    return items;
   }
   return memoryLog.filter(e => e.parentId === parentId);
 }

@@ -78,9 +78,22 @@ done
 
 # activity — single-partition time series: pk="ACTIVITY", sk="<timestamp>#<id>"
 # activityService.ts:135 (write) and :150 (Query on pk)
+#
+# Two sparse indexes, because one partition key means neither lookup below can
+# be a key condition on the base table. Without them both fall back to reading
+# the newest rows and filtering, which answers "is it recent?" instead of "does
+# it exist?" — correct on a small log, silently wrong on a large one.
+#   id-index        getActivityById   — every row has an id
+#   parentId-index  getChildActivities — only child rows have a parentId, so
+#                                        the index holds exactly those
 create_table "${PREFIX}-activity" \
-  --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
-  --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE
+  --attribute-definitions \
+      AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
+      AttributeName=id,AttributeType=S AttributeName=parentId,AttributeType=S \
+  --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE \
+  --global-secondary-indexes \
+      'IndexName=id-index,KeySchema=[{AttributeName=id,KeyType=HASH}],Projection={ProjectionType=ALL}' \
+      'IndexName=parentId-index,KeySchema=[{AttributeName=parentId,KeyType=HASH}],Projection={ProjectionType=ALL}' 
 
 # scanners — pk="SCANNER", sk=<scanner id>   scannerService.ts:88
 create_table "${PREFIX}-scanners" \
@@ -126,6 +139,34 @@ create_table "${PREFIX}-aws-exclusions" \
 create_table "${PREFIX}-aws-findings" \
   --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
   --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE
+
+# ── 1b. Indexes on an activity table that already existed ──
+# create_table leaves existing tables alone, so a re-run against an account
+# provisioned before these indexes existed would silently skip them — and the
+# lookups they support fail by returning nothing rather than erroring.
+echo "==> Checking activity table indexes"
+$AWS dynamodb wait table-exists --table-name "${PREFIX}-activity"
+for pair in "id-index:id" "parentId-index:parentId"; do
+  idx="${pair%%:*}"; attr="${pair##*:}"
+  have=$($AWS dynamodb describe-table --table-name "${PREFIX}-activity" \
+    --query "Table.GlobalSecondaryIndexes[?IndexName=='${idx}'].IndexName" --output text 2>/dev/null || true)
+  if [[ "$have" == *"$idx"* ]]; then
+    echo "    $idx already present"
+    continue
+  fi
+  echo "    creating $idx (backfill can take several minutes)"
+  $AWS dynamodb update-table --table-name "${PREFIX}-activity" \
+    --attribute-definitions AttributeName=${attr},AttributeType=S \
+    --global-secondary-index-updates \
+      "[{\"Create\":{\"IndexName\":\"${idx}\",\"KeySchema\":[{\"AttributeName\":\"${attr}\",\"KeyType\":\"HASH\"}],\"Projection\":{\"ProjectionType\":\"ALL\"}}}]" >/dev/null
+  # Only one index can be added at a time, so wait before the next.
+  until [[ "$($AWS dynamodb describe-table --table-name "${PREFIX}-activity" \
+      --query "Table.GlobalSecondaryIndexes[?IndexName=='${idx}'].IndexStatus" --output text)" == "ACTIVE" ]]; do
+    sleep 10
+  done
+  echo "    $idx active"
+done
+echo
 
 # ── 2. TTL on auth-codes ──
 echo "==> Waiting for tables to become ACTIVE"
