@@ -51,7 +51,12 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
         run: |
           npx tsc -p tsconfig.json
-          npx electron-builder --publish always
+          # Owner and repo come from the checkout rather than package.json, so
+          # forking this into another organisation needs no edit and installed
+          # copies check the repo they were actually built from.
+          npx electron-builder --publish always \
+            -c.publish.owner="${{ github.repository_owner }}" \
+            -c.publish.repo="${{ github.event.repository.name }}"
 
   publish-release:
     needs: build
