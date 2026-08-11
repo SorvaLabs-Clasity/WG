@@ -15,16 +15,26 @@ import type { Octokit } from "octokit";
  * the call is still caught by GitHub.
  */
 
+/**
+ * What a repository operation needs.
+ *
+ * "push" is enough to create or delete an ordinary branch. Branch protection,
+ * rulesets and Dependabot settings all require "admin" — GitHub will reject a
+ * pusher, so asking for less here only moves the refusal later and makes it
+ * harder to explain.
+ */
+export type RepoLevel = "push" | "admin";
+
 export class RepoAccessDenied extends Error {
-  constructor(public readonly repos: string[]) {
-    super(`No write access to ${repos.join(", ")}`);
+  constructor(public readonly repos: string[], public readonly level: RepoLevel = "push") {
+    super(`No ${level} access to ${repos.join(", ")}`);
     this.name = "RepoAccessDenied";
   }
 }
 
-/** Repositories from `repos` the user cannot write to. */
+/** Repositories from `repos` where the user lacks `level`. */
 export async function findUnwritable(
-  octokit: Octokit, org: string, repos: string[]
+  octokit: Octokit, org: string, repos: string[], level: RepoLevel = "push"
 ): Promise<string[]> {
   const checks = await Promise.all(repos.map(async repo => {
     try {
@@ -32,7 +42,8 @@ export async function findUnwritable(
       // `permissions` is present because the request is authenticated as a user.
       // Absent means we cannot tell, and we do not guess in the permissive
       // direction.
-      return data.permissions?.push ? null : repo;
+      const has = level === "admin" ? data.permissions?.admin : data.permissions?.push;
+      return has ? null : repo;
     } catch (err) {
       // 404 is GitHub declining to confirm a private repo exists. Treated the
       // same as 403 on purpose — distinguishing them would leak its existence.
@@ -44,11 +55,11 @@ export async function findUnwritable(
   return checks.filter((r): r is string => r !== null);
 }
 
-/** Throws RepoAccessDenied unless the user can write to every repo given. */
+/** Throws RepoAccessDenied unless the user has `level` on every repo given. */
 export async function assertWritable(
-  octokit: Octokit, org: string, repos: string[]
+  octokit: Octokit, org: string, repos: string[], level: RepoLevel = "push"
 ): Promise<void> {
   if (repos.length === 0) return;
-  const denied = await findUnwritable(octokit, org, repos);
-  if (denied.length > 0) throw new RepoAccessDenied(denied);
+  const denied = await findUnwritable(octokit, org, repos, level);
+  if (denied.length > 0) throw new RepoAccessDenied(denied, level);
 }

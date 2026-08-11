@@ -22,7 +22,8 @@ import {
 import type { ActivityEntry } from "../services/activityService";
 import { createOctokit, getOrg } from "../github/client";
 import { assertWritable, RepoAccessDenied } from "../github/permissions";
-import { undoBlockedReason, reposNeedingWrite, isReversible, ALLOWED_UNDO_ACTIONS } from "../services/undoPolicy";
+import { undoBlockedReason, reposByLevel, needsAdminTeam, isReversible, ALLOWED_UNDO_ACTIONS } from "../services/undoPolicy";
+import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { permissionMessage } from "../utils/permissionError";
 import {
   createBranch,
@@ -55,6 +56,56 @@ import {
 } from "../services/exclusionService";
 
 const router = Router();
+
+/**
+ * Refuses unless the caller could have performed these operations themselves.
+ *
+ * Undoing is doing. Someone who cannot edit a template must not be able to
+ * revert an edit to it, and someone who cannot administer a repository must
+ * not be able to strip its protection by pressing undo on the row that added
+ * it. Being on the admin team is not enough on its own — it says nothing about
+ * whether you can touch a particular repo — so both are checked.
+ *
+ * Returns a response body to send, or null when the caller may proceed.
+ */
+async function denyIfNotPermitted(
+  entries: ActivityEntry[], login: string, accessToken: string, verb: "undo" | "redo",
+): Promise<{ status: number; body: Record<string, unknown> } | null> {
+  if (needsAdminTeam(entries) && !(await isControlHubAdmin(login))) {
+    return {
+      status: 403,
+      body: {
+        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ` +
+          `${verb} a change to a template, because templates decide what every future repository gets.`,
+        code: "CONTROL_HUB_ADMIN_REQUIRED",
+      },
+    };
+  }
+
+  const byLevel = reposByLevel(entries);
+  const octokit = createOctokit(accessToken);
+  const org = getOrg();
+  for (const level of ["admin", "push"] as const) {
+    try {
+      await assertWritable(octokit, org, byLevel[level], level);
+    } catch (err) {
+      if (err instanceof RepoAccessDenied) {
+        return {
+          status: 403,
+          body: {
+            error: permissionMessage(login, `${verb} this change`, err.repos.join(", ")),
+            code: "GITHUB_PERMISSION_DENIED",
+            repos: err.repos,
+            level,
+          },
+        };
+      }
+      throw err;
+    }
+  }
+  return null;
+}
+
 
 function collectNestedSignatures(entries: ActivityEntry[]): Set<string> {
   const sigs = new Set<string>();
@@ -154,21 +205,11 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
       return;
     }
 
-    try {
-      await assertWritable(
-        createOctokit(req.user!.accessToken), getOrg(),
-        reposNeedingWrite([...descendants, entry]),
-      );
-    } catch (err) {
-      if (err instanceof RepoAccessDenied) {
-        res.status(403).json({
-          error: permissionMessage(req.user!.login, "undo this change", err.repos.join(", ")),
-          code: "GITHUB_PERMISSION_DENIED",
-          repos: err.repos,
-        });
-        return;
-      }
-      throw err;
+    const denied = await denyIfNotPermitted(
+      [...descendants, entry], req.user!.login, req.user!.accessToken, "undo");
+    if (denied) {
+      res.status(denied.status).json(denied.body);
+      return;
     }
 
     for (const target of descendants) {
@@ -250,21 +291,11 @@ router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => 
       return;
     }
 
-    try {
-      await assertWritable(
-        createOctokit(accessToken), getOrg(),
-        reposNeedingWrite([...descendants, entry]),
-      );
-    } catch (err) {
-      if (err instanceof RepoAccessDenied) {
-        res.status(403).json({
-          error: permissionMessage(req.user!.login, "redo this change", err.repos.join(", ")),
-          code: "GITHUB_PERMISSION_DENIED",
-          repos: err.repos,
-        });
-        return;
-      }
-      throw err;
+    const deniedRedo = await denyIfNotPermitted(
+      [...descendants, entry], req.user!.login, accessToken, "redo");
+    if (deniedRedo) {
+      res.status(deniedRedo.status).json(deniedRedo.body);
+      return;
     }
 
     for (const target of descendants) {

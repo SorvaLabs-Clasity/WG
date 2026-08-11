@@ -1,6 +1,6 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
-import { createOctokit, getSystemToken } from "../github/client";
+import { createOctokit, getSystemToken, getOrg } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import {
   listTemplates,
@@ -13,6 +13,7 @@ import {
 import { getExclusion, listExclusions, resolveExcludedReposFromIds } from "../services/exclusionService";
 import { logActivity, updateActivityOutcome } from "../services/activityService";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { assertWritable, RepoAccessDenied } from "../github/permissions";
 import { isPermissionDenied, permissionMessage } from "../utils/permissionError";
 
 const router = Router();
@@ -29,6 +30,32 @@ async function denyAutoApplyChange(login: string): Promise<string | null> {
     `auto-apply on new repositories, because it affects every repository created from now on.`;
 }
 
+/**
+ * Templates themselves are org-wide, not per-repository.
+ *
+ * Only the auto-apply flag was gated, which missed the point: a template decides
+ * what protection every repository it is applied to receives, so editing one is
+ * a change to the org's security posture whether or not auto-apply is on. An
+ * ordinary member could previously create, rewrite or delete them freely.
+ *
+ * Applying a template is deliberately NOT gated here — that runs with the
+ * caller's own token against named repositories, so GitHub is the right
+ * authority. It gets a per-repo pre-flight instead.
+ */
+async function denyTemplateChange(login: string, verb: string): Promise<string | null> {
+  if (await isControlHubAdmin(login)) return null;
+  return `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
+    `templates, because a template decides what protection every repository it is applied to receives.`;
+}
+
+/** Send the 403 and report whether it was sent. */
+async function refusedTemplateChange(res: Response, login: string, verb: string): Promise<boolean> {
+  const denied = await denyTemplateChange(login, verb);
+  if (!denied) return false;
+  res.status(403).json({ error: denied, code: "CONTROL_HUB_ADMIN_REQUIRED" });
+  return true;
+}
+
 router.get("/", async (_req: Request, res: Response) => {
   res.json(await listTemplates());
 });
@@ -43,6 +70,8 @@ router.get("/:id", async (req: Request<{ id: string }>, res: Response) => {
 });
 
 router.post("/", async (req: Request, res: Response) => {
+  if (await refusedTemplateChange(res, req.user!.login, "create")) return;
+
   const { name, description, branches, tags, pushRules, autoApplyOnNewRepo, exclusionLists } = req.body;
   if (!name || !branches?.length) {
     res.status(400).json({ error: "name and at least one branch rule are required" });
@@ -81,6 +110,8 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
+  if (await refusedTemplateChange(res, req.user!.login, "edit")) return;
+
   const { name, description, branches, tags, pushRules, autoApplyOnNewRepo, exclusionLists } = req.body;
   const data: Record<string, any> = { name, description, branches, tags, pushRules, autoApplyOnNewRepo, exclusionLists };
 
@@ -121,6 +152,8 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
 });
 
 router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
+  if (await refusedTemplateChange(res, req.user!.login, "delete")) return;
+
   const deleted = await deleteTemplate(req.params.id, req.user!.login);
   if (!deleted) {
     res.status(404).json({ error: "Template not found" });
@@ -148,6 +181,26 @@ router.post("/:id/apply", async (req: Request<{ id: string }>, res: Response) =>
     // access to a repo gets a 403 here, as they should. Auto-apply (webhooks.ts)
     // still uses the App token: there is no user behind a repo-created event.
     const octokit = createOctokit(req.user!.accessToken);
+
+    // Ask before starting. Applying a template creates branches and then
+    // protects them, and the protection call is the one that needs admin — so
+    // without this the run gets far enough to fail on repository setup and
+    // reports something like "Failed to initialize empty repo", which says
+    // nothing about the actual problem. Checking every named repo up front also
+    // avoids half-applying across a list.
+    try {
+      await assertWritable(octokit, getOrg(), repos as string[], "admin");
+    } catch (err) {
+      if (err instanceof RepoAccessDenied) {
+        res.status(403).json({
+          error: permissionMessage(req.user!.login, "apply a template", err.repos.join(", ")),
+          code: "GITHUB_PERMISSION_DENIED",
+          repos: err.repos,
+        });
+        return;
+      }
+      throw err;
+    }
 
     // Exclusion lists can reference repos across the org, so resolving them
     // needs the App's view rather than the caller's.

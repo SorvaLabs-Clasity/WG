@@ -200,7 +200,12 @@ export default function TemplatesPage() {
   // the admin team. Repo-level actions need no such check — they run with the
   // user's own GitHub token and GitHub refuses them directly.
   const { data: permissions } = usePermissions();
-  const canAutoApply = permissions?.isControlHubAdmin ?? false;
+  // Editing a template changes what every repository it touches receives, so
+  // the same gate covers creating, editing, deleting and auto-apply. The server
+  // enforces it; this only stops offering buttons that would be refused.
+  const canEditTemplates = permissions?.isControlHubAdmin ?? false;
+  const canAutoApply = canEditTemplates;
+  const adminTeam = permissions?.adminTeam ?? "control-hub-admins";
 
   // Create form state
   const [name, setName] = useState("");
@@ -594,13 +599,20 @@ export default function TemplatesPage() {
             </div>
           </div>
           {activeTab === "templates" ? (
-            <button
-              onClick={() => setCreateOpen(true)}
-              className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 font-medium text-sm group"
-            >
-              <i className="fa-solid fa-plus text-xs group-hover:rotate-90 transition-transform"></i>
-              New Template
-            </button>
+            canEditTemplates ? (
+              <button
+                onClick={() => setCreateOpen(true)}
+                className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 font-medium text-sm group"
+              >
+                <i className="fa-solid fa-plus text-xs group-hover:rotate-90 transition-transform"></i>
+                New Template
+              </button>
+            ) : (
+              <span className="text-[12px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5 max-w-[280px] text-right">
+                <i className="ph-fill ph-lock-simple shrink-0"></i>
+                Only the "{adminTeam}" team can create or edit templates
+              </span>
+            )
           ) : activeTab === "ruleTemplates" ? (
             <button
               onClick={() => { resetRtForm(); setRtCreateOpen(true); }}
@@ -690,9 +702,9 @@ export default function TemplatesPage() {
 
                       {/* Hover-reveal action buttons */}
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute top-4 right-4 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm p-1 rounded-lg border border-slate-100 dark:border-slate-700 shadow-sm">
-                        <button onClick={() => handleEditClick(tmpl)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 dark:text-slate-500 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" title="Edit"><i className="fa-solid fa-pencil text-xs"></i></button>
+                        {canEditTemplates && <button onClick={() => handleEditClick(tmpl)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 dark:text-slate-500 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" title="Edit"><i className="fa-solid fa-pencil text-xs"></i></button>}
                         <button onClick={() => setApplyOpen(tmpl.id)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 dark:text-slate-500 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition-colors" title="Apply"><i className="fa-solid fa-play text-[10px]"></i></button>
-                        <button onClick={() => handleDelete(tmpl.id, tmpl.name)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 dark:text-slate-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400 transition-colors" title="Delete"><i className="fa-solid fa-trash text-xs"></i></button>
+                        {canEditTemplates && <button onClick={() => handleDelete(tmpl.id, tmpl.name)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 dark:text-slate-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400 transition-colors" title="Delete"><i className="fa-solid fa-trash text-xs"></i></button>}
                       </div>
                     </div>
 
@@ -735,7 +747,7 @@ export default function TemplatesPage() {
                 ))}
 
                 {/* "Create New" placeholder card */}
-                <div
+                {canEditTemplates && <div
                   onClick={() => setCreateOpen(true)}
                   className="group border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl flex flex-col items-center justify-center p-8 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer h-full min-h-[200px]"
                 >
@@ -743,7 +755,7 @@ export default function TemplatesPage() {
                     <i className="fa-solid fa-plus text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-400"></i>
                   </div>
                   <span className="text-sm font-semibold text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-300">Create New Template</span>
-                </div>
+                </div>}
               </div>
             )}
 
@@ -1034,21 +1046,30 @@ export default function TemplatesPage() {
                     <span className="block text-xs text-gh-muted dark:text-slate-400">
                       {canAutoApply
                         ? "Automatically use this template when a repo is created in the org."
-                        : `Only members of the "${permissions?.adminTeam ?? "control-hub-admins"}" team can change this — it affects every repo created from now on.`}
+                        : `Only members of the "${adminTeam}" team can change this — it affects every repo created from now on.`}
                     </span>
                   </div>
-                  <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
-                    <input
-                      type="checkbox"
-                      id="toggle"
-                      checked={autoApply}
-                      disabled={!canAutoApply}
-                      title={canAutoApply ? undefined : `Requires membership of the "${permissions?.adminTeam ?? "control-hub-admins"}" team`}
-                      onChange={(e) => setAutoApply(e.target.checked)}
-                      className={`toggle-checkbox absolute block w-5 h-5 rounded-full bg-white dark:bg-slate-300 border-4 appearance-none border-gray-300 dark:border-slate-600 transition-all duration-300 peer z-10 ${canAutoApply ? "cursor-pointer" : "cursor-not-allowed"}`}
-                    />
-                    <label htmlFor="toggle" className={`toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 dark:bg-slate-600 peer-checked:bg-gh-blue transition-colors duration-300 ${canAutoApply ? "cursor-pointer" : "cursor-not-allowed"}`}></label>
-                  </div>
+                  {canAutoApply ? (
+                    <div className="relative inline-block w-10 mr-2 align-middle select-none transition duration-200 ease-in">
+                      <input
+                        type="checkbox"
+                        id="toggle"
+                        checked={autoApply}
+                        onChange={(e) => setAutoApply(e.target.checked)}
+                        className="toggle-checkbox absolute block w-5 h-5 rounded-full bg-white dark:bg-slate-300 border-4 appearance-none border-gray-300 dark:border-slate-600 transition-all duration-300 peer z-10 cursor-pointer"
+                      />
+                      <label htmlFor="toggle" className="toggle-label block overflow-hidden h-5 rounded-full bg-gray-300 dark:bg-slate-600 peer-checked:bg-gh-blue transition-colors duration-300 cursor-pointer"></label>
+                    </div>
+                  ) : (
+                    /* A disabled switch reads as a switch — half-lit, ambiguous
+                       about whether it is on. State in words cannot be misread. */
+                    <span className={`shrink-0 px-2.5 py-1 rounded-md text-[11px] uppercase tracking-[0.12em] font-black ${
+                      autoApply
+                        ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                        : "bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-slate-400"}`}>
+                      {autoApply ? "On" : "Off"}
+                    </span>
+                  )}
                 </div>
               </div>
 

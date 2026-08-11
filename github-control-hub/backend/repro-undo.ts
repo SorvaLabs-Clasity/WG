@@ -7,7 +7,7 @@
  * so the rules live in one module and are pinned here.
  */
 import {
-  undoBlockedReason, isReversible, needsRepoWrite, reposNeedingWrite,
+  undoBlockedReason, isReversible, needsRepoWrite,
   ALLOWED_UNDO_ACTIONS,
 } from "./src/services/undoPolicy";
 import type { ActivityEntry } from "./src/services/activityService";
@@ -90,15 +90,17 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   const branch = at({ repo: "acme-api", undoPayload: { action: "delete_branch", params: {} } });
   check("a branch operation needs write on its repo", needsRepoWrite(branch));
 
-  const repos = reposNeedingWrite([
+  const { reposByLevel: byLevel } = require("./src/services/undoPolicy");
+  const repos = byLevel([
     branch,
     at({ id: "b", repo: "acme-web", undoPayload: { action: "restore_protection", params: {} } }),
     at({ id: "c", repo: "acme-api", undoPayload: { action: "delete_ruleset", params: {} } }),
     aws,
     at({ id: "d", repo: "acme-docs", undoPayload: { action: "delete_template", params: {} } }),
   ]);
-  check("every repo an undo would write to is collected, once",
-    repos.sort().join() === "acme-api,acme-web", repos);
+  check("every repo an undo would touch is collected, once",
+    [...repos.admin, ...repos.push].sort().join() === "acme-api,acme-web", repos);
+  check("  a template operation contributes no repo", !repos.admin.includes("acme-docs"), repos);
 }
 
 // ── the allow-list and the handlers must not drift ────────────────────
@@ -185,6 +187,60 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   const noTimestamp = await look(fake("abc123", 0, 9), { createdAt: undefined });
   check("without a creation time, commitsSince is not guessed",
     noTimestamp.commitsSince === 0 && !branchWasTouched(noTimestamp), noTimestamp);
+}
+
+// ── undoing needs what doing needed ───────────────────────────────────
+{
+  const { undoRequirement, needsAdminTeam, reposByLevel } = require("./src/services/undoPolicy");
+
+  // Every operation is listed, so a new one cannot inherit "no checks" by
+  // being forgotten.
+  const unlisted = [...ALLOWED_UNDO_ACTIONS].filter(a => {
+    const r = undoRequirement(at({ undoPayload: { action: a, params: {} } }));
+    return r.repo === "admin" && r.adminTeam === true;   // the unknown-op default
+  });
+  check("every allowed operation has an explicit requirement", unlisted.length === 0, unlisted);
+
+  const req = (a: string) => undoRequirement(at({ undoPayload: { action: a, params: {} } }));
+
+  check("stripping branch protection needs repo admin", req("delete_protection").repo === "admin");
+  check("deleting a ruleset needs repo admin", req("delete_ruleset").repo === "admin");
+  check("toggling dependabot needs repo admin", req("disable_dependabot").repo === "admin");
+  check("deleting a template branch needs repo admin", req("delete_branch").repo === "admin");
+  check("recreating a branch only needs push", req("recreate_branch").repo === "push");
+
+  check("reverting a template needs the admin team", req("revert_template").adminTeam === true);
+  check("  and is not repo-scoped", req("revert_template").repo === undefined);
+  check("dashboard widgets need neither", !req("revert_widget").repo && !req("revert_widget").adminTeam);
+
+  // An unknown operation must demand the most, not the least.
+  const unknown = undoRequirement(at({ undoPayload: { action: "something_new", params: {} } }));
+  check("an unrecognised operation demands both checks",
+    unknown.repo === "admin" && unknown.adminTeam === true, unknown);
+
+  check("a template edit anywhere in the group triggers the team check",
+    needsAdminTeam([
+      at({ id: "a", undoPayload: { action: "delete_branch", params: {} } }),
+      at({ id: "b", undoPayload: { action: "revert_template", params: {} } }),
+    ]));
+  check("  and a group without one does not",
+    !needsAdminTeam([at({ id: "a", undoPayload: { action: "delete_branch", params: {} } })]));
+
+  // The point the user raised: admin-team membership says nothing about
+  // whether you can touch a given repo, so repos are grouped and asked about
+  // individually.
+  const grouped = reposByLevel([
+    at({ id: "1", repo: "acme-api", undoPayload: { action: "delete_protection", params: {} } }),
+    at({ id: "2", repo: "acme-web", undoPayload: { action: "recreate_branch", params: {} } }),
+    at({ id: "3", repo: "acme-api", undoPayload: { action: "recreate_branch", params: {} } }),
+    at({ id: "4", repo: "/aws/lambda/x", undoPayload: { action: "revert_widget", params: {} } }),
+  ]);
+  check("repos are grouped by the level each needs",
+    grouped.admin.join() === "acme-api" && grouped.push.join() === "acme-web", grouped);
+  check("  a repo needing admin is not also asked about for push",
+    !grouped.push.includes("acme-api"), grouped);
+  check("  non-repo operations contribute no repo",
+    !grouped.admin.includes("/aws/lambda/x") && !grouped.push.includes("/aws/lambda/x"), grouped);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
