@@ -14,7 +14,13 @@ export type GuardrailKind =
   | "sg_no_public_admin_ingress"
   | "rds_no_public_access"
   | "ec2_imdsv2_required"
-  | "cloudtrail_enabled";
+  | "cloudtrail_enabled"
+  // Added from the company's Vanta control set. All report-only: each fix
+  // needs a reboot, a destination bucket, or an irreversible setting.
+  | "rds_pgaudit_enabled"
+  | "rds_ssl_enforced"
+  | "s3_cross_region_replication"
+  | "cloudtrail_bucket_protected";
 
 export type GuardrailMode = "report" | "enforce";
 

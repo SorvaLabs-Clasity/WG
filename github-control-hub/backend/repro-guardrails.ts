@@ -148,6 +148,59 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
     evaluateResource("rds_backup_retention_min", res("db", { backupRetentionPeriod: 1 }), { minDays: 7 }).verdict === "violation");
 }
 
+// ── the Vanta-derived rules ───────────────────────────────────────────
+{
+  const db = (state: Record<string, any>) => res("db-1", state);
+
+  // pgaudit — only meaningful on PostgreSQL engines.
+  check("pgaudit: non-Postgres engine is not applicable",
+    evaluateResource("rds_pgaudit_enabled", db({ engine: "mysql", parameters: {} }), {}).verdict === "not_applicable");
+  check("pgaudit: loaded is compliant",
+    evaluateResource("rds_pgaudit_enabled", db({ engine: "postgres", parameters: { shared_preload_libraries: "pg_stat_statements,pgaudit" } }), {}).verdict === "compliant");
+  check("pgaudit: missing is a violation",
+    evaluateResource("rds_pgaudit_enabled", db({ engine: "aurora-postgresql", parameters: { shared_preload_libraries: "pg_stat_statements" } }), {}).verdict === "violation");
+  check("pgaudit: proposed fix appends rather than replacing",
+    evaluateResource("rds_pgaudit_enabled", db({ engine: "postgres", parameters: { shared_preload_libraries: "pg_stat_statements" } }), {}).fix?.after === "pg_stat_statements,pgaudit");
+  check("pgaudit: a library merely containing the name does not count",
+    evaluateResource("rds_pgaudit_enabled", db({ engine: "postgres", parameters: { shared_preload_libraries: "pgaudit_extra" } }), {}).verdict === "violation");
+
+  // TLS enforcement — the parameter differs by engine.
+  check("tls: postgres with force_ssl=1 is compliant",
+    evaluateResource("rds_ssl_enforced", db({ engine: "postgres", parameters: { "rds.force_ssl": "1" } }), {}).verdict === "compliant");
+  check("tls: postgres with force_ssl=0 is a violation",
+    evaluateResource("rds_ssl_enforced", db({ engine: "postgres", parameters: { "rds.force_ssl": "0" } }), {}).verdict === "violation");
+  check("tls: mysql uses require_secure_transport",
+    evaluateResource("rds_ssl_enforced", db({ engine: "mysql", parameters: { require_secure_transport: "ON" } }), {}).verdict === "compliant");
+  check("tls: mysql unset is a violation",
+    evaluateResource("rds_ssl_enforced", db({ engine: "mysql", parameters: {} }), {}).verdict === "violation");
+  check("tls: an engine with no such parameter is not applicable",
+    evaluateResource("rds_ssl_enforced", db({ engine: "oracle-se2", parameters: {} }), {}).verdict === "not_applicable");
+
+  // Cross-region replication.
+  const bucket = (state: Record<string, any>, tags: Record<string, string> = {}) => res("b", state, tags);
+  check("replication: an enabled rule is compliant",
+    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [{ status: "Enabled", destinationBucket: "arn:aws:s3:::dr-bucket" }] }), {}).verdict === "compliant");
+  check("replication: none configured is a violation",
+    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [] }), {}).verdict === "violation");
+  check("replication: a disabled rule does not count",
+    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [{ status: "Disabled" }] }), {}).verdict === "violation");
+  check("replication: untagged buckets skipped when a tag is required",
+    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [] }), { onlyTagged: "Backup" }).verdict === "not_applicable");
+  check("replication: tagged buckets are still checked",
+    evaluateResource("s3_cross_region_replication", bucket({ replicationRules: [] }, { Backup: "yes" }), { onlyTagged: "Backup" }).verdict === "violation");
+
+  // CloudTrail bucket protection.
+  check("trail bucket: ordinary buckets are not applicable",
+    evaluateResource("cloudtrail_bucket_protected", bucket({ isCloudTrailBucket: false }), {}).verdict === "not_applicable");
+  check("trail bucket: versioning + object lock is compliant",
+    evaluateResource("cloudtrail_bucket_protected", bucket({ isCloudTrailBucket: true, versioning: "Enabled", objectLockEnabled: true }), {}).verdict === "compliant");
+  check("trail bucket: versioning alone is a violation",
+    evaluateResource("cloudtrail_bucket_protected", bucket({ isCloudTrailBucket: true, versioning: "Enabled", objectLockEnabled: false }), {}).verdict === "violation");
+  check("trail bucket: names exactly what is missing",
+    (evaluateResource("cloudtrail_bucket_protected", bucket({ isCloudTrailBucket: true, versioning: "Suspended", objectLockEnabled: false }), {}).summary ?? "")
+      .includes("versioning and Object Lock"));
+}
+
 // ── exclusions ────────────────────────────────────────────────────────
 {
   const list = (over: Partial<AwsExclusionList>): AwsExclusionList => ({
@@ -218,7 +271,7 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
 
 // ── wiring ────────────────────────────────────────────────────────────
 {
-  check("catalog has 12 rule kinds", CATALOG.length === 12, CATALOG.length);
+  check("catalog has 16 rule kinds", CATALOG.length === 16, CATALOG.length);
   check("CreateBucket triggers the S3 rules", kindsForEvent("CreateBucket").length >= 4, kindsForEvent("CreateBucket").map(k => k.kind));
   check("CreateLogGroup triggers retention", kindsForEvent("CreateLogGroup").some(k => k.kind === "log_retention_min"));
   check("unknown event triggers nothing", kindsForEvent("SomethingElse").length === 0);

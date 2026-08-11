@@ -25,10 +25,29 @@ async function optional<T>(fn: () => Promise<T>, fallback: T, notConfigured: str
   }
 }
 
+/**
+ * Buckets CloudTrail delivers to.
+ *
+ * Fetched once per collection rather than per bucket: the delete-protection
+ * rule only applies to these, and asking CloudTrail 350 times would be absurd.
+ */
+async function cloudTrailBuckets(): Promise<Set<string>> {
+  try {
+    const { CloudTrailClient, DescribeTrailsCommand } = await import("@aws-sdk/client-cloudtrail");
+    const ct = new CloudTrailClient({ region: REGION });
+    const { trailList = [] } = await ct.send(new DescribeTrailsCommand({}));
+    return new Set(trailList.map(t => t.S3BucketName).filter((b): b is string => !!b));
+  } catch {
+    return new Set();
+  }
+}
+
 export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[]> {
   const { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetPublicAccessBlockCommand,
-          GetBucketEncryptionCommand, GetBucketVersioningCommand, GetBucketTaggingCommand } = await import("@aws-sdk/client-s3");
+          GetBucketEncryptionCommand, GetBucketVersioningCommand, GetBucketTaggingCommand,
+          GetBucketReplicationCommand, GetObjectLockConfigurationCommand } = await import("@aws-sdk/client-s3");
   const s3 = new S3Client({ region: REGION });
+  const trailBuckets = await cloudTrailBuckets();
 
   const listed = only?.length
     ? only.map(name => ({ Name: name }))
@@ -60,6 +79,14 @@ export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[
       async () => (await s3.send(new GetBucketTaggingCommand({ Bucket: name }))).TagSet,
       [], ["NoSuchTagSet"]);
 
+    const replication = await optional(
+      async () => (await s3.send(new GetBucketReplicationCommand({ Bucket: name }))).ReplicationConfiguration,
+      undefined, ["ReplicationConfigurationNotFoundError"]);
+
+    const objectLock = await optional(
+      async () => (await s3.send(new GetObjectLockConfigurationCommand({ Bucket: name }))).ObjectLockConfiguration,
+      undefined, ["ObjectLockConfigurationNotFoundError"]);
+
     out.push({
       id: name,
       type: "s3:bucket",
@@ -69,6 +96,13 @@ export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[
         publicAccessBlock: pab ?? {},
         encryptionAlgorithm: enc,
         versioning: versioning ?? "Disabled",
+        replicationRules: (replication?.Rules ?? []).map(r => ({
+          id: r.ID,
+          status: r.Status,
+          destinationBucket: r.Destination?.Bucket,
+        })),
+        objectLockEnabled: objectLock?.ObjectLockEnabled === "Enabled",
+        isCloudTrailBucket: trailBuckets.has(name),
       },
     });
   }
@@ -159,20 +193,60 @@ export async function collectInstances(only?: string[]): Promise<ResourceSnapsho
   return out;
 }
 
+/** Parameters we read, resolved per parameter group and cached across instances. */
+const RDS_PARAMS_OF_INTEREST = ["rds.force_ssl", "require_secure_transport", "shared_preload_libraries"];
+
+async function parameterGroupValues(rds: any, groupName: string, cache: Map<string, Record<string, string>>) {
+  const hit = cache.get(groupName);
+  if (hit) return hit;
+
+  const { DescribeDBParametersCommand } = await import("@aws-sdk/client-rds");
+  const values: Record<string, string> = {};
+  try {
+    let marker: string | undefined;
+    do {
+      const page = await rds.send(new DescribeDBParametersCommand({ DBParameterGroupName: groupName, Marker: marker, MaxRecords: 100 }));
+      for (const prm of page.Parameters ?? []) {
+        if (prm.ParameterName && RDS_PARAMS_OF_INTEREST.includes(prm.ParameterName)) {
+          values[prm.ParameterName] = String(prm.ParameterValue ?? "");
+        }
+      }
+      marker = page.Marker;
+    } while (marker);
+  } catch (err: any) {
+    console.warn(`[collectors] Could not read parameter group "${groupName}": ${err?.message ?? err}`);
+  }
+  cache.set(groupName, values);
+  return values;
+}
+
 export async function collectDbInstances(only?: string[]): Promise<ResourceSnapshot[]> {
   const { RDSClient, DescribeDBInstancesCommand } = await import("@aws-sdk/client-rds");
   const rds = new RDSClient({ region: REGION });
   const { DBInstances = [] } = await rds.send(new DescribeDBInstancesCommand({}));
   const filtered = only?.length ? DBInstances.filter(d => only.includes(d.DBInstanceIdentifier!)) : DBInstances;
-  return filtered.map(d => ({
-    id: d.DBInstanceIdentifier!,
-    type: "rds:db-instance",
-    tags: Object.fromEntries((d.TagList ?? []).map(t => [t.Key!, t.Value!])),
-    state: {
-      backupRetentionPeriod: d.BackupRetentionPeriod ?? 0,
-      publiclyAccessible: d.PubliclyAccessible === true,
-    },
-  }));
+
+  // Instances usually share parameter groups, so resolve each group once.
+  const cache = new Map<string, Record<string, string>>();
+  const out: ResourceSnapshot[] = [];
+
+  for (const d of filtered) {
+    const groupName = d.DBParameterGroups?.[0]?.DBParameterGroupName;
+    const params = groupName ? await parameterGroupValues(rds, groupName, cache) : {};
+    out.push({
+      id: d.DBInstanceIdentifier!,
+      type: "rds:db-instance",
+      tags: Object.fromEntries((d.TagList ?? []).map(t => [t.Key!, t.Value!])),
+      state: {
+        backupRetentionPeriod: d.BackupRetentionPeriod ?? 0,
+        publiclyAccessible: d.PubliclyAccessible === true,
+        engine: d.Engine ?? "",
+        parameterGroup: groupName ?? null,
+        parameters: params,
+      },
+    });
+  }
+  return out;
 }
 
 /** Account-level singletons. Each returns exactly one snapshot. */

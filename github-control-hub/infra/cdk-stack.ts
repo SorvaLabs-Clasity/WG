@@ -160,9 +160,13 @@ export class GitHubControlHubStack extends cdk.Stack {
       actions: [
         "s3:ListAllMyBuckets", "s3:GetBucketPolicy", "s3:GetBucketPublicAccessBlock",
         "s3:GetEncryptionConfiguration", "s3:GetBucketVersioning", "s3:GetBucketTagging",
+        // Cross-region replication and CloudTrail bucket delete protection
+        "s3:GetReplicationConfiguration", "s3:GetBucketObjectLockConfiguration",
         "logs:DescribeLogGroups", "logs:ListTagsForResource",
         "ec2:DescribeSecurityGroups", "ec2:DescribeInstances", "ec2:GetEbsEncryptionByDefault",
         "rds:DescribeDBInstances", "rds:ListTagsForResource",
+        // pgaudit and TLS enforcement are read from DB parameter groups
+        "rds:DescribeDBParameters", "rds:DescribeDBParameterGroups",
         "iam:GetAccountPasswordPolicy",
         "cloudtrail:DescribeTrails", "cloudtrail:GetTrailStatus",
       ],

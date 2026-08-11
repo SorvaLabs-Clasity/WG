@@ -429,6 +429,160 @@ const cloudtrailEnabled: RuleKind = {
   },
 };
 
+
+// ── RDS: pgaudit on PostgreSQL engines ────────────────────────────────
+
+/** Engines the PostgreSQL-specific rules apply to. */
+const POSTGRES_ENGINES = ["postgres", "aurora-postgresql"];
+
+const rdsPgauditEnabled: RuleKind = {
+  kind: "rds_pgaudit_enabled",
+  title: "RDS PostgreSQL — pgaudit enabled",
+  summary: "PostgreSQL and Aurora PostgreSQL instances must load the pgaudit extension so database activity is auditable.",
+  resourceType: "rds:db-instance",
+  defaultMode: "report",
+  defaultParams: {},
+  paramSchema: [],
+  createEvents: ["CreateDBInstance", "ModifyDBInstance"],
+  evaluate(resource) {
+    const engine: string = resource.state.engine ?? "";
+    if (!POSTGRES_ENGINES.includes(engine)) {
+      return na(`Not a PostgreSQL engine (${engine || "unknown"})`);
+    }
+    const libs: string = resource.state.parameters?.["shared_preload_libraries"] ?? "";
+    const loaded = libs.split(",").map(x => x.trim()).filter(Boolean);
+    if (loaded.includes("pgaudit")) return ok("pgaudit is loaded");
+
+    const group = resource.state.parameterGroup ?? "its parameter group";
+    return bad(
+      loaded.length ? `pgaudit not in shared_preload_libraries (${loaded.join(", ")})` : "shared_preload_libraries is empty",
+      {
+        description: `Add pgaudit to shared_preload_libraries on ${group}, then reboot the instance`,
+        before: libs || "(empty)",
+        after: [...loaded, "pgaudit"].join(","),
+      }
+    );
+  },
+};
+
+// ── RDS: SSL/TLS enforced ─────────────────────────────────────────────
+
+/**
+ * The parameter that forces TLS differs by engine — PostgreSQL and SQL Server
+ * use rds.force_ssl, MySQL and MariaDB use require_secure_transport.
+ */
+function tlsParameterFor(engine: string): { name: string; on: (v: string) => boolean } | null {
+  if (POSTGRES_ENGINES.includes(engine) || engine.startsWith("sqlserver")) {
+    return { name: "rds.force_ssl", on: v => v === "1" || v.toLowerCase() === "true" };
+  }
+  if (["mysql", "mariadb", "aurora-mysql"].includes(engine)) {
+    return { name: "require_secure_transport", on: v => v === "1" || v.toUpperCase() === "ON" };
+  }
+  return null;
+}
+
+const rdsSslEnforced: RuleKind = {
+  kind: "rds_ssl_enforced",
+  title: "RDS — SSL/TLS connections enforced",
+  summary: "Database instances must reject unencrypted client connections.",
+  resourceType: "rds:db-instance",
+  defaultMode: "report",
+  defaultParams: {},
+  paramSchema: [],
+  createEvents: ["CreateDBInstance", "ModifyDBInstance"],
+  evaluate(resource) {
+    const engine: string = resource.state.engine ?? "";
+    const param = tlsParameterFor(engine);
+    if (!param) return na(`No TLS-enforcement parameter for engine "${engine || "unknown"}"`);
+
+    const value: string = resource.state.parameters?.[param.name] ?? "";
+    if (param.on(value)) return ok(`${param.name} enforces TLS`);
+
+    const group = resource.state.parameterGroup ?? "its parameter group";
+    return bad(
+      value ? `${param.name} is "${value}" — unencrypted connections are accepted` : `${param.name} is not set`,
+      {
+        description: `Set ${param.name} on ${group}, then reboot the instance`,
+        before: value || "(unset)",
+        after: param.name === "rds.force_ssl" ? "1" : "ON",
+      }
+    );
+  },
+};
+
+// ── S3: cross-region replication ──────────────────────────────────────
+
+const s3CrossRegionReplication: RuleKind = {
+  kind: "s3_cross_region_replication",
+  title: "S3 — replicated to another region",
+  summary: "Buckets must replicate to a second region so data survives losing one.",
+  resourceType: "s3:bucket",
+  defaultMode: "report",
+  defaultParams: { onlyTagged: "" },
+  paramSchema: [
+    { key: "onlyTagged", label: "Only check buckets with this tag", type: "text", default: "",
+      help: "Leave blank to check every bucket. Otherwise give a tag key, e.g. Backup, and only buckets carrying it are checked — most buckets do not need replicating." },
+  ],
+  createEvents: ["CreateBucket"],
+  evaluate(resource, params) {
+    const onlyTagged: string = (params.onlyTagged ?? "").trim();
+    if (onlyTagged && resource.tags[onlyTagged] === undefined) {
+      return na(`Not tagged ${onlyTagged}`);
+    }
+
+    const rules: { id?: string; status?: string; destinationBucket?: string }[] = resource.state.replicationRules ?? [];
+    const active = rules.filter(r => r.status === "Enabled");
+    if (active.length > 0) {
+      return ok(`Replicating to ${active.map(r => (r.destinationBucket ?? "").replace("arn:aws:s3:::", "")).filter(Boolean).join(", ") || "another bucket"}`);
+    }
+
+    return bad(
+      rules.length > 0 ? "Replication rules exist but none are enabled" : "No replication configured",
+      {
+        // Replication needs a destination bucket and an IAM role that do not
+        // exist yet, so this cannot be created from here.
+        description: "Configure cross-region replication to a bucket in another region",
+        before: rules.length ? rules : null,
+        after: "at least one enabled replication rule",
+      }
+    );
+  },
+};
+
+// ── S3: CloudTrail log buckets must be undeletable ────────────────────
+
+const cloudtrailBucketProtected: RuleKind = {
+  kind: "cloudtrail_bucket_protected",
+  title: "CloudTrail log bucket — delete protection",
+  summary: "Buckets receiving CloudTrail logs must have versioning and Object Lock, so audit history cannot be erased or overwritten.",
+  resourceType: "s3:bucket",
+  defaultMode: "report",
+  defaultParams: {},
+  paramSchema: [],
+  createEvents: ["CreateBucket"],
+  evaluate(resource) {
+    if (!resource.state.isCloudTrailBucket) return na("Not a CloudTrail log bucket");
+
+    const versioning: string = resource.state.versioning ?? "Disabled";
+    const locked: boolean = resource.state.objectLockEnabled === true;
+    const missing: string[] = [];
+    if (versioning !== "Enabled") missing.push("versioning");
+    if (!locked) missing.push("Object Lock");
+
+    if (missing.length === 0) return ok("Versioning and Object Lock both enabled");
+
+    return bad(`Audit logs are erasable — ${missing.join(" and ")} not enabled`, {
+      // Object Lock requires versioning first, and enabling it on a bucket that
+      // already has objects needs care, so this is surfaced rather than applied.
+      description: missing.includes("Object Lock")
+        ? "Enable versioning, then Object Lock, on this bucket"
+        : "Enable versioning on this bucket",
+      before: { versioning, objectLock: locked },
+      after: { versioning: "Enabled", objectLock: true },
+    });
+  },
+};
+
 export const CATALOG: RuleKind[] = [
   s3HttpsOnly,
   logRetentionMin,
@@ -442,6 +596,10 @@ export const CATALOG: RuleKind[] = [
   rdsNoPublicAccess,
   ec2Imdsv2Required,
   cloudtrailEnabled,
+  rdsPgauditEnabled,
+  rdsSslEnforced,
+  s3CrossRegionReplication,
+  cloudtrailBucketProtected,
 ];
 
 const BY_KIND = new Map<GuardrailKind, RuleKind>(CATALOG.map(r => [r.kind, r]));
