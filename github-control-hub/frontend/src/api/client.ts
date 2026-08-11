@@ -41,6 +41,18 @@ async function handleResponse<T>(res: Response): Promise<T> {
     window.location.href = "/login";
     throw new Error("Unauthorized");
   }
+  // Removed from the org mid-session. Every subsequent request would fail the
+  // same way, so end the session here rather than letting the app fill with
+  // identical errors.
+  if (res.status === 403) {
+    const body = await res.json().catch(() => ({})) as { error?: string; code?: string };
+    if (body.code === "ORG_MEMBERSHIP_REVOKED") {
+      clearToken();
+      window.location.href = `/login?auth_error=not_member`;
+      throw new Error(body.error ?? "No longer an organisation member");
+    }
+    throw new Error(body.error ?? `Request failed: ${res.status}`);
+  }
   if (res.status === 503) {
     const body = await res.json().catch(() => ({})) as { error?: string; code?: string };
     if (body.code === "AWS_SESSION_EXPIRED") {
