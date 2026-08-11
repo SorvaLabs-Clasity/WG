@@ -103,7 +103,7 @@ export default function KnowledgeGraphPage() {
   const selectCls = "text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen pt-14 bg-slate-50 dark:bg-slate-950">
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
       <main className="max-w-[1600px] mx-auto px-6 py-6">
         {/* Header */}

@@ -129,7 +129,7 @@ export default function AwsPage() {
   const pctShown = useCountUp(t.pct);
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950">
+    <div className="min-h-screen pt-14 bg-slate-50 dark:bg-slate-950">
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
       <main className="max-w-[1400px] mx-auto px-6 py-6">
 
