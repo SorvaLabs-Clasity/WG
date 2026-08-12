@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useEffect } from "react";
-import { Page, RefreshButton } from "../design";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { Page, RefreshButton, Button, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter } from "../design";
 import { useAuth } from "../App";
 import { useSecurityQuery, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
@@ -30,6 +30,104 @@ const SEVERITY_CHOICES = [
 const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, moderate: 2, low: 1 };
 const THRESHOLD: Record<string, number> = { any: 1, low: 1, medium: 2, high: 3, critical: 4 };
 
+/**
+ * The board.
+ *
+ * This was a grid of equal cards, each with a large centred number. Equal cards
+ * say every question matters equally, which is the one thing that is never
+ * true: 347 repositories with an unprotected default branch and an empty-teams
+ * check that found nothing were the same size, in the same place, in the same
+ * shade.
+ *
+ * So size follows state. A check with findings takes a full band with the count
+ * set large enough to read across a room; a check with nothing to report
+ * collapses to a single quiet line in a register at the bottom. The page
+ * physically changes shape as the organisation does — which is the first design
+ * principle in /.impeccable.md, applied to layout rather than to colour alone.
+ *
+ * Everything is left-aligned against a common edge so the counts form a column
+ * the eye can run down. Nothing is centred; centred numbers in a grid read as
+ * decoration.
+ */
+
+type Level = "danger" | "warn" | "info" | "clear";
+
+const ORDER: Record<Level, number> = { danger: 0, warn: 1, info: 2, clear: 3 };
+
+interface Verdict {
+  level: Level;
+  value: number;
+  denominator: number | null;
+  caption: string;
+  badge: string | null;
+}
+
+/**
+ * What a widget's numbers mean.
+ *
+ * Three shapes, because a query result is not one kind of thing: some report
+ * their own pass/fail, some find problems, and some simply answer a question
+ * and carry no verdict at all. Treating the third as the second is how "which
+ * repositories have a main branch" once read as CRITICAL.
+ */
+function verdictFor(items: any[], total: number | null, config: WidgetConfig): Verdict {
+  const hasStatus = items.some((i: any) => i.status);
+  if (hasStatus) {
+    const pass = items.filter((i: any) => i.status === "pass").length;
+    const rate = items.length ? Math.round((pass / items.length) * 100) : 0;
+    return {
+      level: rate === 100 ? "clear" : rate >= 80 ? "warn" : "danger",
+      value: items.length - pass,
+      denominator: items.length,
+      caption: items.length - pass === 1 ? "failing" : "failing",
+      badge: rate === 100 ? "all passing" : `${rate}% passing`,
+    };
+  }
+
+  const option = config.type === "query" ? QUERY_OPTIONS.find(q => q.id === config.queryId) : undefined;
+  const found = items.length;
+
+  if (config.type === "query" && (option as any)?.informational) {
+    return { level: "info", value: found, denominator: total, caption: "matching", badge: null };
+  }
+
+  const share = total ? found / total : null;
+  return {
+    level: found === 0 ? "clear" : share !== null && share >= 0.1 ? "danger" : "warn",
+    value: found,
+    denominator: total,
+    caption: found === 1 ? "repository" : "repositories",
+    badge: null,
+  };
+}
+
+const TONE: Record<Level, { rail: string; figure: string; chip: string; wash: string }> = {
+  danger: {
+    rail: "bg-rose-500 dark:bg-rose-400",
+    figure: "text-rose-600 dark:[color:#ff8095]",
+    chip: "bg-rose-50 text-rose-700 dark:bg-rose-500/[0.14] dark:text-rose-300",
+    wash: "bg-rose-50/40 dark:bg-rose-500/[0.05]",
+  },
+  warn: {
+    rail: "bg-amber-500 dark:bg-amber-400",
+    figure: "text-amber-600 dark:[color:#ffc14d]",
+    chip: "bg-amber-50 text-amber-700 dark:bg-amber-500/[0.14] dark:text-amber-300",
+    wash: "bg-amber-50/40 dark:bg-amber-500/[0.05]",
+  },
+  info: {
+    rail: "bg-blue-500 dark:bg-blue-400",
+    figure: "text-blue-600 dark:[color:#6bb4ff]",
+    chip: "bg-blue-50 text-blue-700 dark:bg-blue-500/[0.14] dark:text-blue-300",
+    wash: "",
+  },
+  clear: {
+    rail: "bg-emerald-500 dark:bg-emerald-400",
+    figure: "text-emerald-600 dark:[color:#3ddc97]",
+    chip: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/[0.14] dark:text-emerald-300",
+    wash: "",
+  },
+};
+
 export default function AnalyticsPage() {
   const { user } = useAuth();
   const { data: widgets = [], isLoading: widgetsLoading, isFetching: widgetsFetching, refetch: refetchWidgets } = useWidgets();
@@ -47,260 +145,266 @@ export default function AnalyticsPage() {
   const orgName = orgConfig?.org || "";
   const { data: graphMeta } = useGraphMeta();
   const aggregation = useTriggerAggregation();
+  const graphEmpty = graphMeta?.edgeCount === 0;
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null);
-  const [isDashboardView, setIsDashboardView] = useState(false);
-  const [selectedWidgetId, setSelectedWidgetId] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
 
-  const graphEmpty = graphMeta?.edgeCount === 0;
+  /**
+   * Each row reports what it found once its data arrives.
+   *
+   * The parent cannot work this out itself: the queries behind a widget depend
+   * on its configuration, so evaluating N widgets means N hook calls and the
+   * list length changes. Reporting upward keeps the hooks where they belong and
+   * still lets the page know its own posture.
+   */
+  const [levels, setLevels] = useState<Record<string, Level>>({});
+  const report = useCallback((id: string, level: Level) => {
+    setLevels(prev => (prev[id] === level ? prev : { ...prev, [id]: level }));
+  }, []);
 
-  useEffect(() => {
-    if (!isDashboardView && widgets.length > 0 && !selectedWidgetId) {
-      setSelectedWidgetId(widgets[0].id);
+  const posture = useMemo(() => {
+    const seen = widgets.map(w => levels[w.id]).filter(Boolean) as Level[];
+    const attention = seen.filter(l => l === "danger" || l === "warn").length;
+    return {
+      attention,
+      answered: seen.length,
+      total: widgets.length,
+      worst: seen.includes("danger") ? "danger" : seen.includes("warn") ? "warn" : "clear",
+    };
+  }, [widgets, levels]);
+
+  const handleSave = (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => {
+    if (editingWidget) {
+      updateWidget.mutate({ id: editingWidget.id, data: config }, { onSuccess: () => setEditingWidget(null) });
+    } else {
+      createWidget.mutate(config, { onSuccess: () => setShowAddModal(false) });
     }
-  }, [isDashboardView, widgets, selectedWidgetId]);
-
-  const handleAddWidget = (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => {
-    createWidget.mutate(config, { onSuccess: () => setShowAddModal(false) });
-  };
-
-  const handleEditWidget = (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => {
-    if (!editingWidget) return;
-    updateWidget.mutate({ id: editingWidget.id, data: config }, { onSuccess: () => setEditingWidget(null) });
   };
 
   const removeWidget = (id: string) => {
-    deleteWidgetMut.mutate(id);
-    if (selectedWidgetId === id) setSelectedWidgetId(null);
+    if (window.confirm("Remove this from the dashboard?")) deleteWidgetMut.mutate(id);
   };
 
   return (
     <Page user={user}>
-        {/* Header */}
-        <header className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
-          <div>
-            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Overview</h1>
-            <p className="text-slate-500 dark:text-slate-400 text-sm mt-1 max-w-lg">
-              Security posture, rule bypasses and structural metrics across the organization.
+      {/* ── Posture. Stated in words, at a size that does not need looking for. ── */}
+      <header className="mb-10" style={enter(0)}>
+        <div className="flex items-start justify-between gap-6 flex-wrap">
+          <div className="min-w-0">
+            <p className={`${TYPE.label} text-slate-400 dark:text-slate-500 mb-3`}>
+              {orgName || "Organisation"} · {posture.total} {posture.total === 1 ? "check" : "checks"}
             </p>
-          </div>
-
-          <div className="flex items-center gap-4 shrink-0">
-            <div className="bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-1 shadow-sm inline-flex h-10 items-center">
-              <button
-                onClick={() => setIsDashboardView(false)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${!isDashboardView ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-              >
-                <i className="ph-fill ph-list-dashes"></i>
-                <span>List</span>
-              </button>
-              <button
-                onClick={() => setIsDashboardView(true)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-all duration-200 ${isDashboardView ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800'}`}
-              >
-                <i className="ph-fill ph-squares-four"></i>
-                <span>Grid</span>
-              </button>
-            </div>
-            <RefreshButton
-              busy={widgetsFetching}
-              onRefresh={() => refetchWidgets()}
-            />
-            <button
-              onClick={() => aggregation.mutate()}
-              disabled={aggregation.isPending}
-              className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 px-4 py-2.5 rounded-lg shadow-sm text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-              title="Re-sync graph data from GitHub"
-            >
-              {aggregation.isPending ? (
-                <>
-                  <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-slate-400/30 border-t-slate-600"></div>
-                  Syncing...
-                </>
+            <h1 className="text-[38px] sm:text-[52px] font-black tracking-[-0.035em] leading-[1.02] max-w-[18ch]">
+              {widgetsLoading ? (
+                <span className="text-slate-300 dark:text-slate-700">Reading the organisation…</span>
+              ) : posture.total === 0 ? (
+                <>Nothing is being watched yet.</>
+              ) : posture.answered === 0 ? (
+                <span className="text-slate-300 dark:text-slate-700">Working it out…</span>
+              ) : posture.attention === 0 ? (
+                <>Everything checked is <span className={TONE.clear.figure}>clear</span>.</>
               ) : (
                 <>
-                  <i className="ph-bold ph-arrows-clockwise text-sm"></i>
-                  Sync Data
+                  <span className={TONE[posture.worst as Level].figure}>{posture.attention}</span>
+                  {" "}of {posture.answered} checks need attention.
                 </>
               )}
-            </button>
+            </h1>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 pt-1">
+            <RefreshButton busy={widgetsFetching} onRefresh={() => refetchWidgets()} />
+            <Button
+              onClick={() => aggregation.mutate()}
+              disabled={aggregation.isPending}
+              className="whitespace-nowrap"
+            >
+              <i className={`ph-bold ph-arrows-clockwise mr-2 ${aggregation.isPending ? "animate-spin" : ""}`}></i>
+              {aggregation.isPending ? "Syncing" : "Sync data"}
+            </Button>
             {canEditDashboard && (
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="group bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 font-medium text-sm flex items-center gap-2"
-              >
-                <i className="fas fa-plus text-xs group-hover:rotate-90 transition-transform"></i>
-                <span>Add Widget</span>
-              </button>
+              <Button variant="primary" onClick={() => setShowAddModal(true)}>
+                <i className="ph-bold ph-plus mr-2"></i>Add check
+              </Button>
             )}
           </div>
-        </header>
+        </div>
+      </header>
 
-        {/* Graph data empty banner */}
-        {graphEmpty && (
-          <div className="mb-6 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 flex items-start gap-4">
-            <div className="w-10 h-10 rounded-xl bg-amber-100 dark:bg-amber-900 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 mt-0.5">
-              <i className="ph-fill ph-database text-xl"></i>
-            </div>
-            <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-amber-900 dark:text-amber-300 text-sm mb-1">Graph data not synced</h3>
-              <p className="text-amber-700 dark:text-amber-400 text-sm leading-relaxed">
-                Analytics queries rely on graph data that hasn't been synced yet. Click "Sync Now" to pull repository, branch, team, and vulnerability data from your GitHub organization.
-                This may take a few minutes depending on the size of your org.
-              </p>
-            </div>
-            <button
-              onClick={() => aggregation.mutate()}
-              disabled={aggregation.isPending}
-              className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 flex items-center gap-2"
-            >
-              {aggregation.isPending ? (
-                <>
-                  <div className="animate-spin rounded-full h-3.5 w-3.5 border-2 border-white/30 border-t-white"></div>
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <i className="ph-bold ph-arrows-clockwise"></i>
-                  Sync Now
-                </>
-              )}
-            </button>
-          </div>
-        )}
+      {graphEmpty && (
+        <div style={enter(1)} className="mb-6">
+          <Note intent="warn">
+            The graph has no data, so anything reading from it will come back empty. Sync data to build it.
+          </Note>
+        </div>
+      )}
+      {aggregation.isError && (
+        <div style={enter(1)} className="mb-6">
+          <Note intent="danger">Sync failed — {(aggregation.error as Error)?.message || "unknown error"}.</Note>
+        </div>
+      )}
 
-        {aggregation.isSuccess && !aggregation.isPending && (
-          <div className="mb-6 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 flex items-center gap-3 animate-fade-in">
-            <i className="ph-fill ph-check-circle text-emerald-600 dark:text-emerald-400 text-xl"></i>
-            <span className="text-emerald-800 dark:text-emerald-300 text-sm font-medium">Graph data synced successfully. Widget data will refresh automatically.</span>
-          </div>
-        )}
+      {widgetsLoading ? (
+        <Spinner />
+      ) : widgets.length === 0 ? (
+        <Empty
+          title="No checks yet"
+          body="A check is a question about the organisation — which repositories have an unprotected default branch, who holds admin they were never granted, which packages are exposing you. Add one and it appears here, loudest first."
+          action={canEditDashboard
+            ? <Button variant="primary" onClick={() => setShowAddModal(true)}>Add the first check</Button>
+            : undefined}
+        />
+      ) : (
+        /* Flex order does the sorting, so a row can place itself the moment its
+           own data lands rather than waiting for the page to collect everyone's. */
+        <div className="flex flex-col gap-3">
+          {widgets.map((w, i) => (
+            <WidgetRow
+              key={w.id}
+              config={w}
+              index={i}
+              open={openId === w.id}
+              onToggle={() => setOpenId(openId === w.id ? null : w.id)}
+              onReport={report}
+              canEdit={canEditDashboard}
+              onEdit={() => setEditingWidget(w)}
+              onRemove={() => removeWidget(w.id)}
+              graphEmpty={graphEmpty}
+              orgName={orgName}
+            />
+          ))}
+        </div>
+      )}
 
-        {aggregation.isError && (
-          <div className="mb-6 bg-rose-50 dark:bg-red-950/50 border border-rose-200 dark:border-red-800 rounded-2xl p-4 flex items-center gap-3">
-            <i className="ph-fill ph-warning-circle text-rose-600 dark:text-red-400 text-xl"></i>
-            <span className="text-rose-800 dark:text-rose-300 text-sm font-medium">Sync failed: {(aggregation.error as Error)?.message || "Unknown error"}. Try again later.</span>
-          </div>
-        )}
-
-        {widgetsLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
-          </div>
-        ) : isDashboardView ? (
-          /* ─── Grid View ─── */
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {widgets.map(widget => (
-              <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} onEdit={() => setEditingWidget(widget)} canEdit={canEditDashboard} graphEmpty={graphEmpty} orgName={orgName} />
-            ))}
-            {widgets.length === 0 && (
-              <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl h-[340px] flex flex-col items-center justify-center text-center p-8 group hover:border-slate-300 dark:hover:border-slate-600 transition-colors col-span-full">
-                <div className="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-950 text-slate-300 flex items-center justify-center mb-4 group-hover:text-slate-400 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 transition-colors">
-                  <i className="ph-fill ph-chart-pie-slice text-3xl"></i>
-                </div>
-                <h3 className="text-slate-900 dark:text-white font-semibold mb-1">No widgets added yet</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">Track coverage, throughput, or custom data points.</p>
-                {canEditDashboard && (
-                  <button onClick={() => setShowAddModal(true)} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">
-                    + Create Widget
-                  </button>
-                )}
-              </div>
-            )}
-            {widgets.length > 0 && (
-              <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl h-[340px] flex flex-col items-center justify-center text-center p-8 group hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
-                <div className="w-16 h-16 rounded-full bg-slate-50 dark:bg-slate-950 text-slate-300 flex items-center justify-center mb-4 group-hover:text-slate-400 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 transition-colors">
-                  <i className="ph-fill ph-chart-pie-slice text-3xl"></i>
-                </div>
-                <h3 className="text-slate-900 dark:text-white font-semibold mb-1">Add Another Metric</h3>
-                <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">Track coverage, throughput, or custom data points.</p>
-                {canEditDashboard && (
-                  <button onClick={() => setShowAddModal(true)} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">
-                    + Create Widget
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        ) : (
-          /* ─── List View ─── */
-          <div className="flex flex-col lg:flex-row gap-6 h-[750px]">
-            {/* Left panel: widget sidebar */}
-            <aside className="w-full lg:w-1/3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] flex flex-col overflow-hidden">
-              <div className="bg-slate-50 dark:bg-slate-950 px-5 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center sticky top-0 z-10">
-                <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm tracking-wide uppercase opacity-70">Your Analytics</span>
-                <span className="text-xs font-mono text-slate-400 dark:text-slate-500">{widgets.length} Active</span>
-              </div>
-              <div className="overflow-y-auto flex-1 divide-y divide-slate-100 dark:divide-slate-700">
-                {widgets.map(w => (
-                  <div
-                    key={w.id}
-                    onClick={() => setSelectedWidgetId(w.id)}
-                    className={`group relative px-5 py-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors border-l-[3px] ${selectedWidgetId === w.id ? 'bg-blue-50/40 dark:bg-blue-950/40 border-blue-600' : 'border-transparent'}`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <h3 className={`font-semibold text-sm mb-1 ${selectedWidgetId === w.id ? 'text-slate-900 dark:text-white' : 'text-slate-700 dark:text-slate-300 group-hover:text-slate-900 dark:group-hover:text-white'}`}>
-                          {w.title}
-                        </h3>
-                        <div className={`flex items-center gap-1.5 text-xs font-medium ${selectedWidgetId === w.id ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                          {w.type === 'preset' ? (
-                            <>
-                              <i className="fas fa-wrench text-[10px]"></i>
-                              <span>Built-in Preset</span>
-                            </>
-                          ) : (
-                            <>
-                              <i className="ph-bold ph-magnifying-glass"></i>
-                              <span>Custom Query</span>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      <div className={`opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 ${canEditDashboard ? "" : "hidden"}`}>
-                        <button onClick={(e) => { e.stopPropagation(); setEditingWidget(w); }} className="text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400">
-                          <i className="ph-bold ph-pencil-simple"></i>
-                        </button>
-                        <button onClick={(e) => { e.stopPropagation(); removeWidget(w.id); }} className="text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400">
-                          <i className="ph-bold ph-trash"></i>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {widgets.length === 0 && (
-                  <div className="p-8 text-center text-slate-400 dark:text-slate-500 text-sm">No analytics added yet.</div>
-                )}
-              </div>
-            </aside>
-
-            {/* Right panel: selected widget detail */}
-            <section className="w-full lg:w-2/3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] flex flex-col h-full overflow-hidden">
-              {selectedWidgetId ? (
-                <WidgetDetailsInline
-                  config={widgets.find(w => w.id === selectedWidgetId)!}
-                  onEdit={() => setEditingWidget(widgets.find(w => w.id === selectedWidgetId)!)}
-                  graphEmpty={graphEmpty}
-                  orgName={orgName}
-                />
-              ) : (
-                <div className="flex-1 flex flex-col items-center justify-center text-slate-400 dark:text-slate-500">
-                  <i className="ph-light ph-chart-polar text-5xl mb-3 opacity-50"></i>
-                  <p className="text-sm">Select an analytic from the list to view details</p>
-                </div>
-              )}
-            </section>
-          </div>
-        )}
-
-      {showAddModal && <WidgetFormModal onClose={() => setShowAddModal(false)} onSave={handleAddWidget} isSaving={createWidget.isPending} />}
-      {editingWidget && <WidgetFormModal onClose={() => setEditingWidget(null)} onSave={handleEditWidget} isSaving={updateWidget.isPending} initialData={editingWidget} />}
+      {(showAddModal || editingWidget) && (
+        <WidgetFormModal
+          onClose={() => { setShowAddModal(false); setEditingWidget(null); }}
+          onSave={handleSave}
+          isSaving={createWidget.isPending || updateWidget.isPending}
+          initialData={editingWidget || undefined}
+        />
+      )}
     </Page>
   );
 }
 
-/* ─── Data Hook ─── */
+/**
+ * One check.
+ *
+ * Renders at one of two weights. With findings it is a band: a thick rail, the
+ * count at 44px, the question beside it. With nothing to report it is a single
+ * line — still present, still clickable, but taking the space a settled matter
+ * deserves rather than a card's worth.
+ */
+function WidgetRow({
+  config, index, open, onToggle, onReport, canEdit, onEdit, onRemove, graphEmpty, orgName,
+}: {
+  config: WidgetConfig; index: number; open: boolean; onToggle: () => void;
+  onReport: (id: string, level: Level) => void;
+  canEdit: boolean; onEdit: () => void; onRemove: () => void;
+  graphEmpty?: boolean; orgName?: string;
+}) {
+  const { items, isLoading, total } = useWidgetData(config);
+  const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
+
+  useEffect(() => {
+    if (!isLoading) onReport(config.id, verdict.level);
+  }, [isLoading, verdict.level, config.id, onReport]);
+
+  const tone = TONE[verdict.level];
+  const quiet = verdict.level === "clear" && !open;
+  const n = useCountUp(verdict.value);
+
+  if (isLoading) {
+    return (
+      <div style={{ order: 2, ...enter(index) }}
+        className={`${SURFACE.card} h-[68px] flex items-center gap-4 px-5`}>
+        <span className="w-1.5 h-8 rounded-full bg-slate-200 dark:bg-white/10 animate-pulse" />
+        <span className="h-4 w-40 rounded bg-slate-100 dark:bg-white/[0.07] animate-pulse" />
+      </div>
+    );
+  }
+
+  return (
+    <section
+      style={{ order: ORDER[verdict.level], ...enter(index) }}
+      className={`${SURFACE.card} overflow-hidden transition-shadow duration-200 ${open ? "shadow-xl" : ""}`}
+    >
+      <div className="flex items-stretch">
+        <div className={`w-1.5 shrink-0 ${tone.rail} transition-colors duration-300`} />
+
+        <button
+          onClick={onToggle}
+          aria-expanded={open}
+          className={`flex-1 min-w-0 text-left flex items-center gap-5 transition-colors ${tone.wash}
+            ${quiet ? "px-5 py-3" : "px-6 py-5"} hover:bg-slate-900/[0.02] dark:hover:bg-white/[0.02]`}
+        >
+          {quiet ? (
+            <>
+              <i className={`ph-fill ph-check-circle text-lg shrink-0 ${tone.figure}`}></i>
+              <span className="flex-1 min-w-0 text-sm font-bold text-slate-600 dark:text-slate-300 truncate">
+                {config.title}
+              </span>
+              <span className="text-[12px] text-slate-400 dark:text-slate-500 shrink-0">
+                {verdict.badge ?? "nothing found"}
+              </span>
+            </>
+          ) : (
+            <>
+              <span className="shrink-0 w-[92px] sm:w-[116px]">
+                <span className={`block text-[40px] sm:text-[48px] font-black tabular-nums leading-none tracking-tight ${tone.figure}`}>
+                  {n}
+                </span>
+                {verdict.denominator !== null && (
+                  <span className="block text-[12px] font-semibold text-slate-400 dark:text-slate-500 tabular-nums mt-1.5">
+                    of {verdict.denominator}
+                  </span>
+                )}
+              </span>
+
+              <span className="flex-1 min-w-0">
+                <span className={`block ${TYPE.heading} text-slate-900 dark:text-white truncate`}>
+                  {config.title}
+                </span>
+                <span className="block text-[13px] text-slate-500 dark:text-slate-400 mt-1">
+                  {verdict.caption}
+                  {verdict.badge && <> · {verdict.badge}</>}
+                </span>
+              </span>
+            </>
+          )}
+
+          <i className={`ph-bold ph-caret-down text-slate-300 dark:text-slate-600 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}></i>
+        </button>
+
+        {canEdit && (
+          <div className="flex items-center gap-1 pr-4 opacity-0 focus-within:opacity-100 group-hover:opacity-100 hover:opacity-100 transition-opacity">
+            <button onClick={onEdit} title="Edit"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
+              <i className="ph-bold ph-pencil-simple text-sm"></i>
+            </button>
+            <button onClick={onRemove} title="Remove"
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors">
+              <i className="ph-bold ph-trash text-sm"></i>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* grid-template-rows rather than height: it animates without measuring,
+          and without laying out the contents on every frame. */}
+      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
+        <div className="overflow-hidden">
+          <div className="border-t border-slate-100 dark:border-white/[0.07]">
+            <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function useWidgetData(config: WidgetConfig) {
   const { data: depsData, isLoading: depsLoading } = useDependencies();
@@ -369,292 +473,6 @@ function useWidgetData(config: WidgetConfig) {
 }
 
 /* ─── Widget Card (Grid View) ─── */
-
-function WidgetCard({ config, onRemove, onEdit, canEdit, graphEmpty, orgName }: { config: WidgetConfig; onRemove: () => void; onEdit: () => void; canEdit: boolean; graphEmpty?: boolean; orgName?: string }) {
-  const { items, isLoading, total } = useWidgetData(config);
-  const [showDetails, setShowDetails] = useState(false);
-
-  const widgetIcon = useMemo(() => {
-    if (config.type === "preset") {
-      if (config.presetId === "dependabot") return { cls: "ph-fill ph-bug text-rose-500", color: "rose" };
-      if (config.presetId === "bypasses") return { cls: "ph-fill ph-shield-warning text-amber-500", color: "amber" };
-      if (config.presetId === "vuln-repos") return { cls: "ph-fill ph-siren text-rose-500", color: "rose" };
-    }
-    const hasStatus = items.some((i: any) => i.status);
-    if (hasStatus) {
-      const allPass = items.every((i: any) => i.status === "pass");
-      if (allPass) return { cls: "ph-fill ph-check-circle text-emerald-500", color: "emerald" };
-      return { cls: "ph-fill ph-warning-octagon text-rose-500", color: "rose" };
-    }
-    return { cls: "ph-fill ph-magnifying-glass text-blue-500", color: "blue" };
-  }, [config, items]);
-
-  return (
-    <>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-[0_4px_20px_-2px_rgba(0,0,0,0.05)] h-[340px] flex flex-col group hover:-translate-y-1 hover:shadow-lg transition-all duration-300">
-        {/* Card header */}
-        <div className="bg-gradient-to-r from-slate-50 dark:from-slate-950 to-white dark:to-slate-900 px-5 py-3 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center rounded-t-2xl">
-          <span className="font-semibold text-slate-800 dark:text-slate-200 text-sm truncate flex items-center gap-2">
-            <i className={widgetIcon.cls}></i>
-            {config.title}
-          </span>
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-            <button onClick={() => setShowDetails(true)} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white" title="Expand">
-              <i className="ph-bold ph-arrows-out-simple"></i>
-            </button>
-            {canEdit && (
-              <>
-                <button onClick={onEdit} className="text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400" title="Edit">
-                  <i className="ph-bold ph-pencil-simple"></i>
-                </button>
-                <button onClick={onRemove} className="text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400" title="Remove">
-                  <i className="ph-bold ph-trash"></i>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Card body */}
-        <div className="flex-1 relative overflow-hidden">
-          {isLoading ? (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
-            </div>
-          ) : config.displayType === "metric" ? (
-            <MetricCardBody items={items} total={total} config={config} onExpand={() => setShowDetails(true)} />
-          ) : (
-            <TableCardBody items={items} config={config} onExpand={() => setShowDetails(true)} />
-          )}
-        </div>
-      </div>
-
-      {showDetails && <WidgetDetailsModal config={config} items={items} onClose={() => setShowDetails(false)} graphEmpty={graphEmpty} orgName={orgName} />}
-    </>
-  );
-}
-
-function MetricCardBody({ items, total, config, onExpand }: { items: any[]; total: number | null; config: WidgetConfig; onExpand: () => void }) {
-  /**
-   * What the number means depends on the query, and getting that backwards is
-   * worse than showing nothing.
-   *
-   * Matching a query like "repos with an unprotected main" is a finding, not a
-   * pass — but this card counted every match as passing, so 347 repositories
-   * with an unprotected default branch scored 97% and was labelled GOOD. It
-   * reported the worst thing in the organisation as the best number on screen.
-   *
-   * Three shapes now:
-   *   pass/fail    the query says so itself, and the rate is what it looks like
-   *   findings     matches are problems; none is clean, more is worse
-   *   informational matches are just an answer, and carry no verdict at all
-   */
-  const hasStatus = items.some((i: any) => i.status);
-  const option = config.type === "query" ? QUERY_OPTIONS.find(q => q.id === config.queryId) : undefined;
-  const informational = config.type === "preset" ? false : !!(option as any)?.informational;
-
-  if (hasStatus) {
-    const passCount = items.filter((i: any) => i.status === "pass").length;
-    const passRate = items.length ? Math.round((passCount / items.length) * 100) : null;
-    return (
-      <Verdict
-        onExpand={onExpand}
-        value={passCount}
-        denominator={items.length}
-        caption={passRate === null ? "" : `${passRate}% passing`}
-        badge={passRate === null ? null
-          : passRate === 100 ? ["COMPLIANT", "good"]
-          : passRate >= 80 ? ["GOOD", "good"]
-          : passRate >= 60 ? ["WARNING", "warn"]
-          : ["CRITICAL", "danger"]}
-      />
-    );
-  }
-
-  const found = items.length;
-
-  if (informational) {
-    return (
-      <Verdict
-        onExpand={onExpand}
-        value={found}
-        denominator={total}
-        caption={total ? `of ${total} repositories` : ""}
-        badge={null}
-        tone="neutral"
-      />
-    );
-  }
-
-  const share = total ? found / total : null;
-  return (
-    <Verdict
-      onExpand={onExpand}
-      value={found}
-      denominator={total}
-      caption={found === 0 ? "nothing found" : found === 1 ? "repository affected" : "repositories affected"}
-      badge={found === 0 ? ["CLEAN", "good"]
-        : share !== null && share >= 0.1 ? ["CRITICAL", "danger"]
-        : ["ATTENTION", "warn"]}
-    />
-  );
-}
-
-function Verdict({ value, denominator, caption, badge, tone, onExpand }: {
-  value: number; denominator: number | null; caption: string;
-  badge: [string, "good" | "warn" | "danger"] | null;
-  tone?: "neutral"; onExpand: () => void;
-}) {
-  const level = badge?.[1];
-  const bg = level === "danger" ? "bg-gradient-to-b from-white dark:from-slate-900 to-rose-50/30 dark:to-red-950/30"
-    : level === "warn" ? "bg-gradient-to-b from-white dark:from-slate-900 to-amber-50/30 dark:to-amber-950/30"
-    : level === "good" ? "bg-gradient-to-b from-white dark:from-slate-900 to-emerald-50/30 dark:to-emerald-950/30"
-    : "";
-  const num = tone === "neutral" ? "text-blue-600 dark:text-blue-400"
-    : level === "danger" ? "text-rose-600 dark:text-red-400"
-    : level === "warn" ? "text-amber-600 dark:text-amber-400"
-    : "text-slate-900 dark:text-white";
-  const chip = level === "danger" ? "bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-300"
-    : level === "warn" ? "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-300"
-    : "bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-300";
-
-  return (
-    <div className={`flex-1 h-full flex flex-col items-center justify-center p-6 cursor-pointer relative overflow-hidden ${bg}`} onClick={onExpand}>
-      <div className="absolute inset-0 bg-blue-50/20 dark:bg-blue-950/20 translate-y-20 rounded-full blur-3xl w-2/3 mx-auto"></div>
-      <span className={`text-7xl font-light font-mono tracking-tighter z-10 ${num}`}>
-        {value}
-        {denominator !== null && <span className="text-2xl text-slate-400 dark:text-slate-500">/ {denominator}</span>}
-      </span>
-      <div className="mt-4 flex flex-col items-center z-10">
-        {caption && <span className="text-slate-400 dark:text-slate-500 text-sm font-mono mb-2">{caption}</span>}
-        {badge && (
-          <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold font-mono ${chip}`}>{badge[0]}</span>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function TableCardBody({ items, config, onExpand }: { items: any[]; config: WidgetConfig; onExpand: () => void }) {
-  if (items.length === 0) {
-    return (
-      <div className="h-full flex items-center justify-center text-sm text-slate-400 dark:text-slate-500 italic cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 rounded" onClick={onExpand}>
-        No data to display
-      </div>
-    );
-  }
-
-  return (
-    <div className="h-full flex flex-col">
-      <div className="flex-1 overflow-auto">
-        <table className="w-full text-left">
-          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-            {items.slice(0, 5).map((item: any, idx: number) => {
-              const name = item.repo || item.user || item.team || "Unknown";
-              const val = config.presetId === "dependabot" ? item.total
-                : config.presetId === "vuln-repos" ? item.total
-                : config.presetId === "bypasses" ? item.bypasses : "";
-              return (
-                <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer" onClick={onExpand}>
-                  <td className="px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                    {item.status === "pass" && <i className="ph-bold ph-check-circle text-emerald-500 text-xs shrink-0"></i>}
-                    {item.status === "fail" && <i className="ph-bold ph-x-circle text-rose-500 text-xs shrink-0"></i>}
-                    <span className="truncate">{name}</span>
-                  </td>
-                  <td className="px-5 py-3 text-right">
-                    {val !== "" && (
-                      <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 text-xs font-mono px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700">
-                        {val}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      {items.length > 5 && (
-        <button
-          onClick={onExpand}
-          className="w-full py-3 text-center text-sm font-medium text-blue-600 dark:text-blue-400 border-t border-slate-100 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-950/50 transition-colors"
-        >
-          View all {items.length} results
-        </button>
-      )}
-    </div>
-  );
-}
-
-/* ─── Widget Details Inline (List View right panel) ─── */
-
-function WidgetDetailsInline({ config, onEdit, graphEmpty, orgName }: { config: WidgetConfig; onEdit: () => void; graphEmpty?: boolean; orgName?: string }) {
-  const { items, isLoading } = useWidgetData(config);
-
-  if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-slate-900"></div>
-      </div>
-    );
-  }
-
-  const hasStatus = items.some((i: any) => i.status);
-  const passCount = hasStatus ? items.filter((i: any) => i.status === "pass").length : 0;
-  const failCount = hasStatus ? items.filter((i: any) => i.status === "fail").length : 0;
-
-  return (
-    <div className="flex-1 flex flex-col h-full bg-white dark:bg-slate-900 relative">
-      {/* Detail Header */}
-      <div className="p-6 border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-900">
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex items-center gap-3">
-            <div className="p-2 bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 rounded-lg">
-              <i className="ph-fill ph-chart-bar text-xl"></i>
-            </div>
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-white">{config.title}</h2>
-              <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-                {config.type === "preset"
-                  ? `Built-in preset: ${config.presetId}`
-                  : `Custom query: ${QUERY_OPTIONS.find(q => q.id === config.queryId)?.label || config.queryId}`}
-              </p>
-            </div>
-          </div>
-          <button onClick={onEdit} className="text-slate-400 dark:text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg transition-colors">
-            <i className="ph-bold ph-pencil-simple text-lg"></i>
-          </button>
-        </div>
-
-        {/* Pill Summary */}
-        <div className="flex flex-wrap gap-3">
-          {hasStatus && (
-            <>
-              <div className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full text-xs font-bold flex items-center gap-1.5 pointer-events-none">
-                <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-                {passCount} Passing
-              </div>
-              <div className="px-3 py-1 bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border border-rose-200 dark:border-red-800 rounded-full text-xs font-bold flex items-center gap-1.5 pointer-events-none">
-                <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
-                {failCount} Failing
-              </div>
-            </>
-          )}
-          <div className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-bold font-mono">
-            Total: {items.length}
-          </div>
-        </div>
-      </div>
-
-      {/* Detail Table */}
-      <div className="flex-1 overflow-auto">
-        <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
-      </div>
-    </div>
-  );
-}
-
-/* ─── Widget Data Table ─── */
 
 function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: WidgetConfig; items: any[]; graphEmpty?: boolean; orgName?: string }) {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
@@ -905,50 +723,6 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
 
 /* ─── Widget Details Modal (expanded from grid card) ─── */
 
-function WidgetDetailsModal({ config, items, onClose, graphEmpty, orgName }: { config: WidgetConfig; items: any[]; onClose: () => void; graphEmpty?: boolean; orgName?: string }) {
-  const hasStatus = items.some((i: any) => i.status);
-  const passCount = hasStatus ? items.filter((i: any) => i.status === "pass").length : 0;
-  const failCount = hasStatus ? items.filter((i: any) => i.status === "fail").length : 0;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 w-full max-w-4xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between bg-white dark:bg-slate-900 shrink-0 rounded-t-2xl">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2">
-            <i className="ph-fill ph-chart-bar text-blue-600 dark:text-blue-400"></i>
-            {config.title}
-          </h3>
-          <div className="flex items-center gap-3">
-            {hasStatus && (
-              <>
-                <div className="px-3 py-1 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 rounded-full text-xs font-bold flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full"></span>
-                  {passCount} Pass
-                </div>
-                <div className="px-3 py-1 bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border border-rose-200 dark:border-red-800 rounded-full text-xs font-bold flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 bg-rose-500 rounded-full"></span>
-                  {failCount} Fail
-                </div>
-              </>
-            )}
-            <div className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700 rounded-full text-xs font-bold font-mono">
-              {items.length} Total
-            </div>
-            <button onClick={onClose} className="w-8 h-8 rounded-md flex items-center justify-center text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
-              <i className="ph ph-x text-lg"></i>
-            </button>
-          </div>
-        </div>
-
-        <div className="p-0 overflow-y-auto bg-slate-50 dark:bg-slate-950 flex-1 relative rounded-b-2xl">
-          <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
-        </div>
-      </div>
-    </div>
-  );
-
-}
 
 /* ─── Widget Form Modal (Add / Edit) ─── */
 
