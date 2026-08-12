@@ -1,10 +1,11 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { Page } from "../design";
+import { Page, INTENT } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import UserAvatar from "../components/UserAvatar";
 import { useAuth } from "../App";
 import { useActivity, useUndoActivity, useRedoActivity, useRetryActivity, useResolveConflict, useUndoResolution } from "../hooks/useActivity";
 import { useOrgConfig } from "../hooks/useOrgConfig";
+import { useWebhookHealth } from "../hooks/useWebhookHealth";
 import type { Activity, ActivityAction } from "../types/Activity";
 import { buildConflictComparison } from "../api/templates";
 
@@ -157,6 +158,41 @@ function hasUnresolvedHold(entry: Activity): boolean {
 function allChildrenUndone(entry: Activity): boolean {
   if (!entry.children || entry.children.length === 0) return entry.undone === true;
   return entry.children.every(c => allChildrenUndone(c));
+}
+
+/**
+ * Whether GitHub is still reaching us.
+ *
+ * A broken webhook looks exactly like a quiet week — the feed simply stops
+ * growing — and there is no backfill, so anything that happened in the meantime
+ * is gone rather than late. Saying when GitHub last got through is what makes
+ * the two distinguishable.
+ */
+function WebhookPulse() {
+  const { data } = useWebhookHealth();
+  if (!data) return null;
+
+  const tone = data.status === "healthy" ? "good" : data.status === "quiet" ? "info" : "warn";
+  const label = data.status === "unknown" ? "No events received yet"
+    : data.status === "healthy" ? "Receiving events"
+    : data.status === "quiet" ? "Quiet for a day"
+    : "Nothing for 3 days";
+
+  const when = data.lastEventAt
+    ? new Date(data.lastEventAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+    : null;
+
+  return (
+    <div className={`shrink-0 inline-flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl border ${INTENT[tone].soft} ${INTENT[tone].border}`}>
+      <span className={`w-2 h-2 rounded-full mt-1.5 shrink-0 ${INTENT[tone].mark} ${data.status === "healthy" ? "animate-pulse" : ""}`} />
+      <span className="min-w-0">
+        <span className={`block text-[12.5px] font-bold ${INTENT[tone].text}`}>{label}</span>
+        <span className="block text-[11.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+          {when ? <>last: {when}</> : "check the org webhook is configured"}
+        </span>
+      </span>
+    </div>
+  );
 }
 
 export default function ActivityPage() {
@@ -451,6 +487,7 @@ export default function ActivityPage() {
               <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Activity</h1>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Everything that has changed across the organization, newest first.</p>
             </div>
+            <WebhookPulse />
           </div>
           <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-gh-border dark:border-slate-700 shadow-sm">
             <div className="flex items-center gap-2 mb-3">

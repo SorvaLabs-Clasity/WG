@@ -191,6 +191,47 @@ export async function getActivity(limit = 50, offset = 0): Promise<ActivityEntry
   return memoryLog.slice(offset, offset + limit);
 }
 
+/**
+ * When GitHub last reached us, and how long that has been.
+ *
+ * If the org webhook breaks — a rotated secret, a changed address, the instance
+ * down — nothing about the app looks wrong. Auto-apply simply stops happening,
+ * and the way you find out is noticing weeks later that a repository never got
+ * its template. There is no backfill, so whatever arrived in the meantime is
+ * gone.
+ *
+ * The answer was already in the table: the newest row GitHub caused. This only
+ * asks for it.
+ */
+/**
+ * How long the webhook has been silent, read as a verdict.
+ *
+ * The delivery endpoint failing is invisible: the app keeps serving whatever it
+ * last heard, and looks exactly as it does when nothing has happened. The only
+ * evidence either way is the age of the most recent event, so that is what this
+ * turns into words.
+ *
+ * The thresholds are wide on purpose. A quiet organisation is not a broken one,
+ * and three days without a single push, repository or membership event across a
+ * whole org is roughly where "quiet" stops being the likelier explanation.
+ */
+export function webhookHealth(at: string | null, now = Date.now()) {
+  const hours = at === null ? null : (now - new Date(at).getTime()) / 3_600_000;
+  const status = hours === null ? "unknown"
+    : hours < 24 ? "healthy"
+    : hours < 72 ? "quiet"
+    : "stale";
+  return { status, lastEventAt: at, ageHours: hours === null ? null : Math.round(hours * 10) / 10 };
+}
+
+export async function lastGitHubEvent(): Promise<{ at: string | null; action: string | null }> {
+  const recent = usesDynamo()
+    ? await getActivity(60, 0)
+    : memoryLog.slice(0, 60);
+  const fromGitHub = recent.find(e => e.source === "github");
+  return { at: fromGitHub?.timestamp ?? null, action: fromGitHub?.action ?? null };
+}
+
 export async function getActivityForRepo(repo: string, limit = 50): Promise<ActivityEntry[]> {
   if (usesDynamo()) {
     const result = await docClient.send(

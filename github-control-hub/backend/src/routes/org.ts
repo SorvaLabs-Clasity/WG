@@ -6,6 +6,22 @@ import { sendIfRateLimited } from "../utils/rateLimit";
 
 const router = Router();
 
+/**
+ * Whether the org webhook is still reaching us.
+ *
+ * Silence is the failure mode: a broken webhook looks exactly like a quiet
+ * week. Reporting when GitHub last got through lets the difference be seen.
+ */
+router.get("/webhook-health", async (_req: Request, res: Response) => {
+  try {
+    const { lastGitHubEvent, webhookHealth } = await import("../services/activityService");
+    const { at, action } = await lastGitHubEvent();
+    res.json({ ...webhookHealth(at), lastEventAction: action });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "org") });
+  }
+});
+
 router.get("/config", async (req: Request, res: Response) => {
   try {
     const config = await getOrgConfig();

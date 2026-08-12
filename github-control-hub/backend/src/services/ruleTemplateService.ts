@@ -45,6 +45,15 @@ export async function getRuleTemplate(id: string): Promise<RuleTemplate | undefi
   return memStore.get(id);
 }
 
+/** Write a rule template exactly as given. Used by import and by undo. */
+export async function putRuleTemplateRaw(rt: RuleTemplate): Promise<void> {
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: rt }));
+  } else {
+    memStore.set(rt.id, rt);
+  }
+}
+
 export async function createRuleTemplate(
   data: Omit<RuleTemplate, "id" | "createdAt" | "updatedAt">,
   actor: string

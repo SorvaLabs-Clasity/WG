@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Page } from "../design";
 import { useAuth } from "../App";
 import { usePermissions } from "../hooks/usePermissions";
+import { exportConfig, importConfig, type ImportResult } from "../api/config";
 import {
   useTemplates,
   useCreateTemplate,
@@ -37,6 +38,140 @@ const EMPTY_RULE: BranchRule & { inputVal: string } = {
   protection: null,
 };
 
+
+/**
+ * Carry the configuration between accounts.
+ *
+ * Templates, exclusion lists and guardrails live only in DynamoDB, and the
+ * migration script stands up empty tables — so moving to another account meant
+ * retyping every branch rule and ruleset by hand. This is also the only backup
+ * of any of it.
+ */
+function ConfigTransfer({ adminTeam }: { adminTeam: string }) {
+  const [busy, setBusy] = useState<"export" | "import" | null>(null);
+  const [result, setResult] = useState<ImportResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const doExport = async () => {
+    setBusy("export"); setError(null); setResult(null);
+    try {
+      const bundle = await exportConfig();
+      // Handed over as a file rather than shown: it is meant to be kept and
+      // fed to another account, not read here.
+      const url = URL.createObjectURL(new Blob([JSON.stringify(bundle, null, 2)], { type: "application/json" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `control-hub-config-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const doImport = async (file: File, dryRun: boolean) => {
+    setBusy("import"); setError(null); setResult(null);
+    try {
+      const bundle = JSON.parse(await file.text());
+      setResult(await importConfig(bundle, dryRun));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const [pending, setPending] = useState<File | null>(null);
+
+  return (
+    <div className="mt-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-5">
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="min-w-0">
+          <h3 className="text-sm font-black text-slate-900 dark:text-white">Configuration transfer</h3>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1 max-w-[62ch]">
+            Templates, rule templates, exclusion lists, scanners, widgets and AWS guardrails,
+            as one file. Findings and activity are left out — they describe one account at one
+            moment rather than how it is configured.
+          </p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button onClick={doExport} disabled={busy !== null}
+            className="px-3.5 py-2 rounded-lg text-[13px] font-bold bg-slate-900 dark:bg-white text-white dark:text-slate-900 disabled:opacity-50">
+            {busy === "export" ? "Exporting…" : "Export"}
+          </button>
+          <button onClick={() => fileRef.current?.click()} disabled={busy !== null}
+            className="px-3.5 py-2 rounded-lg text-[13px] font-bold border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 disabled:opacity-50">
+            Import…
+          </button>
+          <input ref={fileRef} type="file" accept="application/json" className="hidden"
+            onChange={e => {
+              const f = e.target.files?.[0];
+              e.target.value = "";
+              if (!f) return;
+              setPending(f);
+              // Always shown before anything is written: the honest answer to
+              // "what will this do to my production account" is a list.
+              doImport(f, true);
+            }} />
+        </div>
+      </div>
+
+      {error && (
+        <p className="mt-3 text-[13px] text-rose-600 dark:text-rose-400">{error}</p>
+      )}
+
+      {result && (
+        <div className="mt-4 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+          <p className="text-[13px] font-bold text-slate-900 dark:text-white">
+            {result.dryRun ? "This import would write:" : "Imported:"}
+          </p>
+          <ul className="mt-2 grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-1 text-[13px]">
+            {Object.entries(result.applied).map(([k, n]) => (
+              <li key={k} className="flex justify-between gap-3">
+                <span className="text-slate-500 dark:text-slate-400 capitalize">{k.replace(/([A-Z])/g, " $1").trim()}</span>
+                <span className="font-mono font-bold text-slate-900 dark:text-white tabular-nums">{n}</span>
+              </li>
+            ))}
+          </ul>
+          {result.from.org && (
+            <p className="mt-2 text-[12px] text-slate-400 dark:text-slate-500">
+              from {result.from.org}{result.from.exportedAt ? `, ${new Date(result.from.exportedAt).toLocaleDateString()}` : ""}
+            </p>
+          )}
+          {result.errors.length > 0 && (
+            <ul className="mt-2 space-y-0.5">
+              {result.errors.slice(0, 5).map((e, i) => (
+                <li key={i} className="text-[12px] text-amber-600 dark:text-amber-400">{e}</li>
+              ))}
+            </ul>
+          )}
+          {result.dryRun && pending && (
+            <div className="mt-3 flex items-center gap-2">
+              <button onClick={() => doImport(pending, false)} disabled={busy !== null}
+                className="px-3.5 py-2 rounded-lg text-[13px] font-bold bg-slate-900 dark:bg-white text-white dark:text-slate-900 disabled:opacity-50">
+                {busy === "import" ? "Importing…" : "Apply"}
+              </button>
+              <button onClick={() => { setResult(null); setPending(null); }}
+                className="px-3 py-2 rounded-lg text-[13px] font-bold text-slate-500 dark:text-slate-400">
+                Cancel
+              </button>
+              <span className="text-[12px] text-slate-400 dark:text-slate-500">
+                Records with the same id are overwritten; nothing is deleted.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      <p className="mt-3 text-[12px] text-slate-400 dark:text-slate-500">
+        Only the "{adminTeam}" team can export or import.
+      </p>
+    </div>
+  );
+}
 
 export default function TemplatesPage() {
   const { user } = useAuth();
@@ -776,6 +911,8 @@ export default function TemplatesPage() {
                 </button>
               </div>
             )}
+
+            {canEditTemplates && <ConfigTransfer adminTeam={adminTeam} />}
           </>
         )}
 

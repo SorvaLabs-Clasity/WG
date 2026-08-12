@@ -19,6 +19,7 @@ import dependencyRoutes from "./routes/dependencies";
 import orgRoutes from "./routes/org";
 import graphRoutes from "./routes/graph";
 import widgetRoutes from "./routes/widgets";
+import configRoutes from "./routes/config";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { awsHealthMiddleware } from "./middleware/awsHealthMiddleware";
 import { initTokenManager } from "./github/client";
@@ -86,6 +87,7 @@ app.use("/api/security", authMiddleware, dependencyRoutes);
 app.use("/api/org", authMiddleware, orgRoutes);
 app.use("/api/graph", authMiddleware, graphRoutes);
 app.use("/api/widgets", authMiddleware, widgetRoutes);
+app.use("/api/config", authMiddleware, configRoutes);
 app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
 
 // Try to load secrets from Secrets Manager at startup (covers auto-connected AWS)
