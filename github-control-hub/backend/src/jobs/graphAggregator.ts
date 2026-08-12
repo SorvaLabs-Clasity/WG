@@ -137,6 +137,28 @@ export async function aggregateGraphData(fallbackToken?: string) {
     for (const repo of repos) {
       const repoId = `REPO#${repo.name}`;
 
+      // The repository's own facts, which listForOrg already returned and this
+      // loop used to throw away. Keeping them is one edge per repository and no
+      // additional request, and it lets questions about visibility, archival
+      // and last activity be answered from the graph rather than by fetching
+      // every repository again at query time.
+      edges.push({
+        pk: repoId,
+        sk: "META#repo",
+        type: "repo_meta",
+        metadata: {
+          visibility: repo.visibility ?? (repo.private ? "private" : "public"),
+          archived: !!repo.archived,
+          fork: !!repo.fork,
+          pushedAt: repo.pushed_at ?? null,
+          defaultBranch: repo.default_branch ?? "main",
+          // Every one of these is off across the sampled organisation, and each
+          // is a control an auditor asks about by name.
+          secretScanning: repo.security_and_analysis?.secret_scanning?.status ?? "unknown",
+          pushProtection: repo.security_and_analysis?.secret_scanning_push_protection?.status ?? "unknown",
+        },
+      });
+
       // Who can write to this repository, and how they came by it.
       //
       // This asked for affiliation "direct", meaning only people granted access

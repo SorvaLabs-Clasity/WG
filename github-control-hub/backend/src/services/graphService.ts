@@ -623,6 +623,117 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       break;
     }
 
+    case "public-repos": {
+      // Becoming public raises an alert; being public raises nothing, so an
+      // organisation could be full of public repositories and the app would
+      // have said so once, months ago, in a feed.
+      for (const edge of allEdges) {
+        if (edge.type !== "repo_meta") continue;
+        const visibility = String(edge.metadata?.visibility ?? "private");
+        if (visibility === "private") continue;
+        results.push({
+          repo: edge.pk.replace("REPO#", ""),
+          reason: visibility === "internal"
+            ? "Visible to everyone in the enterprise"
+            : "Visible to anyone on the internet",
+          details: `visibility: ${visibility}`,
+        });
+      }
+      break;
+    }
+
+    case "archived-repos-with-access": {
+      // An archived repository is read-only on GitHub's side, but the access
+      // list is not: the people on it keep whatever the repository can still
+      // give them, and nobody reviews a repository they consider finished.
+      const archived = new Set<string>();
+      for (const edge of allEdges) {
+        if (edge.type === "repo_meta" && edge.metadata?.archived) archived.add(edge.pk);
+      }
+
+      const holders = new Map<string, Set<string>>();
+      for (const edge of allEdges) {
+        if (edge.type !== "has_collaborator" || !archived.has(edge.pk)) continue;
+        // Access the org role confers is not something anyone granted to this
+        // repository, and would name the owner on every archived one.
+        if (edge.metadata?.source === "org_owner") continue;
+        if (!holders.has(edge.pk)) holders.set(edge.pk, new Set());
+        holders.get(edge.pk)!.add(edge.sk.replace("USER#", ""));
+      }
+
+      for (const [repoId, users] of holders) {
+        if (users.size === 0) continue;
+        const names = [...users];
+        results.push({
+          repo: repoId.replace("REPO#", ""),
+          reason: `Archived, but ${names.length} ${names.length === 1 ? "account still has" : "accounts still have"} write or admin`,
+          details: names.slice(0, 6).join(", ") + (names.length > 6 ? "…" : ""),
+        });
+      }
+      break;
+    }
+
+    case "stale-repos": {
+      // Months, because a threshold in days invites arguing about 89 versus 90.
+      const months = Math.max(1, parseInt(String(param ?? "6"), 10) || 6);
+      const cutoff = new Date();
+      cutoff.setUTCMonth(cutoff.getUTCMonth() - months);
+
+      for (const edge of allEdges) {
+        if (edge.type !== "repo_meta") continue;
+        // An archived repository is stale by definition — archiving is the act
+        // of retiring it — so reporting it here says only that somebody did
+        // what they meant to. The archived check covers what is still worth
+        // knowing about those.
+        if (edge.metadata?.archived) continue;
+
+        const pushedAt = edge.metadata?.pushedAt;
+        // A repository that has never been pushed to is empty rather than
+        // abandoned, and saying it is stale would be a different claim.
+        if (!pushedAt) continue;
+        const when = new Date(pushedAt);
+        if (isNaN(when.getTime()) || when >= cutoff) continue;
+        const days = Math.floor((Date.now() - when.getTime()) / 86_400_000);
+        results.push({
+          repo: edge.pk.replace("REPO#", ""),
+          reason: `No push in ${Math.floor(days / 30)} months`,
+          details: `last push ${when.toISOString().slice(0, 10)}`,
+        });
+      }
+      break;
+    }
+
+    case "repos-without-protection": {
+      // "Is main unprotected" cannot answer this: a repository whose default
+      // branch is called something else passes that check by not having a main
+      // to be unprotected, while protecting nothing at all.
+      const branchCount = new Map<string, number>();
+      const protectedCount = new Map<string, number>();
+      for (const edge of allEdges) {
+        if (edge.type !== "has_branch") continue;
+        branchCount.set(edge.pk, (branchCount.get(edge.pk) ?? 0) + 1);
+        if (edge.metadata?.protected) protectedCount.set(edge.pk, (protectedCount.get(edge.pk) ?? 0) + 1);
+      }
+
+      const defaultBranch = new Map<string, string>();
+      for (const edge of allEdges) {
+        if (edge.type === "repo_meta" && edge.metadata?.defaultBranch) {
+          defaultBranch.set(edge.pk, String(edge.metadata.defaultBranch));
+        }
+      }
+
+      for (const [repoId, branches] of branchCount) {
+        if ((protectedCount.get(repoId) ?? 0) > 0) continue;
+        const dflt = defaultBranch.get(repoId);
+        results.push({
+          repo: repoId.replace("REPO#", ""),
+          reason: `No protected branch of ${branches}`,
+          details: dflt ? `default branch: ${dflt}` : "",
+        });
+      }
+      break;
+    }
+
     case "empty-teams":
       const teamsWithMembers = new Set();
       const allTeamsSet = new Set();

@@ -25,6 +25,17 @@ export interface RepoSummary {
   forks_count: number;
   topics: string[];
   html_url: string | null;
+  /**
+   * Arrives on every listForOrg row and was discarded. Each field is a control
+   * an auditor asks about by name, and re-reading them per repository later
+   * would be one request each.
+   */
+  security_and_analysis?: {
+    secret_scanning?: { status?: string };
+    secret_scanning_push_protection?: { status?: string };
+    dependabot_security_updates?: { status?: string };
+    code_security?: { status?: string };
+  } | null;
 }
 
 export async function listRepos(octokit: Octokit): Promise<RepoSummary[]> {
@@ -57,6 +68,7 @@ export async function listRepos(octokit: Octokit): Promise<RepoSummary[]> {
         archived: !!r.archived,
         fork: !!r.fork,
         visibility: (r as any).visibility ?? (r.private ? "private" : "public"),
+        security_and_analysis: (r as any).security_and_analysis ?? null,
         size: r.size ?? 0,
         open_issues_count: r.open_issues_count ?? 0,
         stargazers_count: r.stargazers_count ?? 0,
