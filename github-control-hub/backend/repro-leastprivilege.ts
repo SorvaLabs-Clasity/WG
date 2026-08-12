@@ -195,6 +195,38 @@ const accountsCode = code(accountsTs);
       "lambda:GetFunctionConfiguration is not scoped to the guardrail function");
   }
 
+  // ── a bundled dependency npm cannot reach ──────────────────────────
+  {
+    // aws-cdk-lib ships its dependencies inside its own tarball, so npm
+    // installs them from there rather than resolving them: `overrides` has no
+    // effect and `npm audit fix` has nothing to fix. GHSA-rgw5-rvv9-x895 in
+    // brace-expansion is therefore only fixable by replacing the file, which a
+    // postinstall does — and which nothing would notice had stopped working.
+    const infra = JSON.parse(fs.readFileSync(
+      path.join(ROOT, "github-control-hub/infra/package.json"), "utf8"));
+
+    check("the bundled-dependency patch runs on every install",
+      infra.scripts?.postinstall?.includes("patch-bundled-brace-expansion"),
+      infra.scripts?.postinstall ?? "no postinstall");
+
+    check("  and the replacement version is pinned as a dependency",
+      /\^5\.0\.(9|[1-9]\d)/.test(infra.devDependencies?.["brace-expansion"] ?? ""),
+      infra.devDependencies?.["brace-expansion"] ?? "absent");
+
+    check("  the script it names exists",
+      fs.existsSync(path.join(ROOT, "github-control-hub/infra/scripts/patch-bundled-brace-expansion.mjs")));
+
+    // Only when installed — CI typechecks before it installs infra.
+    const bundledPkg = path.join(ROOT,
+      "github-control-hub/infra/node_modules/aws-cdk-lib/node_modules/brace-expansion/package.json");
+    if (fs.existsSync(bundledPkg)) {
+      const v = JSON.parse(fs.readFileSync(bundledPkg, "utf8")).version;
+      const [maj, min, pat] = v.split(".").map(Number);
+      check("  and the copy on disk is actually patched",
+        maj > 5 || (maj === 5 && (min > 0 || pat >= 9)), v);
+    }
+  }
+
   // ── one role name, agreed by all three files ───────────────────────
   {
     const suffix = "-guardrail-access";

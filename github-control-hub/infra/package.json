@@ -6,15 +6,21 @@
     "deploy": "cdk deploy",
     "destroy": "cdk destroy",
     "diff": "cdk diff",
-    "synth": "cdk synth"
+    "synth": "cdk synth",
+    "postinstall": "node scripts/patch-bundled-brace-expansion.mjs",
+    "verify:deps": "node scripts/patch-bundled-brace-expansion.mjs"
   },
   "dependencies": {
     "aws-cdk-lib": "^2.170.0",
     "constructs": "^10.4.2"
   },
   "devDependencies": {
+    "brace-expansion": "^5.0.9",
     "esbuild": "^0.28.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.2"
+  },
+  "overrides": {
+    "brace-expansion": "^5.0.9"
   }
 }
