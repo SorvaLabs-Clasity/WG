@@ -82,10 +82,26 @@ function createWindow(): void {
       oauthInFlight = url.includes("/auth/github");
       return;
     }
-    if (oauthInFlight || url.includes("github.com")) return;
+    // github.com is not allowed outright. During sign-in oauthInFlight covers
+    // it, and outside sign-in a GitHub link is an ordinary outbound link that
+    // belongs in the user's own browser — allowing it here is what put
+    // github.com inside the app window.
+    if (oauthInFlight) return;
 
     event.preventDefault();
     shell.openExternal(url);
+  });
+
+  // The flag has to be cleared by something that sees a server redirect.
+  // will-navigate does not: GitHub sends us back to /auth/callback with a 302,
+  // which fires will-redirect instead, so the flag was set on the first sign-in
+  // and never lowered. Every outbound link after that opened in this window.
+  // did-navigate fires once a navigation has actually completed, whatever
+  // caused it.
+  mainWindow.webContents.on("did-navigate", (_e, url) => {
+    if (url.startsWith(`http://localhost:${BACKEND_PORT}`)) {
+      oauthInFlight = url.includes("/auth/github");
+    }
   });
 
   // A prevented or failed navigation leaves a blank window, which is what made
