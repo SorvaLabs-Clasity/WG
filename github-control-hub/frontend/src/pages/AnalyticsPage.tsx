@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Page, RefreshButton, Button, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter } from "../design";
+import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter } from "../design";
 import { useAuth } from "../App";
 import { useSecurityQuery, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
@@ -172,7 +172,8 @@ export default function AnalyticsPage() {
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null);
-  const [openId, setOpenId] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<string | null>(null);
+  const focused = useMemo(() => widgets.find(w => w.id === focusId) ?? null, [widgets, focusId]);
 
   /**
    * Each card reports its verdict once its data arrives.
@@ -223,6 +224,17 @@ export default function AnalyticsPage() {
 
   return (
     <Page user={user}>
+      {focused ? (
+        <CheckDetail
+          config={focused}
+          onBack={() => setFocusId(null)}
+          onEdit={() => setEditingWidget(focused)}
+          canEdit={canEditDashboard}
+          graphEmpty={graphEmpty}
+          orgName={orgName}
+        />
+      ) : (
+        <>
       <header className="mb-9" style={enter(0)}>
         <div className="flex items-start justify-between gap-6 flex-wrap">
           <div className="min-w-0">
@@ -292,17 +304,18 @@ export default function AnalyticsPage() {
               key={w.id}
               config={w}
               index={i}
-              open={openId === w.id}
-              onToggle={() => setOpenId(openId === w.id ? null : w.id)}
+              onOpen={() => setFocusId(w.id)}
               onReport={report}
               canEdit={canEditDashboard}
               onEdit={() => setEditingWidget(w)}
               onRemove={() => removeWidget(w.id)}
               graphEmpty={graphEmpty}
-              orgName={orgName}
             />
           ))}
         </div>
+      )}
+
+        </>
       )}
 
       {(showAddModal || editingWidget) && (
@@ -342,6 +355,67 @@ function Ring({ share, tone, children }: { share: number; tone: typeof TONE[Leve
       </svg>
       <div className="absolute inset-0 flex items-center justify-center">
         <span className={`text-[15px] font-black tabular-nums ${tone.figure}`}>{children}</span>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * One check, on its own.
+ *
+ * Detail used to unroll inside the card, which meant a seven-column table in a
+ * third of a row, and then — when the card was widened to fit it — a grid that
+ * reflowed around whatever was open. Both were the same mistake: making the
+ * board carry something the board is the wrong shape for.
+ *
+ * So the board steps aside instead. This is the pattern the AWS page already
+ * uses, and the table gets the whole width without anything moving underneath
+ * it.
+ */
+function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName }: {
+  config: WidgetConfig; onBack: () => void; onEdit: () => void;
+  canEdit: boolean; graphEmpty?: boolean; orgName?: string;
+}) {
+  const { items, isLoading, total } = useWidgetData(config);
+  const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
+  const tone = TONE[verdict.level];
+  const entity = entityOf(items);
+  const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
+  const n = useCountUp(verdict.value);
+
+  return (
+    <div style={enter(0)}>
+      <Back onClick={onBack}>All checks</Back>
+
+      <div className={`${SURFACE.sheet} mb-5`}>
+        <div className={`${tone.wash} px-6 sm:px-8 py-7 flex items-start gap-6 flex-wrap`}>
+          {pct === null
+            ? <Emblem kind={entity} tone={tone} />
+            : <Ring share={verdict.share ?? 0} tone={tone}>{`${pct}%`}</Ring>}
+
+          <div className="flex-1 min-w-[220px]">
+            <p className={`${TYPE.label} ${tone.figure} mb-2`}>{verdict.eyebrow}</p>
+            <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{config.title}</h2>
+            <p className="flex items-baseline gap-2 mt-3">
+              <span className={`text-[38px] font-black tabular-nums leading-none tracking-tight ${tone.figure}`}>{n}</span>
+              <span className="text-sm font-semibold text-slate-500 dark:text-slate-400">
+                {verdict.share === null && verdict.value > 0 ? nounFor(entity, verdict.value) : verdict.caption}
+              </span>
+            </p>
+          </div>
+
+          {canEdit && (
+            <Button onClick={onEdit}>
+              <i className="ph-bold ph-pencil-simple mr-2"></i>Edit check
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className={`${SURFACE.sheet} overflow-x-auto`}>
+        {isLoading
+          ? <Spinner />
+          : <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />}
       </div>
     </div>
   );
@@ -401,12 +475,12 @@ function detailOf(item: any, config: WidgetConfig): string {
 }
 
 function CheckCard({
-  config, index, open, onToggle, onReport, canEdit, onEdit, onRemove, graphEmpty, orgName,
+  config, index, onOpen, onReport, canEdit, onEdit, onRemove, graphEmpty,
 }: {
-  config: WidgetConfig; index: number; open: boolean; onToggle: () => void;
+  config: WidgetConfig; index: number; onOpen: () => void;
   onReport: (id: string, v: Verdict) => void;
   canEdit: boolean; onEdit: () => void; onRemove: () => void;
-  graphEmpty?: boolean; orgName?: string;
+  graphEmpty?: boolean;
 }) {
   const { items, isLoading, total } = useWidgetData(config);
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
@@ -445,10 +519,14 @@ function CheckCard({
 
   return (
     <article
+      onClick={onOpen}
+      role="button"
+      tabIndex={0}
+      onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       style={enter(index)}
-      className={`group rounded-2xl border ${tone.edge} ${tone.lift} bg-white dark:bg-[#151a23] overflow-hidden
+      className={`group cursor-pointer rounded-2xl border ${tone.edge} ${tone.lift} bg-white dark:bg-[#151a23] overflow-hidden
         transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5
-        ${open ? "md:col-span-2 xl:col-span-3" : ""}`}
+        focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 dark:focus-visible:ring-white/30`}
     >
       {/* Header: the wash lives here rather than over the whole card, so the
           names below stay on a plain surface and remain readable. */}
@@ -473,11 +551,11 @@ function CheckCard({
 
           {canEdit && (
             <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 hover:opacity-100 transition-opacity">
-              <button onClick={onEdit} title="Edit"
+              <button onClick={e => { e.stopPropagation(); onEdit(); }} title="Edit"
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/10 transition-colors">
                 <i className="ph-bold ph-pencil-simple text-[13px]"></i>
               </button>
-              <button onClick={onRemove} title="Remove"
+              <button onClick={e => { e.stopPropagation(); onRemove(); }} title="Remove"
                 className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-white/60 dark:hover:bg-white/10 transition-colors">
                 <i className="ph-bold ph-trash text-[13px]"></i>
               </button>
@@ -527,24 +605,14 @@ function CheckCard({
         )}
 
         <button
-          onClick={onToggle}
-          aria-expanded={open}
+          onClick={onOpen}
           className={`mt-3 -mb-1 w-full flex items-center justify-between text-[12.5px] font-bold ${tone.figure} hover:opacity-80 transition-opacity`}
         >
-          <span>{open ? "Hide" : hidden > 0 ? `${hidden} more` : "Open"}</span>
-          <i className={`ph-bold ph-caret-down text-[11px] transition-transform duration-200 ${open ? "rotate-180" : ""}`}></i>
+          <span>{hidden > 0 ? `${hidden} more` : "Open"}</span>
+          <i className="ph-bold ph-arrow-right text-[11px]"></i>
         </button>
       </div>
 
-      {/* grid-template-rows rather than height: it animates without measuring,
-          and without laying the contents out on every frame. */}
-      <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
-        <div className="overflow-hidden">
-          <div className="border-t border-slate-100 dark:border-white/[0.06] max-h-[460px] overflow-y-auto overflow-x-auto">
-            <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
-          </div>
-        </div>
-      </div>
     </article>
   );
 }
