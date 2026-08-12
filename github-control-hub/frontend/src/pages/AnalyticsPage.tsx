@@ -6,6 +6,7 @@ import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS } from "../utils/queryOptions";
 import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget } from "../hooks/useWidgets";
+import { usePermissions } from "../hooks/usePermissions";
 import { useOrgConfig } from "../hooks/useOrgConfig";
 import type { WidgetConfig } from "../api/widgets";
 import { TagInput } from "../components/TagInput";
@@ -20,6 +21,12 @@ export default function AnalyticsPage() {
   const createWidget = useCreateWidget();
   const updateWidget = useUpdateWidget();
   const deleteWidgetMut = useDeleteWidget();
+
+  // One dashboard, shared by everyone, so editing it is gated like the rest of
+  // the org-wide configuration. The server enforces it; this only stops
+  // offering controls that would be refused.
+  const { data: permissions } = usePermissions();
+  const canEditDashboard = permissions?.isControlHubAdmin ?? false;
 
   const { data: orgConfig } = useOrgConfig();
   const orgName = orgConfig?.org || "";
@@ -99,13 +106,15 @@ export default function AnalyticsPage() {
                 </>
               )}
             </button>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="group bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 font-medium text-sm flex items-center gap-2"
-            >
-              <i className="fas fa-plus text-xs group-hover:rotate-90 transition-transform"></i>
-              <span>Add Widget</span>
-            </button>
+            {canEditDashboard && (
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="group bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all duration-300 font-medium text-sm flex items-center gap-2"
+              >
+                <i className="fas fa-plus text-xs group-hover:rotate-90 transition-transform"></i>
+                <span>Add Widget</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -164,7 +173,7 @@ export default function AnalyticsPage() {
           /* ─── Grid View ─── */
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {widgets.map(widget => (
-              <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} onEdit={() => setEditingWidget(widget)} graphEmpty={graphEmpty} orgName={orgName} />
+              <WidgetCard key={widget.id} config={widget} onRemove={() => removeWidget(widget.id)} onEdit={() => setEditingWidget(widget)} canEdit={canEditDashboard} graphEmpty={graphEmpty} orgName={orgName} />
             ))}
             {widgets.length === 0 && (
               <div className="border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-2xl h-[340px] flex flex-col items-center justify-center text-center p-8 group hover:border-slate-300 dark:hover:border-slate-600 transition-colors col-span-full">
@@ -173,9 +182,11 @@ export default function AnalyticsPage() {
                 </div>
                 <h3 className="text-slate-900 dark:text-white font-semibold mb-1">No widgets added yet</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">Track coverage, throughput, or custom data points.</p>
-                <button onClick={() => setShowAddModal(true)} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">
-                  + Create Widget
-                </button>
+                {canEditDashboard && (
+                  <button onClick={() => setShowAddModal(true)} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">
+                    + Create Widget
+                  </button>
+                )}
               </div>
             )}
             {widgets.length > 0 && (
@@ -185,9 +196,11 @@ export default function AnalyticsPage() {
                 </div>
                 <h3 className="text-slate-900 dark:text-white font-semibold mb-1">Add Another Metric</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-sm mb-4">Track coverage, throughput, or custom data points.</p>
-                <button onClick={() => setShowAddModal(true)} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">
-                  + Create Widget
-                </button>
+                {canEditDashboard && (
+                  <button onClick={() => setShowAddModal(true)} className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline">
+                    + Create Widget
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -226,7 +239,7 @@ export default function AnalyticsPage() {
                           )}
                         </div>
                       </div>
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                      <div className={`opacity-0 group-hover:opacity-100 transition-opacity flex gap-2 ${canEditDashboard ? "" : "hidden"}`}>
                         <button onClick={(e) => { e.stopPropagation(); setEditingWidget(w); }} className="text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400">
                           <i className="ph-bold ph-pencil-simple"></i>
                         </button>
@@ -321,7 +334,7 @@ function useWidgetData(config: WidgetConfig) {
 
 /* ─── Widget Card (Grid View) ─── */
 
-function WidgetCard({ config, onRemove, onEdit, graphEmpty, orgName }: { config: WidgetConfig; onRemove: () => void; onEdit: () => void; graphEmpty?: boolean; orgName?: string }) {
+function WidgetCard({ config, onRemove, onEdit, canEdit, graphEmpty, orgName }: { config: WidgetConfig; onRemove: () => void; onEdit: () => void; canEdit: boolean; graphEmpty?: boolean; orgName?: string }) {
   const { items, isLoading, total } = useWidgetData(config);
   const [showDetails, setShowDetails] = useState(false);
 
@@ -352,12 +365,16 @@ function WidgetCard({ config, onRemove, onEdit, graphEmpty, orgName }: { config:
             <button onClick={() => setShowDetails(true)} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white" title="Expand">
               <i className="ph-bold ph-arrows-out-simple"></i>
             </button>
-            <button onClick={onEdit} className="text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400" title="Edit">
-              <i className="ph-bold ph-pencil-simple"></i>
-            </button>
-            <button onClick={onRemove} className="text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400" title="Remove">
-              <i className="ph-bold ph-trash"></i>
-            </button>
+            {canEdit && (
+              <>
+                <button onClick={onEdit} className="text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400" title="Edit">
+                  <i className="ph-bold ph-pencil-simple"></i>
+                </button>
+                <button onClick={onRemove} className="text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400" title="Remove">
+                  <i className="ph-bold ph-trash"></i>
+                </button>
+              </>
+            )}
           </div>
         </div>
 

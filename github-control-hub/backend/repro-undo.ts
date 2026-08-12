@@ -214,7 +214,17 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   check("reverting an exclusion needs the admin team", req("revert_exclusion").adminTeam === true);
   check("  because excluding a repo stops templates protecting it",
     req("delete_exclusion").adminTeam === true && req("restore_exclusion").adminTeam === true);
-  check("dashboard widgets need neither", !req("revert_widget").repo && !req("revert_widget").adminTeam);
+  check("reverting a widget needs the admin team", req("revert_widget").adminTeam === true);
+  check("  because there is one dashboard, shared by everyone",
+    req("delete_widget").adminTeam === true && req("restore_widget").adminTeam === true);
+
+  // Nothing is ungated any more. If something is added that should be, this
+  // has to be changed deliberately rather than by forgetting an entry.
+  const ungated = [...ALLOWED_UNDO_ACTIONS].filter(a => {
+    const r = req(a);
+    return !r.repo && !r.adminTeam;
+  });
+  check("no undo operation is left with no check at all", ungated.length === 0, ungated);
   check("reverting a scanner needs the admin team", req("revert_scanner").adminTeam === true);
   check("  because a scan reads every repo with the app's own credentials",
     req("delete_scanner").adminTeam === true && req("restore_scanner").adminTeam === true);
@@ -261,6 +271,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     ["templates.ts",     /router\.(post|put|delete)\(/g, /refusedTemplateChange|assertWritable/],
     ["exclusions.ts",    /router\.(post|put|delete)\(/g, /refusedExclusionChange/],
     ["scanners.ts",      /router\.(post|put|delete)\(/g, /refusedScannerChange/],
+    ["widgets.ts",       /router\.(post|put|delete)\(/g, /refusedWidgetChange/],
     ["awsGuardrails.ts", /router\.(post|put|delete)\(/g, /requireAdmin/],
     ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted/],
   ];

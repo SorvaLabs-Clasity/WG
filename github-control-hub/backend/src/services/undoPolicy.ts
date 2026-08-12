@@ -100,10 +100,11 @@ const UNDO_REQUIREMENTS: Record<string, UndoRequirement> = {
   restore_scanner:          { adminTeam: true },
   revert_scanner:           { adminTeam: true },
 
-  // Dashboard layout changes nothing outside the dashboard, so it carries no
-  // gate either way. Listed explicitly rather than defaulted, so a new
-  // operation cannot inherit "no checks" by omission.
-  delete_widget: {}, restore_widget: {}, revert_widget: {},
+  // One dashboard, shared by everyone — listWidgets does not scope by user —
+  // so a widget is shared configuration, not a personal preference.
+  delete_widget:            { adminTeam: true },
+  restore_widget:           { adminTeam: true },
+  revert_widget:            { adminTeam: true },
 };
 
 /**
