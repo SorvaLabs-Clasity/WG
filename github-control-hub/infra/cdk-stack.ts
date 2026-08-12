@@ -190,7 +190,7 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     const guardrailFn = new NodejsFunction(this, "GuardrailEnforcer", {
       functionName: `${stackPrefix}-guardrail-enforcer`,
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       entry: path.join(__dirname, "..", "backend", "src", "aws-guardrails", "handler.ts"),
       handler: "handler",
       // A full sweep walks every bucket, log group, instance and DB in the
@@ -208,9 +208,16 @@ export class GitHubControlHubStack extends cdk.Stack {
       },
       deadLetterQueue: guardrailDlq,
       bundling: {
-        // The Node 20 Lambda runtime ships AWS SDK v3, so bundling it would
-        // only make the artifact larger and slower to cold-start.
-        externalModules: ["@aws-sdk/*"],
+        // The SDK is bundled rather than taken from the runtime.
+        //
+        // Managed runtimes have shipped AWS SDK v3, and leaning on that keeps
+        // the artifact small — at the cost of running against whichever
+        // version AWS happens to ship, which can change under you without any
+        // deploy. Bundling removes that variable entirely and makes the
+        // function correct on any runtime. It costs about two megabytes and a
+        // fraction of a second of cold start, on a function that runs every
+        // fifteen minutes and then makes hundreds of AWS calls.
+        externalModules: [],
         minify: false,
         sourceMap: true,
       },

@@ -49,8 +49,11 @@ const previous = had ? fs.readFileSync(FILE, "utf8") : null;
       // must not quietly override them.
       process.env.AWS_PROFILE = "explicit";
       check("  an explicit AWS_PROFILE wins over the remembered one",
-        prefs.restoreAwsProfile() === "explicit" && process.env.AWS_PROFILE === "explicit",
-        process.env.AWS_PROFILE);
+        process.env.AWS_PROFILE === "explicit", process.env.AWS_PROFILE);
+      // Nothing was restored, so nothing is reported as restored — otherwise
+      // startup logs "using remembered profile X" about a file it never read.
+      check("  and is not reported as having been restored",
+        prefs.restoreAwsProfile() === undefined, prefs.restoreAwsProfile());
 
       // On EC2 there are no profiles, only the instance role. Setting one
       // would point the whole server at a profile that does not exist there.

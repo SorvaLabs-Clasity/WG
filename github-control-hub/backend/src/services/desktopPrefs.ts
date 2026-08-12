@@ -54,10 +54,15 @@ export function writeDesktopPrefs(update: Partial<DesktopPrefs>): void {
  * Only when nothing else has already said which profile to use — an explicit
  * AWS_PROFILE in the environment is someone being deliberate, and a remembered
  * click should not override that.
+ *
+ * Returns the profile only when this call is what set it. A profile that was
+ * already in the environment was not restored by anything, and a caller
+ * logging "using remembered profile" for it would be describing a file it
+ * never read.
  */
 export function restoreAwsProfile(): string | undefined {
   if (process.env.__SERVER_MODE__) return undefined;   // EC2 uses the instance role
-  if (process.env.AWS_PROFILE) return process.env.AWS_PROFILE;
+  if (process.env.AWS_PROFILE) return undefined;       // already chosen, deliberately
 
   const { awsProfile } = readDesktopPrefs();
   if (awsProfile) process.env.AWS_PROFILE = awsProfile;
