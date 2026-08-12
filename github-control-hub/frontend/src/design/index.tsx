@@ -129,16 +129,23 @@ export function StatusSlab({ intent, eyebrow, metrics, aside, footer }: {
         style={{ background: "linear-gradient(115deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 45%)" }} />
       <div className="pointer-events-none absolute -right-24 -top-24 w-72 h-72 rounded-full bg-white/10" />
 
-      <div className="relative flex flex-wrap items-start justify-between gap-8">
+      {/* The footer sits under the whole row, not inside the metrics column.
+          Nested there, a sentence long enough to wrap made that column full
+          width, which pushed the aside onto its own line below — the big
+          percentage ending up bottom-left, under the caption, instead of
+          opposite the numbers it belongs to. */}
+      <div className="relative flex flex-wrap items-start justify-between gap-x-10 gap-y-6">
         <div>
           <p className={`${TYPE.label} text-white/60 mb-3`}>{eyebrow}</p>
           <div className="flex items-end gap-10 sm:gap-14">
             {metrics.map(m => <SlabMetric key={m.label} {...m} />)}
           </div>
-          {footer && <div className="text-sm text-white/70 mt-5">{footer}</div>}
         </div>
-        {aside && <div className="flex flex-col items-end gap-4">{aside}</div>}
+        {aside && <div className="flex flex-col items-end gap-4 shrink-0">{aside}</div>}
       </div>
+      {footer && (
+        <div className="relative text-sm text-white/70 mt-6 max-w-[92ch]">{footer}</div>
+      )}
     </section>
   );
 }

@@ -100,7 +100,7 @@ step "1/7  DynamoDB tables"
 AWS_PROFILE="$AWS_PROFILE" AWS_REGION="$REGION" STACK_NAME="$PREFIX" SKIP_SECRET=1 \
   bash "$HERE/setup-aws-account.sh" </dev/null \
   || die "Table creation failed."
-ok "14 tables present (on-demand billing; idle tables cost nothing)"
+ok "13 tables present (on-demand billing; idle tables cost nothing)"
 
 # ── 2. secrets ────────────────────────────────────────────────────────
 step "2/7  GitHub credentials"
@@ -119,7 +119,9 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
   echo
   echo "  ${bold}Create these in GitHub first${off} (open in a browser):"
   echo "    OAuth App   https://github.com/organizations/$GH_ORG/settings/applications"
-  echo "                Callback URL: http://localhost:5173/api/auth/callback"
+  echo "                Callback URL: ${bold}http://localhost:4321/auth/callback${off}"
+  echo "                (the desktop app serves its own backend on 4321, and the"
+  echo "                 route is /auth/callback — not /api/auth/callback)"
   echo "    GitHub App  https://github.com/organizations/$GH_ORG/settings/apps"
   echo "                Then install it on the org and note the installation id"
   echo "                (it is the number at the end of the install URL)."
@@ -202,6 +204,9 @@ if ! aws cloudformation describe-stacks --stack-name CDKToolkit >/dev/null 2>&1;
   npx cdk bootstrap "aws://$ACCOUNT/$REGION" || die "cdk bootstrap failed."
 fi
 
+# Read-only by default. The app can report on this account and is incapable of
+# changing it; a rule set to enforce still finds violations and records the fix
+# it would have made. Add -c enforce=true here only if you want it to act.
 STACK_NAME="$PREFIX" npx cdk deploy --require-approval never \
   || die "cdk deploy failed."
 
@@ -290,6 +295,14 @@ cat <<EOF
   company   $COMPANY
   instance  $PUBLIC_IP
   webhook   $WEBHOOK_URL
+
+  Not done by this script, because it needs decisions rather than commands:
+    · Other AWS accounts. Open AWS -> Accounts -> "How do I add an account?"
+      in the app; it generates the template, the parameters and the links.
+      docs/aws-guardrails/accounts.md
+    · Whether guardrails may change anything. Both rules are report-only and
+      the stack is deployed read-only. Redeploy with -c enforce=true to grant
+      three write actions.  docs/aws-guardrails/permissions.md
 
   Worth doing next:
     · Create a repo in $GH_ORG and confirm it appears in the activity feed.
