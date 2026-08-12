@@ -16,19 +16,66 @@ type DisplayType = "metric" | "table";
 type PresetId = "dependabot" | "bypasses" | "vuln-repos";
 
 /**
- * Severity filter for the "repositories with vulnerabilities" preset. Stored in
- * queryParam so it survives a reload with the rest of the widget's config.
+ * Which severities the "repositories with vulnerabilities" preset counts.
+ *
+ * A threshold — "high and above" — cannot express "critical and medium, but
+ * not high", and there is no reason it should not be askable. So the setting is
+ * a set, stored comma-separated in queryParam so it survives a reload with the
+ * rest of the widget's configuration.
  */
-const SEVERITY_CHOICES = [
-  ["any", "Any severity"],
-  ["critical", "Critical only"],
-  ["high", "High and above"],
-  ["medium", "Medium and above"],
-  ["low", "Low and above"],
-] as const;
+const SEVERITIES = ["critical", "high", "medium", "low"] as const;
+type Severity = typeof SEVERITIES[number];
 
 const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, moderate: 2, low: 1 };
-const THRESHOLD: Record<string, number> = { any: 1, low: 1, medium: 2, high: 3, critical: 4 };
+
+/** Thresholds the setting used to hold, kept readable so old widgets survive. */
+const LEGACY_THRESHOLDS: Record<string, Severity[]> = {
+  any: ["critical", "high", "medium", "low"],
+  low: ["critical", "high", "medium", "low"],
+  medium: ["critical", "high", "medium"],
+  high: ["critical", "high"],
+  critical: ["critical"],
+};
+
+/**
+ * The stored form is prefixed, because a bare severity name is ambiguous.
+ *
+ * "low" used to mean "low and above", which is everything; as a set it means
+ * low alone. Same for "high" and "medium". Without a marker, choosing one
+ * severity would silently store the opposite of what was chosen, and the widget
+ * would look like it was ignoring the setting.
+ */
+const SET_PREFIX = "sev:";
+
+export function encodeSeverities(picked: Severity[]): string {
+  // Written in the order the app lists them, so two widgets counting the same
+  // set produce the same string.
+  return SET_PREFIX + SEVERITIES.filter(x => picked.includes(x)).join(",");
+}
+
+export function parseSeverities(param: string | undefined): Severity[] {
+  const raw = (param ?? "").trim();
+  if (!raw) return [...SEVERITIES];
+
+  const explicit = raw.startsWith(SET_PREFIX);
+  const body = explicit ? raw.slice(SET_PREFIX.length) : raw;
+
+  if (!explicit && LEGACY_THRESHOLDS[body]) return LEGACY_THRESHOLDS[body];
+
+  const picked = body.split(",").map(x => x.trim().toLowerCase())
+    .filter((x): x is Severity => (SEVERITIES as readonly string[]).includes(x));
+  // An empty selection would count nothing at all, which reads on the card as
+  // a clean check rather than as a misconfigured one.
+  return picked.length ? picked : [...SEVERITIES];
+}
+
+/** "Critical and high", "all severities" — the label the card and form share. */
+export function describeSeverities(picked: Severity[]): string {
+  if (picked.length === SEVERITIES.length) return "all severities";
+  const ordered = SEVERITIES.filter(s => picked.includes(s));
+  if (ordered.length === 1) return `${ordered[0]} only`;
+  return ordered.slice(0, -1).join(", ") + " and " + ordered[ordered.length - 1];
+}
 
 /**
  * The checks, as cards with weight.
@@ -393,7 +440,11 @@ function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName }: {
             : <Ring share={verdict.share ?? 0} tone={tone}>{`${pct}%`}</Ring>}
 
           <div className="flex-1 min-w-[220px]">
-            <p className={`${TYPE.label} ${tone.figure} mb-2`}>{verdict.eyebrow}</p>
+            <p className={`${TYPE.label} ${tone.figure} mb-2`}>
+              {config.type === "preset" && config.presetId === "vuln-repos"
+                ? describeSeverities(parseSeverities(config.queryParam))
+                : verdict.eyebrow}
+            </p>
             <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">{config.title}</h2>
             <p className="flex items-baseline gap-2 mt-3">
               <span className={`text-[38px] font-black tabular-nums leading-none tracking-tight ${tone.figure}`}>{n}</span>
@@ -546,7 +597,13 @@ function CheckCard({
           )}
 
           <div className="flex-1 min-w-0 pt-1">
-            <p className={`${TYPE.label} ${tone.figure} mb-1.5`}>{verdict.eyebrow}</p>
+            <p className={`${TYPE.label} ${tone.figure} mb-1.5 truncate`}>
+              {/* Two of these can sit side by side counting different
+                  severities, and the title alone will not say which. */}
+              {config.type === "preset" && config.presetId === "vuln-repos"
+                ? describeSeverities(parseSeverities(config.queryParam))
+                : verdict.eyebrow}
+            </p>
             <h3 className="text-[15px] font-black text-slate-900 dark:text-white leading-tight line-clamp-2">
               {config.title}
             </h3>
@@ -656,11 +713,13 @@ function useWidgetData(config: WidgetConfig) {
         // adding this widget costs no additional GitHub requests — the list is
         // one request per repository and must not be fetched twice.
         loading = depsLoading;
-        const min = THRESHOLD[config.queryParam || "any"] ?? 1;
+        const wanted = new Set<string>(parseSeverities(config.queryParam));
+        // GitHub calls it "moderate"; the rest of the app calls it medium.
+        if (wanted.has("medium")) wanted.add("moderate");
         const map = new Map<string, any>();
         for (const dep of depsData ?? []) {
           if (dep.clean || dep.disabled || dep.scanning) continue;
-          if ((SEVERITY_RANK[dep.severity] ?? 0) < min) continue;
+          if (!wanted.has(dep.severity)) continue;
           if (!map.has(dep.repo)) map.set(dep.repo, { repo: dep.repo, total: 0, worst: "low" });
           const e = map.get(dep.repo)!;
           e.total++;
@@ -950,7 +1009,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
   const [presetId, setPresetId] = useState<PresetId>((initialData?.presetId as PresetId) || "dependabot");
   // Reuses queryParam rather than adding a field, so it persists with the rest
   // of the widget without a schema change.
-  const [presetSeverity, setPresetSeverity] = useState<string>(initialData?.queryParam || "any");
+  const [picked, setSeverities] = useState<Severity[]>(() => parseSeverities(initialData?.queryParam));
   const [displayType, setDisplayType] = useState<DisplayType>(initialData?.displayType || "metric");
 
   const [selectedQueryId, setSelectedQueryId] = useState<string>(initialData?.queryId || QUERY_OPTIONS[0].id);
@@ -999,7 +1058,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
     if (type === "preset") {
       onSave({
         title, type, presetId, displayType,
-        ...(presetId === "vuln-repos" && { queryParam: presetSeverity }),
+        ...(presetId === "vuln-repos" && { queryParam: encodeSeverities(picked) }),
       });
     } else {
       let advanced = undefined;
@@ -1095,18 +1154,46 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                 </select>
 
                 {presetId === "vuln-repos" && (
-                  <div className="mt-3">
-                    <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Severity</label>
-                    <select
-                      value={presetSeverity}
-                      onChange={(e) => setPresetSeverity(e.target.value)}
-                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
-                    >
-                      {SEVERITY_CHOICES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
-                    </select>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
-                      Counts repositories, not alerts. Reads the same data as the Dependabot tab,
-                      so this widget makes no extra GitHub requests.
+                  <div className="mt-4">
+                    <div className="flex items-baseline justify-between gap-3 mb-2">
+                      <label className="block text-sm font-semibold text-slate-900 dark:text-white">Count which severities</label>
+                      <button
+                        type="button"
+                        onClick={() => setSeverities(picked.length === SEVERITIES.length ? ["critical"] : [...SEVERITIES])}
+                        className="text-[12px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                      >
+                        {picked.length === SEVERITIES.length ? "Critical only" : "Select all"}
+                      </button>
+                    </div>
+
+                    {/* Any combination, not a threshold — "critical and medium
+                        but not high" is a reasonable thing to ask for. */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {SEVERITIES.map(sev => {
+                        const on = picked.includes(sev);
+                        return (
+                          <button
+                            key={sev}
+                            type="button"
+                            onClick={() => setSeverities(
+                              on ? picked.filter(x => x !== sev) : [...picked, sev]
+                            )}
+                            className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border text-sm font-semibold capitalize transition-colors ${
+                              on
+                                ? "border-slate-900 dark:border-white bg-slate-900 dark:bg-white text-white dark:text-slate-900"
+                                : "border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-slate-500"}`}
+                          >
+                            <i className={`ph-bold ${on ? "ph-check-square" : "ph-square"} text-base`}></i>
+                            {sev}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-2.5">
+                      Counting <span className="font-semibold text-slate-600 dark:text-slate-300">{describeSeverities(picked)}</span>.
+                      Repositories, not alerts — a repo with six criticals counts once. Reads the same
+                      data as the Dependabot tab, so this widget makes no extra GitHub requests.
                     </p>
                   </div>
                 )}
