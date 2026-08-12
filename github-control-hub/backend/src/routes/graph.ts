@@ -5,6 +5,7 @@ import path from "path";
 import { evaluateSecurityQuery } from "../services/graphService";
 import { getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { sendIfRateLimited } from "../utils/rateLimit";
 
 const router = Router();
 
@@ -191,6 +192,14 @@ router.get("/query", async (req: Request, res: Response) => {
     const results = await evaluateSecurityQuery(q, param, advanced, getSystemToken() || req.user?.accessToken);
     res.json(results);
   } catch (error: any) {
+    // Not a server fault and not worth a stack trace: the widget names a check
+    // that no longer exists, and only editing the widget will fix it.
+    const { UnknownQueryError } = await import("../services/graphService");
+    if (error instanceof UnknownQueryError) {
+      res.status(400).json({ error: error.message, code: "UNKNOWN_QUERY", queryId: error.queryId });
+      return;
+    }
+    if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "graph") });
   }
 });

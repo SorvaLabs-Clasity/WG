@@ -40,7 +40,11 @@ export function useSecurityQuery(q: string | null, param?: string, advanced?: an
     queryKey: ["graph", "security-query", q, param, advanced],
     queryFn: () => fetchSecurityQuery(q!, param, advanced),
     enabled: !!q,
-    staleTime: 15_000,
-    refetchInterval: 30_000,
+    // No polling. Every one of these is a full scan of the graph table, and
+    // several widgets on a page meant a scan every few seconds — visible as
+    // the cards re-animating, and as a stack trace per failing widget. The
+    // graph only changes when aggregation runs, which is a button.
+    staleTime: 5 * 60_000,
+    retry: false,
   });
 }

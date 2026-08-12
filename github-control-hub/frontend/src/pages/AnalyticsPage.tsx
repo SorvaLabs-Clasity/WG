@@ -537,7 +537,7 @@ function CheckCard({
   canEdit: boolean; onEdit: () => void; onRemove: () => void;
   graphEmpty?: boolean;
 }) {
-  const { items, isLoading, total, entity } = useWidgetData(config);
+  const { items, isLoading, total, entity, error } = useWidgetData(config);
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const n = useCountUp(verdict.value);
   const tone = TONE[verdict.level];
@@ -556,6 +556,34 @@ function CheckCard({
   const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
   const preview = items.filter((i: any) => !i.status || i.status === "fail").slice(0, 3);
   const hidden = Math.max(0, verdict.value - preview.length);
+
+  if (error) {
+    return (
+      <article style={enter(index)}
+        className="group rounded-2xl border border-amber-200/80 dark:border-amber-500/25 bg-white dark:bg-[#151a23] overflow-hidden">
+        <div className="bg-gradient-to-br from-amber-500/[0.13] to-amber-500/[0.04] dark:from-amber-500/[0.20] dark:to-amber-500/[0.06] px-5 pt-5 pb-4 flex items-start gap-4">
+          <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-amber-500/10 border border-amber-200/80 dark:border-amber-500/25">
+            <i className="ph-fill ph-warning text-[26px] text-amber-600 dark:[color:#ffc14d]"></i>
+          </div>
+          <div className="flex-1 min-w-0 pt-1">
+            <p className={`${TYPE.label} text-amber-600 dark:[color:#ffc14d] mb-1.5`}>Not running</p>
+            <h3 className="text-[15px] font-black text-slate-900 dark:text-white leading-tight line-clamp-2">{config.title}</h3>
+          </div>
+        </div>
+        <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.06]">
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">{error.message}</p>
+          {canEdit && (
+            <div className="flex gap-2 mt-3">
+              <button onClick={e => { e.stopPropagation(); onEdit(); }}
+                className="text-[12.5px] font-bold text-slate-700 dark:text-slate-200 hover:underline">Edit check</button>
+              <button onClick={e => { e.stopPropagation(); onRemove(); }}
+                className="text-[12.5px] font-bold text-rose-600 dark:text-rose-400 hover:underline">Remove</button>
+            </div>
+          )}
+        </div>
+      </article>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -683,7 +711,7 @@ function useWidgetData(config: WidgetConfig) {
   const { data: bypassData, isLoading: bypassLoading } = useSecurityQuery(isBypass ? "protection-bypasses-ranking" : null);
 
   const isQuery = config.type === "query";
-  const { data: queryData, isLoading: queryLoading } = useSecurityQuery(isQuery ? config.queryId! : null, config.queryParam, config.queryAdvanced);
+  const { data: queryData, isLoading: queryLoading, error: queryError } = useSecurityQuery(isQuery ? config.queryId! : null, config.queryParam, config.queryAdvanced);
 
   const { data: repos } = useRepos();
 
@@ -745,7 +773,10 @@ function useWidgetData(config: WidgetConfig) {
   const entity = entityForConfig(config);
   const total = entity === "repository" && repos ? repos.length : null;
 
-  return { items, isLoading, total, entity };
+  // A widget whose check has been removed returns nothing, which on a card
+  // looks exactly like a check that found nothing. Carrying the failure up
+  // means it can say so instead of reading as clean.
+  return { items, isLoading, total, entity, error: (queryError as Error) ?? null };
 }
 
 /* ─── Widget Card (Grid View) ─── */

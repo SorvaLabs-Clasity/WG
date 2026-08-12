@@ -36,6 +36,14 @@ async function scanAllEdges(): Promise<any[]> {
   return items;
 }
 
+/** A saved widget naming a check that no longer exists. */
+export class UnknownQueryError extends Error {
+  constructor(readonly queryId: string) {
+    super(`No check named "${queryId}" — it may have been removed.`);
+    this.name = "UnknownQueryError";
+  }
+}
+
 export async function evaluateSecurityQuery(q: string, param?: string, advanced?: any, userToken?: string) {
   const allEdges = await scanAllEdges();
 
@@ -796,7 +804,10 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     }
 
     default:
-      throw new Error("Unknown query type");
+      // A widget saved against a check that has since been removed. Retrying
+      // it on a timer produced a page of stack traces and no explanation, so
+      // it is named and typed for the route to turn into something readable.
+      throw new UnknownQueryError(q);
   }
 
   // Deduplicate results based on primary entity

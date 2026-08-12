@@ -1,4 +1,5 @@
-import { v4 as uuidv4 } from "uuid";
+import crypto from "crypto";
+
 import { logActivity } from "./activityService";
 import { docClient, usesDynamo, tableName, PutCommand, ScanCommand, GetCommand } from "../utils/dynamo";
 
@@ -52,7 +53,7 @@ export async function createAlert(
   details?: any
 ): Promise<SecurityAlert> {
   const newAlert: SecurityAlert = {
-    id: uuidv4(),
+    id: crypto.randomUUID(),
     repo,
     type,
     message,
