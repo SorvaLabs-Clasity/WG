@@ -1,4 +1,4 @@
-import { GuardrailKind, ResourceSnapshot } from "./types";
+import { GuardrailKind, ResourceSnapshot, Scope } from "./types";
 import { httpsOnlyStatement } from "./catalog";
 import { snapRetention } from "./types";
 
@@ -11,9 +11,17 @@ import { snapRetention } from "./types";
  * Kinds absent from this map are report-only by construction: revoking a
  * security group rule or flipping an RDS instance private can cut live access,
  * so those are surfaced for a human rather than fixed automatically.
+ *
+ * Each takes the scope it is writing in. Reading the region from the
+ * environment here would mean a fix computed against prod being applied in
+ * whichever account the app runs in — the one failure mode of multi-account
+ * enforcement that cannot be walked back.
  */
 
-const REGION = process.env.AWS_REGION || "us-east-1";
+/** Client options carrying the scope's credentials, or none for the home account. */
+function clientConfig(scope: Scope) {
+  return { region: scope.region, ...(scope.credentials && { credentials: scope.credentials }) };
+}
 
 export interface RemediationResult {
   changed: boolean;
@@ -21,12 +29,12 @@ export interface RemediationResult {
   undo?: { action: string; params: Record<string, any> };
 }
 
-type Remediator = (resource: ResourceSnapshot, params: Record<string, any>) => Promise<RemediationResult>;
+type Remediator = (resource: ResourceSnapshot, params: Record<string, any>, scope: Scope) => Promise<RemediationResult>;
 
 const remediators: Partial<Record<GuardrailKind, Remediator>> = {
-  async s3_https_only(resource, params) {
+  async s3_https_only(resource, params, scope) {
     const { S3Client, PutBucketPolicyCommand } = await import("@aws-sdk/client-s3");
-    const s3 = new S3Client({ region: REGION });
+    const s3 = new S3Client(clientConfig(scope));
     const sid = params.sid || "EnforceHTTPSOnly";
 
     const existing = resource.state.policy as { Version?: string; Statement?: any[] } | null;
@@ -45,15 +53,20 @@ const remediators: Partial<Record<GuardrailKind, Remediator>> = {
       undo: {
         action: "s3_restore_bucket_policy",
         // null means there was no policy, and undo should delete rather than restore.
-        params: { bucket: resource.id, policy: existing ? JSON.stringify(existing) : null },
+        // The account and region ride along: a bucket name alone does not say
+        // where to put the policy back.
+        params: {
+          bucket: resource.id, policy: existing ? JSON.stringify(existing) : null,
+          accountId: scope.accountId, region: scope.region,
+        },
       },
     };
   },
 
-  async log_retention_min(resource, params) {
+  async log_retention_min(resource, params, scope) {
     const { CloudWatchLogsClient, PutRetentionPolicyCommand, DeleteRetentionPolicyCommand } =
       await import("@aws-sdk/client-cloudwatch-logs");
-    const logs = new CloudWatchLogsClient({ region: REGION });
+    const logs = new CloudWatchLogsClient(clientConfig(scope));
     // CloudWatch rejects arbitrary retention values, so round up to one it takes.
     const target = snapRetention(params.setToDays ?? params.minDays ?? 365);
     const previous: number | undefined = resource.state.retentionInDays;
@@ -63,7 +76,13 @@ const remediators: Partial<Record<GuardrailKind, Remediator>> = {
     return {
       changed: true,
       description: `Set retention on ${resource.id} to ${target} days (was ${previous ?? "never expire"})`,
-      undo: { action: "logs_restore_retention", params: { logGroup: resource.id, retentionInDays: previous ?? null } },
+      undo: {
+        action: "logs_restore_retention",
+        params: {
+          logGroup: resource.id, retentionInDays: previous ?? null,
+          accountId: scope.accountId, region: scope.region,
+        },
+      },
     };
   },
 };
@@ -73,7 +92,7 @@ export function canRemediate(kind: GuardrailKind): boolean {
 }
 
 export async function remediate(
-  kind: GuardrailKind, resource: ResourceSnapshot, params: Record<string, any>
+  kind: GuardrailKind, resource: ResourceSnapshot, params: Record<string, any>, scope: Scope
 ): Promise<RemediationResult> {
   const fn = remediators[kind];
   if (!fn) {
@@ -82,5 +101,5 @@ export async function remediate(
       description: `"${kind}" is report-only: fixing it automatically could cut live access, so it needs a human.`,
     };
   }
-  return fn(resource, params);
+  return fn(resource, params, scope);
 }

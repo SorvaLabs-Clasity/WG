@@ -22,6 +22,16 @@ export interface Guardrail {
   applyOnCreate: boolean;
   params: Record<string, any>;
   exclusionLists: string[];
+  /**
+   * Which accounts this rule runs in. Empty or absent means all of them, which
+   * is what every rule written before accounts existed means — and the reading
+   * that keeps a rule from silently stopping when a second account is added.
+   *
+   * Naming accounts is for rules that genuinely differ by environment: a
+   * retention floor that is 365 days in prod and 30 in dev is two rules, not a
+   * rule with an exception list.
+   */
+  accounts?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -84,6 +94,10 @@ export interface Finding {
   proposedFix?: string;
   /** Region the resource lives in, so the UI can build a console link. */
   region?: string;
+  /** Which account it lives in. Every finding written since accounts existed has one. */
+  accountId?: string;
+  /** The account's label ("prod", "uat"), so the UI need not resolve twelve digits. */
+  accountName?: string;
   excluded: boolean;
   excludedBy?: string;
   remediated: boolean;
@@ -149,4 +163,74 @@ export const CLOUDWATCH_RETENTION_DAYS = [
 /** Round up to the nearest value CloudWatch will accept. */
 export function snapRetention(days: number): number {
   return CLOUDWATCH_RETENTION_DAYS.find(d => d >= days) ?? 3653;
+}
+
+
+/**
+ * One AWS account the guardrails run against.
+ *
+ * An organisation is rarely one account. The rules that matter — retention
+ * floors, TLS-only buckets — matter most in the accounts nobody logs into
+ * daily, and a tool that can only see the account it happens to be deployed in
+ * reports a clean bill of health for an estate it has never looked at.
+ *
+ * Access is by role assumption rather than stored keys: the target account
+ * grants a role, the app's Lambda assumes it, and revoking access is a change
+ * in the account that owns the resources rather than a secret to go and delete.
+ */
+export interface AwsAccount {
+  /** The twelve-digit AWS account id. Also the primary key. */
+  accountId: string;
+  /** What people call it: "prod", "uat", "sandbox". */
+  name: string;
+  /**
+   * Role to assume in that account. Absent for the account the app itself runs
+   * in, which needs no assumption and cannot be locked out by a bad role.
+   */
+  roleArn?: string;
+  /** Matched against the role's trust policy, when the account requires one. */
+  externalId?: string;
+  /** Regions to sweep. Empty means the region the app runs in. */
+  regions: string[];
+  enabled: boolean;
+  /** True for the account hosting the app. Not editable, and always present. */
+  isHome?: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Where a collector or remediator should point.
+ *
+ * Passing this rather than reading process.env is what makes one engine able to
+ * cover several accounts: the credentials are an argument, so nothing in the
+ * call path holds a hidden assumption about which account it is in.
+ */
+export interface Scope {
+  accountId: string;
+  accountName: string;
+  region: string;
+  /** Absent means the ambient role — the account the app runs in. */
+  credentials?: AwsCredentials;
+}
+
+/**
+ * What a collector found, and what it could not see.
+ *
+ * `unswept` exists because S3 is global while the sweep is per-region: buckets
+ * in a region nobody added to the account are skipped, and a skipped bucket
+ * looks on screen exactly like a compliant one. Saying so out loud is the
+ * difference between "nothing wrong here" and "nobody looked".
+ */
+export interface Collection {
+  resources: ResourceSnapshot[];
+  unswept?: { region: string; count: number }[];
+}
+
+export interface AwsCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken?: string;
+  expiration?: Date;
 }

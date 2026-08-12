@@ -1,4 +1,4 @@
-import { ResourceSnapshot } from "./types";
+import { ResourceSnapshot, Scope, Collection } from "./types";
 
 /**
  * Reads current state from AWS and shapes it into ResourceSnapshots.
@@ -7,12 +7,15 @@ import { ResourceSnapshot } from "./types";
  * pure functions over the snapshots these produce, which is what keeps the
  * catalog testable without AWS.
  *
+ * Every collector takes the account and region to look in rather than reading
+ * the environment. That argument is the whole of multi-account support: with a
+ * hidden default, one of these would eventually be called for "prod" and answer
+ * about the account the app happens to be deployed in.
+ *
  * Every optional lookup is wrapped: a bucket with no policy, no encryption or
  * no public-access block is an ordinary state, not an error, and AWS signals
  * each of those with a distinct exception rather than an empty response.
  */
-
-const REGION = process.env.AWS_REGION || "us-east-1";
 
 /** Swallow the "this is simply not configured" errors and return a fallback. */
 async function optional<T>(fn: () => Promise<T>, fallback: T, notConfigured: string[]): Promise<T> {
@@ -25,33 +28,47 @@ async function optional<T>(fn: () => Promise<T>, fallback: T, notConfigured: str
   }
 }
 
+/** Client options carrying the scope's credentials, or none for the home account. */
+function clientConfig(scope: Scope) {
+  return { region: scope.region, ...(scope.credentials && { credentials: scope.credentials }) };
+}
 
-export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[]> {
-  const { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetPublicAccessBlockCommand,
-          GetBucketTaggingCommand } = await import("@aws-sdk/client-s3");
-  const s3 = new S3Client({ region: REGION });
+export async function collectBuckets(scope: Scope, only?: string[]): Promise<Collection> {
+  const { S3Client, ListBucketsCommand, GetBucketPolicyCommand, GetBucketTaggingCommand } =
+    await import("@aws-sdk/client-s3");
+  const s3 = new S3Client(clientConfig(scope));
 
   const listed = only?.length
-    ? only.map(name => ({ Name: name }))
+    ? only.map(name => ({ Name: name, BucketRegion: scope.region }))
     : (await s3.send(new ListBucketsCommand({}))).Buckets ?? [];
 
   const out: ResourceSnapshot[] = [];
+  const elsewhere = new Map<string, number>();
+
   for (const b of listed) {
     const name = b.Name!;
     if (!name) continue;
+
+    // ListBuckets is global: every bucket in the account comes back whatever
+    // region was asked for. Without this filter a two-region account would
+    // report every bucket twice and remediate each of them twice — and reading
+    // a bucket from the wrong region's endpoint fails outright with a redirect.
+    const home = b.BucketRegion || "us-east-1";
+    if (home !== scope.region) {
+      // Counted rather than dropped. A bucket in a region nobody added to the
+      // account is invisible, and an invisible bucket reads on screen exactly
+      // like a compliant one.
+      elsewhere.set(home, (elsewhere.get(home) ?? 0) + 1);
+      continue;
+    }
 
     const policyRaw = await optional(
       async () => (await s3.send(new GetBucketPolicyCommand({ Bucket: name }))).Policy,
       undefined, ["NoSuchBucketPolicy"]);
 
-
-
-
     const tagSet = await optional(
       async () => (await s3.send(new GetBucketTaggingCommand({ Bucket: name }))).TagSet,
       [], ["NoSuchTagSet"]);
-
-
 
     out.push({
       id: name,
@@ -62,17 +79,20 @@ export async function collectBuckets(only?: string[]): Promise<ResourceSnapshot[
       },
     });
   }
-  return out;
+  return {
+    resources: out,
+    unswept: [...elsewhere].map(([region, count]) => ({ region, count })),
+  };
 }
 
 function safeJson(s: string): any {
   try { return JSON.parse(s); } catch { return null; }
 }
 
-export async function collectLogGroups(only?: string[]): Promise<ResourceSnapshot[]> {
+export async function collectLogGroups(scope: Scope, only?: string[]): Promise<Collection> {
   const { CloudWatchLogsClient, DescribeLogGroupsCommand, ListTagsForResourceCommand } =
     await import("@aws-sdk/client-cloudwatch-logs");
-  const logs = new CloudWatchLogsClient({ region: REGION });
+  const logs = new CloudWatchLogsClient(clientConfig(scope));
 
   const groups: any[] = [];
   let nextToken: string | undefined;
@@ -97,7 +117,9 @@ export async function collectLogGroups(only?: string[]): Promise<ResourceSnapsho
       state: { retentionInDays: g.retentionInDays, arn: g.arn },
     });
   }
-  return out;
+  // Log groups are genuinely per-region: asking in one region cannot see
+  // another's, so there is nothing here that was skipped.
+  return { resources: out };
 }
 
 /** Log group ARNs come back with a trailing ":*" that the tagging API rejects. */
@@ -105,16 +127,8 @@ function stripTrailingColonStar(arn: string | undefined): string | undefined {
   return arn?.endsWith(":*") ? arn.slice(0, -2) : arn;
 }
 
-
-
-
-/** Account-level singletons. Each returns exactly one snapshot. */
-
-
-
-
 /** Collector for a resource type, so the engine can dispatch by rule kind. */
-export const COLLECTORS: Record<string, (only?: string[]) => Promise<ResourceSnapshot[]>> = {
+export const COLLECTORS: Record<string, (scope: Scope, only?: string[]) => Promise<Collection>> = {
   "s3:bucket": collectBuckets,
   "logs:log-group": collectLogGroups,
 };

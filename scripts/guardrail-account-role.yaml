@@ -1,0 +1,131 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+# Deploy this in each AWS account you want the Control Hub to watch — dev, uat,
+# prod, sandbox. It creates one role and nothing else.
+#
+# Why a role rather than an access key: the account that owns the resources
+# decides who may look at them, and revoking that decision is deleting this
+# stack. There is no secret to store in the app, none to rotate, and none to
+# leak. Every call the Control Hub makes lands in this account's own CloudTrail
+# under the session name "control-hub-guardrails", so the account can see
+# exactly what was read and what was changed.
+#
+#   aws cloudformation deploy \
+#     --template-file guardrail-account-role.yaml \
+#     --stack-name control-hub-guardrail-access \
+#     --capabilities CAPABILITY_NAMED_IAM \
+#     --profile <the target account> \
+#     --parameter-overrides \
+#       ControlHubLambdaRoleArn=arn:aws:iam::<home account>:role/<lambda role> \
+#       ExternalId=<a string you choose>
+#
+# Both parameter values are printed by the Control Hub's own stack, as
+# GuardrailLambdaRoleArn and GuardrailRoleName.
+
+Description: >
+  Lets the GitHub Control Hub read compliance state in this account, and fix the
+  two things it is allowed to fix. Grants nothing else.
+
+Parameters:
+  ControlHubLambdaRoleArn:
+    Type: String
+    Description: >
+      ARN of the Control Hub guardrail Lambda's execution role. This is the only
+      principal that can assume the role created here.
+    AllowedPattern: "^arn:aws[a-z-]*:iam::\\d{12}:role/.+$"
+
+  RoleName:
+    Type: String
+    Default: github-control-hub-guardrail-access
+    Description: >
+      Must match the GuardrailRoleName output of the Control Hub stack. The home
+      account's permission to assume is scoped to this exact name.
+
+  ExternalId:
+    Type: String
+    Default: ""
+    NoEcho: true
+    Description: >
+      Optional shared string the Control Hub must present. Worth setting: it
+      stops a confused-deputy situation where some other customer of a shared
+      Control Hub could name your account and be let in.
+
+  ReadOnly:
+    Type: String
+    Default: "false"
+    AllowedValues: ["true", "false"]
+    Description: >
+      "true" grants only the reads, so the Control Hub can report on this
+      account but never change it. Rules set to enforce will report the
+      violation and record that they could not fix it.
+
+Conditions:
+  HasExternalId: !Not [!Equals [!Ref ExternalId, ""]]
+  CanRemediate: !Equals [!Ref ReadOnly, "false"]
+
+Resources:
+  GuardrailAccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Ref RoleName
+      Description: Read compliance state for the GitHub Control Hub, and remediate the two rules it enforces.
+      # One hour. The Control Hub renews with five minutes to spare, so a sweep
+      # that starts near expiry does not fail partway through an account.
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Ref ControlHubLambdaRoleArn
+            Action: sts:AssumeRole
+            Condition: !If
+              - HasExternalId
+              - StringEquals:
+                  sts:ExternalId: !Ref ExternalId
+              - !Ref AWS::NoValue
+      Policies:
+        - PolicyName: ReadComplianceState
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              # Every one of these is a List or Describe with no resource-level
+              # scoping in IAM — "*" is the only form AWS accepts for them.
+              - Sid: ReadState
+                Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                  - s3:GetBucketLocation
+                  - s3:GetBucketPolicy
+                  - s3:GetBucketTagging
+                  - logs:DescribeLogGroups
+                  - logs:ListTagsForResource
+                Resource: "*"
+
+        - !If
+          - CanRemediate
+          - PolicyName: RemediateTwoThings
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                # Deliberately narrow. The Control Hub enforces exactly two
+                # rules, so this grants exactly the four calls those two need —
+                # not s3:* or logs:*, which would let a future version of the
+                # app do things this account never agreed to.
+                - Sid: Remediate
+                  Effect: Allow
+                  Action:
+                    - s3:PutBucketPolicy
+                    - logs:PutRetentionPolicy
+                    - logs:DeleteRetentionPolicy
+                  Resource: "*"
+          - !Ref AWS::NoValue
+
+Outputs:
+  RoleArn:
+    Description: Paste this into the Control Hub when adding the account.
+    Value: !GetAtt GuardrailAccessRole.Arn
+
+  AccountId:
+    Description: This account's id, which the Control Hub also asks for.
+    Value: !Ref AWS::AccountId

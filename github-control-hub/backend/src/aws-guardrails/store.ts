@@ -81,10 +81,26 @@ export async function deleteAwsExclusion(id: string): Promise<void> {
 }
 
 /**
- * Findings are keyed by rule + resource so a re-run overwrites in place rather
- * than accumulating history — the table answers "what is true now", and the
- * activity log carries the history of what changed.
+ * Findings are keyed by account, region, rule and resource so a re-run
+ * overwrites in place rather than accumulating history — the table answers
+ * "what is true now", and the activity log carries the history of what changed.
+ *
+ * Account and region are in the key because names are not unique across an
+ * organisation: two accounts routinely have a log group called
+ * /aws/lambda/api, and keying on the name alone would have prod's verdict and
+ * dev's overwrite each other on alternate sweeps.
+ *
+ * Findings written before accounts existed have no accountId and use the old
+ * two-part key. They are not migrated — they are deleted on the next sweep by
+ * dropLegacyFindings, because the sweep rewrites the same facts under the new
+ * key within the same run.
  */
+export function findingKey(f: Finding): string {
+  return f.accountId
+    ? `${f.accountId}#${f.region ?? "-"}#${f.ruleId}#${f.resourceId}`
+    : `${f.ruleId}#${f.resourceId}`;
+}
+
 export async function putFindings(findings: Finding[]): Promise<void> {
   if (findings.length === 0) return;
   const { BatchWriteCommand } = await import("@aws-sdk/lib-dynamodb");
@@ -94,11 +110,36 @@ export async function putFindings(findings: Finding[]): Promise<void> {
     await client.send(new BatchWriteCommand({
       RequestItems: {
         [FINDINGS_TABLE]: chunk.map(f => ({
-          PutRequest: { Item: { pk: "FINDING", sk: `${f.ruleId}#${f.resourceId}`, ...f } },
+          PutRequest: { Item: { pk: "FINDING", sk: findingKey(f), ...f } },
         })),
       },
     }));
   }
+}
+
+/**
+ * Remove findings from before accounts existed.
+ *
+ * Run at the end of a full sweep, once the same resources have been written
+ * under their account-qualified keys — otherwise the UI shows every finding
+ * twice, once with an account and once without, and the one without looks like
+ * a resource nobody can place.
+ */
+export async function dropLegacyFindings(): Promise<number> {
+  const { BatchWriteCommand } = await import("@aws-sdk/lib-dynamodb");
+  const client = await docClient();
+  const legacy = (await listFindings()).filter(f => !f.accountId);
+  for (let i = 0; i < legacy.length; i += 25) {
+    const chunk = legacy.slice(i, i + 25);
+    await client.send(new BatchWriteCommand({
+      RequestItems: {
+        [FINDINGS_TABLE]: chunk.map(f => ({
+          DeleteRequest: { Key: { pk: "FINDING", sk: `${f.ruleId}#${f.resourceId}` } },
+        })),
+      },
+    }));
+  }
+  return legacy.length;
 }
 
 export async function listFindings(): Promise<Finding[]> {
@@ -128,8 +169,11 @@ export async function deleteFindingsForRule(ruleId: string): Promise<void> {
     const chunk = stale.slice(i, i + 25);
     await client.send(new BatchWriteCommand({
       RequestItems: {
+        // findingKey, not the literal, so rows written per-account are removed
+        // too — computing the old key here would leave every account's copy
+        // behind as a ghost of a rule that no longer exists.
         [FINDINGS_TABLE]: chunk.map(f => ({
-          DeleteRequest: { Key: { pk: "FINDING", sk: `${f.ruleId}#${f.resourceId}` } },
+          DeleteRequest: { Key: { pk: "FINDING", sk: findingKey(f) } },
         })),
       },
     }));

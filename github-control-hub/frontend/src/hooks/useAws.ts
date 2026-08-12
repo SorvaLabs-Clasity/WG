@@ -3,8 +3,9 @@ import {
   fetchCatalog, fetchGuardrails, createGuardrail, updateGuardrail, deleteGuardrail,
   fetchFindings, runGuardrails, fetchAwsExclusions, createAwsExclusion,
   updateAwsExclusion, deleteAwsExclusion,
+  fetchAwsAccounts, saveAwsAccount, removeAwsAccount, verifyAwsAccount,
 } from "../api/aws";
-import type { Guardrail, AwsExclusionList } from "../api/aws";
+import type { Guardrail, AwsExclusionList, AwsAccount } from "../api/aws";
 
 export function useCatalog() {
   // The rule catalog is compiled in, so it only changes on deploy.
@@ -21,6 +22,32 @@ export function useFindings() {
 
 export function useAwsExclusions() {
   return useQuery({ queryKey: ["aws", "exclusions"], queryFn: fetchAwsExclusions, staleTime: 30_000 });
+}
+
+export function useAwsAccounts() {
+  // Changes only when someone edits them, and every findings row is read
+  // against this list, so it is worth not refetching constantly.
+  return useQuery({ queryKey: ["aws", "accounts"], queryFn: fetchAwsAccounts, staleTime: 60_000 });
+}
+
+export function useSaveAwsAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Partial<AwsAccount>) => saveAwsAccount(body),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["aws"] }),
+  });
+}
+
+export function useRemoveAwsAccount() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (accountId: string) => removeAwsAccount(accountId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["aws"] }),
+  });
+}
+
+export function useVerifyAwsAccount() {
+  return useMutation({ mutationFn: (accountId: string) => verifyAwsAccount(accountId) });
 }
 
 export function useCreateGuardrail() {
@@ -50,7 +77,7 @@ export function useDeleteGuardrail() {
 export function useRunGuardrails() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: { ruleIds?: string[]; resourceIds?: string[] }) => runGuardrails(body),
+    mutationFn: (body: { ruleIds?: string[]; resourceIds?: string[]; accountIds?: string[] }) => runGuardrails(body),
     // A run rewrites findings and may have changed AWS, so refresh everything.
     onSuccess: () => qc.invalidateQueries({ queryKey: ["aws"] }),
   });

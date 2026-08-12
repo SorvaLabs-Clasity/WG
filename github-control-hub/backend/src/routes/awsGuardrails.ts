@@ -10,7 +10,11 @@ import {
   listAwsExclusions, putAwsExclusion, deleteAwsExclusion,
   listFindings, deleteFindingsForRule,
 } from "../aws-guardrails/store";
-import type { Guardrail, AwsExclusionList, GuardrailMode } from "../aws-guardrails/types";
+import {
+  listRegisteredAccounts, putAccount, deleteAccount, resolveAccounts,
+  verifyAccess, forgetCredentials, homeAccountId,
+} from "../aws-guardrails/accounts";
+import type { Guardrail, AwsExclusionList, GuardrailMode, AwsAccount } from "../aws-guardrails/types";
 
 const router = Router();
 
@@ -67,7 +71,7 @@ router.get("/guardrails", async (_req: Request, res: Response) => {
 
 router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { name, description, kind, mode, enabled, applyOnCreate, params, exclusionLists } = req.body ?? {};
+    const { name, description, kind, mode, enabled, applyOnCreate, params, exclusionLists, accounts } = req.body ?? {};
     if (!name || !kind) {
       res.status(400).json({ error: "name and kind are required" });
       return;
@@ -92,11 +96,16 @@ router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => 
       applyOnCreate: applyOnCreate !== false,
       params: params ?? {},
       exclusionLists: exclusionLists ?? [],
+      // Empty means every account, including ones added later. A rule that
+      // stopped covering new accounts unless someone remembered to edit it
+      // would be a rule that quietly narrows over time.
+      accounts: Array.isArray(accounts) ? accounts : [],
       createdBy: req.user!.login, createdAt: now, updatedAt: now,
     };
     await putGuardrail(rule);
     await logActivity("aws.guardrail.create" as any, req.user!.login, rule.name, kind,
-      `Created AWS guardrail "${rule.name}" in ${rule.mode} mode`);
+      `Created AWS guardrail "${rule.name}" in ${rule.mode} mode` +
+      (rule.accounts?.length ? `, limited to ${rule.accounts.length} account(s)` : ", across every account"));
     res.status(201).json(rule);
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
@@ -108,7 +117,7 @@ router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>,
     const existing = await getGuardrail(req.params.id);
     if (!existing) { res.status(404).json({ error: "Guardrail not found" }); return; }
 
-    const { name, description, mode, enabled, applyOnCreate, params, exclusionLists } = req.body ?? {};
+    const { name, description, mode, enabled, applyOnCreate, params, exclusionLists, accounts } = req.body ?? {};
 
     // Only a change INTO enforce is gated — an admin-set rule must stay editable
     // by others for its name or thresholds without silently losing its mode.
@@ -128,6 +137,7 @@ router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>,
       applyOnCreate: applyOnCreate ?? existing.applyOnCreate,
       params: params ?? existing.params,
       exclusionLists: exclusionLists ?? existing.exclusionLists,
+      accounts: Array.isArray(accounts) ? accounts : existing.accounts ?? [],
       updatedAt: new Date().toISOString(),
     };
     await putGuardrail(updated);
@@ -186,8 +196,8 @@ async function invokeEngine(payload: Record<string, unknown>): Promise<any> {
 
 router.post("/run", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { ruleIds, resourceIds } = req.body ?? {};
-    const result = await invokeEngine({ ruleIds, resourceIds });
+    const { ruleIds, resourceIds, accountIds } = req.body ?? {};
+    const result = await invokeEngine({ ruleIds, resourceIds, accountIds });
     await logActivity("aws.guardrail.run" as any, req.user!.login, "*",
       ruleIds?.length ? `${ruleIds.length} rule(s)` : "all rules",
       `Ran AWS guardrails: ${result.violations ?? 0} violation(s), ${result.remediated ?? 0} remediated`);
@@ -200,8 +210,8 @@ router.post("/run", requireAdmin, async (req: Request, res: Response) => {
 /** Evaluate without writing, whatever mode the rules are in. */
 router.post("/preview", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { ruleIds, resourceIds } = req.body ?? {};
-    res.json(await invokeEngine({ ruleIds, resourceIds, dryRun: true }));
+    const { ruleIds, resourceIds, accountIds } = req.body ?? {};
+    res.json(await invokeEngine({ ruleIds, resourceIds, accountIds, dryRun: true }));
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }
@@ -260,6 +270,151 @@ router.delete("/exclusions/:id", requireAdmin, async (req: Request<{ id: string 
   try {
     await deleteAwsExclusion(req.params.id);
     res.json({ message: "Exclusion list deleted" });
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
+  }
+});
+
+// ── Accounts ──────────────────────────────────────────────────────────
+
+/**
+ * The accounts guardrails run against.
+ *
+ * An organisation is rarely one account, and the rules that matter most —
+ * retention floors, TLS-only buckets — matter most in the accounts nobody logs
+ * into daily. Access is by assuming a role the target account grants, so
+ * revoking it is a change made where the resources live rather than a stored
+ * key to go and find.
+ *
+ * The account hosting the app is always listed and never carries a role. It
+ * cannot be removed: an app that can be configured into seeing nothing at all,
+ * while still rendering a page that says "compliant", is worse than one that
+ * only sees itself.
+ */
+
+const ACCOUNT_ID = /^\d{12}$/;
+const ROLE_ARN = /^arn:aws[a-z-]*:iam::(\d{12}):role\/.+$/;
+
+router.get("/accounts", async (_req: Request, res: Response) => {
+  try {
+    res.json(await resolveAccounts());
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
+  }
+});
+
+router.post("/accounts", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const { accountId, name, roleArn, externalId, regions, enabled } = req.body ?? {};
+
+    if (!ACCOUNT_ID.test(String(accountId ?? ""))) {
+      res.status(400).json({ error: "An AWS account id is exactly twelve digits." });
+      return;
+    }
+    if (!name?.trim()) {
+      res.status(400).json({ error: "Give the account a name — twelve digits is not something anyone recognises under pressure." });
+      return;
+    }
+
+    const home = await homeAccountId();
+    const isHome = accountId === home;
+
+    // The home account is reached with the role the Lambda already has. Letting
+    // someone attach an ARN to it is a way to lock the app out of the account it
+    // lives in, with no way back through the app itself.
+    const arn = isHome ? undefined : String(roleArn ?? "").trim();
+    if (!isHome) {
+      const match = ROLE_ARN.exec(arn!);
+      if (!match) {
+        res.status(400).json({
+          error: "A role ARN is needed to reach another account, in the form arn:aws:iam::<account>:role/<name>.",
+        });
+        return;
+      }
+      if (match[1] !== accountId) {
+        res.status(400).json({
+          error: `That role lives in account ${match[1]}, but you entered ${accountId}. One of the two is wrong.`,
+        });
+        return;
+      }
+    }
+
+    const now = new Date().toISOString();
+    const existing = (await listRegisteredAccounts()).find(a => a.accountId === accountId);
+    const account: AwsAccount = {
+      accountId,
+      name: name.trim(),
+      roleArn: arn || undefined,
+      externalId: externalId?.trim() || undefined,
+      regions: Array.isArray(regions) && regions.length ? regions : [process.env.AWS_REGION || "us-east-1"],
+      enabled: enabled !== false,
+      isHome,
+      createdBy: existing?.createdBy ?? req.user!.login,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    // A changed role must not be checked against credentials cached from the old one.
+    forgetCredentials(accountId);
+
+    // Verified before it is stored. A role that was never created, or whose
+    // trust policy names the wrong principal, otherwise surfaces as an account
+    // that quietly reports nothing — indistinguishable from an account with
+    // nothing wrong in it.
+    const reachable = await verifyAccess(account);
+    if (!reachable.ok) {
+      res.status(400).json({ error: reachable.error, code: "ACCOUNT_UNREACHABLE" });
+      return;
+    }
+
+    await putAccount(account);
+    await logActivity("aws.account.save" as any, req.user!.login, "*", account.name,
+      existing
+        ? `Updated AWS account "${account.name}" (${accountId})`
+        : `Added AWS account "${account.name}" (${accountId}), swept in ${account.regions.join(", ")}`);
+    res.json(account);
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
+  }
+});
+
+router.delete("/accounts/:accountId", requireAdmin, async (req: Request<{ accountId: string }>, res: Response) => {
+  try {
+    const { accountId } = req.params;
+    if (accountId === await homeAccountId()) {
+      res.status(400).json({
+        error: "This is the account the app runs in. It cannot be removed — turn it off instead if you only want to watch others.",
+      });
+      return;
+    }
+    const existing = (await listRegisteredAccounts()).find(a => a.accountId === accountId);
+    if (!existing) {
+      res.status(404).json({ error: "No such account." });
+      return;
+    }
+
+    await deleteAccount(accountId);
+    forgetCredentials(accountId);
+    // Findings from that account stay until the next sweep rewrites the table.
+    // Deleting them here would be the app claiming to know the account is clean.
+    await logActivity("aws.account.delete" as any, req.user!.login, "*", existing.name,
+      `Removed AWS account "${existing.name}" (${accountId}). Its findings remain until the next sweep.`);
+    res.json({ removed: accountId });
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
+  }
+});
+
+/** Re-check that a stored account is still reachable, without changing anything. */
+router.post("/accounts/:accountId/verify", requireAdmin, async (req: Request<{ accountId: string }>, res: Response) => {
+  try {
+    const account = (await resolveAccounts()).find(a => a.accountId === req.params.accountId);
+    if (!account) {
+      res.status(404).json({ error: "No such account." });
+      return;
+    }
+    forgetCredentials(account.accountId);
+    res.json(await verifyAccess(account));
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }

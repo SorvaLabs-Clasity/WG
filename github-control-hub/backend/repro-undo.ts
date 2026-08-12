@@ -274,6 +274,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     ["widgets.ts",       /router\.(post|put|delete)\(/g, /refusedWidgetChange/],
     ["alerts.ts",        /router\.(post|put|delete)\(/g, /refusedAlertChange/],
     ["config.ts",        /router\.(post|put|delete)\(/g, /refuseUnlessAdmin/],
+    ["awsGuardrails.ts",  /router\.(post|put|delete)\(/g, /requireAdmin/],
     ["awsGuardrails.ts", /router\.(post|put|delete)\(/g, /requireAdmin/],
     ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted/],
   ];

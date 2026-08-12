@@ -7,8 +7,9 @@ import {
   useCatalog, useGuardrails, useFindings, useAwsExclusions,
   useCreateGuardrail, useUpdateGuardrail, useDeleteGuardrail, useRunGuardrails,
   useSaveAwsExclusion, useDeleteAwsExclusion,
+  useAwsAccounts, useSaveAwsAccount, useRemoveAwsAccount, useVerifyAwsAccount,
 } from "../hooks/useAws";
-import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec } from "../api/aws";
+import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec, AwsAccount } from "../api/aws";
 import { awsConsoleUrl, consoleLinkLabel } from "../utils/awsConsole";
 
 const KIND_LABELS: Record<string, string> = {
@@ -27,13 +28,14 @@ export default function AwsPage() {
   const { data: rules, isLoading, isFetching: rulesFetching, refetch: refetchRules } = useGuardrails();
   const { data: findings, isFetching: findingsFetching, refetch: refetchFindings } = useFindings();
   const { data: exclusions, refetch: refetchExclusions } = useAwsExclusions();
+  const { data: accounts, refetch: refetchAccounts } = useAwsAccounts();
 
   const runRules = useRunGuardrails();
   const deleteRule = useDeleteGuardrail();
   const updateRule = useUpdateGuardrail();
 
   /** Each rule opens as its own page rather than expanding in place. */
-  const [view, setView] = useState<{ k: "list" } | { k: "rule"; id: string } | { k: "exclusions" }>({ k: "list" });
+  const [view, setView] = useState<{ k: "list" } | { k: "rule"; id: string } | { k: "exclusions" } | { k: "accounts" }>({ k: "list" });
   const [editing, setEditing] = useState<Guardrail | "new" | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
 
@@ -68,8 +70,11 @@ export default function AwsPage() {
           <div className="flex items-center gap-2 shrink-0">
             <RefreshButton
               busy={rulesFetching || findingsFetching}
-              onRefresh={() => Promise.all([refetchRules(), refetchFindings(), refetchExclusions()])}
+              onRefresh={() => Promise.all([refetchRules(), refetchFindings(), refetchExclusions(), refetchAccounts()])}
             />
+            <Button onClick={() => setView({ k: "accounts" })}>
+              Accounts <span className="text-slate-400 font-mono ml-1">{accounts?.length ?? 1}</span>
+            </Button>
             <Button onClick={() => setView({ k: "exclusions" })}>
               Exclusions <span className="text-slate-400 font-mono ml-1">{exclusions?.length ?? 0}</span>
             </Button>
@@ -87,7 +92,24 @@ export default function AwsPage() {
           <Note intent="good">
             Checked {runRules.data.findings.length} resources — {runRules.data.violations} failing
             {runRules.data.remediated > 0 && `, ${runRules.data.remediated} fixed`}
-            {runRules.data.excluded > 0 && `, ${runRules.data.excluded} excluded`}.
+            {runRules.data.excluded > 0 && `, ${runRules.data.excluded} excluded`}
+            {(runRules.data.accountsChecked?.length ?? 0) > 1 &&
+              ` across ${runRules.data.accountsChecked!.map(a => a.name).join(", ")}`}.
+            {runRules.data.errors.length > 0 && (
+              // An account that could not be reached is the one thing a summary
+              // must not round off to "all clear".
+              <span className="block mt-1 text-amber-700 dark:text-amber-400">
+                {runRules.data.errors.slice(0, 3).join(" · ")}
+              </span>
+            )}
+            {(runRules.data.unswept?.length ?? 0) > 0 && (
+              <span className="block mt-1 text-amber-700 dark:text-amber-400">
+                Not looked at: {runRules.data.unswept!.map(u =>
+                  `${u.count} bucket${u.count === 1 ? "" : "s"} in ${u.region}` +
+                  ((runRules.data.accountsChecked?.length ?? 0) > 1 ? ` (${u.accountName})` : "")
+                ).join(", ")}. Add the region to that account to include them.
+              </span>
+            )}
           </Note>
         )}
 
@@ -107,7 +129,12 @@ export default function AwsPage() {
           />
         )}
 
-        {view.k === "exclusions" ? (
+        {view.k === "accounts" ? (
+          <>
+            <Back onClick={() => setView({ k: "list" })}>All rules</Back>
+            <AccountsTab accounts={accounts} isAdmin={isAdmin} />
+          </>
+        ) : view.k === "exclusions" ? (
           <>
             <Back onClick={() => setView({ k: "list" })}>All rules</Back>
             <ExclusionsTab lists={exclusions} />
@@ -118,6 +145,7 @@ export default function AwsPage() {
             entry={(catalog ?? []).find(c => c.kind === (rules ?? []).find(r => r.id === view.id)?.kind)}
             findings={(findings ?? []).filter(f => f.ruleId === view.id)}
             exclusions={exclusions ?? []}
+            accounts={accounts ?? []}
             isAdmin={isAdmin}
             running={runRules.isPending}
             onRun={() => doRun([view.id])}
@@ -234,12 +262,18 @@ function RulesTab({ rules, catalog, findings, isLoading, isAdmin, adminTeam, onO
 }
 
 /** A rule's own page: what it checks, how it is configured, and every resource it touched. */
-function RuleDetail({ rule, entry, findings, exclusions, isAdmin, running, onRun, onEdit, onToggleEnabled, onDelete, onBack }: {
+function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, running, onRun, onEdit, onToggleEnabled, onDelete, onBack }: {
   rule?: Guardrail; entry?: CatalogEntry; findings: Finding[]; exclusions?: AwsExclusionList[];
+  accounts?: AwsAccount[];
   isAdmin: boolean; running: boolean;
   onRun: () => void; onEdit: () => void; onToggleEnabled: () => void; onDelete: () => void; onBack: () => void;
 }) {
   const [showPassing, setShowPassing] = useState(false);
+
+  // Only worth labelling rows when there is more than one account to tell
+  // apart. In a single-account install the label is the same word on every
+  // row, which is noise dressed as information.
+  const multiAccount = (accounts?.length ?? 1) > 1;
 
   if (!rule) {
     return (
@@ -307,6 +341,15 @@ function RuleDetail({ rule, entry, findings, exclusions, isAdmin, running, onRun
             <DetailRow label="Reacts to changes">
               {!entry?.triggerEvents.length ? "Swept only" : rule.applyOnCreate ? "Within seconds" : "Waits for the sweep"}
             </DetailRow>
+            {multiAccount && (
+              <DetailRow label="Accounts">
+                {!rule.accounts?.length
+                  ? "All of them, including any added later"
+                  : rule.accounts
+                    .map(id => (accounts ?? []).find(a => a.accountId === id)?.name ?? id)
+                    .join(", ")}
+              </DetailRow>
+            )}
             {used.length > 0 && <DetailRow label="Skipping">{used.map(l => l.name).join(", ")}</DetailRow>}
           </dl>
         </Block>
@@ -335,11 +378,21 @@ function RuleDetail({ rule, entry, findings, exclusions, isAdmin, running, onRun
                     : f.verdict === "violation" ? "failing" : "ok";
                 const href = awsConsoleUrl(f.resourceType, f.resourceId, f.region);
                 return (
-                  <InsetRow key={f.resourceId} intent={fi} index={i}>
+                  // Keyed on account and region as well: two accounts routinely
+                  // have a log group with the same name, and a bare name would
+                  // collapse them into one row.
+                  <InsetRow key={`${f.accountId ?? "-"}#${f.region ?? "-"}#${f.resourceId}`} intent={fi} index={i}>
                     <div className="flex items-start gap-3 flex-wrap">
                       <Pill intent={fi}>{label}</Pill>
                       <div className="min-w-0 flex-1">
-                        <p className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-white break-all">{f.resourceId}</p>
+                        <div className="flex items-baseline gap-2 flex-wrap">
+                          <p className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-white break-all">{f.resourceId}</p>
+                          {multiAccount && f.accountName && (
+                            <span className="shrink-0 text-[11.5px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                              {f.accountName}{f.region ? ` · ${f.region}` : ""}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
                           {f.summary}
                           {f.proposedFix && !f.remediated && !f.excluded && (
@@ -401,7 +454,13 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
   const [applyOnCreate, setApplyOnCreate] = useState(rule?.applyOnCreate ?? true);
   const [params, setParams] = useState<Record<string, any>>(rule?.params ?? entry?.defaultParams ?? {});
   const [selected, setSelected] = useState<string[]>(rule?.exclusionLists ?? []);
+  // Empty means every account. Kept distinct from "all boxes ticked", which
+  // would freeze the rule to today's list and quietly skip accounts added later.
+  const [accountIds, setAccountIds] = useState<string[]>(rule?.accounts ?? []);
   const [error, setError] = useState<string | null>(null);
+
+  const { data: accounts } = useAwsAccounts();
+  const multiAccount = (accounts?.length ?? 1) > 1;
 
   const enforceBlocked = !isAdmin || !(entry?.canRemediate ?? true);
 
@@ -415,7 +474,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
 
   const submit = async () => {
     setError(null);
-    const body = { name, description, kind, mode, applyOnCreate, params, exclusionLists: selected };
+    const body = { name, description, kind, mode, applyOnCreate, params, exclusionLists: selected, accounts: accountIds };
     try {
       if (rule) await update.mutateAsync({ id: rule.id, body });
       else await create.mutateAsync(body);
@@ -483,6 +542,32 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
               <ParamControl key={spec.key} spec={spec}
                 value={params[spec.key] ?? spec.default}
                 onChange={v => setParams(p => ({ ...p, [spec.key]: v }))} />
+            ))}
+          </div>
+        </Field>
+      )}
+
+      {multiAccount && (
+        <Field label="Accounts" hint={
+          accountIds.length === 0
+            ? "Every account, including any added later."
+            : "Only the accounts ticked. Accounts added later will not be covered by this rule."
+        }>
+          <div className="space-y-1">
+            <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
+              <input type="checkbox" checked={accountIds.length === 0}
+                onChange={e => e.target.checked && setAccountIds([])}
+                className="rounded border-slate-300 dark:border-slate-600" />
+              All accounts
+            </label>
+            {(accounts ?? []).map(a => (
+              <label key={a.accountId} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer pl-5">
+                <input type="checkbox" checked={accountIds.includes(a.accountId)}
+                  onChange={e => setAccountIds(ids =>
+                    e.target.checked ? [...ids, a.accountId] : ids.filter(x => x !== a.accountId))}
+                  className="rounded border-slate-300 dark:border-slate-600" />
+                {a.name} <span className="font-mono text-[11px] text-slate-400">{a.accountId}</span>
+              </label>
             ))}
           </div>
         </Field>
@@ -608,6 +693,233 @@ const MATCH_KINDS: { id: MatchType; label: string; help: string; placeholder: st
   { id: "contains", label: "Name contains", help: "Matches resources with this text anywhere in the name.", placeholder: "sandbox", example: "sandbox catches acme-sandbox-logs" },
   { id: "tag_equals", label: "Has tag", help: "Matches resources carrying this tag. Leave the value blank to match the tag however it is set.", placeholder: "Env", example: "Env = dev catches anything tagged Env=dev" },
 ];
+
+// ── Accounts ──────────────────────────────────────────────────────────
+
+/**
+ * Organisations run more than one account, and the accounts nobody logs into
+ * daily are exactly where a retention setting quietly stays wrong for a year.
+ * Reaching them is a role each account grants, so the account that owns the
+ * resources decides — and can take the decision back by deleting one stack.
+ */
+function AccountsTab({ accounts, isAdmin }: { accounts?: AwsAccount[]; isAdmin: boolean }) {
+  const save = useSaveAwsAccount();
+  const remove = useRemoveAwsAccount();
+  const verify = useVerifyAwsAccount();
+  const [editing, setEditing] = useState<AwsAccount | "new" | null>(null);
+  const [checked, setChecked] = useState<Record<string, { ok: boolean; error?: string }>>({});
+
+  if (editing) {
+    return (
+      <AccountEditor
+        account={editing === "new" ? null : editing}
+        error={save.error ? (save.error as Error).message : null}
+        saving={save.isPending}
+        onClose={() => { save.reset(); setEditing(null); }}
+        onSave={body => save.mutateAsync(body).then(() => { setEditing(null); })}
+      />
+    );
+  }
+
+  const extra = (accounts ?? []).filter(a => !a.isHome).length;
+
+  return (
+    <>
+      <Note intent="neutral">
+        Guardrails run in every account listed here. The account this app is deployed in is always
+        included and needs no setup. Any other account grants a role — deploy{" "}
+        <span className="font-mono text-[12.5px]">scripts/guardrail-account-role.yaml</span> there, then
+        paste the role ARN it outputs below.
+      </Note>
+
+      <div className="flex items-center justify-between gap-4 mb-4">
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          {accounts?.length ?? 0} {(accounts?.length ?? 0) === 1 ? "account" : "accounts"}
+          {extra === 0 && " — only the one this app runs in"}
+        </p>
+        {isAdmin && <Button variant="primary" onClick={() => setEditing("new")}>Add account</Button>}
+      </div>
+
+      <div className="grid gap-3">
+        {(accounts ?? []).map((a, i) => {
+          const result = checked[a.accountId];
+          return (
+            <RailCard key={a.accountId} intent={a.enabled ? (result && !result.ok ? "danger" : "neutral") : "neutral"} index={i}>
+              <div className="flex items-start justify-between gap-5 flex-wrap">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>{a.name}</h3>
+                    {a.isHome && <Pill intent="info">this app</Pill>}
+                    {!a.enabled && <Pill intent="neutral">not swept</Pill>}
+                  </div>
+                  <p className="font-mono text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">{a.accountId}</p>
+                  <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1.5`}>
+                    {a.regions.join(", ")}
+                    {a.roleArn
+                      ? <> · via <span className="font-mono text-[12px]">{a.roleArn.split("/").pop()}</span>{a.externalId ? " with an external ID" : ""}</>
+                      : <> · reached with the app&rsquo;s own role</>}
+                  </p>
+                  {result && (
+                    <p className={`text-[13px] mt-2 ${result.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
+                      {result.ok ? "Reachable." : result.error}
+                    </p>
+                  )}
+                </div>
+                {isAdmin && (
+                  <div className="flex gap-4 shrink-0">
+                    {!a.isHome && (
+                      <button
+                        disabled={verify.isPending}
+                        onClick={() => verify.mutateAsync(a.accountId)
+                          .then(r => setChecked(c => ({ ...c, [a.accountId]: r })))
+                          .catch(e => setChecked(c => ({ ...c, [a.accountId]: { ok: false, error: (e as Error).message } })))}
+                        className="text-sm font-bold text-slate-500 dark:text-slate-400 hover:opacity-70 disabled:opacity-40">
+                        {verify.isPending ? "Checking…" : "Check access"}
+                      </button>
+                    )}
+                    <button onClick={() => setEditing(a)}
+                      className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">Edit</button>
+                    {!a.isHome && (
+                      <button
+                        onClick={() => {
+                          if (confirm(`Stop checking "${a.name}"? Its existing findings stay on screen until the next sweep — removing an account is not the same as knowing it is clean.`)) {
+                            remove.mutate(a.accountId);
+                          }
+                        }}
+                        className="text-sm font-bold text-rose-600 dark:text-rose-400 hover:opacity-70">Remove</button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </RailCard>
+          );
+        })}
+      </div>
+    </>
+  );
+}
+
+const COMMON_REGIONS = [
+  "us-east-1", "us-east-2", "us-west-1", "us-west-2",
+  "ca-central-1", "eu-west-1", "eu-west-2", "eu-central-1",
+  "ap-south-1", "ap-southeast-1", "ap-southeast-2", "ap-northeast-1",
+];
+
+function AccountEditor({ account, error, saving, onClose, onSave }: {
+  account: AwsAccount | null;
+  error: string | null;
+  saving: boolean;
+  onClose: () => void;
+  onSave: (body: Partial<AwsAccount>) => Promise<unknown>;
+}) {
+  const isHome = account?.isHome ?? false;
+  const [accountId, setAccountId] = useState(account?.accountId ?? "");
+  const [name, setName] = useState(account?.name ?? "");
+  const [roleArn, setRoleArn] = useState(account?.roleArn ?? "");
+  const [externalId, setExternalId] = useState(account?.externalId ?? "");
+  const [regions, setRegions] = useState<string[]>(account?.regions ?? ["us-east-1"]);
+  const [enabled, setEnabled] = useState(account?.enabled ?? true);
+
+  const toggleRegion = (r: string) =>
+    setRegions(rs => rs.includes(r) ? rs.filter(x => x !== r) : [...rs, r]);
+
+  const field = SURFACE.input;
+
+  return (
+    <>
+      <Back onClick={onClose}>Accounts</Back>
+      <Sheet>
+        <SheetHeader intent="neutral"
+          title={account ? account.name : "Add an AWS account"}
+          subtitle={isHome
+            ? "This is the account the app runs in. It needs no role, and cannot be removed."
+            : "Deploy scripts/guardrail-account-role.yaml in the target account first — it prints both values below."}
+        />
+      <Block title="Identity">
+        <Field label="Account ID" hint="Twelve digits. Shown top-right in that account's console.">
+          <input value={accountId} onChange={e => setAccountId(e.target.value.replace(/\D/g, "").slice(0, 12))}
+            disabled={!!account} placeholder="123456789012"
+            className={`${field} font-mono disabled:opacity-60`} />
+        </Field>
+        <Field label="Name" hint="What people call it. This is what appears beside every finding.">
+          <input value={name} onChange={e => setName(e.target.value)} placeholder="prod" className={field} />
+        </Field>
+      </Block>
+
+      {!isHome && (
+        <Block title="Access">
+          <Field label="Role ARN"
+            hint="The RoleArn output of the CloudFormation stack you deployed in that account.">
+            <input value={roleArn} onChange={e => setRoleArn(e.target.value)}
+              placeholder="arn:aws:iam::123456789012:role/github-control-hub-guardrail-access"
+              className={`${field} font-mono text-[12.5px]`} />
+          </Field>
+          <Field label="External ID"
+            hint="Optional, and only if the role's trust policy requires one. It stops another Control Hub installation from naming this account and being let in.">
+            <input value={externalId} onChange={e => setExternalId(e.target.value)} className={field} />
+          </Field>
+        </Block>
+      )}
+
+      <Block title="Where to look">
+        <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-3">
+          Buckets and log groups are per-region. A region not listed here is never checked.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          {Array.from(new Set([...COMMON_REGIONS, ...regions])).map(r => (
+            <button key={r} onClick={() => toggleRegion(r)}
+              className={`px-3 py-1.5 rounded-lg text-[12.5px] font-mono font-bold border transition-colors ${
+                regions.includes(r)
+                  ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent"
+                  : "border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-slate-400"
+              }`}>
+              {r}
+            </button>
+          ))}
+        </div>
+        {regions.length === 0 && (
+          <p className="text-[13px] text-amber-600 dark:text-amber-400 mt-3">
+            With no region selected this account is listed but never actually checked.
+          </p>
+        )}
+      </Block>
+
+      <Block title="Sweeping">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)}
+            className="h-4 w-4 rounded accent-slate-900 dark:accent-white" />
+          <span className="text-[14px] text-slate-700 dark:text-slate-200">
+            Include this account in sweeps
+          </span>
+        </label>
+        {!enabled && (
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-2">
+            Its existing findings stay visible. They are just no longer updated, so treat them as a
+            record of the last time anyone looked.
+          </p>
+        )}
+      </Block>
+
+      {error && <Note intent="danger">{error}</Note>}
+
+      <div className="flex items-center justify-end gap-3 mt-5">
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="primary" disabled={saving || !accountId || !name || (!isHome && !roleArn)}
+          onClick={() => onSave({
+            accountId, name, regions, enabled,
+            ...(isHome ? {} : { roleArn, externalId: externalId || undefined }),
+          })}>
+          {/* The button says what actually happens: the account is not stored
+              until the role has been assumed successfully. */}
+          {saving ? "Checking access…" : account ? "Save" : "Add account"}
+        </Button>
+      </div>
+      </Sheet>
+    </>
+  );
+}
+
+// ── Exclusions ────────────────────────────────────────────────────────
 
 function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
   const save = useSaveAwsExclusion();

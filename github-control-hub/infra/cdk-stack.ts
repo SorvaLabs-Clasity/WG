@@ -125,6 +125,11 @@ export class GitHubControlHubStack extends cdk.Stack {
     // Enforcement runs here rather than on the instance: it needs no inbound
     // connectivity, so the security group stays closed to everything but
     // GitHub's webhook ranges.
+    // The role this app assumes in every other account. Fixed by name so the
+    // trust policy in dev/uat/prod, the IAM template we hand out, and the grant
+    // below all say the same thing.
+    const guardrailRoleName = `${stackPrefix}-guardrail-access`;
+
     const guardrailDlq = new sqs.Queue(this, "GuardrailDlq", {
       retentionPeriod: cdk.Duration.days(14),
     });
@@ -143,6 +148,7 @@ export class GitHubControlHubStack extends cdk.Stack {
         GUARDRAILS_TABLE: `${stackPrefix}-aws-guardrails`,
         GUARDRAIL_EXCLUSIONS_TABLE: `${stackPrefix}-aws-exclusions`,
         GUARDRAIL_FINDINGS_TABLE: `${stackPrefix}-aws-findings`,
+        AWS_ACCOUNTS_TABLE: `${stackPrefix}-aws-accounts`,
         ACTIVITY_TABLE: `${stackPrefix}-activity`,
       },
       deadLetterQueue: guardrailDlq,
@@ -170,6 +176,24 @@ export class GitHubControlHubStack extends cdk.Stack {
         "s3:PutBucketPolicy",
         "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy",
       ],
+      resources: ["*"],
+    }));
+
+    // Reaching other accounts. The role name is fixed rather than "*" so this
+    // grant cannot be pointed at an arbitrary role someone happens to name in
+    // the accounts table — the target account still has to trust us back, but
+    // there is no reason for this side to be wider than it needs to be.
+    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "AssumeGuardrailRoleInOtherAccounts",
+      actions: ["sts:AssumeRole"],
+      resources: [`arn:aws:iam::*:role/${guardrailRoleName}`],
+    }));
+
+    // Which account we are in. Findings are stamped with it, so without this
+    // every finding in the home account is labelled "unknown".
+    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "WhoAmI",
+      actions: ["sts:GetCallerIdentity"],
       resources: ["*"],
     }));
 
@@ -220,6 +244,16 @@ export class GitHubControlHubStack extends cdk.Stack {
     new cdk.CfnOutput(this, "GuardrailFunctionName", {
       value: guardrailFn.functionName,
       description: "Guardrail enforcer Lambda (invoked by the app for manual runs)",
+    });
+
+    new cdk.CfnOutput(this, "GuardrailRoleName", {
+      value: guardrailRoleName,
+      description: "Role name each additional AWS account must create for guardrails to reach it",
+    });
+
+    new cdk.CfnOutput(this, "GuardrailLambdaRoleArn", {
+      value: guardrailFn.role!.roleArn,
+      description: "Principal to trust in each additional account's guardrail role",
     });
 
     new cdk.CfnOutput(this, "GuardrailDlqUrl", {

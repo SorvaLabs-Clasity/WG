@@ -38,6 +38,8 @@ export interface Guardrail {
   applyOnCreate: boolean;
   params: Record<string, any>;
   exclusionLists: string[];
+  /** Accounts this rule runs in. Empty means all of them, now and later. */
+  accounts?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -54,6 +56,8 @@ export interface Finding {
   proposedFix?: string;
   /** Region the resource lives in, used to build the AWS console link. */
   region?: string;
+  accountId?: string;
+  accountName?: string;
   excluded: boolean;
   excludedBy?: string;
   remediated: boolean;
@@ -80,6 +84,23 @@ export interface RunResult {
   violations: number;
   excluded: number;
   errors: string[];
+  accountsChecked?: { accountId: string; name: string; regions: string[] }[];
+  /** Resources in regions the account does not sweep — never looked at, not clean. */
+  unswept?: { accountId: string; accountName: string; region: string; count: number }[];
+}
+
+export interface AwsAccount {
+  accountId: string;
+  name: string;
+  /** Absent on the account the app itself runs in — it needs no role. */
+  roleArn?: string;
+  externalId?: string;
+  regions: string[];
+  enabled: boolean;
+  isHome?: boolean;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export const fetchCatalog = () => apiGet<CatalogEntry[]>("/aws/catalog");
@@ -89,10 +110,17 @@ export const updateGuardrail = (id: string, body: Partial<Guardrail>) => apiPut<
 export const deleteGuardrail = (id: string) => apiDelete<{ message: string }>(`/aws/guardrails/${id}`);
 
 export const fetchFindings = () => apiGet<Finding[]>("/aws/findings");
-export const runGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[] }) =>
+export const runGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[]; accountIds?: string[] }) =>
   apiPost<RunResult>("/aws/run", body);
-export const previewGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[] }) =>
+export const previewGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[]; accountIds?: string[] }) =>
   apiPost<RunResult>("/aws/preview", body);
+
+export const fetchAwsAccounts = () => apiGet<AwsAccount[]>("/aws/accounts");
+export const saveAwsAccount = (body: Partial<AwsAccount>) => apiPost<AwsAccount>("/aws/accounts", body);
+export const removeAwsAccount = (accountId: string) =>
+  apiDelete<{ removed: string }>(`/aws/accounts/${accountId}`);
+export const verifyAwsAccount = (accountId: string) =>
+  apiPost<{ ok: boolean; error?: string }>(`/aws/accounts/${accountId}/verify`, {});
 
 export const fetchAwsExclusions = () => apiGet<AwsExclusionList[]>("/aws/exclusions");
 export const createAwsExclusion = (body: Partial<AwsExclusionList>) => apiPost<AwsExclusionList>("/aws/exclusions", body);

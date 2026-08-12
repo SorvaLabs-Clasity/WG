@@ -25,14 +25,28 @@ const logGroup = (id: string, retentionInDays?: number, tags: Record<string, str
   ({ id, type: "logs:log-group", tags, state: { retentionInDays } });
 
 function fakeCollectors(resources: ResourceSnapshot[]) {
-  return { "logs:log-group": async () => resources } as any;
+  return { "logs:log-group": async () => ({ resources }) } as any;
 }
+
+/**
+ * One account, reached with ambient credentials — the shape every installation
+ * has before anyone adds a second one. Injected because the real resolver asks
+ * STS which account it is in, and these tests are about the engine, not AWS.
+ */
+const oneAccount = {
+  resolveAccounts: async () => [{
+    accountId: "111111111111", name: "test", regions: ["us-east-1"], enabled: true,
+    isHome: true, createdBy: "t", createdAt: "", updatedAt: "",
+  }],
+  credentialsFor: async () => undefined,
+} as const;
 
 (async () => {
   // ── report mode must never write ────────────────────────────────────
   {
     let called = 0;
     const r = await run([rule({ mode: "report" })], [], {}, undefined, {
+      ...oneAccount,
       collectors: fakeCollectors([logGroup("app-logs", 30)]),
       remediate: async () => { called++; return { changed: true, description: "should not happen" }; },
       canRemediate: () => true,
@@ -47,6 +61,7 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
     let called = 0;
     const activity: string[] = [];
     const r = await run([rule({ mode: "enforce" })], [], {}, async (e) => { activity.push(e.description); }, {
+      ...oneAccount,
       collectors: fakeCollectors([logGroup("app-logs", 30)]),
       remediate: async () => { called++; return { changed: true, description: "set retention to 365", undo: { action: "logs_restore_retention", params: {} } }; },
       canRemediate: () => true,
@@ -59,6 +74,7 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
   {
     let called = 0;
     const r = await run([rule({ mode: "enforce" })], [], { dryRun: true }, undefined, {
+      ...oneAccount,
       collectors: fakeCollectors([logGroup("app-logs", 30)]),
       remediate: async () => { called++; return { changed: true, description: "x" }; },
       canRemediate: () => true,
@@ -71,6 +87,7 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
   {
     let called = 0;
     const r = await run([rule({ mode: "enforce" })], [], {}, undefined, {
+      ...oneAccount,
       collectors: fakeCollectors([logGroup("kept-forever", undefined), logGroup("long", 3653)]),
       remediate: async () => { called++; return { changed: true, description: "x" }; },
       canRemediate: () => true,
@@ -87,6 +104,7 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
     };
     let called = 0;
     const r = await run([rule({ mode: "enforce", exclusionLists: ["x1"] })], [list], {}, undefined, {
+      ...oneAccount,
       collectors: fakeCollectors([logGroup("tmp-scratch", 1), logGroup("app-logs", 1)]),
       remediate: async () => { called++; return { changed: true, description: "x" }; },
       canRemediate: () => true,
@@ -103,6 +121,7 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
   {
     let called = 0;
     const r = await run([rule({ mode: "enforce" })], [], {}, undefined, {
+      ...oneAccount,
       collectors: fakeCollectors([logGroup("app-logs", 1)]),
       remediate: async () => { called++; return { changed: false, description: "report only" }; },
       canRemediate: () => false,
@@ -114,6 +133,7 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
   // ── disabled rules do nothing ───────────────────────────────────────
   {
     const r = await run([rule({ enabled: false, mode: "enforce" })], [], {}, undefined, {
+      ...oneAccount,
       collectors: fakeCollectors([logGroup("app-logs", 1)]),
       remediate: async () => ({ changed: true, description: "x" }),
       canRemediate: () => true,
@@ -127,9 +147,10 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
       [rule({ id: "broken", kind: "s3_https_only" }), rule({ id: "fine" })],
       [], {}, undefined,
       {
+        ...oneAccount,
         collectors: {
           "s3:bucket": async () => { throw new Error("AccessDenied"); },
-          "logs:log-group": async () => [logGroup("app-logs", 30)],
+          "logs:log-group": async () => ({ resources: [logGroup("app-logs", 30)] }),
         } as any,
         remediate: async () => ({ changed: true, description: "x" }),
         canRemediate: () => true,
@@ -142,6 +163,7 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
   {
     const activity: { failed: boolean }[] = [];
     const r = await run([rule({ mode: "enforce" })], [], {}, async (e) => { activity.push({ failed: e.failed }); }, {
+      ...oneAccount,
       collectors: fakeCollectors([logGroup("a", 1), logGroup("b", 1)]),
       remediate: async (_k, res) => {
         if (res.id === "a") throw new Error("AccessDeniedException");
@@ -157,6 +179,7 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
   // ── resourceIds narrows the run ─────────────────────────────────────
   {
     const r = await run([rule()], [], { resourceIds: ["only-me"] }, undefined, {
+      ...oneAccount,
       collectors: fakeCollectors([logGroup("only-me", 1), logGroup("not-me", 1)]),
       remediate: async () => ({ changed: true, description: "x" }),
       canRemediate: () => true,

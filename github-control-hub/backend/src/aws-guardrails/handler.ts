@@ -1,5 +1,5 @@
 import { run, RunOptions, RunResult } from "./engine";
-import { listGuardrails, listAwsExclusions, putFindings } from "./store";
+import { listGuardrails, listAwsExclusions, putFindings, dropLegacyFindings } from "./store";
 import { kindsForEvent } from "./catalog";
 
 /**
@@ -17,11 +17,15 @@ interface DirectInvoke {
   source: "manual";
   ruleIds?: string[];
   resourceIds?: string[];
+  accountIds?: string[];
   dryRun?: boolean;
 }
 
 interface EventBridgeEvent {
   source?: string;
+  /** The account the event happened in. Present on every CloudTrail event. */
+  account?: string;
+  region?: string;
   "detail-type"?: string;
   detail?: {
     eventName?: string;
@@ -40,14 +44,17 @@ export async function handler(event: Incoming): Promise<RunResult & { trigger: s
 
   if (isDirect(event)) {
     trigger = "manual";
-    options = { ruleIds: event.ruleIds, resourceIds: event.resourceIds, dryRun: event.dryRun };
+    options = {
+      ruleIds: event.ruleIds, resourceIds: event.resourceIds,
+      accountIds: event.accountIds, dryRun: event.dryRun,
+    };
   } else if (event?.detail?.eventName) {
     const eventName = event.detail.eventName;
     const kinds = kindsForEvent(eventName);
     const resourceId = resourceIdFromEvent(event);
 
     if (kinds.length === 0) {
-      return { trigger: `ignored:${eventName}`, findings: [], remediated: 0, violations: 0, excluded: 0, errors: [] };
+      return { trigger: `ignored:${eventName}`, findings: [], remediated: 0, violations: 0, excluded: 0, errors: [], accountsChecked: [] };
     }
 
     trigger = `event:${eventName}`;
@@ -56,10 +63,14 @@ export async function handler(event: Incoming): Promise<RunResult & { trigger: s
       ruleIds: rules.filter(r => wanted.has(r.kind) && r.applyOnCreate).map(r => r.id),
       // Without an id we still run the rule, just across everything of that type.
       resourceIds: resourceId ? [resourceId] : undefined,
+      // One bucket changed in one account. Sweeping the whole estate to check
+      // it would turn a routine PutBucketPolicy into a full multi-account pass,
+      // and every remediation we perform fires one of these events itself.
+      accountIds: event.account ? [event.account] : undefined,
     };
 
     if (options.ruleIds?.length === 0) {
-      return { trigger: `no-rules:${eventName}`, findings: [], remediated: 0, violations: 0, excluded: 0, errors: [] };
+      return { trigger: `no-rules:${eventName}`, findings: [], remediated: 0, violations: 0, excluded: 0, errors: [], accountsChecked: [] };
     }
   }
 
@@ -72,9 +83,17 @@ export async function handler(event: Incoming): Promise<RunResult & { trigger: s
   // A dry run must not overwrite stored findings with hypothetical ones.
   if (!options.dryRun) {
     await putFindings(result.findings);
+    // Only after a full sweep: a narrow run has not rewritten the rows it would
+    // be deleting, so doing this there would erase findings and replace them
+    // with nothing.
+    if (trigger === "sweep") {
+      const dropped = await dropLegacyFindings();
+      if (dropped) console.log(`[guardrails] removed ${dropped} findings from before accounts existed`);
+    }
   }
 
-  console.log(`[guardrails] trigger=${trigger} checked=${result.findings.length} violations=${result.violations} remediated=${result.remediated} excluded=${result.excluded} errors=${result.errors.length}`);
+  const where = (result.accountsChecked ?? []).map(a => `${a.name}:${a.regions.join("/")}`).join(",") || "none";
+  console.log(`[guardrails] trigger=${trigger} accounts=${where} checked=${result.findings.length} violations=${result.violations} remediated=${result.remediated} excluded=${result.excluded} errors=${result.errors.length}`);
   return { ...result, trigger };
 }
 
@@ -104,6 +123,7 @@ const ACTIVITY_TABLE = process.env.ACTIVITY_TABLE || `${process.env.STACK_NAME |
 
 async function writeActivity(entry: {
   ruleId: string; ruleName: string; resourceId: string; description: string;
+  accountId: string; accountName: string; region: string;
   failed: boolean; error?: string; undo?: { action: string; params: Record<string, any> };
 }): Promise<void> {
   try {
@@ -123,10 +143,13 @@ async function writeActivity(entry: {
         id,
         source: "app",
         action: "aws.guardrail",
-        actor: "system (aws guardrail)",
+        // The account is in the actor rather than a new column: the feed is
+        // shared with the GitHub side, and "which account" is only meaningful
+        // on these rows.
+        actor: `system (aws guardrail, ${entry.accountName})`,
         repo: entry.resourceId,
         target: entry.ruleName,
-        details: entry.description,
+        details: `${entry.description} — ${entry.accountName} (${entry.accountId}), ${entry.region}`,
         timestamp,
         ...(entry.failed && { failed: true }),
         ...(entry.error && { errorMessage: entry.error }),

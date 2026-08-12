@@ -1,0 +1,279 @@
+/**
+ * Tests for running guardrails across more than one AWS account.
+ *
+ * The failure this is built around is the quiet one: a tool that reports a
+ * clean estate because it stopped looking at half of it. So the assertions are
+ * mostly about what happens when an account cannot be reached, and about
+ * findings from different accounts staying distinguishable.
+ *
+ * The engine is driven directly with injected collectors and account
+ * resolution — no AWS, no DynamoDB.
+ */
+process.env.AWS_REGION = "us-east-1";
+
+import { run, ruleAppliesTo } from "./src/aws-guardrails/engine";
+import { findingKey } from "./src/aws-guardrails/store";
+import { scopesFor } from "./src/aws-guardrails/accounts";
+import type { Guardrail, AwsAccount, ResourceSnapshot, Scope, Finding } from "./src/aws-guardrails/types";
+
+let failures = 0;
+function check(name: string, ok: boolean, got?: unknown) {
+  console.log((ok ? "  PASS  " : "  FAIL  ") + name + (ok ? "" : ` -> got: ${JSON.stringify(got)}`));
+  if (!ok) failures++;
+}
+
+const account = (accountId: string, name: string, over: Partial<AwsAccount> = {}): AwsAccount => ({
+  accountId, name, regions: ["us-east-1"], enabled: true,
+  createdBy: "t", createdAt: "", updatedAt: "", ...over,
+});
+
+const rule = (over: Partial<Guardrail> = {}): Guardrail => ({
+  id: "r1", name: "Retention floor", description: "", kind: "log_retention_min",
+  enabled: true, mode: "report", applyOnCreate: true,
+  params: { minDays: 365 }, exclusionLists: [],
+  createdBy: "t", createdAt: "", updatedAt: "", ...over,
+});
+
+/** A log group that is always in violation, so every scope produces a finding. */
+const group = (id: string): ResourceSnapshot => ({
+  id, type: "logs:log-group", tags: {}, state: { retentionInDays: 7 },
+});
+
+(async () => {
+  // ── every account is visited ───────────────────────────────────────
+  {
+    const seen: string[] = [];
+    const result = await run([rule()], [], {}, undefined, {
+      resolveAccounts: async () => [account("111111111111", "prod"), account("222222222222", "dev")],
+      credentialsFor: async (a) => a.roleArn ? { accessKeyId: "k", secretAccessKey: "s" } : undefined,
+      collectors: {
+        "logs:log-group": async (scope: Scope) => {
+          seen.push(`${scope.accountId}/${scope.region}`);
+          return { resources: [group("/aws/lambda/api")] };
+        },
+      } as any,
+    });
+
+    check("both accounts are collected from",
+      seen.join() === "111111111111/us-east-1,222222222222/us-east-1", seen);
+    check("  and each produces its own finding",
+      result.findings.length === 2, result.findings.length);
+    check("  stamped with the account it came from",
+      result.findings.map(f => f.accountId).sort().join() === "111111111111,222222222222",
+      result.findings.map(f => f.accountId));
+    check("  and with the name a person would recognise",
+      result.findings.map(f => f.accountName).sort().join() === "dev,prod",
+      result.findings.map(f => f.accountName));
+    check("  violations count every account, not just the first",
+      result.violations === 2, result.violations);
+    check("  and the run says where it looked",
+      result.accountsChecked?.map(a => a.name).join() === "prod,dev", result.accountsChecked);
+  }
+
+  // ── same resource name in two accounts ─────────────────────────────
+  {
+    const result = await run([rule()], [], {}, undefined, {
+      resolveAccounts: async () => [account("111111111111", "prod"), account("222222222222", "dev")],
+      credentialsFor: async () => undefined,
+      collectors: { "logs:log-group": async () => ({ resources: [group("/aws/lambda/api")] }) } as any,
+    });
+
+    const keys = result.findings.map(f => findingKey(f));
+    check("identically named resources in two accounts get distinct keys",
+      new Set(keys).size === 2, keys);
+    check("  so neither overwrites the other's verdict on the next sweep",
+      keys.every(k => k.startsWith("1111") || k.startsWith("2222")), keys);
+  }
+
+  // ── one account two regions ────────────────────────────────────────
+  {
+    const seen: string[] = [];
+    await run([rule()], [], {}, undefined, {
+      resolveAccounts: async () => [account("111111111111", "prod", { regions: ["us-east-1", "eu-west-1"] })],
+      credentialsFor: async () => undefined,
+      collectors: {
+        "logs:log-group": async (scope: Scope) => { seen.push(scope.region); return { resources: [] }; },
+      } as any,
+    });
+    check("each region of an account is collected separately",
+      seen.join() === "us-east-1,eu-west-1", seen);
+  }
+
+  // ── an account that cannot be reached ──────────────────────────────
+  {
+    const result = await run([rule()], [], {}, undefined, {
+      resolveAccounts: async () => [
+        account("111111111111", "prod"),
+        account("222222222222", "dev", { roleArn: "arn:aws:iam::222222222222:role/gone" }),
+        account("333333333333", "uat"),
+      ],
+      credentialsFor: async (a) => {
+        if (a.accountId === "222222222222") throw new Error("AccessDenied");
+        return undefined;
+      },
+      collectors: { "logs:log-group": async () => ({ resources: [group("/aws/lambda/api")] }) } as any,
+    });
+
+    check("a role that cannot be assumed does not end the sweep",
+      result.findings.length === 2, result.findings.length);
+    check("  the accounts after it are still checked",
+      result.findings.some(f => f.accountName === "uat"), result.findings.map(f => f.accountName));
+    check("  and the unreachable one is reported, not skipped in silence",
+      result.errors.some(e => e.includes("dev") && e.includes("222222222222")), result.errors);
+    check("  it is absent from the list of accounts checked",
+      !result.accountsChecked?.some(a => a.name === "dev"), result.accountsChecked);
+  }
+
+  // ── a disabled account ─────────────────────────────────────────────
+  {
+    const result = await run([rule()], [], {}, undefined, {
+      resolveAccounts: async () => [
+        account("111111111111", "prod"),
+        account("222222222222", "dev", { enabled: false }),
+      ],
+      credentialsFor: async () => undefined,
+      collectors: { "logs:log-group": async () => ({ resources: [group("/aws/lambda/api")] }) } as any,
+    });
+    check("a disabled account is not swept",
+      result.findings.every(f => f.accountName === "prod"), result.findings.map(f => f.accountName));
+  }
+
+  // ── narrowing a run to one account ─────────────────────────────────
+  {
+    const result = await run([rule()], [], { accountIds: ["222222222222"] }, undefined, {
+      resolveAccounts: async () => [account("111111111111", "prod"), account("222222222222", "dev")],
+      credentialsFor: async () => undefined,
+      collectors: { "logs:log-group": async () => ({ resources: [group("/aws/lambda/api")] }) } as any,
+    });
+    check("a run limited to one account touches only that account",
+      result.findings.length === 1 && result.findings[0].accountName === "dev", result.findings);
+  }
+
+  // ── rules that name accounts ───────────────────────────────────────
+  {
+    check("a rule with no account list applies everywhere",
+      ruleAppliesTo(rule(), "999999999999"));
+    check("  as does one with an empty list, so new accounts are covered",
+      ruleAppliesTo(rule({ accounts: [] }), "999999999999"));
+    check("a rule naming accounts applies only to those",
+      ruleAppliesTo(rule({ accounts: ["111111111111"] }), "111111111111") &&
+      !ruleAppliesTo(rule({ accounts: ["111111111111"] }), "222222222222"));
+
+    const result = await run(
+      [rule({ id: "prod-only", accounts: ["111111111111"] }), rule({ id: "everywhere" })],
+      [], {}, undefined, {
+        resolveAccounts: async () => [account("111111111111", "prod"), account("222222222222", "dev")],
+        credentialsFor: async () => undefined,
+        collectors: { "logs:log-group": async () => ({ resources: [group("/aws/lambda/api")] }) } as any,
+      });
+
+    const byAccount = (id: string) => result.findings.filter(f => f.accountId === id).map(f => f.ruleId).sort();
+    check("  prod gets both rules",
+      byAccount("111111111111").join() === "everywhere,prod-only", byAccount("111111111111"));
+    check("  dev gets only the unrestricted one",
+      byAccount("222222222222").join() === "everywhere", byAccount("222222222222"));
+  }
+
+  // ── remediation lands in the right account ─────────────────────────
+  {
+    const wrote: string[] = [];
+    await run([rule({ mode: "enforce" })], [], {}, undefined, {
+      resolveAccounts: async () => [
+        account("111111111111", "prod"),
+        account("222222222222", "dev", { roleArn: "arn:aws:iam::222222222222:role/x" }),
+      ],
+      credentialsFor: async (a) => a.roleArn ? { accessKeyId: "dev-key", secretAccessKey: "s" } : undefined,
+      canRemediate: () => true,
+      remediate: (async (_kind: any, resource: ResourceSnapshot, _params: any, scope: Scope) => {
+        // The credentials handed to the remediator are the ones that decide
+        // which account is written to. A fix computed against prod and applied
+        // in dev is the one mistake here that cannot be walked back.
+        wrote.push(`${scope.accountId}:${scope.credentials?.accessKeyId ?? "ambient"}:${resource.id}`);
+        return { changed: true, description: `fixed ${resource.id}` };
+      }) as any,
+      collectors: { "logs:log-group": async () => ({ resources: [group("/aws/lambda/api")] }) } as any,
+    });
+
+    check("each fix carries the credentials of the account it is fixing",
+      wrote.join() === "111111111111:ambient:/aws/lambda/api,222222222222:dev-key:/aws/lambda/api", wrote);
+  }
+
+  // ── the home account keeps working with nothing configured ─────────
+  {
+    const result = await run([rule()], [], {}, undefined, {
+      resolveAccounts: async () => [account("111111111111", "This account", { isHome: true })],
+      credentialsFor: async () => undefined,
+      collectors: {
+        "logs:log-group": async (scope: Scope) => {
+          check("the home account is reached without assuming anything",
+            scope.credentials === undefined, scope.credentials);
+          return { resources: [group("/aws/lambda/api")] };
+        },
+      } as any,
+    });
+    check("  and still produces findings", result.findings.length === 1, result.findings.length);
+  }
+
+  // ── failing to read the account list ───────────────────────────────
+  {
+    const result = await run([rule()], [], {}, undefined, {
+      resolveAccounts: async () => { throw new Error("table missing"); },
+      collectors: { "logs:log-group": async () => ({ resources: [group("x")] }) } as any,
+    });
+    check("an unreadable account list reports an error rather than sweeping nothing quietly",
+      result.errors.length === 1 && result.findings.length === 0, result);
+  }
+
+  // ── resources in regions nobody swept ──────────────────────────────
+  {
+    const result = await run([rule({ kind: "s3_https_only" })], [], {}, undefined, {
+      resolveAccounts: async () => [account("111111111111", "prod", { regions: ["us-east-1", "eu-west-1"] })],
+      credentialsFor: async () => undefined,
+      collectors: {
+        // What the real S3 collector does: ListBuckets is global, so each pass
+        // sees the whole account and reports everything outside its own region.
+        "s3:bucket": async (scope: Scope) => ({
+          resources: [],
+          unswept: [
+            { region: "us-east-1", count: 3 },
+            { region: "eu-west-1", count: 1 },
+            { region: "ap-south-1", count: 7 },
+          ].filter(u => u.region !== scope.region),
+        }),
+      } as any,
+    });
+
+    check("buckets in a region nobody added are reported as never looked at",
+      result.unswept?.map(u => u.region).join() === "ap-south-1", result.unswept);
+    check("  with a count, so the size of the blind spot is visible",
+      result.unswept?.[0]?.count === 7, result.unswept);
+    check("  and regions the account does sweep are not called blind spots",
+      !result.unswept?.some(u => u.region === "eu-west-1"), result.unswept);
+    check("  they are not counted as violations, because nobody checked them",
+      result.violations === 0, result.violations);
+    check("  nor as errors, because nothing went wrong",
+      result.errors.length === 0, result.errors);
+  }
+
+  // ── keys for findings written before accounts existed ──────────────
+  {
+    const legacy = { ruleId: "r1", resourceId: "bucket" } as Finding;
+    check("a finding with no account keeps its original key, so it can be deleted",
+      findingKey(legacy) === "r1#bucket", findingKey(legacy));
+  }
+
+  // ── scope expansion ────────────────────────────────────────────────
+  {
+    const scopes = scopesFor([
+      account("111111111111", "prod", { regions: ["us-east-1", "eu-west-1"] }),
+      account("222222222222", "dev", { enabled: false }),
+      account("333333333333", "uat", { regions: [] }),
+    ]);
+    check("scopes cover every enabled account-region pair",
+      scopes.map(s => `${s.accountName}/${s.region}`).join() ===
+      "prod/us-east-1,prod/eu-west-1,uat/us-east-1", scopes);
+  }
+
+  console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
+  process.exit(failures === 0 ? 0 : 1);
+})();
