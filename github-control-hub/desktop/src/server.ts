@@ -39,8 +39,19 @@ export async function startBackend(
   }
 
   return new Promise((resolve, reject) => {
-    server = expressApp.listen(port, () => {
-      console.log(`[desktop] Backend + Frontend running on http://localhost:${port}`);
+    // Loopback, not every interface.
+    //
+    // listen(port) with no host binds 0.0.0.0, which put an administrative API
+    // for a GitHub organisation and several AWS accounts on whatever network
+    // the laptop was joined to. Nothing about this server is meant to be
+    // reachable from another machine: the only client is the window in this
+    // process, and it asks for http://localhost.
+    //
+    // The EC2/Docker deployment is the opposite case and binds normally —
+    // see backend/src/standalone.ts, where reaching it from outside is the
+    // entire point and a security group decides who may.
+    server = expressApp.listen(port, "127.0.0.1", () => {
+      console.log(`[desktop] Backend + Frontend running on http://127.0.0.1:${port}`);
       resolve();
     });
     server!.on("error", reject);

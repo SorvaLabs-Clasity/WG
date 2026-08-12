@@ -237,6 +237,28 @@ function httpGetJson(url: string): Promise<any> {
   });
 }
 
+/**
+ * The GitHub App token, read from the backend running inside this process.
+ *
+ * Not fetched over HTTP. The backend used to expose GET /auth/system-token for
+ * exactly this call, unauthenticated, which made an org-wide admin token
+ * available to anything that could open a socket to the app. The backend is
+ * require()d into this process by startBackend, so the token is a function call
+ * away and never crosses a network boundary at all.
+ */
+function readSystemToken(): string {
+  try {
+    const clientPath = require.resolve(path.join(getBackendDir(), "dist", "github", "client.js"));
+    return require(clientPath).getSystemToken() || "";
+  } catch (err: any) {
+    // The interval that calls this has already been cleared by the time we get
+    // here, so throwing would end the update check with nothing said. An empty
+    // token is the caller's existing "no token" path, which reports an error.
+    console.error("[updater] Could not read the system token:", err?.message ?? err);
+    return "";
+  }
+}
+
 function waitForAwsAuthThenCheckUpdates(): void {
   let checked = false;
   console.log("[updater] Waiting for AWS auth before checking updates...");
@@ -247,14 +269,14 @@ function waitForAwsAuthThenCheckUpdates(): void {
       if (status.aws?.dynamoReachable) {
         checked = true;
         clearInterval(interval);
-        console.log("[updater] AWS authenticated, fetching system token...");
-        const tokenRes = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/system-token`);
-        console.log("[updater] Token response:", tokenRes.token ? "got token" : "no token");
-        if (!tokenRes.token) {
+        console.log("[updater] AWS authenticated, reading system token...");
+        const token = readSystemToken();
+        console.log("[updater] Token:", token ? "got token" : "no token");
+        if (!token) {
           sendUpdateStatus("error");
           return;
         }
-        process.env.GH_TOKEN = tokenRes.token;
+        process.env.GH_TOKEN = token;
         sendUpdateStatus("checking");
         console.log("[updater] Checking for updates...");
         autoUpdater.checkForUpdates().catch((err) => {

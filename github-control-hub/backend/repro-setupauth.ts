@@ -53,6 +53,65 @@ const CONFIGURED = { clientId: "Iv1.abc", activityTable: "github-control-hub-act
   });
   check("no state leaves the user unable to reconnect", stuck.length === 0, stuck.map(s => s[0]));
 
+  // ── and what stands in for the missing session ─────────────────────
+  //
+  // Being open is the point above, which leaves cross-site request forgery as
+  // the whole exposure: these endpoints took a POST from any page the user had
+  // open and acted on it. CORS does not help — it governs reading the response,
+  // not sending the request.
+  //
+  // The guard is read out of the shipped source rather than reimplemented, so
+  // this cannot drift into testing a copy that no longer matches.
+  {
+    const src = require("fs").readFileSync(
+      require("path").join(__dirname, "src/routes/auth.ts"), "utf8");
+    const body = src.slice(src.indexOf("const sameOriginOnly"),
+                           src.indexOf("/** After AWS credentials change"));
+    const guard = new Function("process",
+      `${body.replace(/: (Request|Response|NextFunction)/g, "")} return sameOriginOnly;`)(process);
+
+    const at = (frontendUrl: string, headers: Record<string, string>) => {
+      const previous = process.env.FRONTEND_URL;
+      process.env.FRONTEND_URL = frontendUrl;
+      let status = 0, allowed = false;
+      guard(
+        { headers },
+        { status(c: number) { status = c; return this; }, json() { return this; } },
+        () => { allowed = true; },
+      );
+      process.env.FRONTEND_URL = previous;
+      return allowed ? "allowed" : status;
+    };
+
+    const DESKTOP = "http://localhost:4321";
+
+    check("the app's own request is allowed",
+      at(DESKTOP, { origin: DESKTOP, "sec-fetch-site": "same-origin" }) === "allowed");
+
+    // Ports are not part of a "site", so Vite on :5173 calling the backend on
+    // :4000 reports same-site. Refusing that would break every dev run.
+    check("  as is the dev server calling across ports",
+      at("http://localhost:5173",
+         { origin: "http://localhost:5173", "sec-fetch-site": "same-site" }) === "allowed");
+
+    check("  as is a caller with no browser headers at all",
+      at(DESKTOP, {}) === "allowed");
+
+    check("a hostile page is refused",
+      at(DESKTOP, { origin: "https://evil.example", "sec-fetch-site": "cross-site" }) === 403);
+
+    check("  with Origin stripped, Sec-Fetch-Site still gives it away",
+      at(DESKTOP, { "sec-fetch-site": "cross-site" }) === 403);
+
+    check("  and on an older browser, Origin does",
+      at(DESKTOP, { origin: "https://evil.example" }) === 403);
+
+    // The one Sec-Fetch-Site alone would let through: another local server is
+    // same-site to the app, so the port in Origin has to be what decides.
+    check("  another server on this machine is refused",
+      at(DESKTOP, { origin: "http://localhost:9999", "sec-fetch-site": "same-site" }) === 403);
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

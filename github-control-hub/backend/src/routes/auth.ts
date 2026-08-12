@@ -1,10 +1,10 @@
 import { Router, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { buildAuthorizationUrl, exchangeCodeForToken } from "../github/oauth";
-import { createOctokit, getOrg, getSystemToken, initTokenManager } from "../github/client";
+import { createOctokit, getOrg, initTokenManager } from "../github/client";
 import { signToken, verifyToken } from "../utils/jwt";
 import { storeToken, getToken, removeToken } from "../utils/tokenStore";
-import { docClient, tableName, usesDynamo, PutCommand, GetCommand, DeleteCommand } from "../utils/dynamo";
+import { docClient, tableName, usesDynamo, PutCommand, DeleteCommand } from "../utils/dynamo";
 import { authMiddleware } from "../middleware/authMiddleware";
 
 const router = Router();
@@ -48,17 +48,31 @@ async function storeAuthCode(code: string, entry: AuthCodeEntry): Promise<void> 
   }
 }
 
+/**
+ * Redeem a one-time code, once.
+ *
+ * The delete does the reading. A Get followed by a Delete is two operations,
+ * and a code presented twice in the gap between them was returned twice —
+ * each time carrying a signed session for the account that logged in. Delete
+ * with ALL_OLD is a single conditional write: whichever caller's delete
+ * actually removed the row is handed the item, and every other caller gets
+ * nothing back.
+ *
+ * The expiry is then checked here rather than left to DynamoDB. A `ttl`
+ * attribute is a request, not a guarantee — AWS sweeps expired items within
+ * about 48 hours, so a code long past its five minutes is still sitting in the
+ * table and still redeemable. The in-memory path always checked; the Dynamo
+ * path, which is the one that runs in production, did not.
+ */
 async function consumeAuthCode(code: string): Promise<AuthCodeEntry | null> {
   if (usesDynamo() && process.env.AUTH_CODES_TABLE) {
     const table = tableName("AUTH_CODES_TABLE");
     const result = await docClient.send(
-      new GetCommand({ TableName: table, Key: { code } })
+      new DeleteCommand({ TableName: table, Key: { code }, ReturnValues: "ALL_OLD" })
     );
-    const item = result.Item as (AuthCodeEntry & { code?: string }) | undefined;
+    const item = result.Attributes as (AuthCodeEntry & { ttl?: number }) | undefined;
     if (!item?.token) return null;
-    await docClient.send(
-      new DeleteCommand({ TableName: table, Key: { code } })
-    );
+    if (typeof item.ttl === "number" && item.ttl * 1000 < Date.now()) return null;
     return { token: item.token, login: item.login, avatarUrl: item.avatarUrl };
   }
   const entry = memoryAuthCodes.get(code);
@@ -88,16 +102,20 @@ async function storeOAuthState(state: string): Promise<void> {
   }
 }
 
+/** Single-use and time-limited, for the same reasons as consumeAuthCode above. */
 async function consumeOAuthState(state: string): Promise<boolean> {
   if (usesDynamo() && process.env.AUTH_CODES_TABLE) {
     const table = tableName("AUTH_CODES_TABLE");
     const result = await docClient.send(
-      new GetCommand({ TableName: table, Key: { code: `state:${state}` } })
+      new DeleteCommand({
+        TableName: table,
+        Key: { code: `state:${state}` },
+        ReturnValues: "ALL_OLD",
+      })
     );
-    if (!result.Item) return false;
-    await docClient.send(
-      new DeleteCommand({ TableName: table, Key: { code: `state:${state}` } })
-    );
+    const item = result.Attributes as { ttl?: number } | undefined;
+    if (!item) return false;
+    if (typeof item.ttl === "number" && item.ttl * 1000 < Date.now()) return false;
     return true;
   }
   const expiry = memoryOAuthStates.get(state);
@@ -189,11 +207,64 @@ const serverModeGuard = (_req: Request, res: Response, next: Function) => {
   next();
 };
 
-// Returns the current GitHub token for the desktop app's auto-updater
-router.get("/system-token", serverModeGuard, (_req: Request, res: Response) => {
-  const token = getSystemToken();
-  res.json({ token: token || null });
-});
+/**
+ * Refuse state-changing requests that some other site caused the browser to make.
+ *
+ * These routes are reachable without a session by design — reconnecting AWS is
+ * how you get a session back — so the usual token check is not available. That
+ * left CSRF: any page the user happened to have open could POST to
+ * http://localhost:4321/auth/invalidate-aws and disconnect their account. CORS
+ * does not help, because it governs reading the response, not sending the
+ * request; a simple POST is delivered and acted on whatever CORS says
+ * afterwards.
+ *
+ * Two signals. `Sec-Fetch-Site` is attached by current browsers and cannot be
+ * set by page script, so `cross-site` is a definite no. It is deliberately the
+ * weaker of the two checks: ports are not part of a "site", so the dev server
+ * on :5173 calling the backend on :4000 reports `same-site`, and rejecting
+ * anything short of `same-origin` would refuse every request in development
+ * while adding nothing against a cross-origin attacker.
+ *
+ * `Origin` does the precise work — it carries the port, and is compared against
+ * the URL this app actually serves. A request carrying neither header did not
+ * come from a browser; after the listener moved to loopback that means a
+ * process on this machine, which is already inside anything this can protect.
+ */
+const sameOriginOnly = (req: Request, res: Response, next: NextFunction) => {
+  const refuse = () =>
+    res.status(403).json({ error: "Cross-site requests are not accepted here" });
+
+  if (req.headers["sec-fetch-site"] === "cross-site") {
+    refuse();
+    return;
+  }
+
+  const origin = req.headers.origin;
+  if (typeof origin === "string" && origin !== "null") {
+    const allowed = (process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+    const permitted = new Set([allowed, allowed.replace("//localhost", "//127.0.0.1")]);
+    if (!permitted.has(origin.replace(/\/$/, ""))) {
+      refuse();
+      return;
+    }
+  }
+
+  next();
+};
+
+// There is deliberately no route here that hands out the system token.
+//
+// There used to be: GET /auth/system-token, guarded only by serverModeGuard,
+// returning the GitHub App installation token — org-wide admin over every
+// repository — to anyone who asked. The desktop backend listens on a TCP port,
+// so "anyone who asked" included every other process on the machine and, until
+// the listener was moved to loopback, every device on the same network.
+//
+// Its one caller was the auto-updater in the Electron main process, which runs
+// this backend in-process (desktop/src/server.ts require()s it). It reads the
+// token by calling getSystemToken() directly. A function call inside one
+// process cannot be reached from off it, which no amount of guarding an HTTP
+// route achieves.
 
 // During initial setup (no GitHub OAuth secrets loaded yet), allow AWS credential
 // endpoints without authentication. Once secrets are loaded, require auth.
@@ -261,7 +332,7 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
   return false;
 }
 
-router.post("/invalidate-aws", serverModeGuard, async (_req: Request, res: Response) => {
+router.post("/invalidate-aws", serverModeGuard, sameOriginOnly, async (_req: Request, res: Response) => {
   const { lockAws } = await import("../middleware/awsHealthMiddleware");
   const { resetDynamoClient } = await import("../utils/dynamo");
 
@@ -280,7 +351,7 @@ router.post("/invalidate-aws", serverModeGuard, async (_req: Request, res: Respo
   res.json({ ok: true });
 });
 
-router.post("/reconnect-aws", serverModeGuard, setupOrAuthMiddleware, async (req: Request, res: Response) => {
+router.post("/reconnect-aws", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
@@ -312,7 +383,7 @@ router.post("/reconnect-aws", serverModeGuard, setupOrAuthMiddleware, async (req
 });
 
 /** List all AWS profiles from ~/.aws/config and ~/.aws/credentials. */
-router.get("/aws-profiles", serverModeGuard, setupOrAuthMiddleware, async (_req: Request, res: Response) => {
+router.get("/aws-profiles", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (_req: Request, res: Response) => {
   try {
     const fs = await import("fs");
     const path = await import("path");
@@ -396,7 +467,7 @@ router.get("/aws-profiles", serverModeGuard, setupOrAuthMiddleware, async (_req:
   }
 });
 
-router.post("/aws-sso-login", serverModeGuard, setupOrAuthMiddleware, async (req: Request, res: Response) => {
+router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { spawn } = await import("child_process");
   const profile = (req.body?.profile as string) || process.env.AWS_PROFILE || "default";
 
@@ -438,7 +509,7 @@ router.post("/aws-sso-login", serverModeGuard, setupOrAuthMiddleware, async (req
 });
 
 /** Switch to an existing AWS CLI profile (non-SSO). */
-router.post("/aws-use-profile", serverModeGuard, setupOrAuthMiddleware, async (req: Request, res: Response) => {
+router.post("/aws-use-profile", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
@@ -473,7 +544,7 @@ router.post("/aws-use-profile", serverModeGuard, setupOrAuthMiddleware, async (r
 });
 
 /** Authenticate with explicit access keys. */
-router.post("/aws-access-keys", serverModeGuard, setupOrAuthMiddleware, async (req: Request, res: Response) => {
+router.post("/aws-access-keys", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");

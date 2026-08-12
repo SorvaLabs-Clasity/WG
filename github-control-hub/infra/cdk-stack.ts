@@ -177,7 +177,18 @@ export class GitHubControlHubStack extends cdk.Stack {
       '  -keyout /etc/ssl/github-control-hub/server.key \\',
       '  -out /etc/ssl/github-control-hub/server.crt \\',
       '  -subj "/CN=github-control-hub"',
-      "chmod 644 /etc/ssl/github-control-hub/server.key /etc/ssl/github-control-hub/server.crt",
+      // The certificate is public by definition. The key was chmod'ed 644
+      // alongside it, which made the server's private key readable by every
+      // account on the instance.
+      //
+      // It cannot simply be 600 root-owned: the container runs as the `node`
+      // user and mounts this directory to read the key, which is the reason
+      // the permissive mode was there. So give it to that uid instead of to
+      // everyone — 1000 is `node` in the node:24-alpine image, and ec2-user on
+      // the host. Root still reads it; nothing else does.
+      "chown 1000:1000 /etc/ssl/github-control-hub/server.key",
+      "chmod 600 /etc/ssl/github-control-hub/server.key",
+      "chmod 644 /etc/ssl/github-control-hub/server.crt",
     );
 
     cdk.Tags.of(instance).add("Name", "github-control-hub");

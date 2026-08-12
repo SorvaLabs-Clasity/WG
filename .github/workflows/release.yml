@@ -13,8 +13,14 @@ on:
       - '**/*.md'
       - '.gitignore'
 
+# Read by default. Only the release job writes, and it says so itself.
+#
+# Granting contents: write here handed the same repo-writing token to the build
+# matrix, which checks out the tree, installs several hundred packages from npm
+# and runs their lifecycle scripts on two runners. Nothing in that job publishes
+# anything; it uploads artifacts, which needs no contents scope at all.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   # ── Build each platform, publish nothing ────────────────────────────
@@ -104,6 +110,9 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    # The one job that talks to the Releases API is the one job that may write.
+    permissions:
+      contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5

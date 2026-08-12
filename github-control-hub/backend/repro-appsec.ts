@@ -121,6 +121,104 @@ const electron = read("github-control-hub/desktop/src/main.ts");
       /isDuplicateDelivery/.test(hook));
   }
 
+  // ── the org-wide token is never served over a socket ───────────────
+  //
+  // GET /auth/system-token returned the GitHub App installation token —
+  // admin over every repository in the organisation — to anyone who could
+  // reach the port, with no authentication of any kind. Its only caller runs
+  // in the same process as the backend and now calls the function directly.
+  {
+    check("no route hands out the system token",
+      !/router\.\w+\(\s*["'][^"']*system-token/.test(code(auth)),
+      "an HTTP route returns the GitHub App token again");
+
+    check("  the updater reads it in-process instead",
+      /readSystemToken/.test(electron) && !/system-token/.test(code(electron)),
+      "the desktop updater is fetching the token over HTTP again");
+  }
+
+  // ── the desktop app is not a network service ───────────────────────
+  //
+  // listen(port) with no host binds 0.0.0.0. On a laptop that published an
+  // administrative API for a GitHub org and several AWS accounts to whatever
+  // network it was joined to.
+  {
+    const desktopServer = read("github-control-hub/desktop/src/server.ts");
+    check("the desktop backend binds loopback only",
+      /listen\(\s*port\s*,\s*["']127\.0\.0\.1["']/.test(code(desktopServer)),
+      "the desktop listener is bound to every interface");
+
+    check("  and so does the dev server",
+      /listen\(\s*PORT\s*,\s*["']127\.0\.0\.1["']/.test(code(server)),
+      "the dev listener is bound to every interface");
+  }
+
+  // ── setup routes refuse cross-site callers ─────────────────────────
+  //
+  // These are reachable without a session by design, so CSRF was the whole
+  // exposure: any open page could POST to localhost and disconnect AWS.
+  {
+    check("desktop setup routes check the request's origin",
+      /sameOriginOnly/.test(code(auth)));
+
+    const stateChanging = [
+      "invalidate-aws", "reconnect-aws", "aws-sso-login",
+      "aws-use-profile", "aws-access-keys", "aws-profiles",
+    ];
+    const unguarded = stateChanging.filter(r => {
+      const m = auth.match(new RegExp(`router\\.\\w+\\(\\s*["']/${r}["'][^)]*`));
+      return !m || !/sameOriginOnly/.test(m[0]);
+    });
+    check("  every one of them names the guard", unguarded.length === 0, unguarded);
+  }
+
+  // ── one-time codes are actually one-time ───────────────────────────
+  //
+  // Get-then-Delete returned the same code to two callers racing through the
+  // gap, and a DynamoDB `ttl` is swept within ~48 hours rather than at the
+  // moment it expires — so neither single use nor the five-minute window was
+  // being enforced where it mattered.
+  {
+    check("auth codes are redeemed by the delete itself",
+      /ReturnValues:\s*["']ALL_OLD["']/.test(code(auth)),
+      "the code is read and then deleted, which is not single-use");
+
+    check("  and their expiry is checked here, not left to DynamoDB",
+      (code(auth).match(/item\.ttl \* 1000 < Date\.now\(\)/g) ?? []).length >= 2,
+      "an expired code or state would still be accepted");
+  }
+
+  // ── tokens name their algorithm ────────────────────────────────────
+  {
+    const jwtSrc = read("github-control-hub/backend/src/utils/jwt.ts");
+    check("JWTs are verified against an explicit algorithm",
+      /algorithms:\s*\[ALGORITHM\]/.test(jwtSrc) && /ALGORITHM = "HS256"/.test(jwtSrc),
+      "verification accepts whatever the library infers");
+  }
+
+  // ── the private key is not world-readable ──────────────────────────
+  {
+    const deploy = read("scripts/deploy.sh");
+    for (const [name, src] of [["the CDK user-data", cdk], ["deploy.sh", deploy]] as const) {
+      check(`${name} does not chmod the TLS key 644`,
+        !/chmod 644 [^\n']*server\.key/.test(src),
+        "the server's private key is readable by every account on the instance");
+    }
+    check("  the CDK gives the key mode 600",
+      /chmod 600 \/etc\/ssl\/github-control-hub\/server\.key/.test(cdk));
+  }
+
+  // ── CI holds no more than it needs ─────────────────────────────────
+  {
+    const wf = read(".github/workflows/release.yml");
+    const workflowLevel = wf.slice(0, wf.indexOf("jobs:"));
+    check("the workflow's default token is read-only",
+      /permissions:\s*\n\s*contents:\s*read/.test(workflowLevel),
+      "every job, including the one that runs npm lifecycle scripts, can write to the repo");
+    check("  and only the release job asks for write",
+      /release:[\s\S]*?permissions:\s*\n\s*contents:\s*write/.test(wf));
+  }
+
   // ── nothing hardcoded ──────────────────────────────────────────────
   {
     const files = ["github-control-hub/backend/src", "github-control-hub/frontend/src",

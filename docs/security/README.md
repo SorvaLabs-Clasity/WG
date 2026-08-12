@@ -7,7 +7,8 @@ properties are held in place.
 |---|---|
 | [AWS permissions](../aws-guardrails/permissions.md) | Every IAM grant, and what is absent |
 | [Permissions model](../auth/permissions-model.md) | Who is allowed to do what |
-| [Review findings](review-2026-08.md) | The last full review, and what it changed |
+| [Review findings](review-2026-08-12.md) | The last full review, and what it changed |
+| [Earlier review](review-2026-08.md) | Dependencies, remote origins, infrastructure at rest |
 
 ## Held by tests, not by habit
 
@@ -20,8 +21,11 @@ an unconditional write grant appears.
 
 **`repro-appsec.ts`** fails if `index.html` regains a remote origin, the
 content-security policy is weakened, a process is spawned through a shell, the
-Electron renderer is given node access, the webhook stops failing closed, or a
-credential shape appears in source.
+Electron renderer is given node access, the webhook stops failing closed, a
+credential shape appears in source, a route starts handing out the system token
+again, a listener binds anything but loopback, one-time codes stop being
+single-use, the JWT algorithm goes unpinned, the TLS key goes world-readable, or
+CI's default token regains write.
 
 Both are cheap to run and are the reason a regression here shows up as a red
 test rather than as an incident.
@@ -46,3 +50,16 @@ token, so GitHub decides. The app holds no authority of its own.
 
 **Webhooks fail closed.** HMAC, compared in constant time, against the raw
 body, with replay rejection. No secret means no delivery is accepted.
+
+**The desktop app is not a network service.** Its backend binds loopback, so
+the administrative API it serves is reachable only from the machine it runs on.
+The EC2 deployment is the deliberate exception, and a security group decides
+who reaches it.
+
+**No route hands out the system token.** The GitHub App token stays in the
+process that holds it. The only component that needs it — the updater — runs in
+that same process and calls the function.
+
+**Org-wide settings need the admin team.** Every router that writes
+configuration affecting repositories other than the one named in the request
+names a guard, and a test asserts no router escapes the list.

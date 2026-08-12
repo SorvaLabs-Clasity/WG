@@ -176,8 +176,11 @@ app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
 
 // When imported by standalone.ts or the desktop app, skip auto-listen
 if (!process.env.__STANDALONE__) {
-  app.listen(PORT, () => {
-    console.log(`Backend running on http://localhost:${PORT}`);
+  // Loopback. This branch is the developer's local server, whose only client is
+  // Vite on the same machine; binding every interface published an unfinished
+  // build holding real org credentials to the coffee-shop network.
+  app.listen(PORT, "127.0.0.1", () => {
+    console.log(`Backend running on http://127.0.0.1:${PORT}`);
   });
 }
 

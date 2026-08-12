@@ -274,7 +274,11 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     ["widgets.ts",       /router\.(post|put|delete)\(/g, /refusedWidgetChange/],
     ["alerts.ts",        /router\.(post|put|delete)\(/g, /refusedAlertChange/],
     ["config.ts",        /router\.(post|put|delete)\(/g, /refuseUnlessAdmin/],
-    ["awsGuardrails.ts",  /router\.(post|put|delete)\(/g, /requireAdmin/],
+    // Absent from this list until the August 2026 review, which is why it was
+    // the one org-wide config router shipping with no authorization at all.
+    // A file that is not listed here is not checked, so the list itself is the
+    // thing to keep honest — see the completeness assertion below.
+    ["ruleTemplates.ts", /router\.(post|put|delete)\(/g, /refusedRuleTemplateChange/],
     ["awsGuardrails.ts", /router\.(post|put|delete)\(/g, /requireAdmin/],
     ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted/],
   ];
@@ -292,6 +296,38 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     });
     check(`${file}: every write route names its guard`, ungated.length === 0, ungated);
   }
+
+  /**
+   * And the list above has to name every router that needs it.
+   *
+   * The rule-template routes went unguarded for as long as they did precisely
+   * because this suite passed: it checks the files it is told about, so a new
+   * router simply is not looked at. Anything with a write route must therefore
+   * be either guarded above or listed here as deliberately not org-wide, with
+   * the reason.
+   */
+  const NOT_ORG_WIDE: Record<string, string> = {
+    "auth.ts": "session and local AWS setup; guarded by authMiddleware/serverModeGuard, not by team",
+    "branches.ts": "acts on one repo with the caller's own token — GitHub authorises",
+    "protection.ts": "same: per-repo, the caller's token",
+    "repos.ts": "same: per-repo, the caller's token",
+    "webhooks.ts": "not a user route — HMAC-verified GitHub deliveries",
+    "graph.ts": "derived cache rebuilt from GitHub; holds no authority of its own",
+    "access.ts": "read models over the graph",
+    "compliance.ts": "read models over the graph",
+    "dependencies.ts": "reads advisories; its two writes enable and disable Dependabot on one repo with the caller's own token",
+    "org.ts": "org read-through",
+  };
+
+  const routeDir = path.join(__dirname, "src/routes");
+  const guardedFiles = new Set(GUARDED.map(([f]) => f));
+  const unlisted = fs.readdirSync(routeDir)
+    .filter((f: string) => f.endsWith(".ts"))
+    .filter((f: string) => /router\.(post|put|delete)\(/.test(read(f)))
+    .filter((f: string) => !guardedFiles.has(f) && !(f in NOT_ORG_WIDE));
+
+  check("every route file with writes is either guarded or explicitly exempt",
+    unlisted.length === 0, unlisted);
 }
 
 // ── the gate must cover everything the route acts on ──────────────────
