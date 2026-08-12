@@ -31,22 +31,23 @@ const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2,
 const THRESHOLD: Record<string, number> = { any: 1, low: 1, medium: 2, high: 3, critical: 4 };
 
 /**
- * The checks, drawn to scale.
+ * The checks, as cards with weight.
  *
- * Three shapes have been tried and all three were the same idea underneath: a
- * list of objects, each stating its own number, compared by reading them one
- * after another. Cards, then bands, then rows — the layout changed, the work of
- * comparing did not.
+ * The page began as a grid of cards and three redesigns walked away from it —
+ * bands, then a ledger, then a bar chart — each one flatter and more austere
+ * than the last. That was the wrong direction: /.impeccable.md asks for
+ * saturated colour, depth and layering, and names Vanta's control dashboard as
+ * the reference. A grid was never the problem; a grid of thin grey boxes with a
+ * centred number was.
  *
- * Every check answers the same question in the end: how much of the
- * organisation does this affect. That is a proportion, and proportions are
- * compared by length, not by reading. So each check is a bar against a common
- * scale. Which problem is biggest stops being something you work out and
- * becomes something you see — the first design principle in /.impeccable.md
- * taken literally.
+ * So: cards again, built the way the notes actually describe. Each carries a
+ * ring showing how much of the organisation it concerns, a bar repeating that
+ * at full width, and the first few affected repositories by name — because a
+ * count tells you the size of a problem and a name tells you where it is.
  *
- * The bars are the data, not decoration: they are the only encoding of scale on
- * the page, and everything else is a label on them.
+ * Severity drives saturation, elevation and the header wash together, so a card
+ * that needs attention is heavier on the page than one that does not, without
+ * being a different shape.
  */
 
 type Level = "danger" | "warn" | "info" | "clear";
@@ -55,9 +56,10 @@ interface Verdict {
   level: Level;
   value: number;
   denominator: number | null;
-  /** 0..1 of the organisation, or null when there is nothing to take a share of. */
+  /** 0..1 — how much of what was checked this concerns. */
   share: number | null;
   caption: string;
+  eyebrow: string;
 }
 
 function verdictFor(items: any[], total: number | null, config: WidgetConfig): Verdict {
@@ -71,7 +73,11 @@ function verdictFor(items: any[], total: number | null, config: WidgetConfig): V
       value: failing,
       denominator: items.length,
       share,
+      // The ring always reads as "how much is wrong", so a pass/fail check
+      // shows its failing share rather than its passing one. Two checks whose
+      // rings look the same must mean the same thing.
       caption: failing === 0 ? "all passing" : `failing of ${items.length} checked`,
+      eyebrow: failing === 0 ? "Passing" : "Failing",
     };
   }
 
@@ -80,7 +86,7 @@ function verdictFor(items: any[], total: number | null, config: WidgetConfig): V
   const share = total ? Math.min(1, found / total) : null;
 
   if (config.type === "query" && (option as any)?.informational) {
-    return { level: "info", value: found, denominator: total, share, caption: total ? `of ${total} repositories` : "matching" };
+    return { level: "info", value: found, denominator: total, share, caption: total ? `of ${total} repositories` : "matching", eyebrow: "Matching" };
   }
 
   return {
@@ -89,21 +95,58 @@ function verdictFor(items: any[], total: number | null, config: WidgetConfig): V
     denominator: total,
     share,
     caption: found === 0 ? "nothing found" : total ? `of ${total} repositories` : "found",
+    eyebrow: found === 0 ? "Clear" : "Affected",
   };
 }
 
-const BAR: Record<Level, string> = {
-  danger: "bg-rose-500 dark:bg-rose-400",
-  warn: "bg-amber-500 dark:bg-amber-400",
-  info: "bg-blue-500/70 dark:bg-blue-400/70",
-  clear: "bg-emerald-500 dark:bg-emerald-400",
-};
-
-const TEXT: Record<Level, string> = {
-  danger: "text-rose-600 dark:[color:#ff8095]",
-  warn: "text-amber-600 dark:[color:#ffc14d]",
-  info: "text-blue-600 dark:[color:#6bb4ff]",
-  clear: "text-emerald-600 dark:[color:#3ddc97]",
+/**
+ * One palette per level, used for the wash, the ring, the bar and the figure at
+ * once. Colour is the only thing separating a card that matters from one that
+ * does not, so it has to be applied consistently or the grid flattens again.
+ */
+const TONE: Record<Level, {
+  wash: string; ring: string; track: string; bar: string; figure: string; chip: string; edge: string; lift: string;
+}> = {
+  danger: {
+    wash: "bg-gradient-to-br from-rose-500/[0.13] to-rose-500/[0.04] dark:from-rose-500/[0.20] dark:to-rose-500/[0.06]",
+    ring: "stroke-rose-500 dark:stroke-rose-400",
+    track: "stroke-rose-500/15 dark:stroke-rose-400/15",
+    bar: "bg-rose-500 dark:bg-rose-400",
+    figure: "text-rose-600 dark:[color:#ff8095]",
+    chip: "bg-rose-500 text-white",
+    edge: "border-rose-200/80 dark:border-rose-500/25",
+    lift: "shadow-[0_18px_40px_-16px_rgba(225,29,72,0.35)] dark:shadow-[0_18px_44px_-16px_rgba(0,0,0,0.8)]",
+  },
+  warn: {
+    wash: "bg-gradient-to-br from-amber-500/[0.13] to-amber-500/[0.04] dark:from-amber-500/[0.20] dark:to-amber-500/[0.06]",
+    ring: "stroke-amber-500 dark:stroke-amber-400",
+    track: "stroke-amber-500/15 dark:stroke-amber-400/15",
+    bar: "bg-amber-500 dark:bg-amber-400",
+    figure: "text-amber-600 dark:[color:#ffc14d]",
+    chip: "bg-amber-500 text-white",
+    edge: "border-amber-200/80 dark:border-amber-500/25",
+    lift: "shadow-[0_14px_32px_-16px_rgba(217,119,6,0.30)] dark:shadow-[0_14px_36px_-16px_rgba(0,0,0,0.7)]",
+  },
+  info: {
+    wash: "bg-gradient-to-br from-blue-500/[0.10] to-blue-500/[0.03] dark:from-blue-500/[0.16] dark:to-blue-500/[0.05]",
+    ring: "stroke-blue-500 dark:stroke-blue-400",
+    track: "stroke-blue-500/15 dark:stroke-blue-400/15",
+    bar: "bg-blue-500 dark:bg-blue-400",
+    figure: "text-blue-600 dark:[color:#6bb4ff]",
+    chip: "bg-blue-500 text-white",
+    edge: "border-blue-200/80 dark:border-blue-500/25",
+    lift: "shadow-sm",
+  },
+  clear: {
+    wash: "bg-gradient-to-br from-emerald-500/[0.10] to-emerald-500/[0.03] dark:from-emerald-500/[0.14] dark:to-emerald-500/[0.04]",
+    ring: "stroke-emerald-500 dark:stroke-emerald-400",
+    track: "stroke-emerald-500/15 dark:stroke-emerald-400/15",
+    bar: "bg-emerald-500 dark:bg-emerald-400",
+    figure: "text-emerald-600 dark:[color:#3ddc97]",
+    chip: "bg-emerald-500 text-white",
+    edge: "border-emerald-200/80 dark:border-emerald-500/25",
+    lift: "shadow-sm",
+  },
 };
 
 const RANK: Record<Level, number> = { danger: 0, warn: 1, info: 2, clear: 3 };
@@ -132,12 +175,12 @@ export default function AnalyticsPage() {
   const [openId, setOpenId] = useState<string | null>(null);
 
   /**
-   * Each bar reports its verdict once its data arrives.
+   * Each card reports its verdict once its data arrives.
    *
    * The parent cannot work this out itself: the queries behind a check depend
    * on its configuration, so evaluating N checks means N hook calls and the
    * list length changes between renders. Reporting upward keeps the hooks where
-   * they belong and still lets the page order the bars and state the posture.
+   * they belong and still lets the page order the grid and state the posture.
    */
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
   const report = useCallback((id: string, v: Verdict) => {
@@ -158,7 +201,6 @@ export default function AnalyticsPage() {
     };
   }, [widgets, verdicts]);
 
-  /** Longest bar first, so the scale reads top to bottom. */
   const ordered = useMemo(() => {
     return [...widgets].sort((a, b) => {
       const va = verdicts[a.id], vb = verdicts[b.id];
@@ -181,7 +223,7 @@ export default function AnalyticsPage() {
 
   return (
     <Page user={user}>
-      <header className="mb-10" style={enter(0)}>
+      <header className="mb-9" style={enter(0)}>
         <div className="flex items-start justify-between gap-6 flex-wrap">
           <div className="min-w-0">
             <p className={`${TYPE.label} text-slate-400 dark:text-slate-500 mb-3`}>
@@ -195,10 +237,10 @@ export default function AnalyticsPage() {
               ) : posture.answered === 0 ? (
                 <span className="text-slate-300 dark:text-slate-700">Working it out…</span>
               ) : posture.attention === 0 ? (
-                <>Everything checked is <span className={TEXT.clear}>clear</span>.</>
+                <>Everything checked is <span className={TONE.clear.figure}>clear</span>.</>
               ) : (
                 <>
-                  <span className={TEXT[posture.worst]}>{posture.attention}</span>
+                  <span className={TONE[posture.worst].figure}>{posture.attention}</span>
                   {" "}of {posture.answered} checks need attention.
                 </>
               )}
@@ -238,45 +280,28 @@ export default function AnalyticsPage() {
       ) : widgets.length === 0 ? (
         <Empty
           title="No checks yet"
-          body="A check is a question about the organisation — which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it is drawn here against the size of the org."
+          body="A check is a question about the organisation — which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it gets a card here."
           action={canEditDashboard
             ? <Button variant="primary" onClick={() => setShowAddModal(true)}>Add the first check</Button>
             : undefined}
         />
       ) : (
-        <div style={enter(2)} className="relative">
-          {/* The scale, drawn once behind every bar. Without a common axis the
-              lengths are decoration; with one they are comparable. */}
-          <div className="absolute inset-y-0 left-0 right-0 pointer-events-none hidden sm:block" aria-hidden>
-            <div className="relative h-full ml-[max(38%,260px)] mr-16">
-              {[0.25, 0.5, 0.75, 1].map(t => (
-                <div key={t} className="absolute inset-y-0 border-l border-dashed border-slate-200/70 dark:border-white/[0.07]"
-                  style={{ left: `${t * 100}%` }} />
-              ))}
-            </div>
-          </div>
-
-          <div className="relative flex flex-col">
-            {ordered.map((w, i) => (
-              <ChartRow
-                key={w.id}
-                config={w}
-                index={i}
-                open={openId === w.id}
-                onToggle={() => setOpenId(openId === w.id ? null : w.id)}
-                onReport={report}
-                canEdit={canEditDashboard}
-                onEdit={() => setEditingWidget(w)}
-                onRemove={() => removeWidget(w.id)}
-                graphEmpty={graphEmpty}
-                orgName={orgName}
-              />
-            ))}
-          </div>
-
-          <div className="hidden sm:flex ml-[max(38%,260px)] mr-16 mt-2 justify-between text-[10px] font-mono text-slate-300 dark:text-slate-600 tabular-nums">
-            <span>0</span><span>25%</span><span>50%</span><span>75%</span><span>100% of the org</span>
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
+          {ordered.map((w, i) => (
+            <CheckCard
+              key={w.id}
+              config={w}
+              index={i}
+              open={openId === w.id}
+              onToggle={() => setOpenId(openId === w.id ? null : w.id)}
+              onReport={report}
+              canEdit={canEditDashboard}
+              onEdit={() => setEditingWidget(w)}
+              onRemove={() => removeWidget(w.id)}
+              graphEmpty={graphEmpty}
+              orgName={orgName}
+            />
+          ))}
         </div>
       )}
 
@@ -293,13 +318,50 @@ export default function AnalyticsPage() {
 }
 
 /**
- * One check, drawn.
+ * The proportion, drawn.
  *
- * The bar grows with scaleX from a left origin rather than by animating width:
- * a transform does not lay the page out on every frame, and the row cannot
- * reflow its neighbours while it settles.
+ * Sized in the SVG's own coordinates and scaled by the container, so one
+ * component serves every size without a prop for it. The dash offset carries
+ * the value: animating that rather than the geometry keeps it on the compositor.
  */
-function ChartRow({
+function Ring({ share, tone, children }: { share: number; tone: typeof TONE[Level]; children: React.ReactNode }) {
+  const R = 26, C = 2 * Math.PI * R;
+  return (
+    <div className="relative w-[68px] h-[68px] shrink-0">
+      <svg viewBox="0 0 64 64" className="w-full h-full -rotate-90">
+        <circle cx="32" cy="32" r={R} fill="none" strokeWidth="7" className={tone.track} />
+        <circle
+          cx="32" cy="32" r={R} fill="none" strokeWidth="7" strokeLinecap="round"
+          className={tone.ring}
+          style={{
+            strokeDasharray: C,
+            strokeDashoffset: C * (1 - Math.max(0, Math.min(1, share))),
+            transition: "stroke-dashoffset 900ms cubic-bezier(0.16,1,0.3,1)",
+          }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className={`text-[15px] font-black tabular-nums ${tone.figure}`}>{children}</span>
+      </div>
+    </div>
+  );
+}
+
+/** The first few affected things, by name. A count sizes a problem; a name locates it. */
+function nameOf(item: any): string {
+  return item?.repo || item?.user || item?.team || "—";
+}
+
+function detailOf(item: any, config: WidgetConfig): string {
+  if (config.type === "preset" && config.presetId === "dependabot") return `${item.total ?? 0} alerts`;
+  if (config.type === "preset" && config.presetId === "vuln-repos") return item.worst ?? "";
+  if (config.type === "preset" && config.presetId === "bypasses") return `${item.bypasses ?? 0} bypasses`;
+  if (item?.status) return item.status;
+  const r = String(item?.reason ?? "");
+  return r.length > 28 ? r.slice(0, 27) + "…" : r;
+}
+
+function CheckCard({
   config, index, open, onToggle, onReport, canEdit, onEdit, onRemove, graphEmpty, orgName,
 }: {
   config: WidgetConfig; index: number; open: boolean; onToggle: () => void;
@@ -310,12 +372,12 @@ function ChartRow({
   const { items, isLoading, total } = useWidgetData(config);
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const n = useCountUp(verdict.value);
+  const tone = TONE[verdict.level];
 
-  // Held at zero for a frame so the bar is seen arriving rather than appearing.
   const [drawn, setDrawn] = useState(false);
   useEffect(() => {
     if (isLoading) return;
-    const t = setTimeout(() => setDrawn(true), 60 + Math.min(index * 40, 320));
+    const t = setTimeout(() => setDrawn(true), 80 + Math.min(index * 60, 400));
     return () => clearTimeout(t);
   }, [isLoading, index]);
 
@@ -323,76 +385,114 @@ function ChartRow({
     if (!isLoading) onReport(config.id, verdict);
   }, [isLoading, verdict, config.id, onReport]);
 
-  // A finding that affects a sliver of the org would otherwise be invisible;
-  // a hairline says "present but small", which is the honest reading.
-  const width = verdict.share === null ? 0 : Math.max(verdict.share, verdict.value > 0 ? 0.006 : 0);
+  const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
+  const preview = items.filter((i: any) => !i.status || i.status === "fail").slice(0, 3);
+  const hidden = Math.max(0, verdict.value - preview.length);
+
+  if (isLoading) {
+    return (
+      <div className={`${SURFACE.card} p-6 h-[268px]`} style={enter(index)}>
+        <div className="flex items-center gap-4">
+          <div className="w-[68px] h-[68px] rounded-full bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
+          <div className="flex-1 space-y-2">
+            <div className="h-3 w-20 rounded bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
+            <div className="h-4 w-32 rounded bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="group">
-      <div className="flex items-center gap-4 sm:gap-5 py-1">
+    <article
+      style={enter(index)}
+      className={`group rounded-2xl border ${tone.edge} ${tone.lift} bg-white dark:bg-[#151a23] overflow-hidden
+        transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5`}
+    >
+      {/* Header: the wash lives here rather than over the whole card, so the
+          names below stay on a plain surface and remain readable. */}
+      <div className={`${tone.wash} px-5 pt-5 pb-4`}>
+        <div className="flex items-start gap-4">
+          <Ring share={verdict.share ?? 0} tone={tone}>
+            {pct === null ? "—" : `${pct}%`}
+          </Ring>
+
+          <div className="flex-1 min-w-0 pt-1">
+            <p className={`${TYPE.label} ${tone.figure} mb-1.5`}>{verdict.eyebrow}</p>
+            <h3 className="text-[15px] font-black text-slate-900 dark:text-white leading-tight line-clamp-2">
+              {config.title}
+            </h3>
+          </div>
+
+          {canEdit && (
+            <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 hover:opacity-100 transition-opacity">
+              <button onClick={onEdit} title="Edit"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-white/10 transition-colors">
+                <i className="ph-bold ph-pencil-simple text-[13px]"></i>
+              </button>
+              <button onClick={onRemove} title="Remove"
+                className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-white/60 dark:hover:bg-white/10 transition-colors">
+                <i className="ph-bold ph-trash text-[13px]"></i>
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4">
+          <p className="flex items-baseline gap-2">
+            <span className={`text-[32px] font-black tabular-nums leading-none tracking-tight ${tone.figure}`}>{n}</span>
+            <span className="text-[13px] font-semibold text-slate-500 dark:text-slate-400">{verdict.caption}</span>
+          </p>
+          <div className="mt-3 h-1.5 rounded-full bg-slate-900/[0.07] dark:bg-white/[0.08] overflow-hidden">
+            <div
+              className={`h-full rounded-full origin-left ${tone.bar}`}
+              style={{
+                transform: `scaleX(${drawn ? Math.max(verdict.share ?? 0, verdict.value > 0 ? 0.012 : 0) : 0})`,
+                transition: "transform 700ms cubic-bezier(0.16,1,0.3,1)",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Names. Two-line cells, so what is affected is on the card rather than
+          one click away. */}
+      <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.06]">
+        {preview.length === 0 ? (
+          <p className="text-[13px] text-slate-400 dark:text-slate-500 py-1.5">
+            {graphEmpty ? "No graph data — sync to populate." : "Nothing to show."}
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {preview.map((item: any, k: number) => (
+              <li key={k} className="flex items-center justify-between gap-3 text-[13px]">
+                <span className="font-mono text-slate-700 dark:text-slate-200 truncate">{nameOf(item)}</span>
+                <span className="text-slate-400 dark:text-slate-500 shrink-0 truncate max-w-[45%]">{detailOf(item, config)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+
         <button
           onClick={onToggle}
           aria-expanded={open}
-          className="flex-1 min-w-0 flex items-center gap-4 sm:gap-5 text-left rounded-xl px-2 -mx-2 py-2.5 hover:bg-slate-900/[0.025] dark:hover:bg-white/[0.03] transition-colors"
+          className={`mt-3 -mb-1 w-full flex items-center justify-between text-[12.5px] font-bold ${tone.figure} hover:opacity-80 transition-opacity`}
         >
-          <span className="w-[38%] min-w-[180px] sm:min-w-[260px] shrink-0">
-            <span className="block text-sm font-bold text-slate-900 dark:text-white truncate">{config.title}</span>
-            <span className="block text-[12px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
-              {isLoading ? "reading…" : verdict.caption}
-            </span>
-          </span>
-
-          <span className="flex-1 min-w-0 h-9 relative">
-            {/* The track marks the whole organisation, so an empty bar still
-                shows the size of what was checked. */}
-            <span className="absolute inset-y-[9px] inset-x-0 rounded-full bg-slate-100 dark:bg-white/[0.05]" />
-            {!isLoading && (
-              <span
-                className={`absolute inset-y-[9px] left-0 right-0 rounded-full origin-left ${BAR[verdict.level]} ${
-                  open ? "opacity-100" : "opacity-90 group-hover:opacity-100"} transition-[transform,opacity] duration-[600ms]`}
-                style={{
-                  transform: `scaleX(${drawn ? width : 0})`,
-                  transitionTimingFunction: "cubic-bezier(0.16,1,0.3,1)",
-                }}
-              />
-            )}
-          </span>
-
-          <span className="w-16 shrink-0 text-right">
-            {isLoading ? (
-              <span className="inline-block h-5 w-9 rounded bg-slate-100 dark:bg-white/[0.07] animate-pulse" />
-            ) : (
-              <span className={`text-[22px] font-black tabular-nums leading-none tracking-tight ${TEXT[verdict.level]}`}>
-                {n}
-              </span>
-            )}
-          </span>
+          <span>{open ? "Hide" : hidden > 0 ? `${hidden} more` : "Open"}</span>
+          <i className={`ph-bold ph-caret-down text-[11px] transition-transform duration-200 ${open ? "rotate-180" : ""}`}></i>
         </button>
-
-        {canEdit && (
-          <span className="hidden sm:flex items-center gap-0.5 shrink-0 -ml-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-            <button onClick={onEdit} title="Edit"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
-              <i className="ph-bold ph-pencil-simple text-[13px]"></i>
-            </button>
-            <button onClick={onRemove} title="Remove"
-              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors">
-              <i className="ph-bold ph-trash text-[13px]"></i>
-            </button>
-          </span>
-        )}
       </div>
 
       {/* grid-template-rows rather than height: it animates without measuring,
           and without laying the contents out on every frame. */}
       <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
         <div className="overflow-hidden">
-          <div className={`${SURFACE.sheet} my-2`}>
+          <div className="border-t border-slate-100 dark:border-white/[0.06] max-h-[420px] overflow-y-auto">
             <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
           </div>
         </div>
       </div>
-    </div>
+    </article>
   );
 }
 
