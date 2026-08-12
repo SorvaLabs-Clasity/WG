@@ -134,7 +134,18 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
   ask_secret GH_CLIENT_SECRET "OAuth App client secret"
   ask        GH_APP_ID       "GitHub App ID"
   ask        GH_INSTALL_ID   "GitHub App installation ID"
-  ask        GH_PEM_PATH     "Path to the GitHub App private key (.pem)"
+  ask        GH_PEM_PATH     "Path to the GitHub App private key (.pem), or drag the file here"
+  # A tilde typed at a prompt arrives as a literal character — the shell expands
+  # ~ before a variable ever holds it, so `[ -f "~/key.pem" ]` looks for a
+  # directory actually named "~". Expanding it here is the difference between
+  # the obvious thing working and a "No file at ~/key.pem" that reads like the
+  # file is missing.
+  GH_PEM_PATH="${GH_PEM_PATH/#\~/$HOME}"
+  # Dragging a file into a terminal quotes anything awkward and leaves a
+  # trailing space; both make the path not match.
+  GH_PEM_PATH="${GH_PEM_PATH%\'}"; GH_PEM_PATH="${GH_PEM_PATH#\'}"
+  GH_PEM_PATH="${GH_PEM_PATH%\"}"; GH_PEM_PATH="${GH_PEM_PATH#\"}"
+  GH_PEM_PATH="${GH_PEM_PATH%"${GH_PEM_PATH##*[![:space:]]}"}"
   [ -f "$GH_PEM_PATH" ] || die "No file at $GH_PEM_PATH"
   echo
   echo "  ${dim}The next one is optional. getSystemToken() prefers the GitHub App${off}"
