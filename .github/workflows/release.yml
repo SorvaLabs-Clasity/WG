@@ -3,6 +3,15 @@ name: Build & Release
 on:
   push:
     branches: [main]
+    # A release is an app build. A push that only touches documentation has
+    # nothing new to package, and the version in package.json has not moved —
+    # so publishing would fail on a release tag that already exists. Left
+    # unfiltered, main collects red crosses on markdown commits, and a workflow
+    # that is normally red is one whose real failures nobody reads.
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '.gitignore'
 
 permissions:
   contents: write
