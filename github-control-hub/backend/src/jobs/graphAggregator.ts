@@ -49,9 +49,26 @@ export async function aggregateGraphData(fallbackToken?: string) {
     }
     console.log(`[GraphAggregator] Fetched ${teams.length} teams`);
 
+    // Org owners are admin on every repository by virtue of the role. Recorded
+    // so queries can ask "who has admin that ownership does not explain",
+    // rather than reporting the owner against all 356 repositories.
+    const orgOwners = new Set<string>();
+    try {
+      const { data } = await octokit.rest.orgs.listMembers({ org, role: "admin", per_page: 100 });
+      for (const m of data) if (m?.login) orgOwners.add(m.login);
+    } catch {
+      // Without this the worst case is a grant recorded as direct rather than
+      // as ownership — a wrong label, not a missing edge.
+    }
+
+    /** repo name -> logins that reach it through a team. */
+    const viaTeam = new Map<string, Set<string>>();
+
     // TEAM -> REPO edges & USER -> TEAM edges
     for (const team of teams) {
       const teamId = `TEAM#${team.slug}`;
+      const teamRepoNames: string[] = [];
+      const teamMemberLogins: string[] = [];
 
       // Get repos for team
       try {
@@ -60,6 +77,8 @@ export async function aggregateGraphData(fallbackToken?: string) {
           const { data: teamRepos } = await octokit.rest.teams.listReposInOrg({ org, team_slug: team.slug, per_page: 100, page: tpPage });
           if (teamRepos.length === 0) break;
           for (const tr of teamRepos) {
+            if (!viaTeam.has(tr.name)) viaTeam.set(tr.name, new Set());
+            teamRepoNames.push(tr.name);
             edges.push({
               pk: teamId,
               sk: `REPO#${tr.name}`,
@@ -88,6 +107,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
           if (members.length === 0) break;
           for (const member of members) {
             if (member && member.login) {
+              teamMemberLogins.push(member.login);
               edges.push({
                 pk: `USER#${member.login}`,
                 sk: teamId,
@@ -106,33 +126,55 @@ export async function aggregateGraphData(fallbackToken?: string) {
       } catch (err) {
         console.warn(`[GraphAggregator] Failed to fetch members for team ${team.slug}`);
       }
+
+      for (const repoName of teamRepoNames) {
+        const set = viaTeam.get(repoName)!;
+        for (const login of teamMemberLogins) set.add(login);
+      }
     }
 
     // 3. Repo details: Collaborators, Workflows, Dependabot
     for (const repo of repos) {
       const repoId = `REPO#${repo.name}`;
 
-      // Collaborators (Outside collaborators or direct access)
+      // Who can write to this repository, and how they came by it.
+      //
+      // This asked for affiliation "direct", meaning only people granted access
+      // to the repository individually. Almost nobody gets access that way —
+      // it arrives through org membership or a team — so the graph recorded
+      // one collaborator across the whole organisation and every question
+      // about people returned nothing.
+      //
+      // Two deliberate narrowings keep that from turning into noise:
+      //
+      //   Only admin, write and maintain are recorded. Read is what the org
+      //   default grants everyone on everything, so recording it would add one
+      //   edge per member per repository — hundreds of thousands at a real
+      //   company — and no query asks about read.
+      //
+      //   Each edge carries how the access was obtained. Without it an org
+      //   owner is admin on every repository and floods every result; with it
+      //   a query can ask the useful question, which is who has admin that
+      //   ownership and team membership do not already explain.
       try {
+        const PRIVILEGED = ["admin", "write", "maintain"];
+        const teamMembersHere = viaTeam.get(repo.name);
         let colPage = 1;
         while (true) {
-          const { data: collaborators } = await octokit.rest.repos.listCollaborators({ owner: org, repo: repo.name, affiliation: "direct", per_page: 100, page: colPage });
+          const { data: collaborators } = await octokit.rest.repos.listCollaborators({ owner: org, repo: repo.name, affiliation: "all", per_page: 100, page: colPage });
           if (collaborators.length === 0) break;
           for (const collab of collaborators) {
-            if (collab && collab.login) {
-              edges.push({
-                pk: `USER#${collab.login}`,
-                sk: repoId,
-                type: "collaborates_on",
-                metadata: { role: collab.role_name }
-              });
-              edges.push({
-                pk: repoId,
-                sk: `USER#${collab.login}`,
-                type: "has_collaborator",
-                metadata: { role: collab.role_name }
-              });
-            }
+            if (!collab?.login) continue;
+            const role = collab.role_name ?? "read";
+            if (!PRIVILEGED.includes(role)) continue;
+
+            const source = orgOwners.has(collab.login) ? "org_owner"
+              : teamMembersHere?.has(collab.login) ? "team"
+              : "direct";
+
+            const metadata = { role, source };
+            edges.push({ pk: `USER#${collab.login}`, sk: repoId, type: "collaborates_on", metadata });
+            edges.push({ pk: repoId, sk: `USER#${collab.login}`, type: "has_collaborator", metadata });
           }
           if (collaborators.length < 100) break;
           colPage++;

@@ -87,9 +87,15 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     }
 
     case "highly-privileged-users":
+      // Access an org owner has by virtue of the role is not a finding — they
+      // are admin on everything by definition, and counting it would put them
+      // top of this list on every organisation, permanently, while hiding the
+      // people the question is actually about.
       const userAccessMap = new Map<string, string[]>();
       for (const edge of allEdges) {
-        if (edge.type === "collaborates_on" && ["admin", "write", "maintain"].includes(edge.metadata?.role)) {
+        if (edge.type === "collaborates_on"
+            && ["admin", "write", "maintain"].includes(edge.metadata?.role)
+            && edge.metadata?.source !== "org_owner") {
           const user = edge.pk.replace("USER#", "");
           if (!userAccessMap.has(user)) userAccessMap.set(user, []);
           userAccessMap.get(user)!.push(edge.sk.replace("REPO#", ""));
@@ -621,30 +627,33 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       for (const userLogin of mfaDisabledUsers) {
         let adminRepos = 0;
         let writeRepos = 0;
-        let prodRepos = 0;
 
         for (const edge of allEdges) {
-          if (edge.type === "collaborates_on" && edge.pk === `USER#${userLogin}`) {
-            const repo = edge.sk.replace("REPO#", "");
-            if (edge.metadata?.role === "admin") adminRepos++;
-            if (edge.metadata?.role === "write") writeRepos++;
-            
-            const isProd = allEdges.some(e => e.pk === `REPO#${repo}` && e.type === "uses_workflow" && (e.sk.toLowerCase().includes("prod") || e.sk.toLowerCase().includes("deploy") || e.sk.toLowerCase().includes("release")));
-            if (isProd) prodRepos++;
-          }
+          if (edge.type !== "collaborates_on" || edge.pk !== `USER#${userLogin}`) continue;
+          // Access an org owner holds by virtue of the role is reported against
+          // every repository, which would say more about the role than about
+          // the person's missing MFA.
+          if (edge.metadata?.source === "org_owner") continue;
+          if (edge.metadata?.role === "admin") adminRepos++;
+          if (edge.metadata?.role === "write" || edge.metadata?.role === "maintain") writeRepos++;
         }
 
         results.push({
           user: userLogin,
           reason: `No MFA enabled`,
-          details: `Admin Repos: ${adminRepos}, Write Repos: ${writeRepos}, Prod Repos: ${prodRepos}`,
+          details: adminRepos + writeRepos === 0
+            ? "No write access beyond the organisation default"
+            : `Admin on ${adminRepos}, write on ${writeRepos}`,
           adminRepos,
           writeRepos,
-          prodRepos
         });
       }
-      
-      results.sort((a, b) => (b.adminRepos * 2 + b.prodRepos * 3 + b.writeRepos) - (a.adminRepos * 2 + a.prodRepos * 3 + a.writeRepos));
+
+      // A "production repos" count used to weigh into this, derived from
+      // workflow filenames containing prod, deploy or release. That guess was
+      // removed as a widget of its own for not measuring what it claimed; it
+      // should not survive by hiding inside another result.
+      results.sort((a, b) => (b.adminRepos * 2 + b.writeRepos) - (a.adminRepos * 2 + a.writeRepos));
       break;
     }
 
@@ -658,7 +667,9 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
       const userAccessMap = new Map<string, string[]>();
       for (const edge of allEdges) {
-        if (edge.type === "collaborates_on" && ["admin", "maintain"].includes(edge.metadata?.role)) {
+        if (edge.type === "collaborates_on"
+            && ["admin", "maintain"].includes(edge.metadata?.role)
+            && edge.metadata?.source !== "org_owner") {
           const u = edge.pk.replace("USER#", "");
           if (!userAccessMap.has(u)) userAccessMap.set(u, []);
           userAccessMap.get(u)!.push(edge.sk.replace("REPO#", ""));
