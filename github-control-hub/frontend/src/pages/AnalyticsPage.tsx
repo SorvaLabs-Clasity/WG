@@ -31,56 +31,53 @@ const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2,
 const THRESHOLD: Record<string, number> = { any: 1, low: 1, medium: 2, high: 3, critical: 4 };
 
 /**
- * The board.
+ * One ledger, not a set of cards.
  *
- * This was a grid of equal cards, each with a large centred number. Equal cards
- * say every question matters equally, which is the one thing that is never
- * true: 347 repositories with an unprotected default branch and an empty-teams
- * check that found nothing were the same size, in the same place, in the same
- * shade.
+ * Two shapes have been tried and neither reads the way this page is used. A
+ * grid of equal cards claimed every question mattered equally. Stacked bands
+ * fixed the weighting but turned nine checks into nine large objects, so
+ * comparing them meant scrolling past them.
  *
- * So size follows state. A check with findings takes a full band with the count
- * set large enough to read across a room; a check with nothing to report
- * collapses to a single quiet line in a register at the bottom. The page
- * physically changes shape as the organisation does — which is the first design
- * principle in /.impeccable.md, applied to layout rather than to colour alone.
+ * Checks are homogeneous — every one is a question with a count and a state —
+ * and homogeneous things belong in rows you can run an eye down, not in
+ * containers you read one at a time. So: a single dense readout, sortable,
+ * every count in the same column at the same size. The instrument, not the
+ * dashboard.
  *
- * Everything is left-aligned against a common edge so the counts form a column
- * the eye can run down. Nothing is centred; centred numbers in a grid read as
- * decoration.
+ * What keeps it from reading as a flat grey table (the anti-reference in
+ * /.impeccable.md) is that the count column carries the whole colour budget.
+ * Nothing else in the row competes with it.
  */
 
 type Level = "danger" | "warn" | "info" | "clear";
 
-const ORDER: Record<Level, number> = { danger: 0, warn: 1, info: 2, clear: 3 };
+const RANK: Record<Level, number> = { danger: 0, warn: 1, info: 2, clear: 3 };
 
 interface Verdict {
   level: Level;
   value: number;
   denominator: number | null;
   caption: string;
-  badge: string | null;
+  note: string | null;
 }
 
 /**
- * What a widget's numbers mean.
- *
- * Three shapes, because a query result is not one kind of thing: some report
- * their own pass/fail, some find problems, and some simply answer a question
- * and carry no verdict at all. Treating the third as the second is how "which
- * repositories have a main branch" once read as CRITICAL.
+ * What a check's numbers mean. Three shapes, because a result is not one kind
+ * of thing: some report their own pass/fail, some find problems, and some
+ * answer a question and carry no verdict at all.
  */
 function verdictFor(items: any[], total: number | null, config: WidgetConfig): Verdict {
   const hasStatus = items.some((i: any) => i.status);
   if (hasStatus) {
     const pass = items.filter((i: any) => i.status === "pass").length;
+    const failing = items.length - pass;
     const rate = items.length ? Math.round((pass / items.length) * 100) : 0;
     return {
-      level: rate === 100 ? "clear" : rate >= 80 ? "warn" : "danger",
-      value: items.length - pass,
+      level: failing === 0 ? "clear" : rate >= 80 ? "warn" : "danger",
+      value: failing,
       denominator: items.length,
-      caption: items.length - pass === 1 ? "failing" : "failing",
-      badge: rate === 100 ? "all passing" : `${rate}% passing`,
+      caption: "failing",
+      note: `${rate}% passing`,
     };
   }
 
@@ -88,7 +85,7 @@ function verdictFor(items: any[], total: number | null, config: WidgetConfig): V
   const found = items.length;
 
   if (config.type === "query" && (option as any)?.informational) {
-    return { level: "info", value: found, denominator: total, caption: "matching", badge: null };
+    return { level: "info", value: found, denominator: total, caption: "matching", note: null };
   }
 
   const share = total ? found / total : null;
@@ -96,37 +93,29 @@ function verdictFor(items: any[], total: number | null, config: WidgetConfig): V
     level: found === 0 ? "clear" : share !== null && share >= 0.1 ? "danger" : "warn",
     value: found,
     denominator: total,
-    caption: found === 1 ? "repository" : "repositories",
-    badge: null,
+    caption: found === 0 ? "nothing found" : found === 1 ? "repository" : "repositories",
+    note: null,
   };
 }
 
-const TONE: Record<Level, { rail: string; figure: string; chip: string; wash: string }> = {
-  danger: {
-    rail: "bg-rose-500 dark:bg-rose-400",
-    figure: "text-rose-600 dark:[color:#ff8095]",
-    chip: "bg-rose-50 text-rose-700 dark:bg-rose-500/[0.14] dark:text-rose-300",
-    wash: "bg-rose-50/40 dark:bg-rose-500/[0.05]",
-  },
-  warn: {
-    rail: "bg-amber-500 dark:bg-amber-400",
-    figure: "text-amber-600 dark:[color:#ffc14d]",
-    chip: "bg-amber-50 text-amber-700 dark:bg-amber-500/[0.14] dark:text-amber-300",
-    wash: "bg-amber-50/40 dark:bg-amber-500/[0.05]",
-  },
-  info: {
-    rail: "bg-blue-500 dark:bg-blue-400",
-    figure: "text-blue-600 dark:[color:#6bb4ff]",
-    chip: "bg-blue-50 text-blue-700 dark:bg-blue-500/[0.14] dark:text-blue-300",
-    wash: "",
-  },
-  clear: {
-    rail: "bg-emerald-500 dark:bg-emerald-400",
-    figure: "text-emerald-600 dark:[color:#3ddc97]",
-    chip: "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/[0.14] dark:text-emerald-300",
-    wash: "",
-  },
+/** The count colour, and the one place colour appears in a row. */
+const CLEAR_GREEN = "text-emerald-600 dark:[color:#3ddc97]";
+
+const FIGURE: Record<Level, string> = {
+  danger: "text-rose-600 dark:[color:#ff8095]",
+  warn: "text-amber-600 dark:[color:#ffc14d]",
+  info: "text-blue-600 dark:[color:#6bb4ff]",
+  clear: "text-slate-300 dark:text-slate-600",
 };
+
+const DOT: Record<Level, string> = {
+  danger: "bg-rose-500 dark:bg-rose-400",
+  warn: "bg-amber-500 dark:bg-amber-400",
+  info: "bg-blue-500 dark:bg-blue-400",
+  clear: "bg-emerald-500/70 dark:bg-emerald-400/70",
+};
+
+type SortKey = "state" | "count" | "name";
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
@@ -150,30 +139,49 @@ export default function AnalyticsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [sort, setSort] = useState<SortKey>("state");
 
   /**
-   * Each row reports what it found once its data arrives.
+   * Each row reports its verdict once its data arrives.
    *
-   * The parent cannot work this out itself: the queries behind a widget depend
-   * on its configuration, so evaluating N widgets means N hook calls and the
-   * list length changes. Reporting upward keeps the hooks where they belong and
-   * still lets the page know its own posture.
+   * The parent cannot work this out itself: the queries behind a check depend
+   * on its configuration, so evaluating N checks means N hook calls and the
+   * list length changes between renders. Reporting upward keeps the hooks where
+   * they belong and still lets the page sort and summarise.
    */
-  const [levels, setLevels] = useState<Record<string, Level>>({});
-  const report = useCallback((id: string, level: Level) => {
-    setLevels(prev => (prev[id] === level ? prev : { ...prev, [id]: level }));
+  const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
+  const report = useCallback((id: string, v: Verdict) => {
+    setVerdicts(prev => {
+      const old = prev[id];
+      if (old && old.level === v.level && old.value === v.value && old.denominator === v.denominator) return prev;
+      return { ...prev, [id]: v };
+    });
   }, []);
 
   const posture = useMemo(() => {
-    const seen = widgets.map(w => levels[w.id]).filter(Boolean) as Level[];
-    const attention = seen.filter(l => l === "danger" || l === "warn").length;
+    const seen = widgets.map(w => verdicts[w.id]).filter(Boolean);
+    const attention = seen.filter(v => v.level === "danger" || v.level === "warn").length;
     return {
       attention,
       answered: seen.length,
       total: widgets.length,
-      worst: seen.includes("danger") ? "danger" : seen.includes("warn") ? "warn" : "clear",
+      worst: (seen.some(v => v.level === "danger") ? "danger" : seen.some(v => v.level === "warn") ? "warn" : "clear") as Level,
     };
-  }, [widgets, levels]);
+  }, [widgets, verdicts]);
+
+  const ordered = useMemo(() => {
+    const rows = [...widgets];
+    rows.sort((a, b) => {
+      const va = verdicts[a.id], vb = verdicts[b.id];
+      if (sort === "name") return a.title.localeCompare(b.title);
+      if (sort === "count") return (vb?.value ?? -1) - (va?.value ?? -1);
+      // Unanswered checks sit between the findings and the settled ones rather
+      // than jumping to the top as data lands.
+      const ra = va ? RANK[va.level] : 2.5, rb = vb ? RANK[vb.level] : 2.5;
+      return ra - rb || (vb?.value ?? 0) - (va?.value ?? 0);
+    });
+    return rows;
+  }, [widgets, verdicts, sort]);
 
   const handleSave = (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => {
     if (editingWidget) {
@@ -189,8 +197,7 @@ export default function AnalyticsPage() {
 
   return (
     <Page user={user}>
-      {/* ── Posture. Stated in words, at a size that does not need looking for. ── */}
-      <header className="mb-10" style={enter(0)}>
+      <header className="mb-9" style={enter(0)}>
         <div className="flex items-start justify-between gap-6 flex-wrap">
           <div className="min-w-0">
             <p className={`${TYPE.label} text-slate-400 dark:text-slate-500 mb-3`}>
@@ -204,10 +211,10 @@ export default function AnalyticsPage() {
               ) : posture.answered === 0 ? (
                 <span className="text-slate-300 dark:text-slate-700">Working it out…</span>
               ) : posture.attention === 0 ? (
-                <>Everything checked is <span className={TONE.clear.figure}>clear</span>.</>
+                <>Everything checked is <span className={CLEAR_GREEN}>clear</span>.</>
               ) : (
                 <>
-                  <span className={TONE[posture.worst as Level].figure}>{posture.attention}</span>
+                  <span className={FIGURE[posture.worst]}>{posture.attention}</span>
                   {" "}of {posture.answered} checks need attention.
                 </>
               )}
@@ -216,11 +223,7 @@ export default function AnalyticsPage() {
 
           <div className="flex items-center gap-2 shrink-0 pt-1">
             <RefreshButton busy={widgetsFetching} onRefresh={() => refetchWidgets()} />
-            <Button
-              onClick={() => aggregation.mutate()}
-              disabled={aggregation.isPending}
-              className="whitespace-nowrap"
-            >
+            <Button onClick={() => aggregation.mutate()} disabled={aggregation.isPending} className="whitespace-nowrap">
               <i className={`ph-bold ph-arrows-clockwise mr-2 ${aggregation.isPending ? "animate-spin" : ""}`}></i>
               {aggregation.isPending ? "Syncing" : "Sync data"}
             </Button>
@@ -234,14 +237,14 @@ export default function AnalyticsPage() {
       </header>
 
       {graphEmpty && (
-        <div style={enter(1)} className="mb-6">
+        <div style={enter(1)} className="mb-5">
           <Note intent="warn">
-            The graph has no data, so anything reading from it will come back empty. Sync data to build it.
+            The graph has no data, so anything reading from it comes back empty. Sync data to build it.
           </Note>
         </div>
       )}
       {aggregation.isError && (
-        <div style={enter(1)} className="mb-6">
+        <div style={enter(1)} className="mb-5">
           <Note intent="danger">Sync failed — {(aggregation.error as Error)?.message || "unknown error"}.</Note>
         </div>
       )}
@@ -251,30 +254,39 @@ export default function AnalyticsPage() {
       ) : widgets.length === 0 ? (
         <Empty
           title="No checks yet"
-          body="A check is a question about the organisation — which repositories have an unprotected default branch, who holds admin they were never granted, which packages are exposing you. Add one and it appears here, loudest first."
+          body="A check is a question about the organisation — which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it takes a line here."
           action={canEditDashboard
             ? <Button variant="primary" onClick={() => setShowAddModal(true)}>Add the first check</Button>
             : undefined}
         />
       ) : (
-        /* Flex order does the sorting, so a row can place itself the moment its
-           own data lands rather than waiting for the page to collect everyone's. */
-        <div className="flex flex-col gap-3">
-          {widgets.map((w, i) => (
-            <WidgetRow
-              key={w.id}
-              config={w}
-              index={i}
-              open={openId === w.id}
-              onToggle={() => setOpenId(openId === w.id ? null : w.id)}
-              onReport={report}
-              canEdit={canEditDashboard}
-              onEdit={() => setEditingWidget(w)}
-              onRemove={() => removeWidget(w.id)}
-              graphEmpty={graphEmpty}
-              orgName={orgName}
-            />
-          ))}
+        <div style={enter(2)} className={SURFACE.sheet}>
+          {/* Column headings double as the sort control — a separate sort menu
+              for three columns is a menu nobody opens. */}
+          <div className="flex items-center gap-4 px-5 sm:px-6 py-3 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50/70 dark:bg-white/[0.03]">
+            <SortHead label="State" active={sort === "state"} onClick={() => setSort("state")} className="w-[74px]" />
+            <SortHead label="Count" active={sort === "count"} onClick={() => setSort("count")} className="w-[104px] text-right justify-end" />
+            <SortHead label="Check" active={sort === "name"} onClick={() => setSort("name")} className="flex-1" />
+            <span className="w-5" />
+          </div>
+
+          <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+            {ordered.map((w, i) => (
+              <LedgerRow
+                key={w.id}
+                config={w}
+                index={i}
+                open={openId === w.id}
+                onToggle={() => setOpenId(openId === w.id ? null : w.id)}
+                onReport={report}
+                canEdit={canEditDashboard}
+                onEdit={() => setEditingWidget(w)}
+                onRemove={() => removeWidget(w.id)}
+                graphEmpty={graphEmpty}
+                orgName={orgName}
+              />
+            ))}
+          </div>
         </div>
       )}
 
@@ -290,119 +302,116 @@ export default function AnalyticsPage() {
   );
 }
 
+function SortHead({ label, active, onClick, className = "" }: {
+  label: string; active: boolean; onClick: () => void; className?: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`${TYPE.label} flex items-center gap-1.5 transition-colors ${className} ${
+        active ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
+    >
+      {label}
+      {active && <i className="ph-fill ph-caret-down text-[9px]"></i>}
+    </button>
+  );
+}
+
 /**
- * One check.
+ * One line of the ledger.
  *
- * Renders at one of two weights. With findings it is a band: a thick rail, the
- * count at 44px, the question beside it. With nothing to report it is a single
- * line — still present, still clickable, but taking the space a settled matter
- * deserves rather than a card's worth.
+ * The count is the only thing carrying colour, and it is the only thing set
+ * larger than body text. Everything else — state dot, title, caption — is
+ * deliberately quiet, so a column of numbers is what the eye follows.
  */
-function WidgetRow({
+function LedgerRow({
   config, index, open, onToggle, onReport, canEdit, onEdit, onRemove, graphEmpty, orgName,
 }: {
   config: WidgetConfig; index: number; open: boolean; onToggle: () => void;
-  onReport: (id: string, level: Level) => void;
+  onReport: (id: string, v: Verdict) => void;
   canEdit: boolean; onEdit: () => void; onRemove: () => void;
   graphEmpty?: boolean; orgName?: string;
 }) {
   const { items, isLoading, total } = useWidgetData(config);
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
-
-  useEffect(() => {
-    if (!isLoading) onReport(config.id, verdict.level);
-  }, [isLoading, verdict.level, config.id, onReport]);
-
-  const tone = TONE[verdict.level];
-  const quiet = verdict.level === "clear" && !open;
   const n = useCountUp(verdict.value);
 
-  if (isLoading) {
-    return (
-      <div style={{ order: 2, ...enter(index) }}
-        className={`${SURFACE.card} h-[68px] flex items-center gap-4 px-5`}>
-        <span className="w-1.5 h-8 rounded-full bg-slate-200 dark:bg-white/10 animate-pulse" />
-        <span className="h-4 w-40 rounded bg-slate-100 dark:bg-white/[0.07] animate-pulse" />
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!isLoading) onReport(config.id, verdict);
+  }, [isLoading, verdict, config.id, onReport]);
 
   return (
-    <section
-      style={{ order: ORDER[verdict.level], ...enter(index) }}
-      className={`${SURFACE.card} overflow-hidden transition-shadow duration-200 ${open ? "shadow-xl" : ""}`}
-    >
-      <div className="flex items-stretch">
-        <div className={`w-1.5 shrink-0 ${tone.rail} transition-colors duration-300`} />
-
+    <div className="group" style={enter(index, 30, 300)}>
+      <div className="flex items-center gap-4 px-5 sm:px-6">
         <button
           onClick={onToggle}
           aria-expanded={open}
-          className={`flex-1 min-w-0 text-left flex items-center gap-5 transition-colors ${tone.wash}
-            ${quiet ? "px-5 py-3" : "px-6 py-5"} hover:bg-slate-900/[0.02] dark:hover:bg-white/[0.02]`}
+          className="flex-1 min-w-0 flex items-center gap-4 py-3.5 text-left"
         >
-          {quiet ? (
-            <>
-              <i className={`ph-fill ph-check-circle text-lg shrink-0 ${tone.figure}`}></i>
-              <span className="flex-1 min-w-0 text-sm font-bold text-slate-600 dark:text-slate-300 truncate">
-                {config.title}
-              </span>
-              <span className="text-[12px] text-slate-400 dark:text-slate-500 shrink-0">
-                {verdict.badge ?? "nothing found"}
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="shrink-0 w-[92px] sm:w-[116px]">
-                <span className={`block text-[40px] sm:text-[48px] font-black tabular-nums leading-none tracking-tight ${tone.figure}`}>
+          <span className="w-[74px] shrink-0 flex items-center gap-2">
+            {isLoading ? (
+              <span className="w-2 h-2 rounded-full bg-slate-200 dark:bg-white/15 animate-pulse" />
+            ) : (
+              <span className={`w-2 h-2 rounded-full ${DOT[verdict.level]}`} />
+            )}
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+              {isLoading ? "…" : verdict.level === "clear" ? "clear" : verdict.level === "info" ? "info" : verdict.level === "warn" ? "watch" : "act"}
+            </span>
+          </span>
+
+          <span className="w-[104px] shrink-0 text-right">
+            {isLoading ? (
+              <span className="inline-block h-6 w-12 rounded bg-slate-100 dark:bg-white/[0.07] animate-pulse" />
+            ) : (
+              <>
+                <span className={`text-[26px] font-black tabular-nums leading-none tracking-tight ${FIGURE[verdict.level]}`}>
                   {n}
                 </span>
                 {verdict.denominator !== null && (
-                  <span className="block text-[12px] font-semibold text-slate-400 dark:text-slate-500 tabular-nums mt-1.5">
-                    of {verdict.denominator}
+                  <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500 tabular-nums ml-1">
+                    /{verdict.denominator}
                   </span>
                 )}
-              </span>
+              </>
+            )}
+          </span>
 
-              <span className="flex-1 min-w-0">
-                <span className={`block ${TYPE.heading} text-slate-900 dark:text-white truncate`}>
-                  {config.title}
-                </span>
-                <span className="block text-[13px] text-slate-500 dark:text-slate-400 mt-1">
-                  {verdict.caption}
-                  {verdict.badge && <> · {verdict.badge}</>}
-                </span>
-              </span>
-            </>
-          )}
-
-          <i className={`ph-bold ph-caret-down text-slate-300 dark:text-slate-600 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`}></i>
+          <span className="flex-1 min-w-0">
+            <span className="block text-sm font-bold text-slate-900 dark:text-white truncate">{config.title}</span>
+            <span className="block text-[12px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+              {isLoading ? "reading…" : verdict.caption}{verdict.note && <> · {verdict.note}</>}
+            </span>
+          </span>
         </button>
 
         {canEdit && (
-          <div className="flex items-center gap-1 pr-4 opacity-0 focus-within:opacity-100 group-hover:opacity-100 hover:opacity-100 transition-opacity">
+          <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
             <button onClick={onEdit} title="Edit"
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
-              <i className="ph-bold ph-pencil-simple text-sm"></i>
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
+              <i className="ph-bold ph-pencil-simple text-[13px]"></i>
             </button>
             <button onClick={onRemove} title="Remove"
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors">
-              <i className="ph-bold ph-trash text-sm"></i>
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors">
+              <i className="ph-bold ph-trash text-[13px]"></i>
             </button>
-          </div>
+          </span>
         )}
+
+        <button onClick={onToggle} tabIndex={-1} aria-hidden className="w-5 shrink-0 py-3.5 text-slate-300 dark:text-slate-600">
+          <i className={`ph-bold ph-caret-down text-xs transition-transform duration-200 ${open ? "rotate-180" : ""}`}></i>
+        </button>
       </div>
 
       {/* grid-template-rows rather than height: it animates without measuring,
-          and without laying out the contents on every frame. */}
+          and without laying the contents out on every frame. */}
       <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
         <div className="overflow-hidden">
-          <div className="border-t border-slate-100 dark:border-white/[0.07]">
+          <div className="bg-slate-50/60 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.06]">
             <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
           </div>
         </div>
       </div>
-    </section>
+    </div>
   );
 }
 
