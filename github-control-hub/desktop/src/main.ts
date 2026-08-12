@@ -5,7 +5,6 @@ import { bootstrap } from "./bootstrap";
 import { startBackend } from "./server";
 
 let mainWindow: BrowserWindow | null = null;
-let pendingOAuthClear = false;
 
 const BACKEND_PORT = 4321;
 const isDev = !app.isPackaged;
@@ -59,17 +58,8 @@ function createWindow(): void {
 
   // Allow GitHub OAuth flow to happen inside the Electron window
   // but open other external URLs in the system browser.
-  // When pendingOAuthClear is set (user signed out), open the OAuth flow
-  // in a fresh window with a temporary session so there are no GitHub cookies.
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (url.startsWith("http://localhost")) {
-      // If this is the OAuth start URL and user signed out, intercept it
-      if (pendingOAuthClear && url.includes("/auth/github")) {
-        event.preventDefault();
-        pendingOAuthClear = false;
-        openFreshOAuthWindow(`http://localhost:${BACKEND_PORT}/auth/github`);
-        return;
-      }
       return; // allow normal localhost navigations
     }
     if (url.includes("github.com")) {
@@ -81,7 +71,7 @@ function createWindow(): void {
 
   // Register IPC handler here (not in setupAutoUpdater) so it works in dev mode too
   ipcMain.handle("clear-github-session", async () => {
-    pendingOAuthClear = true;
+    await clearGitHubCookies();
   });
 
   mainWindow.on("closed", () => {
@@ -125,48 +115,29 @@ async function main(): Promise<void> {
   setupAutoUpdater();
 }
 
-function openFreshOAuthWindow(startUrl: string): void {
-  // Use a unique partition so the window has zero cookies (fresh GitHub login)
-  const partition = `oauth-${Date.now()}`;
-  let oauthCompleted = false;
-
-  const oauthWin = new BrowserWindow({
-    width: 600,
-    height: 700,
-    title: "Sign in with GitHub",
-    parent: mainWindow || undefined,
-    modal: true,
-    webPreferences: {
-      partition,
-      contextIsolation: true,
-      nodeIntegration: false,
-      devTools: false,
-    },
-  });
-
-  oauthWin.loadURL(startUrl);
-
-  // Catch the server-side redirect from /auth/callback → /login?code=...
-  // and forward the full URL (with auth code) to the main window
-  const handleUrl = (_event: any, url: string) => {
-    if (oauthCompleted) return;
-    if (url.startsWith(`http://localhost:${BACKEND_PORT}/login`)) {
-      oauthCompleted = true;
-      // Load the full URL (including ?code= param) in the main window
-      mainWindow?.loadURL(url);
-      oauthWin.close();
-    }
-  };
-
-  oauthWin.webContents.on("will-navigate", handleUrl);
-  oauthWin.webContents.on("did-navigate", handleUrl);
-  oauthWin.webContents.on("will-redirect", handleUrl);
-
-  oauthWin.on("closed", () => {
-    if (!oauthCompleted) {
-      mainWindow?.loadURL(`http://localhost:${BACKEND_PORT}/login`);
-    }
-  });
+/**
+ * Removes GitHub's cookies from the session the app actually signs in with.
+ *
+ * Signing out used to open the next OAuth attempt in a window with a throwaway
+ * partition instead. That did produce a cookie-free login page, but an Electron
+ * partition without a "persist:" prefix lives in memory only — so the session
+ * created by that login was discarded when the window closed. GitHub then had
+ * no record of the account on the next launch, and "Continue with <account>"
+ * asked for a password every time even though nothing had been switched.
+ *
+ * Clearing the real session gets the same fresh login page and lets the
+ * resulting session persist, which is what makes Continue continue.
+ */
+async function clearGitHubCookies(): Promise<void> {
+  const ses = session.defaultSession;
+  const cookies = await ses.cookies.get({ domain: "github.com" });
+  await Promise.all(
+    cookies.map((c) => {
+      const host = (c.domain ?? "github.com").replace(/^\./, "");
+      const url = `${c.secure ? "https" : "http"}://${host}${c.path ?? "/"}`;
+      return ses.cookies.remove(url, c.name).catch(() => undefined);
+    })
+  );
 }
 
 function addToModulePaths(dir: string): void {
