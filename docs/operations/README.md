@@ -2,6 +2,8 @@
 
 | | |
 |---|---|
+| [First run](first-run.md) | Standing it up from scratch |
+| [Environment](environment.md) | Every variable, and where it comes from |
 | [Deploying](deploying.md) | Getting a change onto the EC2, the Lambda, or a desktop |
 | [Troubleshooting](troubleshooting.md) | Things that have actually gone wrong |
 
