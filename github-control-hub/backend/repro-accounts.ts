@@ -315,6 +315,15 @@ const group = (id: string): ResourceSnapshot => ({
 
     check("the script asks which accounts rather than assuming all of them",
       /ask SCOPE .*all\/some.* "some"/.test(script), "the script defaults to every account");
+
+    // The console asks for these by name, and both decide whether the role
+    // reaches accounts nobody chose. Instructions that skip them leave someone
+    // guessing at exactly the two fields that matter.
+    for (const field of ["Account filter type", "Auto-deployment", "Account numbers",
+                         "Deployment targets", "Specify regions", "Capabilities"]) {
+      check(`the app's walkthrough names the console field "${field}"`,
+        page.includes(`"${field}"`), field);
+    }
   }
 
   // ── the ARNs a watched account must trust ──────────────────────────

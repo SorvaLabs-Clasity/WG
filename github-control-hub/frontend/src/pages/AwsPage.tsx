@@ -721,6 +721,20 @@ function Copyable({ label, value, mono = true }: { label: string; value: string;
   );
 }
 
+/** A console screen's fields, in the order it asks for them. */
+function Fields({ rows }: { rows: readonly (readonly [string, React.ReactNode])[] }) {
+  return (
+    <dl className="grid gap-2">
+      {rows.map(([label, value], i) => (
+        <div key={i} className="grid sm:grid-cols-[170px_minmax(0,1fr)] gap-x-3 gap-y-0.5">
+          <dt className="text-[12.5px] font-bold text-slate-500 dark:text-slate-400">{label}</dt>
+          <dd className="text-[12.5px] text-slate-600 dark:text-slate-300">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-3 mb-5">
@@ -902,62 +916,118 @@ function SetupAccess() {
 
           <Step n={2} title={how === "one"
             ? "Open CloudFormation in the account you want to watch"
-            : "Open CloudFormation StackSets in your organization's management account"}>
+            : "Open CloudFormation StackSets in your management account"}>
             <a href={how === "one" ? data.consoleUrls.singleStack : data.consoleUrls.stackSets}
               target="_blank" rel="noreferrer"
               className="font-bold text-blue-600 dark:text-blue-400 hover:underline">
               {how === "one" ? "Create stack" : "Create StackSet"} ↗
             </a>
-            <div className="mt-1.5 text-[12.5px] text-slate-500 dark:text-slate-400">
-              {how === "one" && <>Upload the file and continue. Repeat in each account you want watched.</>}
-              {how === "org" && (
-                <>Upload the file, choose <span className="font-semibold">Service-managed permissions</span>,
-                and deploy to your whole organization with{" "}
-                <span className="font-semibold">automatic deployment</span> on — so accounts created later
-                are covered without anyone remembering.</>
-              )}
-              {how === "some" && (
-                <>Upload the file, choose <span className="font-semibold">Service-managed permissions</span>,
-                then at Deployment targets pick{" "}
-                <span className="font-semibold">Deploy to organizational units</span>, enter your root{" "}
-                {rootId && <span className="font-mono text-[11.5px]">{rootId}</span>}, and set the account
-                filter to <span className="font-semibold">Intersection</span> with the ids below. Leave
-                automatic deployment <span className="font-semibold">off</span> — you are choosing accounts,
-                so a new one should not join by itself.</>
-              )}
-            </div>
           </Step>
 
-          <Step n={3} title={`Name the ${how === "one" ? "stack" : "stack set"} and paste these parameters`}>
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mb-3">
-              Call it <span className="font-mono text-[11.5px]">{data.stackSetName}</span>. That name is
-              yours to choose — matching just keeps the console and the command line in step.
-              <span className="block mt-1">
-                <span className="font-mono text-[11.5px]">RoleName</span> below is a different thing and is
-                <strong> not</strong> yours to choose: it is the one role name this app is permitted to
-                assume, so changing it means AWS refuses the app.
-              </span>
+          {/* Field by field, in the order the console asks. Summarising it as
+              "upload the file and choose service-managed" leaves someone on a
+              page of options nobody mentioned, guessing at the ones that
+              matter — and two of them decide whether this reaches accounts
+              they never chose. */}
+          <Step n={3} title="Choose a template">
+            <Fields rows={[
+              ["Prerequisite", <>Template is ready</>],
+              ...(how === "one" ? [] : [["Permissions", <><b>Service-managed permissions</b> — AWS handles
+                the roles in each account, so there is nothing to create first.</>] as const]),
+              ["Specify template", <>Upload a template file → Choose file → the{" "}
+                <span className="font-mono text-[11.5px]">{data.templateFileName}</span> you just downloaded.</>],
+            ]} />
+          </Step>
+
+          <Step n={4} title={how === "one" ? "Specify stack details" : "Specify StackSet details"}>
+            <Fields rows={[
+              [how === "one" ? "Stack name" : "StackSet name",
+                <><span className="font-mono text-[11.5px]">{data.stackSetName}</span> — yours to choose;
+                matching keeps the console and the command line in step.</>],
+              ["Description", <>Leave blank.</>],
+            ]} />
+            <p className="text-[12.5px] font-bold text-slate-600 dark:text-slate-300 mt-3 mb-2">
+              Parameters
             </p>
-            {how === "some" && picked.size > 0 && (
-              <Copyable label="Account IDs (the intersection filter)" value={chosenIds.join(",")} />
-            )}
-            {how === "some" && rootId && <Copyable label="Organizational unit (your root)" value={rootId} />}
             <Copyable label="ControlHubRoleArns" value={data.parameters.ControlHubRoleArns} />
             <Copyable label="RoleName" value={data.parameters.RoleName} />
             <Copyable label="ExternalId" value={data.parameters.ExternalId} />
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400 -mt-1">
-              Leave <span className="font-mono text-[11.5px]">ReadOnly</span> at <span className="font-mono text-[11.5px]">true</span>{" "}
-              unless you want this app to fix things automatically in that account.
+              <span className="font-mono text-[11.5px]">ReadOnly</span>: leave it at{" "}
+              <span className="font-mono text-[11.5px]">true</span> unless you want this app able to fix
+              things in that account.
+              <span className="block mt-1">
+                <span className="font-mono text-[11.5px]">RoleName</span> is the one value that is{" "}
+                <strong>not</strong> yours to change — it is the single role name this app is permitted to
+                assume, so a different one means AWS refuses the app.
+              </span>
               {data.reusedExternalId
-                ? " This external ID is the one your other accounts already use."
-                : " Keep a copy of the external ID — it is what stops another installation of this app from naming your accounts."}
+                ? <span className="block mt-1">This external ID is the one your other accounts already use.</span>
+                : <span className="block mt-1">Keep a copy of the external ID. It is what stops another
+                  installation of this app from naming your accounts and being let in.</span>}
             </p>
             {data.principals.engineError && (
               <Note intent="warn">{data.principals.engineError}</Note>
             )}
           </Step>
 
-          <Step n={4} title="Come back and press Find my accounts">
+          {how !== "one" && (
+            <Step n={5} title="Configure StackSet options">
+              <Fields rows={[
+                ["Tags", <>None needed.</>],
+                ["Execution configuration", <><b>Active</b>, the default.</>],
+              ]} />
+            </Step>
+          )}
+
+          {how !== "one" && (
+            <Step n={6} title="Set deployment options">
+              <Fields rows={[
+                ["Add stacks to stack set", <>Deploy new stacks</>],
+                ["Deployment targets", how === "org"
+                  ? <><b>Deploy to organization</b> — every account, now and later.</>
+                  : <><b>Deploy to organizational units</b>, then paste your root below. On its own this
+                    would reach every account under it, which the next field fixes.</>],
+                ...(how === "some" ? [
+                  ["Account filter type", <><b>Intersection</b> — narrows that root down to exactly the
+                    account numbers you give.</>] as const,
+                  ["Account numbers", <>The accounts you ticked above. Not this app&rsquo;s own account —
+                    it needs no role.</>] as const,
+                ] : []),
+                ["Auto-deployment", how === "org"
+                  ? <><b>Activated</b>. Accounts created in the organization later get the role without
+                    anyone remembering.</>
+                  : <><b>Deactivated</b>. You chose specific accounts, so a new account should not join by
+                    itself. If the field is not shown, it does not apply.</>],
+                ...(how === "org" ? [
+                  ["Account removal behavior", <><b>Delete stacks</b>. An account that leaves the
+                    organization should not keep a role pointing back at this app.</>] as const,
+                ] : []),
+                ["Specify regions", <><b>One region only</b> — {data.region} is a good choice. IAM roles are
+                  global, so this only decides where the stack record lives; picking several would try to
+                  create the same role name repeatedly and fail. It has nothing to do with which regions
+                  get scanned, which you set per account in this app afterwards.</>],
+                ["Deployment options", <>Defaults are fine.</>],
+              ]} />
+              {how === "some" && rootId && (
+                <div className="mt-3">
+                  <Copyable label="Organizational unit (your root)" value={rootId} />
+                  {picked.size > 0 && <Copyable label="Account numbers" value={chosenIds.join(",")} />}
+                </div>
+              )}
+            </Step>
+          )}
+
+          <Step n={how === "one" ? 5 : 7} title="Review">
+            <Fields rows={[
+              ["Capabilities", <>Tick <b>I acknowledge that AWS CloudFormation might create IAM resources
+                with custom names</b>. It is asking because the template creates a role with a fixed name,
+                which is the whole point — the app is only permitted to assume that one name.</>],
+              ["", <>Then <b>Submit</b>.</>],
+            ]} />
+          </Step>
+
+          <Step n={how === "one" ? 6 : 8} title="Come back and press Find my accounts">
             Accounts with the role appear as ready to add. Nothing is stored until this app has
             assumed the role and confirmed it landed in the account you named.
           </Step>
