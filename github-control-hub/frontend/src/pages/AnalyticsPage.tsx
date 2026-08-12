@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
-import { Page } from "../design";
+import { Page, RefreshButton } from "../design";
 import { useAuth } from "../App";
 import { useSecurityQuery, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
@@ -17,7 +17,7 @@ type PresetId = "dependabot" | "bypasses";
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
-  const { data: widgets = [], isLoading: widgetsLoading } = useWidgets();
+  const { data: widgets = [], isLoading: widgetsLoading, isFetching: widgetsFetching, refetch: refetchWidgets } = useWidgets();
   const createWidget = useCreateWidget();
   const updateWidget = useUpdateWidget();
   const deleteWidgetMut = useDeleteWidget();
@@ -88,6 +88,10 @@ export default function AnalyticsPage() {
                 <span>Grid</span>
               </button>
             </div>
+            <RefreshButton
+              busy={widgetsFetching}
+              onRefresh={() => refetchWidgets()}
+            />
             <button
               onClick={() => aggregation.mutate()}
               disabled={aggregation.isPending}

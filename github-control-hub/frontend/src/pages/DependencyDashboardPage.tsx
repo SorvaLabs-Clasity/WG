@@ -4,7 +4,7 @@ import { useAuth } from "../App";
 import type { DependencyAlert } from "../types/Dependabot";
 import {
   Page, PageHeader, StatusSlab, SlabPercent, Button, Segmented, SearchInput,
-  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, INTENT, enter, type Intent,
+  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, INTENT, RefreshButton, enter, type Intent,
 } from "../design";
 
 /** Severity maps onto the shared intents so colour means one thing app-wide. */
@@ -25,8 +25,9 @@ const COLLAPSED = 4;
 
 export default function DependencyDashboardPage() {
   const { user } = useAuth();
-  const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj } = useDependencies();
-  const { data: summary, isLoading: sumLoading } = useDependencySummary();
+  const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj,
+          isFetching: depsFetching, refetch: refetchDeps } = useDependencies();
+  const { data: summary, isLoading: sumLoading, isFetching: sumFetching, refetch: refetchSummary } = useDependencySummary();
   /**
    * Both buttons used mutateAsync with only a finally, so a rejection became an
    * unhandled promise and the click did nothing visible.
@@ -116,6 +117,12 @@ export default function DependencyDashboardPage() {
       <PageHeader
         title="Dependabot"
         subtitle="Known vulnerabilities in dependencies, and which repositories are watching for them."
+        actions={
+          <RefreshButton
+            busy={depsFetching || sumFetching}
+            onRefresh={() => Promise.all([refetchDeps(), refetchSummary()])}
+          />
+        }
       />
 
       {notice && (

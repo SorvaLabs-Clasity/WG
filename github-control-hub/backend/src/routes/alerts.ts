@@ -2,8 +2,28 @@ import { Router, Request, Response } from "express";
 import { getAlerts, resolveAlert, unresolveAlert, createAlert } from "../services/alertService";
 import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 
 const router = Router();
+
+/**
+ * Resolving an alert is the org's record that a security finding was dealt
+ * with — a public repository, an admin added, protection removed. Anyone could
+ * clear that record, or reopen a closed one, which makes the whole security
+ * view something no one can rely on. Reading stays open; changing state does
+ * not.
+ *
+ * /simulate creates alerts outright, so it is gated for the same reason.
+ */
+async function refusedAlertChange(res: Response, login: string, verb: string): Promise<boolean> {
+  if (await isControlHubAdmin(login)) return false;
+  res.status(403).json({
+    error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
+      `security alerts — the record of what was dealt with is the point of them.`,
+    code: "CONTROL_HUB_ADMIN_REQUIRED",
+  });
+  return true;
+}
 
 router.get("/", async (req: Request, res: Response) => {
   try {
@@ -16,6 +36,7 @@ router.get("/", async (req: Request, res: Response) => {
 
 router.post("/:id/resolve", async (req: Request, res: Response) => {
   try {
+    if (await refusedAlertChange(res, req.user!.login, "resolve")) return;
     const user = req.user?.login || "system";
     const alertId = req.params.id as string;
     const alert = await resolveAlert(alertId, user);
@@ -30,6 +51,7 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
 
 router.post("/:id/unresolve", async (req: Request, res: Response) => {
   try {
+    if (await refusedAlertChange(res, req.user!.login, "reopen")) return;
     const alertId = req.params.id as string;
     const alert = await unresolveAlert(alertId);
     if (!alert) {
@@ -43,6 +65,7 @@ router.post("/:id/unresolve", async (req: Request, res: Response) => {
 
 router.post("/simulate", async (req: Request, res: Response) => {
   try {
+    if (await refusedAlertChange(res, req.user!.login, "create")) return;
     const { scenario } = req.body;
     
     switch (scenario) {

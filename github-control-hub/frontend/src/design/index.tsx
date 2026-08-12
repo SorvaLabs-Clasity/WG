@@ -47,6 +47,42 @@ export function PageHeader({ title, subtitle, actions }: {
   );
 }
 
+/**
+ * Re-fetches a page's data on demand.
+ *
+ * Queries here have long stale times and window-focus refetching is off, so a
+ * page can sit on data that changed elsewhere — in GitHub, in AWS, or by
+ * someone else in the app — with no way to say "look again" short of a
+ * restart. The spin is held for a moment past the response: an instant that
+ * looks identical to nothing happening does not read as success.
+ */
+export function RefreshButton({ onRefresh, label = "Refresh", busy }: {
+  onRefresh: () => Promise<unknown> | void;
+  label?: string;
+  busy?: boolean;
+}) {
+  const [spinning, setSpinning] = useState(false);
+  const active = spinning || !!busy;
+
+  const run = async () => {
+    if (active) return;
+    setSpinning(true);
+    try { await onRefresh(); } finally { setTimeout(() => setSpinning(false), 500); }
+  };
+
+  return (
+    <button
+      onClick={run}
+      disabled={active}
+      title={label}
+      className="px-3.5 py-2.5 rounded-xl text-sm font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 shadow-sm hover:shadow hover:text-slate-900 dark:hover:text-white transition-all disabled:opacity-60 inline-flex items-center gap-2"
+    >
+      <i className={`ph-bold ph-arrows-clockwise text-base ${active ? "animate-spin" : ""}`}></i>
+      <span className="hidden sm:inline">{active ? "Refreshing…" : label}</span>
+    </button>
+  );
+}
+
 // ── the signature surface ─────────────────────────────────────────────
 
 /** Counts up to `value` so a number's arrival is visible. Never loops. */

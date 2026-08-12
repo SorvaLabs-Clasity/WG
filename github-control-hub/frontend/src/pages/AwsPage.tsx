@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "../App";
-import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Back, Note, Pill, Button, Empty, Spinner, Figure, InsetRow, TYPE, SURFACE, INTENT, enter, type Intent } from "../design";
+import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Back, Note, Pill, Button, Empty, Spinner, Figure, InsetRow, TYPE, SURFACE, INTENT, enter, type Intent, RefreshButton,
+} from "../design";
 import { usePermissions } from "../hooks/usePermissions";
 import {
   useCatalog, useGuardrails, useFindings, useAwsExclusions,
@@ -23,9 +24,9 @@ export default function AwsPage() {
   const isAdmin = permissions?.isAwsAdmin ?? false;
 
   const { data: catalog } = useCatalog();
-  const { data: rules, isLoading } = useGuardrails();
-  const { data: findings } = useFindings();
-  const { data: exclusions } = useAwsExclusions();
+  const { data: rules, isLoading, isFetching: rulesFetching, refetch: refetchRules } = useGuardrails();
+  const { data: findings, isFetching: findingsFetching, refetch: refetchFindings } = useFindings();
+  const { data: exclusions, refetch: refetchExclusions } = useAwsExclusions();
 
   const runRules = useRunGuardrails();
   const deleteRule = useDeleteGuardrail();
@@ -65,6 +66,10 @@ export default function AwsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <RefreshButton
+              busy={rulesFetching || findingsFetching}
+              onRefresh={() => Promise.all([refetchRules(), refetchFindings(), refetchExclusions()])}
+            />
             <Button onClick={() => setView({ k: "exclusions" })}>
               Exclusions <span className="text-slate-400 font-mono ml-1">{exclusions?.length ?? 0}</span>
             </Button>

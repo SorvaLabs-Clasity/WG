@@ -1,9 +1,10 @@
 import { useState, useMemo } from "react";
 import { useAlerts, useResolveAlert, useUnresolveAlert, useInactiveUsers } from "../hooks/useAlerts";
+import { usePermissions } from "../hooks/usePermissions";
 import { useAuth } from "../App";
 import {
   Page, PageHeader, StatusSlab, SlabPercent, Button, Segmented, Sheet, Block,
-  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, INTENT, enter, type Intent,
+  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, INTENT, enter, type Intent, RefreshButton,
 } from "../design";
 
 const TYPE_LABELS: Record<string, string> = {
@@ -29,8 +30,13 @@ const ALERTS_PER_PAGE = 10;
 
 export default function SecurityPage() {
   const { user } = useAuth();
-  const { data: alerts, isLoading: alertsLoading } = useAlerts();
+  const { data: alerts, isLoading: alertsLoading, isFetching: alertsFetching, refetch: refetchAlerts } = useAlerts();
   const { data: inactiveUsers, isLoading: usersLoading } = useInactiveUsers();
+  // Resolving is the org's record that a finding was dealt with, so it is
+  // gated like the rest of the shared state. The server enforces it.
+  const { data: permissions } = usePermissions();
+  const canResolve = permissions?.isControlHubAdmin ?? false;
+
   const resolve = useResolveAlert();
   const unresolve = useUnresolveAlert();
 
@@ -68,6 +74,7 @@ export default function SecurityPage() {
       <PageHeader
         title="Security"
         subtitle="Events detected across the organization, and accounts that have gone quiet."
+        actions={<RefreshButton busy={alertsFetching} onRefresh={() => refetchAlerts()} />}
       />
 
       <StatusSlab
@@ -146,7 +153,7 @@ export default function SecurityPage() {
                         )}
                       </div>
                       <div className="shrink-0">
-                        {a.resolved ? (
+                        {!canResolve ? null : a.resolved ? (
                           <Button variant="secondary" disabled={unresolve.isPending} onClick={() => unresolve.mutate(a.id)}>
                             Reopen
                           </Button>
