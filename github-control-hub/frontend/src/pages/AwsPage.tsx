@@ -1027,9 +1027,32 @@ function SetupAccess() {
             ]} />
           </Step>
 
-          <Step n={how === "one" ? 6 : 8} title="Come back and press Find my accounts">
-            Accounts with the role appear as ready to add. Nothing is stored until this app has
-            assumed the role and confirmed it landed in the account you named.
+          <Step n={how === "one" ? 6 : 8} title="Come back here and add it">
+            {how === "one" ? (
+              <>
+                <p className="mb-2">
+                  If that account is in your AWS Organization, press{" "}
+                  <b>Find my accounts</b> — it will be listed as ready.
+                </p>
+                {/* Find my accounts reads AWS Organizations, so an account
+                    outside the organisation never appears there however
+                    correctly its role is set up. Saying only "press Find my
+                    accounts" sends those people looking for a list they are
+                    not in. */}
+                <p>
+                  If it is <b>not</b> in your organization, press <b>Add one by hand</b>, enter its
+                  account ID and a name, choose <b>A specific role</b>, and paste the{" "}
+                  <span className="font-mono text-[11.5px]">RoleArn</span> from the stack&rsquo;s Outputs
+                  tab — plus the external ID above.
+                </p>
+              </>
+            ) : (
+              <>Press <b>Find my accounts</b>. Accounts with the role appear as ready to add.</>
+            )}
+            <p className="mt-2 text-slate-500 dark:text-slate-400">
+              Nothing is stored until this app has assumed the role and confirmed it landed in the
+              account you named.
+            </p>
           </Step>
 
           {how !== "one" && cli && (
