@@ -162,6 +162,36 @@ export default function LoginPage() {
     }
   }, [checkStatus]);
 
+  /**
+   * Keep asking until GitHub OAuth reports itself configured.
+   *
+   * The backend loads its OAuth secrets from Secrets Manager asynchronously,
+   * after it has already started listening — so for the first half-second or so
+   * of every launch, /auth/status honestly answers "not configured". The window
+   * opens inside that gap often enough that reading status once at mount is a
+   * coin flip, and losing it left the page permanently claiming OAuth was
+   * missing from the build until someone thought to restart.
+   *
+   * Capped rather than endless: a build that genuinely has no OAuth secrets
+   * should say so, not poll for the rest of the session.
+   */
+  const [settling, setSettling] = useState(true);
+  useEffect(() => {
+    if (ghConfigured) { setSettling(false); return; }
+    if (loading || error) return;
+
+    let tries = 0;
+    const id = setInterval(() => {
+      if (++tries > 20) {          // ~20 seconds, then believe the answer
+        setSettling(false);
+        clearInterval(id);
+        return;
+      }
+      checkStatus();
+    }, 1000);
+    return () => clearInterval(id);
+  }, [ghConfigured, loading, error, checkStatus]);
+
   // Re-read whenever AWS is not connected — on first load, and again the moment
   // Disconnect is pressed. The list was previously fetched once at mount, so a
   // disconnect showed whatever had been cached, and only relaunching the app
@@ -498,7 +528,7 @@ export default function LoginPage() {
             intent={ghAuthed ? "good" : "neutral"}
             icon="ph-fill ph-github-logo"
             avatar={ghAuthed ? userInfo?.avatarUrl : undefined}
-            busy={loading || refreshing === "github"}
+            busy={loading || refreshing === "github" || (!ghConfigured && settling)}
             locked={!awsOk && !ghAuthed}
             title={ghAuthed && userInfo ? userInfo.login : "GitHub"}
             state={ghAuthed ? "connected" : !awsOk ? "locked" : "waiting"}
@@ -507,7 +537,10 @@ export default function LoginPage() {
                 ? status?.github.org
                   ? <>Member of <span className="font-bold">{status.github.org}</span></>
                   : "Authenticated"
-                : !ghConfigured ? "OAuth is not configured on this build"
+                : !ghConfigured
+                  ? settling
+                    ? "Loading credentials…"
+                    : "OAuth is not configured on this build"
                 : !awsOk ? "Unlocks once AWS is connected"
                 : "Your own account — the app acts as you, never as someone else"
             }

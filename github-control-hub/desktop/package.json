@@ -1,6 +1,6 @@
 {
   "name": "github-control-hub-desktop",
-  "version": "1.0.39",
+  "version": "1.0.40",
   "description": "GitHub Control Hub — Desktop App (Electron)",
   "author": "GitHub Control Hub",
   "private": true,
@@ -78,7 +78,9 @@
     },
     "publish": {
       "provider": "github",
-      "private": true
+      "private": true,
+      "owner": "SorvaLabs-Clasity",
+      "repo": "WG"
     },
     "linux": {
       "target": [
