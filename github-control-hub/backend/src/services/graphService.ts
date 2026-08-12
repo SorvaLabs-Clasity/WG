@@ -19,7 +19,8 @@ function loadLocalEdges() {
   return localEdges;
 }
 
-async function scanAllEdges(): Promise<any[]> {
+/** Every edge in the graph. Exported so the access map can derive its own view. */
+export async function scanGraphEdges(): Promise<any[]> {
   if (!usesDynamo()) return loadLocalEdges();
   const items: any[] = [];
   let lastKey: any = undefined;
@@ -85,7 +86,7 @@ export class UnknownQueryError extends Error {
 }
 
 export async function evaluateSecurityQuery(q: string, param?: string, advanced?: any, userToken?: string) {
-  const allEdges = await scanAllEdges();
+  const allEdges = await scanGraphEdges();
 
   const needs = REQUIRES[q];
   if (needs && !allEdges.some(e => e.type === needs)) {

@@ -2,6 +2,7 @@ import { Octokit } from "octokit";
 import { getOrg, getSystemTokenAsync } from "../github/client";
 import { docClient, usesDynamo, tableName, PutCommand, BatchWriteCommand, ScanCommand, DeleteCommand } from "../utils/dynamo";
 import { refreshAll } from "../services/complianceCacheService";
+import { invalidateAccessMap } from "../services/accessMapService";
 
 interface GraphEdge {
   pk: string;
@@ -61,12 +62,105 @@ export async function aggregateGraphData(fallbackToken?: string) {
       // as ownership — a wrong label, not a missing edge.
     }
 
+    // Everyone in the organisation, whether or not they can write anywhere.
+    //
+    // Privileged edges alone cannot answer "who has access to what": someone
+    // with read on everything and write on nothing has no edges at all, and a
+    // map that omits them is a map of the people you already worried about.
+    const people = new Map<string, { orgRole: string; avatarUrl?: string }>();
+    try {
+      let page = 1;
+      while (true) {
+        const { data } = await octokit.rest.orgs.listMembers({ org, per_page: 100, page });
+        if (data.length === 0) break;
+        for (const m of data) {
+          if (!m?.login) continue;
+          people.set(m.login, {
+            orgRole: orgOwners.has(m.login) ? "owner" : "member",
+            avatarUrl: m.avatar_url,
+          });
+        }
+        if (data.length < 100) break;
+        page++;
+      }
+    } catch (err) {
+      console.warn("[GraphAggregator] Failed to list organization members");
+    }
+
+    // People who are not in the organisation but hold access to a repository
+    // in it. The single most important row in an access review, and invisible
+    // without asking for them by name.
+    try {
+      let page = 1;
+      while (true) {
+        const { data } = await octokit.rest.orgs.listOutsideCollaborators({ org, per_page: 100, page });
+        if (data.length === 0) break;
+        for (const m of data) {
+          if (!m?.login) continue;
+          people.set(m.login, { orgRole: "outside_collaborator", avatarUrl: m.avatar_url });
+        }
+        if (data.length < 100) break;
+        page++;
+      }
+    } catch (err) {
+      console.warn("[GraphAggregator] Failed to list outside collaborators");
+    }
+
+    for (const [login, meta] of people) {
+      edges.push({
+        pk: `USER#${login}`,
+        sk: "META#user",
+        type: "user_meta",
+        metadata: { login, ...meta },
+      });
+    }
+    console.log(`[GraphAggregator] Fetched ${people.size} people`);
+
+    // What every member can do without being granted anything.
+    //
+    // The access map's headline claim — "everyone can read every repository" —
+    // is only true when the organisation's default says so. Asserting it
+    // without checking would be the map's biggest statement resting on an
+    // assumption.
+    try {
+      const { data: orgInfo } = await octokit.rest.orgs.get({ org });
+      edges.push({
+        pk: `ORG#${org}`,
+        sk: "META#org",
+        type: "org_meta",
+        metadata: {
+          defaultRepositoryPermission: (orgInfo as any).default_repository_permission ?? "unknown",
+          membersCanCreateRepositories: (orgInfo as any).members_can_create_repositories ?? null,
+          twoFactorRequirementEnabled: (orgInfo as any).two_factor_requirement_enabled ?? null,
+          memberCount: people.size,
+        },
+      });
+    } catch {
+      // Absent org_meta makes the map say the default is unknown, which is
+      // the honest reading when we could not ask.
+    }
+
     /** repo name -> logins that reach it through a team. */
     const viaTeam = new Map<string, Set<string>>();
 
     // TEAM -> REPO edges & USER -> TEAM edges
     for (const team of teams) {
       const teamId = `TEAM#${team.slug}`;
+
+      // Slugs are what edges are keyed on, but "platform-eng-core" is not what
+      // anyone calls the team out loud.
+      edges.push({
+        pk: teamId,
+        sk: "META#team",
+        type: "team_meta",
+        metadata: {
+          slug: team.slug,
+          name: team.name ?? team.slug,
+          description: team.description ?? null,
+          privacy: team.privacy ?? null,
+          parent: team.parent?.slug ?? null,
+        },
+      });
       const teamRepoNames: string[] = [];
       const teamMemberLogins: string[] = [];
 
@@ -330,6 +424,10 @@ export async function aggregateGraphData(fallbackToken?: string) {
   } catch (error) {
     console.error(`[GraphAggregator] Fatal error during aggregation:`, error);
   }
+
+  // The access map is derived from these edges and cached. Without this, a
+  // sync a user just asked for would appear to have changed nothing.
+  invalidateAccessMap();
 
   try {
     console.log(`[GraphAggregator] Refreshing compliance cache for all repos...`);
