@@ -151,6 +151,13 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
   GH_PEM_PATH="${GH_PEM_PATH%\'}"; GH_PEM_PATH="${GH_PEM_PATH#\'}"
   GH_PEM_PATH="${GH_PEM_PATH%\"}"; GH_PEM_PATH="${GH_PEM_PATH#\"}"
   [ -f "$GH_PEM_PATH" ] || die "No file at $GH_PEM_PATH"
+  # And that it is the key, not merely a file. Pointing at the wrong download
+  # is easy — GitHub hands you a .pem beside a dozen other things — and an
+  # unchecked path uploads whatever it found. The app would then fail much
+  # later, at a token refresh, complaining about a key rather than about the
+  # file someone chose an hour earlier.
+  grep -q -- "-----BEGIN" "$GH_PEM_PATH" && grep -q -- "PRIVATE KEY-----" "$GH_PEM_PATH" \
+    || die "$GH_PEM_PATH is not a PEM private key. GitHub's file is named <app>.<date>.private-key.pem and starts with -----BEGIN."
   echo
   echo "  ${dim}The next one is optional. getSystemToken() prefers the GitHub App${off}"
   echo "  ${dim}token you just configured and only falls back to a PAT, so with the${off}"
@@ -181,6 +188,14 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
         GITHUB_WEBHOOK_SECRET:       process.env.WEBHOOK_SECRET,
         JWT_SECRET:                  process.env.JWT_SECRET,
       }));')
+
+  # This script runs without `set -e`, so a node that threw would leave
+  # SECRET_JSON empty and the upload would carry on and store nothing —
+  # producing an install that looks configured and has no credentials in it.
+  case "$SECRET_JSON" in
+    *GITHUB_APP_PRIVATE_KEY*) ;;
+    *) die "Could not assemble the secret, so nothing was written. Check that $GH_PEM_PATH is readable." ;;
+  esac
 
   if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1; then
     aws secretsmanager put-secret-value --secret-id "$SECRET_NAME" \
