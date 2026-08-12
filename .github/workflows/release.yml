@@ -55,6 +55,11 @@ jobs:
 
       - name: Build & publish Electron app
         working-directory: github-control-hub/desktop
+        # Windows runners default to PowerShell, which does not understand the
+        # backslash line continuations below — it read the second line as a
+        # command called "-c" and failed. Every multi-line step in this matrix
+        # needs this, and the one above already had it.
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
