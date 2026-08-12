@@ -286,48 +286,17 @@ async function resolvePatternMatches(
       return allRepoNames.filter(n => n.toLowerCase().includes(val));
 
     case "created_by": {
-      // For webhook context, check the creator directly
+      // Matches only repositories created while the app was watching.
+      //
+      // Existing repositories used to be found by searching the org audit log,
+      // which needs Enterprise Cloud for API access — so on every other plan
+      // that was a request guaranteed to fail, swallowed, leaving the pattern
+      // silently matching nothing. Better to do what it can and say so than to
+      // make a call that never works.
       if (webhookContext?.creator && webhookContext.creator.toLowerCase() === val) {
-        // Also check existing repos via audit log if available
-        const matched = [webhookContext.repoName];
-        try {
-          const org = getOrg();
-          const { data } = await octokit.request("GET /orgs/{org}/audit-log", {
-            org,
-            phrase: `action:repo.create actor:${pattern.value}`,
-            per_page: 100,
-          });
-          for (const entry of data as any[]) {
-            if (entry.repo) {
-              const name = entry.repo.includes("/") ? entry.repo.split("/")[1] : entry.repo;
-              if (allRepoNames.includes(name) && !matched.includes(name)) matched.push(name);
-            }
-          }
-        } catch {
-          // Audit log not available — fall through with just webhook match
-        }
-        return matched;
+        return [webhookContext.repoName];
       }
-      // Without webhook context, use audit log
-      try {
-        const org = getOrg();
-        const { data } = await octokit.request("GET /orgs/{org}/audit-log", {
-          org,
-          phrase: `action:repo.create actor:${pattern.value}`,
-          per_page: 100,
-        });
-        const matched: string[] = [];
-        for (const entry of data as any[]) {
-          if (entry.repo) {
-            const name = entry.repo.includes("/") ? entry.repo.split("/")[1] : entry.repo;
-            if (allRepoNames.includes(name)) matched.push(name);
-          }
-        }
-        return matched;
-      } catch {
-        // Audit log not accessible (requires Enterprise/org audit access)
-        return [];
-      }
+      return [];
     }
 
     case "has_codeowners_entry": {

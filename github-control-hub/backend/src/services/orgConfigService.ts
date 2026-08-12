@@ -1,7 +1,6 @@
 import { docClient, usesDynamo, tableName, PutCommand, GetCommand } from "../utils/dynamo";
 
 export interface OrgFeatures {
-  auditLogs: boolean;
   rulesetsSupported: boolean;
   advancedSecurity: boolean;
 }
@@ -17,7 +16,6 @@ const TABLE = () => tableName("ORG_CONFIG_TABLE");
 let memConfig: OrgConfig = {
   org: process.env.GITHUB_ORG || "",
   features: {
-    auditLogs: false,
     rulesetsSupported: true,
     advancedSecurity: false,
   }
@@ -33,7 +31,7 @@ export async function getOrgConfig(): Promise<OrgConfig> {
     // First access: seed default config
     const defaultConfig: OrgConfig = {
       org,
-      features: { auditLogs: false, rulesetsSupported: true, advancedSecurity: false },
+      features: { rulesetsSupported: true, advancedSecurity: false },
     };
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: defaultConfig }));
     return defaultConfig;

@@ -451,21 +451,6 @@ export default function ActivityPage() {
               <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Activity</h1>
               <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Everything that has changed across the organization, newest first.</p>
             </div>
-            <div className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium shrink-0 ${
-              orgConfig?.features?.auditLogs
-                ? 'bg-emerald-50 dark:bg-emerald-950/50 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400'
-                : 'bg-amber-50 dark:bg-amber-950/50 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400'
-            }`}>
-              <i className={`${orgConfig?.features?.auditLogs ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-xmark'} text-xs`}></i>
-              <span>
-                {orgConfig?.features?.auditLogs
-                  ? 'Audit Log API: Connected'
-                  : 'Audit Log API: Unavailable'}
-              </span>
-              {!orgConfig?.features?.auditLogs && (
-                <span className="text-xs font-normal text-amber-600 dark:text-amber-500 hidden md:inline">— API access requires Enterprise Cloud</span>
-              )}
-            </div>
           </div>
           <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-gh-border dark:border-slate-700 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
@@ -478,7 +463,7 @@ export default function ActivityPage() {
                 <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as any)} className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
                   <option value="all">All Sources</option>
                   <option value="app">Control Hub App</option>
-                  {orgConfig?.features?.auditLogs && <option value="github">Native GitHub</option>}
+                  <option value="github">GitHub webhooks</option>
                 </select>
               </div>
               <div>

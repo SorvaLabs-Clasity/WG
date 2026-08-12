@@ -1,5 +1,4 @@
 export interface OrgFeatures {
-  auditLogs: boolean;
   rulesetsSupported: boolean;
   advancedSecurity: boolean;
 }
