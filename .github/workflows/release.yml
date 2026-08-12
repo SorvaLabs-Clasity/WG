@@ -121,19 +121,38 @@ jobs:
           VERSION=$(node -p "require('./github-control-hub/desktop/package.json').version")
           TAG="v${VERSION}"
 
+          # electron-builder names files with spaces and then writes the
+          # hyphenated form into the manifests. Uploading the spaced names
+          # lets GitHub substitute dots instead, so every url in the manifest
+          # points at a file that does not exist and updating 404s — on a
+          # release that looks perfectly complete.
+          cd installers
+          for f in *\ *; do [ -e "$f" ] && mv -- "$f" "${f// /-}"; done
+          cd ..
+
           echo "Assets for ${TAG}:"
           ls -la installers/
 
-          # Both manifests or nothing. latest-mac.yml and latest.yml are what
-          # installed copies read to find an update, so a release missing one
-          # silently stops updating that platform — and nothing about a green
-          # run would say so.
+          # Both manifests or nothing. They are what installed copies read to
+          # find an update, so a release missing one silently stops updating
+          # that platform.
           for f in latest-mac.yml latest.yml; do
             test -f "installers/$f" || {
               echo "::error::$f is missing — refusing to publish half a release"
               exit 1
             }
           done
+
+          # And every file a manifest names has to actually be here. Checking
+          # the manifests exist is not the same as checking they resolve, and
+          # the difference is a release that updates nobody.
+          missing=0
+          for m in installers/latest-mac.yml installers/latest.yml; do
+            for url in $(grep -oE '^\s+- url: .+$' "$m" | sed 's/.*url: //'); do
+              test -f "installers/$url" || { echo "::error::$m points at $url, which was not built"; missing=1; }
+            done
+          done
+          [ "$missing" = 0 ] || exit 1
 
           # A tag can carry several drafts, which is how this used to go
           # wrong. Clear anything left by an earlier attempt at this version
