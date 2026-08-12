@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { fetchDependencies, fetchDependencySummary, enableDependabot, disableDependabot } from "../api/dependencies";
+import { fetchDependencies, fetchDependencySummary, fetchDependenciesForRepo, enableDependabot, disableDependabot } from "../api/dependencies";
 import type { DependencyAlert } from "../types/Dependabot";
 
 export function useDependencies() {
@@ -19,37 +19,44 @@ export function useDependencySummary() {
 }
 
 /**
- * The list is expensive: one request per repository, because GitHub has no
- * org-wide endpoint for whether alerts are switched on. Refetching after every
- * toggle would make enabling a few hundred repositories cost a few hundred full
- * sweeps — tens of thousands of requests, and a rate limit long before the end.
+ * After a toggle, re-read only the repository that changed.
  *
- * So the refetch is debounced. Toggling twenty repositories in a row settles
- * into one sweep once the clicking stops. The cache is corrected immediately
- * from what we just did, so the screen is right the whole time regardless.
+ * The full list costs one request per repository, because GitHub has no
+ * org-wide endpoint for whether alerts are switched on. Refetching it after
+ * every toggle made enabling a few hundred repositories cost a few hundred
+ * full sweeps. Debouncing bounded a burst of clicks but not the total — anyone
+ * pausing to read each result before the next click paid full price every
+ * time.
  *
- * Module-level, not per-hook: enable and disable are separate hooks and both
- * must share the same timer or a mixed run schedules two sweeps.
+ * A single repository costs one or two requests, so the cost is now
+ * proportional to what changed rather than to the size of the organisation.
+ * The org-wide totals still need one call, and that one is debounced, since
+ * being a few seconds out of date on a summary matters to nobody.
  */
-const SETTLE_MS = 8000;
-let settleTimer: ReturnType<typeof setTimeout> | null = null;
+const SUMMARY_SETTLE_MS = 8000;
 
-function scheduleSweep(queryClient: QueryClient) {
-  if (settleTimer) clearTimeout(settleTimer);
-  settleTimer = setTimeout(() => {
-    settleTimer = null;
-    queryClient.invalidateQueries({ queryKey: ["dependencies"] });
+/** GitHub needs a moment to scan a repository it has only just started watching. */
+const SCAN_GRACE_MS = 6000;
+
+let summaryTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleSummary(queryClient: QueryClient) {
+  if (summaryTimer) clearTimeout(summaryTimer);
+  summaryTimer = setTimeout(() => {
+    summaryTimer = null;
     queryClient.invalidateQueries({ queryKey: ["dependency-summary"] });
-  }, SETTLE_MS);
+  }, SUMMARY_SETTLE_MS);
 }
 
-/**
- * Correct the cache from what we just did, then let one later sweep confirm.
- *
- * Invalidating alone was not enough: the refetch goes out milliseconds after
- * the write and GitHub still reports the previous state, so the query settled
- * on stale data and sat there until the app restarted.
- */
+/** Replace every row for `repo` with a freshly read set. */
+function mergeRepo(queryClient: QueryClient, repo: string, rows: DependencyAlert[]) {
+  queryClient.setQueryData(["dependencies"], (old: DependencyAlert[] | undefined) => {
+    if (!old) return old;
+    const others = old.filter(a => a.repo !== repo);
+    return [...others, ...rows];
+  });
+}
+
 function useDependabotToggle(
   mutationFn: (repo: string) => Promise<{ success: boolean }>,
   enabling: boolean,
@@ -58,20 +65,33 @@ function useDependabotToggle(
   return useMutation({
     mutationFn,
     onSuccess: (_data, repo) => {
+      // Correct the screen from what we just did. GitHub reports the previous
+      // state for a moment after a write, so reading it back immediately would
+      // put the old answer on screen and leave it there.
       queryClient.setQueryData(["dependencies"], (old: DependencyAlert[] | undefined) =>
         old?.map(a => {
           if (a.repo !== repo) return a;
-          if (!enabling) {
-            return { ...a, disabled: true, scanning: false, clean: false };
-          }
-          // The row being flipped is the "alerts disabled" placeholder, which
-          // carries a dependency name and a severity. Clearing `disabled`
-          // without clearing those left it rendering as a real vulnerability
-          // called "Dependabot alerts disabled" until the sweep landed.
+          if (!enabling) return { ...a, disabled: true, scanning: false, clean: false };
+          // This row is the "alerts disabled" placeholder, which carries a
+          // dependency name and a severity. Clearing `disabled` alone left it
+          // rendering as a finding called "Dependabot alerts disabled".
           return { ...a, disabled: false, scanning: true, clean: false };
         }));
 
-      scheduleSweep(queryClient);
+      scheduleSummary(queryClient);
+
+      if (!enabling) return;
+      // Give GitHub time to scan, then read back just this repository.
+      setTimeout(async () => {
+        try {
+          const rows = await fetchDependenciesForRepo(repo);
+          if (rows.length > 0) mergeRepo(queryClient, repo, rows);
+        } catch {
+          // Leave the optimistic state. The refresh button and the next full
+          // load will settle it, and a failed read should not undo a write
+          // that succeeded.
+        }
+      }, SCAN_GRACE_MS);
     },
   });
 }

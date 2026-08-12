@@ -9,6 +9,17 @@ export async function fetchDependencies(): Promise<DependencyAlert[]> {
   return apiGet<DependencyAlert[]>("/security/dependencies");
 }
 
+/**
+ * One repository's alerts, rather than the whole organisation.
+ *
+ * Costs one or two GitHub requests instead of one per repository, which is
+ * what makes it usable after every toggle.
+ */
+export async function fetchDependenciesForRepo(repo: string): Promise<DependencyAlert[]> {
+  if (DEMO_MODE) return (await mockFetchDependencies()).filter(d => d.repo === repo);
+  return apiGet<DependencyAlert[]>(`/security/dependencies?repo=${encodeURIComponent(repo)}`);
+}
+
 export async function enableDependabot(repo: string): Promise<{ success: boolean }> {
   if (DEMO_MODE) return { success: true };
   return apiPost<{ success: boolean }>("/security/dependencies/enable", { repo });

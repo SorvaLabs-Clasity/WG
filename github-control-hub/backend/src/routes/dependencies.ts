@@ -32,10 +32,15 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       });
       allAlerts = data.map((a: any) => mapAlert(a, repoFilter, org));
       
-      // If we are filtering by repo and there are no alerts, let's just check if it's enabled
+      // No alerts means one of two things, and the caller has to be able to
+      // tell them apart: alerts are switched off, or they are on and the repo
+      // is clean. Returning an empty list for both made a clean repo look like
+      // one that had vanished, so each case gets its marker — the same
+      // contract the org-wide branch below returns.
       if (allAlerts.length === 0) {
         try {
           await octokit.rest.repos.checkVulnerabilityAlerts({ owner: org, repo: repoFilter });
+          allAlerts.push(mockCleanAlert(repoFilter, org));
         } catch (err: any) {
           if (err.status === 404) {
             allAlerts.push(mockDisabledAlert(repoFilter, org));
