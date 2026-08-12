@@ -22,7 +22,7 @@ import {
 import type { ActivityEntry } from "../services/activityService";
 import { createOctokit, getOrg } from "../github/client";
 import { assertWritable, RepoAccessDenied } from "../github/permissions";
-import { undoBlockedReason, reposByLevel, needsAdminTeam, isReversible, ALLOWED_UNDO_ACTIONS } from "../services/undoPolicy";
+import { undoBlockedReason, undoRequirement, retryRequirement, requirementsFor, isReversible, ALLOWED_UNDO_ACTIONS } from "../services/undoPolicy";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { permissionMessage } from "../utils/permissionError";
 import {
@@ -69,25 +69,27 @@ const router = Router();
  * Returns a response body to send, or null when the caller may proceed.
  */
 async function denyIfNotPermitted(
-  entries: ActivityEntry[], login: string, accessToken: string, verb: "undo" | "redo",
+  entries: ActivityEntry[], login: string, accessToken: string, verb: string,
+  pick: (e: ActivityEntry) => ReturnType<typeof undoRequirement> = undoRequirement,
 ): Promise<{ status: number; body: Record<string, unknown> } | null> {
-  if (needsAdminTeam(entries) && !(await isControlHubAdmin(login))) {
+  const { adminTeam, repos } = requirementsFor(entries, pick);
+
+  if (adminTeam && !(await isControlHubAdmin(login))) {
     return {
       status: 403,
       body: {
         error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ` +
-          `${verb} a change to a template, because templates decide what every future repository gets.`,
+          `${verb} this — it changes what every repository the template touches receives.`,
         code: "CONTROL_HUB_ADMIN_REQUIRED",
       },
     };
   }
 
-  const byLevel = reposByLevel(entries);
   const octokit = createOctokit(accessToken);
   const org = getOrg();
   for (const level of ["admin", "push"] as const) {
     try {
-      await assertWritable(octokit, org, byLevel[level], level);
+      await assertWritable(octokit, org, repos[level], level);
     } catch (err) {
       if (err instanceof RepoAccessDenied) {
         return {
@@ -351,6 +353,16 @@ router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) =>
       return;
     }
 
+    // Retry re-runs the original action, so it needs what the original needed.
+    // It was reachable with no check at all, which made it a way around every
+    // gate on this page: fail an action you were refused, then press Retry.
+    const deniedRetry = await denyIfNotPermitted(
+      [entry], req.user!.login, req.user!.accessToken, "retry", retryRequirement);
+    if (deniedRetry) {
+      res.status(deniedRetry.status).json(deniedRetry.body);
+      return;
+    }
+
     const accessToken = req.user!.accessToken;
     const retried: string[] = [];
     const errors: string[] = [];
@@ -435,6 +447,17 @@ router.post("/:id/resolve-conflict", async (req: Request<{ id: string }>, res: R
     }
     if (entry.conflictResolution) {
       res.status(400).json({ error: `This conflict has already been resolved as "${entry.conflictResolution}"` });
+      return;
+    }
+
+    // Overriding a conflict applies protection to the repository; skipping
+    // records a decision not to. Both are changes to that repo's posture and
+    // need the same rights as applying a template to it.
+    const deniedResolve = await denyIfNotPermitted(
+      [entry], req.user!.login, req.user!.accessToken, "resolve this conflict for",
+      () => ({ repo: "admin" as const }));
+    if (deniedResolve) {
+      res.status(deniedResolve.status).json(deniedResolve.body);
       return;
     }
 
@@ -615,6 +638,14 @@ router.post("/:id/undo-resolution", async (req: Request<{ id: string }>, res: Re
     const entry = await getActivityById(req.params.id);
     if (!entry) { res.status(404).json({ error: "Activity entry not found" }); return; }
     if (!entry.conflictResolution) { res.status(400).json({ error: "This entry has no resolution to undo" }); return; }
+
+    const deniedUndoRes = await denyIfNotPermitted(
+      [entry], req.user!.login, req.user!.accessToken, "undo this resolution for",
+      () => ({ repo: "admin" as const }));
+    if (deniedUndoRes) {
+      res.status(deniedUndoRes.status).json(deniedUndoRes.body);
+      return;
+    }
 
     const actor = req.user!.login;
 

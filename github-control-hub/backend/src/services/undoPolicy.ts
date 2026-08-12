@@ -94,12 +94,56 @@ const UNDO_REQUIREMENTS: Record<string, UndoRequirement> = {
   restore_exclusion:        { adminTeam: true },
   revert_exclusion:         { adminTeam: true },
 
-  // Dashboard and scanner configuration carry no gate on the way in, so they
-  // carry none on the way out. Listed explicitly rather than defaulted, so a
-  // new operation cannot inherit "no checks" by omission.
-  delete_widget: {},  restore_widget: {},  revert_widget: {},
-  delete_scanner: {}, restore_scanner: {}, revert_scanner: {},
+  // Scanners search every repository with the app's own credentials, so they
+  // are gated on the way in and on the way out.
+  delete_scanner:           { adminTeam: true },
+  restore_scanner:          { adminTeam: true },
+  revert_scanner:           { adminTeam: true },
+
+  // Dashboard layout changes nothing outside the dashboard, so it carries no
+  // gate either way. Listed explicitly rather than defaulted, so a new
+  // operation cannot inherit "no checks" by omission.
+  delete_widget: {}, restore_widget: {}, revert_widget: {},
 };
+
+/**
+ * The same question for retrying a failed action.
+ *
+ * Retry re-runs the original operation, so it needs exactly what the original
+ * needed — and it was reachable with no check at all, which made it a way
+ * around every gate on this page.
+ */
+const RETRY_REQUIREMENTS: Record<string, UndoRequirement> = {
+  create_branch:      { repo: "push" },
+  rename_branch:      { repo: "admin" },
+  apply_protection:   { repo: "admin" },
+  create_ruleset:     { repo: "admin" },
+  create_tag_ruleset: { repo: "admin" },
+};
+
+export function retryRequirement(entry: ActivityEntry): UndoRequirement {
+  const action = (entry.retryPayload as { action?: string } | undefined)?.action;
+  if (!action) return {};
+  return RETRY_REQUIREMENTS[action] ?? { repo: "admin", adminTeam: true };
+}
+
+/**
+ * Requirements for an arbitrary set of entries, whichever direction they are
+ * being driven in. `pick` chooses which map applies.
+ */
+export function requirementsFor(
+  entries: ActivityEntry[], pick: (e: ActivityEntry) => UndoRequirement,
+): { adminTeam: boolean; repos: Record<RepoLevel, string[]> } {
+  const repos: Record<RepoLevel, Set<string>> = { push: new Set(), admin: new Set() };
+  let adminTeam = false;
+  for (const e of entries) {
+    const r = pick(e);
+    if (r.adminTeam) adminTeam = true;
+    if (r.repo && e.repo) repos[r.repo].add(e.repo);
+  }
+  for (const r of repos.admin) repos.push.delete(r);
+  return { adminTeam, repos: { push: [...repos.push], admin: [...repos.admin] } };
+}
 
 /** What undoing this entry demands. Unknown operations demand the most. */
 export function undoRequirement(entry: ActivityEntry): UndoRequirement {

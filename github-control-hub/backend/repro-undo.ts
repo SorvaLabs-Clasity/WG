@@ -215,7 +215,9 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   check("  because excluding a repo stops templates protecting it",
     req("delete_exclusion").adminTeam === true && req("restore_exclusion").adminTeam === true);
   check("dashboard widgets need neither", !req("revert_widget").repo && !req("revert_widget").adminTeam);
-  check("scanners need neither", !req("revert_scanner").repo && !req("revert_scanner").adminTeam);
+  check("reverting a scanner needs the admin team", req("revert_scanner").adminTeam === true);
+  check("  because a scan reads every repo with the app's own credentials",
+    req("delete_scanner").adminTeam === true && req("restore_scanner").adminTeam === true);
 
   // An unknown operation must demand the most, not the least.
   const unknown = undoRequirement(at({ undoPayload: { action: "something_new", params: {} } }));
@@ -245,6 +247,37 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     !grouped.push.includes("acme-api"), grouped);
   check("  non-repo operations contribute no repo",
     !grouped.admin.includes("/aws/lambda/x") && !grouped.push.includes("/aws/lambda/x"), grouped);
+}
+
+// ── no write route escapes a gate ─────────────────────────────────────
+// The holes found so far were all "this route was never given a check", not
+// "this check is wrong". A list of route files and the guard each write must
+// name catches the next one at test time rather than in production.
+{
+  const fs = require("fs"), path = require("path");
+  const read = (f: string) => fs.readFileSync(path.join(__dirname, "src/routes", f), "utf8");
+
+  const GUARDED: [string, RegExp, RegExp][] = [
+    ["templates.ts",     /router\.(post|put|delete)\(/g, /refusedTemplateChange|assertWritable/],
+    ["exclusions.ts",    /router\.(post|put|delete)\(/g, /refusedExclusionChange/],
+    ["scanners.ts",      /router\.(post|put|delete)\(/g, /refusedScannerChange/],
+    ["awsGuardrails.ts", /router\.(post|put|delete)\(/g, /requireAdmin/],
+    ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted/],
+  ];
+
+  for (const [file, routeRe, guardRe] of GUARDED) {
+    const src = read(file);
+    const starts = [...src.matchAll(routeRe)].map(m => m.index!);
+    const ungated: string[] = [];
+    starts.forEach((start, i) => {
+      const end = i + 1 < starts.length ? starts[i + 1] : src.length;
+      const body = src.slice(start, end);
+      const name = body.slice(0, body.indexOf("\n")).trim();
+      // The guard may sit on the router line itself (middleware) or in the body.
+      if (!guardRe.test(body)) ungated.push(name);
+    });
+    check(`${file}: every write route names its guard`, ungated.length === 0, ungated);
+  }
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
