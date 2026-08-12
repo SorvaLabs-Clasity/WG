@@ -134,7 +134,11 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
   ask        GH_INSTALL_ID   "GitHub App installation ID"
   ask        GH_PEM_PATH     "Path to the GitHub App private key (.pem)"
   [ -f "$GH_PEM_PATH" ] || die "No file at $GH_PEM_PATH"
-  ask_secret GH_PAT          "Personal access token for system tasks (repo, admin:org, admin:repo_hook)"
+  echo
+  echo "  ${dim}The next one is optional. getSystemToken() prefers the GitHub App${off}"
+  echo "  ${dim}token you just configured and only falls back to a PAT, so with the${off}"
+  echo "  ${dim}App installed there is nothing left for it to do. Press enter to skip.${off}"
+  ask_secret GH_PAT          "Personal access token, or enter to skip (repo, admin:org, admin:repo_hook)"
 
   # Generated, not asked for — no reason for a human to invent these.
   WEBHOOK_SECRET=$(openssl rand -hex 32)
