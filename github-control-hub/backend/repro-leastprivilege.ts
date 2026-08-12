@@ -155,6 +155,46 @@ const accountsCode = code(accountsTs);
       dynamoGrants.every(r => r.includes("stackPrefix")), dynamoGrants);
   }
 
+  // ── the embedded template is the same as the repo's ────────────────
+  {
+    const { ACCOUNT_ROLE_TEMPLATE } = await import("./src/aws-guardrails/accountRoleTemplate");
+    check("the template the app hands out is byte-identical to the repo's",
+      ACCOUNT_ROLE_TEMPLATE === template,
+      ACCOUNT_ROLE_TEMPLATE === template ? "" : "run: npx tsx sync-account-role-template.ts");
+    check("  so neither copy can quietly become the lenient one",
+      ACCOUNT_ROLE_TEMPLATE.includes("NeverPolicy")
+      && /ReadOnly:[\s\S]{0,120}?Default:\s*"true"/.test(ACCOUNT_ROLE_TEMPLATE),
+      "the embedded template lost its denies or its read-only default");
+  }
+
+  // ── the app cannot create roles anywhere ───────────────────────────
+  {
+    // Creating an IAM role across an organisation needs
+    // cloudformation:CreateStackSet with CAPABILITY_NAMED_IAM. Whoever holds
+    // that can deploy an administrator role into every account — strictly
+    // worse than the administrator access this app was built without. So the
+    // app builds the parameters and a human presses Create.
+    for (const action of ["cloudformation:CreateStackSet", "cloudformation:CreateStackInstances",
+                          "cloudformation:CreateStack", "cloudformation:UpdateStackSet",
+                          "iam:CreateRole", "iam:AttachRolePolicy", "iam:PutRolePolicy",
+                          "iam:PassRole", "organizations:EnableAWSServiceAccess"]) {
+      check(`the app is never granted ${action}`, !cdkCode.includes(action), action);
+    }
+
+    const routes = fs.readFileSync(path.join(__dirname, "src/routes/awsGuardrails.ts"), "utf8");
+    check("  and no route tries to create a stack or a stack set",
+      !/CreateStackSetCommand|CreateStackCommand|CreateStackInstancesCommand/.test(routes),
+      "a route creates CloudFormation resources");
+  }
+
+  // ── the lambda read that replaced asking a person ──────────────────
+  {
+    check("reading the engine's own role is scoped to that one function",
+      /lambda:GetFunctionConfiguration[\s\S]{0,200}?resources:\s*\[([^\]]*)\]/.test(cdkCode)
+      && /lambda:GetFunctionConfiguration[\s\S]{0,200}?resources:\s*\[[^\]]*functionArn/.test(cdkCode),
+      "lambda:GetFunctionConfiguration is not scoped to the guardrail function");
+  }
+
   // ── one role name, agreed by all three files ───────────────────────
   {
     const suffix = "-guardrail-access";

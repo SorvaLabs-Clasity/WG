@@ -318,6 +318,15 @@ export class GitHubControlHubStack extends cdk.Stack {
     // The app invokes this directly for manual runs and previews.
     guardrailFn.grantInvoke(role);
 
+    // The Accounts screen shows both role ARNs a watched account must trust,
+    // and one of them is this function's. Reading its own configuration beats
+    // asking a person to go and find it in a stack output.
+    role.addToPolicy(new iam.PolicyStatement({
+      sid: "ReadOwnEngineRole",
+      actions: ["lambda:GetFunctionConfiguration"],
+      resources: [guardrailFn.functionArn],
+    }));
+
     // ── Outputs ──
     new cdk.CfnOutput(this, "GuardrailFunctionName", {
       value: guardrailFn.functionName,

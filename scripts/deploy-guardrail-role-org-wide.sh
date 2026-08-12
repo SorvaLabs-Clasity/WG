@@ -82,19 +82,18 @@ fi
 # ── What the role should trust ────────────────────────────────────────
 cat <<'EOF'
 
-The role created in each account will trust exactly one principal: the role the
-Control Hub itself runs as. Its ARN is printed by the Control Hub's own
-CloudFormation stack as "GuardrailLambdaRoleArn".
-
-  aws cloudformation describe-stacks --stack-name GitHubControlHub \
-    --query "Stacks[0].Outputs[?OutputKey=='GuardrailLambdaRoleArn'].OutputValue" --output text
+The role created in each account will trust exactly two principals: the Control
+Hub app, and its guardrail engine. Both are printed in the app itself, under
+AWS -> Accounts -> Set up access, with a copy button.
 
 EOF
 
-ask CONTROL_HUB_ROLE_ARN "The Control Hub's role ARN"
-if [[ ! "$CONTROL_HUB_ROLE_ARN" =~ ^arn:aws[a-z-]*:iam::[0-9]{12}:role/.+$ ]]; then
-  echo "That is not an IAM role ARN."; exit 1
-fi
+ask CONTROL_HUB_ROLE_ARNS "Both Control Hub role ARNs, comma separated"
+for arn in ${CONTROL_HUB_ROLE_ARNS//,/ }; do
+  if [[ ! "$arn" =~ ^arn:aws[a-z-]*:iam::[0-9]{12}:role/.+$ ]]; then
+    echo "Not an IAM role ARN: $arn"; exit 1
+  fi
+done
 
 ask ROLE_NAME "Name for the role in each account" "github-control-hub-guardrail-access"
 
@@ -125,14 +124,14 @@ cat <<EOF
     organisation root:  $ROOT_ID
     accounts affected:  $ACCOUNT_COUNT now, plus any created later
     role name:          $ROLE_NAME
-    trusts:             $CONTROL_HUB_ROLE_ARN
+    trusts:             $CONTROL_HUB_ROLE_ARNS
     external ID:        ${EXTERNAL_ID:0:6}… (${#EXTERNAL_ID} chars)
     can change things:  $([[ "$READ_ONLY" == "true" ]] && echo "no, read-only" || echo "yes, three actions")
 EOF
 read -r -p "Proceed? [y/N] " confirm
 [[ "$confirm" == [yY] ]] || { echo "Aborted."; exit 1; }
 
-PARAMS="ParameterKey=ControlHubRoleArn,ParameterValue=$CONTROL_HUB_ROLE_ARN \
+PARAMS="ParameterKey=ControlHubRoleArns,ParameterValue=\"${CONTROL_HUB_ROLE_ARNS//,/\\,}\" \
         ParameterKey=RoleName,ParameterValue=$ROLE_NAME \
         ParameterKey=ExternalId,ParameterValue=$EXTERNAL_ID \
         ParameterKey=ReadOnly,ParameterValue=$READ_ONLY"

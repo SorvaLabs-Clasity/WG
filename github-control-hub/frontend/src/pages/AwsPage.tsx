@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useAuth } from "../App";
-import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Back, Note, Pill, Button, Empty, Spinner, Figure, InsetRow, TYPE, SURFACE, INTENT, enter, type Intent, RefreshButton,
+import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Back, Note, Pill, Button, Empty, Spinner, Figure, InsetRow, Segmented, TYPE, SURFACE, INTENT, enter, type Intent, RefreshButton,
 } from "../design";
 import { usePermissions } from "../hooks/usePermissions";
 import {
@@ -8,6 +8,7 @@ import {
   useCreateGuardrail, useUpdateGuardrail, useDeleteGuardrail, useRunGuardrails,
   useSaveAwsExclusion, useDeleteAwsExclusion,
   useAwsAccounts, useSaveAwsAccount, useRemoveAwsAccount, useVerifyAwsAccount, useDiscoverAwsAccounts,
+  useAccountSetup,
 } from "../hooks/useAws";
 import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec, AwsAccount, AwsAccessMethod } from "../api/aws";
 import { awsConsoleUrl, consoleLinkLabel } from "../utils/awsConsole";
@@ -694,6 +695,188 @@ const MATCH_KINDS: { id: MatchType; label: string; help: string; placeholder: st
   { id: "tag_equals", label: "Has tag", help: "Matches resources carrying this tag. Leave the value blank to match the tag however it is set.", placeholder: "Env", example: "Env = dev catches anything tagged Env=dev" },
 ];
 
+// ── Granting access ───────────────────────────────────────────────────
+
+/** Copy-to-clipboard, because these values are long and mistyping one is silent. */
+function Copyable({ label, value, mono = true }: { label: string; value: string; mono?: boolean }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="mb-3">
+      <div className="flex items-center justify-between gap-3 mb-1">
+        <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">{label}</span>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(value);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1600);
+          }}
+          className="text-[12px] font-bold text-blue-600 dark:text-blue-400 hover:opacity-70 shrink-0">
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <div className={`px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-[12px] break-all ${mono ? "font-mono" : ""} text-slate-700 dark:text-slate-200`}>
+        {value}
+      </div>
+    </div>
+  );
+}
+
+function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-3 mb-5">
+      <span className="shrink-0 h-6 w-6 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[12px] font-black grid place-items-center mt-0.5">
+        {n}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13.5px] font-bold text-slate-900 dark:text-white mb-1.5">{title}</p>
+        <div className="text-[13px] text-slate-600 dark:text-slate-300">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * How to grant this app access to an account, without opening a terminal.
+ *
+ * The app does not create the role itself, and that is a decision rather than
+ * a gap — creating IAM roles across an organisation needs permissions that
+ * would let whoever held them deploy an administrator role everywhere, which
+ * is worse than the administrator access this app was built without. So it
+ * does everything that costs nothing: works out every value, generates the
+ * external ID, carries the template, and builds the links. What is left is
+ * clicking Create while signed in as yourself.
+ */
+function SetupAccess() {
+  const [open, setOpen] = useState(false);
+  const [how, setHow] = useState<"org" | "one">("org");
+  const { data, isLoading, error } = useAccountSetup(open);
+
+  if (!open) {
+    return (
+      <button onClick={() => setOpen(true)}
+        className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">
+        How do I add an account?
+      </button>
+    );
+  }
+
+  const download = () => {
+    if (!data) return;
+    const url = URL.createObjectURL(new Blob([data.template], { type: "text/yaml" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = data.templateFileName;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const cliOrg = data && [
+    `aws cloudformation create-stack-set \\`,
+    `  --stack-set-name ${data.stackSetName} \\`,
+    `  --template-body file://${data.templateFileName} \\`,
+    `  --capabilities CAPABILITY_NAMED_IAM \\`,
+    `  --permission-model SERVICE_MANAGED \\`,
+    `  --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \\`,
+    `  --parameters \\`,
+    `    'ParameterKey=ControlHubRoleArns,ParameterValue="${data.parameters.ControlHubRoleArns.replace(/,/g, "\\,")}"' \\`,
+    `    ParameterKey=RoleName,ParameterValue=${data.parameters.RoleName} \\`,
+    `    ParameterKey=ExternalId,ParameterValue=${data.parameters.ExternalId}`,
+  ].join("\n");
+
+  return (
+    <div className="mb-5 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+      <div className="flex items-start justify-between gap-4 mb-4">
+        <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>Granting access to an account</h3>
+        <button onClick={() => setOpen(false)}
+          className="text-sm font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">Close</button>
+      </div>
+
+      {isLoading && <Spinner />}
+      {error && <Note intent="danger">{(error as Error).message}</Note>}
+
+      {data && (
+        <>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4 max-w-[76ch]">
+            Each account grants a role that can read S3 and CloudWatch Logs settings — not the
+            contents of a bucket, not a log line, and nothing it can change. Everything below is
+            filled in for you; the only thing this app cannot do is press Create, because creating
+            IAM roles across an organization requires permissions that would let whoever held them
+            deploy an administrator role everywhere.
+          </p>
+
+          <div className="mb-5">
+            <Segmented value={how} onChange={setHow} options={[
+              ["org", "Every account at once"],
+              ["one", "A single account"],
+            ]} />
+          </div>
+
+          <Step n={1} title="Download the template">
+            <Button onClick={download}>Download {data.templateFileName}</Button>
+            <span className="ml-3 text-[12.5px] text-slate-500 dark:text-slate-400">
+              Read it first if you like — it is short, and the permissions are the whole of it.
+            </span>
+          </Step>
+
+          <Step n={2} title={how === "org"
+            ? "Open CloudFormation StackSets in your organization's management account"
+            : "Open CloudFormation in the account you want to watch"}>
+            <a href={how === "org" ? data.consoleUrls.stackSets : data.consoleUrls.singleStack}
+              target="_blank" rel="noreferrer"
+              className="font-bold text-blue-600 dark:text-blue-400 hover:underline">
+              {how === "org" ? "Create StackSet" : "Create stack"} ↗
+            </a>
+            <span className="ml-2 text-[12.5px] text-slate-500 dark:text-slate-400">
+              Upload the file, then choose{" "}
+              {how === "org"
+                ? <>Service-managed permissions, and Deploy to organization with automatic deployment on — so accounts created later are covered too.</>
+                : <>next.</>}
+            </span>
+          </Step>
+
+          <Step n={3} title="Paste these parameters">
+            <Copyable label="ControlHubRoleArns" value={data.parameters.ControlHubRoleArns} />
+            <Copyable label="RoleName" value={data.parameters.RoleName} />
+            <Copyable label="ExternalId" value={data.parameters.ExternalId} />
+            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 -mt-1">
+              Leave <span className="font-mono text-[11.5px]">ReadOnly</span> at <span className="font-mono text-[11.5px]">true</span>{" "}
+              unless you want this app to fix things automatically in that account.
+              {data.reusedExternalId
+                ? " This external ID is the one your other accounts already use."
+                : " Keep a copy of the external ID — it is what stops another installation of this app from naming your accounts."}
+            </p>
+            {data.principals.engineError && (
+              <Note intent="warn">{data.principals.engineError}</Note>
+            )}
+          </Step>
+
+          <Step n={4} title="Come back and press Find my accounts">
+            Accounts with the role appear as ready to add. Nothing is stored until this app has
+            assumed the role and confirmed it landed in the account you named.
+          </Step>
+
+          {how === "org" && cliOrg && (
+            <details className="mt-2">
+              <summary className="text-[13px] font-bold text-slate-500 dark:text-slate-400 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200">
+                Prefer the command line?
+              </summary>
+              <div className="mt-3">
+                <Copyable label="Run from the management account" value={cliOrg} />
+                <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
+                  Then <span className="font-mono text-[11.5px]">create-stack-instances</span> against your
+                  organization root. <span className="font-mono text-[11.5px]">scripts/deploy-guardrail-role-org-wide.sh</span>{" "}
+                  in the repo does both and prompts for everything.
+                </p>
+              </div>
+            </details>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+
 // ── Accounts ──────────────────────────────────────────────────────────
 
 /**
@@ -870,9 +1053,9 @@ function DiscoverAccounts({ onAdd }: {
             every organization account and which carries full administrator rights.
           </p>
           <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2 max-w-[74ch]">
-            Run <span className="font-mono text-[11.5px]">scripts/deploy-guardrail-role-org-wide.sh</span> from
-            your management account. It creates the role in every account at once — including accounts made
-            later — then press Check again.
+            Use <span className="font-semibold">How do I add an account?</span> above — it has the template,
+            every value filled in, and a link straight to the right console page. One StackSet covers every
+            account at once, including accounts made later.
           </p>
         </div>
       )}
@@ -910,6 +1093,7 @@ function AccountsTab({ accounts, isAdmin }: { accounts?: AwsAccount[]; isAdmin: 
         Organization.
       </Note>
 
+      {isAdmin && <SetupAccess />}
       {isAdmin && <DiscoverAccounts onAdd={body => save.mutateAsync(body)} />}
 
       <div className="flex items-center justify-between gap-4 mb-4">

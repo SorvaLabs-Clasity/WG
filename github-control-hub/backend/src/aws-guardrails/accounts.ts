@@ -1,4 +1,5 @@
 import { AwsAccount, AwsCredentials, Scope, AwsAccessMethod } from "./types";
+import { randomBytes } from "crypto";
 import { ActionableError } from "../utils/errorSanitizer";
 
 /**
@@ -412,6 +413,61 @@ export async function verifyAccess(
     }
     return { ok: false, error: err?.message ?? String(err) };
   }
+}
+
+/**
+ * The role ARNs a watched account must trust.
+ *
+ * Two of them, and both are needed. The app itself assumes the role to check
+ * an account is reachable before it will store it; the guardrail engine
+ * assumes it to do the actual sweeping. Trusting only one is the difference
+ * between "cannot add the account" and "adds it and then never sweeps it",
+ * and both failures look like the app being broken.
+ */
+export async function controlHubPrincipals(): Promise<{
+  app: string; engine: string | null; engineError?: string;
+}> {
+  const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");
+  const sts = new STSClient({ region: REGION });
+  const { Arn } = await sts.send(new GetCallerIdentityCommand({}));
+
+  // GetCallerIdentity answers with the *session* ARN
+  // (arn:aws:sts::123:assumed-role/RoleName/i-abc), and a trust policy needs
+  // the role ARN. The role name is the middle segment.
+  const app = sessionArnToRoleArn(Arn ?? "");
+
+  try {
+    const { LambdaClient, GetFunctionConfigurationCommand } = await import("@aws-sdk/client-lambda");
+    const lambda = new LambdaClient({ region: REGION });
+    const fn = process.env.GUARDRAIL_FUNCTION_NAME || `${PREFIX}-guardrail-enforcer`;
+    const { Role } = await lambda.send(new GetFunctionConfigurationCommand({ FunctionName: fn }));
+    return { app, engine: Role ?? null };
+  } catch (err: any) {
+    // Worth reporting rather than hiding: an account set up without the
+    // engine's ARN will add cleanly and then find nothing, forever.
+    return {
+      app, engine: null,
+      engineError: `Could not read the guardrail function's role (${err?.name ?? err?.message ?? err}). ` +
+        `Take it from the CDK stack output "GuardrailLambdaRoleArn" instead.`,
+    };
+  }
+}
+
+/** arn:aws:sts::123:assumed-role/Foo/session -> arn:aws:iam::123:role/Foo */
+export function sessionArnToRoleArn(arn: string): string {
+  const m = /^arn:(aws[a-z-]*):sts::(\d{12}):assumed-role\/([^/]+)\//.exec(arn);
+  return m ? `arn:${m[1]}:iam::${m[2]}:role/${m[3]}` : arn;
+}
+
+/**
+ * A fresh external ID.
+ *
+ * Generated rather than typed: an ID someone can remember is an ID someone
+ * can guess, and this is the only thing standing between your accounts and
+ * another installation of this app that knows your account numbers.
+ */
+export function suggestExternalId(): string {
+  return randomBytes(24).toString("base64url");
 }
 
 /**

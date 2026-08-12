@@ -14,7 +14,9 @@ import {
   listRegisteredAccounts, putAccount, deleteAccount, resolveAccounts,
   verifyAccess, forgetCredentials, homeAccountId, accessMethod,
   discoverOrganizationAccounts, storeKeys, probeReachable, GUARDRAIL_ROLE_NAME,
+  controlHubPrincipals, suggestExternalId,
 } from "../aws-guardrails/accounts";
+import { ACCOUNT_ROLE_TEMPLATE } from "../aws-guardrails/accountRoleTemplate";
 import type { Guardrail, AwsExclusionList, GuardrailMode, AwsAccount } from "../aws-guardrails/types";
 
 const router = Router();
@@ -473,6 +475,63 @@ router.post("/accounts/:accountId/verify", requireAdmin, async (req: Request<{ a
     forgetCredentials(account.accountId);
     const result = await verifyAccess(account);
     res.json({ ...result, access: accessMethod(account) });
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
+  }
+});
+
+/**
+ * Everything needed to grant this app access to an account, pre-filled.
+ *
+ * The app cannot create the role itself, and that is the point rather than a
+ * gap. Creating an IAM role across an organisation requires permissions —
+ * cloudformation:CreateStackSet with CAPABILITY_NAMED_IAM — that would let
+ * whoever held them deploy an administrator role into every account. Holding
+ * that would be strictly worse than the administrator access this app was
+ * deliberately built without.
+ *
+ * So the app does the part that has no security cost: it works out every
+ * value, generates the external ID, carries the template, and builds the exact
+ * commands and console links. What is left for a human is clicking Create
+ * while signed in as themselves.
+ */
+router.get("/accounts/setup", requireAdmin, async (req: Request, res: Response) => {
+  try {
+    const [principals, home] = await Promise.all([controlHubPrincipals(), homeAccountId()]);
+    // Reuse an ID already in play rather than handing out a new one that would
+    // not match the accounts already set up with it.
+    const existing = (await listRegisteredAccounts()).find(a => a.externalId)?.externalId;
+    const externalId = typeof req.query.externalId === "string" && req.query.externalId
+      ? req.query.externalId
+      : existing ?? suggestExternalId();
+
+    const trusted = [principals.app, principals.engine].filter(Boolean) as string[];
+    const region = process.env.AWS_REGION || "us-east-1";
+
+    res.json({
+      roleName: GUARDRAIL_ROLE_NAME,
+      homeAccountId: home,
+      region,
+      principals,
+      externalId,
+      reusedExternalId: !!existing,
+      template: ACCOUNT_ROLE_TEMPLATE,
+      templateFileName: "control-hub-guardrail-role.yaml",
+      // The org-wide path. One StackSet, every account, plus accounts made
+      // later — which is the only version of this that stays true.
+      stackSetName: "github-control-hub-guardrail-access",
+      consoleUrls: {
+        stackSets: `https://${region}.console.aws.amazon.com/cloudformation/home?region=${region}#/stacksets/create`,
+        singleStack: `https://${region}.console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/create`,
+        organizations: "https://us-east-1.console.aws.amazon.com/organizations/v2/home/accounts",
+      },
+      parameters: {
+        ControlHubRoleArns: trusted.join(","),
+        RoleName: GUARDRAIL_ROLE_NAME,
+        ExternalId: externalId,
+        ReadOnly: "true",
+      },
+    });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }

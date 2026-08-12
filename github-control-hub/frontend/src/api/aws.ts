@@ -135,6 +135,23 @@ export interface DiscoveredAccount {
   reason?: string;
 }
 
+export interface AccountSetup {
+  roleName: string;
+  homeAccountId: string;
+  region: string;
+  principals: { app: string; engine: string | null; engineError?: string };
+  externalId: string;
+  reusedExternalId: boolean;
+  template: string;
+  templateFileName: string;
+  stackSetName: string;
+  consoleUrls: { stackSets: string; singleStack: string; organizations: string };
+  parameters: Record<string, string>;
+}
+
+export const fetchAccountSetup = (externalId?: string) =>
+  apiGet<AccountSetup>(`/aws/accounts/setup${externalId ? `?externalId=${encodeURIComponent(externalId)}` : ""}`);
+
 export const fetchAwsAccounts = () => apiGet<AwsAccount[]>("/aws/accounts");
 export const discoverAwsAccounts = (externalId?: string) =>
   apiGet<{ available: boolean; error?: string; roleName?: string; accounts: DiscoveredAccount[] }>(

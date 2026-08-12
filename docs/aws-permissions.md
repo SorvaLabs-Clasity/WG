@@ -28,6 +28,7 @@ guardrails.
 | `dynamodb:*Item`, `Scan`, `Query` | `github-control-hub-*` tables | The app's own tables. Not `dynamodb:*`, and not every table in the account. |
 | `organizations:ListAccounts`, `DescribeOrganization` | — | Reads your account list so nobody has to type twelve-digit ids. Read-only; neither call supports resource scoping. |
 | `sts:AssumeRole` | `arn:aws:iam::*:role/github-control-hub-guardrail-access` | Verifies an account is reachable before storing it. **One role name.** |
+| `lambda:GetFunctionConfiguration` | the guardrail function | Reads the engine's role ARN, so the Accounts screen can show both principals a watched account must trust. |
 | `lambda:InvokeFunction` | the guardrail function | Manual sweeps from the UI. |
 | `AmazonSSMManagedInstanceCore` | AWS managed policy | Session Manager, so the instance has no SSH port open. |
 
@@ -84,12 +85,34 @@ Those denies are redundant against today's allow-list. They exist so that a
 broader policy attached to this role later — by anyone, for any reason — still
 cannot be used to expose your data.
 
+Its trust policy names **two** principals: the app and the guardrail engine.
+The app assumes the role to verify an account before storing it; the engine
+assumes it to sweep. Both ARNs are shown in the Accounts screen.
+
 ### Deploying it
 
-`scripts/deploy-guardrail-role-org-wide.sh` deploys the role to every account in
-your AWS Organization as a StackSet with auto-deployment, so accounts created
-later get it without anyone remembering. One command, from the management
-account.
+**From the app.** AWS → Accounts → *How do I add an account?* gives you the
+template, every parameter filled in, a generated external ID, and a link to the
+right console page. Nothing to run.
+
+**From a checkout.** `scripts/deploy-guardrail-role-org-wide.sh` does the same
+thing as a StackSet with auto-deployment, so accounts created later get the role
+without anyone remembering.
+
+### Why the app does not create the role itself
+
+Creating an IAM role across an organisation requires
+`cloudformation:CreateStackSet` with `CAPABILITY_NAMED_IAM`. Anything holding
+that permission can deploy an **administrator** role into every account in the
+organisation — strictly worse than the administrator access this app was built
+without. It would trade a bounded permission for an unbounded one to save a few
+clicks.
+
+So the app does every part that costs nothing: it works out the ARNs, generates
+the external ID, carries the template, and builds the commands and links. A
+human presses Create, signed in as themselves. `repro-leastprivilege.ts` asserts
+that no `cloudformation:Create*`, no `iam:CreateRole`, and no `iam:PassRole`
+appears anywhere in the stack.
 
 ---
 

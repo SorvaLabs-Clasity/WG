@@ -13,7 +13,7 @@ process.env.AWS_REGION = "us-east-1";
 
 import { run, ruleAppliesTo } from "./src/aws-guardrails/engine";
 import { findingKey } from "./src/aws-guardrails/store";
-import { scopesFor, accessMethod } from "./src/aws-guardrails/accounts";
+import { scopesFor, accessMethod, sessionArnToRoleArn, suggestExternalId } from "./src/aws-guardrails/accounts";
 import type { Guardrail, AwsAccount, ResourceSnapshot, Scope, Finding } from "./src/aws-guardrails/types";
 
 let failures = 0;
@@ -274,6 +274,40 @@ const group = (id: string): ResourceSnapshot => ({
       accessMethod(account("1", "x", { isHome: true, roleArn: "arn:aws:iam::1:role/r" })) === "home");
     check("  and an explicit choice wins over what can be inferred",
       accessMethod(account("1", "x", { access: "keys", roleArn: "arn:aws:iam::1:role/r" })) === "keys");
+  }
+
+  // ── the ARNs a watched account must trust ──────────────────────────
+  {
+    // GetCallerIdentity answers with a session ARN. A trust policy needs the
+    // role ARN, and pasting the session one produces a role nobody can assume
+    // and an error that points nowhere near the cause.
+    check("an EC2 session ARN becomes the role ARN a trust policy accepts",
+      sessionArnToRoleArn("arn:aws:sts::123456789012:assumed-role/hub-InstanceRole-ABC/i-0abc123")
+      === "arn:aws:iam::123456789012:role/hub-InstanceRole-ABC",
+      sessionArnToRoleArn("arn:aws:sts::123456789012:assumed-role/hub-InstanceRole-ABC/i-0abc123"));
+
+    check("  a session name with slashes in it does not truncate the role",
+      sessionArnToRoleArn("arn:aws:sts::123456789012:assumed-role/MyRole/session/extra")
+      === "arn:aws:iam::123456789012:role/MyRole");
+
+    check("  a non-standard partition survives",
+      sessionArnToRoleArn("arn:aws-us-gov:sts::123456789012:assumed-role/R/s")
+      === "arn:aws-us-gov:iam::123456789012:role/R");
+
+    check("  something already a role ARN is left alone",
+      sessionArnToRoleArn("arn:aws:iam::123456789012:role/Direct")
+      === "arn:aws:iam::123456789012:role/Direct");
+  }
+
+  // ── external IDs ───────────────────────────────────────────────────
+  {
+    const a = suggestExternalId(), b = suggestExternalId();
+    check("a generated external ID is long enough not to be guessed",
+      a.length >= 30, a.length);
+    check("  and two are never the same",
+      a !== b, [a, b]);
+    check("  and it is safe in a URL and a CloudFormation parameter",
+      /^[A-Za-z0-9_-]+$/.test(a), a);
   }
 
   // ── failures that have a fix, reported as the fix ──────────────────

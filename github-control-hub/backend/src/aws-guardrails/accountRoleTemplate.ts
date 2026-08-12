@@ -1,4 +1,18 @@
-AWSTemplateFormatVersion: "2010-09-09"
+/**
+ * The CloudFormation template each watched account deploys.
+ *
+ * Embedded rather than read from scripts/ because the backend ships as a
+ * Docker image that does not contain the repository — and the Accounts screen
+ * has to be able to hand this to someone who has never opened a terminal.
+ *
+ * scripts/guardrail-account-role.yaml is the same bytes, kept for people
+ * deploying from a checkout. repro-leastprivilege.ts asserts the two are
+ * identical, so neither can drift into being the lenient one.
+ *
+ * Regenerate after editing the YAML:  npx tsx sync-account-role-template.ts
+ */
+
+export const ACCOUNT_ROLE_TEMPLATE = String.raw`AWSTemplateFormatVersion: "2010-09-09"
 
 # The role the GitHub Control Hub uses to look at this AWS account.
 #
@@ -209,3 +223,4 @@ Outputs:
   CanChangeAnything:
     Description: Whether this deployment lets the Control Hub modify this account.
     Value: !If [CanRemediate, "yes - three write actions", "no - read-only"]
+`;

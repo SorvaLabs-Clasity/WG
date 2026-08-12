@@ -4,6 +4,7 @@ import {
   fetchFindings, runGuardrails, fetchAwsExclusions, createAwsExclusion,
   updateAwsExclusion, deleteAwsExclusion,
   fetchAwsAccounts, saveAwsAccount, removeAwsAccount, verifyAwsAccount, discoverAwsAccounts,
+  fetchAccountSetup,
 } from "../api/aws";
 import type { Guardrail, AwsExclusionList, AwsAccount } from "../api/aws";
 
@@ -40,6 +41,16 @@ export function useDiscoverAwsAccounts(enabled: boolean, externalId?: string) {
     queryFn: () => discoverAwsAccounts(externalId),
     enabled,
     staleTime: 5 * 60_000,
+  });
+}
+
+/** Only fetched when the setup panel is opened: it calls STS and Lambda. */
+export function useAccountSetup(enabled: boolean) {
+  return useQuery({
+    queryKey: ["aws", "accounts", "setup"],
+    queryFn: () => fetchAccountSetup(),
+    enabled,
+    staleTime: Infinity,
   });
 }
 
