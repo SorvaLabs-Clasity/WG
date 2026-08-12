@@ -194,7 +194,11 @@ router.get("/query", async (req: Request, res: Response) => {
   } catch (error: any) {
     // Not a server fault and not worth a stack trace: the widget names a check
     // that no longer exists, and only editing the widget will fix it.
-    const { UnknownQueryError } = await import("../services/graphService");
+    const { UnknownQueryError, MissingGraphDataError } = await import("../services/graphService");
+    if (error instanceof MissingGraphDataError) {
+      res.status(409).json({ error: error.message, code: "GRAPH_DATA_MISSING", edgeType: error.edgeType });
+      return;
+    }
     if (error instanceof UnknownQueryError) {
       res.status(400).json({ error: error.message, code: "UNKNOWN_QUERY", queryId: error.queryId });
       return;

@@ -566,13 +566,17 @@ function CheckCard({
             <i className="ph-fill ph-warning text-[26px] text-amber-600 dark:[color:#ffc14d]"></i>
           </div>
           <div className="flex-1 min-w-0 pt-1">
-            <p className={`${TYPE.label} text-amber-600 dark:[color:#ffc14d] mb-1.5`}>Not running</p>
+            <p className={`${TYPE.label} text-amber-600 dark:[color:#ffc14d] mb-1.5`}>
+              {/* "Needs data" and "no longer exists" are different problems
+                  with different fixes, and the card is where that is decided. */}
+              {/Sync data/.test(error.message) ? "Needs a sync" : "Not running"}
+            </p>
             <h3 className="text-[15px] font-black text-slate-900 dark:text-white leading-tight line-clamp-2">{config.title}</h3>
           </div>
         </div>
         <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.06]">
           <p className="text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">{error.message}</p>
-          {canEdit && (
+          {canEdit && !/Sync data/.test(error.message) && (
             <div className="flex gap-2 mt-3">
               <button onClick={e => { e.stopPropagation(); onEdit(); }}
                 className="text-[12.5px] font-bold text-slate-700 dark:text-slate-200 hover:underline">Edit check</button>

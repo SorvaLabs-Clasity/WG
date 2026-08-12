@@ -36,6 +36,46 @@ async function scanAllEdges(): Promise<any[]> {
   return items;
 }
 
+/**
+ * The check works, but the data it reads has never been collected.
+ *
+ * Without this, a query over an edge type the graph does not yet contain
+ * returns nothing and the card reads it as a clean result — "0 repositories
+ * with no push in 2 months" when the real answer is 345 and the graph simply
+ * has not been rebuilt since that edge type existed. Reporting zero findings
+ * you have not looked for is the worst thing a security dashboard can do.
+ */
+export class MissingGraphDataError extends Error {
+  constructor(readonly edgeType: string) {
+    super("This check reads data the graph does not have yet. Press Sync data to collect it.");
+    this.name = "MissingGraphDataError";
+  }
+}
+
+/**
+ * Edge type each check reads, where its absence means "not collected" rather
+ * than "nothing found".
+ *
+ * Deliberately not listed: has_vulnerable_dependency, where no edges is a
+ * legitimate answer — an organisation with no open advisories genuinely has
+ * none, and claiming missing data would be its own kind of wrong.
+ */
+const REQUIRES: Record<string, string> = {
+  "public-repos": "repo_meta",
+  "archived-repos-with-access": "repo_meta",
+  "stale-repos": "repo_meta",
+  "repos-without-protection": "has_branch",
+  "repos-missing-branch": "has_branch",
+  "repos-with-unprotected-branch": "has_branch",
+  "repos-with-branch": "has_branch",
+  "repos-with-branch-rules": "has_branch",
+  "stale-branch-protections": "has_branch",
+  "highly-privileged-users": "collaborates_on",
+  "dormant-privileged-users": "collaborates_on",
+  "repos-with-outside-admins": "has_collaborator",
+  "unowned-repos": "repo_meta",
+};
+
 /** A saved widget naming a check that no longer exists. */
 export class UnknownQueryError extends Error {
   constructor(readonly queryId: string) {
@@ -46,6 +86,11 @@ export class UnknownQueryError extends Error {
 
 export async function evaluateSecurityQuery(q: string, param?: string, advanced?: any, userToken?: string) {
   const allEdges = await scanAllEdges();
+
+  const needs = REQUIRES[q];
+  if (needs && !allEdges.some(e => e.type === needs)) {
+    throw new MissingGraphDataError(needs);
+  }
 
   const results: any[] = [];
 

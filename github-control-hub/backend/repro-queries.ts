@@ -134,6 +134,39 @@ function check(name: string, ok: boolean, got?: unknown) {
       check("  the default branch is named, since that is the surprise",
         row.details.includes("trunk"), row.details);
     }
+
+    // ── a check whose data was never collected ───────────────────────
+    {
+      const { MissingGraphDataError } = await import("./src/services/graphService");
+
+      // The graph as it is before an aggregation that knows about repo_meta:
+      // branches present, repository facts absent.
+      fs.writeFileSync(FIXTURE, JSON.stringify([
+        branch("guarded", "main", true),
+        branch("wide-open", "main", false),
+      ]));
+      // graphService caches the fixture after first read, so the module has to
+      // be loaded fresh to see a different one.
+      delete require.cache[require.resolve("./src/services/graphService")];
+      const fresh = await import("./src/services/graphService?stale=1" as any).catch(() => null);
+      const svc = fresh ?? require("./src/services/graphService");
+
+      let threw: Error | null = null;
+      try {
+        await svc.evaluateSecurityQuery("stale-repos", "2");
+      } catch (e) {
+        threw = e as Error;
+      }
+      check("a check over uncollected data refuses rather than reporting zero",
+        threw?.name === "MissingGraphDataError", threw?.message ?? "no error");
+      check("  and says how to fix it",
+        (threw?.message ?? "").includes("Sync data"), threw?.message);
+
+      // A check whose data IS present still answers normally.
+      const stillWorks = await svc.evaluateSecurityQuery("repos-without-protection");
+      check("  while a check whose data is present still answers",
+        stillWorks.some((r: any) => r.repo === "wide-open"), stillWorks);
+    }
   } finally {
     if (previous !== null) fs.writeFileSync(FIXTURE, previous);
     else fs.rmSync(FIXTURE, { force: true });
