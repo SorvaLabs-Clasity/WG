@@ -1,5 +1,5 @@
 # ── Stage 1: Build ──
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 
 WORKDIR /app
 
@@ -22,7 +22,7 @@ RUN cd github-control-hub/backend && npx tsc
 RUN cd github-control-hub/frontend && npm run build
 
 # ── Stage 2: Production ──
-FROM node:22-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
@@ -42,7 +42,7 @@ ENV NODE_ENV=production
 
 EXPOSE 4321
 
-# Run as non-root user (node:22-alpine ships with a 'node' user)
+# Run as non-root user (node:24-alpine ships with a 'node' user)
 RUN chown -R node:node /app
 USER node
 

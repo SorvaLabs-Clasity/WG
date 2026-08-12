@@ -1,8 +1,14 @@
 import { useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Box, CircularProgress, Typography } from "@mui/material";
 import { setToken } from "../api/client";
+import { Spinner } from "../design";
 
+/**
+ * Where GitHub sends you back to after signing in.
+ *
+ * On screen for a fraction of a second, so it stays deliberately plain — this
+ * used to be the only reason the app depended on a component library.
+ */
 export default function AuthCallback() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -18,18 +24,9 @@ export default function AuthCallback() {
   }, [params, navigate]);
 
   return (
-    <Box
-      sx={{
-        minHeight: "100vh",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 2,
-      }}
-    >
-      <CircularProgress />
-      <Typography>Authenticating...</Typography>
-    </Box>
+    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-white dark:bg-slate-950">
+      <Spinner />
+      <p className="text-sm text-slate-500 dark:text-slate-400">Authenticating…</p>
+    </div>
   );
 }

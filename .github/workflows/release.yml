@@ -25,12 +25,12 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Install workspace dependencies
         working-directory: github-control-hub
@@ -50,7 +50,7 @@ jobs:
 
       - name: Bundle backend deps for packaging
         working-directory: github-control-hub/desktop
-        run: node -e "const fs=require('fs'),p=require('path');const d=p.join(__dirname,'.backend-modules');fs.rmSync(d,{recursive:true,force:true});fs.mkdirSync(d,{recursive:true});fs.copyFileSync(p.join(__dirname,'..','github-control-hub','backend','package.json'),p.join(d,'package.json'))" && cd .backend-modules && npm install --omit=dev --ignore-scripts
+        run: node -e "const fs=require('fs'),p=require('path');const d=p.join(__dirname,'.backend-modules');fs.rmSync(d,{recursive:true,force:true});fs.mkdirSync(d,{recursive:true});fs.copyFileSync(p.join(__dirname,'..','backend','package.json'),p.join(d,'package.json'))" && cd .backend-modules && npm install --omit=dev --ignore-scripts
         shell: bash
 
       - name: Build & publish Electron app
@@ -72,7 +72,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Publish draft release
         env:

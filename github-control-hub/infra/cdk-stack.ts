@@ -190,9 +190,16 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     const guardrailFn = new NodejsFunction(this, "GuardrailEnforcer", {
       functionName: `${stackPrefix}-guardrail-enforcer`,
-      runtime: lambda.Runtime.NODEJS_22_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, "..", "backend", "src", "aws-guardrails", "handler.ts"),
       handler: "handler",
+      // The entry lives in the backend, one level up from this stack. CDK
+      // requires it to sit under projectRoot, so projectRoot is the workspace
+      // rather than infra/ — bundling from the app's own source tree is the
+      // point, since it is what stops the deployed function drifting from the
+      // code it was built from.
+      projectRoot: path.join(__dirname, ".."),
+      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
       // A full sweep walks every bucket, log group, instance and DB in the
       // account, each needing several describe calls.
       timeout: cdk.Duration.minutes(10),
