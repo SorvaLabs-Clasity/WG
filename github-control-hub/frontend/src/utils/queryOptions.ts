@@ -12,7 +12,6 @@ export const QUERY_OPTIONS = [
   { id: "repos-with-outside-admins", entity: "repository", label: "Repos with admin users outside owning team", requiresParam: false, icon: "ph-user-focus" },
   { id: "highly-privileged-users", entity: "user", label: "Highly privileged users...", requiresParam: true, paramLabel: "Min. repos with write/admin access to flag a user", paramDefault: "5", icon: "ph-shield-star" },
   { id: "unowned-repos", entity: "repository", label: "Repos without an owning team", requiresParam: false, icon: "ph-ghost" },
-  { id: "repos-with-critical-vulns", entity: "repository", label: "Repos with critical vulnerabilities", requiresParam: false, icon: "ph-warning-octagon" },
   { id: "empty-teams", entity: "team", label: "Empty teams (no members)", requiresParam: false, icon: "ph-users-three" },
   { id: "repos-missing-branch", entity: "repository", label: "Repos missing specific branch(es)...", requiresParam: true, paramLabel: "Branch Name(s)", icon: "ph-git-branch", useTagInput: true },
   { id: "repos-with-unprotected-branch", entity: "repository", label: "Repos with an unprotected specific branch...", requiresParam: true, paramLabel: "Branch Name(s)", icon: "ph-shield-warning", useTagInput: true },

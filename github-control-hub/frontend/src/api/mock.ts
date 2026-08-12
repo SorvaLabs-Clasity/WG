@@ -18783,11 +18783,6 @@ export async function mockFetchSecurityQuery(q: string, param?: string, advanced
         { repo: "legacy-tooling", reason: "No team assigned as owner" },
         { repo: "test-repo-123", reason: "No team assigned as owner" }
       ];
-    case "repos-with-critical-vulns":
-      return [
-        { repo: "payments-api", reason: "Critical vulnerability in lodash" },
-        { repo: "frontend-ui", reason: "Critical vulnerability in react-scripts" }
-      ];
     case "repos-missing-branch":
       return [
         { repo: "legacy-api", reason: `Missing branch: ${param || 'main'}` },

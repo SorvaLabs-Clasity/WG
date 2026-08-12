@@ -176,17 +176,6 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       }
       break;
 
-    case "repos-with-critical-vulns":
-      for (const edge of allEdges) {
-        if (edge.type === "has_vulnerable_dependency" && edge.metadata?.severity === "critical") {
-          results.push({
-            repo: edge.pk.replace("REPO#", ""),
-            reason: `Critical vulnerability in ${edge.sk.replace("DEPENDENCY#", "")}`
-          });
-        }
-      }
-      break;
-      
     case "repos-missing-branch": {
       if (!param) throw new Error("Missing 'param' for branch name");
       const branchNames = param.split(",").map(b => b.trim()).filter(Boolean);
