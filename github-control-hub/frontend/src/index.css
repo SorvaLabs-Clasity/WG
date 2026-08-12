@@ -2,6 +2,28 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Native controls have to be told which scheme they are in.
+ *
+ * A <select> is styled by CSS, but the list it opens is drawn by the operating
+ * system. Without color-scheme, Windows draws that list light while the option
+ * text inherits the dark theme's near-white — white on white, and the app looks
+ * like it lost its menu. macOS happens to guess right, which is why it went
+ * unnoticed.
+ *
+ * The option rules are belt and braces: Canvas and CanvasText are system
+ * colours that follow color-scheme, so they stay correct in both themes and on
+ * platforms that ignore the property.
+ */
+:root { color-scheme: light; }
+:root.dark { color-scheme: dark; }
+
+select option,
+select optgroup {
+  background-color: Canvas;
+  color: CanvasText;
+}
+
 /* Custom scrollbar to match the technical aesthetic */
 ::-webkit-scrollbar {
   width: 8px;

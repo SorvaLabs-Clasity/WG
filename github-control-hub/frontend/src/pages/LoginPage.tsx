@@ -179,6 +179,10 @@ export default function LoginPage() {
   useEffect(() => {
     if (ghConfigured) { setSettling(false); return; }
     if (loading || error) return;
+    // Nothing to wait for until AWS is up: the secrets come from Secrets
+    // Manager, so polling before that just burns the timeout and lands on the
+    // wrong message.
+    if (!awsOk) return;
 
     let tries = 0;
     const id = setInterval(() => {
@@ -190,7 +194,7 @@ export default function LoginPage() {
       checkStatus();
     }, 1000);
     return () => clearInterval(id);
-  }, [ghConfigured, loading, error, checkStatus]);
+  }, [ghConfigured, loading, error, awsOk, checkStatus]);
 
   // Re-read whenever AWS is not connected — on first load, and again the moment
   // Disconnect is pressed. The list was previously fetched once at mount, so a
@@ -528,7 +532,7 @@ export default function LoginPage() {
             intent={ghAuthed ? "good" : "neutral"}
             icon="ph-fill ph-github-logo"
             avatar={ghAuthed ? userInfo?.avatarUrl : undefined}
-            busy={loading || refreshing === "github" || (!ghConfigured && settling)}
+            busy={loading || refreshing === "github" || (awsOk && !ghConfigured && settling)}
             locked={!awsOk && !ghAuthed}
             title={ghAuthed && userInfo ? userInfo.login : "GitHub"}
             state={ghAuthed ? "connected" : !awsOk ? "locked" : "waiting"}
@@ -537,11 +541,17 @@ export default function LoginPage() {
                 ? status?.github.org
                   ? <>Member of <span className="font-bold">{status.github.org}</span></>
                   : "Authenticated"
+                /* AWS first, because the OAuth secrets live in Secrets
+                   Manager. Until AWS connects, ghConfigured is false for a
+                   reason that has nothing to do with the build — and saying
+                   "OAuth is not configured on this build" there sends someone
+                   looking at their packaging when the answer is one card
+                   above. */
+                : !awsOk ? "Unlocks once AWS is connected"
                 : !ghConfigured
                   ? settling
                     ? "Loading credentials…"
                     : "OAuth is not configured on this build"
-                : !awsOk ? "Unlocks once AWS is connected"
                 : "Your own account — the app acts as you, never as someone else"
             }
             action={!loading && !error && ghAuthed
