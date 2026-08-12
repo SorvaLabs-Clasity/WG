@@ -41,6 +41,25 @@ export interface RunDeps {
   credentialsFor?: typeof credentialsFor;
 }
 
+/**
+ * Was this write refused because the app is not permitted to write?
+ *
+ * That is the intended state, not a fault: both the app's own IAM and the role
+ * it assumes elsewhere are read-only unless someone deliberately turned
+ * remediation on. Reported as a raw "AccessDenied" it reads like a bug and
+ * sends someone hunting; said plainly it reads like the setting it is.
+ */
+function readOnlyRefusal(err: any): string | undefined {
+  const name = err?.name ?? "";
+  const message = err?.message ?? "";
+  const denied = name === "AccessDenied" || name === "AccessDeniedException"
+    || /not authorized to perform/i.test(message);
+  if (!denied) return undefined;
+  return "This rule found the violation but is not permitted to fix it — the Control Hub is " +
+    "deployed read-only in this account. Redeploy with remediation enabled if you want it fixed " +
+    "automatically; the finding and the proposed fix stand either way.";
+}
+
 /** Does this rule apply to this account? No list means every account. */
 export function ruleAppliesTo(rule: Guardrail, accountId: string): boolean {
   return !rule.accounts?.length || rule.accounts.includes(accountId);
@@ -241,7 +260,7 @@ async function runScope(
           });
         }
       } catch (err: any) {
-        const message = err?.message ?? String(err);
+        const message = readOnlyRefusal(err) ?? err?.message ?? String(err);
         finding.error = message;
         result.errors.push(`${where} [${resource.id}] ${rule.name}: ${message}`);
         await onActivity?.({

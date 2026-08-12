@@ -16,6 +16,20 @@ interface GitHubControlHubProps extends cdk.StackProps {
   secretName?: string;
   /** DynamoDB table prefix. Defaults to "github-control-hub" */
   stackPrefix?: string;
+  /**
+   * Whether this app may change anything in AWS. Default: no.
+   *
+   * Off, the guardrail engine holds nothing but Describe and List. A rule set
+   * to enforce still finds the violation and still reports the fix it would
+   * make; AWS refuses the write, and the finding says so. The app is
+   * incapable of altering the account it watches, and that is a property of
+   * IAM rather than a promise made by this code.
+   *
+   * Turning it on grants exactly three actions — PutBucketPolicy,
+   * PutRetentionPolicy, DeleteRetentionPolicy — and nothing else. Set with
+   * `cdk deploy -c enforce=true`.
+   */
+  allowRemediation?: boolean;
 }
 
 export class GitHubControlHubStack extends cdk.Stack {
@@ -24,6 +38,12 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     const secretName = props.secretName ?? "github-control-hub/secrets";
     const stackPrefix = props.stackPrefix ?? "github-control-hub";
+
+    // Off unless someone deliberately asks for it, on the command line, in
+    // this account. A read-only default is the difference between a tool that
+    // could damage production and one that cannot.
+    const allowRemediation =
+      props.allowRemediation ?? this.node.tryGetContext("enforce") === "true";
 
     // ── VPC (default VPC) ──
     const vpc = ec2.Vpc.fromLookup(this, "DefaultVpc", { isDefault: true });
@@ -47,10 +67,14 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     // No SSH port — use SSM Session Manager instead
 
-    // The narrow role this app assumes in another account when that account
-    // has bothered to create one. Fixed by name so the trust policy over
-    // there, the template we hand out, and the grants here all say the same
-    // thing.
+    // The only role this app may ever assume, anywhere.
+    //
+    // Named exactly, and the grants below are scoped to this name alone. The
+    // roles AWS creates by default in organisation member accounts —
+    // OrganizationAccountAccessRole, AWSControlTowerExecution — carry
+    // AdministratorAccess, and this app is deliberately unable to assume them.
+    // Convenience is not worth an application in a production account holding
+    // administrator anywhere.
     const guardrailRoleName = `${stackPrefix}-guardrail-access`;
 
     // ── IAM Role ──
@@ -93,14 +117,14 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     // Adding an account verifies it before storing it, which means the app
     // itself has to be able to assume the role and ask who it is.
+    //
+    // One role name, in any account. Not "*": a grant of sts:AssumeRole on
+    // every role would let this app become anything that trusts it, which is
+    // the whole ballgame.
     role.addToPolicy(new iam.PolicyStatement({
       sid: "VerifyAccountAccess",
       actions: ["sts:AssumeRole"],
-      resources: [
-        `arn:aws:iam::*:role/${guardrailRoleName}`,
-        "arn:aws:iam::*:role/OrganizationAccountAccessRole",
-        "arn:aws:iam::*:role/AWSControlTowerExecution",
-      ],
+      resources: [`arn:aws:iam::*:role/${guardrailRoleName}`],
     }));
 
     // DynamoDB access for app tables
@@ -192,23 +216,37 @@ export class GitHubControlHubStack extends cdk.Stack {
       },
     });
 
+    // Reads. Six actions, all of them Describe/List/Get on configuration.
+    //
+    // Nothing here can read the contents of anything: s3:GetObject is absent,
+    // logs:GetLogEvents is absent. The app sees whether a bucket has a policy,
+    // never what is in the bucket.
+    //
+    // "*" is not a choice made here. ListAllMyBuckets and DescribeLogGroups
+    // are account-wide operations that IAM does not let you scope, and the
+    // remaining Gets have to reach whichever resource turns out to exist.
     guardrailFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "ReadState",
+      sid: "ReadConfigurationOnly",
       actions: [
-        "s3:ListAllMyBuckets", "s3:GetBucketPolicy", "s3:GetBucketTagging",
+        "s3:ListAllMyBuckets", "s3:GetBucketLocation", "s3:GetBucketPolicy", "s3:GetBucketTagging",
         "logs:DescribeLogGroups", "logs:ListTagsForResource",
-      ],
-      resources: ["*"], // every one of these is a List/Describe with no resource-level scoping
-    }));
-
-    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "Remediate",
-      actions: [
-        "s3:PutBucketPolicy",
-        "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy",
       ],
       resources: ["*"],
     }));
+
+    if (allowRemediation) {
+      // Three actions. Not s3:* and not logs:*, so a later version of this app
+      // cannot quietly start doing something this account never agreed to
+      // without the policy visibly changing.
+      guardrailFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "RemediateThreeThings",
+        actions: [
+          "s3:PutBucketPolicy",
+          "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy",
+        ],
+        resources: ["*"],
+      }));
+    }
 
     // Reaching other accounts. The role name is fixed rather than "*" so this
     // grant cannot be pointed at an arbitrary role someone happens to name in
@@ -217,16 +255,10 @@ export class GitHubControlHubStack extends cdk.Stack {
     guardrailFn.addToRolePolicy(new iam.PolicyStatement({
       sid: "AssumeGuardrailRoleInOtherAccounts",
       actions: ["sts:AssumeRole"],
-      // The scoped role first, then the two roles AWS itself creates in
-      // organisation accounts. Those carry AdministratorAccess, which is far
-      // more than this app needs — but they exist without anyone deploying
-      // anything, and an account that is actually being checked beats a
-      // narrower grant on an account nobody got round to onboarding.
-      resources: [
-        `arn:aws:iam::*:role/${guardrailRoleName}`,
-        "arn:aws:iam::*:role/OrganizationAccountAccessRole",
-        "arn:aws:iam::*:role/AWSControlTowerExecution",
-      ],
+      // Exactly one role name. Deploy it across the organisation with
+      // scripts/deploy-guardrail-role-org-wide.sh, which uses a StackSet — one
+      // command, every account, including accounts created later.
+      resources: [`arn:aws:iam::*:role/${guardrailRoleName}`],
     }));
 
     guardrailFn.addToRolePolicy(new iam.PolicyStatement({
@@ -290,6 +322,11 @@ export class GitHubControlHubStack extends cdk.Stack {
     new cdk.CfnOutput(this, "GuardrailFunctionName", {
       value: guardrailFn.functionName,
       description: "Guardrail enforcer Lambda (invoked by the app for manual runs)",
+    });
+
+    new cdk.CfnOutput(this, "CanChangeAnything", {
+      value: allowRemediation ? "yes — three write actions granted" : "no — read-only",
+      description: "Whether this deployment's IAM lets the app modify AWS at all",
     });
 
     new cdk.CfnOutput(this, "GuardrailRoleName", {

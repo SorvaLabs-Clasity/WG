@@ -711,8 +711,8 @@ function describeAccess(a: AwsAccount): string {
     return `the role ${a.roleArn?.split("/").pop()}` + (a.externalId ? ", with an external ID" : "");
   }
   return a.reachedVia
-    ? `${a.reachedVia}, from your AWS Organization`
-    : "a role from your AWS Organization";
+    ? `the role ${a.reachedVia}`
+    : "the organization-wide read-only role";
 }
 
 /**
@@ -722,28 +722,33 @@ function describeAccess(a: AwsAccount): string {
  * person to retype twelve digits is how an account ends up watched under the
  * wrong name — or, far more often, never added at all.
  */
-function DiscoverAccounts({ existing, onAdd }: {
-  existing: AwsAccount[];
+function DiscoverAccounts({ onAdd }: {
   onAdd: (body: Partial<AwsAccount>) => Promise<unknown>;
 }) {
   const [open, setOpen] = useState(false);
-  const { data, isLoading, error } = useDiscoverAwsAccounts(open);
+  const [externalId, setExternalId] = useState("");
+  const [probeWith, setProbeWith] = useState("");
+  const { data, isLoading, error } = useDiscoverAwsAccounts(open, probeWith || undefined);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
   const [outcome, setOutcome] = useState<{ added: string[]; failed: { name: string; error: string }[] } | null>(null);
 
   const candidates = (data?.accounts ?? []).filter(a => !a.isHome && !a.registered);
+  const ready = candidates.filter(a => a.reachable);
+  const waiting = candidates.filter(a => !a.reachable);
 
   const addChosen = async () => {
     setAdding(true);
     const added: string[] = [];
     const failed: { name: string; error: string }[] = [];
-    for (const a of candidates.filter(c => chosen.has(c.accountId))) {
+    for (const a of ready.filter(c => chosen.has(c.accountId))) {
       try {
-        // One at a time and never aborting the loop: each account is verified
-        // server-side, and one account without a usable role should not stop
-        // the four that have one.
-        await onAdd({ accountId: a.accountId, name: a.name, access: "organization" });
+        // One at a time and never aborting the loop: each is verified
+        // server-side, and one refusal should not stop the rest.
+        await onAdd({
+          accountId: a.accountId, name: a.name, access: "organization",
+          externalId: externalId || undefined,
+        });
         added.push(a.name);
       } catch (e) {
         failed.push({ name: a.name, error: (e as Error).message });
@@ -757,9 +762,7 @@ function DiscoverAccounts({ existing, onAdd }: {
   if (!open) {
     return (
       <div className="mb-4">
-        <Button variant="primary" onClick={() => setOpen(true)}>
-          Find my accounts
-        </Button>
+        <Button variant="primary" onClick={() => setOpen(true)}>Find my accounts</Button>
         <span className="ml-3 text-[13px] text-slate-500 dark:text-slate-400">
           Reads the account list from AWS Organizations. Nothing is added until you pick.
         </span>
@@ -775,8 +778,20 @@ function DiscoverAccounts({ existing, onAdd }: {
           className="text-sm font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">Close</button>
       </div>
 
-      {isLoading && <Spinner />}
+      {/* The org-wide StackSet gives every account the same external ID. Probing
+          without it would report a correctly-set-up estate as unreachable. */}
+      <div className="flex items-end gap-2 mb-4 flex-wrap">
+        <div className="min-w-[280px]">
+          <label className="block text-[12.5px] font-bold text-slate-600 dark:text-slate-300 mb-1">
+            External ID <span className="font-normal text-slate-400">— if you set one when deploying the role</span>
+          </label>
+          <input value={externalId} onChange={e => setExternalId(e.target.value)}
+            className={SURFACE.input} placeholder="Leave blank if you did not set one" />
+        </div>
+        <Button onClick={() => setProbeWith(externalId)}>Check again</Button>
+      </div>
 
+      {isLoading && <Spinner />}
       {error && <Note intent="danger">{(error as Error).message}</Note>}
 
       {data && !data.available && (
@@ -800,16 +815,18 @@ function DiscoverAccounts({ existing, onAdd }: {
         </p>
       )}
 
-      {candidates.length > 0 && (
+      {ready.length > 0 && (
         <>
+          <p className="text-[12.5px] font-bold text-slate-600 dark:text-slate-300 mb-2">
+            Ready to add
+          </p>
           <div className="grid gap-1.5 mb-4">
-            {candidates.map(a => (
-              <label key={a.accountId}
-                className="flex items-center gap-3 py-1.5 cursor-pointer">
+            {ready.map(a => (
+              <label key={a.accountId} className="flex items-center gap-3 py-1.5 cursor-pointer">
                 <input type="checkbox" checked={chosen.has(a.accountId)}
                   onChange={e => setChosen(c => {
                     const next = new Set(c);
-                    e.target.checked ? next.add(a.accountId) : next.delete(a.accountId);
+                    if (e.target.checked) next.add(a.accountId); else next.delete(a.accountId);
                     return next;
                   })}
                   className="h-4 w-4 rounded accent-slate-900 dark:accent-white" />
@@ -819,18 +836,45 @@ function DiscoverAccounts({ existing, onAdd }: {
               </label>
             ))}
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap mb-4">
             <Button variant="primary" disabled={adding || chosen.size === 0} onClick={addChosen}>
               {adding ? "Checking access…" : `Add ${chosen.size || ""} ${chosen.size === 1 ? "account" : "accounts"}`.trim()}
             </Button>
-            <button onClick={() => setChosen(new Set(candidates.map(a => a.accountId)))}
+            <button onClick={() => setChosen(new Set(ready.map(a => a.accountId)))}
               className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">Select all</button>
-            <span className="text-[12.5px] text-slate-500 dark:text-slate-400">
-              Each is checked before it is added. Accounts the app cannot get into are reported, not
-              added silently.
-            </span>
           </div>
         </>
+      )}
+
+      {waiting.length > 0 && (
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+          <p className="text-[12.5px] font-bold text-slate-600 dark:text-slate-300 mb-2">
+            {waiting.length} {waiting.length === 1 ? "account has" : "accounts have"} no role for this app yet
+          </p>
+          <div className="grid gap-1 mb-3">
+            {waiting.map(a => (
+              <div key={a.accountId} className="flex items-center gap-3 text-[13px]">
+                <span className="text-slate-500 dark:text-slate-400">{a.name}</span>
+                <span className="font-mono text-[11.5px] text-slate-400">{a.accountId}</span>
+              </div>
+            ))}
+          </div>
+          {/* Stated rather than worked around. AWS already puts an
+              administrator role in every organisation account, and this app is
+              deliberately unable to assume it — so there is a setup step, and
+              pretending otherwise would be the wrong trade made quietly. */}
+          <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-[74ch]">
+            This app can only ever assume one role, <span className="font-mono text-[11.5px]">{data?.roleName}</span>,
+            and that role can read configuration and nothing else. It deliberately cannot use{" "}
+            <span className="font-mono text-[11.5px]">OrganizationAccountAccessRole</span>, which AWS puts in
+            every organization account and which carries full administrator rights.
+          </p>
+          <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2 max-w-[74ch]">
+            Run <span className="font-mono text-[11.5px]">scripts/deploy-guardrail-role-org-wide.sh</span> from
+            your management account. It creates the role in every account at once — including accounts made
+            later — then press Check again.
+          </p>
+        </div>
       )}
     </div>
   );
@@ -860,15 +904,13 @@ function AccountsTab({ accounts, isAdmin }: { accounts?: AwsAccount[]; isAdmin: 
   return (
     <>
       <Note intent="neutral">
-        Guardrails run in every account listed here. The account this app is deployed in is always
-        included and needs no setup at all. If your accounts are in an AWS Organization, the rest
-        need none either — pick them from the list.
+        Guardrails run in every account listed here. Each one grants a role that can read S3 and
+        CloudWatch Logs settings and nothing else — not the contents of a bucket, not a log line,
+        and by default nothing it can change. One command deploys that role across a whole AWS
+        Organization.
       </Note>
 
-      {isAdmin && <DiscoverAccounts
-        existing={accounts ?? []}
-        onAdd={body => save.mutateAsync(body)}
-      />}
+      {isAdmin && <DiscoverAccounts onAdd={body => save.mutateAsync(body)} />}
 
       <div className="flex items-center justify-between gap-4 mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">
@@ -989,7 +1031,7 @@ function AccountEditor({ account, error, saving, onClose, onSave }: {
         <Block title="How to get in">
           <div className="flex flex-wrap gap-2 mb-4">
             {([
-              ["organization", "From my organization", "Nothing to deploy"],
+              ["organization", "From my organization", "One role, every account"],
               ["role", "A specific role", "Narrowest access"],
               ["keys", "An access key", "For accounts outside the org"],
             ] as const).map(([m, title, hint]) => (
@@ -1006,13 +1048,18 @@ function AccountEditor({ account, error, saving, onClose, onSave }: {
           </div>
 
           {method === "organization" && (
-            <p className="text-[13px] text-slate-500 dark:text-slate-400 max-w-[72ch]">
-              AWS puts a role into every account opened through Organizations, and the app uses it.
-              There is nothing to create and nothing to copy. Worth knowing: that role carries full
-              administrator rights, far more than the nine calls this app makes. If that matters,
-              deploy <span className="font-mono text-[12px]">scripts/guardrail-account-role.yaml</span>{" "}
-              in the account and it will be preferred automatically — no change needed here.
-            </p>
+            <>
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 max-w-[72ch] mb-4">
+                Uses the role deployed by{" "}
+                <span className="font-mono text-[12px]">scripts/deploy-guardrail-role-org-wide.sh</span>,
+                which puts the same read-only role in every account of your organization at once.
+                Nothing to copy from account to account, and no administrator access anywhere.
+              </p>
+              <Field label="External ID"
+                hint="Whatever the deployment script generated. Blank if you chose not to set one.">
+                <input value={externalId} onChange={e => setExternalId(e.target.value)} className={field} />
+              </Field>
+            </>
           )}
 
           {method === "role" && (
@@ -1105,7 +1152,8 @@ function AccountEditor({ account, error, saving, onClose, onSave }: {
             accountId, name, regions, enabled,
             ...(isHome ? {} : {
               access: method,
-              ...(method === "role" && { roleArn, externalId: externalId || undefined }),
+              ...(method !== "keys" && { externalId: externalId || undefined }),
+              ...(method === "role" && { roleArn }),
               ...(method === "keys" && accessKeyId && secretAccessKey && { accessKeyId, secretAccessKey } as any),
             }),
           })}>

@@ -26,22 +26,25 @@ const SESSION_NAME = "control-hub-guardrails";
 const RENEW_BEFORE_MS = 5 * 60_000;
 
 /**
- * Roles to try in an account reached through AWS Organizations, in order.
+ * The one role this app assumes in another account.
  *
- * These already exist. AWS creates OrganizationAccountAccessRole in every
- * account opened through Organizations, and Control Tower creates its own
- * equivalent — so an organisation's accounts are reachable with nothing
- * deployed into them and no ARN to copy anywhere.
+ * There is exactly one, on purpose. AWS puts OrganizationAccountAccessRole in
+ * every account opened through Organizations, and using it would mean no
+ * setup at all — but it carries AdministratorAccess, and an application
+ * running in a production account should not be able to become an
+ * administrator of anything, however convenient.
  *
- * The scoped role remains first because it is the one worth having: the others
- * carry AdministratorAccess, and using them means this app can do anything in
- * those accounts rather than the nine calls it actually makes.
+ * So this app cannot. The name below is the only role its IAM policy permits
+ * it to assume, and that role grants six reads. Deploying it everywhere is one
+ * command — see scripts/deploy-guardrail-role-org-wide.sh — which is a
+ * one-off cost paid once against a permission that would otherwise be
+ * permanent.
  */
-const ORGANIZATION_ROLES = [
-  process.env.GUARDRAIL_ROLE_NAME || `${PREFIX}-guardrail-access`,
-  "OrganizationAccountAccessRole",
-  "AWSControlTowerExecution",
-];
+export const GUARDRAIL_ROLE_NAME =
+  process.env.GUARDRAIL_ROLE_NAME || `${PREFIX}-guardrail-access`;
+
+export const guardrailRoleArn = (accountId: string) =>
+  `arn:aws:iam::${accountId}:role/${GUARDRAIL_ROLE_NAME}`;
 
 /** What `access` to assume for a record written before the field existed. */
 export function accessMethod(account: AwsAccount): AwsAccessMethod {
@@ -237,7 +240,7 @@ async function assumeFirstRoleThatWorks(
 
   const candidates = method === "role" && account.roleArn
     ? [account.roleArn]
-    : ORGANIZATION_ROLES.map(name => `arn:aws:iam::${account.accountId}:role/${name}`);
+    : [guardrailRoleArn(account.accountId)];
 
   const refusals: string[] = [];
   for (const roleArn of candidates) {
@@ -262,10 +265,13 @@ async function assumeFirstRoleThatWorks(
     }
   }
 
-  throw new Error(
-    candidates.length === 1
-      ? `Could not assume ${candidates[0]} — ${refusals[0]}`
-      : `None of the roles this app knows how to use exist in ${account.accountId}, or none of them trust this app. Tried ${refusals.join("; ")}.`
+  throw new ActionableError(
+    method === "organization"
+      ? `The role "${GUARDRAIL_ROLE_NAME}" does not exist in account ${account.accountId}, or it does not trust this app (${refusals[0]}). ` +
+        `Deploy it there — scripts/deploy-guardrail-role-org-wide.sh does every account in the organization at once, including ones created later. ` +
+        `This app deliberately cannot fall back to an administrator role.`
+      : `Could not assume ${candidates[0]} — ${refusals[0]}`,
+    "ROLE_NOT_DEPLOYED",
   );
 }
 
@@ -405,6 +411,38 @@ export async function verifyAccess(
       };
     }
     return { ok: false, error: err?.message ?? String(err) };
+  }
+}
+
+/**
+ * Can we get into this account right now?
+ *
+ * Probed at discovery time so the list can say which accounts are ready and
+ * which are still waiting for the role, rather than letting someone tick five
+ * and watch four of them fail one at a time.
+ */
+export async function probeReachable(
+  accountId: string, externalId?: string,
+): Promise<{ reachable: boolean; reason?: string }> {
+  try {
+    const { STSClient, AssumeRoleCommand } = await import("@aws-sdk/client-sts");
+    const sts = new STSClient({ region: REGION });
+    await sts.send(new AssumeRoleCommand({
+      RoleArn: guardrailRoleArn(accountId),
+      RoleSessionName: SESSION_NAME,
+      ...(externalId && { ExternalId: externalId }),
+      // Fifteen minutes, not the default hour: this is a doorknob rattle and
+      // the credentials are thrown away.
+      DurationSeconds: 900,
+    }));
+    return { reachable: true };
+  } catch (err: any) {
+    return {
+      reachable: false,
+      reason: err?.name === "AccessDenied" || err?.name === "AccessDeniedException"
+        ? `"${GUARDRAIL_ROLE_NAME}" is not deployed here yet`
+        : err?.message ?? String(err),
+    };
   }
 }
 

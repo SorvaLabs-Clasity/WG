@@ -130,11 +130,15 @@ export interface DiscoveredAccount {
   status?: string;
   isHome: boolean;
   registered: boolean;
+  /** Whether the guardrail role is already deployed there and trusts this app. */
+  reachable: boolean;
+  reason?: string;
 }
 
 export const fetchAwsAccounts = () => apiGet<AwsAccount[]>("/aws/accounts");
-export const discoverAwsAccounts = () =>
-  apiGet<{ available: boolean; error?: string; accounts: DiscoveredAccount[] }>("/aws/accounts/discover");
+export const discoverAwsAccounts = (externalId?: string) =>
+  apiGet<{ available: boolean; error?: string; roleName?: string; accounts: DiscoveredAccount[] }>(
+    `/aws/accounts/discover${externalId ? `?externalId=${encodeURIComponent(externalId)}` : ""}`);
 export const saveAwsAccount = (body: Partial<AwsAccount>) => apiPost<AwsAccount>("/aws/accounts", body);
 export const removeAwsAccount = (accountId: string) =>
   apiDelete<{ removed: string }>(`/aws/accounts/${accountId}`);

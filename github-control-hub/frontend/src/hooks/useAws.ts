@@ -34,10 +34,10 @@ export function useAwsAccounts() {
  * Only fetched when the accounts screen asks for it: it calls out to AWS
  * Organizations, which is not something to do on every page load.
  */
-export function useDiscoverAwsAccounts(enabled: boolean) {
+export function useDiscoverAwsAccounts(enabled: boolean, externalId?: string) {
   return useQuery({
-    queryKey: ["aws", "accounts", "discover"],
-    queryFn: discoverAwsAccounts,
+    queryKey: ["aws", "accounts", "discover", externalId ?? ""],
+    queryFn: () => discoverAwsAccounts(externalId),
     enabled,
     staleTime: 5 * 60_000,
   });

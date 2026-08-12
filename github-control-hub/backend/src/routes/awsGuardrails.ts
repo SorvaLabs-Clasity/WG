@@ -13,7 +13,7 @@ import {
 import {
   listRegisteredAccounts, putAccount, deleteAccount, resolveAccounts,
   verifyAccess, forgetCredentials, homeAccountId, accessMethod,
-  discoverOrganizationAccounts, storeKeys,
+  discoverOrganizationAccounts, storeKeys, probeReachable, GUARDRAIL_ROLE_NAME,
 } from "../aws-guardrails/accounts";
 import type { Guardrail, AwsExclusionList, GuardrailMode, AwsAccount } from "../aws-guardrails/types";
 
@@ -310,22 +310,34 @@ router.get("/accounts", async (_req: Request, res: Response) => {
  * Returns whether each is already registered, which is the only thing the UI
  * needs to turn this into a list of checkboxes.
  */
-router.get("/accounts/discover", requireAdmin, async (_req: Request, res: Response) => {
+router.get("/accounts/discover", requireAdmin, async (req: Request, res: Response) => {
   try {
+    // The org-wide StackSet sets one external ID for every account, so probing
+    // without it would report a correctly-deployed estate as unreachable.
+    const externalId = typeof req.query.externalId === "string" ? req.query.externalId : undefined;
     const found = await discoverOrganizationAccounts();
     if (!found.ok) {
       res.json({ available: false, error: found.error, accounts: [] });
       return;
     }
     const [home, registered] = await Promise.all([homeAccountId(), listRegisteredAccounts()]);
-    res.json({
-      available: true,
-      accounts: found.accounts.map(a => ({
+
+    // Each is rattled before it is offered. This app can only assume one role
+    // name and holds no fallback to an administrator role, so an account
+    // without that role is not addable yet — and saying so up front beats
+    // ticking five and watching four fail.
+    const accounts = await Promise.all(found.accounts.map(async a => {
+      const isHome = a.accountId === home;
+      const probe = isHome ? { reachable: true } : await probeReachable(a.accountId, externalId);
+      return {
         ...a,
-        isHome: a.accountId === home,
+        isHome,
         registered: registered.some(r => r.accountId === a.accountId),
-      })),
-    });
+        ...probe,
+      };
+    }));
+
+    res.json({ available: true, roleName: GUARDRAIL_ROLE_NAME, accounts });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }
