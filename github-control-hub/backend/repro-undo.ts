@@ -280,6 +280,39 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   }
 }
 
+// ── the gate must cover everything the route acts on ──────────────────
+// Retry shipped checking only the top-level entry while executing across the
+// whole tree, so a template retry spanning five repos verified one. The route
+// text is checked for the shape that prevents it: gather descendants, then
+// gate, then execute.
+{
+  const src = require("fs").readFileSync(
+    require("path").join(__dirname, "src/routes/activity.ts"), "utf8");
+
+  const routeBody = (name: string) => {
+    const i = src.indexOf(`router.post("/:id/${name}"`);
+    const next = src.indexOf('router.post("/:id/', i + 10);
+    return src.slice(i, next === -1 ? src.length : next);
+  };
+
+  for (const name of ["undo", "redo", "retry"]) {
+    const body = routeBody(name);
+    const gate = body.indexOf("denyIfNotPermitted");
+    const gather = body.indexOf("getChildActivities");
+    const exec = Math.min(
+      ...["executeUndo(", "executeRedo(", "executeRetry("]
+        .map(f => body.indexOf(f)).filter(i => i !== -1).concat([Number.MAX_SAFE_INTEGER]));
+
+    check(`${name}: descendants are gathered before the gate runs`,
+      gather !== -1 && gate !== -1 && gather < gate, { gather, gate });
+    check(`${name}: nothing executes before the gate`,
+      gate !== -1 && exec !== Number.MAX_SAFE_INTEGER && gate < exec, { gate, exec });
+    check(`${name}: the gate is handed more than the single entry`,
+      /denyIfNotPermitted\(\s*(?!\[entry\],)/.test(body),
+      body.slice(gate, gate + 90));
+  }
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
 })();

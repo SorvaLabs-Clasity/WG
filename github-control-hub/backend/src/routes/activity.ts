@@ -353,17 +353,29 @@ router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) =>
       return;
     }
 
+    const accessToken = req.user!.accessToken;
+
     // Retry re-runs the original action, so it needs what the original needed.
     // It was reachable with no check at all, which made it a way around every
     // gate on this page: fail an action you were refused, then press Retry.
+    //
+    // The whole tree is gathered first because retry does not stop at this
+    // entry — a failed template application retries every repository under it,
+    // and checking only the parent would mean attempting five repos having
+    // verified one.
+    const retryTargets: ActivityEntry[] = [entry];
+    for (const child of await getChildActivities(entry.id)) {
+      retryTargets.push(child, ...(await getChildActivities(child.id)));
+    }
+
     const deniedRetry = await denyIfNotPermitted(
-      [entry], req.user!.login, req.user!.accessToken, "retry", retryRequirement);
+      retryTargets.filter(t => t.failed && t.retryPayload),
+      req.user!.login, accessToken, "retry", retryRequirement);
     if (deniedRetry) {
       res.status(deniedRetry.status).json(deniedRetry.body);
       return;
     }
 
-    const accessToken = req.user!.accessToken;
     const retried: string[] = [];
     const errors: string[] = [];
 
