@@ -142,10 +142,14 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
   # file is missing.
   GH_PEM_PATH="${GH_PEM_PATH/#\~/$HOME}"
   # Dragging a file into a terminal quotes anything awkward and leaves a
-  # trailing space; both make the path not match.
+  # trailing space. Whitespace comes off first: with the quote stripped first,
+  # a path arriving as  'x.pem'␣  still ends in a space, so nothing matches the
+  # trailing quote and both quotes survive — which is the exact shape dragging
+  # produces.
+  GH_PEM_PATH="${GH_PEM_PATH#"${GH_PEM_PATH%%[![:space:]]*}"}"
+  GH_PEM_PATH="${GH_PEM_PATH%"${GH_PEM_PATH##*[![:space:]]}"}"
   GH_PEM_PATH="${GH_PEM_PATH%\'}"; GH_PEM_PATH="${GH_PEM_PATH#\'}"
   GH_PEM_PATH="${GH_PEM_PATH%\"}"; GH_PEM_PATH="${GH_PEM_PATH#\"}"
-  GH_PEM_PATH="${GH_PEM_PATH%"${GH_PEM_PATH##*[![:space:]]}"}"
   [ -f "$GH_PEM_PATH" ] || die "No file at $GH_PEM_PATH"
   echo
   echo "  ${dim}The next one is optional. getSystemToken() prefers the GitHub App${off}"
