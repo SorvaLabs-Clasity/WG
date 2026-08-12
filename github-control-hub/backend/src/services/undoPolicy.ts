@@ -87,12 +87,18 @@ const UNDO_REQUIREMENTS: Record<string, UndoRequirement> = {
   restore_template:         { adminTeam: true },
   revert_template:          { adminTeam: true },
 
+  // Exclusions decide which repositories a template skips, so they are gated
+  // like templates: reverting an exclusion can start or stop protecting repos
+  // without anyone touching a repository.
+  delete_exclusion:         { adminTeam: true },
+  restore_exclusion:        { adminTeam: true },
+  revert_exclusion:         { adminTeam: true },
+
   // Dashboard and scanner configuration carry no gate on the way in, so they
   // carry none on the way out. Listed explicitly rather than defaulted, so a
   // new operation cannot inherit "no checks" by omission.
-  delete_widget: {},    restore_widget: {},    revert_widget: {},
-  delete_scanner: {},   restore_scanner: {},   revert_scanner: {},
-  delete_exclusion: {}, restore_exclusion: {}, revert_exclusion: {},
+  delete_widget: {},  restore_widget: {},  revert_widget: {},
+  delete_scanner: {}, restore_scanner: {}, revert_scanner: {},
 };
 
 /** What undoing this entry demands. Unknown operations demand the most. */

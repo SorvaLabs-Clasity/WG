@@ -621,7 +621,7 @@ export default function TemplatesPage() {
               <i className="fa-solid fa-plus text-xs group-hover:rotate-90 transition-transform"></i>
               New Rule Template
             </button>
-          ) : (
+          ) : canEditTemplates ? (
             <button
               onClick={() => setCreateExclOpen(true)}
               className="bg-slate-900 hover:bg-slate-800 text-white px-5 py-2.5 rounded-lg shadow-lg hover:shadow-xl transition-all duration-300 flex items-center gap-2 font-medium text-sm"
@@ -629,6 +629,11 @@ export default function TemplatesPage() {
               <i className="fa-solid fa-ban text-xs"></i>
               New Exclusion List
             </button>
+          ) : (
+            <span className="text-[12px] text-slate-400 dark:text-slate-500 flex items-center gap-1.5 max-w-[280px] text-right">
+              <i className="ph-fill ph-lock-simple shrink-0"></i>
+              Only the "{adminTeam}" team can change exclusion lists
+            </span>
           )}
         </header>
 
@@ -897,8 +902,8 @@ export default function TemplatesPage() {
                         <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">{excl.description || "No description provided."}</p>
 
                         <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute top-4 right-4 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm p-1 rounded-lg border border-slate-100 dark:border-slate-700 shadow-sm">
-                          <button onClick={() => handleEditExclClick(excl)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 dark:text-slate-500 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><i className="fa-solid fa-pencil text-xs"></i></button>
-                          <button onClick={() => handleDeleteExcl(excl.id, excl.name)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 dark:text-slate-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"><i className="fa-solid fa-trash text-xs"></i></button>
+                          {canEditTemplates && <button onClick={() => handleEditExclClick(excl)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 dark:text-slate-500 hover:bg-blue-50 dark:hover:bg-blue-950/50 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"><i className="fa-solid fa-pencil text-xs"></i></button>}
+                          {canEditTemplates && <button onClick={() => handleDeleteExcl(excl.id, excl.name)} className="w-7 h-7 flex items-center justify-center rounded text-slate-400 dark:text-slate-500 hover:bg-rose-50 dark:hover:bg-rose-950/50 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"><i className="fa-solid fa-trash text-xs"></i></button>}
                         </div>
                       </div>
 

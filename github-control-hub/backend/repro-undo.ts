@@ -211,7 +211,11 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
 
   check("reverting a template needs the admin team", req("revert_template").adminTeam === true);
   check("  and is not repo-scoped", req("revert_template").repo === undefined);
+  check("reverting an exclusion needs the admin team", req("revert_exclusion").adminTeam === true);
+  check("  because excluding a repo stops templates protecting it",
+    req("delete_exclusion").adminTeam === true && req("restore_exclusion").adminTeam === true);
   check("dashboard widgets need neither", !req("revert_widget").repo && !req("revert_widget").adminTeam);
+  check("scanners need neither", !req("revert_scanner").repo && !req("revert_scanner").adminTeam);
 
   // An unknown operation must demand the most, not the least.
   const unknown = undoRequirement(at({ undoPayload: { action: "something_new", params: {} } }));
