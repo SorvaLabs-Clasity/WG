@@ -147,8 +147,20 @@ export class GitHubControlHubStack extends cdk.Stack {
       ssmSessionPermissions: true,
       blockDevices: [{
         deviceName: "/dev/xvda",
-        volume: ec2.BlockDeviceVolume.ebs(20, { volumeType: ec2.EbsDeviceVolumeType.GP3 }),
+        // Encrypted at rest. The volume holds the application image and
+        // whatever the container writes; secrets are fetched into memory
+        // rather than stored, but a snapshot of an unencrypted root volume is
+        // still a copy of the app somebody can mount.
+        volume: ec2.BlockDeviceVolume.ebs(20, {
+          volumeType: ec2.EbsDeviceVolumeType.GP3,
+          encrypted: true,
+        }),
       }],
+      // IMDSv2 only. Version 1 answers an unauthenticated GET, so any
+      // server-side request forgery in the app becomes a way to read the
+      // instance role's credentials. The running instance already has this;
+      // stating it here stops a future replacement quietly losing it.
+      requireImdsv2: true,
     });
 
     // UserData — install Docker and generate self-signed SSL cert
@@ -186,6 +198,12 @@ export class GitHubControlHubStack extends cdk.Stack {
     // GitHub's webhook ranges.
     const guardrailDlq = new sqs.Queue(this, "GuardrailDlq", {
       retentionPeriod: cdk.Duration.days(14),
+      // Failed invocations carry the event that caused them, which names
+      // accounts and resources. Encrypted with an AWS-managed key: it costs
+      // nothing and means the queue is not the one unencrypted thing here.
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      // Anything talking to this queue does so over TLS or not at all.
+      enforceSSL: true,
     });
 
     const guardrailFn = new NodejsFunction(this, "GuardrailEnforcer", {

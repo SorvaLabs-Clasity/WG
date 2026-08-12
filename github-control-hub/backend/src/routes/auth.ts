@@ -419,11 +419,17 @@ router.post("/aws-sso-login", serverModeGuard, setupOrAuthMiddleware, async (req
     ...process.env,
     PATH: [process.env.PATH, ...extraPathDirs].filter(Boolean).join(nodePath.delimiter),
   };
-  const child = spawn("aws", ["sso", "login", "--profile", profile], {
+  // No shell. With shell:true the argument list is flattened into a command
+  // string, so the only thing standing between a profile name and command
+  // execution is isValidAwsProfile — which is correct today and is the wrong
+  // thing to be relying on. Windows needs the .cmd extension named explicitly
+  // once the shell is gone.
+  const command = process.platform === "win32" ? "aws.cmd" : "aws";
+  const child = spawn(command, ["sso", "login", "--profile", profile], {
     stdio: "ignore",
     detached: true,
     windowsHide: true,
-    shell: true,
+    shell: false,
     env,
   });
   child.unref();

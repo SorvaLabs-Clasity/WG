@@ -37,8 +37,43 @@ app.use(
   })
 );
 
-// Security headers
-app.use(helmet({ contentSecurityPolicy: false }));
+// Security headers.
+//
+// The policy was off because the page pulled fonts and icons from three CDNs,
+// one of them an unpinned <script> from unpkg. Those are bundled now, so
+// everything the app loads comes from its own origin and the policy can say
+// so — which is what turns "we do not load remote script" from a habit into
+// something the browser enforces.
+app.use(helmet({
+  contentSecurityPolicy: {
+    useDefaults: false,
+    directives: {
+      defaultSrc: ["'self'"],
+      // No remote script, and no inline script: Vite emits a module tag, never
+      // inline code. This is the directive that matters most here — it is the
+      // one that would have stopped a compromised CDN.
+      scriptSrc: ["'self'"],
+      // React writes style attributes, which this covers. Stylesheets
+      // themselves are same-origin files.
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      fontSrc: ["'self'"],
+      // Avatars. github.com redirects to avatarsN.githubusercontent.com, so
+      // both have to be allowed; data: is the inline favicon.
+      imgSrc: ["'self'", "data:", "https://github.com", "https://*.githubusercontent.com"],
+      // The app only ever calls its own backend.
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"],
+      // Desktop serves over http on localhost; upgrading those breaks it.
+      upgradeInsecureRequests: null,
+    },
+  },
+  // The app is served over a self-signed certificate on an IP address, so a
+  // long HSTS max-age would be a promise it cannot keep.
+  hsts: false,
+}));
 
 // Rate limiting — strict for auth, moderate for API
 const authLimiter = rateLimit({

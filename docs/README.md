@@ -24,6 +24,7 @@ data comes from, and what it deliberately does not do.
 | | |
 |---|---|
 | [Operations](operations/) | Deploying and troubleshooting |
+| [Security](security/) | What the app can and cannot do, and the last review |
 | [Infrastructure](infrastructure/) | The CDK stack, EC2, Lambda, cost |
 | [Development](development/) | Testing, conventions |
 
