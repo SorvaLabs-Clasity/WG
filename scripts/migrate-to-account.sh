@@ -202,6 +202,16 @@ fi
 
 # ── 4. infrastructure ─────────────────────────────────────────────────
 step "4/7  EC2, Lambda and event rules"
+# The workspace root, not only infra.
+#
+# The Lambda is bundled from backend/src, so its projectRoot is the workspace
+# root and CDK runs `npx --no-install esbuild` from there — meaning esbuild has
+# to resolve against github-control-hub/node_modules, which a fresh clone does
+# not have. Installing only infra left the deploy failing on a machine that had
+# never built the app, and passing on any machine that had.
+cd "$ROOT/github-control-hub"
+[ -d node_modules ] || { echo "  installing workspace deps (needed to bundle the Lambda)…"; npm install --silent; }
+
 cd "$ROOT/github-control-hub/infra"
 [ -d node_modules ] || { echo "  installing CDK deps…"; npm install --silent; }
 
