@@ -7,6 +7,7 @@ import { fetchAuthStatus } from "./api/auth";
 import { DEMO_USER } from "./api/mock";
 import { ThemeContext, getInitialTheme, applyTheme, type Theme } from "./hooks/useTheme";
 import UpdateOverlay from "./components/UpdateOverlay";
+import MutationErrors from "./components/MutationErrors";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -103,6 +104,7 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <AuthContext.Provider value={{ user }}>
           <UpdateOverlay />
+          <MutationErrors />
           <RouterProvider router={router} />
         </AuthContext.Provider>
       </QueryClientProvider>

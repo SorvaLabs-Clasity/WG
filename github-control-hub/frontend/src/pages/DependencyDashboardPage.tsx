@@ -4,7 +4,7 @@ import { useAuth } from "../App";
 import type { DependencyAlert } from "../types/Dependabot";
 import {
   Page, PageHeader, StatusSlab, SlabPercent, Button, Segmented, SearchInput,
-  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, enter, type Intent,
+  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, INTENT, enter, type Intent,
 } from "../design";
 
 /** Severity maps onto the shared intents so colour means one thing app-wide. */
@@ -27,6 +27,28 @@ export default function DependencyDashboardPage() {
   const { user } = useAuth();
   const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj } = useDependencies();
   const { data: summary, isLoading: sumLoading } = useDependencySummary();
+  /**
+   * Both buttons used mutateAsync with only a finally, so a rejection became an
+   * unhandled promise and the click did nothing visible.
+   *
+   * Failures are announced by MutationErrors, which sees every mutation in the
+   * app; caught here only so the rejection is handled and the busy state clears.
+   */
+  const [notice, setNotice] = useState<{ msg: string; ok: boolean } | null>(null);
+
+  const runDependabot = async (repo: string, go: (r: string) => Promise<unknown>, done: string) => {
+    setBusyRepo(repo);
+    setNotice(null);
+    try {
+      await go(repo);
+      setNotice({ msg: done, ok: true });
+    } catch {
+      /* reported globally */
+    } finally {
+      setBusyRepo(null);
+    }
+  };
+
   const enable = useEnableDependabot();
   const disable = useDisableDependabot();
 
@@ -95,6 +117,22 @@ export default function DependencyDashboardPage() {
         title="Dependabot"
         subtitle="Known vulnerabilities in dependencies, and which repositories are watching for them."
       />
+
+      {notice && (
+        <div className={`mb-5 rounded-2xl border p-4 flex items-start gap-3 ${
+          notice.ok ? `${INTENT.good.soft} ${INTENT.good.border}` : `${INTENT.danger.soft} ${INTENT.danger.border}`}`}>
+          <i className={`${notice.ok ? "ph-fill ph-check-circle" : "ph-fill ph-warning-circle"} text-lg shrink-0 mt-0.5 ${
+            notice.ok ? INTENT.good.text : INTENT.danger.text}`}></i>
+          <p className={`flex-1 text-[13px] leading-relaxed ${notice.ok ? INTENT.good.text : INTENT.danger.text}`}>
+            {notice.msg}
+          </p>
+          <button onClick={() => setNotice(null)}
+            className={`shrink-0 opacity-50 hover:opacity-100 transition-opacity ${
+              notice.ok ? INTENT.good.text : INTENT.danger.text}`}>
+            <i className="ph-bold ph-x text-sm"></i>
+          </button>
+        </div>
+      )}
 
       <StatusSlab
         intent={counts.critical > 0 ? "danger" : counts.total > 0 ? "warn" : "good"}
@@ -188,15 +226,14 @@ export default function DependencyDashboardPage() {
                     )}
                     {off ? (
                       <Button variant="primary" disabled={busyRepo === repo}
-                        onClick={async () => { setBusyRepo(repo); try { await enable.mutateAsync(repo); } finally { setBusyRepo(null); } }}>
+                        onClick={() => runDependabot(repo, enable.mutateAsync, `Now watching ${repo}`)}>
                         {busyRepo === repo ? "Enabling…" : "Start watching"}
                       </Button>
                     ) : (
                       <Button variant="secondary" disabled={busyRepo === repo}
-                        onClick={async () => {
+                        onClick={() => {
                           if (!window.confirm(`Stop watching ${repo} for vulnerable dependencies?`)) return;
-                          setBusyRepo(repo);
-                          try { await disable.mutateAsync(repo); } finally { setBusyRepo(null); }
+                          runDependabot(repo, disable.mutateAsync, `Stopped watching ${repo}`);
                         }}>
                         {busyRepo === repo ? "…" : "Stop watching"}
                       </Button>
