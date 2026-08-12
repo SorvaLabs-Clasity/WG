@@ -295,5 +295,7 @@ cat <<EOF
     · Create a repo in $GH_ORG and confirm it appears in the activity feed.
       If it does not, the webhook secret or the events list is wrong.
     · Set a log group's retention to 1 day and watch the guardrail flag it.
-    · Decide retention for the activity table — nothing expires from it today.
+    · Activity rows expire after 13 months (a year plus slack, so a
+      twelve-month audit always finds a complete record). Override with
+      ACTIVITY_RETENTION_MONTHS if your policy differs.
 EOF

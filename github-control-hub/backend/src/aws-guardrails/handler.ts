@@ -91,6 +91,15 @@ function resourceIdFromEvent(event: EventBridgeEvent): string | undefined {
   );
 }
 
+/** Kept in step with ACTIVITY_RETENTION_MONTHS in services/activityService.ts. */
+const RETENTION_MONTHS = Number(process.env.ACTIVITY_RETENTION_MONTHS) || 13;
+
+function expiryFor(iso: string): number {
+  const d = new Date(iso);
+  d.setUTCMonth(d.getUTCMonth() + RETENTION_MONTHS);
+  return Math.floor(d.getTime() / 1000);
+}
+
 const ACTIVITY_TABLE = process.env.ACTIVITY_TABLE || `${process.env.STACK_NAME || "github-control-hub"}-activity`;
 
 async function writeActivity(entry: {
@@ -122,6 +131,10 @@ async function writeActivity(entry: {
         ...(entry.failed && { failed: true }),
         ...(entry.error && { errorMessage: entry.error }),
         ...(entry.undo && { undoPayload: entry.undo }),
+        // Same retention as rows the app writes. Inlined rather than imported
+        // because this file is bundled into the Lambda on its own, and a row
+        // without the stamp is a row that never expires.
+        ttl: expiryFor(timestamp),
       },
     }));
   } catch (err: any) {

@@ -94,6 +94,33 @@ const TABLE = () => tableName("ACTIVITY_TABLE");
 // In-memory fallback for local development
 const memoryLog: ActivityEntry[] = [];
 
+/**
+ * How long an activity row is kept.
+ *
+ * Thirteen months: a full year of audit history plus a month of slack, so an
+ * auditor looking back over the last twelve always finds a complete record
+ * rather than one that ends mid-period.
+ *
+ * The consequence worth knowing is that undo stops working on anything past
+ * this age — the row carrying the payload is gone. Undoing a year-old change
+ * is not something anyone should be doing, but it is a real edge and not a
+ * side effect anybody would guess at.
+ *
+ * DynamoDB deletes expired items within about 48 hours of the timestamp rather
+ * than at it, so treat this as a floor, not a deadline.
+ */
+export const ACTIVITY_RETENTION_MONTHS =
+  Number(process.env.ACTIVITY_RETENTION_MONTHS) || 13;
+
+/** Epoch seconds at which a row written at `iso` should expire. */
+export function activityExpiry(iso: string): number {
+  const d = new Date(iso);
+  // Calendar months, not 30-day approximations, so "13 months" means what a
+  // person reading the retention policy thinks it means.
+  d.setUTCMonth(d.getUTCMonth() + ACTIVITY_RETENTION_MONTHS);
+  return Math.floor(d.getTime() / 1000);
+}
+
 export async function logActivity(
   action: ActivityAction,
   actor: string,
@@ -136,6 +163,7 @@ export async function logActivity(
           pk: `ACTIVITY`,
           sk: `${entry.timestamp}#${entry.id}`,
           ...entry,
+          ttl: activityExpiry(entry.timestamp),
         },
       })
     );

@@ -174,6 +174,24 @@ for t in "${TABLES[@]}" activity scanners graph-edges org-config compliance-cach
   $AWS dynamodb wait table-exists --table-name "${PREFIX}-${t}"
 done
 
+# ── 2b. Retention on the activity table ──
+# Thirteen months: a year of audit history plus a month of slack, so an auditor
+# looking back twelve months always finds a complete record. Rows carry a `ttl`
+# stamped from their own timestamp; DynamoDB only deletes items that have one,
+# so a table with TTL enabled but unstamped rows keeps them forever.
+echo "==> Enabling TTL on ${PREFIX}-activity"
+act_ttl=$($AWS dynamodb describe-time-to-live \
+  --table-name "${PREFIX}-activity" \
+  --query 'TimeToLiveDescription.TimeToLiveStatus' --output text)
+if [[ "$act_ttl" == "ENABLED" || "$act_ttl" == "ENABLING" ]]; then
+  echo "    already $act_ttl"
+else
+  $AWS dynamodb update-time-to-live \
+    --table-name "${PREFIX}-activity" \
+    --time-to-live-specification "Enabled=true,AttributeName=ttl" >/dev/null
+  echo "    enabled"
+fi
+
 echo "==> Enabling TTL on ${PREFIX}-auth-codes"
 ttl_status=$($AWS dynamodb describe-time-to-live \
   --table-name "${PREFIX}-auth-codes" \
