@@ -17,15 +17,21 @@ permissions:
   contents: write
 
 jobs:
+  # ── Build each platform, publish nothing ────────────────────────────
+  #
+  # Letting electron-builder publish from both runners is what broke every
+  # release before this. Each one creates its own draft when it cannot find
+  # the other's — GitHub permits several drafts on a single tag — so the repo
+  # ended up with two v1.0.42 releases, one holding the macOS build and one
+  # the Windows build, and the publish step promoted whichever it resolved
+  # first. The run went green having shipped half a release.
+  #
+  # Serialising the matrix did not help, because the problem is two writers
+  # rather than two simultaneous writers. So the runners build and hand their
+  # output to the release job, which is the only thing that talks to the
+  # Releases API.
   build:
     strategy:
-      # One at a time. Both runners publish to the same GitHub release, and
-      # electron-builder overwrites an asset by deleting it and uploading
-      # again. Run in parallel, the two delete-and-upload sequences interleave
-      # and files are lost — the run goes green having silently dropped the
-      # macOS installer and latest-mac.yml, which is the file every installed
-      # Mac reads to find an update.
-      max-parallel: 1
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -57,42 +63,80 @@ jobs:
 
       - name: Bundle backend deps for packaging
         working-directory: github-control-hub/desktop
-        run: node -e "const fs=require('fs'),p=require('path');const d=p.join(__dirname,'.backend-modules');fs.rmSync(d,{recursive:true,force:true});fs.mkdirSync(d,{recursive:true});fs.copyFileSync(p.join(__dirname,'..','backend','package.json'),p.join(d,'package.json'))" && cd .backend-modules && npm install --omit=dev --ignore-scripts
         shell: bash
+        run: node -e "const fs=require('fs'),p=require('path');const d=p.join(__dirname,'.backend-modules');fs.rmSync(d,{recursive:true,force:true});fs.mkdirSync(d,{recursive:true});fs.copyFileSync(p.join(__dirname,'..','backend','package.json'),p.join(d,'package.json'))" && cd .backend-modules && npm install --omit=dev --ignore-scripts
 
-      - name: Build & publish Electron app
+      - name: Build the Electron app
         working-directory: github-control-hub/desktop
-        # Windows runners default to PowerShell, which does not understand the
-        # backslash line continuations below — it read the second line as a
-        # command called "-c" and failed. Every multi-line step in this matrix
-        # needs this, and the one above already had it.
+        # Windows runners default to PowerShell, which does not understand
+        # bash's line continuations.
         shell: bash
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
+        # No GH_TOKEN, deliberately: without one electron-builder cannot
+        # publish, so it builds, writes latest-mac.yml / latest.yml into
+        # release/, and stops. (`--publish never` would say it more plainly,
+        # but electron-builder 26 nulls the publish config and then crashes
+        # dereferencing it.)
         run: |
           npx tsc -p tsconfig.json
-          # Owner and repo come from the checkout rather than package.json, so
-          # forking this into another organisation needs no edit and installed
-          # copies check the repo they were actually built from.
-          npx electron-builder --publish always \
-            -c.publish.owner="${{ github.repository_owner }}" \
-            -c.publish.repo="${{ github.event.repository.name }}"
+          npx electron-builder --${{ runner.os == 'macOS' && 'mac' || 'win' }}
 
-  publish-release:
+      - name: Hand the installers to the release job
+        uses: actions/upload-artifact@v7
+        with:
+          name: installers-${{ runner.os }}
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            github-control-hub/desktop/release/*.dmg
+            github-control-hub/desktop/release/*.exe
+            github-control-hub/desktop/release/*.zip
+            github-control-hub/desktop/release/*.blockmap
+            github-control-hub/desktop/release/latest*.yml
+
+  # ── One job, one release ────────────────────────────────────────────
+  release:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Publish draft release
+      - name: Collect both platforms
+        uses: actions/download-artifact@v8
+        with:
+          path: installers
+          merge-multiple: true
+
+      - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION=$(node -p "require('./github-control-hub/desktop/package.json').version")
           TAG="v${VERSION}"
-          echo "Publishing release ${TAG}..."
-          # Wait a moment for assets to finish uploading
-          sleep 10
-          gh release edit "$TAG" --draft=false --latest
+
+          echo "Assets for ${TAG}:"
+          ls -la installers/
+
+          # Both manifests or nothing. latest-mac.yml and latest.yml are what
+          # installed copies read to find an update, so a release missing one
+          # silently stops updating that platform — and nothing about a green
+          # run would say so.
+          for f in latest-mac.yml latest.yml; do
+            test -f "installers/$f" || {
+              echo "::error::$f is missing — refusing to publish half a release"
+              exit 1
+            }
+          done
+
+          # A tag can carry several drafts, which is how this used to go
+          # wrong. Clear anything left by an earlier attempt at this version
+          # before creating the real one.
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            --latest \
+            installers/*
