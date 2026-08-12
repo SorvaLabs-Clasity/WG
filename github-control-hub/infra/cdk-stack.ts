@@ -178,7 +178,7 @@ export class GitHubControlHubStack extends cdk.Stack {
         GUARDRAILS_TABLE: `${stackPrefix}-aws-guardrails`,
         GUARDRAIL_EXCLUSIONS_TABLE: `${stackPrefix}-aws-exclusions`,
         GUARDRAIL_FINDINGS_TABLE: `${stackPrefix}-aws-findings`,
-        AWS_ACCOUNTS_TABLE: `${stackPrefix}-aws-accounts`,
+        ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
         GUARDRAIL_ROLE_NAME: guardrailRoleName,
         ACTIVITY_TABLE: `${stackPrefix}-activity`,
       },

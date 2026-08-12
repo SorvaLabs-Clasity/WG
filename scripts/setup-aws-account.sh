@@ -105,9 +105,10 @@ create_table "${PREFIX}-graph-edges" \
   --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
   --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE
 
-# org-config — keyed on `org`. Holds both the org feature flags (org=<org name>)
-# and the compliance rule config (org="compliance-config").
-# orgConfigService.ts:29, complianceConfigService.ts:88
+# org-config — keyed on `org`. Holds the org feature flags (org=<org name>),
+# the compliance rule config (org="compliance-config") and the registry of AWS
+# accounts the guardrails sweep (org="aws-accounts").
+# orgConfigService.ts:29, complianceConfigService.ts:88, aws-guardrails/accounts.ts
 create_table "${PREFIX}-org-config" \
   --attribute-definitions AttributeName=org,AttributeType=S \
   --key-schema AttributeName=org,KeyType=HASH
@@ -134,12 +135,6 @@ create_table "${PREFIX}-aws-exclusions" \
   --attribute-definitions AttributeName=id,AttributeType=S \
   --key-schema AttributeName=id,KeyType=HASH
 
-# accounts the guardrails reach into, keyed on the twelve-digit account id
-# aws-guardrails/accounts.ts. The account hosting the app is not stored here —
-# it is resolved from STS at runtime, so an empty table means "just this one".
-create_table "${PREFIX}-aws-accounts" \
-  --attribute-definitions AttributeName=accountId,AttributeType=S \
-  --key-schema AttributeName=accountId,KeyType=HASH
 
 # findings are keyed pk="FINDING", sk="<ruleId>#<resourceId>" so a re-run
 # overwrites in place rather than accumulating   aws-guardrails/store.ts
@@ -177,7 +172,7 @@ echo
 
 # ── 2. TTL on auth-codes ──
 echo "==> Waiting for tables to become ACTIVE"
-for t in "${TABLES[@]}" activity scanners graph-edges org-config compliance-cache auth-codes aws-guardrails aws-exclusions aws-findings aws-accounts; do
+for t in "${TABLES[@]}" activity scanners graph-edges org-config compliance-cache auth-codes aws-guardrails aws-exclusions aws-findings; do
   $AWS dynamodb wait table-exists --table-name "${PREFIX}-${t}"
 done
 

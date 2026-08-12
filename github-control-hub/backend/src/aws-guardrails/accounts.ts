@@ -1,4 +1,5 @@
 import { AwsAccount, AwsCredentials, Scope, AwsAccessMethod } from "./types";
+import { ActionableError } from "../utils/errorSanitizer";
 
 /**
  * The accounts the guardrails run against, and how to reach them.
@@ -15,10 +16,14 @@ import { AwsAccount, AwsCredentials, Scope, AwsAccessMethod } from "./types";
 const REGION = process.env.AWS_REGION || "us-east-1";
 const PREFIX = process.env.STACK_NAME || "github-control-hub";
 
-export const ACCOUNTS_TABLE = process.env.AWS_ACCOUNTS_TABLE || `${PREFIX}-aws-accounts`;
-
 /** Session name on the assumed role, so CloudTrail in the target account says who. */
 const SESSION_NAME = "control-hub-guardrails";
+
+/**
+ * Assumed credentials are good for an hour; renew with five minutes to spare so
+ * a sweep that starts just before expiry does not fail halfway through.
+ */
+const RENEW_BEFORE_MS = 5 * 60_000;
 
 /**
  * Roles to try in an account reached through AWS Organizations, in order.
@@ -48,10 +53,21 @@ export function accessMethod(account: AwsAccount): AwsAccessMethod {
 }
 
 /**
- * Assumed credentials are good for an hour; renew with five minutes to spare so
- * a sweep that starts just before expiry does not fail halfway through.
+ * Accounts live as one row in the table the app already has, not in a table of
+ * their own.
+ *
+ * A new table would have to be created before this feature worked at all, by
+ * running a script — which is the exact setup step this feature exists to
+ * remove. org-config is keyed on a single string and already holds more than
+ * one kind of row, so one more costs nothing and works on an installation that
+ * has changed nothing.
+ *
+ * The whole registry is one item. At roughly 300 bytes per account that is a
+ * thousand accounts before DynamoDB's 400KB item limit is anywhere close, and
+ * an organisation with a thousand AWS accounts has bigger questions than this.
  */
-const RENEW_BEFORE_MS = 5 * 60_000;
+export const ACCOUNTS_TABLE = process.env.ORG_CONFIG_TABLE || `${PREFIX}-org-config`;
+const ACCOUNTS_KEY = "aws-accounts";
 
 let docClientCache: any;
 async function docClient() {
@@ -66,28 +82,56 @@ async function docClient() {
 
 /** Registered accounts, exactly as stored. Does not include the implicit home account. */
 export async function listRegisteredAccounts(): Promise<AwsAccount[]> {
-  const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
+  const { GetCommand } = await import("@aws-sdk/lib-dynamodb");
   const client = await docClient();
-  const items: AwsAccount[] = [];
-  let key: any;
-  do {
-    const page: any = await client.send(new ScanCommand({ TableName: ACCOUNTS_TABLE, ExclusiveStartKey: key }));
-    items.push(...((page.Items ?? []) as AwsAccount[]));
-    key = page.LastEvaluatedKey;
-  } while (key);
-  return items.sort((a, b) => a.name.localeCompare(b.name));
+  try {
+    const { Item } = await client.send(new GetCommand({
+      TableName: ACCOUNTS_TABLE, Key: { org: ACCOUNTS_KEY },
+    }));
+    const accounts = (Item?.accounts ?? []) as AwsAccount[];
+    return accounts.sort((a, b) => a.name.localeCompare(b.name));
+  } catch (err: any) {
+    // No table means no accounts have ever been added, which is a legitimate
+    // state and not a reason to fail. Sweeping the home account still works.
+    if (err?.name === "ResourceNotFoundException") return [];
+    throw err;
+  }
+}
+
+async function writeAll(accounts: AwsAccount[]): Promise<void> {
+  const { PutCommand } = await import("@aws-sdk/lib-dynamodb");
+  const client = await docClient();
+  try {
+    await client.send(new PutCommand({
+      TableName: ACCOUNTS_TABLE,
+      Item: { org: ACCOUNTS_KEY, accounts, updatedAt: new Date().toISOString() },
+    }));
+  } catch (err: any) {
+    if (err?.name === "ResourceNotFoundException") {
+      throw new ActionableError(
+        `The table "${ACCOUNTS_TABLE}" does not exist in this AWS account, so there is nowhere to save this. ` +
+        `Run scripts/setup-aws-account.sh to create the app's tables.`,
+      );
+    }
+    if (err?.name === "AccessDeniedException") {
+      throw new ActionableError(
+        `This app is not allowed to write to "${ACCOUNTS_TABLE}". Deploy the CDK stack to update its IAM role.`,
+      );
+    }
+    throw err;
+  }
 }
 
 export async function putAccount(account: AwsAccount): Promise<void> {
-  const { PutCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
-  await client.send(new PutCommand({ TableName: ACCOUNTS_TABLE, Item: account }));
+  const existing = await listRegisteredAccounts();
+  const next = existing.filter(a => a.accountId !== account.accountId);
+  next.push(account);
+  await writeAll(next);
 }
 
 export async function deleteAccount(accountId: string): Promise<void> {
-  const { DeleteCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
-  await client.send(new DeleteCommand({ TableName: ACCOUNTS_TABLE, Key: { accountId } }));
+  const existing = await listRegisteredAccounts();
+  await writeAll(existing.filter(a => a.accountId !== accountId));
 }
 
 let homeIdCache: string | undefined;
@@ -95,10 +139,20 @@ let homeIdCache: string | undefined;
 /** The account we are running in, asked of AWS rather than configured. */
 export async function homeAccountId(): Promise<string> {
   if (homeIdCache) return homeIdCache;
-  const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");
-  const sts = new STSClient({ region: REGION });
-  const { Account } = await sts.send(new GetCallerIdentityCommand({}));
-  homeIdCache = Account ?? "unknown";
+  try {
+    const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");
+    const sts = new STSClient({ region: REGION });
+    const { Account } = await sts.send(new GetCallerIdentityCommand({}));
+    homeIdCache = Account ?? "unknown";
+  } catch (err: any) {
+    // Every finding is stamped with the account it came from, so this failing
+    // silently would label the whole estate "unknown" and quietly make two
+    // accounts look like one.
+    throw new Error(
+      `Could not work out which AWS account this app is running in: ${err?.message ?? err}. ` +
+      `Check that the app has AWS credentials.`
+    );
+  }
   return homeIdCache!;
 }
 

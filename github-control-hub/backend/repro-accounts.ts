@@ -276,6 +276,39 @@ const group = (id: string): ResourceSnapshot => ({
       accessMethod(account("1", "x", { access: "keys", roleArn: "arn:aws:iam::1:role/r" })) === "keys");
   }
 
+  // ── failures that have a fix, reported as the fix ──────────────────
+  {
+    const { sanitizeError, ActionableError } = await import("./src/utils/errorSanitizer");
+    const wasProd = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      // What DynamoDB actually throws: the name carries the meaning, the
+      // message says "Requested resource not found" and matches nothing.
+      const missing = Object.assign(new Error("Requested resource not found"),
+        { name: "ResourceNotFoundException" });
+      check("a missing table is not reported as an unexpected error",
+        !sanitizeError(missing, "t").includes("unexpected"), sanitizeError(missing, "t"));
+      check("  and the message says what to run",
+        sanitizeError(missing, "t").includes("setup-aws-account.sh"), sanitizeError(missing, "t"));
+
+      const denied = Object.assign(new Error("User is not authorized"),
+        { name: "AccessDeniedException" });
+      check("a missing IAM permission says to deploy the stack",
+        sanitizeError(denied, "t").includes("CDK"), sanitizeError(denied, "t"));
+
+      check("an actionable error survives production sanitising intact",
+        sanitizeError(new ActionableError("Run the thing in the place"), "t") === "Run the thing in the place");
+
+      // Anything genuinely unknown is still hidden.
+      check("  while an unrecognised error is still generic in production",
+        sanitizeError(new Error("host=10.0.3.4 password=hunter2"), "t").includes("unexpected"),
+        sanitizeError(new Error("host=10.0.3.4 password=hunter2"), "t"));
+    } finally {
+      if (wasProd === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = wasProd;
+    }
+  }
+
   // ── scope expansion ────────────────────────────────────────────────
   {
     const scopes = scopesFor([

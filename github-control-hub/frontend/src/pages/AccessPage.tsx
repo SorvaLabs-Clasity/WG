@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useAuth } from "../App";
 import {
   Page, Back, Note, Pill, Empty, Spinner, RailCard, Sheet, SheetHeader, Block,
-  InsetRow, SearchInput, Segmented, RefreshButton, type Intent,
+  InsetRow, SearchInput, Segmented, RefreshButton, enter, type Intent,
 } from "../design";
 import { useAccessSummary, useUserAccess, useRepoAccess, useAccessRepos } from "../hooks/useAccess";
 import type { AccessPath, Person, OrgRole } from "../api/access";
@@ -15,6 +15,9 @@ import type { AccessPath, Person, OrgRole } from "../api/access";
  * the answer is only useful if it shows the route: revoking a direct grant
  * changes nothing if the person is also in a team that owns the repository.
  */
+
+/** Rendering 356 rows at once is slow and unreadable; the search box is the answer. */
+const LIST_CAP = 200;
 
 const ROLE_TONE: Record<string, Intent> = {
   admin: "danger", maintain: "warn", write: "info", push: "info", triage: "neutral", read: "neutral",
@@ -29,6 +32,41 @@ function describePath(p: AccessPath): string {
   if (p.via === "org_owner") return "organization owner";
   if (p.via === "team") return `${p.teamName ?? p.team} team`;
   return "granted to them directly";
+}
+
+/**
+ * GitHub serves everyone's avatar at github.com/<login>.png.
+ *
+ * Reading it from the graph meant a grey circle until the next sync, and a
+ * permanently grey one for anyone who appears only as a collaborator. The
+ * public URL needs no collection, no storage and no API call, and it is
+ * correct the moment someone changes their picture.
+ */
+function Avatar({ login, size = 32 }: { login: string; size?: number }) {
+  const [failed, setFailed] = useState(false);
+  const px = `${size}px`;
+
+  if (failed) {
+    // A deleted account, or no network. A letter beats a broken-image icon.
+    return (
+      <span style={{ width: px, height: px }}
+        className="shrink-0 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 grid place-items-center font-bold"
+        aria-hidden>
+        <span style={{ fontSize: size * 0.42 }}>{login.charAt(0).toUpperCase()}</span>
+      </span>
+    );
+  }
+
+  return (
+    <img
+      src={`https://github.com/${encodeURIComponent(login)}.png?size=${size * 2}`}
+      alt=""
+      loading="lazy"
+      onError={() => setFailed(true)}
+      style={{ width: px, height: px }}
+      className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 object-cover"
+    />
+  );
 }
 
 function OrgRoleTag({ role }: { role: OrgRole }) {
@@ -169,16 +207,22 @@ export default function AccessPage() {
         repoList.length === 0 ? (
           <Empty title="No repositories" body="Nothing in the graph matches that." />
         ) : (
-          <div className="grid gap-2">
-            {repoList.slice(0, 400).map((r, i) => (
-              <InsetRow key={r} intent="neutral" index={i}>
-                <button onClick={() => setOpenRepo(r)}
-                  className="w-full text-left font-mono text-[13.5px] font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400">
+          <>
+            <div className="grid gap-1.5">
+              {repoList.slice(0, LIST_CAP).map((r, i) => (
+                <button key={r} onClick={() => setOpenRepo(r)}
+                  style={enter(i, 12, 200)}
+                  className="w-full text-left px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-[13.5px] font-semibold text-slate-800 dark:text-slate-100 hover:border-slate-400 dark:hover:border-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                   {r}
                 </button>
-              </InsetRow>
-            ))}
-          </div>
+              ))}
+            </div>
+            {repoList.length > LIST_CAP && (
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-3">
+                Showing {LIST_CAP} of {repoList.length}. Search to narrow it down.
+              </p>
+            )}
+          </>
         )
       )}
     </Page>
@@ -205,9 +249,7 @@ function PersonRow({ person, index, onOpen }: { person: Person; index: number; o
       index={index} onClick={onOpen}>
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div className="flex items-center gap-3 min-w-0">
-          {person.avatarUrl
-            ? <img src={person.avatarUrl} alt="" className="h-8 w-8 rounded-full shrink-0" />
-            : <div className="h-8 w-8 rounded-full bg-slate-200 dark:bg-slate-700 shrink-0" />}
+          <Avatar login={person.login} size={32} />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-bold text-[14px] text-slate-900 dark:text-white">{person.login}</span>
@@ -248,11 +290,23 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
 }) {
   const { data, isLoading } = useUserAccess(login);
   const [showArchived, setShowArchived] = useState(true);
+  const [query, setQuery] = useState("");
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (data?.repos ?? [])
+      .filter(r => showArchived || !r.archived)
+      // Searching the routes too, so "platform" finds everything a team gives
+      // this person — which is the question behind most searches here.
+      .filter(r => !q
+        || r.repo.toLowerCase().includes(q)
+        || r.role.toLowerCase().includes(q)
+        || r.paths.some(p => (p.teamName ?? p.team ?? p.via).toLowerCase().includes(q)));
+  }, [data, query, showArchived]);
 
   if (isLoading) return <><Back onClick={onBack}>Access</Back><Spinner /></>;
   if (!data) return <><Back onClick={onBack}>Access</Back><Empty title="Not found" /></>;
 
-  const shown = showArchived ? data.repos : data.repos.filter(r => !r.archived);
   const archivedCount = data.repos.filter(r => r.archived).length;
   const direct = data.repos.filter(r => r.paths.some(p => p.via === "direct"));
 
@@ -263,6 +317,7 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
         <SheetHeader
           intent={data.orgRole === "owner" ? "warn" : "neutral"}
           title={data.login}
+          aside={<Avatar login={data.login} size={44} />}
           subtitle={
             data.orgRole === "owner"
               ? "An organization owner. Admin on every repository by virtue of the role — removing individual grants does not change that."
@@ -294,13 +349,21 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
               {showArchived ? `Hide ${archivedCount} archived` : `Show ${archivedCount} archived`}
             </button>
           )}>
+          {data.repos.length > 8 && (
+            <div className="mb-4">
+              <SearchInput value={query} onChange={setQuery}
+                placeholder="Find a repository, a team, or a permission" />
+            </div>
+          )}
           {shown.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Nothing beyond what every member of the organization already has.
+              {query
+                ? `Nothing of theirs matches "${query}".`
+                : "Nothing beyond what every member of the organization already has."}
             </p>
           ) : (
             <ul className="grid gap-2">
-              {shown.map((r, i) => (
+              {shown.slice(0, LIST_CAP).map((r, i) => (
                 <InsetRow key={r.repo} intent={ROLE_TONE[r.role] ?? "neutral"} index={i}>
                   <div className="flex items-start justify-between gap-4 flex-wrap">
                     <div className="min-w-0 flex-1">
@@ -395,6 +458,7 @@ function RepoDetail({ repo, onBack, onOpenPerson }: {
                 <div className="flex items-start justify-between gap-4 flex-wrap">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
+                      <Avatar login={p.login} size={20} />
                       <button onClick={() => onOpenPerson(p.login)}
                         className="font-bold text-[13.5px] text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400">
                         {p.login}
