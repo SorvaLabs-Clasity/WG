@@ -276,6 +276,47 @@ const group = (id: string): ResourceSnapshot => ({
       accessMethod(account("1", "x", { access: "keys", roleArn: "arn:aws:iam::1:role/r" })) === "keys");
   }
 
+  // ── deploying to some accounts, not all of them ────────────────────
+  {
+    const fs = require("fs");
+    const path = require("path");
+    const script = fs.readFileSync(
+      path.join(__dirname, "../../scripts/deploy-guardrail-role-org-wide.sh"), "utf8");
+    const page = fs.readFileSync(
+      path.join(__dirname, "../frontend/src/pages/AwsPage.tsx"), "utf8");
+
+    // Naming accounts alongside an organisational unit deploys to the whole
+    // unit *as well*, unless the filter narrows it. Getting this wrong means
+    // the role lands in every account when someone asked for three.
+    for (const [what, src] of [["the script", script], ["the app", page]] as const) {
+      // Interpolations collapsed to a placeholder, so one regex reads both a
+      // shell string and a JS template literal.
+      const flat = src.replace(/\$\{[^}]*\}/g, "X").replace(/\$[A-Z_]+/g, "X");
+      // Deliberately over the whole file: the first mention of the filter is
+      // in a comment explaining it, and a window around that misses the line
+      // that actually does the work.
+      check(`${what} narrows a chosen-accounts deployment with an intersection filter`,
+        /OrganizationalUnitIds=X,Accounts=X,AccountFilterType=INTERSECTION/.test(flat),
+        flat.match(/OrganizationalUnitIds=[^\n`"]*/g));
+      check(`  and the every-account form has no account list to narrow`,
+        /OrganizationalUnitIds=X(?![,\w])/.test(flat),
+        flat.match(/OrganizationalUnitIds=[^\n`"]*/g));
+    }
+
+    // Auto-deployment adds the role to accounts created later. Right for
+    // "every account", wrong for a chosen few — the point of choosing is that a
+    // new account is not automatically in scope.
+    check("the script only auto-deploys to later accounts when all were chosen",
+      /if \[\[ "\$SCOPE" == "all" \]\]/.test(script)
+      && /AUTO_DEPLOY="true"[\s\S]*?AUTO_DEPLOY="false"/.test(script),
+      "auto-deployment is not tied to the scope choice");
+    check("  and so does the app",
+      /const autoDeploy = how === "org"/.test(page), "the app auto-deploys for a chosen subset");
+
+    check("the script asks which accounts rather than assuming all of them",
+      /ask SCOPE .*all\/some.* "some"/.test(script), "the script defaults to every account");
+  }
+
   // ── the ARNs a watched account must trust ──────────────────────────
   {
     // GetCallerIdentity answers with a session ARN. A trust policy needs the

@@ -96,8 +96,27 @@ template, every parameter filled in, a generated external ID, and a link to the
 right console page. Nothing to run.
 
 **From a checkout.** `scripts/deploy-guardrail-role-org-wide.sh` does the same
-thing as a StackSet with auto-deployment, so accounts created later get the role
-without anyone remembering.
+thing from the command line.
+
+### Choosing which accounts
+
+Three shapes, and none of them is the default:
+
+| | Reaches | Accounts created later |
+|---|---|---|
+| **Accounts I choose** | only the ids you list | not included |
+| **Every account** | the whole organisation | included automatically |
+| **Just one** | one account | n/a — repeat per account |
+
+"Accounts I choose" uses a StackSet aimed at your organisation root with
+`AccountFilterType=INTERSECTION`, which narrows it to exactly the ids given.
+The filter matters: naming accounts *without* it deploys to the whole
+organisational unit as well. Auto-deployment is off for this shape, because the
+point of choosing accounts is that a new one does not join by itself.
+
+There is no configuration that reaches an account you did not name. The role
+has to exist in an account before this app can see it at all, and creating it
+is an action taken in that account.
 
 ### Why the app does not create the role itself
 

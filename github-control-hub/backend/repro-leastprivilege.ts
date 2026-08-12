@@ -69,7 +69,7 @@ const accountsCode = code(accountsTs);
       !/["']iam:/.test(cdkCode), "cdk-stack.ts grants an iam: action");
     check("  nor any Organizations action beyond reading the account list",
       [...cdkCode.matchAll(/["']organizations:(\w+)["']/g)].every(m =>
-        ["ListAccounts", "DescribeOrganization"].includes(m[1])),
+        ["ListAccounts", "DescribeOrganization", "ListRoots"].includes(m[1])),
       [...cdkCode.matchAll(/["']organizations:(\w+)["']/g)].map(m => m[1]));
   }
 

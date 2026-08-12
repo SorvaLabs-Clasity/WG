@@ -748,7 +748,8 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
  */
 function SetupAccess() {
   const [open, setOpen] = useState(false);
-  const [how, setHow] = useState<"org" | "one">("org");
+  const [how, setHow] = useState<"some" | "org" | "one">("some");
+  const [picked, setPicked] = useState<Set<string>>(new Set());
   const { data, isLoading, error } = useAccountSetup(open);
 
   if (!open) {
@@ -770,17 +771,40 @@ function SetupAccess() {
     URL.revokeObjectURL(url);
   };
 
-  const cliOrg = data && [
+  const orgAccounts = data?.organization.accounts ?? [];
+  const rootId = data?.organization.rootId ?? null;
+  const chosenIds = [...picked];
+
+  // Aiming a StackSet at some accounts rather than all of them still needs an
+  // organisational unit to work against; AccountFilterType=INTERSECTION narrows
+  // the root down to exactly the ids listed. Without the filter, naming
+  // accounts alongside an OU deploys to the OU as well.
+  const targets = how === "org"
+    ? `OrganizationalUnitIds=${rootId ?? "<your organization root>"}`
+    : `OrganizationalUnitIds=${rootId ?? "<your organization root>"},Accounts=${chosenIds.join(",") || "<account ids>"},AccountFilterType=INTERSECTION`;
+
+  // Auto-deployment adds the role to accounts created later. That is right for
+  // "every account" and wrong for a chosen few — the whole point of choosing is
+  // that a new account is not automatically in scope.
+  const autoDeploy = how === "org";
+
+  const cli = data && [
     `aws cloudformation create-stack-set \\`,
     `  --stack-set-name ${data.stackSetName} \\`,
     `  --template-body file://${data.templateFileName} \\`,
     `  --capabilities CAPABILITY_NAMED_IAM \\`,
     `  --permission-model SERVICE_MANAGED \\`,
-    `  --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \\`,
+    `  --auto-deployment Enabled=${autoDeploy},RetainStacksOnAccountRemoval=false \\`,
     `  --parameters \\`,
     `    'ParameterKey=ControlHubRoleArns,ParameterValue="${data.parameters.ControlHubRoleArns.replace(/,/g, "\\,")}"' \\`,
     `    ParameterKey=RoleName,ParameterValue=${data.parameters.RoleName} \\`,
     `    ParameterKey=ExternalId,ParameterValue=${data.parameters.ExternalId}`,
+    ``,
+    `aws cloudformation create-stack-instances \\`,
+    `  --stack-set-name ${data.stackSetName} \\`,
+    `  --deployment-targets ${targets} \\`,
+    `  --regions ${data.region} \\`,
+    `  --operation-preferences FailureTolerancePercentage=100,MaxConcurrentPercentage=100`,
   ].join("\n");
 
   return (
@@ -797,19 +821,63 @@ function SetupAccess() {
       {data && (
         <>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mb-4 max-w-[76ch]">
-            Each account grants a role that can read S3 and CloudWatch Logs settings — not the
-            contents of a bucket, not a log line, and nothing it can change. Everything below is
-            filled in for you; the only thing this app cannot do is press Create, because creating
-            IAM roles across an organization requires permissions that would let whoever held them
-            deploy an administrator role everywhere.
+            Only the accounts you set this up in are ever touched — there is no version of this that
+            reaches an account you did not choose. Each one grants a role that can read S3 and
+            CloudWatch Logs settings, not the contents of a bucket, not a log line, and nothing it
+            can change. Everything below is filled in for you; the only thing this app cannot do is
+            press Create, because creating IAM roles across an organization requires permissions
+            that would let whoever held them deploy an administrator role everywhere.
           </p>
 
           <div className="mb-5">
             <Segmented value={how} onChange={setHow} options={[
-              ["org", "Every account at once"],
-              ["one", "A single account"],
+              ["some", "Accounts I choose"],
+              ["org", "Every account"],
+              ["one", "Just one"],
             ]} />
           </div>
+
+          {how === "some" && (
+            <div className="mb-5 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+              {!data.organization.available ? (
+                <p className="text-[13px] text-slate-500 dark:text-slate-400">
+                  {data.organization.error} Use <span className="font-semibold">Just one</span> and repeat it
+                  for each account you want — for a handful, that is less work than setting up an
+                  organization for it.
+                </p>
+              ) : orgAccounts.length === 0 ? (
+                <p className="text-[13px] text-slate-500 dark:text-slate-400">
+                  No other accounts in the organization.
+                </p>
+              ) : (
+                <>
+                  <p className="text-[12.5px] font-bold text-slate-600 dark:text-slate-300 mb-2">
+                    Which accounts should this app be able to read?
+                  </p>
+                  <div className="grid gap-1 mb-3 max-h-64 overflow-y-auto">
+                    {orgAccounts.map(a => (
+                      <label key={a.accountId} className="flex items-center gap-3 py-1 cursor-pointer">
+                        <input type="checkbox" checked={picked.has(a.accountId)}
+                          onChange={e => setPicked(p => {
+                            const next = new Set(p);
+                            if (e.target.checked) next.add(a.accountId); else next.delete(a.accountId);
+                            return next;
+                          })}
+                          className="h-4 w-4 rounded accent-slate-900 dark:accent-white" />
+                        <span className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-100">{a.name}</span>
+                        <span className="font-mono text-[11.5px] text-slate-400">{a.accountId}</span>
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
+                    {picked.size === 0
+                      ? "Pick at least one — the values below fill in as you do."
+                      : `${picked.size} chosen. Accounts created later are not included; come back and add them.`}
+                  </p>
+                </>
+              )}
+            </div>
+          )}
 
           <Step n={1} title="Download the template">
             <Button onClick={download}>Download {data.templateFileName}</Button>
@@ -818,23 +886,39 @@ function SetupAccess() {
             </span>
           </Step>
 
-          <Step n={2} title={how === "org"
-            ? "Open CloudFormation StackSets in your organization's management account"
-            : "Open CloudFormation in the account you want to watch"}>
-            <a href={how === "org" ? data.consoleUrls.stackSets : data.consoleUrls.singleStack}
+          <Step n={2} title={how === "one"
+            ? "Open CloudFormation in the account you want to watch"
+            : "Open CloudFormation StackSets in your organization's management account"}>
+            <a href={how === "one" ? data.consoleUrls.singleStack : data.consoleUrls.stackSets}
               target="_blank" rel="noreferrer"
               className="font-bold text-blue-600 dark:text-blue-400 hover:underline">
-              {how === "org" ? "Create StackSet" : "Create stack"} ↗
+              {how === "one" ? "Create stack" : "Create StackSet"} ↗
             </a>
-            <span className="ml-2 text-[12.5px] text-slate-500 dark:text-slate-400">
-              Upload the file, then choose{" "}
-              {how === "org"
-                ? <>Service-managed permissions, and Deploy to organization with automatic deployment on — so accounts created later are covered too.</>
-                : <>next.</>}
-            </span>
+            <div className="mt-1.5 text-[12.5px] text-slate-500 dark:text-slate-400">
+              {how === "one" && <>Upload the file and continue. Repeat in each account you want watched.</>}
+              {how === "org" && (
+                <>Upload the file, choose <span className="font-semibold">Service-managed permissions</span>,
+                and deploy to your whole organization with{" "}
+                <span className="font-semibold">automatic deployment</span> on — so accounts created later
+                are covered without anyone remembering.</>
+              )}
+              {how === "some" && (
+                <>Upload the file, choose <span className="font-semibold">Service-managed permissions</span>,
+                then at Deployment targets pick{" "}
+                <span className="font-semibold">Deploy to organizational units</span>, enter your root{" "}
+                {rootId && <span className="font-mono text-[11.5px]">{rootId}</span>}, and set the account
+                filter to <span className="font-semibold">Intersection</span> with the ids below. Leave
+                automatic deployment <span className="font-semibold">off</span> — you are choosing accounts,
+                so a new one should not join by itself.</>
+              )}
+            </div>
           </Step>
 
           <Step n={3} title="Paste these parameters">
+            {how === "some" && picked.size > 0 && (
+              <Copyable label="Account IDs (the intersection filter)" value={chosenIds.join(",")} />
+            )}
+            {how === "some" && rootId && <Copyable label="Organizational unit (your root)" value={rootId} />}
             <Copyable label="ControlHubRoleArns" value={data.parameters.ControlHubRoleArns} />
             <Copyable label="RoleName" value={data.parameters.RoleName} />
             <Copyable label="ExternalId" value={data.parameters.ExternalId} />
@@ -855,17 +939,16 @@ function SetupAccess() {
             assumed the role and confirmed it landed in the account you named.
           </Step>
 
-          {how === "org" && cliOrg && (
+          {how !== "one" && cli && (
             <details className="mt-2">
               <summary className="text-[13px] font-bold text-slate-500 dark:text-slate-400 cursor-pointer hover:text-slate-700 dark:hover:text-slate-200">
                 Prefer the command line?
               </summary>
               <div className="mt-3">
-                <Copyable label="Run from the management account" value={cliOrg} />
+                <Copyable label="Run from the management account" value={cli} />
                 <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
-                  Then <span className="font-mono text-[11.5px]">create-stack-instances</span> against your
-                  organization root. <span className="font-mono text-[11.5px]">scripts/deploy-guardrail-role-org-wide.sh</span>{" "}
-                  in the repo does both and prompts for everything.
+                  <span className="font-mono text-[11.5px]">scripts/deploy-guardrail-role-org-wide.sh</span> in
+                  the repo runs both of these and prompts for everything, including which accounts.
                 </p>
               </div>
             </details>

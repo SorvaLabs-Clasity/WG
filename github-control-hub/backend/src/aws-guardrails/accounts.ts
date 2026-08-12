@@ -323,11 +323,12 @@ export async function storeKeys(
  * how a real account quietly never gets added at all.
  */
 export async function discoverOrganizationAccounts(): Promise<
-  { ok: true; accounts: { accountId: string; name: string; email?: string; status?: string }[] }
+  { ok: true; rootId: string | null; accounts: { accountId: string; name: string; email?: string; status?: string }[] }
   | { ok: false; error: string }
 > {
   try {
-    const { OrganizationsClient, ListAccountsCommand } = await import("@aws-sdk/client-organizations");
+    const { OrganizationsClient, ListAccountsCommand, ListRootsCommand } =
+      await import("@aws-sdk/client-organizations");
     // Organizations is a global service with its endpoint in us-east-1.
     const orgs = new OrganizationsClient({ region: "us-east-1" });
 
@@ -342,7 +343,21 @@ export async function discoverOrganizationAccounts(): Promise<
       NextToken = page.NextToken;
     } while (NextToken);
 
-    return { ok: true, accounts: accounts.sort((a, b) => a.name.localeCompare(b.name)) };
+    // A StackSet aimed at some accounts rather than all of them still needs an
+    // organisational unit to intersect against, and the root is the one that
+    // always exists.
+    const rootId = await (async () => {
+      try {
+        const { Roots } = await orgs.send(new ListRootsCommand({}));
+        return Roots?.[0]?.Id ?? null;
+      } catch {
+        // Only the "some accounts" instructions need it, so a refusal here
+        // costs one option rather than the whole screen.
+        return null;
+      }
+    })();
+
+    return { ok: true, rootId, accounts: accounts.sort((a, b) => a.name.localeCompare(b.name)) };
   } catch (err: any) {
     const name = err?.name ?? "";
     if (name === "AWSOrganizationsNotInUseException") {

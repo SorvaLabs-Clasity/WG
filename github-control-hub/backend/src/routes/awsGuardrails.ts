@@ -339,7 +339,7 @@ router.get("/accounts/discover", requireAdmin, async (req: Request, res: Respons
       };
     }));
 
-    res.json({ available: true, roleName: GUARDRAIL_ROLE_NAME, accounts });
+    res.json({ available: true, roleName: GUARDRAIL_ROLE_NAME, rootId: found.rootId, accounts });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }
@@ -497,7 +497,12 @@ router.post("/accounts/:accountId/verify", requireAdmin, async (req: Request<{ a
  */
 router.get("/accounts/setup", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const [principals, home] = await Promise.all([controlHubPrincipals(), homeAccountId()]);
+    const [principals, home, org] = await Promise.all([
+      controlHubPrincipals(), homeAccountId(),
+      // Listed but not probed. Opening this panel should not fire an
+      // AssumeRole at forty accounts; that is what "Find my accounts" is for.
+      discoverOrganizationAccounts(),
+    ]);
     // Reuse an ID already in play rather than handing out a new one that would
     // not match the accounts already set up with it.
     const existing = (await listRegisteredAccounts()).find(a => a.externalId)?.externalId;
@@ -520,6 +525,9 @@ router.get("/accounts/setup", requireAdmin, async (req: Request, res: Response) 
       // The org-wide path. One StackSet, every account, plus accounts made
       // later — which is the only version of this that stays true.
       stackSetName: "github-control-hub-guardrail-access",
+      organization: org.ok
+        ? { available: true, rootId: org.rootId, accounts: org.accounts.filter(a => a.accountId !== home) }
+        : { available: false, error: org.error, rootId: null, accounts: [] },
       consoleUrls: {
         stackSets: `https://${region}.console.aws.amazon.com/cloudformation/home?region=${region}#/stacksets/create`,
         singleStack: `https://${region}.console.aws.amazon.com/cloudformation/home?region=${region}#/stacks/create`,

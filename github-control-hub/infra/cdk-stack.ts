@@ -111,7 +111,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // and names are already recorded here, so nobody has to type them.
     role.addToPolicy(new iam.PolicyStatement({
       sid: "DiscoverOrganizationAccounts",
-      actions: ["organizations:ListAccounts", "organizations:DescribeOrganization"],
+      actions: ["organizations:ListAccounts", "organizations:DescribeOrganization", "organizations:ListRoots"],
       resources: ["*"],   // neither call supports resource-level scoping
     }));
 

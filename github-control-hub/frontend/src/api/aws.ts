@@ -145,6 +145,12 @@ export interface AccountSetup {
   template: string;
   templateFileName: string;
   stackSetName: string;
+  organization: {
+    available: boolean;
+    error?: string;
+    rootId: string | null;
+    accounts: { accountId: string; name: string; email?: string; status?: string }[];
+  };
   consoleUrls: { stackSets: string; singleStack: string; organizations: string };
   parameters: Record<string, string>;
 }
@@ -154,7 +160,7 @@ export const fetchAccountSetup = (externalId?: string) =>
 
 export const fetchAwsAccounts = () => apiGet<AwsAccount[]>("/aws/accounts");
 export const discoverAwsAccounts = (externalId?: string) =>
-  apiGet<{ available: boolean; error?: string; roleName?: string; accounts: DiscoveredAccount[] }>(
+  apiGet<{ available: boolean; error?: string; roleName?: string; rootId?: string | null; accounts: DiscoveredAccount[] }>(
     `/aws/accounts/discover${externalId ? `?externalId=${encodeURIComponent(externalId)}` : ""}`);
 export const saveAwsAccount = (body: Partial<AwsAccount>) => apiPost<AwsAccount>("/aws/accounts", body);
 export const removeAwsAccount = (accountId: string) =>
