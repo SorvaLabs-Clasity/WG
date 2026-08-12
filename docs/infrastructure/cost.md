@@ -1,6 +1,6 @@
 # Cost
 
-Measured against a real organization of 356 repositories.
+Figures below assume an organization of roughly 350 repositories.
 
 | Item | Monthly |
 |---|---|

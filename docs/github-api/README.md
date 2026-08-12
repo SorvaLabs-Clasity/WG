@@ -4,6 +4,42 @@ Every GitHub interaction goes through **Octokit**, GitHub's official JavaScript
 SDK, against the REST API. Fourteen backend files import it; roughly forty
 distinct endpoints are in use.
 
+## Octokit is not the API
+
+They are often said in the same breath, which makes them sound like
+alternatives. They are two different layers.
+
+**The GitHub API** is the thing that exists on GitHub's servers: a set of HTTPS
+URLs that accept and return JSON. It is language-agnostic. `curl` can call it.
+
+**Octokit** is a client library that runs in *this* codebase and makes those
+HTTP calls for you. It is GitHub's own, so it stays in step with the API, but
+it has no authority of its own — it is a convenience over the same requests.
+
+The same operation, both ways:
+
+```bash
+# The API, directly
+curl -X PUT https://api.github.com/repos/acme/api/branches/main/protection \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Accept: application/vnd.github+json" \
+  -d '{"required_status_checks":null,"enforce_admins":true,...}'
+```
+
+```ts
+// The same call, through Octokit
+await octokit.rest.repos.updateBranchProtection({
+  owner: "acme", repo: "api", branch: "main", enforce_admins: true, ...
+});
+```
+
+Identical HTTP request on the wire. What differs is everything around it:
+whether a typo is caught at compile time, who assembles the auth header, what
+happens on page two of the results, and what a 403 looks like when it arrives.
+
+Removing Octokit would not remove a dependency on GitHub — it would mean
+writing the parts below by hand.
+
 ```ts
 const octokit = createOctokit(token);
 await octokit.rest.repos.updateBranchProtection({ owner, repo, branch, ... });
@@ -48,25 +84,8 @@ here are mostly bulk listings where the win would be small.
 
 **Raw `fetch`.** Would mean writing pagination, auth refresh, retry and error
 normalisation ourselves — four things that are boring to write and unpleasant to
-debug.
-
-## Why not Terraform
-
-A fair question, and the answer is not "Terraform is worse". They do different
-jobs.
-
-| | This app | Terraform |
-|---|---|---|
-| Authority | Your token; GitHub decides | One service credential |
-| Drift | Reports it, names who caused it | Corrects it on next apply |
-| Reversal | Records an undo per action | Change the config, apply again |
-| Partial adoption | Reads whatever is there | Needs every repo imported first |
-| Audience | Someone clicking a button | Someone reading a plan diff |
-
-Terraform is genuinely better at enforcing one standard everywhere and at
-putting changes through review. This app is better at *observing* an estate
-nobody has declared yet, and at letting a person act with their own
-permissions and leave a trail. Most organizations sensibly run both.
+debug, and that fail in ways nobody notices until a page is quietly missing its
+second hundred results.
 
 ## Read next
 

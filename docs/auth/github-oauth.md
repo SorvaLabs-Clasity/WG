@@ -25,9 +25,10 @@ The consequence is that **the app has no authority of its own.** If you cannot
 change branch protection on a repository, neither can the app on your behalf.
 There is no service account with org-admin sitting behind a button.
 
-This is also why there is no Terraform-style service credential: one shared
-credential means everyone who can reach the tool has the same power as everyone
-else who can, and the audit trail says "the tool did it".
+This is also why there is no shared service credential. One credential for
+everything would mean everyone who can reach the tool has the same power as
+everyone else who can, and the audit trail would say "the tool did it" rather
+than naming a person.
 
 ## Session storage
 

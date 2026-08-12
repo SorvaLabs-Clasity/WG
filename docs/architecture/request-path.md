@@ -35,7 +35,7 @@ allowed to do is a separate decision — see
 ## Reads are different
 
 Most read paths use the **system token** from the GitHub App rather than
-yours — listing 356 repositories with every user's token would burn through
+yours — listing hundreds of repositories with every user's token would burn through
 per-user rate limits immediately. The system token has a shared 12,500/hour
 budget. See [rate limits](../github-api/rate-limits.md).
 

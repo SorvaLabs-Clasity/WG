@@ -40,9 +40,8 @@ stay closed to everything but GitHub.
 
 ## What there isn't
 
-- **No Terraform.** GitHub is managed through its REST API, live, with the
-  caller's own permissions. See [why](../github-api/README.md#why-not-terraform).
-- **No agent** installed in any repository or AWS account.
+- **No agent** installed in any repository or AWS account. GitHub is read and
+  changed through its REST API, live, with the caller's own permissions.
 - **No database** other than DynamoDB.
 - **No scheduled jobs in the backend.** The only schedule is the Lambda's.
   Graph rebuilds happen when someone presses Sync data.

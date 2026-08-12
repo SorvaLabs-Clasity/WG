@@ -41,7 +41,7 @@ per member per repository, hundreds of thousands of rows saying the same thing,
 and no query asks about it.
 
 **Every collaborator edge carries `source`** — `org_owner`, `team` or `direct`.
-Without it, an organization owner is admin on all 356 repositories and floods
+Without it, an organization owner is admin on every repository and floods
 every result. With it, a query can ask the useful question: who has admin that
 ownership and team membership do not already explain.
 

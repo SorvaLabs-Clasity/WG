@@ -10,7 +10,7 @@ Two very different states look identical if you only count alerts:
 - a repository with Dependabot **on** and no alerts — genuinely clean
 - a repository with Dependabot **off** — nothing is known either way
 
-The header refuses to call the second one "all clear". With 4 of 356 repos
+The header refuses to call the second one "all clear". With a handful of hundreds
 scanned it reads *Mostly unscanned*, not *Nothing outstanding*, and says in
 words how many are unwatched.
 
@@ -22,7 +22,7 @@ words how many are unwatched.
 
 ## Toggling
 
-Enabling Dependabot on a repository refreshes **that repository**, not all 356.
+Enabling Dependabot on a repository refreshes **that repository**, not every one.
 An earlier version invalidated every Dependabot query on each toggle, which
 turned a few clicks into thousands of API calls.
 

@@ -28,8 +28,8 @@ distinct from "everything low and above".
 
 - A **ring** appears only where a denominator is meaningful. A check counting
   users or teams shows a count, not a fraction of nothing.
-- The **verdict** reflects matches as failures, not passes. 347 of 356
-  repositories unprotected is not "good".
+- The **verdict** reflects matches as failures, not passes. Nearly every repository
+  unprotected is not "good".
 - Clicking a card opens the full list, with the reason each entry matched.
 
 ## What it will not do

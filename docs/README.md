@@ -40,5 +40,5 @@ handed to whoever approves the deployment.
 An Electron app runs a local Express backend and talks to the GitHub REST API
 as **you**, so GitHub decides what you are allowed to do. An EC2 instance runs
 the same backend purely to receive GitHub webhooks, which no desktop app can.
-A Lambda evaluates AWS guardrails on a schedule. State lives in DynamoDB. There
-is no Terraform and no agent installed anywhere.
+A Lambda evaluates AWS guardrails on a schedule. State lives in DynamoDB.
+Nothing is installed into the repositories or accounts being watched.

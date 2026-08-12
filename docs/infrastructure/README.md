@@ -33,16 +33,15 @@ one that cannot. It is off by default and the stack prints which it is:
 CanChangeAnything = no - read-only
 ```
 
-## Why CDK and not Terraform
+## Why the stack is TypeScript
 
-Mostly a wash, with one real advantage here: the Lambda is bundled straight from
-`backend/src/aws-guardrails/handler.ts`, so the deployed function and the app
-share one source tree and cannot drift. The role name is a shared TypeScript
-constant across the stack, the app and the account template, with a test
-asserting all three agree.
+The Lambda is bundled straight from `backend/src/aws-guardrails/handler.ts`, so
+the deployed function and the app share one source tree and cannot drift apart.
+The role name is a shared constant across the stack, the app and the account
+role template, with a test asserting all three agree.
 
-If your organization standardises on Terraform, converting this stack is about
-250 lines and a reasonable thing to do.
+Defining infrastructure in the same language as the code it deploys is what
+makes both of those possible.
 
 ## Read next
 
