@@ -376,10 +376,9 @@ function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName }: {
   config: WidgetConfig; onBack: () => void; onEdit: () => void;
   canEdit: boolean; graphEmpty?: boolean; orgName?: string;
 }) {
-  const { items, isLoading, total } = useWidgetData(config);
+  const { items, isLoading, total, entity } = useWidgetData(config);
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const tone = TONE[verdict.level];
-  const entity = entityOf(items);
   const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
   const n = useCountUp(verdict.value);
 
@@ -423,12 +422,17 @@ function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName }: {
 
 type Entity = "repository" | "user" | "team";
 
-/** What this check counts, read off the rows it returned. */
-function entityOf(items: any[]): Entity {
-  const first = items.find(i => i?.repo || i?.user || i?.team);
-  if (first?.user) return "user";
-  if (first?.team) return "team";
-  return "repository";
+/**
+ * What a check counts.
+ *
+ * Declared on the query rather than inferred: an empty result has no rows to
+ * read, and the id is not a description — inferring from a "repos-" prefix is
+ * what gave "unowned-repos" no denominator while its neighbour had one.
+ */
+function entityForConfig(config: WidgetConfig): Entity {
+  if (config.type === "preset") return "repository";
+  const option = QUERY_OPTIONS.find(q => q.id === config.queryId) as { entity?: Entity } | undefined;
+  return option?.entity ?? "repository";
 }
 
 const PLURAL: Record<Entity, [string, string]> = {
@@ -482,7 +486,7 @@ function CheckCard({
   canEdit: boolean; onEdit: () => void; onRemove: () => void;
   graphEmpty?: boolean;
 }) {
-  const { items, isLoading, total } = useWidgetData(config);
+  const { items, isLoading, total, entity } = useWidgetData(config);
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const n = useCountUp(verdict.value);
   const tone = TONE[verdict.level];
@@ -499,7 +503,6 @@ function CheckCard({
   }, [isLoading, verdict, config.id, onReport]);
 
   const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
-  const entity = entityOf(items);
   const preview = items.filter((i: any) => !i.status || i.status === "fail").slice(0, 3);
   const hidden = Math.max(0, verdict.value - preview.length);
 
@@ -677,10 +680,13 @@ function useWidgetData(config: WidgetConfig) {
     return { items: rawItems, isLoading: loading };
   }, [config, depsData, depsLoading, bypassData, bypassLoading, queryData, queryLoading]);
 
-  const isRepoQuery = config.type === "preset" || (config.type === "query" && config.queryId?.startsWith("repos-"));
-  const total = isRepoQuery && repos ? repos.length : null;
+  // Only a check that counts repositories has the organisation as its
+  // denominator. Users and teams do not, and a share of the wrong thing is
+  // worse than no share.
+  const entity = entityForConfig(config);
+  const total = entity === "repository" && repos ? repos.length : null;
 
-  return { items, isLoading, total };
+  return { items, isLoading, total, entity };
 }
 
 /* ─── Widget Card (Grid View) ─── */

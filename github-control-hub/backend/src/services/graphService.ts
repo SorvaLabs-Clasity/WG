@@ -93,18 +93,24 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         }
       }
       for (const edge of allEdges) {
-        if (edge.type === "has_collaborator" && edge.metadata?.role === "admin") {
-          const repo = edge.pk;
-          const user = edge.sk.replace("USER#", "");
-          const teamMembers = repoTeamMembers.get(repo) || new Set();
-          if (!teamMembers.has(user)) {
-            results.push({
-              repo: repo.replace("REPO#", ""),
-              user,
-              reason: `User ${user} has direct admin access but is not on the owning team`
-            });
-          }
-        }
+        if (edge.type !== "has_collaborator" || edge.metadata?.role !== "admin") continue;
+        // Admin an org owner holds by virtue of the role is not a grant anybody
+        // made, and reporting it would name them on every repository the moment
+        // teams are assigned — burying the access this check exists to find.
+        if (edge.metadata?.source === "org_owner") continue;
+        // Access through the owning team is the arrangement working, not a
+        // finding; team access to a repo the team does not own still is one.
+        const repo = edge.pk;
+        const user = edge.sk.replace("USER#", "");
+        const teamMembers = repoTeamMembers.get(repo) || new Set();
+        if (teamMembers.has(user)) continue;
+        results.push({
+          repo: repo.replace("REPO#", ""),
+          user,
+          reason: edge.metadata?.source === "team"
+            ? `${user} has admin through a team that does not own this repository`
+            : `${user} was granted admin directly and is not on the owning team`,
+        });
       }
       break;
     }
