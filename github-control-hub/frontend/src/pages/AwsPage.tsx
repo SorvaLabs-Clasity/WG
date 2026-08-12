@@ -7,9 +7,9 @@ import {
   useCatalog, useGuardrails, useFindings, useAwsExclusions,
   useCreateGuardrail, useUpdateGuardrail, useDeleteGuardrail, useRunGuardrails,
   useSaveAwsExclusion, useDeleteAwsExclusion,
-  useAwsAccounts, useSaveAwsAccount, useRemoveAwsAccount, useVerifyAwsAccount,
+  useAwsAccounts, useSaveAwsAccount, useRemoveAwsAccount, useVerifyAwsAccount, useDiscoverAwsAccounts,
 } from "../hooks/useAws";
-import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec, AwsAccount } from "../api/aws";
+import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec, AwsAccount, AwsAccessMethod } from "../api/aws";
 import { awsConsoleUrl, consoleLinkLabel } from "../utils/awsConsole";
 
 const KIND_LABELS: Record<string, string> = {
@@ -702,12 +702,146 @@ const MATCH_KINDS: { id: MatchType; label: string; help: string; placeholder: st
  * Reaching them is a role each account grants, so the account that owns the
  * resources decides — and can take the decision back by deleting one stack.
  */
+/** One line saying how the app gets into an account, in words rather than ARNs. */
+function describeAccess(a: AwsAccount): string {
+  if (a.isHome) return "reached with the app's own role";
+  const method: AwsAccessMethod = a.access ?? (a.roleArn ? "role" : "organization");
+  if (method === "keys") return `an access key ending ${a.keyHint ?? "…"}`;
+  if (method === "role") {
+    return `the role ${a.roleArn?.split("/").pop()}` + (a.externalId ? ", with an external ID" : "");
+  }
+  return a.reachedVia
+    ? `${a.reachedVia}, from your AWS Organization`
+    : "a role from your AWS Organization";
+}
+
+/**
+ * Pick accounts out of the organisation rather than typing them.
+ *
+ * The account ids and names already exist somewhere authoritative. Asking a
+ * person to retype twelve digits is how an account ends up watched under the
+ * wrong name — or, far more often, never added at all.
+ */
+function DiscoverAccounts({ existing, onAdd }: {
+  existing: AwsAccount[];
+  onAdd: (body: Partial<AwsAccount>) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading, error } = useDiscoverAwsAccounts(open);
+  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  const [adding, setAdding] = useState(false);
+  const [outcome, setOutcome] = useState<{ added: string[]; failed: { name: string; error: string }[] } | null>(null);
+
+  const candidates = (data?.accounts ?? []).filter(a => !a.isHome && !a.registered);
+
+  const addChosen = async () => {
+    setAdding(true);
+    const added: string[] = [];
+    const failed: { name: string; error: string }[] = [];
+    for (const a of candidates.filter(c => chosen.has(c.accountId))) {
+      try {
+        // One at a time and never aborting the loop: each account is verified
+        // server-side, and one account without a usable role should not stop
+        // the four that have one.
+        await onAdd({ accountId: a.accountId, name: a.name, access: "organization" });
+        added.push(a.name);
+      } catch (e) {
+        failed.push({ name: a.name, error: (e as Error).message });
+      }
+    }
+    setChosen(new Set());
+    setOutcome({ added, failed });
+    setAdding(false);
+  };
+
+  if (!open) {
+    return (
+      <div className="mb-4">
+        <Button variant="primary" onClick={() => setOpen(true)}>
+          Find my accounts
+        </Button>
+        <span className="ml-3 text-[13px] text-slate-500 dark:text-slate-400">
+          Reads the account list from AWS Organizations. Nothing is added until you pick.
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-5 rounded-2xl border border-slate-200 dark:border-slate-700 p-5">
+      <div className="flex items-start justify-between gap-4 mb-3">
+        <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>Accounts in your organization</h3>
+        <button onClick={() => setOpen(false)}
+          className="text-sm font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">Close</button>
+      </div>
+
+      {isLoading && <Spinner />}
+
+      {error && <Note intent="danger">{(error as Error).message}</Note>}
+
+      {data && !data.available && (
+        <Note intent="warn">
+          {data.error} You can still add an account by hand — a role ARN, or an access key pair.
+        </Note>
+      )}
+
+      {outcome && (
+        <Note intent={outcome.failed.length ? "warn" : "good"}>
+          {outcome.added.length > 0 && <>Now checking {outcome.added.join(", ")}. </>}
+          {outcome.failed.length > 0 && (
+            <>Could not reach {outcome.failed.map(f => f.name).join(", ")}: {outcome.failed[0].error}</>
+          )}
+        </Note>
+      )}
+
+      {data?.available && candidates.length === 0 && (
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Every account in the organization is already listed.
+        </p>
+      )}
+
+      {candidates.length > 0 && (
+        <>
+          <div className="grid gap-1.5 mb-4">
+            {candidates.map(a => (
+              <label key={a.accountId}
+                className="flex items-center gap-3 py-1.5 cursor-pointer">
+                <input type="checkbox" checked={chosen.has(a.accountId)}
+                  onChange={e => setChosen(c => {
+                    const next = new Set(c);
+                    e.target.checked ? next.add(a.accountId) : next.delete(a.accountId);
+                    return next;
+                  })}
+                  className="h-4 w-4 rounded accent-slate-900 dark:accent-white" />
+                <span className="text-[14px] font-semibold text-slate-800 dark:text-slate-100">{a.name}</span>
+                <span className="font-mono text-[12px] text-slate-400">{a.accountId}</span>
+                {a.status && a.status !== "ACTIVE" && <Pill intent="warn">{a.status.toLowerCase()}</Pill>}
+              </label>
+            ))}
+          </div>
+          <div className="flex items-center gap-3 flex-wrap">
+            <Button variant="primary" disabled={adding || chosen.size === 0} onClick={addChosen}>
+              {adding ? "Checking access…" : `Add ${chosen.size || ""} ${chosen.size === 1 ? "account" : "accounts"}`.trim()}
+            </Button>
+            <button onClick={() => setChosen(new Set(candidates.map(a => a.accountId)))}
+              className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">Select all</button>
+            <span className="text-[12.5px] text-slate-500 dark:text-slate-400">
+              Each is checked before it is added. Accounts the app cannot get into are reported, not
+              added silently.
+            </span>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function AccountsTab({ accounts, isAdmin }: { accounts?: AwsAccount[]; isAdmin: boolean }) {
   const save = useSaveAwsAccount();
   const remove = useRemoveAwsAccount();
   const verify = useVerifyAwsAccount();
   const [editing, setEditing] = useState<AwsAccount | "new" | null>(null);
-  const [checked, setChecked] = useState<Record<string, { ok: boolean; error?: string }>>({});
+  const [checked, setChecked] = useState<Record<string, { ok: boolean; error?: string; via?: string }>>({});
 
   if (editing) {
     return (
@@ -727,17 +861,21 @@ function AccountsTab({ accounts, isAdmin }: { accounts?: AwsAccount[]; isAdmin: 
     <>
       <Note intent="neutral">
         Guardrails run in every account listed here. The account this app is deployed in is always
-        included and needs no setup. Any other account grants a role — deploy{" "}
-        <span className="font-mono text-[12.5px]">scripts/guardrail-account-role.yaml</span> there, then
-        paste the role ARN it outputs below.
+        included and needs no setup at all. If your accounts are in an AWS Organization, the rest
+        need none either — pick them from the list.
       </Note>
+
+      {isAdmin && <DiscoverAccounts
+        existing={accounts ?? []}
+        onAdd={body => save.mutateAsync(body)}
+      />}
 
       <div className="flex items-center justify-between gap-4 mb-4">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {accounts?.length ?? 0} {(accounts?.length ?? 0) === 1 ? "account" : "accounts"}
           {extra === 0 && " — only the one this app runs in"}
         </p>
-        {isAdmin && <Button variant="primary" onClick={() => setEditing("new")}>Add account</Button>}
+        {isAdmin && <Button onClick={() => setEditing("new")}>Add one by hand</Button>}
       </div>
 
       <div className="grid gap-3">
@@ -754,14 +892,11 @@ function AccountsTab({ accounts, isAdmin }: { accounts?: AwsAccount[]; isAdmin: 
                   </div>
                   <p className="font-mono text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">{a.accountId}</p>
                   <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1.5`}>
-                    {a.regions.join(", ")}
-                    {a.roleArn
-                      ? <> · via <span className="font-mono text-[12px]">{a.roleArn.split("/").pop()}</span>{a.externalId ? " with an external ID" : ""}</>
-                      : <> · reached with the app&rsquo;s own role</>}
+                    {a.regions.join(", ")} · {describeAccess(a)}
                   </p>
                   {result && (
                     <p className={`text-[13px] mt-2 ${result.ok ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-                      {result.ok ? "Reachable." : result.error}
+                      {result.ok ? `Reachable via ${result.via ?? "an assumed role"}.` : result.error}
                     </p>
                   )}
                 </div>
@@ -815,8 +950,12 @@ function AccountEditor({ account, error, saving, onClose, onSave }: {
   const isHome = account?.isHome ?? false;
   const [accountId, setAccountId] = useState(account?.accountId ?? "");
   const [name, setName] = useState(account?.name ?? "");
+  const [method, setMethod] = useState<AwsAccessMethod>(
+    account?.access ?? (account?.roleArn ? "role" : "organization"));
   const [roleArn, setRoleArn] = useState(account?.roleArn ?? "");
   const [externalId, setExternalId] = useState(account?.externalId ?? "");
+  const [accessKeyId, setAccessKeyId] = useState("");
+  const [secretAccessKey, setSecretAccessKey] = useState("");
   const [regions, setRegions] = useState<string[]>(account?.regions ?? ["us-east-1"]);
   const [enabled, setEnabled] = useState(account?.enabled ?? true);
 
@@ -833,7 +972,7 @@ function AccountEditor({ account, error, saving, onClose, onSave }: {
           title={account ? account.name : "Add an AWS account"}
           subtitle={isHome
             ? "This is the account the app runs in. It needs no role, and cannot be removed."
-            : "Deploy scripts/guardrail-account-role.yaml in the target account first — it prints both values below."}
+            : "Most accounts need nothing set up in them at all."}
         />
       <Block title="Identity">
         <Field label="Account ID" hint="Twelve digits. Shown top-right in that account's console.">
@@ -847,17 +986,71 @@ function AccountEditor({ account, error, saving, onClose, onSave }: {
       </Block>
 
       {!isHome && (
-        <Block title="Access">
-          <Field label="Role ARN"
-            hint="The RoleArn output of the CloudFormation stack you deployed in that account.">
-            <input value={roleArn} onChange={e => setRoleArn(e.target.value)}
-              placeholder="arn:aws:iam::123456789012:role/github-control-hub-guardrail-access"
-              className={`${field} font-mono text-[12.5px]`} />
-          </Field>
-          <Field label="External ID"
-            hint="Optional, and only if the role's trust policy requires one. It stops another Control Hub installation from naming this account and being let in.">
-            <input value={externalId} onChange={e => setExternalId(e.target.value)} className={field} />
-          </Field>
+        <Block title="How to get in">
+          <div className="flex flex-wrap gap-2 mb-4">
+            {([
+              ["organization", "From my organization", "Nothing to deploy"],
+              ["role", "A specific role", "Narrowest access"],
+              ["keys", "An access key", "For accounts outside the org"],
+            ] as const).map(([m, title, hint]) => (
+              <button key={m} type="button" onClick={() => setMethod(m)}
+                className={`text-left px-3.5 py-2.5 rounded-xl border transition-colors ${
+                  method === m
+                    ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent"
+                    : "border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-400"
+                }`}>
+                <span className="block text-[13.5px] font-bold">{title}</span>
+                <span className={`block text-[11.5px] ${method === m ? "opacity-70" : "text-slate-400 dark:text-slate-500"}`}>{hint}</span>
+              </button>
+            ))}
+          </div>
+
+          {method === "organization" && (
+            <p className="text-[13px] text-slate-500 dark:text-slate-400 max-w-[72ch]">
+              AWS puts a role into every account opened through Organizations, and the app uses it.
+              There is nothing to create and nothing to copy. Worth knowing: that role carries full
+              administrator rights, far more than the nine calls this app makes. If that matters,
+              deploy <span className="font-mono text-[12px]">scripts/guardrail-account-role.yaml</span>{" "}
+              in the account and it will be preferred automatically — no change needed here.
+            </p>
+          )}
+
+          {method === "role" && (
+            <>
+              <Field label="Role ARN"
+                hint="Any role in that account whose trust policy names this app. scripts/guardrail-account-role.yaml creates one and prints it.">
+                <input value={roleArn} onChange={e => setRoleArn(e.target.value)}
+                  placeholder="arn:aws:iam::123456789012:role/github-control-hub-guardrail-access"
+                  className={`${field} font-mono text-[12.5px]`} />
+              </Field>
+              <Field label="External ID"
+                hint="Only if the role's trust policy requires one. It stops another installation of this app from naming your account and being let in.">
+                <input value={externalId} onChange={e => setExternalId(e.target.value)} className={field} />
+              </Field>
+            </>
+          )}
+
+          {method === "keys" && (
+            <>
+              <Field label="Access key ID"
+                hint={account?.keyHint
+                  ? `A key ending ${account.keyHint} is already stored. Leave both fields blank to keep it.`
+                  : "From an IAM user in that account with read access to S3 and CloudWatch Logs."}>
+                <input value={accessKeyId} onChange={e => setAccessKeyId(e.target.value)}
+                  placeholder="AKIA…" className={`${field} font-mono`} />
+              </Field>
+              <Field label="Secret access key"
+                hint="Written straight to AWS Secrets Manager. It is never stored on the account record and never sent back to this screen.">
+                <input type="password" value={secretAccessKey} onChange={e => setSecretAccessKey(e.target.value)}
+                  autoComplete="off" className={`${field} font-mono`} />
+              </Field>
+              <p className="text-[13px] text-amber-600 dark:text-amber-400 max-w-[72ch]">
+                A key is a credential that lives until someone deletes it. A role is better where you
+                can use one — but a key on an account being checked beats a role on an account nobody
+                got round to setting up.
+              </p>
+            </>
+          )}
         </Block>
       )}
 
@@ -904,10 +1097,17 @@ function AccountEditor({ account, error, saving, onClose, onSave }: {
 
       <div className="flex items-center justify-end gap-3 mt-5">
         <Button onClick={onClose}>Cancel</Button>
-        <Button variant="primary" disabled={saving || !accountId || !name || (!isHome && !roleArn)}
+        <Button variant="primary"
+          disabled={saving || !accountId || !name
+            || (method === "role" && !isHome && !roleArn)
+            || (method === "keys" && !isHome && !account?.keyHint && !(accessKeyId && secretAccessKey))}
           onClick={() => onSave({
             accountId, name, regions, enabled,
-            ...(isHome ? {} : { roleArn, externalId: externalId || undefined }),
+            ...(isHome ? {} : {
+              access: method,
+              ...(method === "role" && { roleArn, externalId: externalId || undefined }),
+              ...(method === "keys" && accessKeyId && secretAccessKey && { accessKeyId, secretAccessKey } as any),
+            }),
           })}>
           {/* The button says what actually happens: the account is not stored
               until the role has been assumed successfully. */}

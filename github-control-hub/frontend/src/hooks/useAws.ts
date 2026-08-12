@@ -3,7 +3,7 @@ import {
   fetchCatalog, fetchGuardrails, createGuardrail, updateGuardrail, deleteGuardrail,
   fetchFindings, runGuardrails, fetchAwsExclusions, createAwsExclusion,
   updateAwsExclusion, deleteAwsExclusion,
-  fetchAwsAccounts, saveAwsAccount, removeAwsAccount, verifyAwsAccount,
+  fetchAwsAccounts, saveAwsAccount, removeAwsAccount, verifyAwsAccount, discoverAwsAccounts,
 } from "../api/aws";
 import type { Guardrail, AwsExclusionList, AwsAccount } from "../api/aws";
 
@@ -28,6 +28,19 @@ export function useAwsAccounts() {
   // Changes only when someone edits them, and every findings row is read
   // against this list, so it is worth not refetching constantly.
   return useQuery({ queryKey: ["aws", "accounts"], queryFn: fetchAwsAccounts, staleTime: 60_000 });
+}
+
+/**
+ * Only fetched when the accounts screen asks for it: it calls out to AWS
+ * Organizations, which is not something to do on every page load.
+ */
+export function useDiscoverAwsAccounts(enabled: boolean) {
+  return useQuery({
+    queryKey: ["aws", "accounts", "discover"],
+    queryFn: discoverAwsAccounts,
+    enabled,
+    staleTime: 5 * 60_000,
+  });
 }
 
 export function useSaveAwsAccount() {

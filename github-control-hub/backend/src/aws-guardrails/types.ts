@@ -178,11 +178,26 @@ export function snapRetention(days: number): number {
  * grants a role, the app's Lambda assumes it, and revoking access is a change
  * in the account that owns the resources rather than a secret to go and delete.
  */
+export type AwsAccessMethod = "home" | "organization" | "role" | "keys";
+
 export interface AwsAccount {
   /** The twelve-digit AWS account id. Also the primary key. */
   accountId: string;
   /** What people call it: "prod", "uat", "sandbox". */
   name: string;
+  /**
+   * How to get into it.
+   *
+   *   home          the account the app runs in; ambient credentials, no setup
+   *   organization  a role AWS Organizations already put there — nothing to
+   *                 create, nothing to deploy in the target account
+   *   role          a role someone made deliberately, named by ARN
+   *   keys          an access key pair, kept in Secrets Manager
+   *
+   * Defaults to "role" when a roleArn is present and "organization" otherwise,
+   * so accounts stored before this existed keep behaving as they did.
+   */
+  access?: AwsAccessMethod;
   /**
    * Role to assume in that account. Absent for the account the app itself runs
    * in, which needs no assumption and cannot be locked out by a bad role.
@@ -190,6 +205,15 @@ export interface AwsAccount {
   roleArn?: string;
   /** Matched against the role's trust policy, when the account requires one. */
   externalId?: string;
+  /**
+   * Secrets Manager id holding an access key pair. The keys themselves are
+   * never stored on this record and never sent to the browser.
+   */
+  secretId?: string;
+  /** Last four characters of the stored key id, so the UI can say which one. */
+  keyHint?: string;
+  /** Which role actually worked, filled in after a successful assume. */
+  reachedVia?: string;
   /** Regions to sweep. Empty means the region the app runs in. */
   regions: string[];
   enabled: boolean;

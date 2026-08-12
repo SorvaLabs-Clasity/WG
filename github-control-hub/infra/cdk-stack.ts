@@ -47,6 +47,12 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     // No SSH port — use SSM Session Manager instead
 
+    // The narrow role this app assumes in another account when that account
+    // has bothered to create one. Fixed by name so the trust policy over
+    // there, the template we hand out, and the grants here all say the same
+    // thing.
+    const guardrailRoleName = `${stackPrefix}-guardrail-access`;
+
     // ── IAM Role ──
     const role = new iam.Role(this, "InstanceRole", {
       assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
@@ -66,6 +72,35 @@ export class GitHubControlHubStack extends cdk.Stack {
     role.addToPolicy(new iam.PolicyStatement({
       actions: ["secretsmanager:GetSecretValue"],
       resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+    }));
+
+    // Access keys for AWS accounts that are not in an organisation, written
+    // from the Accounts screen. Scoped to this app's own prefix so the grant
+    // cannot reach the GitHub credentials next to it.
+    role.addToPolicy(new iam.PolicyStatement({
+      sid: "StoreAccountKeys",
+      actions: ["secretsmanager:CreateSecret", "secretsmanager:PutSecretValue", "secretsmanager:GetSecretValue"],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${stackPrefix}/aws-account/*`],
+    }));
+
+    // Listing the organisation is what removes the setup work: the account ids
+    // and names are already recorded here, so nobody has to type them.
+    role.addToPolicy(new iam.PolicyStatement({
+      sid: "DiscoverOrganizationAccounts",
+      actions: ["organizations:ListAccounts", "organizations:DescribeOrganization"],
+      resources: ["*"],   // neither call supports resource-level scoping
+    }));
+
+    // Adding an account verifies it before storing it, which means the app
+    // itself has to be able to assume the role and ask who it is.
+    role.addToPolicy(new iam.PolicyStatement({
+      sid: "VerifyAccountAccess",
+      actions: ["sts:AssumeRole"],
+      resources: [
+        `arn:aws:iam::*:role/${guardrailRoleName}`,
+        "arn:aws:iam::*:role/OrganizationAccountAccessRole",
+        "arn:aws:iam::*:role/AWSControlTowerExecution",
+      ],
     }));
 
     // DynamoDB access for app tables
@@ -125,11 +160,6 @@ export class GitHubControlHubStack extends cdk.Stack {
     // Enforcement runs here rather than on the instance: it needs no inbound
     // connectivity, so the security group stays closed to everything but
     // GitHub's webhook ranges.
-    // The role this app assumes in every other account. Fixed by name so the
-    // trust policy in dev/uat/prod, the IAM template we hand out, and the grant
-    // below all say the same thing.
-    const guardrailRoleName = `${stackPrefix}-guardrail-access`;
-
     const guardrailDlq = new sqs.Queue(this, "GuardrailDlq", {
       retentionPeriod: cdk.Duration.days(14),
     });
@@ -149,6 +179,7 @@ export class GitHubControlHubStack extends cdk.Stack {
         GUARDRAIL_EXCLUSIONS_TABLE: `${stackPrefix}-aws-exclusions`,
         GUARDRAIL_FINDINGS_TABLE: `${stackPrefix}-aws-findings`,
         AWS_ACCOUNTS_TABLE: `${stackPrefix}-aws-accounts`,
+        GUARDRAIL_ROLE_NAME: guardrailRoleName,
         ACTIVITY_TABLE: `${stackPrefix}-activity`,
       },
       deadLetterQueue: guardrailDlq,
@@ -186,7 +217,22 @@ export class GitHubControlHubStack extends cdk.Stack {
     guardrailFn.addToRolePolicy(new iam.PolicyStatement({
       sid: "AssumeGuardrailRoleInOtherAccounts",
       actions: ["sts:AssumeRole"],
-      resources: [`arn:aws:iam::*:role/${guardrailRoleName}`],
+      // The scoped role first, then the two roles AWS itself creates in
+      // organisation accounts. Those carry AdministratorAccess, which is far
+      // more than this app needs — but they exist without anyone deploying
+      // anything, and an account that is actually being checked beats a
+      // narrower grant on an account nobody got round to onboarding.
+      resources: [
+        `arn:aws:iam::*:role/${guardrailRoleName}`,
+        "arn:aws:iam::*:role/OrganizationAccountAccessRole",
+        "arn:aws:iam::*:role/AWSControlTowerExecution",
+      ],
+    }));
+
+    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "ReadAccountKeys",
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${stackPrefix}/aws-account/*`],
     }));
 
     // Which account we are in. Findings are stamped with it, so without this

@@ -89,12 +89,20 @@ export interface RunResult {
   unswept?: { accountId: string; accountName: string; region: string; count: number }[];
 }
 
+export type AwsAccessMethod = "home" | "organization" | "role" | "keys";
+
 export interface AwsAccount {
   accountId: string;
   name: string;
+  /** How the app gets in. "organization" needs nothing deployed in the target. */
+  access?: AwsAccessMethod;
   /** Absent on the account the app itself runs in — it needs no role. */
   roleArn?: string;
   externalId?: string;
+  /** Last four characters of a stored access key. The keys never leave the server. */
+  keyHint?: string;
+  /** Which role actually let us in, once verified. */
+  reachedVia?: string;
   regions: string[];
   enabled: boolean;
   isHome?: boolean;
@@ -115,12 +123,24 @@ export const runGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[]
 export const previewGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[]; accountIds?: string[] }) =>
   apiPost<RunResult>("/aws/preview", body);
 
+export interface DiscoveredAccount {
+  accountId: string;
+  name: string;
+  email?: string;
+  status?: string;
+  isHome: boolean;
+  registered: boolean;
+}
+
 export const fetchAwsAccounts = () => apiGet<AwsAccount[]>("/aws/accounts");
+export const discoverAwsAccounts = () =>
+  apiGet<{ available: boolean; error?: string; accounts: DiscoveredAccount[] }>("/aws/accounts/discover");
 export const saveAwsAccount = (body: Partial<AwsAccount>) => apiPost<AwsAccount>("/aws/accounts", body);
 export const removeAwsAccount = (accountId: string) =>
   apiDelete<{ removed: string }>(`/aws/accounts/${accountId}`);
 export const verifyAwsAccount = (accountId: string) =>
-  apiPost<{ ok: boolean; error?: string }>(`/aws/accounts/${accountId}/verify`, {});
+  apiPost<{ ok: boolean; error?: string; via?: string; access?: AwsAccessMethod }>(
+    `/aws/accounts/${accountId}/verify`, {});
 
 export const fetchAwsExclusions = () => apiGet<AwsExclusionList[]>("/aws/exclusions");
 export const createAwsExclusion = (body: Partial<AwsExclusionList>) => apiPost<AwsExclusionList>("/aws/exclusions", body);

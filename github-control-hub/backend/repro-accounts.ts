@@ -13,7 +13,7 @@ process.env.AWS_REGION = "us-east-1";
 
 import { run, ruleAppliesTo } from "./src/aws-guardrails/engine";
 import { findingKey } from "./src/aws-guardrails/store";
-import { scopesFor } from "./src/aws-guardrails/accounts";
+import { scopesFor, accessMethod } from "./src/aws-guardrails/accounts";
 import type { Guardrail, AwsAccount, ResourceSnapshot, Scope, Finding } from "./src/aws-guardrails/types";
 
 let failures = 0;
@@ -260,6 +260,20 @@ const group = (id: string): ResourceSnapshot => ({
     const legacy = { ruleId: "r1", resourceId: "bucket" } as Finding;
     check("a finding with no account keeps its original key, so it can be deleted",
       findingKey(legacy) === "r1#bucket", findingKey(legacy));
+  }
+
+  // ── which way in ───────────────────────────────────────────────────
+  {
+    check("an account with no method and no role uses the organization roles",
+      accessMethod(account("1", "x")) === "organization", accessMethod(account("1", "x")));
+    check("  an account stored before this existed, with a role ARN, still uses it",
+      accessMethod(account("1", "x", { roleArn: "arn:aws:iam::1:role/r" })) === "role");
+    check("  one with stored keys and no method uses them",
+      accessMethod(account("1", "x", { secretId: "s" })) === "keys");
+    check("  the home account is never any of those",
+      accessMethod(account("1", "x", { isHome: true, roleArn: "arn:aws:iam::1:role/r" })) === "home");
+    check("  and an explicit choice wins over what can be inferred",
+      accessMethod(account("1", "x", { access: "keys", roleArn: "arn:aws:iam::1:role/r" })) === "keys");
   }
 
   // ── scope expansion ────────────────────────────────────────────────

@@ -12,7 +12,8 @@ import {
 } from "../aws-guardrails/store";
 import {
   listRegisteredAccounts, putAccount, deleteAccount, resolveAccounts,
-  verifyAccess, forgetCredentials, homeAccountId,
+  verifyAccess, forgetCredentials, homeAccountId, accessMethod,
+  discoverOrganizationAccounts, storeKeys,
 } from "../aws-guardrails/accounts";
 import type { Guardrail, AwsExclusionList, GuardrailMode, AwsAccount } from "../aws-guardrails/types";
 
@@ -303,9 +304,37 @@ router.get("/accounts", async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * Every account in the AWS Organization, so nobody types twelve digits.
+ *
+ * Returns whether each is already registered, which is the only thing the UI
+ * needs to turn this into a list of checkboxes.
+ */
+router.get("/accounts/discover", requireAdmin, async (_req: Request, res: Response) => {
+  try {
+    const found = await discoverOrganizationAccounts();
+    if (!found.ok) {
+      res.json({ available: false, error: found.error, accounts: [] });
+      return;
+    }
+    const [home, registered] = await Promise.all([homeAccountId(), listRegisteredAccounts()]);
+    res.json({
+      available: true,
+      accounts: found.accounts.map(a => ({
+        ...a,
+        isHome: a.accountId === home,
+        registered: registered.some(r => r.accountId === a.accountId),
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
+  }
+});
+
 router.post("/accounts", requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { accountId, name, roleArn, externalId, regions, enabled } = req.body ?? {};
+    const { accountId, name, access, roleArn, externalId, regions, enabled,
+            accessKeyId, secretAccessKey } = req.body ?? {};
 
     if (!ACCOUNT_ID.test(String(accountId ?? ""))) {
       res.status(400).json({ error: "An AWS account id is exactly twelve digits." });
@@ -318,16 +347,18 @@ router.post("/accounts", requireAdmin, async (req: Request, res: Response) => {
 
     const home = await homeAccountId();
     const isHome = accountId === home;
+    const existing = (await listRegisteredAccounts()).find(a => a.accountId === accountId);
 
-    // The home account is reached with the role the Lambda already has. Letting
-    // someone attach an ARN to it is a way to lock the app out of the account it
-    // lives in, with no way back through the app itself.
-    const arn = isHome ? undefined : String(roleArn ?? "").trim();
-    if (!isHome) {
-      const match = ROLE_ARN.exec(arn!);
+    // The home account is reached with the role the app already has. Letting
+    // someone attach a role or keys to it is a way to lock the app out of the
+    // account it lives in, with no route back through the app itself.
+    const method: AwsAccount["access"] = isHome ? "home" : (access ?? (roleArn ? "role" : "organization"));
+
+    if (method === "role") {
+      const match = ROLE_ARN.exec(String(roleArn ?? "").trim());
       if (!match) {
         res.status(400).json({
-          error: "A role ARN is needed to reach another account, in the form arn:aws:iam::<account>:role/<name>.",
+          error: "A role ARN looks like arn:aws:iam::<account>:role/<name>.",
         });
         return;
       }
@@ -339,13 +370,29 @@ router.post("/accounts", requireAdmin, async (req: Request, res: Response) => {
       }
     }
 
+    // Keys are written to Secrets Manager and never kept on the record, so a
+    // later GET /accounts cannot hand them back to a browser.
+    let secretId = existing?.secretId;
+    let keyHint = existing?.keyHint;
+    if (method === "keys" && accessKeyId && secretAccessKey) {
+      const stored = await storeKeys(accountId, String(accessKeyId).trim(), String(secretAccessKey).trim());
+      secretId = stored.secretId;
+      keyHint = stored.keyHint;
+    }
+    if (method === "keys" && !secretId) {
+      res.status(400).json({ error: "Enter an access key ID and secret for this account." });
+      return;
+    }
+
     const now = new Date().toISOString();
-    const existing = (await listRegisteredAccounts()).find(a => a.accountId === accountId);
     const account: AwsAccount = {
       accountId,
       name: name.trim(),
-      roleArn: arn || undefined,
+      access: method,
+      roleArn: method === "role" ? String(roleArn).trim() : undefined,
       externalId: externalId?.trim() || undefined,
+      secretId: method === "keys" ? secretId : undefined,
+      keyHint: method === "keys" ? keyHint : undefined,
       regions: Array.isArray(regions) && regions.length ? regions : [process.env.AWS_REGION || "us-east-1"],
       enabled: enabled !== false,
       isHome,
@@ -354,25 +401,23 @@ router.post("/accounts", requireAdmin, async (req: Request, res: Response) => {
       updatedAt: now,
     };
 
-    // A changed role must not be checked against credentials cached from the old one.
+    // Changed credentials must not be checked against ones cached from before.
     forgetCredentials(accountId);
 
-    // Verified before it is stored. A role that was never created, or whose
-    // trust policy names the wrong principal, otherwise surfaces as an account
-    // that quietly reports nothing — indistinguishable from an account with
-    // nothing wrong in it.
+    // Verified before it is stored. A role that was never created, or keys that
+    // were revoked, otherwise surface as an account that quietly reports
+    // nothing — indistinguishable from an account with nothing wrong in it.
     const reachable = await verifyAccess(account);
     if (!reachable.ok) {
       res.status(400).json({ error: reachable.error, code: "ACCOUNT_UNREACHABLE" });
       return;
     }
-
     await putAccount(account);
     await logActivity("aws.account.save" as any, req.user!.login, "*", account.name,
       existing
         ? `Updated AWS account "${account.name}" (${accountId})`
-        : `Added AWS account "${account.name}" (${accountId}), swept in ${account.regions.join(", ")}`);
-    res.json(account);
+        : `Added AWS account "${account.name}" (${accountId}) via ${reachable.via}, swept in ${account.regions.join(", ")}`);
+    res.json({ ...account, via: reachable.via });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }
@@ -414,7 +459,8 @@ router.post("/accounts/:accountId/verify", requireAdmin, async (req: Request<{ a
       return;
     }
     forgetCredentials(account.accountId);
-    res.json(await verifyAccess(account));
+    const result = await verifyAccess(account);
+    res.json({ ...result, access: accessMethod(account) });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }
