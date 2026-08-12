@@ -73,14 +73,19 @@ jobs:
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-        # No GH_TOKEN, deliberately: without one electron-builder cannot
-        # publish, so it builds, writes latest-mac.yml / latest.yml into
-        # release/, and stops. (`--publish never` would say it more plainly,
-        # but electron-builder 26 nulls the publish config and then crashes
-        # dereferencing it.)
+        # onTag, and no GH_TOKEN. Two belts, because on CI electron-builder's
+        # default policy is `always` — it will try to publish and then fail on
+        # the missing token, which is exactly what it did. onTag only fires
+        # when the ref is a tag, and this workflow runs on a branch.
+        #
+        # `--publish never` would say it more plainly, but electron-builder 26
+        # nulls the publish config and then crashes dereferencing it while
+        # writing the update manifests. onTag leaves the config intact, so
+        # latest-mac.yml and latest.yml are still produced — which is the whole
+        # reason the build needs a publish config at all.
         run: |
           npx tsc -p tsconfig.json
-          npx electron-builder --${{ runner.os == 'macOS' && 'mac' || 'win' }}
+          npx electron-builder --${{ runner.os == 'macOS' && 'mac' || 'win' }} --publish onTag
 
       - name: Hand the installers to the release job
         uses: actions/upload-artifact@v7
