@@ -13,13 +13,26 @@ function getClientSecret(): string {
   return secret;
 }
 
-export function buildAuthorizationUrl(state: string): string {
+/** GitHub usernames: alphanumeric and single hyphens, up to 39 characters. */
+const LOGIN_RE = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
+
+/**
+ * `login` names the account to sign in as.
+ *
+ * Without it GitHub uses whatever session the browser already holds, which is
+ * not necessarily the account this app last used — so a button reading
+ * "Continue with alice" could sign you in as bob, silently, because GitHub was
+ * never told which was meant. With it, GitHub switches accounts or asks,
+ * instead of quietly answering a different question.
+ */
+export function buildAuthorizationUrl(state: string, login?: string): string {
   const params = new URLSearchParams({
     client_id: getClientId(),
     redirect_uri: `${process.env.BACKEND_URL || "http://localhost:4000"}/auth/callback`,
     scope: "repo read:org",
     state,
   });
+  if (login && LOGIN_RE.test(login)) params.set("login", login);
   return `${GITHUB_AUTH_URL}?${params}`;
 }
 

@@ -538,11 +538,13 @@ router.get("/debug", authMiddleware, (_req: Request, res: Response) => {
   });
 });
 
-router.get("/github", async (_req: Request, res: Response) => {
+router.get("/github", async (req: Request, res: Response) => {
   const state = crypto.randomBytes(16).toString("hex");
   await storeOAuthState(state);
-  const url = buildAuthorizationUrl(state);
-  res.redirect(url);
+  // The login page passes the account it offered to continue with, so GitHub
+  // signs in as that one rather than whichever session it happens to hold.
+  const login = typeof req.query.login === "string" ? req.query.login : undefined;
+  res.redirect(buildAuthorizationUrl(state, login));
 });
 
 router.get("/token", async (req: Request, res: Response) => {

@@ -517,7 +517,10 @@ export default function LoginPage() {
                      announcing it afterwards. */
                   <>
                     <a
-                      href={loginUrl}
+                      /* Name the account. Without it GitHub signs in as
+                         whichever session the browser holds, which is how
+                         "Continue with alice" could produce bob. */
+                      href={`${loginUrl}?login=${encodeURIComponent(remembered.login)}`}
                       className="flex items-center gap-3 w-full p-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 no-underline shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
                     >
                       {remembered.avatarUrl
