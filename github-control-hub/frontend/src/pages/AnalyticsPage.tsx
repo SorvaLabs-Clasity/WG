@@ -435,37 +435,100 @@ function WidgetCard({ config, onRemove, onEdit, canEdit, graphEmpty, orgName }: 
 }
 
 function MetricCardBody({ items, total, config, onExpand }: { items: any[]; total: number | null; config: WidgetConfig; onExpand: () => void }) {
+  /**
+   * What the number means depends on the query, and getting that backwards is
+   * worse than showing nothing.
+   *
+   * Matching a query like "repos with an unprotected main" is a finding, not a
+   * pass — but this card counted every match as passing, so 347 repositories
+   * with an unprotected default branch scored 97% and was labelled GOOD. It
+   * reported the worst thing in the organisation as the best number on screen.
+   *
+   * Three shapes now:
+   *   pass/fail    the query says so itself, and the rate is what it looks like
+   *   findings     matches are problems; none is clean, more is worse
+   *   informational matches are just an answer, and carry no verdict at all
+   */
   const hasStatus = items.some((i: any) => i.status);
-  const passCount = hasStatus ? items.filter((i: any) => i.status === "pass").length : items.length;
-  const denominator = hasStatus ? items.length : total;
-  const passRate = denominator ? Math.round((passCount / denominator) * 100) : null;
+  const option = config.type === "query" ? QUERY_OPTIONS.find(q => q.id === config.queryId) : undefined;
+  const informational = config.type === "preset" ? false : !!(option as any)?.informational;
 
-  const isGood = passRate !== null && passRate >= 80;
-  const isBad = passRate !== null && passRate < 60;
+  if (hasStatus) {
+    const passCount = items.filter((i: any) => i.status === "pass").length;
+    const passRate = items.length ? Math.round((passCount / items.length) * 100) : null;
+    return (
+      <Verdict
+        onExpand={onExpand}
+        value={passCount}
+        denominator={items.length}
+        caption={passRate === null ? "" : `${passRate}% passing`}
+        badge={passRate === null ? null
+          : passRate === 100 ? ["COMPLIANT", "good"]
+          : passRate >= 80 ? ["GOOD", "good"]
+          : passRate >= 60 ? ["WARNING", "warn"]
+          : ["CRITICAL", "danger"]}
+      />
+    );
+  }
+
+  const found = items.length;
+
+  if (informational) {
+    return (
+      <Verdict
+        onExpand={onExpand}
+        value={found}
+        denominator={total}
+        caption={total ? `of ${total} repositories` : ""}
+        badge={null}
+        tone="neutral"
+      />
+    );
+  }
+
+  const share = total ? found / total : null;
+  return (
+    <Verdict
+      onExpand={onExpand}
+      value={found}
+      denominator={total}
+      caption={found === 0 ? "nothing found" : found === 1 ? "repository affected" : "repositories affected"}
+      badge={found === 0 ? ["CLEAN", "good"]
+        : share !== null && share >= 0.1 ? ["CRITICAL", "danger"]
+        : ["ATTENTION", "warn"]}
+    />
+  );
+}
+
+function Verdict({ value, denominator, caption, badge, tone, onExpand }: {
+  value: number; denominator: number | null; caption: string;
+  badge: [string, "good" | "warn" | "danger"] | null;
+  tone?: "neutral"; onExpand: () => void;
+}) {
+  const level = badge?.[1];
+  const bg = level === "danger" ? "bg-gradient-to-b from-white dark:from-slate-900 to-rose-50/30 dark:to-red-950/30"
+    : level === "warn" ? "bg-gradient-to-b from-white dark:from-slate-900 to-amber-50/30 dark:to-amber-950/30"
+    : level === "good" ? "bg-gradient-to-b from-white dark:from-slate-900 to-emerald-50/30 dark:to-emerald-950/30"
+    : "";
+  const num = tone === "neutral" ? "text-blue-600 dark:text-blue-400"
+    : level === "danger" ? "text-rose-600 dark:text-red-400"
+    : level === "warn" ? "text-amber-600 dark:text-amber-400"
+    : "text-slate-900 dark:text-white";
+  const chip = level === "danger" ? "bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-300"
+    : level === "warn" ? "bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-300"
+    : "bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-300";
 
   return (
-    <div
-      className={`flex-1 h-full flex flex-col items-center justify-center p-6 cursor-pointer relative overflow-hidden ${isBad ? 'bg-gradient-to-b from-white dark:from-slate-900 to-rose-50/30 dark:to-red-950/30' : isGood ? 'bg-gradient-to-b from-white dark:from-slate-900 to-emerald-50/30 dark:to-emerald-950/30' : ''}`}
-      onClick={onExpand}
-    >
+    <div className={`flex-1 h-full flex flex-col items-center justify-center p-6 cursor-pointer relative overflow-hidden ${bg}`} onClick={onExpand}>
       <div className="absolute inset-0 bg-blue-50/20 dark:bg-blue-950/20 translate-y-20 rounded-full blur-3xl w-2/3 mx-auto"></div>
-      <span className={`text-7xl font-light font-mono tracking-tighter z-10 ${isBad ? 'text-rose-600 dark:text-red-400' : isGood ? 'text-slate-900 dark:text-white' : 'text-blue-600 dark:text-blue-400'}`}>
-        {passCount}
+      <span className={`text-7xl font-light font-mono tracking-tighter z-10 ${num}`}>
+        {value}
         {denominator !== null && <span className="text-2xl text-slate-400 dark:text-slate-500">/ {denominator}</span>}
       </span>
       <div className="mt-4 flex flex-col items-center z-10">
-        {passRate !== null && (
-          <>
-            <span className="text-slate-400 dark:text-slate-500 text-sm font-mono mb-2">{passRate}% {hasStatus ? 'passing' : 'match'}</span>
-            <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold font-mono ${
-              passRate === 100 ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-300' :
-              passRate >= 80 ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-300' :
-              passRate >= 60 ? 'bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-300' :
-              'bg-rose-100 dark:bg-rose-900 text-rose-800 dark:text-rose-300'
-            }`}>
-              {passRate === 100 ? 'COMPLIANT' : passRate >= 80 ? 'GOOD' : passRate >= 60 ? 'WARNING' : 'CRITICAL'}
-            </span>
-          </>
+        {caption && <span className="text-slate-400 dark:text-slate-500 text-sm font-mono mb-2">{caption}</span>}
+        {badge && (
+          <span className={`inline-flex px-3 py-1 rounded-full text-xs font-bold font-mono ${chip}`}>{badge[0]}</span>
         )}
       </div>
     </div>

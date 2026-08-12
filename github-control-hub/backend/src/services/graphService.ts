@@ -54,20 +54,6 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       }
       break;
 
-    case "repos-deploying-to-prod":
-      for (const edge of allEdges) {
-        if (edge.type === "uses_workflow") {
-          const wfName = edge.sk.replace("WORKFLOW#", "").toLowerCase();
-          if (wfName.includes("prod") || wfName.includes("deploy") || wfName.includes("release")) {
-            results.push({
-              repo: edge.pk.replace("REPO#", ""),
-              reason: `Uses workflow: ${wfName}`
-            });
-          }
-        }
-      }
-      break;
-
     case "repos-with-outside-admins": {
       // Build a map of repo -> owning team members
       const repoTeamMembers = new Map<string, Set<string>>();
