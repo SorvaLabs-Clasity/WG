@@ -97,9 +97,11 @@ confirm "Proceed against account $ACCOUNT?" || die "Aborted. Nothing was created
 
 # ── 1. tables ─────────────────────────────────────────────────────────
 step "1/7  DynamoDB tables"
-AWS_PROFILE="$AWS_PROFILE" AWS_REGION="$REGION" STACK_NAME="$PREFIX" SKIP_SECRET=1 \
+# SKIP_CONFIRM because this script already asked, above, naming the account.
+AWS_PROFILE="$AWS_PROFILE" AWS_REGION="$REGION" STACK_NAME="$PREFIX" \
+  SKIP_SECRET=1 SKIP_CONFIRM=1 \
   bash "$HERE/setup-aws-account.sh" </dev/null \
-  || die "Table creation failed."
+  || die "Table creation failed. The output above says why."
 ok "13 tables present (on-demand billing; idle tables cost nothing)"
 
 # ── 2. secrets ────────────────────────────────────────────────────────

@@ -44,8 +44,19 @@ echo "    region:  $REGION"
 echo "    prefix:  $PREFIX"
 echo "    secret:  $SECRET_NAME"
 echo
-read -r -p "Create resources in this account? [y/N] " confirm
-[[ "$confirm" == [yY] ]] || { echo "Aborted."; exit 1; }
+# Confirm, unless the caller has already done so.
+#
+# migrate-to-account.sh asks its own "proceed against account N?" and then runs
+# this with stdin closed, so `read` returned EOF, `confirm` was empty, and this
+# aborted every time — reported one frame up as "Table creation failed", which
+# describes a DynamoDB problem that was never there. A script driving another
+# script has to be able to say it has consent.
+if [ "${SKIP_CONFIRM:-}" = "1" ] || [ ! -t 0 ]; then
+  echo "  (proceeding without prompting: not an interactive terminal)"
+else
+  read -r -p "Create resources in this account? [y/N] " confirm
+  [[ "$confirm" == [yY] ]] || { echo "Aborted."; exit 1; }
+fi
 
 # ── 1. DynamoDB tables ──
 # Key schemas are taken from the service layer, NOT from README.md — the
