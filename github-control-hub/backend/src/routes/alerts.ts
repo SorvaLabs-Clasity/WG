@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { getAlerts, resolveAlert, unresolveAlert, createAlert } from "../services/alertService";
 import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { sendIfRateLimited } from "../utils/rateLimit";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 
 const router = Router();
@@ -30,6 +31,8 @@ router.get("/", async (req: Request, res: Response) => {
     const alerts = await getAlerts();
     res.json(alerts);
   } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
@@ -45,6 +48,8 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
     }
     res.json(alert);
   } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
@@ -59,6 +64,8 @@ router.post("/:id/unresolve", async (req: Request, res: Response) => {
     }
     res.json(alert);
   } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
@@ -87,6 +94,8 @@ router.post("/simulate", async (req: Request, res: Response) => {
     
     res.json({ message: "Simulation triggered" });
   } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
@@ -143,6 +152,8 @@ router.get("/inactive-users", async (req: Request, res: Response) => {
 
     res.json(inactiveUsers);
   } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });

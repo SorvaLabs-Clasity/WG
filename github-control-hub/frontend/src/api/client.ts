@@ -35,6 +35,23 @@ export function isAuthenticated(): boolean {
   return !!getToken();
 }
 
+/**
+ * A rate limit is not a failure of the thing you asked for — it is the whole
+ * app being unable to read GitHub for a while. Carrying the reset time on the
+ * error lets the banner count down instead of just saying "try again".
+ */
+export class RateLimitError extends Error {
+  constructor(
+    message: string,
+    readonly resetAt?: string,
+    readonly retryAfter?: number,
+    readonly kind: "primary" | "secondary" = "primary",
+  ) {
+    super(message);
+    this.name = "RateLimitError";
+  }
+}
+
 async function handleResponse<T>(res: Response): Promise<T> {
   if (res.status === 401) {
     clearToken();
@@ -61,6 +78,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
       throw new Error("AWS session expired");
     }
     throw new Error(body.error ?? "Service temporarily unavailable");
+  }
+  if (res.status === 429) {
+    const body = await res.json().catch(() => ({})) as {
+      error?: string; resetAt?: string; retryAfter?: number; kind?: "primary" | "secondary";
+    };
+    throw new RateLimitError(
+      body.error ?? "GitHub rate limit reached.",
+      body.resetAt, body.retryAfter, body.kind ?? "primary",
+    );
   }
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));

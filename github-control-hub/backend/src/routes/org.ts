@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { getOrgConfig } from "../services/orgConfigService";
 import { createOctokit, getOrg } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { sendIfRateLimited } from "../utils/rateLimit";
 
 const router = Router();
 
@@ -10,6 +11,8 @@ router.get("/config", async (req: Request, res: Response) => {
     const config = await getOrgConfig();
     res.json(config);
   } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "org") });
   }
 });
@@ -66,6 +69,8 @@ router.get("/actors", async (req: Request, res: Response) => {
       apps,
     });
   } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "org") });
   }
 });

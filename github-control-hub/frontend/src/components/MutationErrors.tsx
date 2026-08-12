@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { RateLimitError } from "../api/client";
 import { INTENT } from "../design";
 
 /**
@@ -25,6 +26,10 @@ export default function MutationErrors() {
     let nextId = 1;
     return queryClient.getMutationCache().subscribe(event => {
       if (event.type !== "updated" || event.action?.type !== "error") return;
+
+      // Rate limits have their own banner with a countdown; a toast saying the
+      // same thing in different words is noise.
+      if (event.action.error instanceof RateLimitError) return;
 
       const message = (event.action.error as Error)?.message?.trim();
       // 401 and the org-membership 403 already redirect to /login; announcing

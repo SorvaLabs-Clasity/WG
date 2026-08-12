@@ -8,6 +8,7 @@ import { DEMO_USER } from "./api/mock";
 import { ThemeContext, getInitialTheme, applyTheme, type Theme } from "./hooks/useTheme";
 import UpdateOverlay from "./components/UpdateOverlay";
 import MutationErrors from "./components/MutationErrors";
+import RateLimitBanner from "./components/RateLimitBanner";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -105,6 +106,7 @@ export default function App() {
         <AuthContext.Provider value={{ user }}>
           <UpdateOverlay />
           <MutationErrors />
+          <RateLimitBanner />
           <RouterProvider router={router} />
         </AuthContext.Provider>
       </QueryClientProvider>

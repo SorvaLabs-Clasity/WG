@@ -2,6 +2,7 @@
 import { Router } from "express";
 import type { Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { sendIfRateLimited } from "../utils/rateLimit";
 import {
   getActivity,
   getActivityForRepo,
@@ -259,6 +260,7 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
 
     res.json({ undone, errors });
   } catch (err) {
+    if (sendIfRateLimited(res, err)) return;
     res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });
@@ -341,6 +343,7 @@ router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => 
 
     res.json({ redone, errors });
   } catch (err) {
+    if (sendIfRateLimited(res, err)) return;
     res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });
@@ -436,6 +439,7 @@ router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) =>
 
     res.json({ retried, errors });
   } catch (err) {
+    if (sendIfRateLimited(res, err)) return;
     res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });
@@ -641,6 +645,7 @@ router.post("/:id/resolve-conflict", async (req: Request<{ id: string }>, res: R
 
     res.json({ resolved: true, resolution });
   } catch (err) {
+    if (sendIfRateLimited(res, err)) return;
     res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });
@@ -676,6 +681,7 @@ router.post("/:id/undo-resolution", async (req: Request<{ id: string }>, res: Re
 
     res.json({ success: true });
   } catch (err) {
+    if (sendIfRateLimited(res, err)) return;
     res.status(500).json({ error: sanitizeError(err, "activity") });
   }
 });

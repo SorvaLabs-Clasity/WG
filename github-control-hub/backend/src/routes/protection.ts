@@ -4,6 +4,7 @@ import { createOctokit, getOrg } from "../github/client";
 import { protectBranch, getProtection, listRulesets, getAllProtections, deleteProtection, deleteRuleset } from "../services/branchService";
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { sendIfRateLimited } from "../utils/rateLimit";
 import { validateParams } from "../utils/validation";
 
 type RepoAndBranch = { repo: string; branch: string };
@@ -125,6 +126,7 @@ router.post("/:repo/rulesets/import", validateParams("repo"), async (req: Reques
       failed: true, errorMessage: errMsg,
       retryPayload: { action: "create_ruleset", params: { repo: req.params.repo, protectionConfig: { type: "ruleset_json", rawJson: raw }, branchNames: [] } },
     });
+    if (sendIfRateLimited(res, err)) return;
     res.status(500).json({ error: sanitizeError(err, "protection") });
   }
 });
