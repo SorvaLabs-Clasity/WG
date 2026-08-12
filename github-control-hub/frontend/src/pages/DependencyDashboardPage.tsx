@@ -96,12 +96,18 @@ export default function DependencyDashboardPage() {
     const clean = new Set(all.filter(d => d.clean).map(d => d.repo)).size;
     const vulnerable = new Set(all.filter(d => !d.clean && !d.disabled).map(d => d.repo)).size;
     const repos = off + clean + vulnerable;
+    const watched = clean + vulnerable;
     return {
-      off, clean, vulnerable, repos,
+      off, clean, vulnerable, repos, watched,
       critical: summary?.critical ?? 0,
       high: summary?.high ?? 0,
       total: (summary?.critical ?? 0) + (summary?.high ?? 0) + (summary?.medium ?? 0) + (summary?.low ?? 0),
-      pct: repos ? Math.round((clean / repos) * 100) : 100,
+      // Coverage, not cleanliness. The old figure was clean/all-repos, which
+      // counted every switched-off repo against "clean" and read as "99% of
+      // your repos have vulnerabilities" when in fact none had been found —
+      // those repos are unscanned, which is a different thing and a different
+      // problem. Coverage is the number that is both true and actionable.
+      pct: repos ? Math.round((watched / repos) * 100) : 100,
     };
   }, [dependencies, summary]);
 
@@ -142,18 +148,31 @@ export default function DependencyDashboardPage() {
       )}
 
       <StatusSlab
-        intent={counts.critical > 0 ? "danger" : counts.total > 0 ? "warn" : "good"}
-        eyebrow={counts.critical > 0 ? "Critical vulnerabilities" : counts.total > 0 ? "Vulnerabilities open" : "Nothing outstanding"}
+        /* An org where almost nothing is being scanned is not "all clear" —
+           it is unmeasured. Saying so is the difference between a dashboard
+           that reports and one that reassures. */
+        intent={counts.critical > 0 ? "danger" : counts.total > 0 || counts.off > 0 ? "warn" : "good"}
+        eyebrow={
+          counts.critical > 0 ? "Critical vulnerabilities"
+          : counts.total > 0 ? "Vulnerabilities open"
+          : counts.off > 0 ? "Mostly unscanned"
+          : "Nothing outstanding"
+        }
         metrics={[
           { value: counts.critical, label: "critical", emphasis: true },
           { value: counts.high, label: "high" },
-          { value: counts.vulnerable, label: "repos affected" },
+          { value: counts.off, label: "not watching" },
         ]}
-        aside={<SlabPercent value={counts.pct} label="repos clean" />}
+        aside={<SlabPercent value={counts.pct} label="repos watched" />}
         footer={
           counts.off > 0
-            ? <><strong className="font-bold">{counts.off}</strong> {counts.off === 1 ? "repository has" : "repositories have"} Dependabot switched off — nothing is being detected there</>
-            : <>{counts.total} open alerts across {counts.repos} repositories</>
+            ? <>
+                <strong className="font-bold">{counts.watched}</strong> of {counts.repos} repositories are being
+                scanned, and {counts.total === 0 ? "no vulnerabilities were found in them" : `${counts.total} open alerts were found in them`}.
+                The other <strong className="font-bold">{counts.off}</strong> {counts.off === 1 ? "has" : "have"} Dependabot
+                switched off, so nothing is known about {counts.off === 1 ? "it" : "them"} either way.
+              </>
+            : <>{counts.total} open alerts across {counts.repos} repositories, all of which are being scanned.</>
         }
       />
 
