@@ -31,91 +31,82 @@ const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2,
 const THRESHOLD: Record<string, number> = { any: 1, low: 1, medium: 2, high: 3, critical: 4 };
 
 /**
- * One ledger, not a set of cards.
+ * The checks, drawn to scale.
  *
- * Two shapes have been tried and neither reads the way this page is used. A
- * grid of equal cards claimed every question mattered equally. Stacked bands
- * fixed the weighting but turned nine checks into nine large objects, so
- * comparing them meant scrolling past them.
+ * Three shapes have been tried and all three were the same idea underneath: a
+ * list of objects, each stating its own number, compared by reading them one
+ * after another. Cards, then bands, then rows — the layout changed, the work of
+ * comparing did not.
  *
- * Checks are homogeneous — every one is a question with a count and a state —
- * and homogeneous things belong in rows you can run an eye down, not in
- * containers you read one at a time. So: a single dense readout, sortable,
- * every count in the same column at the same size. The instrument, not the
- * dashboard.
+ * Every check answers the same question in the end: how much of the
+ * organisation does this affect. That is a proportion, and proportions are
+ * compared by length, not by reading. So each check is a bar against a common
+ * scale. Which problem is biggest stops being something you work out and
+ * becomes something you see — the first design principle in /.impeccable.md
+ * taken literally.
  *
- * What keeps it from reading as a flat grey table (the anti-reference in
- * /.impeccable.md) is that the count column carries the whole colour budget.
- * Nothing else in the row competes with it.
+ * The bars are the data, not decoration: they are the only encoding of scale on
+ * the page, and everything else is a label on them.
  */
 
 type Level = "danger" | "warn" | "info" | "clear";
-
-const RANK: Record<Level, number> = { danger: 0, warn: 1, info: 2, clear: 3 };
 
 interface Verdict {
   level: Level;
   value: number;
   denominator: number | null;
+  /** 0..1 of the organisation, or null when there is nothing to take a share of. */
+  share: number | null;
   caption: string;
-  note: string | null;
 }
 
-/**
- * What a check's numbers mean. Three shapes, because a result is not one kind
- * of thing: some report their own pass/fail, some find problems, and some
- * answer a question and carry no verdict at all.
- */
 function verdictFor(items: any[], total: number | null, config: WidgetConfig): Verdict {
   const hasStatus = items.some((i: any) => i.status);
   if (hasStatus) {
     const pass = items.filter((i: any) => i.status === "pass").length;
     const failing = items.length - pass;
-    const rate = items.length ? Math.round((pass / items.length) * 100) : 0;
+    const share = items.length ? failing / items.length : 0;
     return {
-      level: failing === 0 ? "clear" : rate >= 80 ? "warn" : "danger",
+      level: failing === 0 ? "clear" : share >= 0.2 ? "danger" : "warn",
       value: failing,
       denominator: items.length,
-      caption: "failing",
-      note: `${rate}% passing`,
+      share,
+      caption: failing === 0 ? "all passing" : `failing of ${items.length} checked`,
     };
   }
 
   const option = config.type === "query" ? QUERY_OPTIONS.find(q => q.id === config.queryId) : undefined;
   const found = items.length;
+  const share = total ? Math.min(1, found / total) : null;
 
   if (config.type === "query" && (option as any)?.informational) {
-    return { level: "info", value: found, denominator: total, caption: "matching", note: null };
+    return { level: "info", value: found, denominator: total, share, caption: total ? `of ${total} repositories` : "matching" };
   }
 
-  const share = total ? found / total : null;
   return {
     level: found === 0 ? "clear" : share !== null && share >= 0.1 ? "danger" : "warn",
     value: found,
     denominator: total,
-    caption: found === 0 ? "nothing found" : found === 1 ? "repository" : "repositories",
-    note: null,
+    share,
+    caption: found === 0 ? "nothing found" : total ? `of ${total} repositories` : "found",
   };
 }
 
-/** The count colour, and the one place colour appears in a row. */
-const CLEAR_GREEN = "text-emerald-600 dark:[color:#3ddc97]";
+const BAR: Record<Level, string> = {
+  danger: "bg-rose-500 dark:bg-rose-400",
+  warn: "bg-amber-500 dark:bg-amber-400",
+  info: "bg-blue-500/70 dark:bg-blue-400/70",
+  clear: "bg-emerald-500 dark:bg-emerald-400",
+};
 
-const FIGURE: Record<Level, string> = {
+const TEXT: Record<Level, string> = {
   danger: "text-rose-600 dark:[color:#ff8095]",
   warn: "text-amber-600 dark:[color:#ffc14d]",
   info: "text-blue-600 dark:[color:#6bb4ff]",
-  clear: "text-slate-300 dark:text-slate-600",
+  clear: "text-emerald-600 dark:[color:#3ddc97]",
 };
 
-const DOT: Record<Level, string> = {
-  danger: "bg-rose-500 dark:bg-rose-400",
-  warn: "bg-amber-500 dark:bg-amber-400",
-  info: "bg-blue-500 dark:bg-blue-400",
-  clear: "bg-emerald-500/70 dark:bg-emerald-400/70",
-};
-
-type SortKey = "state" | "count" | "name";
+const RANK: Record<Level, number> = { danger: 0, warn: 1, info: 2, clear: 3 };
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
@@ -139,49 +130,42 @@ export default function AnalyticsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
-  const [sort, setSort] = useState<SortKey>("state");
 
   /**
-   * Each row reports its verdict once its data arrives.
+   * Each bar reports its verdict once its data arrives.
    *
    * The parent cannot work this out itself: the queries behind a check depend
    * on its configuration, so evaluating N checks means N hook calls and the
    * list length changes between renders. Reporting upward keeps the hooks where
-   * they belong and still lets the page sort and summarise.
+   * they belong and still lets the page order the bars and state the posture.
    */
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
   const report = useCallback((id: string, v: Verdict) => {
     setVerdicts(prev => {
       const old = prev[id];
-      if (old && old.level === v.level && old.value === v.value && old.denominator === v.denominator) return prev;
+      if (old && old.level === v.level && old.value === v.value && old.share === v.share) return prev;
       return { ...prev, [id]: v };
     });
   }, []);
 
   const posture = useMemo(() => {
     const seen = widgets.map(w => verdicts[w.id]).filter(Boolean);
-    const attention = seen.filter(v => v.level === "danger" || v.level === "warn").length;
     return {
-      attention,
+      attention: seen.filter(v => v.level === "danger" || v.level === "warn").length,
       answered: seen.length,
       total: widgets.length,
       worst: (seen.some(v => v.level === "danger") ? "danger" : seen.some(v => v.level === "warn") ? "warn" : "clear") as Level,
     };
   }, [widgets, verdicts]);
 
+  /** Longest bar first, so the scale reads top to bottom. */
   const ordered = useMemo(() => {
-    const rows = [...widgets];
-    rows.sort((a, b) => {
+    return [...widgets].sort((a, b) => {
       const va = verdicts[a.id], vb = verdicts[b.id];
-      if (sort === "name") return a.title.localeCompare(b.title);
-      if (sort === "count") return (vb?.value ?? -1) - (va?.value ?? -1);
-      // Unanswered checks sit between the findings and the settled ones rather
-      // than jumping to the top as data lands.
       const ra = va ? RANK[va.level] : 2.5, rb = vb ? RANK[vb.level] : 2.5;
-      return ra - rb || (vb?.value ?? 0) - (va?.value ?? 0);
+      return ra - rb || (vb?.share ?? 0) - (va?.share ?? 0) || (vb?.value ?? 0) - (va?.value ?? 0);
     });
-    return rows;
-  }, [widgets, verdicts, sort]);
+  }, [widgets, verdicts]);
 
   const handleSave = (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => {
     if (editingWidget) {
@@ -197,7 +181,7 @@ export default function AnalyticsPage() {
 
   return (
     <Page user={user}>
-      <header className="mb-9" style={enter(0)}>
+      <header className="mb-10" style={enter(0)}>
         <div className="flex items-start justify-between gap-6 flex-wrap">
           <div className="min-w-0">
             <p className={`${TYPE.label} text-slate-400 dark:text-slate-500 mb-3`}>
@@ -211,10 +195,10 @@ export default function AnalyticsPage() {
               ) : posture.answered === 0 ? (
                 <span className="text-slate-300 dark:text-slate-700">Working it out…</span>
               ) : posture.attention === 0 ? (
-                <>Everything checked is <span className={CLEAR_GREEN}>clear</span>.</>
+                <>Everything checked is <span className={TEXT.clear}>clear</span>.</>
               ) : (
                 <>
-                  <span className={FIGURE[posture.worst]}>{posture.attention}</span>
+                  <span className={TEXT[posture.worst]}>{posture.attention}</span>
                   {" "}of {posture.answered} checks need attention.
                 </>
               )}
@@ -254,25 +238,27 @@ export default function AnalyticsPage() {
       ) : widgets.length === 0 ? (
         <Empty
           title="No checks yet"
-          body="A check is a question about the organisation — which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it takes a line here."
+          body="A check is a question about the organisation — which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it is drawn here against the size of the org."
           action={canEditDashboard
             ? <Button variant="primary" onClick={() => setShowAddModal(true)}>Add the first check</Button>
             : undefined}
         />
       ) : (
-        <div style={enter(2)} className={SURFACE.sheet}>
-          {/* Column headings double as the sort control — a separate sort menu
-              for three columns is a menu nobody opens. */}
-          <div className="flex items-center gap-4 px-5 sm:px-6 py-3 border-b border-slate-200 dark:border-white/[0.08] bg-slate-50/70 dark:bg-white/[0.03]">
-            <SortHead label="State" active={sort === "state"} onClick={() => setSort("state")} className="w-[74px]" />
-            <SortHead label="Count" active={sort === "count"} onClick={() => setSort("count")} className="w-[104px] text-right justify-end" />
-            <SortHead label="Check" active={sort === "name"} onClick={() => setSort("name")} className="flex-1" />
-            <span className="w-5" />
+        <div style={enter(2)} className="relative">
+          {/* The scale, drawn once behind every bar. Without a common axis the
+              lengths are decoration; with one they are comparable. */}
+          <div className="absolute inset-y-0 left-0 right-0 pointer-events-none hidden sm:block" aria-hidden>
+            <div className="relative h-full ml-[max(38%,260px)] mr-16">
+              {[0.25, 0.5, 0.75, 1].map(t => (
+                <div key={t} className="absolute inset-y-0 border-l border-dashed border-slate-200/70 dark:border-white/[0.07]"
+                  style={{ left: `${t * 100}%` }} />
+              ))}
+            </div>
           </div>
 
-          <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+          <div className="relative flex flex-col">
             {ordered.map((w, i) => (
-              <LedgerRow
+              <ChartRow
                 key={w.id}
                 config={w}
                 index={i}
@@ -286,6 +272,10 @@ export default function AnalyticsPage() {
                 orgName={orgName}
               />
             ))}
+          </div>
+
+          <div className="hidden sm:flex ml-[max(38%,260px)] mr-16 mt-2 justify-between text-[10px] font-mono text-slate-300 dark:text-slate-600 tabular-nums">
+            <span>0</span><span>25%</span><span>50%</span><span>75%</span><span>100% of the org</span>
           </div>
         </div>
       )}
@@ -302,29 +292,14 @@ export default function AnalyticsPage() {
   );
 }
 
-function SortHead({ label, active, onClick, className = "" }: {
-  label: string; active: boolean; onClick: () => void; className?: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`${TYPE.label} flex items-center gap-1.5 transition-colors ${className} ${
-        active ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300"}`}
-    >
-      {label}
-      {active && <i className="ph-fill ph-caret-down text-[9px]"></i>}
-    </button>
-  );
-}
-
 /**
- * One line of the ledger.
+ * One check, drawn.
  *
- * The count is the only thing carrying colour, and it is the only thing set
- * larger than body text. Everything else — state dot, title, caption — is
- * deliberately quiet, so a column of numbers is what the eye follows.
+ * The bar grows with scaleX from a left origin rather than by animating width:
+ * a transform does not lay the page out on every frame, and the row cannot
+ * reflow its neighbours while it settles.
  */
-function LedgerRow({
+function ChartRow({
   config, index, open, onToggle, onReport, canEdit, onEdit, onRemove, graphEmpty, orgName,
 }: {
   config: WidgetConfig; index: number; open: boolean; onToggle: () => void;
@@ -336,56 +311,66 @@ function LedgerRow({
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const n = useCountUp(verdict.value);
 
+  // Held at zero for a frame so the bar is seen arriving rather than appearing.
+  const [drawn, setDrawn] = useState(false);
+  useEffect(() => {
+    if (isLoading) return;
+    const t = setTimeout(() => setDrawn(true), 60 + Math.min(index * 40, 320));
+    return () => clearTimeout(t);
+  }, [isLoading, index]);
+
   useEffect(() => {
     if (!isLoading) onReport(config.id, verdict);
   }, [isLoading, verdict, config.id, onReport]);
 
+  // A finding that affects a sliver of the org would otherwise be invisible;
+  // a hairline says "present but small", which is the honest reading.
+  const width = verdict.share === null ? 0 : Math.max(verdict.share, verdict.value > 0 ? 0.006 : 0);
+
   return (
-    <div className="group" style={enter(index, 30, 300)}>
-      <div className="flex items-center gap-4 px-5 sm:px-6">
+    <div className="group">
+      <div className="flex items-center gap-4 sm:gap-5 py-1">
         <button
           onClick={onToggle}
           aria-expanded={open}
-          className="flex-1 min-w-0 flex items-center gap-4 py-3.5 text-left"
+          className="flex-1 min-w-0 flex items-center gap-4 sm:gap-5 text-left rounded-xl px-2 -mx-2 py-2.5 hover:bg-slate-900/[0.025] dark:hover:bg-white/[0.03] transition-colors"
         >
-          <span className="w-[74px] shrink-0 flex items-center gap-2">
-            {isLoading ? (
-              <span className="w-2 h-2 rounded-full bg-slate-200 dark:bg-white/15 animate-pulse" />
-            ) : (
-              <span className={`w-2 h-2 rounded-full ${DOT[verdict.level]}`} />
-            )}
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              {isLoading ? "…" : verdict.level === "clear" ? "clear" : verdict.level === "info" ? "info" : verdict.level === "warn" ? "watch" : "act"}
-            </span>
-          </span>
-
-          <span className="w-[104px] shrink-0 text-right">
-            {isLoading ? (
-              <span className="inline-block h-6 w-12 rounded bg-slate-100 dark:bg-white/[0.07] animate-pulse" />
-            ) : (
-              <>
-                <span className={`text-[26px] font-black tabular-nums leading-none tracking-tight ${FIGURE[verdict.level]}`}>
-                  {n}
-                </span>
-                {verdict.denominator !== null && (
-                  <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500 tabular-nums ml-1">
-                    /{verdict.denominator}
-                  </span>
-                )}
-              </>
-            )}
-          </span>
-
-          <span className="flex-1 min-w-0">
+          <span className="w-[38%] min-w-[180px] sm:min-w-[260px] shrink-0">
             <span className="block text-sm font-bold text-slate-900 dark:text-white truncate">{config.title}</span>
             <span className="block text-[12px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
-              {isLoading ? "reading…" : verdict.caption}{verdict.note && <> · {verdict.note}</>}
+              {isLoading ? "reading…" : verdict.caption}
             </span>
+          </span>
+
+          <span className="flex-1 min-w-0 h-9 relative">
+            {/* The track marks the whole organisation, so an empty bar still
+                shows the size of what was checked. */}
+            <span className="absolute inset-y-[9px] inset-x-0 rounded-full bg-slate-100 dark:bg-white/[0.05]" />
+            {!isLoading && (
+              <span
+                className={`absolute inset-y-[9px] left-0 right-0 rounded-full origin-left ${BAR[verdict.level]} ${
+                  open ? "opacity-100" : "opacity-90 group-hover:opacity-100"} transition-[transform,opacity] duration-[600ms]`}
+                style={{
+                  transform: `scaleX(${drawn ? width : 0})`,
+                  transitionTimingFunction: "cubic-bezier(0.16,1,0.3,1)",
+                }}
+              />
+            )}
+          </span>
+
+          <span className="w-16 shrink-0 text-right">
+            {isLoading ? (
+              <span className="inline-block h-5 w-9 rounded bg-slate-100 dark:bg-white/[0.07] animate-pulse" />
+            ) : (
+              <span className={`text-[22px] font-black tabular-nums leading-none tracking-tight ${TEXT[verdict.level]}`}>
+                {n}
+              </span>
+            )}
           </span>
         </button>
 
         {canEdit && (
-          <span className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+          <span className="hidden sm:flex items-center gap-0.5 shrink-0 -ml-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
             <button onClick={onEdit} title="Edit"
               className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/10 transition-colors">
               <i className="ph-bold ph-pencil-simple text-[13px]"></i>
@@ -396,17 +381,13 @@ function LedgerRow({
             </button>
           </span>
         )}
-
-        <button onClick={onToggle} tabIndex={-1} aria-hidden className="w-5 shrink-0 py-3.5 text-slate-300 dark:text-slate-600">
-          <i className={`ph-bold ph-caret-down text-xs transition-transform duration-200 ${open ? "rotate-180" : ""}`}></i>
-        </button>
       </div>
 
       {/* grid-template-rows rather than height: it animates without measuring,
           and without laying the contents out on every frame. */}
       <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
         <div className="overflow-hidden">
-          <div className="bg-slate-50/60 dark:bg-white/[0.02] border-t border-slate-100 dark:border-white/[0.06]">
+          <div className={`${SURFACE.sheet} my-2`}>
             <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
           </div>
         </div>
