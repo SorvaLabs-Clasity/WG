@@ -20265,12 +20265,6 @@ export async function mockFetchSecurityQuery(q: string, param?: string, advanced
         { repo: "repo-985", bypasses: 1, reason: "1 out of last 20 PRs bypassed the 2 reviewers requirement", score: 1 },
         { repo: "repo-986", bypasses: 1, reason: "1 out of last 20 PRs bypassed the 2 reviewers requirement", score: 1 }
       ];
-    case "users-without-mfa":
-      return [
-        { user: "alice", reason: "No MFA enabled", details: "Admin on 3, write on 0", adminRepos: 3, writeRepos: 0 },
-        { user: "bob", reason: "No MFA enabled", details: "Admin on 0, write on 6", adminRepos: 0, writeRepos: 6 },
-        { user: "charlie", reason: "No MFA enabled", details: "Admin on 1, write on 2", adminRepos: 1, writeRepos: 2 }
-      ].sort((a, b) => (b.adminRepos * 2 + b.writeRepos) - (a.adminRepos * 2 + a.writeRepos));
     case "dormant-privileged-users":
       return [
         { user: "john", reason: "Dormant high-privilege account", details: "Admin of 6 repos, but 0 commits in the org in the last 6 months", adminRepos: 6 },

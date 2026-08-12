@@ -44,13 +44,21 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
   switch (q) {
     case "repos-dependent-on":
       if (!param) throw new Error("Missing 'param' for dependency name");
+      // Only vulnerable dependencies are known here: the edges come from
+      // Dependabot alerts, not from a dependency graph. A repository using a
+      // package with no open advisory has no edge, so this answers "who is
+      // exposed through this package", not "who uses it". The label says so.
+      //
+      // Matched case-insensitively — package names are lower case by
+      // convention but nobody types them that way reliably.
+      const wanted = param.trim().toLowerCase();
       for (const edge of allEdges) {
-        if (edge.type === "has_vulnerable_dependency" && edge.sk === `DEPENDENCY#${param}`) {
-          results.push({
-            repo: edge.pk.replace("REPO#", ""),
-            reason: `Depends on ${param} (${edge.metadata?.severity || "unknown"} severity)`
-          });
-        }
+        if (edge.type !== "has_vulnerable_dependency") continue;
+        if (edge.sk.replace("DEPENDENCY#", "").toLowerCase() !== wanted) continue;
+        results.push({
+          repo: edge.pk.replace("REPO#", ""),
+          reason: `Vulnerable ${edge.sk.replace("DEPENDENCY#", "")} (${edge.metadata?.severity || "unknown"} severity)`
+        });
       }
       break;
 
@@ -87,30 +95,47 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     }
 
     case "highly-privileged-users":
-      // Access an org owner has by virtue of the role is not a finding — they
-      // are admin on everything by definition, and counting it would put them
-      // top of this list on every organisation, permanently, while hiding the
-      // people the question is actually about.
+      // Org owners are shown, not hidden. They are admin on everything by
+      // virtue of the role, which makes them the most privileged accounts in
+      // the organisation — omitting them would leave the question "who has the
+      // most access" answered by everyone except the people who have the most.
+      // How the access was obtained goes in the result instead, so a grant
+      // somebody made is distinguishable from one the role confers.
       const userAccessMap = new Map<string, string[]>();
+      const userSources = new Map<string, Set<string>>();
       for (const edge of allEdges) {
         if (edge.type === "collaborates_on"
-            && ["admin", "write", "maintain"].includes(edge.metadata?.role)
-            && edge.metadata?.source !== "org_owner") {
+            && ["admin", "write", "maintain"].includes(edge.metadata?.role)) {
           const user = edge.pk.replace("USER#", "");
           if (!userAccessMap.has(user)) userAccessMap.set(user, []);
           userAccessMap.get(user)!.push(edge.sk.replace("REPO#", ""));
+          if (!userSources.has(user)) userSources.set(user, new Set());
+          userSources.get(user)!.add(edge.metadata?.source ?? "direct");
         }
       }
       const threshold = parseInt(param as string) || 3;
+      const HOW: Record<string, string> = {
+        org_owner: "organisation ownership",
+        team: "team membership",
+        direct: "a direct grant",
+      };
       for (const [user, repos] of userAccessMap.entries()) {
-        if (repos.length >= threshold) {
-          results.push({
-            user,
-            reason: `Has direct write/admin access to ${repos.length} repos`,
-            details: repos.slice(0, 5).join(", ") + (repos.length > 5 ? "..." : "")
-          });
-        }
+        if (repos.length < threshold) continue;
+        const sources = [...(userSources.get(user) ?? [])].map(x => HOW[x] ?? x);
+        results.push({
+          user,
+          reason: `Write or admin on ${repos.length} ${repos.length === 1 ? "repository" : "repositories"}`,
+          // Saying how the access was obtained is the difference between a
+          // finding somebody can act on and a restatement of the org chart.
+          details: `Via ${sources.join(" and ")} · ${repos.slice(0, 5).join(", ")}${repos.length > 5 ? "…" : ""}`,
+        });
       }
+      // Access somebody granted is more actionable than access the role
+      // confers, so those sort first.
+      results.sort((a, b) => {
+        const owned = (r: any) => (r.details.includes("organisation ownership") ? 1 : 0);
+        return owned(a) - owned(b);
+      });
       break;
 
     case "unowned-repos":
@@ -605,58 +630,6 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       }
       break;
 
-    case "users-without-mfa": {
-      const mfaToken = userToken || getSystemToken();
-      if (!mfaToken) throw new Error("Authentication required for live evaluation");
-      const { Octokit: MfaOctokit } = await import("octokit");
-      const { getOrg: mfaGetOrg } = await import("../github/client");
-      const mfaOctokit = new MfaOctokit({ auth: mfaToken });
-      const mfaOrg = mfaGetOrg();
-
-      let mfaDisabledUsers: string[] = [];
-      try {
-        const { data: members } = await mfaOctokit.rest.orgs.listMembers({
-          org: mfaOrg,
-          filter: "2fa_disabled"
-        });
-        mfaDisabledUsers = members.map(m => m.login);
-      } catch (e: any) {
-        console.warn("Failed to fetch 2FA disabled members. Token might lack admin:org scope.", e.message);
-      }
-
-      for (const userLogin of mfaDisabledUsers) {
-        let adminRepos = 0;
-        let writeRepos = 0;
-
-        for (const edge of allEdges) {
-          if (edge.type !== "collaborates_on" || edge.pk !== `USER#${userLogin}`) continue;
-          // Access an org owner holds by virtue of the role is reported against
-          // every repository, which would say more about the role than about
-          // the person's missing MFA.
-          if (edge.metadata?.source === "org_owner") continue;
-          if (edge.metadata?.role === "admin") adminRepos++;
-          if (edge.metadata?.role === "write" || edge.metadata?.role === "maintain") writeRepos++;
-        }
-
-        results.push({
-          user: userLogin,
-          reason: `No MFA enabled`,
-          details: adminRepos + writeRepos === 0
-            ? "No write access beyond the organisation default"
-            : `Admin on ${adminRepos}, write on ${writeRepos}`,
-          adminRepos,
-          writeRepos,
-        });
-      }
-
-      // A "production repos" count used to weigh into this, derived from
-      // workflow filenames containing prod, deploy or release. That guess was
-      // removed as a widget of its own for not measuring what it claimed; it
-      // should not survive by hiding inside another result.
-      results.sort((a, b) => (b.adminRepos * 2 + b.writeRepos) - (a.adminRepos * 2 + a.writeRepos));
-      break;
-    }
-
     case "dormant-privileged-users": {
       const dormToken = userToken || getSystemToken();
       if (!dormToken) throw new Error("Authentication required for live evaluation");
@@ -667,9 +640,10 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
       const userAccessMap = new Map<string, string[]>();
       for (const edge of allEdges) {
+        // Org owners included: a dormant account with admin everywhere is the
+        // most serious version of this finding, not one to leave out.
         if (edge.type === "collaborates_on"
-            && ["admin", "maintain"].includes(edge.metadata?.role)
-            && edge.metadata?.source !== "org_owner") {
+            && ["admin", "maintain"].includes(edge.metadata?.role)) {
           const u = edge.pk.replace("USER#", "");
           if (!userAccessMap.has(u)) userAccessMap.set(u, []);
           userAccessMap.get(u)!.push(edge.sk.replace("REPO#", ""));
