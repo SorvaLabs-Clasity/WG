@@ -8,7 +8,7 @@ github-control-hub/
   frontend/     React + Vite + Tailwind
   desktop/      Electron shell
   infra/        CDK stack
-scripts/        setup, deploy, migration
+scripts/        setup and deploy
 docs/           this
 ```
 

@@ -3,7 +3,6 @@
 | | |
 |---|---|
 | [Deploying](deploying.md) | Getting a change onto the EC2, the Lambda, or a desktop |
-| [Migrating](migrating.md) | Standing the app up in a new AWS account and GitHub org |
 | [Troubleshooting](troubleshooting.md) | Things that have actually gone wrong |
 
 ## The three deploy targets, and when each matters

@@ -23,7 +23,7 @@ data comes from, and what it deliberately does not do.
 
 | | |
 |---|---|
-| [Operations](operations/) | Deploying, migrating to another org, troubleshooting |
+| [Operations](operations/) | Deploying and troubleshooting |
 | [Infrastructure](infrastructure/) | The CDK stack, EC2, Lambda, cost |
 | [Development](development/) | Testing, conventions |
 

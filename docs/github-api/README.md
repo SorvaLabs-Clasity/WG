@@ -76,6 +76,27 @@ show a countdown. See [rate limits](rate-limits.md) for why that choice matters.
 distinguish "404, this repo has no rulesets" from "403, you may not look" and
 respond differently. Several handlers depend on that distinction.
 
+## What goes through it, and what does not
+
+Everything that reads or changes the organization — repositories, branches,
+protection, rulesets, teams, members, workflows, Dependabot alerts. If a page in
+this app shows GitHub data, Octokit fetched it.
+
+Two calls deliberately do not, and both are about the OAuth *app* rather than
+the organization:
+
+| Call | Why raw HTTP |
+|---|---|
+| `POST github.com/login/oauth/access_token` | Exchanges a sign-in code for a token. Not part of the REST API Octokit wraps — it lives on `github.com`, not `api.github.com`, and there is no token yet to construct a client with |
+| `DELETE api.github.com/applications/{id}/grant` | Revokes the grant on sign-out. Authenticates with the app's client ID and secret as HTTP Basic, not with a user token, so it does not fit a client built around one |
+
+Both are single fixed requests with no pagination and no retry logic worth
+having. Pulling in `@octokit/oauth-app` to wrap two calls would be more
+dependency than benefit.
+
+The rule of thumb: **Octokit for anything about the organization, raw HTTP for
+the two calls about the sign-in itself.**
+
 ## What we chose not to use
 
 **GraphQL.** Fewer round trips for some queries, but a second API surface to
