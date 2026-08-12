@@ -5,6 +5,8 @@ import { bootstrap } from "./bootstrap";
 import { startBackend } from "./server";
 
 let mainWindow: BrowserWindow | null = null;
+/** True between leaving for GitHub and coming back with a code. */
+let oauthInFlight = false;
 
 const BACKEND_PORT = 4321;
 const isDev = !app.isPackaged;
@@ -52,21 +54,47 @@ function createWindow(): void {
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith("http://localhost")) return { action: "allow" };
+    // Some identity providers open a popup for the account chooser or for MFA.
+    // Sending that to the system browser strands the flow the same way sending
+    // a redirect there did.
+    if (oauthInFlight) return { action: "allow" };
     shell.openExternal(url);
     return { action: "deny" };
   });
 
-  // Allow GitHub OAuth flow to happen inside the Electron window
-  // but open other external URLs in the system browser.
+  // Sign-in stays in this window; ordinary outbound links go to the browser.
+  //
+  // The distinction cannot be drawn by listing hosts. GitHub hands off to
+  // whichever identity provider the organisation uses — Google, Entra, Okta —
+  // and often to an MFA host after that. Allowing only github.com meant the
+  // hop to accounts.google.com was pushed into the system browser, which then
+  // received half of a flow whose state belonged to this window: Google
+  // answered 400, and the app was left on a blank page with no way back.
+  //
+  // So the question is "are we in the middle of signing in", not "is this host
+  // one we recognise". The flow is bounded: it starts at /auth/github and ends
+  // when GitHub sends us back to /login.
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (url.startsWith("http://localhost")) {
-      return; // allow normal localhost navigations
+      // Self-clearing: any localhost navigation that is not the start of a
+      // sign-in ends the flow, so an abandoned attempt cannot leave the window
+      // permanently willing to load anything.
+      oauthInFlight = url.includes("/auth/github");
+      return;
     }
-    if (url.includes("github.com")) {
-      return; // allow GitHub navigations within the main window
-    }
+    if (oauthInFlight || url.includes("github.com")) return;
+
     event.preventDefault();
     shell.openExternal(url);
+  });
+
+  // A prevented or failed navigation leaves a blank window, which is what made
+  // the only way out of the broken flow "quit the app".
+  mainWindow.webContents.on("did-fail-load", (_e, code, _desc, failedUrl, isMainFrame) => {
+    if (!isMainFrame || code === -3 /* aborted, normal during redirects */) return;
+    if (failedUrl.startsWith(`http://localhost:${BACKEND_PORT}/login`)) return;
+    oauthInFlight = false;
+    mainWindow?.loadURL(`http://localhost:${BACKEND_PORT}/login`);
   });
 
   // Register IPC handler here (not in setupAutoUpdater) so it works in dev mode too
