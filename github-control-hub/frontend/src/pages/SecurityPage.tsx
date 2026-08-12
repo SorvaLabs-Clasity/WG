@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useAlerts, useResolveAlert, useUnresolveAlert, useInactiveUsers } from "../hooks/useAlerts";
+import { useAlerts, useResolveAlert, useUnresolveAlert } from "../hooks/useAlerts";
 import { usePermissions } from "../hooks/usePermissions";
 import { useAuth } from "../App";
 import {
@@ -31,7 +31,6 @@ const ALERTS_PER_PAGE = 10;
 export default function SecurityPage() {
   const { user } = useAuth();
   const { data: alerts, isLoading: alertsLoading, isFetching: alertsFetching, refetch: refetchAlerts } = useAlerts();
-  const { data: inactiveUsers, isLoading: usersLoading } = useInactiveUsers();
   // Resolving is the org's record that a finding was dealt with, so it is
   // gated like the rest of the shared state. The server enforces it.
   const { data: permissions } = usePermissions();
@@ -50,9 +49,8 @@ export default function SecurityPage() {
       resolved: a.filter(x => x.resolved).length,
       all: a.length,
       critical: a.filter(x => !x.resolved && (x.severity === "critical" || x.severity === "high")).length,
-      stale: inactiveUsers?.length ?? 0,
     };
-  }, [alerts, inactiveUsers]);
+  }, [alerts]);
 
   const filtered = useMemo(() => (alerts ?? []).filter(a =>
     filter === "active" ? !a.resolved : filter === "resolved" ? a.resolved : true
@@ -62,7 +60,7 @@ export default function SecurityPage() {
   const safePage = Math.min(page, totalPages);
   const shown = filtered.slice((safePage - 1) * ALERTS_PER_PAGE, safePage * ALERTS_PER_PAGE);
 
-  if (alertsLoading || usersLoading) {
+  if (alertsLoading) {
     return <Page user={user}><Spinner /></Page>;
   }
 
@@ -83,7 +81,6 @@ export default function SecurityPage() {
         metrics={[
           { value: counts.active, label: "open alerts", emphasis: true },
           { value: counts.critical, label: "high or critical" },
-          { value: counts.stale, label: "stale accounts" },
         ]}
         aside={<SlabPercent value={resolvedPct} label="resolved" />}
         footer={
@@ -93,8 +90,7 @@ export default function SecurityPage() {
         }
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_340px] gap-6 items-start">
-        <div>
+      <div>
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
             <Segmented value={filter} onChange={(f) => { setFilter(f); setPage(1); }} options={[
               ["active", `Open ${counts.active}`],
@@ -171,46 +167,6 @@ export default function SecurityPage() {
           )}
         </div>
 
-        {/* Stale accounts */}
-        <div className="lg:sticky lg:top-20">
-          <Sheet>
-            <div className={`px-6 py-5 ${INTENT[counts.stale > 0 ? "warn" : "neutral"].solid}`}>
-              <p className={`${TYPE.label} text-white/60`}>Dormant 180+ days</p>
-              <p className="text-[40px] font-black text-white leading-none tabular-nums mt-2">{counts.stale}</p>
-              <p className="text-sm text-white/70 mt-1.5">
-                {counts.stale === 0 ? "No stale accounts" : counts.stale === 1 ? "account still has access" : "accounts still have access"}
-              </p>
-            </div>
-            {!inactiveUsers?.length ? (
-              <Block title="Accounts">
-                <p className="text-sm text-slate-500 dark:text-slate-400">Everyone with access has been active recently.</p>
-              </Block>
-            ) : (
-              <ul className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[460px] overflow-y-auto">
-                {inactiveUsers.map((u, i) => (
-                  <li key={u.username} style={enter(i, 30, 240)}
-                    className="px-6 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-slate-800 dark:text-slate-100 truncate flex items-center gap-1.5">
-                        {u.username}
-                        {u.role === "admin" && <i className="ph-fill ph-shield-star text-amber-500 text-xs" title="Organization admin"></i>}
-                      </p>
-                      <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-0.5">
-                        {u.role} · last active {new Date(u.lastActive).toLocaleDateString(undefined, { month: "short", year: "numeric" })}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </Sheet>
-          <div className="mt-3">
-            <Note intent="info">
-              Dormant accounts keep their access. Each one is a way in that nobody is watching.
-            </Note>
-          </div>
-        </div>
-      </div>
     </Page>
   );
 }

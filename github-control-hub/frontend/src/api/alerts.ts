@@ -28,6 +28,3 @@ export async function simulateAlert(scenario: string): Promise<void> {
   return apiPost<{ message: string }>("/alerts/simulate", { scenario }).then(() => {});
 }
 
-export async function fetchInactiveUsers(): Promise<{ username: string, lastActive: string, role: string }[]> {
-  return apiGet<{ username: string, lastActive: string, role: string }[]>("/alerts/inactive-users");
-}

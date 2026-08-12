@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchAlerts, resolveAlert, unresolveAlert, simulateAlert, fetchInactiveUsers } from "../api/alerts";
+import { fetchAlerts, resolveAlert, unresolveAlert, simulateAlert } from "../api/alerts";
 
 export function useAlerts() {
   return useQuery({
@@ -39,9 +39,3 @@ export function useSimulateAlert() {
   });
 }
 
-export function useInactiveUsers() {
-  return useQuery({
-    queryKey: ["inactive-users"],
-    queryFn: fetchInactiveUsers,
-  });
-}
