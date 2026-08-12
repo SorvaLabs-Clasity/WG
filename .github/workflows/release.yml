@@ -19,6 +19,13 @@ permissions:
 jobs:
   build:
     strategy:
+      # One at a time. Both runners publish to the same GitHub release, and
+      # electron-builder overwrites an asset by deleting it and uploading
+      # again. Run in parallel, the two delete-and-upload sequences interleave
+      # and files are lost — the run goes green having silently dropped the
+      # macOS installer and latest-mac.yml, which is the file every installed
+      # Mac reads to find an update.
+      max-parallel: 1
       matrix:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
