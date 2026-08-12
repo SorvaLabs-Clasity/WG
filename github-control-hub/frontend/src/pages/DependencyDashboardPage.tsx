@@ -212,10 +212,14 @@ export default function DependencyDashboardPage() {
           {shown.map(([repo, alerts], i) => {
             const org = alerts[0]?.org;
             const off = alerts.some(a => a.disabled);
-            const clean = !off && alerts.every(a => a.clean);
-            const real = alerts.filter(a => !a.clean && !a.disabled);
+            // Just switched on and GitHub has not reported yet. Without this the
+            // placeholder row rendered as a vulnerability named "Dependabot
+            // alerts disabled" for the first few seconds after enabling.
+            const scanning = !off && alerts.some(a => a.scanning);
+            const clean = !off && !scanning && alerts.every(a => a.clean);
+            const real = alerts.filter(a => !a.clean && !a.disabled && !a.scanning);
             const critical = real.filter(a => a.severity === "critical").length;
-            const intent: Intent = off ? "neutral" : critical > 0 ? "danger" : real.length > 0 ? "warn" : "good";
+            const intent: Intent = off || scanning ? "neutral" : critical > 0 ? "danger" : real.length > 0 ? "warn" : "good";
             const isOpen = expanded.has(repo);
             const visible = isOpen ? real : real.slice(0, COLLAPSED);
             const hidden = real.length - visible.length;
@@ -227,11 +231,18 @@ export default function DependencyDashboardPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>{repo}</h3>
                       {off && <Pill intent="neutral">not watching</Pill>}
+                      {scanning && <Pill intent="info">scanning</Pill>}
                       {clean && <Pill intent="good">clean</Pill>}
                     </div>
                     {off && (
                       <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>
                         Dependabot is switched off, so vulnerabilities here go undetected.
+                      </p>
+                    )}
+                    {scanning && (
+                      <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5`}>
+                        <i className="ph-bold ph-circle-notch animate-spin text-[13px]"></i>
+                        Just switched on — GitHub is still scanning. Results appear shortly.
                       </p>
                     )}
                     {clean && (
@@ -240,7 +251,7 @@ export default function DependencyDashboardPage() {
                   </div>
 
                   <div className="shrink-0 flex items-center gap-3">
-                    {!off && !clean && (
+                    {!off && !clean && !scanning && (
                       <Figure intent={critical > 0 ? "danger" : "warn"} value={real.length}
                         label={real.length === 1 ? "alert" : "alerts"} />
                     )}

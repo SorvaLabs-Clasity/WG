@@ -13,6 +13,11 @@ export interface DependencyAlert {
   detected_at: string;
   disabled?: boolean; // indicates if dependabot is off for the repo
   clean?: boolean; // indicates if dependabot is on but has no alerts
+  /**
+   * Just switched on, and GitHub has not reported results yet. Distinct from
+   * `clean`: one means "looked, found nothing", the other "has not looked yet".
+   */
+  scanning?: boolean;
 }
 
 export interface DependencySummary {

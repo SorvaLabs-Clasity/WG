@@ -13,7 +13,22 @@ import { TagInput } from "../components/TagInput";
 
 type WidgetType = "preset" | "query";
 type DisplayType = "metric" | "table";
-type PresetId = "dependabot" | "bypasses";
+type PresetId = "dependabot" | "bypasses" | "vuln-repos";
+
+/**
+ * Severity filter for the "repositories with vulnerabilities" preset. Stored in
+ * queryParam so it survives a reload with the rest of the widget's config.
+ */
+const SEVERITY_CHOICES = [
+  ["any", "Any severity"],
+  ["critical", "Critical only"],
+  ["high", "High and above"],
+  ["medium", "Medium and above"],
+  ["low", "Low and above"],
+] as const;
+
+const SEVERITY_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, moderate: 2, low: 1 };
+const THRESHOLD: Record<string, number> = { any: 1, low: 1, medium: 2, high: 3, critical: 4 };
 
 export default function AnalyticsPage() {
   const { user } = useAuth();
@@ -318,6 +333,23 @@ function useWidgetData(config: WidgetConfig) {
           }
         }
         rawItems = Array.from(map.values()).sort((a, b) => b.critical !== a.critical ? b.critical - a.critical : b.high !== a.high ? b.high - a.high : b.total - a.total);
+      } else if (config.presetId === "vuln-repos") {
+        // Reads the same ["dependencies"] query the Dependabot tab uses, so
+        // adding this widget costs no additional GitHub requests — the list is
+        // one request per repository and must not be fetched twice.
+        loading = depsLoading;
+        const min = THRESHOLD[config.queryParam || "any"] ?? 1;
+        const map = new Map<string, any>();
+        for (const dep of depsData ?? []) {
+          if (dep.clean || dep.disabled || dep.scanning) continue;
+          if ((SEVERITY_RANK[dep.severity] ?? 0) < min) continue;
+          if (!map.has(dep.repo)) map.set(dep.repo, { repo: dep.repo, total: 0, worst: "low" });
+          const e = map.get(dep.repo)!;
+          e.total++;
+          if ((SEVERITY_RANK[dep.severity] ?? 0) > (SEVERITY_RANK[e.worst] ?? 0)) e.worst = dep.severity;
+        }
+        rawItems = Array.from(map.values()).sort(
+          (a, b) => (SEVERITY_RANK[b.worst] - SEVERITY_RANK[a.worst]) || b.total - a.total);
       } else if (config.presetId === "bypasses") {
         loading = bypassLoading;
         rawItems = bypassData || [];
@@ -346,6 +378,7 @@ function WidgetCard({ config, onRemove, onEdit, canEdit, graphEmpty, orgName }: 
     if (config.type === "preset") {
       if (config.presetId === "dependabot") return { cls: "ph-fill ph-bug text-rose-500", color: "rose" };
       if (config.presetId === "bypasses") return { cls: "ph-fill ph-shield-warning text-amber-500", color: "amber" };
+      if (config.presetId === "vuln-repos") return { cls: "ph-fill ph-siren text-rose-500", color: "rose" };
     }
     const hasStatus = items.some((i: any) => i.status);
     if (hasStatus) {
@@ -455,7 +488,9 @@ function TableCardBody({ items, config, onExpand }: { items: any[]; config: Widg
           <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
             {items.slice(0, 5).map((item: any, idx: number) => {
               const name = item.repo || item.user || item.team || "Unknown";
-              const val = config.presetId === "dependabot" ? item.total : config.presetId === "bypasses" ? item.bypasses : "";
+              const val = config.presetId === "dependabot" ? item.total
+                : config.presetId === "vuln-repos" ? item.total
+                : config.presetId === "bypasses" ? item.bypasses : "";
               return (
                 <tr key={idx} className="hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer" onClick={onExpand}>
                   <td className="px-5 py-3 text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2">
@@ -599,6 +634,12 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                 <th className="px-6 py-3 text-center">Total</th>
               </>
             )}
+            {config.type === "preset" && config.presetId === "vuln-repos" && (
+              <>
+                <th className="px-6 py-3 text-center">Worst</th>
+                <th className="px-6 py-3 text-center">Alerts</th>
+              </>
+            )}
             {config.type === "preset" && config.presetId === "bypasses" && (
               <>
                 <th className="px-6 py-3">Bypasses</th>
@@ -632,6 +673,20 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                     <td className="px-6 py-4 text-center font-mono font-medium text-orange-500 dark:text-orange-400">{item.high || "-"}</td>
                     <td className="px-6 py-4 text-center font-mono font-medium text-amber-600 dark:text-amber-400">{item.medium || "-"}</td>
                     <td className="px-6 py-4 text-center font-mono font-medium text-slate-500 dark:text-slate-400">{item.low || "-"}</td>
+                    <td className="px-6 py-4 text-center font-mono font-bold">{item.total}</td>
+                  </>
+                )}
+                {config.type === "preset" && config.presetId === "vuln-repos" && (
+                  <>
+                    <td className="px-6 py-4 text-center">
+                      <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide ${
+                        item.worst === "critical" ? "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400"
+                        : item.worst === "high" ? "bg-orange-50 text-orange-700 dark:bg-orange-950/50 dark:text-orange-400"
+                        : item.worst === "medium" || item.worst === "moderate" ? "bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                        : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400"}`}>
+                        {item.worst}
+                      </span>
+                    </td>
                     <td className="px-6 py-4 text-center font-mono font-bold">{item.total}</td>
                   </>
                 )}
@@ -839,6 +894,9 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
   const [title, setTitle] = useState(initialData?.title || "");
   const [type, setType] = useState<WidgetType>(initialData?.type || "preset");
   const [presetId, setPresetId] = useState<PresetId>((initialData?.presetId as PresetId) || "dependabot");
+  // Reuses queryParam rather than adding a field, so it persists with the rest
+  // of the widget without a schema change.
+  const [presetSeverity, setPresetSeverity] = useState<string>(initialData?.queryParam || "any");
   const [displayType, setDisplayType] = useState<DisplayType>(initialData?.displayType || "metric");
 
   const [selectedQueryId, setSelectedQueryId] = useState<string>(initialData?.queryId || QUERY_OPTIONS[0].id);
@@ -885,7 +943,10 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
     if (type === "query" && selectedQuery?.requiresParam && !selectedQuery?.useTagInput && !paramValue.trim()) return;
 
     if (type === "preset") {
-      onSave({ title, type, presetId, displayType });
+      onSave({
+        title, type, presetId, displayType,
+        ...(presetId === "vuln-repos" && { queryParam: presetSeverity }),
+      });
     } else {
       let advanced = undefined;
       if (selectedQuery?.hasAdvancedRules) {
@@ -975,8 +1036,26 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
                 >
                   <option value="dependabot">Dependabot Issues Ranking</option>
+                  <option value="vuln-repos">Repositories with vulnerabilities</option>
                   <option value="bypasses">Protection Rule Bypasses</option>
                 </select>
+
+                {presetId === "vuln-repos" && (
+                  <div className="mt-3">
+                    <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Severity</label>
+                    <select
+                      value={presetSeverity}
+                      onChange={(e) => setPresetSeverity(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
+                    >
+                      {SEVERITY_CHOICES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+                    </select>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5">
+                      Counts repositories, not alerts. Reads the same data as the Dependabot tab,
+                      so this widget makes no extra GitHub requests.
+                    </p>
+                  </div>
+                )}
               </div>
             ) : (
               <>
