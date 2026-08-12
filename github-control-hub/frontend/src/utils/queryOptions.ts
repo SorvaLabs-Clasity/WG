@@ -1,5 +1,5 @@
 export const QUERY_OPTIONS = [
-  { id: "repos-dependent-on", informational: true, label: "Repos exposed through a vulnerable package...", requiresParam: true, paramLabel: "Package name (e.g. lodash)", icon: "ph-package" },
+  { id: "repos-dependent-on", informational: true, label: "Repos exposed through vulnerable package(s)...", requiresParam: true, paramLabel: "Package name(s)", icon: "ph-package", useTagInput: true },
   { id: "repos-with-outside-admins", label: "Repos with admin users outside owning team", requiresParam: false, icon: "ph-user-focus" },
   { id: "highly-privileged-users", label: "Highly privileged users...", requiresParam: true, paramLabel: "Min. repos with write/admin access to flag a user", paramDefault: "5", icon: "ph-shield-star" },
   { id: "unowned-repos", label: "Repos without an owning team", requiresParam: false, icon: "ph-ghost" },

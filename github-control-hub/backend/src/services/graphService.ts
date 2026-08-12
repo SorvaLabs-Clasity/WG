@@ -51,13 +51,28 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       //
       // Matched case-insensitively — package names are lower case by
       // convention but nobody types them that way reliably.
-      const wanted = param.trim().toLowerCase();
+      const wanted = new Set(param.split(",").map(x => x.trim().toLowerCase()).filter(Boolean));
+      if (wanted.size === 0) throw new Error("Missing 'param' for dependency name");
+
+      // One row per repository, listing every package asked about that it is
+      // exposed through. Emitting a row per package instead would count a
+      // repository once for each, and the metric card counts rows.
+      const byRepo = new Map<string, { pkg: string; severity: string }[]>();
       for (const edge of allEdges) {
         if (edge.type !== "has_vulnerable_dependency") continue;
-        if (edge.sk.replace("DEPENDENCY#", "").toLowerCase() !== wanted) continue;
+        const pkg = edge.sk.replace("DEPENDENCY#", "");
+        if (!wanted.has(pkg.toLowerCase())) continue;
+        const repo = edge.pk.replace("REPO#", "");
+        if (!byRepo.has(repo)) byRepo.set(repo, []);
+        byRepo.get(repo)!.push({ pkg, severity: edge.metadata?.severity || "unknown" });
+      }
+      for (const [repo, hits] of byRepo) {
         results.push({
-          repo: edge.pk.replace("REPO#", ""),
-          reason: `Vulnerable ${edge.sk.replace("DEPENDENCY#", "")} (${edge.metadata?.severity || "unknown"} severity)`
+          repo,
+          reason: hits.length === 1
+            ? `Vulnerable ${hits[0].pkg} (${hits[0].severity})`
+            : `Vulnerable in ${hits.length} of the packages asked about`,
+          details: hits.map(h => `${h.pkg} (${h.severity})`).join(", "),
         });
       }
       break;
