@@ -347,6 +347,45 @@ function Ring({ share, tone, children }: { share: number; tone: typeof TONE[Leve
   );
 }
 
+type Entity = "repository" | "user" | "team";
+
+/** What this check counts, read off the rows it returned. */
+function entityOf(items: any[]): Entity {
+  const first = items.find(i => i?.repo || i?.user || i?.team);
+  if (first?.user) return "user";
+  if (first?.team) return "team";
+  return "repository";
+}
+
+const PLURAL: Record<Entity, [string, string]> = {
+  repository: ["repository", "repositories"],
+  user: ["user", "users"],
+  team: ["team", "teams"],
+};
+
+const nounFor = (kind: Entity, n: number) => PLURAL[kind][n === 1 ? 0 : 1];
+
+const EMBLEM: Record<Entity, string> = {
+  repository: "ph-fill ph-books",
+  user: "ph-fill ph-user-circle",
+  team: "ph-fill ph-users-three",
+};
+
+/**
+ * Stands in for the ring when there is no denominator.
+ *
+ * Same 68px footprint so the header does not change height between cards, and
+ * the same tone, so a card about people still reads as urgent or settled at a
+ * glance.
+ */
+function Emblem({ kind, tone }: { kind: Entity; tone: typeof TONE[Level] }) {
+  return (
+    <div className={`w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center ${tone.wash} border ${tone.edge}`}>
+      <i className={`${EMBLEM[kind]} text-[26px] ${tone.figure}`}></i>
+    </div>
+  );
+}
+
 /** The first few affected things, by name. A count sizes a problem; a name locates it. */
 function nameOf(item: any): string {
   return item?.repo || item?.user || item?.team || "—";
@@ -386,6 +425,7 @@ function CheckCard({
   }, [isLoading, verdict, config.id, onReport]);
 
   const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
+  const entity = entityOf(items);
   const preview = items.filter((i: any) => !i.status || i.status === "fail").slice(0, 3);
   const hidden = Math.max(0, verdict.value - preview.length);
 
@@ -407,15 +447,22 @@ function CheckCard({
     <article
       style={enter(index)}
       className={`group rounded-2xl border ${tone.edge} ${tone.lift} bg-white dark:bg-[#151a23] overflow-hidden
-        transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5`}
+        transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5
+        ${open ? "md:col-span-2 xl:col-span-3" : ""}`}
     >
       {/* Header: the wash lives here rather than over the whole card, so the
           names below stay on a plain surface and remain readable. */}
       <div className={`${tone.wash} px-5 pt-5 pb-4`}>
         <div className="flex items-start gap-4">
-          <Ring share={verdict.share ?? 0} tone={tone}>
-            {pct === null ? "—" : `${pct}%`}
-          </Ring>
+          {pct === null ? (
+            // Nothing to take a share of — a check about people or teams has no
+            // repository count behind it, so a ring reading "—" was a chart of
+            // nothing. A marked disc says what kind of thing was counted
+            // instead, and keeps the header the same height either way.
+            <Emblem kind={entity} tone={tone} />
+          ) : (
+            <Ring share={verdict.share ?? 0} tone={tone}>{`${pct}%`}</Ring>
+          )}
 
           <div className="flex-1 min-w-0 pt-1">
             <p className={`${TYPE.label} ${tone.figure} mb-1.5`}>{verdict.eyebrow}</p>
@@ -441,17 +488,23 @@ function CheckCard({
         <div className="mt-4">
           <p className="flex items-baseline gap-2">
             <span className={`text-[32px] font-black tabular-nums leading-none tracking-tight ${tone.figure}`}>{n}</span>
-            <span className="text-[13px] font-semibold text-slate-500 dark:text-slate-400">{verdict.caption}</span>
+            <span className="text-[13px] font-semibold text-slate-500 dark:text-slate-400">
+              {verdict.share === null && verdict.value > 0
+                ? nounFor(entity, verdict.value)
+                : verdict.caption}
+            </span>
           </p>
-          <div className="mt-3 h-1.5 rounded-full bg-slate-900/[0.07] dark:bg-white/[0.08] overflow-hidden">
-            <div
-              className={`h-full rounded-full origin-left ${tone.bar}`}
-              style={{
-                transform: `scaleX(${drawn ? Math.max(verdict.share ?? 0, verdict.value > 0 ? 0.012 : 0) : 0})`,
-                transition: "transform 700ms cubic-bezier(0.16,1,0.3,1)",
-              }}
-            />
-          </div>
+          {verdict.share !== null && (
+            <div className="mt-3 h-1.5 rounded-full bg-slate-900/[0.07] dark:bg-white/[0.08] overflow-hidden">
+              <div
+                className={`h-full rounded-full origin-left ${tone.bar}`}
+                style={{
+                  transform: `scaleX(${drawn ? Math.max(verdict.share, verdict.value > 0 ? 0.012 : 0) : 0})`,
+                  transition: "transform 700ms cubic-bezier(0.16,1,0.3,1)",
+                }}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -487,7 +540,7 @@ function CheckCard({
           and without laying the contents out on every frame. */}
       <div className={`grid transition-[grid-template-rows] duration-300 ease-out ${open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"}`}>
         <div className="overflow-hidden">
-          <div className="border-t border-slate-100 dark:border-white/[0.06] max-h-[420px] overflow-y-auto">
+          <div className="border-t border-slate-100 dark:border-white/[0.06] max-h-[460px] overflow-y-auto overflow-x-auto">
             <WidgetDataTable config={config} items={items} graphEmpty={graphEmpty} orgName={orgName} />
           </div>
         </div>
