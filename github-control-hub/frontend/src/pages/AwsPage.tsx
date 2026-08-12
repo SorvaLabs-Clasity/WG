@@ -829,13 +829,27 @@ function SetupAccess() {
             that would let whoever held them deploy an administrator role everywhere.
           </p>
 
-          <div className="mb-5">
+          <div className="mb-4">
             <Segmented value={how} onChange={setHow} options={[
               ["some", "Accounts I choose"],
               ["org", "Every account"],
               ["one", "Just one"],
             ]} />
           </div>
+
+          {/* Which account you must be signed into is the first thing people
+              get wrong, so it sits above the steps rather than inside one. */}
+          <Note intent="info">
+            {how === "one" ? (
+              <>Do this signed in to <strong>the account you want watched</strong>, and repeat for each
+              one.</>
+            ) : (
+              <>Do all of this signed in to your <strong>organization&rsquo;s management account</strong>, in
+              one region. You never sign in to the accounts being added — CloudFormation reaches into
+              them for you. The role is global, so the region only decides where the stack record
+              lives; which regions actually get scanned is set per account in this app afterwards.</>
+            )}
+          </Note>
 
           {how === "some" && (
             <div className="mb-5 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
@@ -914,7 +928,16 @@ function SetupAccess() {
             </div>
           </Step>
 
-          <Step n={3} title="Paste these parameters">
+          <Step n={3} title={`Name the ${how === "one" ? "stack" : "stack set"} and paste these parameters`}>
+            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mb-3">
+              Call it <span className="font-mono text-[11.5px]">{data.stackSetName}</span>. That name is
+              yours to choose — matching just keeps the console and the command line in step.
+              <span className="block mt-1">
+                <span className="font-mono text-[11.5px]">RoleName</span> below is a different thing and is
+                <strong> not</strong> yours to choose: it is the one role name this app is permitted to
+                assume, so changing it means AWS refuses the app.
+              </span>
+            </p>
             {how === "some" && picked.size > 0 && (
               <Copyable label="Account IDs (the intersection filter)" value={chosenIds.join(",")} />
             )}
