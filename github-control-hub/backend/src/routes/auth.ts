@@ -270,6 +270,11 @@ router.post("/invalidate-aws", serverModeGuard, async (_req: Request, res: Respo
   delete process.env.AWS_SESSION_TOKEN;
   delete process.env.AWS_PROFILE;
 
+  // Otherwise the next launch quietly reconnects to the account you just
+  // deliberately left.
+  const { forgetAwsProfile } = await import("../services/desktopPrefs");
+  forgetAwsProfile();
+
   lockAws();
   resetDynamoClient();
   res.json({ ok: true });
@@ -295,6 +300,11 @@ router.post("/reconnect-aws", serverModeGuard, setupOrAuthMiddleware, async (req
   try {
     await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
     const secretsLoaded = await reloadSecretsIfNeeded();
+    // Remembered only now, having actually reached DynamoDB. Storing it on the
+    // way in would mean a typo becomes the profile you are offered every
+    // launch from then on.
+    const { rememberAwsProfile } = await import("../services/desktopPrefs");
+    if (process.env.AWS_PROFILE) rememberAwsProfile(process.env.AWS_PROFILE);
     res.json({ ok: true, reachable: true, secretsLoaded });
   } catch (err: any) {
     res.json({ ok: true, reachable: false, error: err.message });
@@ -448,6 +458,8 @@ router.post("/aws-use-profile", serverModeGuard, setupOrAuthMiddleware, async (r
   try {
     await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
     const secretsLoaded = await reloadSecretsIfNeeded();
+    const { rememberAwsProfile } = await import("../services/desktopPrefs");
+    rememberAwsProfile(profile);
     res.json({ ok: true, reachable: true, secretsLoaded });
   } catch (err: any) {
     res.json({ ok: true, reachable: false, error: err.message });

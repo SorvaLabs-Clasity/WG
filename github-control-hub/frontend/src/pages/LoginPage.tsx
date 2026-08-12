@@ -123,15 +123,23 @@ export default function LoginPage() {
    * `pickMethod` only on the first load: once someone has chosen a tab, a
    * refresh must not move them off it.
    */
-  const loadProfiles = useCallback(async (pickMethod: boolean) => {
+  const loadProfiles = useCallback(async (pickMethod: boolean, preferred?: string) => {
     try {
       const list = await fetchAwsProfiles();
       setAwsProfiles(list);
       setProfilesError(null);
-      setSelectedProfile(prev => prev || list[0]?.name || "");
+      // The profile you last signed in with, then whatever happens to be first
+      // in ~/.aws/config. Falling straight to the first one is why this asked
+      // every launch: the preselected answer was almost never the right one.
+      setSelectedProfile(prev =>
+        prev || (preferred && list.some(pr => pr.name === preferred) ? preferred : "") || list[0]?.name || "");
       if (pickMethod) {
         const hasSso = list.some(pr => pr.type === "sso");
         if (!hasSso) setAwsMethod(list.length > 0 ? "profile" : "keys");
+        // And put them on the tab that profile belongs to, so a remembered SSO
+        // profile does not land on the access-key form.
+        const remembered = list.find(pr => pr.name === preferred);
+        if (remembered) setAwsMethod(remembered.type === "sso" ? "sso" : "profile");
       }
     } catch (err) {
       setAwsProfiles([]);
@@ -160,8 +168,10 @@ export default function LoginPage() {
   // brought the SSO profiles back.
   useEffect(() => {
     if (awsOk) return;
-    loadProfiles(!touchedMethod.current);
-  }, [awsOk, loadProfiles]);
+    // status.aws.profile is the profile the backend restored from the last
+    // successful sign-in, so it is the one to preselect.
+    loadProfiles(!touchedMethod.current, status?.aws.profile);
+  }, [awsOk, loadProfiles, status?.aws.profile]);
 
 
   const stage: Stage =

@@ -95,6 +95,16 @@ app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
 // Try to load secrets from Secrets Manager at startup (covers auto-connected AWS)
 // then initialize the GitHub App token manager
 (async () => {
+  // Before anything reaches for credentials. The desktop app's AWS profile
+  // lived only in process.env, so closing the window forgot it and every
+  // launch fell back to "default" — a sign-in you had already done, asked for
+  // again. Restored first so the secrets load below uses the right account.
+  try {
+    const { restoreAwsProfile } = await import("./services/desktopPrefs");
+    const restored = restoreAwsProfile();
+    if (restored) console.log(`[server] Using remembered AWS profile "${restored}"`);
+  } catch { /* a preference file must never stop the server starting */ }
+
   try {
     if (!process.env.GITHUB_CLIENT_ID) {
       const { SecretsManagerClient, GetSecretValueCommand } = await import("@aws-sdk/client-secrets-manager");
