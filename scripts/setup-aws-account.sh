@@ -74,11 +74,14 @@ fi
 # Key schemas are taken from the service layer, NOT from README.md — the
 # README's table list is out of date and claims everything is keyed on `id`.
 # Source of truth for each table is noted beside it below.
+#
+# The templates, rule-templates and exclusions tables were removed from this
+# list when the templates feature was deleted, so a fresh account stops creating
+# them. Accounts that already have them keep them, rows and all: nothing here
+# drops a table, an unread table costs nothing at PAY_PER_REQUEST, and a
+# deletion cannot be reversed.
 TABLES=(
-  templates          # templateService.ts:171     Key: { id }
-  rule-templates     # ruleTemplateService.ts:42  Key: { id }
   alerts             # alertService.ts:86         Key: { id }
-  exclusions         # exclusionService.ts:49     Key: { id }
   widgets            # widgetService.ts:37        Key: { id }
 )
 
