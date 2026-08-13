@@ -77,6 +77,52 @@ const code = (src: string) => src
 
 // Later tasks append their blocks here, inside the IIFE.
 
+// ── the secret is cached, and a rotation costs one delivery not fifteen minutes ──
+{
+  const { getWebhookSecret, refetchWebhookSecret,
+          __setSecretLoaderForTests, __resetSecretCacheForTests } = await import("./src/webhooks/secret");
+
+  let calls = 0;
+  let live = "first-secret";
+  __resetSecretCacheForTests();
+  __setSecretLoaderForTests(async () => { calls++; return { GITHUB_WEBHOOK_SECRET: live }; });
+
+  check("the first read fetches", (await getWebhookSecret()) === "first-secret" && calls === 1, calls);
+  await getWebhookSecret();
+  await getWebhookSecret();
+  check("  and subsequent reads do not", calls === 1, calls);
+
+  // The secret is rotated in Secrets Manager. The cache is now wrong, and
+  // rejected deliveries are lost rather than queued.
+  live = "rotated-secret";
+  check("a refetch after a failed verification picks up the rotation",
+    (await refetchWebhookSecret()) === "rotated-secret");
+
+  // A stream of bad signatures must not become a stream of Secrets Manager calls.
+  const before = calls;
+  await refetchWebhookSecret();
+  await refetchWebhookSecret();
+  check("  but refetches are floored so bad signatures cannot amplify",
+    calls === before, calls);
+}
+
+// ── a transient Secrets Manager failure does not discard a working secret ──
+{
+  const { getWebhookSecret, __setSecretLoaderForTests, __resetSecretCacheForTests } =
+    await import("./src/webhooks/secret");
+
+  __resetSecretCacheForTests();
+  __setSecretLoaderForTests(async () => ({ GITHUB_WEBHOOK_SECRET: "good" }));
+  await getWebhookSecret();
+
+  __setSecretLoaderForTests(async () => { throw new Error("throttled"); });
+  __resetSecretCacheForTests({ keepValue: true });
+  check("a fetch failure keeps the last known secret", (await getWebhookSecret()) === "good");
+
+  __resetSecretCacheForTests();
+  check("  but no secret at all still fails closed", (await getWebhookSecret()) === "");
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
 })();
