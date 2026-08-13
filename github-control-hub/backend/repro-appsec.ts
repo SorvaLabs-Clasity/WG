@@ -116,22 +116,38 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     const receiver = read("github-control-hub/backend/src/webhooks/receiver.ts");
     const worker   = read("github-control-hub/backend/src/webhooks/worker.ts");
 
+    // code() throughout this block: a comment can name the same call or
+    // condition it documents, and a raw regex cannot tell a live line from
+    // a dead one wearing its comment as camouflage.
     check("webhook signatures are compared in constant time",
-      /timingSafeEqual/.test(verify));
+      /timingSafeEqual/.test(code(verify)));
     check("  and a missing secret fails closed",
-      /if \(!secret\) return false/.test(verify), "an absent webhook secret would accept anything");
+      /if \(!secret\) return false/.test(code(verify)), "an absent webhook secret would accept anything");
+
+    // Sliced to the handler body: claimDelivery is also named in the import
+    // statement above it, so a check against the full source would still
+    // pass if the handler's own call to it were deleted and the now-unused
+    // import were left behind.
+    const workerCode = code(worker);
+    const workerBody = workerCode.slice(workerCode.indexOf("export async function handler"));
     check("  replays are rejected",
-      /claimDelivery/.test(worker));
+      /claimDelivery/.test(workerBody));
+
+    // Sliced to the handler body rather than checked against the whole file:
+    // verifyGitHubSignature is also named in the import statement above the
+    // handler, so a check against the full source would still pass if the
+    // handler body itself called things in the wrong order.
+    const receiverCode = code(receiver);
+    const receiverBody = receiverCode.slice(receiverCode.indexOf("export async function handler"));
 
     // The receiver's whole job is to not put anything unverified on the queue.
-    const receiverCode = code(receiver);
     check("  nothing is queued before the signature verifies",
-      receiverCode.indexOf("statusCode: 401") < receiverCode.indexOf("await send("),
+      receiverBody.indexOf("statusCode: 401") < receiverBody.indexOf("await send("),
       "an unverified payload would reach the worker");
 
     // The signature covers the bytes as sent. Parsing first breaks every one.
     check("  the body is not parsed before it is verified",
-      receiverCode.indexOf("verifyGitHubSignature") < receiverCode.indexOf("JSON.parse"),
+      receiverBody.indexOf("verifyGitHubSignature") < receiverBody.indexOf("JSON.parse"),
       "a re-serialised body is a different sequence of bytes");
   }
 
