@@ -339,14 +339,22 @@ const code = (src: string) => src
   // Sliced to the handler body rather than checked against the whole file: the
   // import statements alone name claimDelivery before processDelivery, so a
   // check against the full source would still pass if the handler body called
-  // them in the wrong order.
-  const handlerSrc = src.slice(src.indexOf("export async function handler"));
+  // them in the wrong order. bootstrapOnce above it throws, too, so a
+  // whole-file check for a rethrow is satisfied by code the handler does not
+  // run.
+  //
+  // Comments stripped for the same reason as elsewhere in this file: the prose
+  // explaining why the completeDelivery failure is *not* rethrown contains
+  // "rethrow", which matches /throw / and makes the assertion below unable to
+  // fail.
+  const handlerBody = code(src);
+  const handlerSrc = handlerBody.slice(handlerBody.indexOf("export async function handler"));
 
   check("the worker claims before processing",
     handlerSrc.indexOf("claimDelivery") < handlerSrc.indexOf("processDelivery"));
 
   check("  releases the claim when processing throws",
-    /releaseDelivery\(/.test(src) && /throw /.test(src),
+    /releaseDelivery\(/.test(handlerSrc) && /throw /.test(handlerSrc),
     "a swallowed error would delete the message and lose the event");
 
   check("  and resolves the token once per invocation",
@@ -356,6 +364,138 @@ const code = (src: string) => src
   check("  bootstrapping happens once per container",
     /bootstrapped/.test(src),
     "re-reading Secrets Manager per message wastes the warm container");
+}
+
+// ── the lease sits between the worker timeout and the visibility timeout ──
+//
+// Three numbers in two repositories that only work as an ordering, so all three
+// are read from source rather than restated here: the test has to break when
+// any one of them drifts, not agree with a stale copy of itself.
+//
+// The lease clock starts at claimDelivery, the visibility clock at
+// ReceiveMessage — one pre-claim latency δ earlier (cold start, bootstrapOnce,
+// getSystemTokenAsync). A redelivery lands at receive + visibility, the lease
+// expires at receive + δ + lease, and re-claiming needs expiresAt < now. So
+// lease == visibility fails for every δ including zero, and a worker killed
+// without releasing its claim leaves a delivery its own redelivery cannot
+// re-take: the worker skips it, returns success, SQS deletes the message and
+// the event is gone with no DLQ entry and no alarm.
+{
+  const fs = await import("fs");
+  const nodePath = await import("path");
+
+  const lockSrc = fs.readFileSync(
+    nodePath.join(__dirname, "src", "webhooks", "deliveryLock.ts"), "utf8");
+  const cdkSrc = fs.readFileSync(
+    nodePath.join(__dirname, "..", "infra", "cdk-stack.ts"), "utf8");
+
+  const seconds = (expr: string | undefined): number => {
+    const m = /cdk\.Duration\.(seconds|minutes)\((\d+)\)/.exec(expr ?? "");
+    return m ? Number(m[2]) * (m[1] === "minutes" ? 60 : 1) : NaN;
+  };
+
+  const leaseSec = Number(/^const LEASE_SEC = (\d+);/m.exec(lockSrc)?.[1] ?? NaN);
+  const visibilitySec = seconds(/visibilityTimeout:\s*([^,\n]+)/.exec(cdkSrc)?.[1]);
+  // Sliced to the worker's own construct: the receiver above it has a timeout
+  // too, and the stack declares several others.
+  const workerSrc = cdkSrc.slice(cdkSrc.indexOf('"WebhookWorker"'));
+  const workerTimeoutSec = seconds(/\btimeout:\s*([^,\n]+)/.exec(workerSrc)?.[1]);
+
+  check("the three durations are all readable from source",
+    [leaseSec, workerTimeoutSec, visibilitySec].every(Number.isFinite),
+    { leaseSec, workerTimeoutSec, visibilitySec });
+
+  check("  the lease outlives the worker's own timeout",
+    workerTimeoutSec < leaseSec,
+    `worker timeout ${workerTimeoutSec}s, lease ${leaseSec}s — a lease at or under the ` +
+    `function timeout lets a second worker claim a delivery the first is still processing`);
+
+  check("  and expires before the queue redelivers",
+    leaseSec < visibilitySec,
+    `lease ${leaseSec}s, visibility timeout ${visibilitySec}s — a dead worker's claim is ` +
+    `still held when the redelivery lands, so the event is dropped with no DLQ entry`);
+
+  check("  and the done marker outlives the visibility timeout",
+    Number(/^const DONE_SEC = (\d+);/m.exec(lockSrc)?.[1] ?? NaN) > visibilitySec,
+    "an expired marker lets an at-least-once redelivery apply the templates twice");
+}
+
+// ── a container whose first bootstrap loaded nothing retries on the next message ──
+//
+// fetchBundle in secret.ts swallows a Secrets Manager failure so a transient
+// error cannot discard a working secret, which means a first-ever fetch that
+// failed returns an empty bundle rather than throwing. Memoising that poisons
+// the container for its whole life: GITHUB_ORG never gets set, nothing re-reads
+// secrets, and every delivery that container handles throws at getOrg().
+{
+  process.env.WEBHOOK_DELIVERIES_TABLE = "test-deliveries";
+  delete process.env.GITHUB_ORG;
+
+  const { docClient } = await import("./src/utils/dynamo");
+  (docClient as any).send = async () => ({});
+
+  const { __setSecretLoaderForTests, __resetSecretCacheForTests } =
+    await import("./src/webhooks/secret");
+  const { handler } = await import("./src/webhooks/worker");
+
+  const message = (id: string) => ({
+    Records: [{ body: JSON.stringify({ deliveryId: id, event: "ping", payload: {} }) }],
+  }) as any;
+
+  __resetSecretCacheForTests();
+  __setSecretLoaderForTests(async () => { throw new Error("throttled"); });
+
+  let firstFailed = false;
+  try { await handler(message("d-boot-1")); } catch { firstFailed = true; }
+  check("an invocation whose secrets did not load fails rather than half-working", firstFailed);
+
+  // Same container, next message. Secrets Manager has recovered.
+  __setSecretLoaderForTests(async () =>
+    ({ GITHUB_ORG: "acme-corp", SYSTEM_GITHUB_TOKEN: "system-token" }));
+
+  let secondError: string | null = null;
+  try { await handler(message("d-boot-2")); } catch (e) { secondError = (e as Error).message; }
+  check("  and the next one retries the load instead of reusing the empty result",
+    secondError === null,
+    secondError ?? "a memoised empty bootstrap dead-letters every delivery this container sees");
+
+  check("  which is what puts GITHUB_ORG in the environment processDelivery reads",
+    process.env.GITHUB_ORG === "acme-corp", process.env.GITHUB_ORG);
+}
+
+// ── failing to mark a delivery done must not reprocess it ──
+//
+// The work is finished by then: activity rows written, templates applied.
+// Releasing the claim and rethrowing would hand the message back to SQS and
+// guarantee all of it happens a second time.
+{
+  process.env.WEBHOOK_DELIVERIES_TABLE = "test-deliveries";
+  const { docClient } = await import("./src/utils/dynamo");
+  const { handler } = await import("./src/webhooks/worker");
+
+  let releases = 0;
+  (docClient as any).send = async (cmd: any) => {
+    const kind = cmd.constructor.name;
+    if (kind === "DeleteCommand") { releases++; return {}; }
+    // The claim carries a ConditionExpression; marking done does not.
+    if (kind === "PutCommand" && !cmd.input.ConditionExpression) {
+      const e: any = new Error("throughput exceeded");
+      e.name = "ProvisionedThroughputExceededException";
+      throw e;
+    }
+    return {};
+  };
+
+  let threw = false;
+  try {
+    await handler({
+      Records: [{ body: JSON.stringify({ deliveryId: "d-done-fails", event: "ping", payload: {} }) }],
+    } as any);
+  } catch { threw = true; }
+
+  check("a completeDelivery failure does not fail the invocation", !threw,
+    "rethrowing here redelivers work that already happened");
+  check("  and does not release the claim", releases === 0, releases);
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
