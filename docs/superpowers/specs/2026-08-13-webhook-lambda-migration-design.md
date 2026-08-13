@@ -1,0 +1,373 @@
+# Webhooks on API Gateway and Lambda — design
+
+**Date:** 2026-08-13
+
+## Goal
+
+Receive GitHub webhooks without an EC2 instance, and then delete the instance.
+
+The work account's VPC has no internet gateway. Its default route goes to a
+NAT/transit gateway, so egress works and inbound from the internet is
+impossible. GitHub's deliveries fail with "failed to connect to host", and no
+amount of security-group work fixes that — the security group is already
+correct. API Gateway is public by nature and needs no VPC ingress, which removes
+the problem rather than working around it.
+
+Since the instance exists *only* to receive webhooks, it can then go, and with
+it Docker, `scripts/deploy.sh`, the Elastic IP and the self-signed certificate.
+
+This is a transport change. Same DynamoDB tables, same Secrets Manager secret,
+same processing logic, same activity rows. Nothing about what the app records
+changes.
+
+## What is not changing
+
+The desktop app. It runs its own backend on `localhost:4321` via
+`desktop/src/bootstrap.ts` and `desktop/src/server.ts`, which are independent of
+`backend/src/standalone.ts` — the only reference between them is a code comment.
+The OAuth callback stays `http://localhost:4321/auth/callback`.
+
+## Architecture
+
+```
+GitHub
+  │  POST /webhooks/github        (four CIDRs, HMAC-signed)
+  ▼
+┌──────────────────────────┐
+│  API Gateway (REST, v1)  │  resource policy: GitHub CIDRs only
+│      Regional            │  throttled; access logs without bodies
+└──────────────────────────┘
+  │  proxy integration
+  ▼
+┌──────────────────────────┐   secret (cached)   ┌─────────────────┐
+│  webhook-receiver        │◄───────────────────►│ Secrets Manager │
+│  verify HMAC → enqueue   │                     └─────────────────┘
+│  → 202                   │
+└──────────────────────────┘
+  │  SendMessage
+  ▼
+┌──────────────────────────┐
+│  SQS (standard)          │──── 3 failures ───►┌─────────────┐
+│  encrypted, TLS-only     │                    │     DLQ     │──► alarm
+└──────────────────────────┘                    └─────────────┘
+  │  event source mapping, batch 1, reserved concurrency 5
+  ▼
+┌──────────────────────────┐   claim / release   ┌──────────┐
+│  webhook-worker          │◄───────────────────►│ DynamoDB │
+│  claim → process → done  │   activity, alerts, │          │
+└──────────────────────────┘   templates, graph  └──────────┘
+```
+
+Two functions rather than one, because it splits the privileges along the line
+that matters. The function reachable from the internet can read one secret and
+write to one queue. The function holding eleven tables, the GitHub App token and
+the ability to apply templates to repositories is reachable only from a queue.
+That property is worth an extra Lambda.
+
+### Why REST API and not HTTP API
+
+HTTP APIs are cheaper and simpler, and do not support resource policies. The
+[AWS comparison table][cmp] is explicit: resource policies are REST-only, as is
+WAF. Keeping the GitHub IP allow-list is the requirement that decides this.
+
+At this volume the price difference is around four-tenths of a cent per month
+against an instance costing roughly fifteen dollars, so cost is not a factor
+either way.
+
+The endpoint type is **Regional**, not edge-optimised. There is no global
+audience to accelerate — GitHub posts from four known ranges — and edge-optimised
+adds a CloudFront layer for nothing.
+
+[cmp]: https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-vs-rest.html
+
+### The IP allow-list moves, it does not disappear
+
+The resource policy carries the same four CIDRs the security group has today:
+
+```
+192.30.252.0/22   185.199.108.0/22   140.82.112.0/20   143.55.64.0/20
+```
+
+This is strictly better than the security group, because API Gateway evaluates
+the policy before the integration is invoked — the code never runs for a request
+from elsewhere, so it cannot be bypassed by a routing mistake.
+
+It carries the same maintenance burden the security group already had: the list
+comes from `https://api.github.com/meta` → `hooks`, and GitHub changes it
+occasionally. Nothing here detects that. Deliveries would begin returning 403,
+and the Activity page would go **Stale** within 72 hours. Documented in
+`docs/operations/troubleshooting.md` rather than automated, which is the same
+position as today.
+
+## Code layout
+
+The route body becomes a module the two handlers share:
+
+| File | Contains |
+|---|---|
+| `backend/src/webhooks/verify.ts` | `verifyGitHubSignature(rawBody, sigHeader, secret)` — pure, no Express, no Lambda |
+| `backend/src/webhooks/secret.ts` | Module-scope cached fetch of the webhook secret |
+| `backend/src/webhooks/deliveryLock.ts` | Claim / complete / release against DynamoDB |
+| `backend/src/webhooks/processDelivery.ts` | The current route body, with the GitHub token passed in |
+| `backend/src/webhooks/receiver.ts` | API Gateway handler |
+| `backend/src/webhooks/worker.ts` | SQS handler |
+
+**Deleted:** `backend/src/routes/webhooks.ts` and its mount at `server.ts:98`.
+It is imported in exactly one place and called by nothing else — the frontend's
+webhook health comes from `/org/webhook-health`, which reads the activity table.
+
+`processDelivery` takes the token as a parameter rather than calling
+`getSystemToken()` internally. That is what makes it testable without
+environment variables, and it is also the fix for the token lifecycle problem
+below.
+
+## The three things most likely to go wrong
+
+### 1. HMAC over raw bytes
+
+The signature is computed over the exact bytes GitHub sent. API Gateway may
+hand Lambda a base64-encoded body, and anything that parses and re-serialises
+the payload before verification breaks every signature.
+
+```ts
+const raw = Buffer.from(event.body ?? "", event.isBase64Encoded ? "base64" : "utf8");
+```
+
+The HMAC is computed over `raw`, and nothing calls `JSON.parse` until the
+signature has passed. After that the parsed object is what goes onto the queue,
+so the raw bytes never need to survive a second hop — the worker never verifies
+anything and never sees them.
+
+Rejecting the direct API Gateway → SQS integration was mostly about this. That
+shape requires a VTL mapping template to build the message, which is exactly
+where raw bytes get mangled, and it would put unverified payloads in the queue.
+
+Comparison stays `crypto.timingSafeEqual`, and an absent secret still returns
+`false`. No secret means accept nothing.
+
+### 2. Replay protection
+
+`processedDeliveries` is an in-memory `Map`. On a long-lived server it works; it
+does nothing across Lambda invocations.
+
+It moves to DynamoDB, in the **worker** rather than the receiver. SQS standard
+queues are at-least-once, so the worker needs deduplication regardless of
+whether GitHub ever replays anything. Putting a second check in the receiver
+would only save queue messages, and would add a second place capable of silently
+swallowing a legitimate redelivery.
+
+New table `github-control-hub-webhook-deliveries`, partition key `deliveryId`,
+TTL attribute `ttl`.
+
+```
+claim     PutItem   ConditionExpression:
+                      attribute_not_exists(deliveryId) OR expiresAt < :now
+                    → state = "processing", expiresAt = now + 360   (a lease)
+
+complete  PutItem   → state = "done", expiresAt = now + 300, ttl = now + 300
+
+fail      DeleteItem, then rethrow → SQS redelivers → DLQ after 3 attempts
+```
+
+The two durations differ on purpose. The lease is 360 seconds to match the
+queue's visibility timeout, so it outlives the worker's own 300-second timeout —
+a lease equal to the function timeout would expire at the exact moment a
+maximally slow invocation was still finishing, letting a second worker claim a
+delivery the first had not released. The `done` marker is 300 seconds because
+that is the replay window, which is a separate question from how long a claim is
+held.
+
+The condition treats a logically expired row as absent. This is the same
+reasoning as the one-time auth codes in `routes/auth.ts` — DynamoDB's TTL sweep
+is lazy, so expiry is checked in the condition rather than trusted to the
+sweeper — expressed for a conditional put instead of a delete.
+
+The lease is what makes a killed worker recoverable. Without it, a Lambda that
+times out mid-delivery leaves a claim nothing will ever release, and that event
+is lost permanently. With it, the claim expires after the function's own timeout
+and the next SQS attempt takes it.
+
+The `done` marker's five-minute TTL is deliberately the same window as today's
+`DELIVERY_TTL_MS`, so a manual redelivery from GitHub's UI behaves exactly as it
+does now.
+
+### 3. The GitHub App token
+
+`getSystemToken()` is synchronous and returns a module-singleton cache kept warm
+by a `setTimeout`. Lambda freezes the container between invocations, so that
+timer does not fire on schedule. A warm container would keep serving the cached
+token until it expired, then silently fall back to `SYSTEM_GITHUB_TOKEN` —
+auto-apply would stop with "No GitHub token available", intermittently, only on
+warm containers.
+
+The worker calls `await getSystemTokenAsync()` once per invocation and passes
+the result into `processDelivery`. `getTokenAsync` already checks freshness and
+deduplicates concurrent refreshes, so this is correct on both cold and warm
+containers and makes the refresh timer irrelevant rather than depending on it.
+
+The receiver never touches GitHub and never initialises the token manager.
+
+## Ordering
+
+The queue is standard, not FIFO. Two events for one repository can be processed
+concurrently.
+
+This is not a change. The EC2 did not serialise deliveries either: Express
+handles concurrent requests, and the handler is `async` with roughly twenty
+`await` points, so simultaneous deliveries already interleave. "Serial because
+there is one box" was never true.
+
+The race worth checking is `repository.created` running `addRepoEdges` while the
+template's own branch creations fire `addBranchEdge`. It is benign —
+`addRepoEdges` ends in `putEdgesBatch` with no delete-first, so it is an upsert
+and both orderings converge on the same edge set.
+
+The one genuine hazard is inversion between `createAlert` and
+`autoResolveAlerts` for the same repository: protection deleted then immediately
+re-created, or a repository publicized then privatized. Processed out of order,
+the result is a critical alert that never clears. This hazard exists on the EC2
+today and is unchanged by this work.
+
+A FIFO queue with `MessageGroupId` set to the repository name would eliminate
+it, and is rejected: it buys a guarantee the system has never had, at the cost
+of head-of-line blocking it has never had. One poison message would stall every
+subsequent event for that repository for up to eighteen minutes. Reserved
+concurrency narrows the inversion window as a side effect, which is the
+proportionate response.
+
+## Configuration
+
+| | Receiver | Worker |
+|---|---|---|
+| Timeout | 8s | 5 min |
+| Memory | 256 MB | 512 MB |
+| Concurrency | default | reserved, 5 |
+| Runtime | `NODEJS_24_X` | `NODEJS_24_X` |
+
+The receiver's eight seconds is a ceiling, not a target — warm invocations are
+tens of milliseconds, and a cold start plus the secret fetch is one to two
+seconds. It sits below GitHub's ten-second timeout deliberately: past that point
+nobody is listening for the response, so there is no value in still working.
+
+The worker's five minutes covers the five-second provisioning wait, four
+`applyTemplate` attempts with 4s/8s/12s backoff, and the template work itself.
+Queue visibility timeout is six minutes — it must exceed the function timeout —
+and `maxReceiveCount` is 3.
+
+Reserved concurrency exists because `createOctokit` sets
+`onRateLimit: () => false`. A throttled call does not retry, it fails. A burst —
+bulk repository creation, a redelivery storm — would otherwise spawn parallel
+workers that collectively exhaust the installation's rate limit and fail rather
+than slow down. Capping at 5 means we throttle ourselves instead.
+
+The secret is fetched once per container and cached for fifteen minutes. Per
+delivery it would add latency against GitHub's ten-second budget, cost a call
+per invocation, and make every webhook depend on an API the work account
+restricts by SCP.
+
+Table names reach the worker as environment variables, following the pattern
+`guardrailFn` already uses. Secrets are never environment variables.
+
+## IAM
+
+**Receiver.** `secretsmanager:GetSecretValue` on the one secret, and
+`sqs:SendMessage` on the one queue. No DynamoDB, no STS, no Organizations, no
+Lambda invoke. This is the only function exposed to the internet, and this list
+is the point of splitting it out.
+
+**Worker.** What the EC2 instance role holds today, minus `s3:GetObject` on the
+deploy bucket, which existed only to receive Docker images.
+
+The existing DynamoDB grant is already scoped to `table/${stackPrefix}-*`, so
+the new deliveries table needs no policy change.
+
+## Failure visibility
+
+Today a failed auto-apply writes a failed activity row through
+`updateActivityOutcome(..., failed: true)`, which surfaces in the app. That is
+preserved exactly — it is inside `processDelivery` and moves with it.
+
+What is new is the DLQ, and a queue nobody watches is a queue that quietly fills
+up. `grep -n "Alarm" infra/*.ts` currently returns nothing, so the existing
+guardrail DLQ has this gap too. Both get a CloudWatch alarm on
+`ApproximateNumberOfMessagesVisible >= 1`.
+
+Alarm actions are optional: `cdk deploy -c alertEmail=…` creates an SNS topic
+and subscription. Without it the alarms still exist and still show in the
+console. Requiring an email address to deploy would be worse than an alarm
+somebody has to go and look at.
+
+## Deletion
+
+Removed once the new path is proven:
+
+| | Why it goes |
+|---|---|
+| EC2 instance, security group, Elastic IP, instance role | The instance existed only for webhooks |
+| UserData, self-signed certificate | Instance bootstrap |
+| `Dockerfile`, `docker-compose.yml`, `.dockerignore` | `CMD` is `node …/dist/standalone.js`; only `deploy.sh` builds the image; CI builds Electron only |
+| `scripts/deploy.sh` | Deploys the image to the instance |
+| `backend/src/standalone.ts` | The instance's entry point |
+| `backend/src/routes/webhooks.ts` | Replaced by the two handlers |
+| Outputs `InstanceId`, `PublicIp`, `ConnectCommand` | Nothing to point at |
+
+Nothing is lost. The instance also served the frontend, but the security group
+allowed only GitHub's ranges, so no browser has ever reached it.
+
+The test suites run `repro-*.ts` under `tsx` directly and never involve a
+container, so deleting the Docker files costs no test coverage.
+
+## Testing
+
+New suite `repro-webhookdelivery.ts`:
+
+- a correct signature verifies when the body arrives base64-encoded
+- a correct signature verifies when the body arrives as UTF-8
+- a tampered payload is rejected
+- an absent secret rejects everything
+- a malformed signature header is rejected rather than throwing
+- a second claim on the same delivery id is refused
+- a claim whose lease has expired can be re-taken
+- a failed delivery releases its claim
+
+The first two are the reason this suite exists. Base64 handling is the single
+most likely way this migration fails silently, and it fails in a way that looks
+exactly like a wrong secret.
+
+**`repro-appsec.ts`** currently reads `routes/webhooks.ts` by path and asserts
+constant-time comparison and fail-closed-on-missing-secret. It repoints at
+`webhooks/verify.ts` and gains an assertion that the receiver enqueues nothing
+before verification returns true.
+
+**`repro-leastprivilege.ts`** gains assertions that the receiver's role grants
+no `dynamodb:` or `sts:` action, and that the API's resource policy names the
+GitHub CIDRs.
+
+Both are strengthened. Neither is weakened.
+
+## Rollout
+
+Two commits, because the deletion should not be load-bearing on the first
+deploy being right.
+
+1. Add the API Gateway path with the instance still standing. Deploy to
+   personal (`774941662655`, us-east-1), where webhooks work today and a
+   regression is visible immediately. Repoint the org's webhook URL; GitHub
+   sends `ping`. Create a test repository and confirm the activity row, the
+   auto-applied template, and the Activity page reading **Receiving events**.
+2. Delete the instance and everything in the table above. Deploy to personal,
+   then to work (`792424903548`, us-east-2).
+
+The end state is one stack with no EC2 in either account.
+
+The new deliveries table is created by `scripts/setup-aws-account.sh` alongside
+the other eleven, so `cdk deploy` alone is not sufficient for a fresh account.
+That is already true of every table and is not made worse here.
+
+## Out of scope
+
+- Detecting GitHub's IP ranges changing. Same position as today.
+- Surfacing DLQ depth in the app's UI. The CloudWatch alarm is the mechanism.
+- Any change to what events are handled or what they record.
+- Custom domain for the API. The generated `execute-api` URL is what GitHub
+  will be pointed at.
