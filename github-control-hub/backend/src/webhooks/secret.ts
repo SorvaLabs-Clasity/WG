@@ -39,6 +39,16 @@ async function loadFromSecretsManager(): Promise<Bundle> {
   return result.SecretString ? (JSON.parse(result.SecretString) as Bundle) : {};
 }
 
+/**
+ * Installed by the reset seam. A test that forgets to inject a loader fails
+ * loudly here rather than silently making a live Secrets Manager call — which
+ * is what restoring the real loader would do, and which makes a test's result
+ * depend on whose credentials are in the environment.
+ */
+async function unconfiguredLoader(): Promise<Bundle> {
+  throw new Error("secret loader not configured — call __setSecretLoaderForTests() first");
+}
+
 let loader: () => Promise<Bundle> = loadFromSecretsManager;
 
 async function fetchBundle(): Promise<void> {
@@ -94,5 +104,5 @@ export function __resetSecretCacheForTests(opts?: { keepValue?: boolean }): void
   if (!opts?.keepValue) cached = null;
   cachedAt = 0;
   lastRefetchAt = 0;
-  loader = loadFromSecretsManager;
+  loader = unconfiguredLoader;
 }

@@ -115,11 +115,12 @@ const code = (src: string) => src
   __setSecretLoaderForTests(async () => ({ GITHUB_WEBHOOK_SECRET: "good" }));
   await getWebhookSecret();
 
-  __setSecretLoaderForTests(async () => { throw new Error("throttled"); });
   __resetSecretCacheForTests({ keepValue: true });
+  __setSecretLoaderForTests(async () => { throw new Error("throttled"); });
   check("a fetch failure keeps the last known secret", (await getWebhookSecret()) === "good");
 
   __resetSecretCacheForTests();
+  __setSecretLoaderForTests(async () => ({}));
   check("  but no secret at all still fails closed", (await getWebhookSecret()) === "");
 }
 
@@ -128,11 +129,14 @@ const code = (src: string) => src
   const { getWebhookSecret, __setSecretLoaderForTests, __resetSecretCacheForTests } =
     await import("./src/webhooks/secret");
 
+  let leakedMockRan = false;
   __resetSecretCacheForTests();
-  __setSecretLoaderForTests(async () => { throw new Error("injected error"); });
+  __setSecretLoaderForTests(async () => { leakedMockRan = true; return { GITHUB_WEBHOOK_SECRET: "leaked" }; });
   __resetSecretCacheForTests();
-  check("a reset after injecting a throwing loader restores the real loader",
-    (await getWebhookSecret()) === "");
+
+  check("a reset uninstalls the previously injected loader",
+    (await getWebhookSecret()) === "" && !leakedMockRan,
+    "a later test block would silently inherit this block's mock");
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
