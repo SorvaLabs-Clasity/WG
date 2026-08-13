@@ -57,7 +57,28 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return { statusCode: 400, body: "Body is not JSON" };
   }
 
-  await send(JSON.stringify({ deliveryId, event: githubEvent, payload }));
+  const message = JSON.stringify({ deliveryId, event: githubEvent, payload });
+
+  // SQS refuses a message over 256 KB, and the Express route this replaces
+  // accepted up to 1 MB — so a push on a busy default branch or a large
+  // installation_repositories is a regression band rather than a theoretical
+  // one. Without this the CloudWatch line is an opaque SendMessage failure and
+  // GitHub shows a 502 with no cause; the byte count and delivery id are what
+  // turn that into a two-second diagnosis.
+  //
+  // Rethrown on purpose. Returning 202 here would swallow the event silently,
+  // which is strictly worse than a failed delivery GitHub records and can
+  // replay.
+  try {
+    await send(message);
+  } catch (err) {
+    console.error(
+      `[Webhook] Could not queue delivery ${deliveryId} (${githubEvent}), ` +
+      `${Buffer.byteLength(message, "utf8")} bytes — SQS rejects anything over 262144:`,
+      (err as Error).message,
+    );
+    throw err;
+  }
 
   return { statusCode: 202, body: "Accepted" };
 }
