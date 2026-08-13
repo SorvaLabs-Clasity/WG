@@ -297,9 +297,12 @@ times out mid-delivery leaves a claim nothing will ever release, and that event
 is lost permanently. With it, the claim expires after the function's own timeout
 and the next SQS attempt takes it.
 
-The `done` marker's five-minute TTL is deliberately the same window as today's
-`DELIVERY_TTL_MS`, so a manual redelivery from GitHub's UI behaves exactly as it
-does now.
+The `done` marker is fifteen minutes, not the five of today's
+`DELIVERY_TTL_MS`. Matching the old window looks right and is wrong: it expires
+before the queue's redelivery lands, so a delivery that succeeded but whose
+message deletion did not register would be processed a second time. The
+consequence is that a manual redelivery from GitHub's UI is ignored for fifteen
+minutes rather than five — the reasoning is set out with the constants above.
 
 ### 3. The GitHub App token
 
