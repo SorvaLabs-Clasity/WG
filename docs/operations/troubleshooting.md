@@ -2,13 +2,19 @@
 
 Things that have actually gone wrong, and what they turned out to be.
 
-## "OAuth is not configured on this build"
+## The GitHub card will not let me sign in
 
-The backend loads GitHub secrets from Secrets Manager **after** it starts
-listening, so for the first second `/auth/status` honestly answers "not
-configured". The page now re-asks for up to 20 seconds and shows *Loading
-credentials…* while it waits. If it persists past that, the secret genuinely
-lacks `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
+It says which of four things is wrong, and they need different answers:
+
+| It says | Meaning |
+|---|---|
+| *Unlocks once AWS is connected* | AWS is the blocker. The OAuth secrets live in Secrets Manager, so nothing about GitHub can work first |
+| *Loading credentials…* | Secrets are still loading. They are read after the server starts listening, so there is a second or so where this is honest |
+| *No GitHub credentials stored yet* | The secret does not exist. Run [the setup](setup.md) — this is the ordinary state before it |
+| *OAuth is not configured on this build* | The secret exists and has no OAuth keys in it. This one really is a build or configuration fault |
+
+There is also *could not be read*, which means the secret exists but this
+account cannot read it — an IAM problem rather than a setup one.
 
 ## The sign-in page asks which AWS profile every launch
 
