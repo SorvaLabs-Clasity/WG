@@ -139,6 +139,62 @@ const code = (src: string) => src
     "a later test block would silently inherit this block's mock");
 }
 
+// ── replay protection survives across invocations, and a failure is retryable ──
+{
+  process.env.WEBHOOK_DELIVERIES_TABLE = "test-deliveries";
+  const { docClient } = await import("./src/utils/dynamo");
+  const { claimDelivery, completeDelivery, releaseDelivery } =
+    await import("./src/webhooks/deliveryLock");
+
+  // An in-memory stand-in implementing the conditional-put semantics the lock
+  // depends on. Running this against real DynamoDB would need an account.
+  const store = new Map<string, any>();
+  (docClient as any).send = async (cmd: any) => {
+    const kind = cmd.constructor.name;
+    if (kind === "PutCommand") {
+      const item = cmd.input.Item;
+      if (cmd.input.ConditionExpression) {
+        const existing = store.get(item.deliveryId);
+        const now = cmd.input.ExpressionAttributeValues[":now"];
+        if (existing && existing.expiresAt >= now) {
+          const e: any = new Error("conditional check failed");
+          e.name = "ConditionalCheckFailedException";
+          throw e;
+        }
+      }
+      store.set(item.deliveryId, item);
+      return {};
+    }
+    if (kind === "DeleteCommand") { store.delete(cmd.input.Key.deliveryId); return {}; }
+    throw new Error(`unexpected command: ${kind}`);
+  };
+
+  check("a delivery can be claimed", (await claimDelivery("d-1")) === true);
+  check("  and a second claim on the same id is refused", (await claimDelivery("d-1")) === false);
+
+  await completeDelivery("d-1");
+  check("  a completed delivery stays claimed within the replay window",
+    (await claimDelivery("d-1")) === false);
+
+  // At-least-once means a successful delivery can be redelivered when its
+  // deletion does not register, one visibility timeout (660s) later. A marker
+  // that expired before then would let templates be applied a second time.
+  check("  and the marker outlives the queue's visibility timeout",
+    store.get("d-1").expiresAt - Math.floor(Date.now() / 1000) > 660,
+    store.get("d-1").expiresAt - Math.floor(Date.now() / 1000));
+
+  // A worker killed mid-delivery never releases its claim. Without an expiring
+  // lease that event is lost permanently.
+  await claimDelivery("d-2");
+  const held = store.get("d-2");
+  store.set("d-2", { ...held, expiresAt: Math.floor(Date.now() / 1000) - 1 });
+  check("a claim whose lease expired can be re-taken", (await claimDelivery("d-2")) === true);
+
+  await claimDelivery("d-3");
+  await releaseDelivery("d-3");
+  check("a released claim can be re-taken so SQS can retry", (await claimDelivery("d-3")) === true);
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
 })();
