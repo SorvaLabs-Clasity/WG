@@ -343,28 +343,20 @@ ok "Wrote $(basename "$ENV_FILE") (company name, console-link region)"
 # Forgetting this leaves the release workflow building without a company name,
 # and nothing fails to say so — the app simply ships blank. But committing on
 # someone's behalf assumes their branch will accept it, and main is often
-# protected, which would leave a commit stranded somewhere it cannot be pushed
-# from. So this says exactly what to commit and where, and stops.
+# protected, which would strand a commit somewhere it cannot be pushed from.
+# So this names the file and the branch, and stops.
 if git -C "$ROOT" diff --quiet -- "$ENV_FILE" 2>/dev/null; then
   skip "No change to $(basename "$ENV_FILE") — already committed"
 else
-  BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")"
+  BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
   echo
-  warn "$(basename "$ENV_FILE") has changed and is tracked by git."
-  warn "The release workflow builds from what is committed, so until this"
-  warn "lands on the branch it builds from, released apps show no company"
-  warn "name and their console links go nowhere."
+  warn "One file needs committing before a release build will carry this"
+  warn "install's identity. Until it does, released apps show no company name"
+  warn "and their AWS console links go nowhere."
   echo
-  echo "    ${bold}Commit this file:${off}  github-control-hub/frontend/.env.production"
-  echo "    ${bold}You are on:${off}       $BRANCH"
-  echo
-  echo "    ${dim}git add github-control-hub/frontend/.env.production${off}"
-  echo "    ${dim}git commit -m 'Set this install'\''s company name and region'${off}"
-  if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
-    echo
-    warn "If $BRANCH is protected, branch first and open a pull request:"
-    echo "    ${dim}git switch -c set-install-identity${off}"
-  fi
+  echo "    ${bold}Commit${off}  github-control-hub/frontend/.env.production"
+  echo "    ${bold}On${off}      $BRANCH — or a branch off it, if $BRANCH is protected"
+  echo "    ${bold}Then${off}    push it, so the release workflow can see it"
 fi
 
 echo
