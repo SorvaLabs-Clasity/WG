@@ -151,6 +151,31 @@ outage, because nothing reports it.
 failure cannot suppress the other two. The existing `.catch()` handlers stay:
 they are what turns a rejection into a logged line rather than a thrown error.
 
+**Awaiting them must not let them fail the delivery.** All three swallow their
+own errors today, and that property has to survive. If a flaky scanner could
+throw out of `processDelivery`, the worker would release its claim, SQS would
+redeliver, and the whole delivery would be reprocessed — re-applying templates
+and writing a second set of `template.apply` rows, up to five times.
+`Promise.allSettled` never rejects, which is why it is the right primitive here
+rather than `Promise.all`.
+
+**And it must not let them run long.** Swallowing errors does not help if the
+enrichment simply takes too long: a pathological scan set pushes the invocation
+past ten minutes, Lambda kills it, `completeDelivery` never runs, the lease
+expires, and SQS redelivers into the same duplicate-template outcome by a
+different route. The enrichment phase is therefore raced against a four-minute
+ceiling, after which it is abandoned and the delivery is marked done regardless.
+
+An abandoned scan costs a stale compliance cache until the next event for that
+repository. An abandoned invocation costs a repository having its templates
+applied twice. These are not close, and the ceiling is what keeps the cheap
+failure the one that happens.
+
+This is the direct cost of awaiting the work at all: what was unbounded
+background time on a long-lived server is now inside a bounded invocation.
+Awaiting it was still right — silently dropping it was worse — but bounded work
+needs a bound.
+
 The `setTimeout` wrapper is dropped rather than awaited. Its one-second delay
 existed to let the HTTP response go out first, and in the worker there is no
 response to get out of the way of.
@@ -218,18 +243,30 @@ claim     PutItem   ConditionExpression:
                       attribute_not_exists(deliveryId) OR expiresAt < :now
                     → state = "processing", expiresAt = now + 660   (a lease)
 
-complete  PutItem   → state = "done", expiresAt = now + 300, ttl = now + 300
+complete  PutItem   → state = "done", expiresAt = now + 900, ttl = now + 900
 
 fail      DeleteItem, then rethrow → SQS redelivers → DLQ after 5 attempts
 ```
 
-The two durations differ on purpose. The lease is 660 seconds to match the
-queue's visibility timeout, so it outlives the worker's own 600-second timeout —
-a lease equal to the function timeout would expire at the exact moment a
-maximally slow invocation was still finishing, letting a second worker claim a
-delivery the first had not released. The `done` marker is 300 seconds because
-that is the replay window, which is a separate question from how long a claim is
-held.
+The lease is 660 seconds to match the queue's visibility timeout, so it outlives
+the worker's own 600-second timeout — a lease equal to the function timeout
+would expire at the exact moment a maximally slow invocation was still
+finishing, letting a second worker claim a delivery the first had not released.
+
+The `done` marker is 900 seconds, and the reason it is longer than the lease
+rather than shorter is the one thing here that is easy to get backwards. The
+obvious value is 300 seconds, matching the replay window the in-memory `Map`
+used. That is wrong under SQS: a worker can process a delivery successfully and
+have the subsequent message deletion not register, which is ordinary
+at-least-once behaviour. The redelivery then arrives one visibility timeout
+later — 660 seconds — and a 300-second marker has already expired, so the
+delivery is claimed again and processed a second time. Templates applied twice.
+
+The marker therefore has to outlive the visibility timeout, not the replay
+window. The cost is that a manual redelivery from GitHub's UI is silently
+ignored for fifteen minutes rather than five. That is a real change from today's
+behaviour and the right way round: an ignored redelivery is a person waiting and
+retrying, while a duplicated one rewrites a repository.
 
 The condition treats a logically expired row as absent. This is the same
 reasoning as the one-time auth codes in `routes/auth.ts` — DynamoDB's TTL sweep
@@ -425,13 +462,16 @@ New suite `repro-webhookdelivery.ts`:
 - a second claim on the same delivery id is refused
 - a claim whose lease has expired can be re-taken
 - a failed delivery releases its claim
-- `processDelivery` resolves only after its downstream work has settled
+- background work is awaited rather than abandoned when the handler resolves
+- a rejecting background task does not fail the delivery
+- background work that hangs is abandoned at the ceiling rather than running on
 
-The last one guards the fire-and-forget problem above. It is asserted by handing
-`processDelivery` stubs that record when they were called and resolve on a
-deferred promise, then checking that the returned promise is still pending until
-those stubs settle. A regression that reverted an `await` would otherwise pass
-every other test in this suite.
+The last three guard the fire-and-forget problem above, and the last two matter
+more than they look. A future edit swapping `Promise.allSettled` for
+`Promise.all` would arm a redelivery loop that re-applies templates up to five
+times, and nothing else in the suite would notice — the change reads like a
+simplification. Removing the ceiling fails the same way through a timeout
+instead of a rejection.
 
 The first two are the reason this suite exists. Base64 handling is the single
 most likely way this migration fails silently, and it fails in a way that looks

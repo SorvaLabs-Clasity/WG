@@ -477,6 +477,13 @@ Append inside the async IIFE of `repro-webhookdelivery.ts`, before the final `co
   check("  a completed delivery stays claimed within the replay window",
     (await claimDelivery("d-1")) === false);
 
+  // At-least-once means a successful delivery can be redelivered when its
+  // deletion does not register, one visibility timeout (660s) later. A marker
+  // that expired before then would let templates be applied a second time.
+  check("  and the marker outlives the queue's visibility timeout",
+    store.get("d-1").expiresAt - Math.floor(Date.now() / 1000) > 660,
+    store.get("d-1").expiresAt - Math.floor(Date.now() / 1000));
+
   // A worker killed mid-delivery never releases its claim. Without an expiring
   // lease that event is lost permanently.
   await claimDelivery("d-2");
@@ -521,8 +528,20 @@ import { docClient, tableName, PutCommand, DeleteCommand } from "../utils/dynamo
  */
 const LEASE_SEC = 660;
 
-/** The replay window. Same duration the in-memory version used. */
-const DONE_SEC = 300;
+/**
+ * How long a completed delivery is remembered.
+ *
+ * Longer than the lease, which is the counter-intuitive part. The obvious value
+ * is 300 — the replay window the in-memory Map used — and it is wrong here: a
+ * worker can succeed and have the message deletion not register, which is
+ * ordinary at-least-once behaviour, and the redelivery arrives one visibility
+ * timeout later at 660 seconds. A 300-second marker has expired by then, so the
+ * delivery would be claimed again and its templates applied a second time.
+ *
+ * The cost is that a manual redelivery from GitHub's UI is ignored for fifteen
+ * minutes rather than five.
+ */
+const DONE_SEC = 900;
 
 function table(): string {
   return tableName("WEBHOOK_DELIVERIES_TABLE");
@@ -612,7 +631,10 @@ EOF
     token: string;
   }
   export async function processDelivery(d: Delivery): Promise<void>;
+  export async function awaitBackground(tasks: Promise<unknown>[], ceilingMs?: number): Promise<void>;
   ```
+  `awaitBackground` is exported for the test in Step 1, not because anything
+  else calls it.
 
 This is a move, not a rewrite. Copy `routes/webhooks.ts` lines 62–361 (the router callback body) and apply exactly the changes below. Do not restructure the event handling — every `createAlert`, `logActivity` and `applyTemplate` call keeps its current arguments and order.
 
@@ -653,17 +675,39 @@ Append inside the async IIFE of `repro-webhookdelivery.ts`, before the final `co
   const src = await import("fs").then(fs =>
     fs.readFileSync(new URL("./src/webhooks/processDelivery.ts", `file://${__filename}`), "utf8"));
 
-  check("processDelivery awaits its background work",
-    /await Promise\.allSettled\(background\)/.test(src),
-    "unawaited promises never settle in a frozen container");
+  check("scans are not scheduled on a timer",
+    !/setTimeout\(async/.test(src),
+    "a one-second timer may never fire in a frozen container");
 
-  check("  and does not schedule scans on a timer",
-    !/setTimeout\(/.test(src),
-    "a one-second timer may never fire");
-
-  check("  and takes the GitHub token as a parameter",
+  check("  and the GitHub token is a parameter",
     !/getSystemToken\(\)/.test(src),
     "the sync getter returns a stale token on a warm container");
+
+  // The next three are behavioural rather than textual, because they are the
+  // ones whose regression reads like a tidy-up.
+  const { awaitBackground } = await import("./src/webhooks/processDelivery");
+
+  let settled = false;
+  await awaitBackground([
+    (async () => { await new Promise(r => setTimeout(r, 10)); settled = true; })(),
+  ]);
+  check("background work is awaited, not abandoned", settled);
+
+  // A flaky scanner must not throw out of processDelivery: the worker would
+  // release its claim, SQS would redeliver, and templates would be applied
+  // again — up to five times.
+  let threw = false;
+  try {
+    await awaitBackground([Promise.reject(new Error("scanner exploded"))]);
+  } catch { threw = true; }
+  check("  a rejecting task does not fail the delivery", !threw,
+    "Promise.all here would arm a redelivery loop that re-applies templates");
+
+  // And work that hangs must not carry the invocation past its timeout, which
+  // would kill it before completeDelivery ran and redeliver by another route.
+  const started = Date.now();
+  await awaitBackground([new Promise(() => {})], 50);
+  check("  work that hangs is abandoned at the ceiling", Date.now() - started < 1000);
 }
 ```
 
@@ -712,6 +756,48 @@ export interface Delivery {
 function sanitizeField(val: string | undefined, maxLen = 200): string {
   if (!val || typeof val !== "string") return "";
   return val.replace(/[<>"'&]/g, "").slice(0, maxLen);
+}
+
+/** How long the best-effort enrichment may take before it is abandoned. */
+const BACKGROUND_CEILING_MS = 4 * 60 * 1000;
+
+/**
+ * Wait for the best-effort work, but never fail on it and never wait forever.
+ *
+ * Both halves matter, and both protect the same thing. If a rejecting task
+ * could throw out of processDelivery, the worker would release its claim, SQS
+ * would redeliver, and the delivery would be reprocessed — re-applying
+ * templates and writing a second set of template.apply rows, up to five times.
+ * Promise.allSettled is what prevents that, so it is not interchangeable with
+ * Promise.all however much tidier that looks.
+ *
+ * The ceiling prevents the same outcome arriving as a timeout instead: work
+ * that runs long carries the invocation past its limit, Lambda kills it,
+ * completeDelivery never runs, the lease expires and SQS redelivers.
+ *
+ * Abandoning a scan costs a stale compliance cache until the next event for
+ * that repository. Abandoning an invocation costs a repository having its
+ * templates applied twice.
+ */
+export async function awaitBackground(
+  tasks: Promise<unknown>[],
+  ceilingMs: number = BACKGROUND_CEILING_MS,
+): Promise<void> {
+  if (tasks.length === 0) return;
+
+  let timer: NodeJS.Timeout | undefined;
+  const ceiling = new Promise<void>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(`[Webhook] Background work exceeded ${ceilingMs}ms — abandoning it so the delivery can be marked done`);
+      resolve();
+    }, ceilingMs);
+  });
+
+  try {
+    await Promise.race([Promise.allSettled(tasks).then(() => undefined), ceiling]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function processDelivery({ event, payload, token }: Delivery): Promise<void> {
@@ -820,7 +906,7 @@ and the tail that replaces lines 270–361:
     })());
   }
 
-  await Promise.allSettled(background);
+  await awaitBackground(background);
 }
 ```
 
