@@ -22,7 +22,7 @@
 - Same DynamoDB tables, same Secrets Manager secret, same activity rows.
 - `repro-appsec.ts` and `repro-leastprivilege.ts` may be repointed and strengthened, never weakened.
 - Path is `/webhooks/github` (no `/api` prefix).
-- Worker timeout 600s, queue visibility 660s, lease 660s, done-marker TTL 300s, `maxReceiveCount` 5, event source `maxConcurrency` 5, worker reserved concurrency 5, batch size 1.
+- Worker timeout 600s, queue visibility 660s, lease 660s, done-marker TTL 900s, `maxReceiveCount` 5, event source `maxConcurrency` 5, worker reserved concurrency 5, batch size 1. The done-marker is longer than the lease on purpose — see Task 3.
 - Verification bar before any milestone is claimed done: every `repro-*.ts` exits 0, plus `npx tsc --noEmit` in `backend`, `frontend`, `desktop`, `infra`.
 - Commit messages are declarative sentences explaining *why*. End with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 - Do not push to `main`. Do not deploy. Deploys and GitHub webhook changes are run by the user, who pastes back output.
@@ -97,6 +97,23 @@ const PAYLOAD = JSON.stringify({ repository: { name: "café-service" }, action: 
 const sign = (body: string) =>
   `sha256=${crypto.createHmac("sha256", SECRET).update(Buffer.from(body, "utf8")).digest("hex")}`;
 
+/**
+ * Source with comments removed.
+ *
+ * Assertions below look for the absence of things, and prose explaining why a
+ * thing is absent contains the thing. Same helper, same reason, as
+ * repro-appsec.ts.
+ */
+const code = (src: string) => src
+  .split("\n")
+  .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
+  .map(l => l.replace(/\s*\/\/.*$/, ""))
+  .join("\n");
+
+// Wrapped in an async IIFE from the start: later blocks in this file use
+// `await import` to load modules after setting the environment they read.
+(async () => {
+
 // ── the signature verifies whichever way API Gateway encoded the body ──
 {
   const sig = sign(PAYLOAD);
@@ -132,9 +149,15 @@ const sign = (body: string) =>
       `sha256=${crypto.createHmac("sha256", "wrong").update(PAYLOAD).digest("hex")}`, SECRET));
 }
 
+// Later tasks append their blocks here, inside the IIFE.
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
+})();
 ```
+
+The `code` helper is unused in this task — Task 4 is its first consumer. Leave
+it in place rather than deleting and re-adding it.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -273,15 +296,9 @@ Append to `github-control-hub/backend/repro-webhookdelivery.ts`, immediately **b
 }
 ```
 
-Wrap the whole file body in an async IIFE so the `await import` calls are legal. Change the file's structure to:
-
-```ts
-(async () => {
-  // ... every existing block, unchanged ...
-  console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
-  process.exit(failures === 0 ? 0 : 1);
-})();
-```
+The file is already wrapped in an async IIFE from Task 1, so `await import` is
+legal here. No restructuring is needed — append inside the IIFE, above the
+`console.log`.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -672,8 +689,14 @@ Append inside the async IIFE of `repro-webhookdelivery.ts`, before the final `co
 // working because those are awaited, while compliance refresh, new-repo graph
 // edges and scanner runs silently stopped. A partial success reports nothing.
 {
-  const src = await import("fs").then(fs =>
-    fs.readFileSync(new URL("./src/webhooks/processDelivery.ts", `file://${__filename}`), "utf8"));
+  const fs = await import("fs");
+  const nodePath = await import("path");
+  // Comments stripped. The implementation explains in prose why getSystemToken
+  // is absent, and that prose contains "getSystemToken()" — asserting against
+  // raw source would fail on the comment justifying the very absence it
+  // asserts. Same trap, same fix, as repro-appsec.ts.
+  const src = code(fs.readFileSync(
+    nodePath.join(__dirname, "src", "webhooks", "processDelivery.ts"), "utf8"));
 
   check("scans are not scheduled on a timer",
     !/setTimeout\(async/.test(src),
