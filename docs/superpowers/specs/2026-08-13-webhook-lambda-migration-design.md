@@ -47,10 +47,10 @@ GitHub
   │  SendMessage
   ▼
 ┌──────────────────────────┐
-│  SQS (standard)          │──── 3 failures ───►┌─────────────┐
+│  SQS (standard)          │──── 5 failures ───►┌─────────────┐
 │  encrypted, TLS-only     │                    │     DLQ     │──► alarm
 └──────────────────────────┘                    └─────────────┘
-  │  event source mapping, batch 1, reserved concurrency 5
+  │  event source mapping, batch 1, max concurrency 5
   ▼
 ┌──────────────────────────┐   claim / release   ┌──────────┐
 │  webhook-worker          │◄───────────────────►│ DynamoDB │
@@ -63,6 +63,13 @@ that matters. The function reachable from the internet can read one secret and
 write to one queue. The function holding eleven tables, the GitHub App token and
 the ability to apply templates to repositories is reachable only from a queue.
 That property is worth an extra Lambda.
+
+The path is **`/webhooks/github`**, dropping the `/api` prefix the Express route
+carried. That prefix distinguished API routes from the frontend the instance
+also served; this API serves one thing and has nothing to disambiguate from.
+Since the URL is being retyped into GitHub's webhook settings either way, there
+is no migration cost to getting it right. Used consistently throughout this
+document.
 
 ### Why REST API and not HTTP API
 
@@ -108,7 +115,7 @@ The route body becomes a module the two handlers share:
 | `backend/src/webhooks/verify.ts` | `verifyGitHubSignature(rawBody, sigHeader, secret)` — pure, no Express, no Lambda |
 | `backend/src/webhooks/secret.ts` | Module-scope cached fetch of the webhook secret |
 | `backend/src/webhooks/deliveryLock.ts` | Claim / complete / release against DynamoDB |
-| `backend/src/webhooks/processDelivery.ts` | The current route body, with the GitHub token passed in |
+| `backend/src/webhooks/processDelivery.ts` | The route body, with the token passed in and its background work awaited |
 | `backend/src/webhooks/receiver.ts` | API Gateway handler |
 | `backend/src/webhooks/worker.ts` | SQS handler |
 
@@ -120,6 +127,37 @@ webhook health comes from `/org/webhook-health`, which reads the activity table.
 `getSystemToken()` internally. That is what makes it testable without
 environment variables, and it is also the fix for the token lifecycle problem
 below.
+
+### Work that currently outlives the response must be awaited
+
+"The route body" is not quite carried over unchanged, and the difference is the
+easiest thing here to get wrong without noticing. Three calls in it are
+deliberately not awaited, because on Express the process outlives the request:
+
+| | |
+|---|---|
+| `webhooks.ts:279` | `refreshRepo(...).catch(...)` — compliance cache |
+| `webhooks.ts:301` | `addRepoEdges(...).catch(...)` — graph edges for a new repo |
+| `webhooks.ts:335` | `setTimeout(async () => { runScan… }, 1000)` — background scans |
+
+In Lambda the container freezes the moment the handler resolves. An unawaited
+promise may never settle and a one-second timer may never fire. Activity rows
+and template auto-apply would keep working, because those *are* awaited — so
+compliance refresh, new-repo graph edges and scanner runs would stop while
+everything else looked healthy. A partial success is a worse failure than an
+outage, because nothing reports it.
+
+`processDelivery` therefore awaits all three, via `Promise.allSettled` so one
+failure cannot suppress the other two. The existing `.catch()` handlers stay:
+they are what turns a rejection into a logged line rather than a thrown error.
+
+The `setTimeout` wrapper is dropped rather than awaited. Its one-second delay
+existed to let the HTTP response go out first, and in the worker there is no
+response to get out of the way of.
+
+This is the same class of problem as the `res.status(202)` split that motivated
+the queue, just less visible — the response boundary was never the only place
+work escaped the request.
 
 ## The three things most likely to go wrong
 
@@ -159,18 +197,34 @@ swallowing a legitimate redelivery.
 New table `github-control-hub-webhook-deliveries`, partition key `deliveryId`,
 TTL attribute `ttl`.
 
+**This one table is created by CDK**, unlike the other eleven, which
+`scripts/setup-aws-account.sh` creates with `aws dynamodb create-table`. That
+split is deliberate rather than an inconsistency: the setup script owns durable
+application data, and keeping those tables outside CloudFormation is what stops
+`cdk destroy` taking the activity log with it. This table holds nothing but
+five-minute deduplication state, so it belongs with the infrastructure that
+depends on it and carries `RemovalPolicy.DESTROY`.
+
+The practical reason matters more than the principle. The setup script has
+already run in both accounts and will not be run again, so a table added there
+would simply not exist when the worker deployed. Every delivery would fail on a
+`ResourceNotFoundException` from the claim, which presents as a
+replay-protection bug rather than a missing table. Putting it in CDK means
+`cdk deploy` produces a working system, which is the only property that makes
+the rollout below safe.
+
 ```
 claim     PutItem   ConditionExpression:
                       attribute_not_exists(deliveryId) OR expiresAt < :now
-                    → state = "processing", expiresAt = now + 360   (a lease)
+                    → state = "processing", expiresAt = now + 660   (a lease)
 
 complete  PutItem   → state = "done", expiresAt = now + 300, ttl = now + 300
 
-fail      DeleteItem, then rethrow → SQS redelivers → DLQ after 3 attempts
+fail      DeleteItem, then rethrow → SQS redelivers → DLQ after 5 attempts
 ```
 
-The two durations differ on purpose. The lease is 360 seconds to match the
-queue's visibility timeout, so it outlives the worker's own 300-second timeout —
+The two durations differ on purpose. The lease is 660 seconds to match the
+queue's visibility timeout, so it outlives the worker's own 600-second timeout —
 a lease equal to the function timeout would expire at the exact moment a
 maximally slow invocation was still finishing, letting a second worker claim a
 delivery the first had not released. The `done` marker is 300 seconds because
@@ -230,40 +284,82 @@ today and is unchanged by this work.
 
 A FIFO queue with `MessageGroupId` set to the repository name would eliminate
 it, and is rejected: it buys a guarantee the system has never had, at the cost
-of head-of-line blocking it has never had. One poison message would stall every
-subsequent event for that repository for up to eighteen minutes. Reserved
-concurrency narrows the inversion window as a side effect, which is the
-proportionate response.
+of head-of-line blocking it has never had. With five receive attempts against an
+eleven-minute visibility timeout, one poison message would stall every
+subsequent event for that repository for nearly an hour. Capping concurrency
+narrows the inversion window as a side effect, which is the proportionate
+response.
 
 ## Configuration
 
 | | Receiver | Worker |
 |---|---|---|
-| Timeout | 8s | 5 min |
+| Timeout | 8s | 10 min |
 | Memory | 256 MB | 512 MB |
-| Concurrency | default | reserved, 5 |
 | Runtime | `NODEJS_24_X` | `NODEJS_24_X` |
+
+| Queue | |
+|---|---|
+| Visibility timeout | 11 min |
+| `maxReceiveCount` | 5 |
+| Batch size | 1 |
+| Event source `maxConcurrency` | 5 |
+| Worker reserved concurrency | 5 |
 
 The receiver's eight seconds is a ceiling, not a target — warm invocations are
 tens of milliseconds, and a cold start plus the secret fetch is one to two
 seconds. It sits below GitHub's ten-second timeout deliberately: past that point
 nobody is listening for the response, so there is no value in still working.
 
-The worker's five minutes covers the five-second provisioning wait, four
-`applyTemplate` attempts with 4s/8s/12s backoff, and the template work itself.
-Queue visibility timeout is six minutes — it must exceed the function timeout —
-and `maxReceiveCount` is 3.
+The worker gets ten minutes — Lambda's maximum, and what `guardrailFn` already
+uses. Five would have been enough for the five-second provisioning wait and four
+`applyTemplate` attempts with 4s/8s/12s backoff, but awaiting the scanner runs
+moves work that was previously unbounded background time on a long-lived server
+into the invocation itself. Duration is billed as used, not as allocated, so the
+larger ceiling costs nothing on the ordinary delivery that finishes in two
+seconds.
 
-Reserved concurrency exists because `createOctokit` sets
-`onRateLimit: () => false`. A throttled call does not retry, it fails. A burst —
-bulk repository creation, a redelivery storm — would otherwise spawn parallel
-workers that collectively exhaust the installation's rate limit and fail rather
-than slow down. Capping at 5 means we throttle ourselves instead.
+### Concurrency is limited at the poller, not at the function
 
-The secret is fetched once per container and cached for fifteen minutes. Per
-delivery it would add latency against GitHub's ten-second budget, cost a call
-per invocation, and make every webhook depend on an API the work account
-restricts by SCP.
+`createOctokit` sets `onRateLimit: () => false`. A throttled call does not
+retry, it fails. A burst — bulk repository creation, a redelivery storm — would
+otherwise spawn parallel workers that collectively exhaust the installation's
+rate limit and fail rather than slow down.
+
+The control for that is **maximum concurrency on the event source mapping**, not
+reserved concurrency on the function. They are not interchangeable. Reserved
+concurrency caps invocations, but the event source mapping would still scale its
+polling toward the account default and have the surplus invocations throttled —
+and a throttled invocation still increments the message's receive count. Left
+that way, reserved concurrency would *cause* the DLQ problem it was meant to
+prevent, sending messages to the dead-letter queue that no worker ever saw.
+
+Maximum concurrency limits the poller instead, so surplus messages stay in the
+queue with their receive count untouched. AWS is explicit that the function's
+reserved concurrency must be greater than or equal to the event source's maximum
+concurrency, so both are 5.
+
+`maxReceiveCount` is 5 rather than 3 for the same reason, and AWS's own
+guidance says so: a message can be received and returned without ever being
+processed, so the count is sized for throttling rather than for processing
+failures. It should not be tidied back down.
+
+### The secret cache
+
+Fetched once per container, cached fifteen minutes. Per delivery it would add
+latency against GitHub's ten-second budget, cost a call per invocation, and make
+every webhook depend on an API the work account restricts by SCP.
+
+A cache that long would ordinarily mean up to fifteen minutes of rejected
+deliveries after the webhook secret is rotated — and rejected deliveries are
+lost, not queued. So a verification failure invalidates the cache and retries
+once, with a sixty-second floor between refetches. That bounds a rotation to
+roughly one lost delivery instead of fifteen minutes of them, and the floor plus
+the resource policy means a stream of bad signatures cannot be turned into a
+stream of Secrets Manager calls.
+
+Fail-closed is unchanged: if the refetch also yields no secret, the delivery is
+rejected.
 
 Table names reach the worker as environment variables, following the pattern
 `guardrailFn` already uses. Secrets are never environment variables.
@@ -329,6 +425,13 @@ New suite `repro-webhookdelivery.ts`:
 - a second claim on the same delivery id is refused
 - a claim whose lease has expired can be re-taken
 - a failed delivery releases its claim
+- `processDelivery` resolves only after its downstream work has settled
+
+The last one guards the fire-and-forget problem above. It is asserted by handing
+`processDelivery` stubs that record when they were called and resolve on a
+deferred promise, then checking that the returned promise is still pending until
+those stubs settle. A regression that reverted an `await` would otherwise pass
+every other test in this suite.
 
 The first two are the reason this suite exists. Base64 handling is the single
 most likely way this migration fails silently, and it fails in a way that looks
@@ -360,9 +463,32 @@ deploy being right.
 
 The end state is one stack with no EC2 in either account.
 
-The new deliveries table is created by `scripts/setup-aws-account.sh` alongside
-the other eleven, so `cdk deploy` alone is not sufficient for a fresh account.
-That is already true of every table and is not made worse here.
+### Repoint the webhook, do not add a second one
+
+The obvious instinct for a safe cutover — leave the existing webhook pointing at
+the instance and add a second one pointing at API Gateway — is wrong here, and
+would do real damage.
+
+GitHub treats them as two independent webhooks and gives each delivery its own
+`X-GitHub-Delivery` id for the same underlying event. The deduplication lock is
+keyed on that id, so it would not recognise the pair as duplicates. Both would
+process: templates applied twice to a new repository, duplicate alerts,
+duplicate activity rows.
+
+Edit the existing webhook's URL. There is no window in which both receivers are
+live.
+
+### Verification is the app's own Activity page
+
+`/org/webhook-health` derives from the activity table via `lastGitHubEvent()`,
+not from whatever received the delivery. So the same signal that reports the
+outage today reports the fix, with nothing new to build: **Receiving events**
+means an activity row was written in the last 24 hours by whatever is now
+handling webhooks.
+
+The `ping` GitHub sends on saving the URL confirms only reachability and the
+signature — it writes no activity row. Creating a test repository is what
+exercises the whole path.
 
 ## Out of scope
 
