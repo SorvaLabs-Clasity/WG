@@ -504,8 +504,33 @@ router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
     shell: false,
     env,
   });
-  child.unref();
 
+  // Wait to hear that it started.
+  //
+  // This used to answer "login started, check your browser" the instant spawn
+  // returned, which says nothing about whether anything ran. With stdio
+  // ignored and no error listener, a missing AWS CLI produced no browser, no
+  // message, and an unhandled 'error' on the child — so the button did
+  // nothing, twice over. `spawn` and `error` are the two events that settle
+  // this, and one of them always fires.
+  try {
+    await new Promise<void>((resolve, reject) => {
+      child.once("spawn", () => resolve());
+      child.once("error", reject);
+    });
+  } catch (err: any) {
+    const missing = err?.code === "ENOENT";
+    res.status(missing ? 400 : 500).json({
+      error: missing
+        ? `The AWS CLI is not installed, or not on this app's PATH, so "aws sso login" could not be run. ` +
+          `Install it, or use the Access key tab instead — that needs no CLI.`
+        : `Could not start "aws sso login": ${err?.message ?? err}`,
+      code: missing ? "AWS_CLI_NOT_FOUND" : "AWS_SSO_LAUNCH_FAILED",
+    });
+    return;
+  }
+
+  child.unref();
   res.json({ ok: true, profile, message: `AWS SSO login started for profile "${profile}". Check your browser.` });
 });
 
