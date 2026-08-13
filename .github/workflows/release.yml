@@ -61,19 +61,6 @@ jobs:
 
       - name: Build frontend
         working-directory: github-control-hub/frontend
-        # These two are baked in at build time and cannot change afterwards.
-        # The migration script writes them into .env.production.local, which is
-        # gitignored — correctly, since it is per-install — so CI never saw
-        # them and every released build shipped with no company name and
-        # console links that went nowhere.
-        #
-        # Set them once as repository variables:
-        #   Settings -> Secrets and variables -> Actions -> Variables
-        #     COMPANY_NAME   the name shown in the app
-        #     AWS_REGION     the region whose console the links should open
-        env:
-          VITE_COMPANY_NAME: ${{ vars.COMPANY_NAME }}
-          VITE_AWS_REGION: ${{ vars.AWS_REGION }}
         run: npm run build
 
       - name: Install desktop app dependencies

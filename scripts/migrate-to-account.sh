@@ -318,13 +318,30 @@ warn "Both rules report only. Review findings before switching either to enforce
 
 # ── 7. build ──────────────────────────────────────────────────────────
 step "7/7  Desktop app"
-ENV_FILE="$ROOT/github-control-hub/frontend/.env.production.local"
-cat > "$ENV_FILE" <<EOF
-# Written by scripts/migrate-to-account.sh — this install's identity.
-VITE_COMPANY_NAME=$COMPANY
-VITE_AWS_REGION=$REGION
-EOF
+# The committed file, not .env.production.local.
+#
+# These two are compiled into the JavaScript at build time, and the release
+# workflow builds on a fresh runner that has only what is in the repository —
+# so a value written to a gitignored file reached local builds and nothing
+# else, and every release shipped with no company name and dead console links.
+ENV_FILE="$ROOT/github-control-hub/frontend/.env.production"
+# Rewrite the two this script owns and leave the rest alone. The file already
+# carries VITE_API_URL and VITE_BACKEND_URL, which the app needs to reach its
+# own backend — overwriting it wholesale produced a build that could not call
+# anything.
+{
+  # Drop the previous pair and their heading, so re-running replaces rather
+  # than accumulates.
+  grep -vE '^(VITE_COMPANY_NAME=|VITE_AWS_REGION=|# The two below are written)' "$ENV_FILE" 2>/dev/null || true
+  echo "# The two below are written by scripts/migrate-to-account.sh."
+  echo "VITE_COMPANY_NAME=$COMPANY"
+  echo "VITE_AWS_REGION=$REGION"
+} > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
 ok "Wrote $(basename "$ENV_FILE") (company name, console-link region)"
+warn "That file is tracked by git. Commit it, or the release workflow will"
+warn "build without these and the app will show no company name."
+echo "    ${dim}git add github-control-hub/frontend/.env.production${off}"
+echo "    ${dim}git commit -m 'Set this install'\''s company name and region'${off}"
 
 echo
 echo "  Build and run it with:"
