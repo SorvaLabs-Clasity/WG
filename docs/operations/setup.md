@@ -69,9 +69,21 @@ unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
 Needs organization settings access. If that is not you, hand this section over —
 it produces five values the next phase asks for.
 
+> **Create both of these under the organization, not under your own account.**
+>
+> GitHub has two separate Developer settings pages, and an app appears only
+> under the account that created it. The avatar menu's Settings → Developer
+> settings always lands on your personal one, so the links below go to the
+> org's page directly. Use them.
+>
+> Getting this wrong is not cosmetic: a personal app created with "Only on this
+> account" *cannot be installed on the organization at all*, and the mistake
+> only surfaces at install time. Recovering means Advanced → Transfer ownership,
+> or starting the app again.
+
 ### 1. An OAuth App
 
-**Settings → Developer settings → OAuth Apps → New OAuth App**
+`https://github.com/organizations/<org>/settings/applications` → **New OAuth App**
 
 | Field | Value |
 |---|---|
@@ -93,7 +105,7 @@ Then **Generate a new client secret**. GitHub shows it once.
 
 ### 2. A GitHub App
 
-**Settings → Developer settings → GitHub Apps → New GitHub App**
+`https://github.com/organizations/<org>/settings/apps` → **New GitHub App**
 
 | Field | Value |
 |---|---|
