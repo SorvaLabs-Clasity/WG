@@ -53,7 +53,13 @@ async function loadSecrets(): Promise<void> {
 }
 
 export async function bootstrap(): Promise<void> {
-  if (!process.env.AWS_REGION) process.env.AWS_REGION = getRegion();
+  // Only when there is something to set. Assigning the empty string getRegion()
+  // returns is what put `region: ""` into the SDK — and an empty region is
+  // worse than an absent one, because it overrides the resolver instead of
+  // deferring to it. awsRegion() treats "" as absent, but nothing should have
+  // to know that; the variable is simply left unset when nobody named a region.
+  const region = getRegion();
+  if (region && !process.env.AWS_REGION) process.env.AWS_REGION = region;
   resolveTableNames();
   await loadSecrets();
 

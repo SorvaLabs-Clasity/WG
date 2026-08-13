@@ -74,7 +74,11 @@ async function main(): Promise<void> {
   // Mark as server deployment — disables AWS credential management endpoints
   process.env.__SERVER_MODE__ = "1";
 
-  if (!process.env.AWS_REGION) process.env.AWS_REGION = getRegion();
+  // Set only when a region was actually named. Assigning getRegion()'s empty
+  // string hands the SDK `region: ""`, which overrides its own resolution chain
+  // rather than deferring to it — see utils/region.ts.
+  const resolvedRegion = getRegion();
+  if (resolvedRegion && !process.env.AWS_REGION) process.env.AWS_REGION = resolvedRegion;
   resolveTableNames();
   await loadSecrets();
 
