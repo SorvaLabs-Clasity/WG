@@ -247,6 +247,61 @@ const code = (src: string) => src
   check("  work that hangs is abandoned at the ceiling", Date.now() - started < 1000);
 }
 
+// ── nothing reaches the queue that did not verify ──
+{
+  process.env.WEBHOOK_QUEUE_URL = "https://sqs.test/queue";
+  const { __setSecretLoaderForTests, __resetSecretCacheForTests } =
+    await import("./src/webhooks/secret");
+  __resetSecretCacheForTests();
+  __setSecretLoaderForTests(async () => ({ GITHUB_WEBHOOK_SECRET: SECRET }));
+
+  const { handler, __setQueueSenderForTests } = await import("./src/webhooks/receiver");
+
+  const sent: string[] = [];
+  __setQueueSenderForTests(async (body: string) => { sent.push(body); });
+
+  const evt = (body: string, sig: string | undefined, b64 = false) => ({
+    body: b64 ? Buffer.from(body, "utf8").toString("base64") : body,
+    isBase64Encoded: b64,
+    headers: {
+      "X-Hub-Signature-256": sig,
+      "X-GitHub-Delivery": "delivery-abc",
+      "X-GitHub-Event": "repository",
+    },
+  }) as any;
+
+  const good = await handler(evt(PAYLOAD, sign(PAYLOAD)));
+  check("a signed delivery is accepted", good.statusCode === 202, good.statusCode);
+  check("  and is queued", sent.length === 1, sent.length);
+  check("  with the delivery id and event carried through", (() => {
+    const msg = JSON.parse(sent[0]);
+    return msg.deliveryId === "delivery-abc" && msg.event === "repository"
+        && msg.payload.repository.name === "café-service";
+  })());
+
+  sent.length = 0;
+  const bad = await handler(evt(PAYLOAD, "sha256=deadbeef"));
+  check("an unsigned delivery is rejected", bad.statusCode === 401, bad.statusCode);
+  check("  and nothing is queued", sent.length === 0, sent.length);
+
+  sent.length = 0;
+  const b64ok = await handler(evt(PAYLOAD, sign(PAYLOAD), true));
+  check("a base64-encoded delivery is accepted end to end", b64ok.statusCode === 202, b64ok.statusCode);
+  check("  and is queued", sent.length === 1, sent.length);
+
+  // Header casing is not guaranteed by API Gateway's v1 payload format.
+  sent.length = 0;
+  const lower = await handler({
+    body: PAYLOAD, isBase64Encoded: false,
+    headers: {
+      "x-hub-signature-256": sign(PAYLOAD),
+      "x-github-delivery": "delivery-xyz",
+      "x-github-event": "push",
+    },
+  } as any);
+  check("lower-cased headers are found", lower.statusCode === 202, lower.statusCode);
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
 })();
