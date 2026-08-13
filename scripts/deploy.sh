@@ -109,10 +109,28 @@ PUBLIC_IP=$(aws ec2 describe-instances \
 
 echo ""
 echo "==> Deploy complete!"
-echo "    App:     https://${PUBLIC_IP}"
 echo "    Webhook: https://${PUBLIC_IP}/api/webhooks/github"
 echo "    Connect: aws ssm start-session --target ${INSTANCE_ID}"
 echo ""
-echo "    Next steps:"
-echo "    1. Update your GitHub OAuth App callback URL to: https://${PUBLIC_IP}/auth/callback"
-echo "    2. Add a GitHub webhook with payload URL: https://${PUBLIC_IP}/api/webhooks/github"
+# This box is a webhook receiver, and its security group opens 443 to GitHub's
+# four hook ranges and nothing else. It is not a URL anyone browses to.
+#
+# The two lines that used to be here said otherwise. They told you to point the
+# OAuth App's callback at this address and to add a webhook — the first breaks
+# sign-in for everybody, and the second gives you a duplicate of the hook the
+# migration script already had you create. Both were followed at least once.
+echo "    Nothing to configure in GitHub after a redeploy."
+echo ""
+echo "    The OAuth callback stays http://localhost:4321/auth/callback — people"
+echo "    sign in through the desktop app, which runs its own backend, so the"
+echo "    code comes back to their machine and never reaches this server. No"
+echo "    browser can reach it anyway: the security group admits GitHub's"
+echo "    webhook ranges only."
+echo ""
+echo "    The org webhook is created once, during setup. If you have not made"
+echo "    it yet, or its payload URL is not the one above, fix it at:"
+echo "      https://github.com/organizations/<org>/settings/hooks"
+echo ""
+echo "    Check it works: create a repository in the org and watch it appear in"
+echo "    the app's activity feed. If it does not, Recent Deliveries on the"
+echo "    webhook says why — 401 is a secret mismatch, silence is a missing event."
