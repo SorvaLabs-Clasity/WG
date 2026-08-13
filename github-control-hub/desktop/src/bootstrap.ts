@@ -3,7 +3,10 @@ function getPrefix(): string {
 }
 
 function getRegion(): string {
-  return process.env.AWS_REGION || "us-east-1";
+  // No literal. An empty string leaves the AWS SDK to resolve the region from
+  // the signed-in profile, which is the only thing that knows it — naming one
+  // here overrode the profile and read a different account's tables.
+  return process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "";
 }
 
 function getSecretName(): string {

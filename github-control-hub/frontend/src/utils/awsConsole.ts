@@ -7,12 +7,17 @@
  */
 
 /**
- * Used only when a finding carries no region of its own. Every other
- * "us-east-1" in this codebase is a fallback for AWS_REGION; this one built
- * links to the wrong console entirely in another region.
+ * Set at build time by the migration script, from the region that install
+ * actually uses. Empty when nothing said.
+ *
+ * It used to fall back to "us-east-1", which for a link is worse than useless:
+ * the console opens, in the wrong region, showing nothing — and reads as the
+ * resource having been deleted. Findings carry their own region now, so this
+ * is only reached by something that has none, and the honest answer there is
+ * no link at all.
  */
 const DEFAULT_REGION: string =
-  (import.meta.env.VITE_AWS_REGION as string | undefined) || "us-east-1";
+  (import.meta.env.VITE_AWS_REGION as string | undefined) || "";
 
 /**
  * CloudWatch's console encodes log group names twice — a `/` becomes `$252F`,
@@ -25,6 +30,9 @@ function cloudwatchSegment(name: string): string {
 
 export function awsConsoleUrl(resourceType: string | undefined, resourceId: string, region?: string): string | null {
   const r = region || DEFAULT_REGION;
+  // No region, no link. The caller renders nothing when this is null, which is
+  // better than a link somewhere the resource is not.
+  if (!r) return null;
   const id = resourceId;
 
   switch (resourceType) {

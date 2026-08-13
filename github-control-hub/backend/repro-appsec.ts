@@ -219,6 +219,48 @@ const electron = read("github-control-hub/desktop/src/main.ts");
       /release:[\s\S]*?permissions:\s*\n\s*contents:\s*write/.test(wf));
   }
 
+  // ── no invented AWS region ─────────────────────────────────────────
+  {
+    // A hardcoded fallback is worse than none: the SDK resolves a region from
+    // the signed-in profile, and naming one here overrides that. A desktop user
+    // whose profile lives in eu-west-1 read us-east-1 and found an empty
+    // account, with nothing failing.
+    const files = [
+      "github-control-hub/backend/src", "github-control-hub/desktop/src",
+      "github-control-hub/infra/cdk-app.ts", "github-control-hub/infra/cdk-stack.ts",
+    ];
+    const offenders: string[] = [];
+    const walk = (rel: string) => {
+      const full = path.join(ROOT, rel);
+      if (fs.statSync(full).isDirectory()) {
+        for (const e of fs.readdirSync(full)) walk(path.join(rel, e));
+        return;
+      }
+      if (!/\.tsx?$/.test(rel)) return;
+      for (const line of code(fs.readFileSync(full, "utf8")).split("\n")) {
+        // The two legitimate ones: Organizations' endpoint really is us-east-1,
+        // and S3 reports a us-east-1 bucket with an empty LocationConstraint.
+        if (/OrganizationsClient|BucketRegion|console\.aws\.amazon\.com/.test(line)) continue;
+        if (/(AWS_REGION|CDK_DEFAULT_REGION)[^\n]*\|\|[^\n]*["']us-east-1["']/.test(line)) {
+          offenders.push(rel + ": " + line.trim().slice(0, 70));
+        }
+      }
+    };
+    files.forEach(walk);
+    check("no code falls back to a region nobody chose", offenders.length === 0, offenders);
+
+    const scripts = ["scripts/setup-aws-account.sh", "scripts/deploy.sh", "scripts/setup-cloudtrail.sh"];
+    for (const sc of scripts) {
+      const src = fs.readFileSync(path.join(ROOT, sc), "utf8");
+      check(`  ${sc.split("/")[1]} requires a region rather than assuming one`,
+        /region_or_die/.test(src) && !/AWS_REGION:-us-east-1/.test(src), sc);
+    }
+
+    const cdkApp = fs.readFileSync(path.join(ROOT, "github-control-hub/infra/cdk-app.ts"), "utf8");
+    check("  and cdk refuses to deploy to a region nobody named",
+      /Refusing to guess/.test(cdkApp), "cdk-app.ts still has a region default");
+  }
+
   // ── nothing hardcoded ──────────────────────────────────────────────
   {
     const files = ["github-control-hub/backend/src", "github-control-hub/frontend/src",

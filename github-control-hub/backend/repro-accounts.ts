@@ -402,7 +402,13 @@ const group = (id: string): ResourceSnapshot => ({
     ]);
     check("scopes cover every enabled account-region pair",
       scopes.map(s => `${s.accountName}/${s.region}`).join() ===
-      "prod/us-east-1,prod/eu-west-1,uat/us-east-1", scopes);
+      "prod/us-east-1,prod/eu-west-1", scopes);
+    // An account with no regions used to be swept in a default one, which is
+    // the quiet version of the bug: it would report no findings from a region
+    // it has nothing in and read as healthy. The UI already says such an
+    // account is "listed but never actually checked" — this now matches.
+    check("  and an account naming no region is swept nowhere, not somewhere invented",
+      !scopes.some(s => s.accountName === "uat"), scopes);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

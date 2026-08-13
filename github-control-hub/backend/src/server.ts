@@ -24,6 +24,7 @@ import configRoutes from "./routes/config";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { awsHealthMiddleware } from "./middleware/awsHealthMiddleware";
 import { initTokenManager } from "./github/client";
+import { awsRegion } from "./utils/region";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -143,7 +144,7 @@ app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
   try {
     if (!process.env.GITHUB_CLIENT_ID) {
       const { SecretsManagerClient, GetSecretValueCommand } = await import("@aws-sdk/client-secrets-manager");
-      const region = process.env.AWS_REGION || "us-east-1";
+      const region = awsRegion();
       const secretName = process.env.SECRET_NAME || `${process.env.STACK_NAME || "github-control-hub"}/secrets`;
       const client = new SecretsManagerClient({ region });
       const result = await client.send(new GetSecretValueCommand({ SecretId: secretName }));

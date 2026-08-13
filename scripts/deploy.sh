@@ -19,7 +19,19 @@ set -euo pipefail
 
 INSTANCE_ID="${1:?Usage: deploy.sh <instance-id>}"
 IMAGE_NAME="github-control-hub"
-REGION="${AWS_REGION:-us-east-1}"
+# No default. A script that invents a region creates tables, buckets and
+# instances somewhere nobody named, and the only symptom is an account that
+# looks empty.
+region_or_die() {
+  local r="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
+  [ -n "$r" ] || r="$(aws configure get region 2>/dev/null || true)"
+  if [ -z "$r" ]; then
+    echo "No AWS region set. Export AWS_REGION, or give your AWS profile one." >&2
+    exit 1
+  fi
+  printf '%s' "$r"
+}
+REGION="$(region_or_die)"
 
 echo "==> Building Docker image (linux/amd64)..."
 docker build --platform linux/amd64 -t "$IMAGE_NAME" .

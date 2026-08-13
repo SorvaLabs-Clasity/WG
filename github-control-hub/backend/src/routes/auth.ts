@@ -6,6 +6,7 @@ import { signToken, verifyToken } from "../utils/jwt";
 import { storeToken, getToken, removeToken } from "../utils/tokenStore";
 import { docClient, tableName, usesDynamo, PutCommand, DeleteCommand } from "../utils/dynamo";
 import { authMiddleware } from "../middleware/authMiddleware";
+import { awsRegion } from "../utils/region";
 
 const router = Router();
 
@@ -191,7 +192,7 @@ router.get("/status", async (_req: Request, res: Response) => {
     aws: {
       connected: awsConnected,
       dynamoReachable,
-      region: process.env.AWS_REGION || "us-east-1",
+      region: awsRegion(),
       profile: process.env.AWS_PROFILE || "default",
     },
     github: { configured: githubConfigured, org },
@@ -302,7 +303,7 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
   if (process.env.GITHUB_CLIENT_ID) return false;
   try {
     const { SecretsManagerClient, GetSecretValueCommand } = await import("@aws-sdk/client-secrets-manager");
-    const region = process.env.AWS_REGION || "us-east-1";
+    const region = awsRegion();
     const secretName = process.env.SECRET_NAME || `${process.env.STACK_NAME || "github-control-hub"}/secrets`;
     const client = new SecretsManagerClient({ region });
     const result = await client.send(new GetSecretValueCommand({ SecretId: secretName }));

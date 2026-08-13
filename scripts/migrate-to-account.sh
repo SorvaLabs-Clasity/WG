@@ -71,7 +71,9 @@ echo
 
 # Region is asked for, never assumed. Everything in the app reads AWS_REGION;
 # the one place that did not (the console deep links) is now fed from here too.
-DEFAULT_REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null || echo us-east-1)}"
+# The profile's own region, or nothing. Offering us-east-1 to someone who never
+# chose it is how a stack ends up in a region nobody looks at.
+DEFAULT_REGION="${AWS_REGION:-$(aws configure get region 2>/dev/null || true)}"
 ask REGION "AWS region to deploy into" "$DEFAULT_REGION"
 export AWS_REGION="$REGION"
 export CDK_DEFAULT_REGION="$REGION"

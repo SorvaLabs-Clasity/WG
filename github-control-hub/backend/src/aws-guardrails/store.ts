@@ -1,4 +1,5 @@
 import { Guardrail, AwsExclusionList, Finding } from "./types";
+import { awsRegion } from "../utils/region";
 
 /**
  * DynamoDB access for the guardrail engine.
@@ -8,7 +9,7 @@ import { Guardrail, AwsExclusionList, Finding } from "./types";
  * only need three tables and a plain client.
  */
 
-const REGION = process.env.AWS_REGION || "us-east-1";
+const REGION = awsRegion();
 const PREFIX = process.env.STACK_NAME || "github-control-hub";
 
 export const GUARDRAILS_TABLE = process.env.GUARDRAILS_TABLE || `${PREFIX}-aws-guardrails`;

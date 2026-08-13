@@ -18,7 +18,7 @@ function getPrefix(): string {
 }
 
 function getRegion(): string {
-  return process.env.AWS_REGION || "us-east-1";
+  return process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "";
 }
 
 function getSecretName(): string {

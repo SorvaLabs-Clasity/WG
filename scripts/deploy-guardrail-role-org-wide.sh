@@ -151,7 +151,7 @@ READ_ONLY="true"; [[ "$ALLOW_WRITES" == "yes" ]] && READ_ONLY="false"
 
 # IAM is global, so the StackSet only needs to run in one region. Deploying to
 # several would try to create the same role name repeatedly and fail.
-ask REGION "Region to run the StackSet in (the role itself is global)" "${AWS_REGION:-us-east-1}"
+ask REGION "Region to run the StackSet in (the role itself is global)" "${AWS_REGION:-$(aws configure get region 2>/dev/null || true)}"
 
 say "About to do this"
 cat <<EOF

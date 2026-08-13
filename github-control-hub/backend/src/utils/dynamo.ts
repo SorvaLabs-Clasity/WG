@@ -1,4 +1,5 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { awsRegion } from "./region";
 import {
   DynamoDBDocumentClient,
   GetCommand,
@@ -11,7 +12,7 @@ import {
 } from "@aws-sdk/lib-dynamodb";
 
 let rawClient = new DynamoDBClient({
-  region: process.env.AWS_REGION || "us-east-1",
+  region: awsRegion(),
 });
 export let docClient = DynamoDBDocumentClient.from(rawClient, {
   marshallOptions: { removeUndefinedValues: true },
@@ -24,7 +25,7 @@ export function resetDynamoClient(credentials?: {
 }): void {
   rawClient.destroy();
   rawClient = new DynamoDBClient({
-    region: process.env.AWS_REGION || "us-east-1",
+    region: awsRegion(),
     ...(credentials ? { credentials } : {}),
   });
   docClient = DynamoDBDocumentClient.from(rawClient, {

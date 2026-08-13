@@ -1,6 +1,7 @@
 import { run, RunOptions, RunResult } from "./engine";
 import { listGuardrails, listAwsExclusions, putFindings, dropLegacyFindings } from "./store";
 import { kindsForEvent } from "./catalog";
+import { awsRegion } from "../utils/region";
 
 /**
  * Lambda entry point. One handler behind all three triggers:
@@ -130,7 +131,7 @@ async function writeActivity(entry: {
     const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
     const { DynamoDBDocumentClient, PutCommand } = await import("@aws-sdk/lib-dynamodb");
     const client = DynamoDBDocumentClient.from(
-      new DynamoDBClient({ region: process.env.AWS_REGION || "us-east-1" }),
+      new DynamoDBClient({ region: awsRegion() }),
       { marshallOptions: { removeUndefinedValues: true } }
     );
     const timestamp = new Date().toISOString();

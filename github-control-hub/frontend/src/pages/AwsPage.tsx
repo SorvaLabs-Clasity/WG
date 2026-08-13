@@ -1381,7 +1381,10 @@ function AccountEditor({ account, error, saving, onClose, onSave }: {
   const [externalId, setExternalId] = useState(account?.externalId ?? "");
   const [accessKeyId, setAccessKeyId] = useState("");
   const [secretAccessKey, setSecretAccessKey] = useState("");
-  const [regions, setRegions] = useState<string[]>(account?.regions ?? ["us-east-1"]);
+  // Nothing pre-ticked. A region selected by default is one somebody accepted
+  // without reading, and an account swept somewhere it has nothing reports no
+  // findings and looks healthy. The form warns when none is chosen.
+  const [regions, setRegions] = useState<string[]>(account?.regions ?? []);
   const [enabled, setEnabled] = useState(account?.enabled ?? true);
 
   const toggleRegion = (r: string) =>

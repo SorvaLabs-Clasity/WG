@@ -18,6 +18,7 @@ import {
 } from "../aws-guardrails/accounts";
 import { ACCOUNT_ROLE_TEMPLATE } from "../aws-guardrails/accountRoleTemplate";
 import type { Guardrail, AwsExclusionList, GuardrailMode, AwsAccount } from "../aws-guardrails/types";
+import { awsRegion, resolveAwsRegion } from "../utils/region";
 
 const router = Router();
 
@@ -187,7 +188,7 @@ router.get("/findings", async (_req: Request, res: Response) => {
  */
 async function invokeEngine(payload: Record<string, unknown>): Promise<any> {
   const { LambdaClient, InvokeCommand } = await import("@aws-sdk/client-lambda");
-  const client = new LambdaClient({ region: process.env.AWS_REGION || "us-east-1" });
+  const client = new LambdaClient({ region: awsRegion() });
   const out = await client.send(new InvokeCommand({
     FunctionName: FUNCTION_NAME,
     Payload: Buffer.from(JSON.stringify({ source: "manual", ...payload })),
@@ -407,7 +408,12 @@ router.post("/accounts", requireAdmin, async (req: Request, res: Response) => {
       externalId: externalId?.trim() || undefined,
       secretId: method === "keys" ? secretId : undefined,
       keyHint: method === "keys" ? keyHint : undefined,
-      regions: Array.isArray(regions) && regions.length ? regions : [process.env.AWS_REGION || "us-east-1"],
+      // Whatever was ticked; failing that, the region this app runs in. Never a
+      // literal — an account recorded against a region nobody chose is swept
+      // somewhere it has nothing, reports no findings, and reads as healthy.
+      regions: Array.isArray(regions) && regions.length
+        ? regions
+        : [await resolveAwsRegion()].filter(Boolean) as string[],
       enabled: enabled !== false,
       isHome,
       createdBy: existing?.createdBy ?? req.user!.login,
@@ -511,7 +517,7 @@ router.get("/accounts/setup", requireAdmin, async (req: Request, res: Response) 
       : existing ?? suggestExternalId();
 
     const trusted = [principals.app, principals.engine].filter(Boolean) as string[];
-    const region = process.env.AWS_REGION || "us-east-1";
+    const region = awsRegion();
 
     res.json({
       roleName: GUARDRAIL_ROLE_NAME,

@@ -1,6 +1,7 @@
 import { AwsAccount, AwsCredentials, Scope, AwsAccessMethod } from "./types";
 import { randomBytes } from "crypto";
 import { ActionableError } from "../utils/errorSanitizer";
+import { awsRegion, resolveAwsRegion } from "../utils/region";
 
 /**
  * The accounts the guardrails run against, and how to reach them.
@@ -14,7 +15,25 @@ import { ActionableError } from "../utils/errorSanitizer";
  * That is the point: adding this feature must not require configuring it.
  */
 
-const REGION = process.env.AWS_REGION || "us-east-1";
+/**
+ * Undefined when nothing has said. Passed to a client that is the right answer
+ * — the SDK resolves it from the profile or the runtime. The few places that
+ * need a region *named* rather than used call homeRegion() below, which asks
+ * the SDK rather than guessing alongside it.
+ */
+const REGION = awsRegion();
+
+/**
+ * A region to record against an account that named none.
+ *
+ * Storing "us-east-1" here was the quiet version of the bug: the account would
+ * be swept in a region it has nothing in, report zero findings, and look
+ * healthy. Falling back to whatever the app itself runs in is at least a region
+ * someone chose.
+ */
+async function homeRegion(): Promise<string> {
+  return (await resolveAwsRegion()) ?? "";
+}
 const PREFIX = process.env.STACK_NAME || "github-control-hub";
 
 /** Session name on the assumed role, so CloudTrail in the target account says who. */
@@ -176,7 +195,7 @@ export async function resolveAccounts(): Promise<AwsAccount[]> {
   const homeAccount: AwsAccount = {
     accountId: home,
     name: stored?.name || "This account",
-    regions: stored?.regions?.length ? stored.regions : [REGION],
+    regions: stored?.regions?.length ? stored.regions : [await homeRegion()],
     enabled: stored ? stored.enabled : true,
     isHome: true,
     roleArn: undefined,
@@ -187,7 +206,7 @@ export async function resolveAccounts(): Promise<AwsAccount[]> {
 
   const others = registered
     .filter(a => a.accountId !== home)
-    .map(a => ({ ...a, isHome: false, regions: a.regions?.length ? a.regions : [REGION] }));
+    .map(a => ({ ...a, isHome: false, regions: a.regions?.length ? a.regions : [] }));
 
   return [homeAccount, ...others];
 }
@@ -377,7 +396,12 @@ export async function discoverOrganizationAccounts(): Promise<
 export function scopesFor(accounts: AwsAccount[]): Omit<Scope, "credentials">[] {
   return accounts
     .filter(a => a.enabled)
-    .flatMap(a => (a.regions.length ? a.regions : [REGION])
+    // An account with no regions is swept nowhere, and that is the honest
+    // outcome. A region invented here would be one nobody chose, and the sweep
+    // would report a clean bill of health for somewhere it never looked.
+    // resolveAccounts fills the home account's regions in; any other account
+    // has to say where it lives.
+    .flatMap(a => a.regions
       .map(region => ({ accountId: a.accountId, accountName: a.name, region })));
 }
 
