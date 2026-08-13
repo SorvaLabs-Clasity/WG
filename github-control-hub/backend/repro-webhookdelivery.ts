@@ -123,6 +123,18 @@ const code = (src: string) => src
   check("  but no secret at all still fails closed", (await getWebhookSecret()) === "");
 }
 
+// ── the test seam does not leave residue ──
+{
+  const { getWebhookSecret, __setSecretLoaderForTests, __resetSecretCacheForTests } =
+    await import("./src/webhooks/secret");
+
+  __resetSecretCacheForTests();
+  __setSecretLoaderForTests(async () => { throw new Error("injected error"); });
+  __resetSecretCacheForTests();
+  check("a reset after injecting a throwing loader restores the real loader",
+    (await getWebhookSecret()) === "");
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
 })();

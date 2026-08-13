@@ -27,7 +27,6 @@ type Bundle = Record<string, string>;
 
 let cached: Bundle | null = null;
 let cachedAt = 0;
-let lastFetchAt = 0;
 let lastRefetchAt = 0;
 
 async function loadFromSecretsManager(): Promise<Bundle> {
@@ -43,7 +42,6 @@ async function loadFromSecretsManager(): Promise<Bundle> {
 let loader: () => Promise<Bundle> = loadFromSecretsManager;
 
 async function fetchBundle(): Promise<void> {
-  lastFetchAt = Date.now();
   try {
     cached = await loader();
     cachedAt = Date.now();
@@ -95,6 +93,6 @@ export function __setSecretLoaderForTests(fn: () => Promise<Bundle>): void {
 export function __resetSecretCacheForTests(opts?: { keepValue?: boolean }): void {
   if (!opts?.keepValue) cached = null;
   cachedAt = 0;
-  lastFetchAt = 0;
   lastRefetchAt = 0;
+  loader = loadFromSecretsManager;
 }
