@@ -42,7 +42,7 @@ STACK_NAME=github-control-hub AWS_REGION=us-east-1 \
   ./scripts/setup-aws-account.sh
 ```
 
-Creates 13 DynamoDB tables, the activity table's two indexes, and TTL. All
+Creates 14 DynamoDB tables, the activity table's two indexes, and TTL. All
 on-demand — idle tables cost nothing.
 
 Then put the GitHub values into Secrets Manager under

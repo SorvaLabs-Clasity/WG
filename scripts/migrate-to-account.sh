@@ -104,7 +104,7 @@ AWS_PROFILE="$AWS_PROFILE" AWS_REGION="$REGION" STACK_NAME="$PREFIX" \
   SKIP_SECRET=1 SKIP_CONFIRM=1 \
   bash "$HERE/setup-aws-account.sh" </dev/null \
   || die "Table creation failed. The output above says why."
-ok "13 tables present (on-demand billing; idle tables cost nothing)"
+ok "14 tables present (on-demand billing; idle tables cost nothing)"
 
 # ── 2. secrets ────────────────────────────────────────────────────────
 step "2/7  GitHub credentials"
