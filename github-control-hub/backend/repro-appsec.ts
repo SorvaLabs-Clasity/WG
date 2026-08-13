@@ -112,13 +112,27 @@ const electron = read("github-control-hub/desktop/src/main.ts");
 
   // ── the webhook cannot be forged ───────────────────────────────────
   {
-    const hook = read("github-control-hub/backend/src/routes/webhooks.ts");
+    const verify   = read("github-control-hub/backend/src/webhooks/verify.ts");
+    const receiver = read("github-control-hub/backend/src/webhooks/receiver.ts");
+    const worker   = read("github-control-hub/backend/src/webhooks/worker.ts");
+
     check("webhook signatures are compared in constant time",
-      /timingSafeEqual/.test(hook));
+      /timingSafeEqual/.test(verify));
     check("  and a missing secret fails closed",
-      /if \(!secret\) return false/.test(hook), "an absent webhook secret would accept anything");
+      /if \(!secret\) return false/.test(verify), "an absent webhook secret would accept anything");
     check("  replays are rejected",
-      /isDuplicateDelivery/.test(hook));
+      /claimDelivery/.test(worker));
+
+    // The receiver's whole job is to not put anything unverified on the queue.
+    const receiverCode = code(receiver);
+    check("  nothing is queued before the signature verifies",
+      receiverCode.indexOf("statusCode: 401") < receiverCode.indexOf("await send("),
+      "an unverified payload would reach the worker");
+
+    // The signature covers the bytes as sent. Parsing first breaks every one.
+    check("  the body is not parsed before it is verified",
+      receiverCode.indexOf("verifyGitHubSignature") < receiverCode.indexOf("JSON.parse"),
+      "a re-serialised body is a different sequence of bytes");
   }
 
   // ── the org-wide token is never served over a socket ───────────────

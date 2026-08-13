@@ -117,6 +117,33 @@ const accountsCode = code(accountsTs);
       /ReadOnly:[\s\S]{0,120}?Default:\s*"true"/.test(template), "ReadOnly does not default to true");
   }
 
+  // ── the internet-facing function is the smallest thing here ────────
+  //
+  // The receiver is the only component reachable from the internet. The
+  // privilege split is the reason it is a separate function at all, so a
+  // grant creeping into it is the regression this guards.
+  {
+    const receiverBlock = cdkCode.slice(
+      cdkCode.indexOf("const receiverFn"),
+      cdkCode.indexOf("const workerFn"),
+    );
+    check("the webhook receiver holds no DynamoDB",
+      receiverBlock.length > 0 && !/dynamodb:/.test(receiverBlock),
+      "the internet-facing function gained table access");
+    check("  and cannot assume a role",
+      !/sts:AssumeRole/.test(receiverBlock),
+      "the internet-facing function gained cross-account reach");
+    check("  and cannot invoke anything",
+      !/lambda:InvokeFunction/.test(receiverBlock));
+
+    check("the webhook API restricts source IPs to GitHub",
+      /NotIpAddress/.test(cdkCode) && /GITHUB_WEBHOOK_CIDRS/.test(cdkCode),
+      "the allow-list the security group used to hold was not carried over");
+    check("  with an explicit deny, not just an allow",
+      /Effect\.DENY/.test(cdkCode),
+      "an allow alone does not exclude anyone");
+  }
+
   // ── the writes that do exist are exactly three ─────────────────────
   {
     const block = cdkCode.split("RemediateThreeThings")[1]?.split("}))")[0] ?? "";
