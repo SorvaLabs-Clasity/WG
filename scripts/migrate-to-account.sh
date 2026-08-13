@@ -338,27 +338,32 @@ ENV_FILE="$ROOT/github-control-hub/frontend/.env.production"
   echo "VITE_AWS_REGION=$REGION"
 } > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
 ok "Wrote $(basename "$ENV_FILE") (company name, console-link region)"
-# Offer, rather than print and hope.
+# Tell, do not do.
 #
 # Forgetting this leaves the release workflow building without a company name,
-# and nothing fails to say so — the app simply ships blank. Committing only
-# this one path, so whatever else is staged is left exactly as it was.
+# and nothing fails to say so — the app simply ships blank. But committing on
+# someone's behalf assumes their branch will accept it, and main is often
+# protected, which would leave a commit stranded somewhere it cannot be pushed
+# from. So this says exactly what to commit and where, and stops.
 if git -C "$ROOT" diff --quiet -- "$ENV_FILE" 2>/dev/null; then
   skip "No change to $(basename "$ENV_FILE") — already committed"
 else
-  warn "$(basename "$ENV_FILE") is tracked by git, and the release workflow"
-  warn "builds from what is committed. Without it, released builds show no"
-  warn "company name and their console links go nowhere."
+  BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "?")"
   echo
-  if confirm "Commit that file now?"; then
-    git -C "$ROOT" add "$ENV_FILE" \
-      && git -C "$ROOT" commit -q -m "Set this install's company name and region" -- "$ENV_FILE" \
-      && ok "Committed on $(git -C "$ROOT" rev-parse --abbrev-ref HEAD). Push when you are ready." \
-      || warn "Could not commit. Do it by hand: git add $ENV_FILE && git commit"
-  else
-    skip "Left uncommitted"
-    echo "    ${dim}git add $ENV_FILE${off}"
-    echo "    ${dim}git commit -m 'Set this install'\''s company name and region'${off}"
+  warn "$(basename "$ENV_FILE") has changed and is tracked by git."
+  warn "The release workflow builds from what is committed, so until this"
+  warn "lands on the branch it builds from, released apps show no company"
+  warn "name and their console links go nowhere."
+  echo
+  echo "    ${bold}Commit this file:${off}  github-control-hub/frontend/.env.production"
+  echo "    ${bold}You are on:${off}       $BRANCH"
+  echo
+  echo "    ${dim}git add github-control-hub/frontend/.env.production${off}"
+  echo "    ${dim}git commit -m 'Set this install'\''s company name and region'${off}"
+  if [ "$BRANCH" = "main" ] || [ "$BRANCH" = "master" ]; then
+    echo
+    warn "If $BRANCH is protected, branch first and open a pull request:"
+    echo "    ${dim}git switch -c set-install-identity${off}"
   fi
 fi
 
