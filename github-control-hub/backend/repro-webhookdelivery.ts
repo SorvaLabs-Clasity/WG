@@ -302,6 +302,62 @@ const code = (src: string) => src
   check("lower-cased headers are found", lower.statusCode === 202, lower.statusCode);
 }
 
+// ── claimDelivery does not swallow errors that are not lock contention ──
+//
+// ConditionalCheckFailedException means "someone else holds it", and false is
+// the correct, quiet answer. Any other DynamoDB error — a throttle, for
+// instance — must not also collapse to false: the worker would skip the
+// delivery, return normally, and SQS would delete the message with the event
+// lost and no trace of it anywhere.
+{
+  process.env.WEBHOOK_DELIVERIES_TABLE = "test-deliveries";
+  const { docClient } = await import("./src/utils/dynamo");
+  const { claimDelivery } = await import("./src/webhooks/deliveryLock");
+
+  (docClient as any).send = async () => {
+    const e: any = new Error("throughput exceeded");
+    e.name = "ProvisionedThroughputExceededException";
+    throw e;
+  };
+
+  let rejected = false;
+  try {
+    await claimDelivery("d-throttled");
+  } catch {
+    rejected = true;
+  }
+  check("claimDelivery rethrows a non-conditional DynamoDB error rather than resolving false",
+    rejected,
+    "swallowing it would make the worker skip the delivery and SQS would delete the message");
+}
+
+// ── a failed delivery is retryable, a duplicate is not reprocessed ──
+{
+  const src = await import("fs").then(fs =>
+    fs.readFileSync(new URL("./src/webhooks/worker.ts", `file://${__filename}`), "utf8"));
+
+  // Sliced to the handler body rather than checked against the whole file: the
+  // import statements alone name claimDelivery before processDelivery, so a
+  // check against the full source would still pass if the handler body called
+  // them in the wrong order.
+  const handlerSrc = src.slice(src.indexOf("export async function handler"));
+
+  check("the worker claims before processing",
+    handlerSrc.indexOf("claimDelivery") < handlerSrc.indexOf("processDelivery"));
+
+  check("  releases the claim when processing throws",
+    /releaseDelivery\(/.test(src) && /throw /.test(src),
+    "a swallowed error would delete the message and lose the event");
+
+  check("  and resolves the token once per invocation",
+    /await getSystemTokenAsync\(\)/.test(src),
+    "the synchronous getter returns a stale token on a warm container");
+
+  check("  bootstrapping happens once per container",
+    /bootstrapped/.test(src),
+    "re-reading Secrets Manager per message wastes the warm container");
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
 })();
