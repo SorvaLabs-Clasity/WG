@@ -7,7 +7,25 @@ import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as apigateway from "aws-cdk-lib/aws-apigateway";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
+import * as logs from "aws-cdk-lib/aws-logs";
+import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Construct } from "constructs";
+
+// From https://api.github.com/meta → hooks. Nothing here detects a change:
+// deliveries would begin returning 403 and the app's Activity page would read
+// Stale within 72 hours. See docs/operations/troubleshooting.md.
+const GITHUB_WEBHOOK_CIDRS = [
+  "192.30.252.0/22",
+  "185.199.108.0/22",
+  "140.82.112.0/20",
+  "143.55.64.0/20",
+];
 
 interface GitHubControlHubProps extends cdk.StackProps {
   /** EC2 instance size. Defaults to t3.small */
@@ -56,12 +74,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     });
 
     // HTTPS restricted to GitHub webhook IP ranges (from https://api.github.com/meta → hooks)
-    for (const cidr of [
-      "192.30.252.0/22",
-      "185.199.108.0/22",
-      "140.82.112.0/20",
-      "143.55.64.0/20",
-    ]) {
+    for (const cidr of GITHUB_WEBHOOK_CIDRS) {
       sg.addIngressRule(ec2.Peer.ipv4(cidr), ec2.Port.tcp(443), `GitHub webhooks (${cidr})`);
     }
 
@@ -370,6 +383,223 @@ export class GitHubControlHubStack extends cdk.Stack {
       resources: [guardrailFn.functionArn],
     }));
 
+    // ── Webhooks ──
+    //
+    // The instance this replaces could not be reached at all in the work
+    // account: that VPC has no internet gateway, so inbound from the internet
+    // is impossible however the security group is written. API Gateway needs
+    // no VPC ingress.
+
+    // The only table CDK owns. The other eleven are created by
+    // scripts/setup-aws-account.sh and deliberately stay outside
+    // CloudFormation, so `cdk destroy` cannot take the activity log with it.
+    // This one holds five-minute deduplication state and nothing else.
+    const deliveriesTable = new dynamodb.Table(this, "WebhookDeliveries", {
+      tableName: `${stackPrefix}-webhook-deliveries`,
+      partitionKey: { name: "deliveryId", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: "ttl",
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const webhookDlq = new sqs.Queue(this, "WebhookDlq", {
+      retentionPeriod: cdk.Duration.days(14),
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+    });
+
+    const webhookQueue = new sqs.Queue(this, "WebhookQueue", {
+      // Must exceed the worker's own timeout.
+      visibilityTimeout: cdk.Duration.minutes(11),
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+      deadLetterQueue: {
+        queue: webhookDlq,
+        // Sized for throttling, not for processing failures: a throttled
+        // invocation still increments a message's receive count, so a burst
+        // could otherwise send messages to the DLQ that no worker ever saw.
+        // AWS's own guidance is a minimum of five. Do not tidy this down.
+        maxReceiveCount: 5,
+      },
+    });
+
+    const webhookBundling = {
+      externalModules: [],
+      minify: false,
+      sourceMap: true,
+    };
+
+    const receiverFn = new NodejsFunction(this, "WebhookReceiver", {
+      functionName: `${stackPrefix}-webhook-receiver`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, "..", "backend", "src", "webhooks", "receiver.ts"),
+      handler: "handler",
+      projectRoot: path.join(__dirname, ".."),
+      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+      // Below GitHub's ten-second timeout on purpose: past that nobody is
+      // listening for the response, so there is no value in still working.
+      timeout: cdk.Duration.seconds(8),
+      memorySize: 256,
+      environment: {
+        STACK_NAME: stackPrefix,
+        SECRET_NAME: secretName,
+        WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
+      },
+      bundling: webhookBundling,
+    });
+
+    // Two grants, and that is the whole of it. This function is the only thing
+    // here reachable from the internet.
+    receiverFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "ReadWebhookSecret",
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+    }));
+    webhookQueue.grantSendMessages(receiverFn);
+
+    const workerFn = new NodejsFunction(this, "WebhookWorker", {
+      functionName: `${stackPrefix}-webhook-worker`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, "..", "backend", "src", "webhooks", "worker.ts"),
+      handler: "handler",
+      projectRoot: path.join(__dirname, ".."),
+      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+      // Auto-apply waits five seconds for provisioning and then retries four
+      // times, and the scanner runs that used to be unbounded background time
+      // on a long-lived server now happen inside the invocation.
+      timeout: cdk.Duration.minutes(10),
+      memorySize: 512,
+      // Must be at least the event source's maxConcurrency below.
+      reservedConcurrentExecutions: 5,
+      environment: {
+        STACK_NAME: stackPrefix,
+        SECRET_NAME: secretName,
+        ACTIVITY_TABLE: `${stackPrefix}-activity`,
+        TEMPLATES_TABLE: `${stackPrefix}-templates`,
+        SCANNERS_TABLE: `${stackPrefix}-scanners`,
+        ALERTS_TABLE: `${stackPrefix}-alerts`,
+        ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
+        GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+        EXCLUSIONS_TABLE: `${stackPrefix}-exclusions`,
+        COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
+        RULE_TEMPLATES_TABLE: `${stackPrefix}-rule-templates`,
+        WEBHOOK_DELIVERIES_TABLE: deliveriesTable.tableName,
+      },
+      bundling: webhookBundling,
+    });
+
+    workerFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "ReadAppSecrets",
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+    }));
+
+    workerFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "AppTables",
+      actions: [
+        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:Query",
+        "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem",
+      ],
+      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+    }));
+
+    // Limited at the poller rather than at the function. Reserved concurrency
+    // alone would let the event source keep scaling its polling and have the
+    // surplus invocations throttled — and a throttled invocation still
+    // increments the message's receive count, so the setting meant to protect
+    // GitHub's rate limit would instead fill the dead-letter queue with
+    // messages no worker ever saw.
+    //
+    // The rate limit is the reason any cap exists: createOctokit sets
+    // onRateLimit to false, so a throttled GitHub call fails rather than
+    // retrying.
+    workerFn.addEventSource(new SqsEventSource(webhookQueue, {
+      batchSize: 1,
+      maxConcurrency: 5,
+    }));
+
+    const apiLogGroup = new logs.LogGroup(this, "WebhookApiAccessLogs", {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const webhookApi = new apigateway.RestApi(this, "WebhookApi", {
+      restApiName: `${stackPrefix}-webhooks`,
+      description: "GitHub webhook receiver",
+      // REST rather than HTTP API for one reason: HTTP APIs do not support
+      // resource policies, and the IP allow-list is the resource policy.
+      endpointTypes: [apigateway.EndpointType.REGIONAL],
+      deployOptions: {
+        stageName: "prod",
+        throttlingRateLimit: 20,
+        throttlingBurstLimit: 40,
+        accessLogDestination: new apigateway.LogGroupLogDestination(apiLogGroup),
+        // Deliberately no body. Payloads name repositories, people and teams.
+        accessLogFormat: apigateway.AccessLogFormat.custom(JSON.stringify({
+          requestId: apigateway.AccessLogField.contextRequestId(),
+          sourceIp: apigateway.AccessLogField.contextIdentitySourceIp(),
+          status: apigateway.AccessLogField.contextStatus(),
+          latency: apigateway.AccessLogField.contextResponseLatency(),
+        })),
+      },
+      // The allow-list the security group used to hold. Better here: API
+      // Gateway evaluates this before the integration runs, so the code never
+      // executes for a request from anywhere else.
+      policy: new iam.PolicyDocument({
+        statements: [
+          new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            principals: [new iam.AnyPrincipal()],
+            actions: ["execute-api:Invoke"],
+            resources: ["execute-api:/*"],
+          }),
+          new iam.PolicyStatement({
+            effect: iam.Effect.DENY,
+            principals: [new iam.AnyPrincipal()],
+            actions: ["execute-api:Invoke"],
+            resources: ["execute-api:/*"],
+            conditions: { NotIpAddress: { "aws:SourceIp": GITHUB_WEBHOOK_CIDRS } },
+          }),
+        ],
+      }),
+    });
+
+    webhookApi.root
+      .addResource("webhooks")
+      .addResource("github")
+      .addMethod("POST", new apigateway.LambdaIntegration(receiverFn));
+
+    // A queue nobody watches is a queue that quietly fills up. The guardrail
+    // DLQ had this gap too, so it gets one as well.
+    const alarmTopic = this.node.tryGetContext("alertEmail")
+      ? new sns.Topic(this, "AlarmTopic", { displayName: `${stackPrefix} alarms` })
+      : undefined;
+    if (alarmTopic) {
+      alarmTopic.addSubscription(
+        new snsSubscriptions.EmailSubscription(this.node.tryGetContext("alertEmail")),
+      );
+    }
+
+    for (const [id, queue, description] of [
+      ["WebhookDlqAlarm", webhookDlq, "A webhook delivery failed five times and was dead-lettered"],
+      ["GuardrailDlqAlarm", guardrailDlq, "A guardrail invocation failed and was dead-lettered"],
+    ] as Array<[string, sqs.Queue, string]>) {
+      const alarm = new cloudwatch.Alarm(this, id, {
+        metric: queue.metricApproximateNumberOfMessagesVisible({
+          period: cdk.Duration.minutes(5),
+          statistic: "Maximum",
+        }),
+        threshold: 1,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        alarmDescription: description,
+      });
+      if (alarmTopic) alarm.addAlarmAction(new cwActions.SnsAction(alarmTopic));
+    }
+
     // ── Outputs ──
     new cdk.CfnOutput(this, "GuardrailFunctionName", {
       value: guardrailFn.functionName,
@@ -407,8 +637,18 @@ export class GitHubControlHubStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "WebhookUrl", {
-      value: `https://${eip.ref}/api/webhooks/github`,
-      description: "GitHub webhook payload URL",
+      value: `${webhookApi.url}webhooks/github`,
+      description: "GitHub webhook payload URL — set this in the org's webhook settings",
+    });
+
+    new cdk.CfnOutput(this, "WebhookQueueUrl", {
+      value: webhookQueue.queueUrl,
+      description: "Queue between the receiver and the worker",
+    });
+
+    new cdk.CfnOutput(this, "WebhookDlqUrl", {
+      value: webhookDlq.queueUrl,
+      description: "Dead-letter queue for webhook deliveries that failed five times",
     });
 
     new cdk.CfnOutput(this, "ConnectCommand", {
