@@ -241,17 +241,36 @@ the rollout below safe.
 ```
 claim     PutItem   ConditionExpression:
                       attribute_not_exists(deliveryId) OR expiresAt < :now
-                    → state = "processing", expiresAt = now + 660   (a lease)
+                    → state = "processing", expiresAt = now + 630   (a lease)
 
 complete  PutItem   → state = "done", expiresAt = now + 900, ttl = now + 900
 
 fail      DeleteItem, then rethrow → SQS redelivers → DLQ after 5 attempts
 ```
 
-The lease is 660 seconds to match the queue's visibility timeout, so it outlives
-the worker's own 600-second timeout — a lease equal to the function timeout
-would expire at the exact moment a maximally slow invocation was still
-finishing, letting a second worker claim a delivery the first had not released.
+The lease is 630 seconds, and the constraint is an ordering rather than a
+value: `600 < lease < 660`. It has to sit strictly *between* the worker's own
+600-second timeout and the queue's 660-second visibility timeout.
+
+Above 600, so a legitimately slow invocation never has its claim stolen. A
+lease equal to the function timeout would expire at the exact moment a
+maximally slow invocation was still finishing, letting a second worker claim a
+delivery the first had not released.
+
+Below 660, because the two clocks do not start together. The lease starts at
+`claimDelivery`; the visibility timeout starts at `ReceiveMessage`, one
+pre-claim latency δ earlier — cold start, `bootstrapOnce`,
+`getSystemTokenAsync`. So the redelivery lands at `receive + 660` while the
+lease expires at `receive + δ + LEASE_SEC`, and re-claiming requires
+`expiresAt < now`, which is `δ + LEASE_SEC < 660`. Matching the lease to the
+visibility timeout makes that false for *every* δ, including δ = 0, because the
+comparison is strict. A worker hard-killed by its timeout, by OOM, or by a
+`releaseDelivery` that itself threw would then leave a claim the redelivery
+cannot re-take: the worker logs "already handled — skipping", returns success,
+SQS deletes the message, and the event is lost with no DLQ entry and no alarm.
+Silent loss is the one failure mode this design is meant to exclude, so the
+lease must be under the visibility timeout, not equal to it. 630 leaves thirty
+seconds of headroom for δ.
 
 The `done` marker is 900 seconds, and the reason it is longer than the lease
 rather than shorter is the one thing here that is easy to get backwards. The
