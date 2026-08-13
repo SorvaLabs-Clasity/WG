@@ -75,7 +75,7 @@ export function useRenameBranch(repo: string) {
 export function useProtectBranch(repo: string) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ branch, protection }: { branch: string, protection: NonNullable<import("../types/Template").BranchRule["protection"]> }) => protectBranch(repo, branch, protection),
+    mutationFn: ({ branch, protection }: { branch: string, protection: import("../types/Protection").BranchProtection }) => protectBranch(repo, branch, protection),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["branches", repo] });
       qc.invalidateQueries({ queryKey: ["activity"] });

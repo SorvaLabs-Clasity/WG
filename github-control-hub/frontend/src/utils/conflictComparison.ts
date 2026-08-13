@@ -1,62 +1,11 @@
-import { apiGet, apiPost, apiPut, apiDelete, DEMO_MODE } from "./client";
-import {
-  mockFetchTemplates,
-  mockCreateTemplate,
-  mockUpdateTemplate,
-  mockDeleteTemplate,
-  mockApplyTemplate,
-} from "./mock";
-import type { RepoTemplate, BranchRule, TagRule, PushRule } from "../types/Template";
-
-export function fetchTemplates(): Promise<RepoTemplate[]> {
-  if (DEMO_MODE) return mockFetchTemplates();
-  return apiGet<RepoTemplate[]>("/templates");
-}
-
-export function createTemplate(data: {
-  name: string;
-  description: string;
-  branches: BranchRule[];
-  tags?: TagRule[];
-  pushRules?: PushRule[];
-  autoApplyOnNewRepo: boolean;
-  exclusionLists?: string[];
-}): Promise<RepoTemplate> {
-  if (DEMO_MODE) return mockCreateTemplate(data);
-  return apiPost<RepoTemplate>("/templates", data);
-}
-
-export function updateTemplate(
-  id: string,
-  data: Partial<{
-    name: string;
-    description: string;
-    branches: BranchRule[];
-    tags?: TagRule[];
-    pushRules?: PushRule[];
-    autoApplyOnNewRepo: boolean;
-    exclusionLists?: string[];
-  }>
-): Promise<RepoTemplate> {
-  if (DEMO_MODE) return mockUpdateTemplate(id, data);
-  return apiPut<RepoTemplate>(`/templates/${id}`, data);
-}
-
-export function deleteTemplateApi(id: string): Promise<{ message: string }> {
-  if (DEMO_MODE) return mockDeleteTemplate(id);
-  return apiDelete<{ message: string }>(`/templates/${id}`);
-}
-
-export interface ConflictItem {
-  type: "ruleset" | "classic";
-  repo: string;
-  name: string;
-  existingId?: number;
-  existingConfig: any;
-  templateConfig: any;
-  differences: string[];
-  activityId?: string;
-}
+/**
+ * Rendering a stored conflict as a before/after table.
+ *
+ * Templates are gone, so no new conflict can be created — this is pure display
+ * logic for the conflict rows already in the activity log. It moved here from
+ * api/templates.ts when that file was deleted, because losing the feature
+ * should not mean losing the ability to read what it did.
+ */
 
 function fmtVal(v: any): string {
   if (v === undefined || v === null) return "—";
@@ -167,12 +116,4 @@ export function buildConflictComparison(
   }
 
   return rows.filter((r) => r.existing !== r.template);
-}
-
-export function applyTemplate(
-  templateId: string,
-  repos: string[]
-): Promise<{ created: string[]; protected: string[]; errors: string[]; conflicts?: ConflictItem[] }> {
-  if (DEMO_MODE) return mockApplyTemplate(templateId, repos);
-  return apiPost(`/templates/${templateId}/apply`, { repos });
 }

@@ -68,7 +68,7 @@ export async function fetchRepoRulesets(repo: string): Promise<any[]> {
 export function protectBranch(
   repo: string,
   branch: string,
-  protection: NonNullable<import("../types/Template").BranchRule["protection"]>
+  protection: import("../types/Protection").BranchProtection
 ): Promise<{ message: string }> {
   if (DEMO_MODE) return mockProtectBranch(repo, branch, protection);
   return apiPut(`/repos/${repo}/protection/${branch}`, protection);

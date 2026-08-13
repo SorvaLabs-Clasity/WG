@@ -23,7 +23,6 @@ interface NavbarProps {
  */
 const ITEMS = [
   { label: "Overview", short: "Overview", icon: "ph-chart-line-up", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics") },
-  { label: "Templates", short: "Templates", icon: "ph-stack", path: "/templates", match: (p: string) => p.startsWith("/templates") },
   { label: "AWS", short: "AWS", icon: "ph-cloud", path: "/aws", match: (p: string) => p.startsWith("/aws") },
   { label: "Security", short: "Security", icon: "ph-shield-warning", path: "/security", match: (p: string) => p.startsWith("/security") },
   { label: "Access", short: "Access", icon: "ph-key", path: "/access", match: (p: string) => p.startsWith("/access") },

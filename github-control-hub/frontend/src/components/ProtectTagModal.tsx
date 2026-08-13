@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { TagRule } from "../types/Template";
+import type { TagRule } from "../types/Protection";
 import { Toggle, Section, BypassActorsSection } from "./RulesetShared";
 import type { BypassActor } from "./RulesetShared";
 
@@ -91,8 +91,6 @@ interface ProtectTagModalProps {
   onSave: (rule: TagRule) => void;
   isSaving: boolean;
   isTemplateMode?: boolean;
-  /** Available tag rule templates the user can pick from */
-  ruleTemplateOptions?: Array<{ id: string; name: string; tagProtection?: any }>;
 }
 
 export default function ProtectTagModal({
@@ -103,7 +101,6 @@ export default function ProtectTagModal({
   onSave,
   isSaving,
   isTemplateMode = false,
-  ruleTemplateOptions,
 }: ProtectTagModalProps) {
   const [rule, setRule] = useState<TagRule>({ ...DEFAULT_TAG_PROTECTION });
   const [mode, setMode] = useState<"form" | "json">("form");
@@ -214,35 +211,6 @@ export default function ProtectTagModal({
               <i className="ph-bold ph-code mr-1.5"></i>Direct JSON
             </button>
           </div>
-
-          {/* Rule Template Picker */}
-          {ruleTemplateOptions && ruleTemplateOptions.length > 0 && (
-            <div>
-              <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1.5">
-                Or load from a Rule Template
-              </label>
-              <select
-                value=""
-                onChange={(e) => {
-                  const rt = ruleTemplateOptions.find(r => r.id === e.target.value);
-                  if (rt && rt.tagProtection) {
-                    const prot = JSON.parse(JSON.stringify(rt.tagProtection));
-                    setRule({ ...prot, tagPatterns: rule.tagPatterns || tagPatterns });
-                    setMode("form");
-                    setJsonText("");
-                    setJsonError("");
-                    setEnforceAdmins(!prot.bypassActors || prot.bypassActors.length === 0);
-                  }
-                }}
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-gh-blue dark:text-slate-200"
-              >
-                <option value="">Select a rule template...</option>
-                {ruleTemplateOptions.map(rt => (
-                  <option key={rt.id} value={rt.id}>{rt.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
 
           {mode === "json" ? (
             <div className="space-y-4">

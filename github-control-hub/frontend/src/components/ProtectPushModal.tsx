@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { PushRule } from "../types/Template";
+import type { PushRule } from "../types/Protection";
 import { Toggle, Section, BypassActorsSection } from "./RulesetShared";
 import type { BypassActor } from "./RulesetShared";
 
@@ -71,7 +71,6 @@ interface ProtectPushModalProps {
   onSave: (rule: PushRule) => void;
   isSaving: boolean;
   isTemplateMode?: boolean;
-  ruleTemplateOptions?: Array<{ id: string; name: string; pushProtection?: any }>;
 }
 
 export default function ProtectPushModal({
@@ -81,7 +80,6 @@ export default function ProtectPushModal({
   onSave,
   isSaving,
   isTemplateMode = false,
-  ruleTemplateOptions,
 }: ProtectPushModalProps) {
   const [rule, setRule] = useState<PushRule>({ ...DEFAULT_PUSH_PROTECTION });
   const [mode, setMode] = useState<"form" | "json">("form");
@@ -192,35 +190,6 @@ export default function ProtectPushModal({
               <i className="ph-bold ph-code mr-1.5"></i>Direct JSON
             </button>
           </div>
-
-          {/* Rule Template Picker */}
-          {ruleTemplateOptions && ruleTemplateOptions.length > 0 && (
-            <div>
-              <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1.5">
-                Or load from a Rule Template
-              </label>
-              <select
-                value=""
-                onChange={(e) => {
-                  const rt = ruleTemplateOptions.find(r => r.id === e.target.value);
-                  if (rt && rt.pushProtection) {
-                    const prot = JSON.parse(JSON.stringify(rt.pushProtection));
-                    setRule(prot);
-                    setMode("form");
-                    setJsonText("");
-                    setJsonError("");
-                    setEnforceAdmins(!prot.bypassActors || prot.bypassActors.length === 0);
-                  }
-                }}
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-gh-blue dark:text-slate-200"
-              >
-                <option value="">Select a rule template...</option>
-                {ruleTemplateOptions.map(rt => (
-                  <option key={rt.id} value={rt.id}>{rt.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
 
           {mode === "json" ? (
             <div className="space-y-4">

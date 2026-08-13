@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
-import type { BranchRule } from "../types/Template";
+import type { BranchProtection } from "../types/Protection";
 import { TagInput } from "./TagInput";
 import { useOrgActors } from "../hooks/useOrgConfig";
 import { Toggle, Section, BypassActorsSection, ActorRow } from "./RulesetShared";
 import type { BypassActor } from "./RulesetShared";
 
-export const DEFAULT_PROTECTION: NonNullable<BranchRule["protection"]> = {
+export const DEFAULT_PROTECTION: BranchProtection = {
   type: "ruleset",
   requirePr: true,
   requiredApprovals: 1,
@@ -51,8 +51,8 @@ export const DEFAULT_PROTECTION: NonNullable<BranchRule["protection"]> = {
  *   - The full ruleset JSON (with name, enforcement, rules, etc.)
  *   - Just the "rules" array directly
  */
-export function parseGitHubRulesetJson(json: any): NonNullable<BranchRule["protection"]> {
-  const result: NonNullable<BranchRule["protection"]> = { ...DEFAULT_PROTECTION, type: "ruleset" };
+export function parseGitHubRulesetJson(json: any): BranchProtection {
+  const result: BranchProtection = { ...DEFAULT_PROTECTION, type: "ruleset" };
 
   let rules: any[];
 
@@ -152,18 +152,14 @@ interface ProtectBranchModalProps {
   onClose: () => void;
   branch: string;
   branches?: string[];
-  initialData?: NonNullable<BranchRule["protection"]>;
-  onSave: (rules: NonNullable<BranchRule["protection"]>, targetBranch: string) => void;
+  initialData?: BranchProtection;
+  onSave: (rules: BranchProtection, targetBranch: string) => void;
   onImportJson?: (json: any) => void;
   isSaving: boolean;
   isCreating?: boolean;
   isTemplateMode?: boolean;
   /** When set, locks the protection type (e.g. "classic") and hides the type switcher */
   forceType?: "classic" | "ruleset";
-  /** Available rule templates the user can pick from */
-  ruleTemplateOptions?: Array<{ id: string; name: string; ruleType: string; branchProtection?: any }>;
-  /** Called when the user picks a rule template */
-  onPickRuleTemplate?: (rt: { id: string; name: string; branchProtection: any }) => void;
 }
 
 function PushRestrictionsSection({
@@ -343,8 +339,6 @@ export default function ProtectBranchModal({
   isCreating = false,
   isTemplateMode = false,
   forceType,
-  ruleTemplateOptions,
-  onPickRuleTemplate,
 }: ProtectBranchModalProps) {
   const [protectRules, setProtectRules] = useState(DEFAULT_PROTECTION);
   const [targetBranch, setTargetBranch] = useState("");
@@ -516,47 +510,6 @@ export default function ProtectBranchModal({
                     </button>
                   </div>
                 )}
-
-                {/* Rule Template Picker — only show templates matching the current protection type */}
-                {(() => {
-                  const currentType = forceType || protectRules.type;
-                  const isClassic = currentType === "classic";
-                  const filtered = ruleTemplateOptions?.filter(rt =>
-                    isClassic ? rt.ruleType === "classic" : rt.ruleType === "branch_ruleset"
-                  );
-                  return filtered && filtered.length > 0 ? (
-                    <div className="mt-3">
-                      <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1.5">
-                        Or load from a Rule Template
-                      </label>
-                      <select
-                        value=""
-                        onChange={(e) => {
-                          const rt = filtered.find(r => r.id === e.target.value);
-                          if (rt && rt.branchProtection) {
-                            const prot = JSON.parse(JSON.stringify(rt.branchProtection));
-                            if (isClassic) prot.type = "classic";
-                            setProtectRules(prot);
-                            setMode("form");
-                            if (prot.type === "ruleset_json" && prot.rawJson) {
-                              setMode("json");
-                              setJsonText(JSON.stringify(prot.rawJson, null, 2));
-                            }
-                            if (onPickRuleTemplate) onPickRuleTemplate(rt as any);
-                          }
-                        }}
-                        className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-800 focus:outline-none focus:ring-1 focus:ring-gh-blue dark:text-slate-200"
-                      >
-                        <option value="">Select a rule template...</option>
-                        {filtered.map(rt => (
-                          <option key={rt.id} value={rt.id}>
-                            {rt.name} ({rt.ruleType === "classic" ? "Classic" : "Ruleset"})
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  ) : null;
-                })()}
               </div>
             </div>
           )}
