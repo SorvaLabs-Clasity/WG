@@ -175,6 +175,36 @@ router.get("/status", async (_req: Request, res: Response) => {
   const { isAwsLocked } = await import("../middleware/awsHealthMiddleware");
   const awsConnected = !!process.env.ACTIVITY_TABLE;
   const githubConfigured = !!process.env.GITHUB_CLIENT_ID && !!process.env.GITHUB_CLIENT_SECRET;
+
+  /**
+   * Why GitHub is not configured, when it is not.
+   *
+   * "OAuth is not configured on this build" is the right sentence for a build
+   * that genuinely shipped without credentials, and the wrong one for an
+   * install whose secret has never been created — which is every install until
+   * someone runs the migration script. It sends people to look at their
+   * packaging instead of at the step they have not done yet.
+   *
+   * Only asked when AWS is up and GitHub is not, so a working app never makes
+   * this call.
+   */
+  let githubReason: string | undefined;
+  if (awsConnected && !githubConfigured && !isAwsLocked()) {
+    const secretName = process.env.SECRET_NAME
+      || `${process.env.STACK_NAME || "github-control-hub"}/secrets`;
+    try {
+      const { SecretsManagerClient, DescribeSecretCommand } =
+        await import("@aws-sdk/client-secrets-manager");
+      const { awsRegion } = await import("../utils/region");
+      await new SecretsManagerClient({ region: awsRegion() })
+        .send(new DescribeSecretCommand({ SecretId: secretName }));
+      githubReason = "secret_incomplete";
+    } catch (err: any) {
+      githubReason = err?.name === "ResourceNotFoundException"
+        ? "secret_missing"
+        : "secret_unreadable";
+    }
+  }
   const org = process.env.GITHUB_ORG || null;
 
   let dynamoReachable = false;
@@ -195,7 +225,7 @@ router.get("/status", async (_req: Request, res: Response) => {
       region: awsRegion(),
       profile: process.env.AWS_PROFILE || "default",
     },
-    github: { configured: githubConfigured, org },
+    github: { configured: githubConfigured, org, reason: githubReason },
   });
 });
 

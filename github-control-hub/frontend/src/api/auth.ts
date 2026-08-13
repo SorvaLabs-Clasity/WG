@@ -20,7 +20,12 @@ export interface AuthStatus {
     region: string;
     profile: string;
   };
-  github: { configured: boolean; org: string | null };
+  github: {
+    configured: boolean;
+    org: string | null;
+    /** Why not, when not: secret_missing | secret_incomplete | secret_unreadable. */
+    reason?: string;
+  };
 }
 
 export interface AwsProfile {

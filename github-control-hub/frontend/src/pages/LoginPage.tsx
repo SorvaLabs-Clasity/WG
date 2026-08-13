@@ -551,7 +551,17 @@ export default function LoginPage() {
                 : !ghConfigured
                   ? settling
                     ? "Loading credentials…"
-                    : "OAuth is not configured on this build"
+                    /* Name the step that has not been done, rather than the
+                       build. An install whose secret was never created is the
+                       ordinary state before setup, not a packaging fault, and
+                       saying so sends people to the right place. */
+                    : status?.github.reason === "secret_missing"
+                      ? "No GitHub credentials stored yet — run scripts/migrate-to-account.sh"
+                      : status?.github.reason === "secret_unreadable"
+                        ? "The credentials secret exists but could not be read — check this account's permissions"
+                        : status?.github.reason === "secret_incomplete"
+                          ? "The credentials secret is missing its OAuth keys"
+                          : "OAuth is not configured on this build"
                 : "Your own account — the app acts as you, never as someone else"
             }
             action={!loading && !error && ghAuthed

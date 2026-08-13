@@ -27,11 +27,17 @@ function check(name: string, ok: boolean, got?: unknown) {
 /** The GitHub card's subtitle, in the order LoginPage evaluates it. */
 function githubSubtitle(s: {
   ghAuthed: boolean; org?: string | null; awsOk: boolean;
-  ghConfigured: boolean; settling: boolean;
+  ghConfigured: boolean; settling: boolean; reason?: string;
 }): string {
   if (s.ghAuthed) return s.org ? `Member of ${s.org}` : "Authenticated";
   if (!s.awsOk) return "Unlocks once AWS is connected";
-  if (!s.ghConfigured) return s.settling ? "Loading credentials…" : "OAuth is not configured on this build";
+  if (!s.ghConfigured) {
+    if (s.settling) return "Loading credentials…";
+    if (s.reason === "secret_missing") return "No GitHub credentials stored yet — run scripts/migrate-to-account.sh";
+    if (s.reason === "secret_unreadable") return "The credentials secret exists but could not be read — check this account's permissions";
+    if (s.reason === "secret_incomplete") return "The credentials secret is missing its OAuth keys";
+    return "OAuth is not configured on this build";
+  }
   return "Your own account — the app acts as you, never as someone else";
 }
 
@@ -61,10 +67,25 @@ const base = { ghAuthed: false, awsOk: false, ghConfigured: false, settling: tru
       msg.startsWith("Your own account"), msg);
   }
 
+  // ── AWS up, but nobody has run setup yet ──────────────────────────
+  {
+    const msg = githubSubtitle({ ...base, awsOk: true, settling: false, reason: "secret_missing" });
+    check("an install whose secret was never created names the setup step",
+      msg.includes("migrate-to-account.sh"), msg);
+    check("  and does not blame the build for a step nobody has run",
+      !msg.includes("this build"), msg);
+
+    const unreadable = githubSubtitle({ ...base, awsOk: true, settling: false, reason: "secret_unreadable" });
+    check("  a secret that exists but cannot be read says so",
+      unreadable.includes("permissions"), unreadable);
+  }
+
   // ── AWS up, genuinely no OAuth secrets ────────────────────────────
   {
+    // No reason given: the secret loaded and simply had no OAuth keys in it,
+    // which really is a build or configuration fault.
     const msg = githubSubtitle({ ...base, awsOk: true, settling: false });
-    check("only once AWS is up and the wait is over is the build blamed",
+    check("only a build that truly shipped without credentials is blamed",
       msg === "OAuth is not configured on this build", msg);
   }
 
