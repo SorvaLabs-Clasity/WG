@@ -37,11 +37,40 @@ export const ALLOWED_UNDO_ACTIONS = new Set<string>([
   "delete_protection", "restore_protection", "undo_override_protection",
   "delete_ruleset", "recreate_ruleset", "undo_override_ruleset",
   "enable_dependabot", "disable_dependabot",
-  "delete_template", "restore_template", "revert_template",
   "delete_widget", "restore_widget", "revert_widget",
   "delete_scanner", "restore_scanner", "revert_scanner",
+]);
+
+/**
+ * Operations that were undoable until the feature they belonged to was deleted.
+ *
+ * Rows carrying these payloads are still in the activity log, and the Undo
+ * button is offered on the strength of a payload existing rather than a list of
+ * known actions — so pressing it on a template row is something a user can
+ * still do. It has to fail, and it has to say why: "not supported" reads like a
+ * bug, and a silent success would put a lie in the audit trail.
+ *
+ * This set is not consulted for permission. It exists only to turn a refusal
+ * into an explanation.
+ */
+export const REMOVED_UNDO_ACTIONS = new Set<string>([
+  "delete_template", "restore_template", "revert_template",
   "delete_exclusion", "restore_exclusion", "revert_exclusion",
 ]);
+
+/**
+ * Why an operation cannot be carried out, for the actions the app knows it once
+ * could. Anything else is refused by ALLOWED_UNDO_ACTIONS with a generic
+ * message, which is the right answer for a payload nothing ever implemented.
+ */
+export function unsupportedUndoReason(action: string): string {
+  if (REMOVED_UNDO_ACTIONS.has(action)) {
+    return `This action can no longer be undone — the templates and exclusion ` +
+      `lists feature was removed, and with it the ability to reverse "${action}". ` +
+      `The entry is kept so the history stays readable.`;
+  }
+  return `Undoing "${action}" is not supported.`;
+}
 
 /**
  * What each undo operation requires of the person asking for it.
@@ -79,20 +108,6 @@ const UNDO_REQUIREMENTS: Record<string, UndoRequirement> = {
   undo_override_ruleset:    { repo: "admin" },
   enable_dependabot:        { repo: "admin" },
   disable_dependabot:       { repo: "admin" },
-
-  // Templates are org-wide: one edit changes what every future repo gets, so
-  // creating them is gated on the Control Hub admin team and undoing them
-  // has to be gated the same way.
-  delete_template:          { adminTeam: true },
-  restore_template:         { adminTeam: true },
-  revert_template:          { adminTeam: true },
-
-  // Exclusions decide which repositories a template skips, so they are gated
-  // like templates: reverting an exclusion can start or stop protecting repos
-  // without anyone touching a repository.
-  delete_exclusion:         { adminTeam: true },
-  restore_exclusion:        { adminTeam: true },
-  revert_exclusion:         { adminTeam: true },
 
   // Scanners search every repository with the app's own credentials, so they
   // are gated on the way in and on the way out.
@@ -184,7 +199,7 @@ export function undoBlockedReason(entry: ActivityEntry, descendants: ActivityEnt
   }
 
   if (entry.undoPayload && !ALLOWED_UNDO_ACTIONS.has(entry.undoPayload.action)) {
-    return `Undoing "${entry.undoPayload.action}" is not supported.`;
+    return unsupportedUndoReason(entry.undoPayload.action);
   }
 
   if (!isReversible(entry) && !descendants.some(isReversible)) {

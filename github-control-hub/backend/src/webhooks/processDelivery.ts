@@ -3,8 +3,6 @@ import { getOrg } from "../github/client";
 import { runScan, listScanners } from "../services/scannerService";
 import { createAlert, autoResolveAlerts } from "../services/alertService";
 import { logActivity, updateActivityOutcome } from "../services/activityService";
-import { listTemplates, applyTemplate } from "../services/templateService";
-import { resolveExcludedReposFromIds } from "../services/exclusionService";
 import { refreshRepo } from "../services/complianceCacheService";
 import {
   addBranchEdge, removeBranchEdge, updateBranchProtection,
@@ -40,18 +38,18 @@ const BACKGROUND_CEILING_MS = 4 * 60 * 1000;
  *
  * Both halves matter, and both protect the same thing. If a rejecting task
  * could throw out of processDelivery, the worker would release its claim, SQS
- * would redeliver, and the delivery would be reprocessed — re-applying
- * templates and writing a second set of template.apply rows, up to five times.
- * Promise.allSettled is what prevents that, so it is not interchangeable with
- * Promise.all however much tidier that looks.
+ * would redeliver, and the delivery would be reprocessed — writing a second set
+ * of alerts and activity rows, up to five times. Promise.allSettled is what
+ * prevents that, so it is not interchangeable with Promise.all however much
+ * tidier that looks.
  *
  * The ceiling prevents the same outcome arriving as a timeout instead: work
  * that runs long carries the invocation past its limit, Lambda kills it,
  * completeDelivery never runs, the lease expires and SQS redelivers.
  *
  * Abandoning a scan costs a stale compliance cache until the next event for
- * that repository. Abandoning an invocation costs a repository having its
- * templates applied twice.
+ * that repository. Abandoning an invocation costs a duplicated set of alerts
+ * and activity rows.
  */
 export async function awaitBackground(
   tasks: Promise<unknown>[],
@@ -154,9 +152,9 @@ export async function processDelivery({ event, payload, token }: Delivery): Prom
   //
   // Branch creation is deliberately not recorded either. GitHub fires `create`
   // for every branch anyone makes, including the ones this app made a moment
-  // earlier from a template — which is where the duplicate rows came from. The
-  // app logs its own template branches directly, with the undo payload
-  // attached, and those are the only branch creations worth a row.
+  // earlier — which is where the duplicate rows came from. The app logs the
+  // branches it creates itself, with the undo payload attached, and those are
+  // the only branch creations worth a row.
   //
   // Undo does not depend on any of this. It asks GitHub for the branch's
   // current state at the moment it runs, so it still sees commits, merges,
@@ -176,95 +174,15 @@ export async function processDelivery({ event, payload, token }: Delivery): Prom
     }
   }
 
-  // Auto-apply templates to newly created repos (runs after response to avoid webhook timeouts)
-  if (event === "repository" && payload.action === "created" && repoName) {
-    if (token) {
-      const octokit = new Octokit({ auth: token });
-      try {
-        const templates = await listTemplates();
-        const autoApplyTemplates = templates.filter(t => t.autoApplyOnNewRepo);
-
-        // Wait for GitHub to fully provision the new repo before attempting API calls
-        if (autoApplyTemplates.length > 0) {
-          await new Promise(r => setTimeout(r, 5000));
-        }
-
-        const webhookCreator = payload.sender?.login;
-
-        for (const tmpl of autoApplyTemplates) {
-          // Check exclusion lists (explicit repos + patterns) before applying
-          const excludedRepos: Set<string> = tmpl.exclusionLists?.length
-            ? await resolveExcludedReposFromIds(tmpl.exclusionLists, octokit, { repoName, creator: webhookCreator })
-            : new Set<string>();
-          if (excludedRepos.has(repoName)) {
-            console.log(`[Webhook] Skipping auto-apply of "${tmpl.name}" — repo "${repoName}" is in exclusion list`);
-            continue;
-          }
-
-          console.log(`[Webhook] Auto-applying template "${tmpl.name}" to new repo "${repoName}"`);
-
-          // These entries are written before the work runs so that child entries
-          // logged inside applyTemplate have a parent to hang off. They therefore
-          // describe intent, not outcome — both are rewritten below once the
-          // result is known, so a failed apply never reads as a success.
-          const parentEntry = await logActivity(
-            "template.apply",
-            "system (auto-apply)",
-            repoName,
-            tmpl.name,
-            `Applying template "${tmpl.name}" to new repo "${repoName}"…`
-          );
-
-          // Create repo-level child activity entry
-          const repoEntry = await logActivity(
-            "template.apply.repo" as any,
-            "system (auto-apply)",
-            repoName,
-            tmpl.name,
-            `Applying template "${tmpl.name}" to ${repoName}…`,
-            undefined, "app", undefined, undefined,
-            { parentId: parentEntry.id }
-          );
-
-          // A partial failure (errors returned rather than thrown) is still a
-          // failure — retry it, otherwise a half-applied repo is never revisited.
-          let failureMessage: string | null = null;
-          for (let attempt = 1; attempt <= 4; attempt++) {
-            failureMessage = null;
-            try {
-              const result = await applyTemplate(octokit, tmpl.id, repoName, "system (auto-apply)", repoEntry.id);
-              console.log(`[Webhook] Template "${tmpl.name}" applied to "${repoName}": created=${result.created.join(",")}, protected=${result.protected.join(",")}, errors=${result.errors.length}`);
-              if (result.errors.length > 0) {
-                failureMessage = result.errors.join("; ");
-                console.warn(`[Webhook] Auto-apply attempt ${attempt}/4 incomplete for "${tmpl.name}" on "${repoName}":`, result.errors);
-              }
-            } catch (applyErr) {
-              failureMessage = (applyErr as Error).message;
-              console.warn(`[Webhook] Auto-apply attempt ${attempt}/4 failed for "${tmpl.name}" on "${repoName}":`, failureMessage);
-            }
-            if (!failureMessage) break;
-            if (attempt < 4) {
-              await new Promise(r => setTimeout(r, attempt * 4000));
-            }
-          }
-
-          if (failureMessage) {
-            console.error(`[Webhook] All attempts to auto-apply template "${tmpl.name}" to "${repoName}" failed.`);
-            const failDetails = `Failed to auto-apply template "${tmpl.name}" to "${repoName}"`;
-            await updateActivityOutcome(parentEntry.id, { details: failDetails, failed: true, errorMessage: failureMessage });
-            await updateActivityOutcome(repoEntry.id, { details: failDetails, failed: true, errorMessage: failureMessage });
-          } else {
-            await updateActivityOutcome(parentEntry.id, { details: `Auto-applied template "${tmpl.name}" to new repo "${repoName}"`, failed: false });
-            await updateActivityOutcome(repoEntry.id, { details: `Auto-applied template "${tmpl.name}" to ${repoName}`, failed: false });
-          }
-        }
-      } catch (err) {
-        console.error(`[Webhook] Error fetching templates for auto-apply:`, err);
-      }
-    } else {
-      console.warn("[Webhook] No GitHub token available. Cannot auto-apply templates.");
-    }
-  }
+/*
+ * Auto-apply of templates to newly created repositories was removed here.
+ *
+ * It was the only GitHub *write* in the webhook path — createRef,
+ * createOrUpdateFileContents, updateBranchProtection and createRepoRuleset all
+ * lived inside it — along with a five-second provisioning wait and up to four
+ * retries. What remains is the compliance refresh, the graph edges and the
+ * scanner runs below, none of which write to GitHub.
+ */
 
   // Work that used to outlive the HTTP response.
   //

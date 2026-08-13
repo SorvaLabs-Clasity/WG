@@ -3,9 +3,6 @@ import type { Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { logActivity } from "../services/activityService";
-import { listTemplates, putTemplateRaw } from "../services/templateService";
-import { listRuleTemplates, putRuleTemplateRaw } from "../services/ruleTemplateService";
-import { listExclusions, putExclusionRaw } from "../services/exclusionService";
 import { listWidgets, putWidgetRaw } from "../services/widgetService";
 import { listScanners, putScannerRaw } from "../services/scannerService";
 import { listGuardrails, putGuardrail, listAwsExclusions, putAwsExclusion } from "../aws-guardrails/store";
@@ -15,18 +12,26 @@ const router = Router();
 /**
  * Everything the organisation configured, as one document.
  *
- * Templates, exclusion lists, guardrails and the rest live only in DynamoDB.
- * Standing up a second account — which the migration script does with fourteen
- * empty tables — meant rebuilding all of it by hand, and templates are the
- * fiddly ones: branch rules, rulesets, protection settings, each retyped and
- * each a chance to get it subtly wrong.
+ * Scanners, widgets and guardrails live only in DynamoDB. Standing up a second
+ * account — which the migration script does with a set of empty tables — meant
+ * rebuilding all of it by hand, each record retyped and each a chance to get it
+ * subtly wrong.
  *
  * Findings and activity are deliberately not included. They are observations
  * about one account at one time, not configuration, and carrying them to
  * another account would be importing somebody else's history as your own.
  */
 
-export const FORMAT = 1;
+/**
+ * 2 since the templates, ruleTemplates and exclusions sections were removed.
+ *
+ * Import only rejects `format > FORMAT`, so a format-1 bundle still imports and
+ * its template sections are simply no longer iterated — harmless. The bump is
+ * for the other direction: an older build reading a format-2 bundle would find
+ * `bundle.templates` undefined, and this makes it say "written by a newer
+ * version" instead of failing on the missing section.
+ */
+export const FORMAT = 2;
 
 export interface ConfigBundle {
   format: number;
@@ -34,9 +39,6 @@ export interface ConfigBundle {
   exportedBy: string;
   org: string | null;
   counts: Record<string, number>;
-  templates: any[];
-  ruleTemplates: any[];
-  exclusions: any[];
   scanners: any[];
   widgets: any[];
   awsGuardrails: any[];
@@ -47,7 +49,7 @@ async function refuseUnlessAdmin(res: Response, login: string, verb: string): Pr
   if (await isControlHubAdmin(login)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
-      `configuration — it is every template and exclusion the organisation runs on.`,
+      `configuration — it is every scanner, widget and guardrail the organisation runs on.`,
     code: "CONTROL_HUB_ADMIN_REQUIRED",
   });
   return true;
@@ -56,9 +58,8 @@ async function refuseUnlessAdmin(res: Response, login: string, verb: string): Pr
 router.get("/export", async (req: Request, res: Response) => {
   if (await refuseUnlessAdmin(res, req.user!.login, "export")) return;
   try {
-    const [templates, ruleTemplates, exclusions, scanners, widgets, awsGuardrails, awsExclusions] =
+    const [scanners, widgets, awsGuardrails, awsExclusions] =
       await Promise.all([
-        listTemplates(), listRuleTemplates(), listExclusions(),
         listScanners(), listWidgets(), listGuardrails(), listAwsExclusions(),
       ]);
 
@@ -68,12 +69,10 @@ router.get("/export", async (req: Request, res: Response) => {
       exportedBy: req.user!.login,
       org: process.env.GITHUB_ORG ?? null,
       counts: {
-        templates: templates.length, ruleTemplates: ruleTemplates.length,
-        exclusions: exclusions.length, scanners: scanners.length,
-        widgets: widgets.length, awsGuardrails: awsGuardrails.length,
-        awsExclusions: awsExclusions.length,
+        scanners: scanners.length, widgets: widgets.length,
+        awsGuardrails: awsGuardrails.length, awsExclusions: awsExclusions.length,
       },
-      templates, ruleTemplates, exclusions, scanners, widgets, awsGuardrails, awsExclusions,
+      scanners, widgets, awsGuardrails, awsExclusions,
     };
 
     res.setHeader("Content-Disposition",
@@ -87,20 +86,15 @@ router.get("/export", async (req: Request, res: Response) => {
 export type BundleWriters = Record<string, (x: any) => Promise<unknown>>;
 
 /**
- * The order matters: templates can name a rule template, so those exist first.
  * Anything without an id is reported rather than written — an id is what makes
  * an import idempotent, and inventing one would turn a re-import into a
  * duplicate rather than an update.
  */
 export const SECTION_ORDER = [
-  "ruleTemplates", "templates", "exclusions", "scanners",
-  "widgets", "awsGuardrails", "awsExclusions",
+  "scanners", "widgets", "awsGuardrails", "awsExclusions",
 ] as const;
 
 const DEFAULT_WRITERS: BundleWriters = {
-  ruleTemplates: putRuleTemplateRaw,
-  templates: putTemplateRaw,
-  exclusions: putExclusionRaw,
   scanners: putScannerRaw,
   widgets: putWidgetRaw,
   awsGuardrails: putGuardrail,
