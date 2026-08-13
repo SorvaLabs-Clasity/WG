@@ -195,6 +195,58 @@ const code = (src: string) => src
   check("a released claim can be re-taken so SQS can retry", (await claimDelivery("d-3")) === true);
 }
 
+// ── work that outlived the HTTP response must now be awaited ──
+//
+// On Express the process outlives the request, so refreshRepo, addRepoEdges and
+// the scan timer were deliberately not awaited. In Lambda the container freezes
+// when the handler resolves: activity rows and template auto-apply would keep
+// working because those are awaited, while compliance refresh, new-repo graph
+// edges and scanner runs silently stopped. A partial success reports nothing.
+{
+  const fs = await import("fs");
+  const nodePath = await import("path");
+  // Comments stripped. The implementation explains in prose why getSystemToken
+  // is absent, and that prose contains "getSystemToken()" — asserting against
+  // raw source would fail on the comment justifying the very absence it
+  // asserts. Same trap, same fix, as repro-appsec.ts.
+  const src = code(fs.readFileSync(
+    nodePath.join(__dirname, "src", "webhooks", "processDelivery.ts"), "utf8"));
+
+  check("scans are not scheduled on a timer",
+    !/setTimeout\(async/.test(src),
+    "a one-second timer may never fire in a frozen container");
+
+  check("  and the GitHub token is a parameter",
+    !/getSystemToken\(\)/.test(src),
+    "the sync getter returns a stale token on a warm container");
+
+  // The next three are behavioural rather than textual, because they are the
+  // ones whose regression reads like a tidy-up.
+  const { awaitBackground } = await import("./src/webhooks/processDelivery");
+
+  let settled = false;
+  await awaitBackground([
+    (async () => { await new Promise(r => setTimeout(r, 10)); settled = true; })(),
+  ]);
+  check("background work is awaited, not abandoned", settled);
+
+  // A flaky scanner must not throw out of processDelivery: the worker would
+  // release its claim, SQS would redeliver, and templates would be applied
+  // again — up to five times.
+  let threw = false;
+  try {
+    await awaitBackground([Promise.reject(new Error("scanner exploded"))]);
+  } catch { threw = true; }
+  check("  a rejecting task does not fail the delivery", !threw,
+    "Promise.all here would arm a redelivery loop that re-applies templates");
+
+  // And work that hangs must not carry the invocation past its timeout, which
+  // would kill it before completeDelivery ran and redeliver by another route.
+  const started = Date.now();
+  await awaitBackground([new Promise(() => {})], 50);
+  check("  work that hangs is abandoned at the ceiling", Date.now() - started < 1000);
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
 })();
