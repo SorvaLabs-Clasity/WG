@@ -258,11 +258,17 @@ fi
 STACK_NAME="$PREFIX" npx cdk deploy --require-approval never \
   || die "cdk deploy failed."
 
+INSTANCE_ID=$(aws cloudformation describe-stacks --stack-name GitHubControlHub \
+  --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text 2>/dev/null)
 PUBLIC_IP=$(aws cloudformation describe-stacks --stack-name GitHubControlHub \
   --query "Stacks[0].Outputs[?OutputKey=='PublicIp'].OutputValue" --output text 2>/dev/null)
 WEBHOOK_URL=$(aws cloudformation describe-stacks --stack-name GitHubControlHub \
   --query "Stacks[0].Outputs[?OutputKey=='WebhookUrl'].OutputValue" --output text 2>/dev/null)
-ok "Instance is up at $PUBLIC_IP"
+ok "Instance $INSTANCE_ID is up at $PUBLIC_IP"
+# Read after the deploy, not before. Encryption at rest and the IMDSv2 pin
+# replace the instance rather than updating it, so an id noted earlier can be
+# for a machine that no longer exists — and deploy.sh would then ship the app
+# to nothing.
 cd "$ROOT"
 
 # ── 5. webhook ────────────────────────────────────────────────────────
@@ -374,8 +380,14 @@ cat <<EOF
   region    $REGION
   org       $GH_ORG
   company   $COMPANY
-  instance  $PUBLIC_IP
+  instance  $INSTANCE_ID at $PUBLIC_IP
   webhook   $WEBHOOK_URL
+
+  ${bold}The app is not on that instance yet.${off} This script builds the
+  infrastructure; shipping the application to it is one more command, and
+  without it the webhook URL above answers nothing:
+
+      ./scripts/deploy.sh $INSTANCE_ID
 
   Not done by this script, because it needs decisions rather than commands:
     · Other AWS accounts. Open AWS -> Accounts -> "How do I add an account?"
