@@ -8,6 +8,42 @@ import { sendIfPermissionDenied } from "../utils/permissionError";
 
 const router = Router();
 
+/**
+ * Every open alert, not the first hundred.
+ *
+ * All three Dependabot calls in this file asked for `per_page: 100` and used
+ * the page they got back. Past a hundred open alerts an organisation
+ * under-counted every severity and under-listed every repository — silently,
+ * and in the direction that reads as good news. "12 critical" when the answer
+ * is 300 is worse than showing nothing, and it is the same failure
+ * MissingGraphDataError exists to prevent on the graph checks.
+ *
+ * Shaped like listRepos' loop rather than octokit.paginate, because that loop
+ * is the pattern already used everywhere else here, and because createOctokit
+ * disables throttle retries — a rate-limited page throws, which every caller
+ * below already handles.
+ *
+ * Exported for repro-dependencies.ts.
+ */
+export async function fetchAllPages(
+  fetchPage: (page: number) => Promise<{ data: any[] }>,
+): Promise<any[]> {
+  const all: any[] = [];
+  let page = 1;
+
+  while (true) {
+    const { data } = await fetchPage(page);
+    if (data.length === 0) break;
+    all.push(...data);
+    // A short page is the last page. Asking for one more would cost a request
+    // per call to learn nothing.
+    if (data.length < 100) break;
+    page++;
+  }
+
+  return all;
+}
+
 router.get("/dependencies", async (req: Request, res: Response) => {
   try {
     const token = getSystemToken() || req.user?.accessToken;
@@ -24,12 +60,15 @@ router.get("/dependencies", async (req: Request, res: Response) => {
     let allAlerts: any[] = [];
 
     if (repoFilter) {
-      const { data } = await octokit.rest.dependabot.listAlertsForRepo({
-        owner: org,
-        repo: repoFilter,
-        state: "open",
-        per_page: 100,
-      });
+      const data = await fetchAllPages((page) =>
+        octokit.rest.dependabot.listAlertsForRepo({
+          owner: org,
+          repo: repoFilter,
+          state: "open",
+          per_page: 100,
+          page,
+        })
+      );
       allAlerts = data.map((a: any) => mapAlert(a, repoFilter, org));
       
       // No alerts means one of two things, and the caller has to be able to
@@ -49,11 +88,14 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       }
     } else {
       try {
-        const { data } = await octokit.rest.dependabot.listAlertsForOrg({
-          org,
-          state: "open",
-          per_page: 100,
-        });
+        const data = await fetchAllPages((page) =>
+          octokit.rest.dependabot.listAlertsForOrg({
+            org,
+            state: "open",
+            per_page: 100,
+            page,
+          })
+        );
         allAlerts = data.map((a: any) => mapAlert(a, a.repository?.name || "unknown", org));
       } catch (err: any) {
         if (err.status !== 403 && err.status !== 404) {
@@ -181,12 +223,14 @@ router.get("/summary", async (req: Request, res: Response) => {
 
     let allAlerts: any[] = [];
     try {
-      const { data } = await octokit.rest.dependabot.listAlertsForOrg({
-        org,
-        state: "open",
-        per_page: 100,
-      });
-      allAlerts = data;
+      allAlerts = await fetchAllPages((page) =>
+        octokit.rest.dependabot.listAlertsForOrg({
+          org,
+          state: "open",
+          per_page: 100,
+          page,
+        })
+      );
     } catch (err: any) {
       if (err.status === 403 || err.status === 404) {
         return res.json({ critical: 0, high: 0, medium: 0, low: 0, repos_with_vulns: 0 });
