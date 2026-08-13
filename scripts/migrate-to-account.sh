@@ -338,10 +338,29 @@ ENV_FILE="$ROOT/github-control-hub/frontend/.env.production"
   echo "VITE_AWS_REGION=$REGION"
 } > "${ENV_FILE}.tmp" && mv "${ENV_FILE}.tmp" "$ENV_FILE"
 ok "Wrote $(basename "$ENV_FILE") (company name, console-link region)"
-warn "That file is tracked by git. Commit it, or the release workflow will"
-warn "build without these and the app will show no company name."
-echo "    ${dim}git add github-control-hub/frontend/.env.production${off}"
-echo "    ${dim}git commit -m 'Set this install'\''s company name and region'${off}"
+# Offer, rather than print and hope.
+#
+# Forgetting this leaves the release workflow building without a company name,
+# and nothing fails to say so — the app simply ships blank. Committing only
+# this one path, so whatever else is staged is left exactly as it was.
+if git -C "$ROOT" diff --quiet -- "$ENV_FILE" 2>/dev/null; then
+  skip "No change to $(basename "$ENV_FILE") — already committed"
+else
+  warn "$(basename "$ENV_FILE") is tracked by git, and the release workflow"
+  warn "builds from what is committed. Without it, released builds show no"
+  warn "company name and their console links go nowhere."
+  echo
+  if confirm "Commit that file now?"; then
+    git -C "$ROOT" add "$ENV_FILE" \
+      && git -C "$ROOT" commit -q -m "Set this install's company name and region" -- "$ENV_FILE" \
+      && ok "Committed on $(git -C "$ROOT" rev-parse --abbrev-ref HEAD). Push when you are ready." \
+      || warn "Could not commit. Do it by hand: git add $ENV_FILE && git commit"
+  else
+    skip "Left uncommitted"
+    echo "    ${dim}git add $ENV_FILE${off}"
+    echo "    ${dim}git commit -m 'Set this install'\''s company name and region'${off}"
+  fi
+fi
 
 echo
 echo "  Build and run it with:"
