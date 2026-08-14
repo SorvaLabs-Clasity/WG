@@ -18,8 +18,15 @@ Cloud; the AWS side is a few cents a month at any realistic volume.
 Nothing in this repository can turn this on. An enterprise owner has to
 configure it, in a browser, once.
 
-1. Deploy the stack. `cdk deploy` creates the bucket and prints its name as the
-   **`AuditLogBucketName`** output.
+1. Deploy. `scripts/migrate-to-account.sh` asks for the enterprise slug and
+   deploys the role with everything else; a bare `cdk deploy` needs
+   `-c auditEnterprise=<slug>` instead. The slug is the one in the URL at
+   `github.com/enterprises/<slug>`, and unlike the organization name it **is**
+   case-sensitive — it goes into an IAM trust policy, not a GitHub lookup.
+
+   The slug is data rather than a preference: the role pins its trust to that
+   one enterprise, and without a subject to pin to it would accept uploads from
+   any GitHub enterprise at all.
 2. In GitHub: **Enterprise settings → Audit log → Streaming → Amazon S3**.
 3. Point it at that bucket and authenticate. GitHub sends a test event on save
    — if it succeeds, objects start arriving.
