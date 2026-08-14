@@ -104,7 +104,12 @@ AWS_PROFILE="$AWS_PROFILE" AWS_REGION="$REGION" STACK_NAME="$PREFIX" \
   SKIP_SECRET=1 SKIP_CONFIRM=1 \
   bash "$HERE/setup-aws-account.sh" </dev/null \
   || die "Table creation failed. The output above says why."
-ok "14 tables present (on-demand billing; idle tables cost nothing)"
+# Counted rather than stated. This line has claimed 13 and 14 at various points,
+# each time going stale the moment a table was added or removed — so it now asks
+# the script that just ran how many it creates.
+TABLE_COUNT=$(( $(sed -n '/^TABLES=(/,/^)/p' "$HERE/setup-aws-account.sh" | grep -cE '^[[:space:]]+[a-z-]+')
+                + $(grep -cE 'create_table "\$\{PREFIX\}-[a-z-]+"' "$HERE/setup-aws-account.sh") ))
+ok "$TABLE_COUNT tables present (on-demand billing; idle tables cost nothing)"
 
 # ── 2. secrets ────────────────────────────────────────────────────────
 step "2/7  GitHub credentials"
