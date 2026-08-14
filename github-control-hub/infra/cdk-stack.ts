@@ -705,11 +705,26 @@ export class GitHubControlHubStack extends cdk.Stack {
     // Streaming rather than polling the audit log API: the API is rate limited
     // to 1,750 requests an hour and its history is capped, while a bucket keeps
     // everything for as long as the lifecycle rule below says.
+    // Some organisations run a Config rule that applies a TLS-only bucket
+    // policy the moment a bucket appears. That control and enforceSSL want the
+    // same thing and cannot both have it: CloudFormation creates the bucket,
+    // the remediation writes its policy within seconds, and CloudFormation's
+    // own CreateBucketPolicy then fails with "the bucket policy already
+    // exists". The stack rolls back, RETAIN keeps the bucket and the
+    // remediation's policy, and every retry replays the same race — there is
+    // no number of attempts that wins it.
+    //
+    // Deploy with `-c orgEnforcesBucketSsl=true` in such an account. The bucket
+    // still ends up refusing plaintext; the organisation's control is what puts
+    // that in writing rather than this stack.
+    const orgEnforcesBucketSsl =
+      String(this.node.tryGetContext("orgEnforcesBucketSsl") ?? "") === "true";
+
     const auditBucket = new s3.Bucket(this, "AuditLogBucket", {
       bucketName: `${stackPrefix}-audit-log-${this.account}`,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
+      enforceSSL: !orgEnforcesBucketSsl,
       versioned: false,
       // The audit log is the record of who did what. Deleting the stack must
       // not take it with it, and CDK will refuse rather than silently destroy.
