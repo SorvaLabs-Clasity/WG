@@ -88,12 +88,12 @@ const electron = read("github-control-hub/desktop/src/main.ts");
   }
 
   // ── infrastructure at rest ─────────────────────────────────────────
+  //
+  // The EBS-encryption and IMDSv2 checks that used to live here asserted
+  // properties of the EC2 instance. The webhook-on-Lambda migration deleted
+  // that instance outright, so there is no root volume and no instance
+  // metadata service left to check.
   {
-    check("the instance root volume is encrypted",
-      /encrypted:\s*true/.test(cdk), "EBS encryption is not requested");
-    check("instance metadata requires v2",
-      /requireImdsv2:\s*true/.test(cdk),
-      "IMDSv1 would turn any SSRF into instance-role credentials");
     check("the dead-letter queue is encrypted",
       /encryption:\s*sqs\.QueueEncryption\./.test(cdk));
     check("  and refuses plaintext transport",
@@ -226,18 +226,11 @@ const electron = read("github-control-hub/desktop/src/main.ts");
       "verification accepts whatever the library infers");
   }
 
-  // ── the private key is not world-readable ──────────────────────────
-  //
-  // deploy.sh shipped the application to the instance but never touched the
-  // TLS key itself, so its removal in the webhook-on-Lambda migration drops
-  // no coverage here; the CDK user-data is what sets the key's permissions.
-  {
-    check("the CDK user-data does not chmod the TLS key 644",
-      !/chmod 644 [^\n']*server\.key/.test(cdk),
-      "the server's private key is readable by every account on the instance");
-    check("  the CDK gives the key mode 600",
-      /chmod 600 \/etc\/ssl\/github-control-hub\/server\.key/.test(cdk));
-  }
+  // The self-signed TLS key this block used to guard existed solely on the
+  // EC2 instance's user-data: a chmod-644 check would have caught it being
+  // made world-readable, and a chmod-600 check confirmed the correct mode.
+  // The webhook-on-Lambda migration deleted that instance and its user-data
+  // outright, so there is no key left to protect and nothing left to assert.
 
   // ── CI holds no more than it needs ─────────────────────────────────
   {

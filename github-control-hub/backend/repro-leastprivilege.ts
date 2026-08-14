@@ -48,11 +48,16 @@ const accountsCode = code(accountsTs);
   }
 
   // ── sts:AssumeRole is scoped to one role name ──────────────────────
+  //
+  // Two of these grants used to exist: the instance role's, so the app could
+  // verify an account before storing it, and the guardrail engine's, so it
+  // could sweep one. The instance role is gone with the webhook-on-Lambda
+  // migration, so only the engine's grant remains.
   {
     const assumeBlocks = [...cdkCode.matchAll(/sts:AssumeRole[\s\S]{0,400}?resources:\s*\[([\s\S]*?)\]/g)]
       .map(m => m[1]);
     check("every sts:AssumeRole grant names resources",
-      assumeBlocks.length >= 2, assumeBlocks.length);
+      assumeBlocks.length >= 1, assumeBlocks.length);
     for (const block of assumeBlocks) {
       check("  and none of them is a wildcard role",
         !/["'`]\*["'`]/.test(block) && !/role\/\*/.test(block), block.trim());
@@ -96,14 +101,14 @@ const accountsCode = code(accountsTs);
           templateCode.split("Effect: Deny")[0]), action);
     }
 
-    // GetObject does appear once, on the instance role: the deploy script pulls
-    // a Docker image from a bucket this stack owns. Scoped, so it is a grant to
-    // read one bucket rather than a grant to read data.
+    // GetObject used to appear once, on the instance role: the deploy script
+    // pulled a Docker image from a bucket this stack owns. That role — and
+    // the grant with it — is gone with the webhook-on-Lambda migration, so
+    // there should be no s3:GetObject grant anywhere in the stack now.
     const getObjectGrants = [...cdkCode.matchAll(/["']s3:GetObject["'][\s\S]{0,300}?resources:\s*\[([^\]]*)\]/g)]
       .map(m => m[1].trim());
-    check("the one s3:GetObject in the stack is scoped to a single named bucket",
-      getObjectGrants.length === 1 && getObjectGrants[0].includes("github-control-hub-deploy")
-      && !getObjectGrants[0].includes("s3:::*"),
+    check("no s3:GetObject grant remains in the stack",
+      getObjectGrants.length === 0,
       getObjectGrants);
   }
 
@@ -214,12 +219,20 @@ const accountsCode = code(accountsTs);
       "a route creates CloudFormation resources");
   }
 
-  // ── the lambda read that replaced asking a person ──────────────────
+  // ── the lambda read that used to replace asking a person ───────────
+  //
+  // The instance role held lambda:GetFunctionConfiguration so the app could
+  // read the guardrail engine's own role ARN instead of a person hunting for
+  // it in a stack output. That role is gone with the webhook-on-Lambda
+  // migration; the capability moved to the desktop app, which calls the same
+  // API with the signed-in user's own AWS credentials
+  // (src/aws-guardrails/accounts.ts, controlHubPrincipals) and falls back to
+  // pointing at the "GuardrailLambdaRoleArn" stack output if that fails. The
+  // stack itself should grant nothing for it any more.
   {
-    check("reading the engine's own role is scoped to that one function",
-      /lambda:GetFunctionConfiguration[\s\S]{0,200}?resources:\s*\[([^\]]*)\]/.test(cdkCode)
-      && /lambda:GetFunctionConfiguration[\s\S]{0,200}?resources:\s*\[[^\]]*functionArn/.test(cdkCode),
-      "lambda:GetFunctionConfiguration is not scoped to the guardrail function");
+    check("the stack no longer grants lambda:GetFunctionConfiguration to anyone",
+      !/lambda:GetFunctionConfiguration/.test(cdkCode),
+      "an unexpected grant of lambda:GetFunctionConfiguration remains in cdk-stack.ts");
   }
 
   // ── a bundled dependency npm cannot reach ──────────────────────────
