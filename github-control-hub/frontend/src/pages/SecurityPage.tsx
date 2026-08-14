@@ -5,7 +5,9 @@ import { useAuth } from "../App";
 import {
   Page, PageHeader, StatusSlab, SlabPercent, Button, Segmented, Sheet, Block,
   RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, INTENT, enter, type Intent, RefreshButton,
+  SearchInput, Pager,
 } from "../design";
+import { useTableControls } from "../hooks/useTableControls";
 
 const TYPE_LABELS: Record<string, string> = {
   protection_removed: "Protection removed",
@@ -26,6 +28,9 @@ const SEVERITY: Record<string, Intent> = {
   critical: "danger", high: "danger", medium: "warn", low: "info",
 };
 
+/** Sorting severity alphabetically puts "critical" under "high". Rank it. */
+const SEVERITY_ORDER: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 };
+
 const ALERTS_PER_PAGE = 10;
 
 export default function SecurityPage() {
@@ -40,7 +45,6 @@ export default function SecurityPage() {
   const unresolve = useUnresolveAlert();
 
   const [filter, setFilter] = useState<"active" | "resolved" | "all">("active");
-  const [page, setPage] = useState(1);
 
   const counts = useMemo(() => {
     const a = alerts ?? [];
@@ -56,9 +60,18 @@ export default function SecurityPage() {
     filter === "active" ? !a.resolved : filter === "resolved" ? a.resolved : true
   ), [alerts, filter]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / ALERTS_PER_PAGE));
-  const safePage = Math.min(page, totalPages);
-  const shown = filtered.slice((safePage - 1) * ALERTS_PER_PAGE, safePage * ALERTS_PER_PAGE);
+  // Search covers what someone would actually type looking for an alert: the
+  // repository, the human-readable alert type, its message and its severity.
+  const table = useTableControls(filtered, {
+    searchText: a => `${a.repo} ${TYPE_LABELS[a.type] ?? a.type} ${a.message ?? ""} ${a.severity}`,
+    columns: [
+      { key: "repo", label: "Repository", value: a => a.repo },
+      { key: "severity", label: "Severity", value: a => SEVERITY_ORDER[a.severity] ?? 99 },
+      { key: "created", label: "Raised", value: a => a.timestamp ?? "" },
+    ],
+    perPage: ALERTS_PER_PAGE,
+  });
+  const shown = table.visible;
 
   if (alertsLoading) {
     return <Page user={user}><Spinner /></Page>;
@@ -92,33 +105,35 @@ export default function SecurityPage() {
 
       <div>
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
-            <Segmented value={filter} onChange={(f) => { setFilter(f); setPage(1); }} options={[
+            <Segmented value={filter} onChange={setFilter} options={[
               ["active", `Open ${counts.active}`],
               ["resolved", `Resolved ${counts.resolved}`],
               ["all", `All ${counts.all}`],
             ]} />
-            {totalPages > 1 && (
-              <div className="flex items-center gap-2 text-sm">
-                <Button variant="ghost" disabled={safePage <= 1} onClick={() => setPage(p => p - 1)}>
-                  <i className="ph-bold ph-caret-left"></i>
-                </Button>
-                <span className="text-slate-500 dark:text-slate-400 tabular-nums font-semibold">
-                  {safePage} / {totalPages}
-                </span>
-                <Button variant="ghost" disabled={safePage >= totalPages} onClick={() => setPage(p => p + 1)}>
-                  <i className="ph-bold ph-caret-right"></i>
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              <SearchInput value={table.search} onChange={table.setSearch} placeholder="Search alerts…" />
+              <Segmented value={table.sortKey ?? "severity"} onChange={table.toggleSort} options={[
+                ["severity", "Severity"],
+                ["repo", "Repository"],
+                ["created", "Raised"],
+              ]} />
+            </div>
           </div>
 
           {shown.length === 0 ? (
-            <Empty
-              title={filter === "active" ? "Nothing open" : `No ${filter} alerts`}
-              body={filter === "active"
-                ? "Every alert raised so far has been dealt with."
-                : "Alerts appear here as GitHub reports events for the organization."}
-            />
+            table.filtered ? (
+              <Empty
+                title="No alerts match that search"
+                body={`Nothing in ${table.totalCount} ${filter === "all" ? "" : filter + " "}alerts matches "${table.search.trim()}".`}
+              />
+            ) : (
+              <Empty
+                title={filter === "active" ? "Nothing open" : `No ${filter} alerts`}
+                body={filter === "active"
+                  ? "Every alert raised so far has been dealt with."
+                  : "Alerts appear here as GitHub reports events for the organization."}
+              />
+            )
           ) : (
             <div className="grid gap-3">
               {shown.map((a, i) => {
@@ -165,6 +180,12 @@ export default function SecurityPage() {
               })}
             </div>
           )}
+
+          <Pager
+            page={table.page} totalPages={table.totalPages} onPage={table.setPage}
+            matchCount={table.matchCount} totalCount={table.totalCount}
+            filtered={table.filtered} noun="alerts"
+          />
         </div>
 
     </Page>

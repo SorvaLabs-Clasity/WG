@@ -353,3 +353,78 @@ export function Spinner() {
     </div>
   );
 }
+
+// ── table controls ────────────────────────────────────────────────────
+
+/**
+ * A sortable column header.
+ *
+ * The arrow only appears on the sorted column. Showing a neutral arrow on every
+ * header reads as "these are all sorted" and makes the real one hard to find.
+ */
+export function SortHeader({ label, columnKey, sortKey, sortDir, onSort, align = "left" }: {
+  label: string;
+  columnKey: string;
+  sortKey: string | null;
+  sortDir: "asc" | "desc";
+  onSort: (key: string) => void;
+  align?: "left" | "right";
+}) {
+  const active = sortKey === columnKey;
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(columnKey)}
+      aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
+      className={`group inline-flex items-center gap-1.5 font-medium transition-colors
+        ${align === "right" ? "flex-row-reverse" : ""}
+        ${active ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
+    >
+      {label}
+      <i className={`ph-bold text-[10px] transition-opacity
+        ${active ? "opacity-100" : "opacity-0 group-hover:opacity-40"}
+        ${active && sortDir === "desc" ? "ph-arrow-down" : "ph-arrow-up"}`}></i>
+    </button>
+  );
+}
+
+/**
+ * Page navigation, and the count of what is being shown.
+ *
+ * Renders nothing when there is one page and no search — a pager under six rows
+ * is furniture. When a search is active it stays, because "3 of 357" is the
+ * answer to "did my search work".
+ */
+export function Pager({ page, totalPages, onPage, matchCount, totalCount, filtered, noun = "results" }: {
+  page: number;
+  totalPages: number;
+  onPage: (p: number) => void;
+  matchCount: number;
+  totalCount: number;
+  filtered: boolean;
+  noun?: string;
+}) {
+  if (totalPages <= 1 && !filtered) return null;
+  return (
+    <div className="flex items-center justify-between gap-4 pt-4 text-sm">
+      <span className="text-slate-500 dark:text-slate-400">
+        {filtered
+          ? `${matchCount} of ${totalCount} ${noun}`
+          : `${totalCount} ${noun}`}
+      </span>
+      {totalPages > 1 && (
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+            <i className="ph-bold ph-caret-left"></i>
+          </Button>
+          <span className="text-slate-500 dark:text-slate-400 tabular-nums">
+            Page {page} of {totalPages}
+          </span>
+          <Button variant="ghost" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>
+            <i className="ph-bold ph-caret-right"></i>
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}

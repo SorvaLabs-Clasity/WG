@@ -1,6 +1,8 @@
 import { useState, useMemo } from "react";
+import { useTableControls } from "../hooks/useTableControls";
 import { useAuth } from "../App";
 import { Page, StatusSlab, SlabPercent, RailCard, Sheet, SheetHeader, Block, Back, Note, Pill, Button, Empty, Spinner, Figure, InsetRow, Segmented, TYPE, SURFACE, INTENT, enter, type Intent, RefreshButton,
+  SearchInput, Pager,
 } from "../design";
 import { usePermissions } from "../hooks/usePermissions";
 import {
@@ -19,6 +21,9 @@ const KIND_LABELS: Record<string, string> = {
 };
 
 const label = (kind: string) => KIND_LABELS[kind] ?? kind;
+
+/** Violations first when sorting by verdict — alphabetically "compliant" wins, which is backwards. */
+const VERDICT_ORDER: Record<string, number> = { violation: 0, not_applicable: 1, compliant: 2 };
 
 export default function AwsPage() {
   const { user } = useAuth();
@@ -287,7 +292,22 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
 
   const failing = findings.filter(f => f.verdict === "violation" && !f.excluded);
   const rest = findings.filter(f => !(f.verdict === "violation" && !f.excluded));
-  const shown = showPassing ? [...failing, ...rest] : failing;
+  const candidates = showPassing ? [...failing, ...rest] : failing;
+
+  // Search covers what identifies a finding to a person: the resource, its
+  // type, the account and region it lives in, and the summary text.
+  const table = useTableControls(candidates, {
+    searchText: f => `${f.resourceId} ${f.resourceType} ${f.accountName ?? ""} ${f.accountId ?? ""} ${f.region ?? ""} ${f.summary}`,
+    columns: [
+      { key: "resource", label: "Resource", value: f => f.resourceId },
+      { key: "verdict", label: "Verdict", value: f => VERDICT_ORDER[f.verdict] ?? 99 },
+      { key: "account", label: "Account", value: f => f.accountName ?? f.accountId ?? "" },
+      { key: "region", label: "Region", value: f => f.region ?? "" },
+      { key: "checked", label: "Checked", value: f => f.checkedAt ?? "" },
+    ],
+    perPage: 50,
+  });
+  const shown = table.visible;
   const checked = findings.filter(f => !f.excluded).length;
   const excluded = findings.filter(f => f.excluded).length;
   const used = (exclusions ?? []).filter(l => rule.exclusionLists?.includes(l.id));
@@ -366,8 +386,25 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
           {findings.length === 0 ? (
             <p className="text-sm text-slate-500 dark:text-slate-400">Not checked yet. Run this rule to populate it.</p>
           ) : (
+            <>
+            {candidates.length > 8 && (
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <SearchInput value={table.search} onChange={table.setSearch} placeholder="Search resources…" />
+                <Segmented value={table.sortKey ?? "verdict"} onChange={table.toggleSort} options={[
+                  ["verdict", "Verdict"],
+                  ["resource", "Resource"],
+                  ...(multiAccount ? [["account", "Account"] as [string, string]] : []),
+                  ["region", "Region"],
+                ]} />
+              </div>
+            )}
+            {shown.length === 0 ? (
+              <p className="text-sm text-slate-500 dark:text-slate-400">
+                Nothing in {table.totalCount} findings matches "{table.search.trim()}".
+              </p>
+            ) : (
             <ul className="grid gap-2">
-              {shown.slice(0, 200).map((f, i) => {
+              {shown.map((f, i) => {
                 const fi: Intent = f.remediated ? "info"
                   : f.excluded ? "neutral"
                     : f.verdict === "violation" ? "danger" : "good";
@@ -414,6 +451,13 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                 );
               })}
             </ul>
+            )}
+            <Pager
+              page={table.page} totalPages={table.totalPages} onPage={table.setPage}
+              matchCount={table.matchCount} totalCount={table.totalCount}
+              filtered={table.filtered} noun="findings"
+            />
+            </>
           )}
         </Block>
       </Sheet>

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
-import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter } from "../design";
+import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter, SearchInput, Pager } from "../design";
+import { useTableControls } from "../hooks/useTableControls";
 import { useAuth } from "../App";
 import { useSecurityQuery, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
@@ -788,6 +789,25 @@ function useWidgetData(config: WidgetConfig) {
 function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: WidgetConfig; items: any[]; graphEmpty?: boolean; orgName?: string }) {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
+  // A widget answering a question about the whole organisation returns a row
+  // per repository, so this is the table most likely to be hundreds long.
+  //
+  // Rows are shaped by whichever query produced them, so search covers the
+  // subject (repo/user/team) plus every scalar field the row happens to carry
+  // rather than a fixed list. Objects are skipped — stringifying them matches
+  // punctuation nobody typed.
+  const table = useTableControls(items, {
+    searchText: (it: any) => Object.entries(it)
+      .filter(([, v]) => v === null || ["string", "number", "boolean"].includes(typeof v))
+      .map(([, v]) => String(v ?? ""))
+      .join(" "),
+    columns: [
+      { key: "name", label: "Name", value: (it: any) => it.repo || it.user || it.team || "" },
+      { key: "status", label: "Status", value: (it: any) => it.status ?? "" },
+    ],
+    perPage: 50,
+  });
+
   if (items.length === 0) {
     return (
       <div className="p-12 text-center text-slate-500 dark:text-slate-400">
@@ -811,6 +831,17 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
 
   return (
     <>
+      {items.length > 8 && (
+        <div className="px-6 pt-4 pb-1">
+          <SearchInput value={table.search} onChange={table.setSearch} placeholder="Search rows…" />
+        </div>
+      )}
+      {table.visible.length === 0 ? (
+        <div className="p-12 text-center text-slate-500 dark:text-slate-400">
+          <i className="ph-fill ph-magnifying-glass text-4xl text-slate-300 dark:text-slate-600 mb-3 block"></i>
+          Nothing in {table.totalCount} rows matches "{table.search.trim()}".
+        </div>
+      ) : (
       <table className="w-full text-left border-collapse">
         <thead className="bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
           <tr>
@@ -843,7 +874,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
-          {items.map((item: any, idx: number) => {
+          {table.visible.map((item: any, idx: number) => {
             const name = item.repo || item.user || item.team || "Unknown";
             return (
               <tr
@@ -851,7 +882,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                 className={`group hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer ${idx % 2 === 1 ? 'bg-slate-50/50 dark:bg-slate-800/50' : ''}`}
                 onClick={() => setSelectedItem(item)}
               >
-                <td className="px-6 py-4 font-mono text-slate-400 dark:text-slate-500 text-xs">{String(idx + 1).padStart(3, "0")}</td>
+                <td className="px-6 py-4 font-mono text-slate-400 dark:text-slate-500 text-xs">{String((table.page - 1) * 50 + idx + 1).padStart(3, "0")}</td>
                 <td className="px-6 py-4">
                   <div className="font-bold text-slate-800 dark:text-slate-200">{name}</div>
                   {config.type === "query" && (
@@ -913,6 +944,12 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
           })}
         </tbody>
       </table>
+      )}
+      <Pager
+        page={table.page} totalPages={table.totalPages} onPage={table.setPage}
+        matchCount={table.matchCount} totalCount={table.totalCount}
+        filtered={table.filtered} noun="rows"
+      />
       {selectedItem && <RawDetailsModal item={selectedItem} config={config} onClose={() => setSelectedItem(null)} orgName={orgName} />}
     </>
   );
