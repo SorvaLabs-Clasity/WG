@@ -132,6 +132,64 @@ function check(name: string, ok: boolean, got?: unknown) {
     describe({ action: "repo.access", actor: "carol", repo: "api" }));
 }
 
+// ── a real event, captured from the live stream ───────────────────────
+{
+  // Copied verbatim from an object GitHub delivered when a repository was
+  // deleted. Every invented fixture above passed while this one exposed two
+  // gaps: the repository is not in `repo`, and the application's name was
+  // being dropped entirely — so two events describing different apps read
+  // identically.
+  const real = {
+    "@timestamp": 1786693698311,
+    action: "integration_installation.repositories_removed",
+    actor: "RDaou05",
+    actor_id: 83796134,
+    application_client_id: "Iv23lihcaOcBUj3kaytI",
+    business: "sorva-ent",
+    created_at: 1786693698311,
+    integration: "Sorva Studios Pipeline",
+    name: "Sorva Studios Pipeline",
+    operation_type: "remove",
+    org: "Sorva-Studios",
+    repositories_removed: [1333268087],
+    repositories_removed_names: ["Sorva-Studios/testing"],
+    repository_selection: "all",
+    topic: "github.repositories.v1.Deleted",
+  };
+
+  check("a real event is indexed", isConsequential(String(real.action)));
+
+  const n = normalise(real);
+  check("the repository is found outside the `repo` field",
+    n.repo === "Sorva-Studios/testing", n.repo);
+  check("  and the application is named, so two apps do not read alike",
+    n.details.includes("Sorva Studios Pipeline"), n.details);
+  check("  with the actor and action intact",
+    n.details.includes("RDaou05") && n.details.includes("integration_installation.repositories_removed"),
+    n.details);
+  check("  and the timestamp read from epoch milliseconds",
+    n.timestamp.startsWith("2026-08-14T07:48"), n.timestamp);
+
+  // The same deletion produced a second event for the other installed app.
+  const other = { ...real, integration: "Sorva Control Hub", name: "Sorva Control Hub" };
+  check("two apps on one deletion produce distinguishable rows",
+    normalise(other).details !== n.details,
+    [n.details, normalise(other).details]);
+}
+
+// ── an arrow must mean "changed to" ───────────────────────────────────
+{
+  // repo.destroy carries `visibility` as context — what the repository was
+  // when it went. Rendered with an arrow it read "repo.destroy … → private",
+  // as though deleting it had made it private.
+  const destroyed = describe({ action: "repo.destroy", actor: "RDaou05", repo: "Org/testing", visibility: "private" });
+  check("a non-change does not get an arrow", !destroyed.includes("→"), destroyed);
+  check("  but the visibility is still shown as context", destroyed.includes("[private]"), destroyed);
+
+  const changed = describe({ action: "repo.access", actor: "RDaou05", repo: "Org/testing", visibility: "public" });
+  check("an actual visibility change does get one", changed.includes("→ public"), changed);
+}
+
 // ── GitHub's endpoint probe is not a batch ────────────────────────────
 {
   // Found the moment streaming was switched on for real: GitHub writes a

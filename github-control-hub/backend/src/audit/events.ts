@@ -117,13 +117,61 @@ export function toTimestamp(created: number | string | undefined): string {
   return new Date().toISOString();
 }
 
-/** A readable one-line summary. The raw event stays in S3 for the full detail. */
+/** First non-empty string among the named fields, including inside arrays. */
+function firstOf(e: RawAuditEvent, fields: string[]): string {
+  for (const f of fields) {
+    const v = e[f];
+    if (typeof v === "string" && v) return v;
+    if (Array.isArray(v) && v.length && typeof v[0] === "string") return v[0];
+  }
+  return "";
+}
+
+/**
+ * The repository an event concerns.
+ *
+ * Not always in `repo`. An integration event names it in
+ * `repositories_removed_names` or `repositories_added_names` instead, so
+ * reading only `repo` left the column blank on exactly the events where
+ * knowing the repository matters most.
+ */
+export function repoOf(e: RawAuditEvent): string {
+  return firstOf(e, ["repo", "repository", "repositories_removed_names", "repositories_added_names"]);
+}
+
+/**
+ * A readable one-line summary. The raw event stays in S3 for the full detail.
+ *
+ * Beyond actor and action, this picks up the one field that identifies what the
+ * event was actually about — the app for an integration change, the team, the
+ * user being added. Without it, two integration events on the same repository
+ * by the same person read identically while describing different applications.
+ */
 export function describe(e: RawAuditEvent): string {
   const action = String(e.action ?? "");
   const who = String(e.actor ?? "unknown");
-  const on = String(e.repo ?? e.repository ?? e.team ?? e.user ?? e.org ?? "");
+  const on = repoOf(e) || firstOf(e, ["team", "user", "org"]);
+
   const parts = [`${who} — ${action}`];
   if (on) parts.push(`on ${on}`);
+
+  // GitHub uses `integration` for the app's display name on installation
+  // events, and `name` alongside it. Either identifies which app changed.
+  const app = firstOf(e, ["integration", "application", "oauth_application"]);
+  if (app) parts.push(`(${app})`);
+
+  // An arrow means "changed to". Most events carry `visibility` as context
+  // rather than as a change — repo.destroy reports what the repository was
+  // when it was deleted, and rendering that as "→ private" reads as though
+  // deleting it made it private.
+  const changesVisibility = action === "repo.access" || action.includes("visibility");
+  const visibility = firstOf(e, ["visibility"]);
+  if (visibility && changesVisibility) parts.push(`→ ${visibility}`);
+  else if (visibility) parts.push(`[${visibility}]`);
+
+  const permission = firstOf(e, ["permission"]);
+  if (permission) parts.push(`→ ${permission}`);
+
   return parts.join(" ");
 }
 
@@ -134,7 +182,7 @@ export function normalise(e: RawAuditEvent): IndexedAuditEvent {
     actor: String(e.actor ?? "unknown"),
     // Repository-scoped events name a repo; organization-scoped ones do not,
     // and an empty string is how the rest of the activity feed says "no repo".
-    repo: String(e.repo ?? e.repository ?? ""),
+    repo: repoOf(e),
     // The audit action goes in target, because every one of these rows carries
     // the same `action` of "audit.event" in the activity feed — this is what
     // tells them apart in the UI.
