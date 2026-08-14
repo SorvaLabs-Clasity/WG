@@ -142,35 +142,47 @@ export function repoOf(e: RawAuditEvent): string {
 /**
  * A readable one-line summary. The raw event stays in S3 for the full detail.
  *
- * Beyond actor and action, this picks up the one field that identifies what the
- * event was actually about — the app for an integration change, the team, the
- * user being added. Without it, two integration events on the same repository
- * by the same person read identically while describing different applications.
+ * Three things make an audit line useful, and they live in different fields
+ * depending on the event:
+ *
+ *   where    the repository, team or organisation it happened in
+ *   who      the person or app it happened *to* — not the actor
+ *   change   what it became, and where possible what it was before
+ *
+ * Reading only the first of repo/team/user dropped the subject entirely
+ * whenever a repository or team was present, which is most member events. A
+ * line saying somebody was added to a repository, without saying who, is the
+ * one fact worth recording.
  */
 export function describe(e: RawAuditEvent): string {
   const action = String(e.action ?? "");
-  const who = String(e.actor ?? "unknown");
-  const on = repoOf(e) || firstOf(e, ["team", "user", "org"]);
+  const actor = String(e.actor ?? "unknown");
 
-  const parts = [`${who} — ${action}`];
-  if (on) parts.push(`on ${on}`);
+  const where = repoOf(e) || firstOf(e, ["team", "org"]);
 
-  // GitHub uses `integration` for the app's display name on installation
-  // events, and `name` alongside it. Either identifies which app changed.
+  // The subject. `user` names the person acted upon; on events someone
+  // performs on themselves it repeats the actor, and repeating it reads as a
+  // mistake, so it is dropped.
+  const subject = firstOf(e, ["user", "invitee_email", "email"]);
   const app = firstOf(e, ["integration", "application", "oauth_application"]);
-  if (app) parts.push(`(${app})`);
 
-  // An arrow means "changed to". Most events carry `visibility` as context
-  // rather than as a change — repo.destroy reports what the repository was
-  // when it was deleted, and rendering that as "→ private" reads as though
-  // deleting it made it private.
+  // Permission and visibility changes carry both sides on some events and only
+  // the new value on others. An arrow is only used where something changed.
+  const oldPerm = firstOf(e, ["old_repo_permission", "old_permission"]);
+  const newPerm = firstOf(e, ["new_repo_permission", "new_permission", "permission"]);
   const changesVisibility = action === "repo.access" || action.includes("visibility");
   const visibility = firstOf(e, ["visibility"]);
-  if (visibility && changesVisibility) parts.push(`→ ${visibility}`);
-  else if (visibility) parts.push(`[${visibility}]`);
 
-  const permission = firstOf(e, ["permission"]);
-  if (permission) parts.push(`→ ${permission}`);
+  const parts = [`${actor} — ${action}`];
+  if (where) parts.push(`on ${where}`);
+  if (subject && subject !== actor) parts.push(`· ${subject}`);
+  if (app) parts.push(`(${app})`);
+
+  if (oldPerm && newPerm) parts.push(`· ${oldPerm} → ${newPerm}`);
+  else if (newPerm) parts.push(`· ${newPerm}`);
+
+  if (visibility && changesVisibility) parts.push(`→ ${visibility}`);
+  else if (visibility && !newPerm) parts.push(`[${visibility}]`);
 
   return parts.join(" ");
 }

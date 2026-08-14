@@ -177,6 +177,54 @@ function check(name: string, ok: boolean, got?: unknown) {
     [n.details, normalise(other).details]);
 }
 
+// ── real member and team payloads, captured from the live log ─────────
+{
+  // Every one of these is copied from an actual event. Reading only the first
+  // of repo/team/user dropped the person whenever a repository or team was
+  // present, which is most member events — a line saying somebody was added to
+  // a repository without saying who.
+  const cases: Array<[string, any, string[]]> = [
+    ["repo.add_member names the person and the permission",
+      { action: "repo.add_member", actor: "RDaou05", org: "Sorva-Studios",
+        repo: "Sorva-Studios/penn-station", user: "gchaoticalt1219",
+        permission: "maintain", visibility: "private" },
+      ["Sorva-Studios/penn-station", "gchaoticalt1219", "maintain"]],
+
+    ["team.add_member names the team and the person",
+      { action: "team.add_member", actor: "RDaou05", org: "Sorva-Studios",
+        team: "Sorva-Studios/aws-guardrail-admins", user: "gchaoticalt1219" },
+      ["aws-guardrail-admins", "gchaoticalt1219"]],
+
+    ["org.invite_member names the invitee, who has no username yet",
+      { action: "org.invite_member", actor: "RDaou05", org: "Sorva-Studios",
+        email: "enzodow90@gmail.com", invitee_email: "enzodow90@gmail.com" },
+      ["enzodow90@gmail.com"]],
+
+    ["repo.update_member shows both sides of the permission change",
+      { action: "repo.update_member", actor: "RDaou05", org: "Sorva-Studios",
+        repo: "Sorva-Studios/24-7-power-washer", user: "gchaoticalt1219",
+        old_repo_permission: "admin", new_repo_permission: "maintain", visibility: "private" },
+      ["gchaoticalt1219", "admin → maintain"]],
+
+    ["org.add_member names the person and the role",
+      { action: "org.add_member", actor: "RDaou05", org: "Sorva-Studios",
+        user: "gchaoticalt1219", permission: "read" },
+      ["gchaoticalt1219", "read"]],
+  ];
+
+  for (const [name, event, expected] of cases) {
+    const d = describe(event);
+    const missing = expected.filter(x => !d.includes(x));
+    check(name, missing.length === 0, { line: d, missing });
+  }
+
+  // team.create carries user === actor. Repeating the actor reads as an error.
+  const selfActed = describe({ action: "team.create", actor: "RDaou05", org: "Sorva-Studios",
+    team: "Sorva-Studios/aws-guardrail-admins", user: "RDaou05" });
+  check("an actor acting on themselves is not named twice",
+    (selfActed.match(/RDaou05/g) || []).length === 1, selfActed);
+}
+
 // ── an arrow must mean "changed to" ───────────────────────────────────
 {
   // repo.destroy carries `visibility` as context — what the repository was
