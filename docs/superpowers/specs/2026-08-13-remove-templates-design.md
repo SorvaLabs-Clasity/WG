@@ -39,9 +39,17 @@ and exclusion entries in `api/mock.ts`.
 **Modified:** `ProtectBranchModal`, `ProtectTagModal`, `ProtectPushModal` lose
 the preset dropdown. `ruleTemplateOptions` and `onPickRuleTemplate` are optional
 props, so the props and the picker block go (around `ProtectBranchModal:164`,
-`:346`, `:524-545`). The manual protection configuration in all three modals is
-untouched and must keep working — that is the whole remaining purpose of those
-modals.
+`:346`, `:524-545`).
+
+**Correction (found during the follow-up cleanup review):** this section
+originally claimed the modals' manual protection configuration "is untouched
+and must keep working — that is the whole remaining purpose of those modals."
+That was wrong. `TemplatesPage.tsx` was their only caller — nothing else in the
+frontend imported `ProtectBranchModal`, `ProtectTagModal`, `ProtectPushModal` or
+the `RulesetShared` helpers they share — so deleting it left all four files,
+plus the `types/Protection.ts` they depend on, unreachable rather than merely
+lighter. The review deleted them outright, with the user confirming they were
+part of the Templates feature and had no purpose left to serve.
 
 ### `buildConflictComparison` has to move
 
