@@ -606,14 +606,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // payload content: a ceiling per source address, well above anything
     // GitHub sends, that stops a compromised or misbehaving source from
     // driving the queue.
-    // Skippable with `-c waf=false`, which is what a second, non-production
-    // deployment should do. The web ACL is a flat $5 a month plus $1 a rule —
-    // most of a small stack's entire bill — to rate-limit an environment
-    // nobody depends on. The IP allow-list and the signature check, which are
-    // what actually keep strangers out, are unaffected either way.
-    const wafEnabled = String(this.node.tryGetContext("waf") ?? "true") !== "false";
-
-    const webhookWaf = wafEnabled ? new wafv2.CfnWebACL(this, "WebhookWaf", {
+    const webhookWaf = new wafv2.CfnWebACL(this, "WebhookWaf", {
       name: `${stackPrefix}-webhook`,
       scope: "REGIONAL",
       defaultAction: { allow: {} },
@@ -636,9 +629,9 @@ export class GitHubControlHubStack extends cdk.Stack {
           sampledRequestsEnabled: false,
         },
       }],
-    }) : undefined;
+    });
 
-    if (webhookWaf) new wafv2.CfnWebACLAssociation(this, "WebhookWafAssociation", {
+    new wafv2.CfnWebACLAssociation(this, "WebhookWafAssociation", {
       // Built as a string rather than with formatArn. An API Gateway stage ARN
       // has a leading slash before the resource — arn:…:apigateway:region::/restapis/…
       // — and formatArn joins account and resource with a single colon, which
@@ -721,31 +714,26 @@ export class GitHubControlHubStack extends cdk.Stack {
     // remediation's policy, and every retry replays the same race — there is
     // no number of attempts that wins it.
     //
-    // Deploy with `-c orgEnforcesBucketSsl=true` in such an account. The bucket
-    // still ends up refusing plaintext; the organisation's control is what puts
-    // that in writing rather than this stack.
-    // `-c bucketPolicy=false` when something outside this stack owns the audit
-    // bucket's policy. Two things put you here, and both want the same answer:
-    //
-    //   - the organisation runs an S3 TLS auto-remediation, which writes a
-    //     policy within seconds of the bucket appearing and beats
-    //     CloudFormation to it; the deploy then fails, repeatedly, and no
-    //     number of retries wins the race.
-    //   - you intend to enforce it with this app's own S3 guardrail instead,
-    //     which adds the same deny and re-adds it if anyone removes it —
-    //     something CloudFormation only does on the next deploy.
-    //
-    // `orgEnforcesBucketSsl=true` still works; it was the first name, and it
-    // only described the first reason.
-    const bucketPolicyManaged =
-      String(this.node.tryGetContext("bucketPolicy") ?? "") !== "false"
-      && String(this.node.tryGetContext("orgEnforcesBucketSsl") ?? "") !== "true";
-
+    // The guardrail owns bucket policies here; see the audit bucket below.
     const auditBucket = new s3.Bucket(this, "AuditLogBucket", {
       bucketName: `${stackPrefix}-audit-log-${this.account}`,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: bucketPolicyManaged,
+      // No bucket policy from this stack.
+      //
+      // enforceSSL would have CloudFormation write a deny-non-TLS statement —
+      // the same statement the app's own S3 guardrail writes on every bucket
+      // in the account, this one included. Two mechanisms for one job, and
+      // whichever lost the race to create it failed the deploy.
+      //
+      // So the guardrail owns bucket policies, alone. Add the S3 rule in the
+      // AWS tab and it covers this bucket like any other — and re-adds the
+      // statement on its next sweep if anyone strips it, which CloudFormation
+      // would only do on the next deploy.
+      //
+      // Until that rule exists and is set to enforce, this bucket has no TLS
+      // policy. It blocks all public access and only the audit-log role and
+      // the ingest Lambda can reach it, but that is the trade being made.
       versioned: false,
       // The audit log is the record of who did what. Deleting the stack must
       // not take it with it, and CDK will refuse rather than silently destroy.

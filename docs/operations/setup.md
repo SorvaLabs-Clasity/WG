@@ -373,41 +373,27 @@ half of an audit trail. See [webhooks](../github-api/webhooks.md).
 
 ---
 
-## If the organisation already enforces bucket TLS
+## Bucket policies belong to the guardrail
 
-Some accounts run an AWS Config rule that applies a TLS-only policy to every new
-S3 bucket, within seconds of it appearing. That control and this stack's own
-`enforceSSL` want the same thing and cannot both have it:
+This stack writes no S3 bucket policy. The audit bucket it creates has none
+until the app's own **S3 — deny non-TLS requests** rule exists and is set to
+enforce, at which point that rule covers it like every other bucket in the
+account.
 
-```
-CloudFormation creates the audit bucket
-  -> the remediation writes its policy
-  -> CloudFormation's CreateBucketPolicy fails, "the bucket policy already exists"
-  -> rollback; RemovalPolicy.RETAIN keeps the bucket and the foreign policy
-  -> the next attempt hits the same race one resource earlier
-```
+That is one mechanism rather than two. CloudFormation used to write the same
+deny the guardrail writes, and in an account running an S3 TLS auto-remediation
+all three raced: whichever lost failed the deploy, `RemovalPolicy.RETAIN` kept
+the orphan, and the next attempt hit the same race one resource earlier. No
+number of retries won it.
 
-No number of retries wins it. Deploy with the flag instead:
+It also enforces better. CloudFormation reconciles a policy on the next deploy;
+the guardrail re-adds the statement on its next sweep, so a policy somebody
+strips is restored in minutes rather than whenever the stack is next touched.
 
-```bash
-npx cdk deploy -c enforce=true -c bucketPolicy=false
-```
-
-That tells the stack something outside it owns the audit bucket's policy. Two
-situations want it, and they want the same answer:
-
-1. **The organisation's control writes it.** The race above.
-2. **You intend to enforce it with this app's own S3 guardrail.** Equivalent
-   protection, and arguably better: CloudFormation only reconciles the policy
-   on the next deploy, where the guardrail re-adds the deny on its next sweep
-   if anyone removes it. The gap is the minutes between the deploy and that
-   first sweep, on an empty bucket nothing is streaming to yet.
-
-`-c orgEnforcesBucketSsl=true` still works — it was the first name, and it only
-described the first case.
-
-Either way, check afterwards that a policy exists, because with the flag set
-this stack is no longer the thing guaranteeing it:
+**The trade:** until you create that rule and enforce it, the audit bucket has
+no TLS policy. It blocks all public access and only the audit-log role and the
+ingest Lambda can reach it, but nothing denies a plaintext request. Check it
+after enforcing the rule:
 
 ```bash
 aws s3api get-bucket-policy \
@@ -415,31 +401,7 @@ aws s3api get-bucket-policy \
   --query Policy --output text | python3 -m json.tool
 ```
 
-A `Deny` on `aws:SecureTransport: false` is what you want. `NoSuchBucketPolicy`
-means nothing is enforcing it — add the S3 rule in the app and run it, or drop
-the flag and redeploy.
-
-To confirm that is what you are hitting, ask who wrote the policy. The error
-names the bucket, never whatever wrote to it:
-
-```bash
-aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=EventName,AttributeValue=PutBucketPolicy \
-  --max-results 5 --query 'Events[].[EventTime,Username]' --output text
-```
-
-A username that is not yours — `s3-ssl-auto-remediate` or similar — is the
-answer.
-
-A bucket left behind by a failed attempt is still there and unmanaged by the
-stack. Delete it first, or CloudFormation will refuse to create one of the same
-name:
-
-```bash
-BUCKET=github-control-hub-audit-log-$(aws sts get-caller-identity --query Account --output text)
-aws s3api list-objects-v2 --bucket "$BUCKET" --query 'KeyCount' --output text   # expect 0
-aws s3api delete-bucket --bucket "$BUCKET"                                      # refuses if not empty
-```
+A `Deny` on `aws:SecureTransport: false` is what you want.
 
 ## Standing up a whole environment
 
@@ -462,7 +424,7 @@ a stack lands in the wrong account. Either kind of credential works:
 
 ```bash
 export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
-CDK_CONTEXT="-c enforce=true -c orgEnforcesBucketSsl=true" ./scripts/migrate-to-account.sh
+CDK_CONTEXT="-c enforce=true" ./scripts/migrate-to-account.sh
 ```
 
 That is the shape the AWS access portal hands out, and it needs no profile to
@@ -478,11 +440,10 @@ under the AWS tab.
 Its deploy takes no context by default. Pass any through:
 
 ```bash
-CDK_CONTEXT="-c enforce=true -c orgEnforcesBucketSsl=true" ./scripts/migrate-to-account.sh
+CDK_CONTEXT="-c enforce=true" ./scripts/migrate-to-account.sh
 ```
 
-In an organisation running an S3 TLS auto-remediation, the second flag is not
-optional — see the bucket-TLS section below for what happens without it.
+`-c enforce=true` is the only context this stack takes.
 
 ## Running more than one environment
 
@@ -509,19 +470,11 @@ optionally the App and OAuth App.
 
 ### What to set differently outside production
 
-**The web ACL is worth skipping where there is no bill to protect:**
-
-```bash
-npx cdk deploy -c enforce=true -c waf=false
-```
-
-A flat $5 a month plus $1 a rule is most of a small stack's bill. What it
-actually buys is cost containment — it cuts off a single address sustaining
-more than about seven requests a second, which otherwise runs up API Gateway
-charges on requests the resource policy is already rejecting. That is worth
-paying for where the bill matters and not where it does not. The IP allow-list
-and the signature check, which are what keep strangers out, are unaffected
-either way.
+**The web ACL is always created.** It is a flat $6 a month, and what it buys
+is cost containment: it cuts off a single address sustaining more than about
+seven requests a second, which would otherwise run up API Gateway charges on
+requests the resource policy is already rejecting. That is worth the same in
+every environment, so it is not a switch.
 
 **Security-alert email belongs in one environment, or in different groups.**
 Three environments with notifications on means three emails per event and no

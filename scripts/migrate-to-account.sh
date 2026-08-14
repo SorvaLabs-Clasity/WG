@@ -308,14 +308,10 @@ fi
 # it would have made. Add -c enforce=true here only if you want it to act.
 # Extra CDK context, passed straight through. Two are worth knowing about:
 #
-#   -c enforce=true             let guardrails act, not just report (see above)
-#   -c orgEnforcesBucketSsl=true  required in an account whose organisation runs
-#                               an S3 TLS auto-remediation. Without it the
-#                               deploy loses a race with that control over the
-#                               audit bucket's policy and fails, repeatedly, in
-#                               a way no number of retries fixes.
+#   -c enforce=true   let guardrails act, not just report (see above). It is
+#                     the only context this stack takes.
 #
-#   CDK_CONTEXT="-c enforce=true -c orgEnforcesBucketSsl=true" ./scripts/migrate-to-account.sh
+#   CDK_CONTEXT="-c enforce=true" ./scripts/migrate-to-account.sh
 #
 # Unquoted on purpose: this holds several flags and has to word-split.
 # shellcheck disable=SC2086
