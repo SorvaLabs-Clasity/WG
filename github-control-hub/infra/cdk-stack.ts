@@ -59,20 +59,6 @@ interface GitHubControlHubProps extends cdk.StackProps {
   webhookSecretName?: string;
   /** DynamoDB table prefix. Defaults to "github-control-hub" */
   stackPrefix?: string;
-  /**
-   * Whether this app may change anything in AWS. Default: no.
-   *
-   * Off, the guardrail engine holds nothing but Describe and List. A rule set
-   * to enforce still finds the violation and still reports the fix it would
-   * make; AWS refuses the write, and the finding says so. The app is
-   * incapable of altering the account it watches, and that is a property of
-   * IAM rather than a promise made by this code.
-   *
-   * Turning it on grants exactly three actions — PutBucketPolicy,
-   * PutRetentionPolicy, DeleteRetentionPolicy — and nothing else. Set with
-   * `cdk deploy -c enforce=true`.
-   */
-  allowRemediation?: boolean;
 }
 
 export class GitHubControlHubStack extends cdk.Stack {
@@ -82,12 +68,6 @@ export class GitHubControlHubStack extends cdk.Stack {
     const secretName = props.secretName ?? "github-control-hub/secrets";
     const webhookSecretName = props.webhookSecretName ?? "github-control-hub/webhook-secret";
     const stackPrefix = props.stackPrefix ?? "github-control-hub";
-
-    // Off unless someone deliberately asks for it, on the command line, in
-    // this account. A read-only default is the difference between a tool that
-    // could damage production and one that cannot.
-    const allowRemediation =
-      props.allowRemediation ?? this.node.tryGetContext("enforce") === "true";
 
     // The only role this app may ever assume, anywhere.
     //
@@ -172,10 +152,20 @@ export class GitHubControlHubStack extends cdk.Stack {
       resources: ["*"],
     }));
 
-    if (allowRemediation) {
+    {
       // Three actions. Not s3:* and not logs:*, so a later version of this app
       // cannot quietly start doing something this account never agreed to
       // without the policy visibly changing.
+      //
+      // Granted unconditionally. It used to sit behind `-c enforce=true`, so a
+      // deploy that forgot the flag produced an app whose rules reported
+      // violations and never fixed them — the feature half-working, silently,
+      // until somebody noticed weeks later that nothing had changed.
+      //
+      // Whether a rule acts is already a decision, made per rule in the AWS
+      // tab, visible there, and defaulting to report. That is the right place
+      // for it: a second gate in IAM only duplicated the choice somewhere
+      // nobody could see it.
       guardrailFn.addToRolePolicy(new iam.PolicyStatement({
         sid: "RemediateThreeThings",
         actions: [
@@ -846,7 +836,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "CanChangeAnything", {
-      value: allowRemediation ? "yes — three write actions granted" : "no — read-only",
+      value: "three write actions granted; each rule still chooses report or enforce",
       description: "Whether this deployment's IAM lets the app modify AWS at all",
     });
 

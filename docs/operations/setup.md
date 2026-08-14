@@ -272,12 +272,11 @@ dead-letter queue, the EventBridge rules, the CloudWatch alarms and the IAM.
 Every Lambda bundles its code straight from `backend/src`, so this step ships
 working functions, not just infrastructure to load code onto later.
 
-**Guardrail enforcement is deployed read-only.** The app can report on the
-account and is incapable of changing it. A rule set to enforce still finds
-violations and records the fix it would have made; AWS refuses the write and
-the finding says so. Redeploy with `-c enforce=true` later to grant exactly
-three write actions. This has no bearing on the webhook path, which has no
-concept of enforce mode.
+**No guardrail rules exist yet, so nothing is evaluated or changed.** Add them
+in the app, under the AWS tab. Each starts in report mode: it finds violations
+and records the fix it would have made, and writes nothing until you switch that
+rule to enforce. This has no bearing on the webhook path, which has no concept
+of enforce mode.
 
 Prints the webhook URL (the stack's `WebhookUrl` output) among the other
 outputs. Takes a few minutes.
@@ -424,7 +423,7 @@ a stack lands in the wrong account. Either kind of credential works:
 
 ```bash
 export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
-CDK_CONTEXT="-c enforce=true" ./scripts/migrate-to-account.sh
+./scripts/migrate-to-account.sh
 ```
 
 That is the shape the AWS access portal hands out, and it needs no profile to
@@ -440,10 +439,10 @@ under the AWS tab.
 Its deploy takes no context by default. Pass any through:
 
 ```bash
-CDK_CONTEXT="-c enforce=true" ./scripts/migrate-to-account.sh
+./scripts/migrate-to-account.sh
 ```
 
-`-c enforce=true` is the only context this stack takes.
+This stack takes no required context. `-c auditEnterprise=<slug>` is optional, for enterprise audit-log streaming.
 
 ## Running more than one environment
 
@@ -516,9 +515,9 @@ It generates the CloudFormation template, every parameter, a fresh external ID
 and the console links, and offers all accounts, chosen accounts, or one. See
 [accounts](../aws-guardrails/accounts.md).
 
-**Letting it change things.** Both rules start in report mode and the stack is
-read-only. Two independent switches have to move: `cdk deploy -c enforce=true`
-for the app's own account, and `ReadOnly=false` on any other account's role. See
+**Letting it change things.** Every rule starts in report mode; switch the ones
+you want to enforce, in the AWS tab. To act on another account, that account's
+role also needs `ReadOnly=false`. See
 [permissions](../aws-guardrails/permissions.md).
 
 **Gatekeeper.** macOS builds are ad-hoc signed, so the first open needs

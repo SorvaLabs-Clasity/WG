@@ -24,7 +24,7 @@ it and is destroyed along with the stack.
 ```bash
 cd github-control-hub/infra
 npx cdk deploy                 # read-only: the app cannot change AWS
-npx cdk deploy -c enforce=true # also grants three write actions
+npx cdk deploy # also grants three write actions
 ```
 
 That flag is the whole difference between a tool that could alter production and

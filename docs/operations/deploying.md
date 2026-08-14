@@ -25,8 +25,7 @@ whether the packaged app starts:
 ```bash
 cd github-control-hub/infra
 npx cdk diff                    # read the IAM changes before applying them
-npx cdk deploy                  # read-only
-npx cdk deploy -c enforce=true  # plus three write actions
+npx cdk deploy                  # no required context
 ```
 
 This is the only deploy step for backend changes that affect webhook handling

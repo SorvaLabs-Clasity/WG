@@ -303,17 +303,17 @@ if ! aws cloudformation describe-stacks --stack-name CDKToolkit >/dev/null 2>&1;
   npx cdk bootstrap "aws://$ACCOUNT/$REGION" || die "cdk bootstrap failed."
 fi
 
-# Read-only by default. The app can report on this account and is incapable of
-# changing it; a rule set to enforce still finds violations and records the fix
-# it would have made. Add -c enforce=true here only if you want it to act.
-# Extra CDK context, passed straight through. Two are worth knowing about:
+# The stack takes no required context. Guardrail rules are added in the app
+# afterwards, and each starts in report mode: it finds violations and records
+# the fix it would have made, writing nothing until that rule is switched to
+# enforce.
 #
-#   -c enforce=true   let guardrails act, not just report (see above). It is
-#                     the only context this stack takes.
+# Anything extra is passed straight through, e.g. enterprise audit-log
+# streaming:
 #
-#   CDK_CONTEXT="-c enforce=true" ./scripts/migrate-to-account.sh
+#   CDK_CONTEXT="-c auditEnterprise=acme" ./scripts/migrate-to-account.sh
 #
-# Unquoted on purpose: this holds several flags and has to word-split.
+# Unquoted on purpose: this may hold several flags and has to word-split.
 # shellcheck disable=SC2086
 STACK_NAME="$PREFIX" npx cdk deploy --require-approval never ${CDK_CONTEXT:-} \
   || die "cdk deploy failed."
@@ -429,7 +429,7 @@ cat <<EOF
       in the app; it generates the template, the parameters and the links.
       docs/aws-guardrails/accounts.md
     · Whether guardrails may change anything. Both rules are report-only and
-      the stack is deployed read-only. Redeploy with -c enforce=true to grant
+      every rule starts in report mode. Switch one to enforce in the app to grant
       three write actions.  docs/aws-guardrails/permissions.md
 
   Worth doing next:

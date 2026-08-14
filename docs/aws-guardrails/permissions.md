@@ -64,7 +64,8 @@ s3:GetBucketPolicy       s3:GetBucketTagging
 logs:DescribeLogGroups   logs:ListTagsForResource
 ```
 
-Writes — **none by default.** Deploying with `-c enforce=true` adds exactly:
+Writes — **exactly three, always granted.** Whether a rule uses them is decided
+per rule, in the app:
 
 ```
 s3:PutBucketPolicy   logs:PutRetentionPolicy   logs:DeleteRetentionPolicy
@@ -175,10 +176,11 @@ any role, in any account.
 
 **It cannot delete anything.** Not a bucket, not an object, not a log group.
 
-**It cannot change anything unless you deploy it twice on purpose** — once for
-the app's own account (`cdk deploy -c enforce=true`), and once per account you
-want it to fix things in (`ReadOnly=false`). A read-only deployment still finds
-every violation and still records the exact fix it would have made; AWS refuses
+**It changes nothing until a rule says so.** Every rule starts in report mode
+and is switched to enforce individually, in the AWS tab. For another account it
+also needs `ReadOnly=false` on that account's role. A rule left in report mode
+still finds every violation and still records the exact fix it would have made;
+nothing is written
 the write and the finding says so in those words.
 
 ---

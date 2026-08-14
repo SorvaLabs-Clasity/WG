@@ -39,8 +39,9 @@ has no fallback to an administrator role, by design.
 
 ## A guardrail finds a violation but will not fix it
 
-The deployment is read-only. The finding says so in words. Redeploy with
-`-c enforce=true`, and set the target account's stack to `ReadOnly=false`.
+The rule is in report mode, which is where every rule starts. Switch it to
+enforce in the AWS tab. For a finding in another account, that account's role
+also needs `ReadOnly=false`.
 
 ## Activity stopped recording changes made in GitHub
 

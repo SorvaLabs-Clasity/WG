@@ -94,9 +94,8 @@ GitHub webhook events are the only part of the backend that runs continuously in
 
 **Deploy:**
 ```bash
-cd infra && npx cdk deploy -c enforce=true
+cd infra && npx cdk deploy
 ```
-`-c enforce=true` is not optional if you want guardrails to remediate. Without it the engine still
 finds violations and reports the fix it would make, but is not granted the three write actions, so
 nothing is ever changed. This is the entire deployment step. There is no separate build-and-upload — CDK bundles the Lambdas straight from `backend/src` and deploys them along with the rest of the stack.
 

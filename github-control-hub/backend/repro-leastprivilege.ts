@@ -112,12 +112,19 @@ const accountsCode = code(accountsTs);
       getObjectGrants);
   }
 
-  // ── writing is off unless someone asks for it ──────────────────────
+  // ── writing is narrow, not optional ────────────────────────────────
   {
-    check("remediation permissions are behind a flag, not granted unconditionally",
-      /if\s*\(allowRemediation\)/.test(cdkCode), "no allowRemediation guard in cdk-stack.ts");
-    check("  and the flag defaults to off",
-      /tryGetContext\("enforce"\)\s*===\s*"true"/.test(cdkCode), "enforce flag is not opt-in");
+    // This used to assert the opposite: that the three write actions sat
+    // behind `-c enforce=true`. They no longer do, because a deploy that
+    // forgot the flag produced rules that reported violations and never fixed
+    // them — the feature half-working, invisibly. Whether a rule acts is
+    // decided per rule in the app, where it can be seen.
+    //
+    // What still has to hold is that the grant is three named actions and not
+    // a wildcard, which the block below checks.
+    check("the remediation grant is not gated on a deploy-time flag",
+      !/allowRemediation/.test(cdkCode) && !/tryGetContext\("enforce"\)/.test(cdkCode),
+      "a forgotten flag would silently disable remediation");
     check("the account role template defaults to read-only",
       /ReadOnly:[\s\S]{0,120}?Default:\s*"true"/.test(template), "ReadOnly does not default to true");
   }
