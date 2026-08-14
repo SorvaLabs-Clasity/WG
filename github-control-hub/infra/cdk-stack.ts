@@ -12,6 +12,8 @@ import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
+import * as s3 from "aws-cdk-lib/aws-s3";
+import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Construct } from "constructs";
@@ -478,6 +480,76 @@ export class GitHubControlHubStack extends cdk.Stack {
       if (alarmTopic) alarm.addAlarmAction(new cwActions.SnsAction(alarmTopic));
     }
 
+    // ── Enterprise audit log ──
+    //
+    // GitHub streams the enterprise audit log here as gzipped newline-delimited
+    // JSON. Nothing in this stack can make that happen — an enterprise owner
+    // configures streaming in GitHub's UI and points it at this bucket. Until
+    // they do, everything below sits idle and costs nothing.
+    //
+    // Streaming rather than polling the audit log API: the API is rate limited
+    // to 1,750 requests an hour and its history is capped, while a bucket keeps
+    // everything for as long as the lifecycle rule below says.
+    const auditBucket = new s3.Bucket(this, "AuditLogBucket", {
+      bucketName: `${stackPrefix}-audit-log-${this.account}`,
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      versioned: false,
+      // The audit log is the record of who did what. Deleting the stack must
+      // not take it with it, and CDK will refuse rather than silently destroy.
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      lifecycleRules: [{
+        // The raw archive is the complete record; DynamoDB only indexes the
+        // consequential part. Thirteen months matches the activity feed's own
+        // retention, so both halves of the trail end at the same moment rather
+        // than one outliving the other by an unexplained margin.
+        id: "match-activity-retention",
+        expiration: cdk.Duration.days(400),
+        // Most of this is never read twice. Infrequent Access after a month
+        // costs less to store and more to retrieve, which is the right way
+        // round for an audit archive.
+        transitions: [{
+          storageClass: s3.StorageClass.INFREQUENT_ACCESS,
+          transitionAfter: cdk.Duration.days(30),
+        }],
+        abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),
+      }],
+    });
+
+    const auditIngestFn = new NodejsFunction(this, "AuditLogIngest", {
+      functionName: `${stackPrefix}-audit-ingest`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, "..", "backend", "src", "audit", "ingest.ts"),
+      handler: "handler",
+      projectRoot: path.join(__dirname, ".."),
+      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+      // One object holds a batch of events, not one event. Gunzip plus a
+      // BatchWrite loop is quick, but a large object on a busy enterprise
+      // should not be cut off part way — a truncated batch loses audit rows.
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 512,
+      environment: {
+        STACK_NAME: stackPrefix,
+        ACTIVITY_TABLE: `${stackPrefix}-activity`,
+        // Widen this without a code change once real volume is known. Empty or
+        // absent means the built-in list of consequential events.
+        AUDIT_EVENT_ALLOWLIST: "",
+      },
+      bundling: webhookBundling,
+    });
+
+    auditBucket.grantRead(auditIngestFn);
+    auditIngestFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "WriteAuditRowsToActivity",
+      // Write-only, and to one table. This function reads nothing back: it
+      // turns objects into rows and has no reason to query the feed.
+      actions: ["dynamodb:PutItem", "dynamodb:BatchWriteItem"],
+      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-activity`],
+    }));
+
+    auditBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(auditIngestFn));
+
     // ── Outputs ──
     new cdk.CfnOutput(this, "GuardrailFunctionName", {
       value: guardrailFn.functionName,
@@ -502,6 +574,11 @@ export class GitHubControlHubStack extends cdk.Stack {
     new cdk.CfnOutput(this, "GuardrailDlqUrl", {
       value: guardrailDlq.queueUrl,
       description: "Dead-letter queue for failed guardrail invocations",
+    });
+
+    new cdk.CfnOutput(this, "AuditLogBucketName", {
+      value: auditBucket.bucketName,
+      description: "Point GitHub's enterprise audit log streaming at this bucket",
     });
 
     new cdk.CfnOutput(this, "WebhookUrl", {

@@ -2,12 +2,36 @@
 
 Everything that changed, who changed it, and — where it is safe — a way back.
 
+## Four streams
+
+One list held a widget being renamed beside branch protection being removed.
+Those are not the same kind of event and nobody reads them for the same reason,
+so the page is split by what changed:
+
+| Stream | Holds |
+|---|---|
+| **Organization** | Branches, protection, rulesets, repositories, Dependabot — anything that changed GitHub |
+| **AWS** | The guardrail engine's findings and remediations (`aws.guardrail`) |
+| **App settings** | Widgets, scanners, imports, and undo history — housekeeping |
+| **Audit log** | The [enterprise audit log](audit-log.md), streamed from GitHub |
+
+It opens on Organization, so the security-relevant feed is what you land on.
+
+Classification lives in `frontend/src/lib/activityCategories.ts` as data rather
+than a switch, and `repro-activitycategories.ts` asserts every action the
+backend can write lands somewhere deliberate. An unrecognised action falls back
+to Organization on purpose: hiding something new in a tab nobody watches is the
+failure worth avoiding.
+
 ## Two sources
+
+Independently of the stream, every row records where it came from:
 
 | Source | Comes from |
 |---|---|
 | `app` | Something done through this app |
 | `github` | A [webhook](../github-api/webhooks.md) — someone acting in GitHub directly |
+| `audit` | The enterprise audit log |
 
 The second is the half that makes it an audit trail rather than a command log.
 

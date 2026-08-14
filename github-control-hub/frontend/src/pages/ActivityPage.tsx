@@ -54,6 +54,9 @@ const ACTION_CONFIG: Record<
   "widget.delete": { label: "Widget Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-chart-simple text-[10px]" },
   "dependabot.enable": { label: "Dependabot Enabled", colorClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800", iconClass: "fa-solid fa-bug text-[10px]" },
   "dependabot.disable": { label: "Dependabot Disabled", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-bug-slash text-[10px]" },
+  // Every enterprise audit row carries this one action; the specific event
+  // (protected_branch.destroy, org.add_member, …) is in `target`, which is what
+  // distinguishes them. One label here covers all of them by design.
   "audit.event": { label: "Audit Log", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-clipboard-list text-[10px]" },
 };
 
