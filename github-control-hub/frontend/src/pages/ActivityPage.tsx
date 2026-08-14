@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { categoryOf, countByCategory, CATEGORY_LABELS, type ActivityCategory } from "../lib/activityCategories";
 import { Page, INTENT } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import UserAvatar from "../components/UserAvatar";
@@ -196,6 +197,14 @@ function WebhookPulse() {
   );
 }
 
+/** What each stream holds, said plainly, because the tab label cannot. */
+const CATEGORY_DESCRIPTIONS: Record<ActivityCategory, string> = {
+  github: "Changes to the organization — branches, protection, rulesets, repositories. Newest first.",
+  aws: "Findings and remediations from the AWS guardrail engine.",
+  app: "This app's own settings — widgets, scanners, imports, and undo history.",
+  audit: "The enterprise audit log.",
+};
+
 export default function ActivityPage() {
   const { user } = useAuth();
   const { data, isLoading, error } = useActivity(100);
@@ -206,6 +215,9 @@ export default function ActivityPage() {
   const undoResolutionMutation = useUndoResolution();
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | "app" | "github">("all");
+  // Defaults to the organization stream. That is what this app exists to
+  // record — dashboard housekeeping is one click away rather than mixed in.
+  const [category, setCategory] = useState<ActivityCategory>("github");
   const [repoFilter, setRepoFilter] = useState("");
   const [targetFilter, setTargetFilter] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -273,13 +285,20 @@ export default function ActivityPage() {
 
   const filtered = useMemo(() => {
     if (!data?.entries) return [];
-    let entries = data.entries;
+    let entries = data.entries.filter((e) => categoryOf(e.action) === category);
     if (sourceFilter !== "all") entries = entries.filter((e) => e.source === sourceFilter);
     if (repoFilter) { const q = repoFilter.toLowerCase(); entries = entries.filter((e) => e.repo.toLowerCase().includes(q)); }
     if (targetFilter) { const q = targetFilter.toLowerCase(); entries = entries.filter((e) => e.target.toLowerCase().includes(q) || (e.prNumber && e.prNumber.toString() === q) || (e.commitSha && e.commitSha.toLowerCase().includes(q))); }
     if (search) { const q = search.toLowerCase(); entries = entries.filter((e) => e.actor.toLowerCase().includes(q) || e.action.toLowerCase().includes(q) || (e.details && e.details.toLowerCase().includes(q))); }
     return entries;
-  }, [data, search, sourceFilter, repoFilter, targetFilter]);
+  }, [data, search, sourceFilter, repoFilter, targetFilter, category]);
+
+  // Counted across the whole feed so each tab shows how much it holds, rather
+  // than only what survived the current filters.
+  const categoryCounts = useMemo(
+    () => countByCategory((data?.entries ?? []).map(e => e.action)),
+    [data],
+  );
 
   const totalTopLevel = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalTopLevel / perPage));
@@ -287,7 +306,7 @@ export default function ActivityPage() {
   const pageStart = (safePage - 1) * perPage;
   const paginatedEntries = filtered.slice(pageStart, pageStart + perPage);
 
-  useEffect(() => { setCurrentPage(1); }, [search, sourceFilter, repoFilter, targetFilter, perPage]);
+  useEffect(() => { setCurrentPage(1); }, [search, sourceFilter, repoFilter, targetFilter, perPage, category]);
 
   useEffect(() => {
     if (!highlightedId) return;
@@ -477,10 +496,37 @@ export default function ActivityPage() {
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div>
               <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Activity</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">Everything that has changed across the organization, newest first.</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{CATEGORY_DESCRIPTIONS[category]}</p>
             </div>
             <WebhookPulse />
           </div>
+
+          {/* Four streams, because four things write here and they are not read
+              for the same reason. A widget being renamed and branch protection
+              being removed were previously the same list. */}
+          <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto">
+            {(["github", "aws", "app", "audit"] as ActivityCategory[]).map(c => {
+              const active = category === c;
+              const n = categoryCounts[c];
+              return (
+                <button
+                  key={c}
+                  onClick={() => setCategory(c)}
+                  aria-current={active ? "page" : undefined}
+                  className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors
+                    ${active
+                      ? "border-blue-600 dark:border-blue-400 text-slate-900 dark:text-white"
+                      : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
+                >
+                  {CATEGORY_LABELS[c]}
+                  <span className={`ml-2 text-xs tabular-nums ${active ? "text-slate-500 dark:text-slate-400" : "text-slate-400 dark:text-slate-500"}`}>
+                    {n}
+                  </span>
+                </button>
+              );
+            })}
+          </nav>
+
           <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-gh-border dark:border-slate-700 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-filter text-gh-muted dark:text-slate-400 text-sm"></i>
@@ -539,7 +585,35 @@ export default function ActivityPage() {
                 </thead>
                 <tbody className="divide-y divide-gh-border dark:divide-slate-700">
                   {paginatedEntries.map((entry) => renderRow(entry, 0)).flat()}
-                  {paginatedEntries.length === 0 && <tr><td colSpan={7} className="px-6 py-8 text-center text-gh-muted dark:text-slate-400">No activity found</td></tr>}
+                  {paginatedEntries.length === 0 && (
+                    <tr><td colSpan={7} className="px-6 py-10 text-center text-gh-muted dark:text-slate-400">
+                      {/* An empty stream is not the same as a broken one, and
+                          the audit stream is empty by default until somebody
+                          configures streaming at the enterprise. Saying so
+                          beats an unexplained blank table. */}
+                      {category === "audit" && categoryCounts.audit === 0 ? (
+                        <>
+                          <p className="font-semibold text-slate-700 dark:text-slate-200">Enterprise audit log not connected</p>
+                          <p className="text-sm mt-1 max-w-md mx-auto">
+                            This stream stays empty until audit log streaming is configured at the enterprise
+                            and delivered to this account.
+                          </p>
+                        </>
+                      ) : categoryCounts[category] === 0 ? (
+                        <>
+                          <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing recorded here yet</p>
+                          <p className="text-sm mt-1">{CATEGORY_DESCRIPTIONS[category]}</p>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-semibold text-slate-700 dark:text-slate-200">No matching activity</p>
+                          <p className="text-sm mt-1">
+                            {categoryCounts[category]} {categoryCounts[category] === 1 ? "entry" : "entries"} in this stream, none matching the current filters.
+                          </p>
+                        </>
+                      )}
+                    </td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
