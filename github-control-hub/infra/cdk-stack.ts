@@ -724,14 +724,28 @@ export class GitHubControlHubStack extends cdk.Stack {
     // Deploy with `-c orgEnforcesBucketSsl=true` in such an account. The bucket
     // still ends up refusing plaintext; the organisation's control is what puts
     // that in writing rather than this stack.
-    const orgEnforcesBucketSsl =
-      String(this.node.tryGetContext("orgEnforcesBucketSsl") ?? "") === "true";
+    // `-c bucketPolicy=false` when something outside this stack owns the audit
+    // bucket's policy. Two things put you here, and both want the same answer:
+    //
+    //   - the organisation runs an S3 TLS auto-remediation, which writes a
+    //     policy within seconds of the bucket appearing and beats
+    //     CloudFormation to it; the deploy then fails, repeatedly, and no
+    //     number of retries wins the race.
+    //   - you intend to enforce it with this app's own S3 guardrail instead,
+    //     which adds the same deny and re-adds it if anyone removes it —
+    //     something CloudFormation only does on the next deploy.
+    //
+    // `orgEnforcesBucketSsl=true` still works; it was the first name, and it
+    // only described the first reason.
+    const bucketPolicyManaged =
+      String(this.node.tryGetContext("bucketPolicy") ?? "") !== "false"
+      && String(this.node.tryGetContext("orgEnforcesBucketSsl") ?? "") !== "true";
 
     const auditBucket = new s3.Bucket(this, "AuditLogBucket", {
       bucketName: `${stackPrefix}-audit-log-${this.account}`,
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: !orgEnforcesBucketSsl,
+      enforceSSL: bucketPolicyManaged,
       versioned: false,
       // The audit log is the record of who did what. Deleting the stack must
       // not take it with it, and CDK will refuse rather than silently destroy.

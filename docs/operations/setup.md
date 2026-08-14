@@ -390,11 +390,34 @@ CloudFormation creates the audit bucket
 No number of retries wins it. Deploy with the flag instead:
 
 ```bash
-npx cdk deploy -c enforce=true -c orgEnforcesBucketSsl=true
+npx cdk deploy -c enforce=true -c bucketPolicy=false
 ```
 
-The bucket still refuses plaintext — the organisation's control is what puts
-that in writing rather than this stack.
+That tells the stack something outside it owns the audit bucket's policy. Two
+situations want it, and they want the same answer:
+
+1. **The organisation's control writes it.** The race above.
+2. **You intend to enforce it with this app's own S3 guardrail.** Equivalent
+   protection, and arguably better: CloudFormation only reconciles the policy
+   on the next deploy, where the guardrail re-adds the deny on its next sweep
+   if anyone removes it. The gap is the minutes between the deploy and that
+   first sweep, on an empty bucket nothing is streaming to yet.
+
+`-c orgEnforcesBucketSsl=true` still works — it was the first name, and it only
+described the first case.
+
+Either way, check afterwards that a policy exists, because with the flag set
+this stack is no longer the thing guaranteeing it:
+
+```bash
+aws s3api get-bucket-policy \
+  --bucket github-control-hub-audit-log-$(aws sts get-caller-identity --query Account --output text) \
+  --query Policy --output text | python3 -m json.tool
+```
+
+A `Deny` on `aws:SecureTransport: false` is what you want. `NoSuchBucketPolicy`
+means nothing is enforcing it — add the S3 rule in the app and run it, or drop
+the flag and redeploy.
 
 To confirm that is what you are hitting, ask who wrote the policy. The error
 names the bucket, never whatever wrote to it:
@@ -446,10 +469,11 @@ That is the shape the AWS access portal hands out, and it needs no profile to
 exist at all. With a profile instead, `export AWS_PROFILE=<name>` after
 `aws sso login --profile <name>`.
 
-It also **offers** rather than seeds guardrail rules. Which rules an account
-should run is a decision about that account, and one of them rewrites bucket
-policies once switched to enforce — arriving to find it already there is
-inheriting somebody else's opinion. Add rules in the app, under the AWS tab.
+It creates **no guardrail rules**. Which rules an account runs is a decision
+about that account, and the S3 one rewrites bucket policies the moment it is
+switched to enforce — a rule that arrives with the install is an opinion nobody
+stated, one toggle away from acting on real resources. Add them in the app,
+under the AWS tab.
 
 Its deploy takes no context by default. Pass any through:
 

@@ -351,48 +351,17 @@ read -r -p "  Press enter once the webhook is saved… " _
 
 # ── 6. guardrail rules ────────────────────────────────────────────────
 step "6/7  Guardrail rules"
-NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-seed_rule() {
-  local id="$1" kind="$2" name="$3" desc="$4" params="$5"
-  if aws dynamodb get-item --table-name "${PREFIX}-aws-guardrails" \
-       --key "{\"id\":{\"S\":\"$id\"}}" --query 'Item.id.S' --output text 2>/dev/null | grep -q "$id"; then
-    skip "$name already exists"
-    return
-  fi
-  aws dynamodb put-item --table-name "${PREFIX}-aws-guardrails" --item "{
-    \"id\":{\"S\":\"$id\"}, \"kind\":{\"S\":\"$kind\"}, \"name\":{\"S\":\"$name\"},
-    \"description\":{\"S\":\"$desc\"}, \"enabled\":{\"BOOL\":true},
-    \"mode\":{\"S\":\"report\"}, \"applyOnCreate\":{\"BOOL\":true},
-    \"params\":{\"M\":$params}, \"exclusionLists\":{\"L\":[]},
-    \"createdBy\":{\"S\":\"migration\"},
-    \"createdAt\":{\"S\":\"$NOW\"}, \"updatedAt\":{\"S\":\"$NOW\"}
-  }" >/dev/null && ok "$name (report mode)"
-}
 
-# Offered, not assumed.
+# None are created here, deliberately.
 #
-# Which rules an account should run is a decision about that account, and
-# arriving to find two already there — one of which rewrites bucket policies
-# the moment it is switched to enforce — is inheriting somebody else's opinion.
-# Rules are added in the app, in the AWS tab, whenever you want them.
-ask SEED_RULES "Seed two starter guardrail rules, in report mode? (y/N)" "n"
-# tr rather than ${VAR,,}: that is bash 4, and macOS ships bash 3.2.
-SEED_RULES_LC=$(printf '%s' "$SEED_RULES" | tr '[:upper:]' '[:lower:]')
-if [ "$SEED_RULES_LC" != "y" ] && [ "$SEED_RULES_LC" != "yes" ]; then
-  skip "No rules seeded — add them in the app under the AWS tab"
-else
-
-# Both start in report mode on purpose. Enforce is a decision to make after
-# seeing what a real account actually contains, not a default to inherit.
-seed_rule "r-https" "s3_https_only" "S3 — deny non-TLS requests" \
-  "Adds a bucket policy statement denying any request made without TLS." \
-  '{"sid":{"S":"EnforceHTTPSOnly"}}'
-seed_rule "r-retention" "log_retention_min" "CloudWatch Logs — minimum retention" \
-  "Raises log groups kept for less than a year, and leaves longer ones alone." \
-  '{"minDays":{"N":"365"},"setToDays":{"N":"365"},"leaveLongerAlone":{"BOOL":true},"neverExpireIsCompliant":{"BOOL":true}}'
-
-warn "Both rules report only. Review findings before switching either to enforce."
-fi
+# Which rules an account runs is a decision about that account, and the S3 one
+# rewrites bucket policies the moment it is switched to enforce. A rule that
+# arrives with the install is an opinion nobody stated, sitting one toggle away
+# from acting on real resources.
+#
+# They are added in the app, under the AWS tab, where the catalogue explains
+# what each one does and what it would change.
+skip "None created — add them in the app, under the AWS tab"
 
 # ── 7. build ──────────────────────────────────────────────────────────
 step "7/7  Desktop app"
