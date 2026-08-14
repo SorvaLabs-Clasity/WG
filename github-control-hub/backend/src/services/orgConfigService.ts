@@ -8,6 +8,15 @@ export interface OrgFeatures {
 export interface OrgConfig {
   org: string;
   features: OrgFeatures;
+  /**
+   * The account self-hosted Renovate raises pull requests as.
+   *
+   * Configuration rather than a constant: there is no Renovate API to ask, so
+   * authorship is the only marker, and every installation names its bot
+   * differently. Unset means the organisation does not run Renovate, and the
+   * tab says so instead of showing an empty table that looks like a failure.
+   */
+  renovateBot?: string;
 }
 
 const TABLE = () => tableName("ORG_CONFIG_TABLE");
@@ -37,6 +46,17 @@ export async function getOrgConfig(): Promise<OrgConfig> {
     return defaultConfig;
   }
   return memConfig;
+}
+
+export async function updateRenovateBot(bot: string): Promise<OrgConfig> {
+  const current = await getOrgConfig();
+  const updated: OrgConfig = { ...current, renovateBot: bot.trim() || undefined };
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+  } else {
+    memConfig = updated;
+  }
+  return updated;
 }
 
 export async function updateOrgFeatures(featureUpdates: Partial<OrgFeatures>): Promise<OrgConfig> {

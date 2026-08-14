@@ -23,4 +23,5 @@ export const ALL_METRIC_SPECS: MetricSpec[] = [
   { metric: "bypasses.total", kind: "count", label: "Bypasses in total", unit: "bypasses" },
   { metric: "bypasses.repos", kind: "count", label: "Repositories with a bypass", unit: "repos" },
   { metric: "query.rows", kind: "count", label: "Matching rows", unit: "rows" },
+  { metric: "renovatePrs.open", kind: "count", label: "Open Renovate PRs", unit: "PRs" },
 ];

@@ -9,7 +9,7 @@ and — usually the most useful part — what it deliberately does not tell you.
 | AWS | [../aws-guardrails/](../aws-guardrails/) | What is wrong in our AWS accounts |
 | Security | [security-checks.md](security-checks.md) | Which repos fail which check |
 | Access | [access-map.md](access-map.md) | Who can reach what, and how |
-| Dependabot | [dependabot.md](dependabot.md) | What vulnerabilities are we watching for |
+| Vulnerabilities | [dependabot.md](dependabot.md) · [renovate.md](renovate.md) | What is vulnerable, and what has been raised to fix it |
 | Repos | [repos.md](repos.md) | Everything about one repository |
 | Activity | [activity-and-undo.md](activity-and-undo.md) | What changed, who did it, undo |
 

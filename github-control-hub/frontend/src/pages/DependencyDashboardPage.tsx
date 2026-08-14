@@ -23,6 +23,8 @@ const SEV_STYLE: Record<string, { chip: string; bar: string; rank: number }> = {
 const REPOS_PER_PAGE = 15;
 const COLLAPSED = 4;
 
+import RenovatePanel from "../components/RenovatePanel";
+
 export default function DependencyDashboardPage() {
   const { user } = useAuth();
   const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj,
@@ -121,8 +123,8 @@ export default function DependencyDashboardPage() {
   return (
     <Page user={user}>
       <PageHeader
-        title="Dependabot"
-        subtitle="Known vulnerabilities in dependencies, and which repositories are watching for them."
+        title="Vulnerabilities"
+        subtitle="Known vulnerabilities in dependencies, which repositories are watching for them, and the updates Renovate has raised."
         actions={
           <RefreshButton
             busy={depsFetching || sumFetching}
@@ -299,6 +301,13 @@ export default function DependencyDashboardPage() {
           })}
         </div>
       )}
+
+      {/* Renovate covers the other half of the same question: Dependabot says
+          what is vulnerable, Renovate says what has been raised to fix it. */}
+      <div className="mt-12">
+        <RenovatePanel />
+      </div>
+
     </Page>
   );
 }

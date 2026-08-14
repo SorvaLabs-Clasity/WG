@@ -5,6 +5,8 @@ import { evaluateAlarms } from "./evaluate";
 import { computeWidgetRows } from "./widgetValues";
 import { fetchOrgDependencyAlerts } from "../services/dependencyService";
 import { evaluateSecurityQuery } from "../services/graphService";
+import { fetchRenovatePrs, openPrs } from "../services/renovateService";
+import { getOrgConfig } from "../services/orgConfigService";
 import { listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings } from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
@@ -82,8 +84,39 @@ export async function handler(): Promise<void> {
     return dependencyPromise;
   };
 
+  /**
+   * Fetched at most once per run, like the Dependabot sweep above and for the
+   * same reason: several alarms on the same number should cost one search, not
+   * one each.
+   */
+  let renovatePromise: Promise<any[] | null> | null = null;
+  const renovateOpenPrs = () => {
+    if (!renovatePromise) {
+      renovatePromise = (async () => {
+        const bot = (await getOrgConfig()).renovateBot;
+        if (!bot) return null;
+        const res = await fetchRenovatePrs(
+          async (q, page) => {
+            const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
+              q, per_page: 100, page, advanced_search: "true",
+            });
+            return { items: r.data?.items ?? [] };
+          },
+          org, bot,
+        );
+        // An unreachable bot is no reading at all. Returning zero would let
+        // an alarm on "open PRs" resolve itself because the account name is
+        // wrong, which is the opposite of what it is watching for.
+        if (res.unknownBot) return null;
+        return openPrs(res.prs);
+      })();
+    }
+    return renovatePromise;
+  };
+
   const sources = {
     dependencyAlerts,
+    renovateOpenPrs,
     runQuery: (queryId: string, param?: string, advanced?: any) =>
       evaluateSecurityQuery(queryId, param, advanced, token) as Promise<any[]>,
   };

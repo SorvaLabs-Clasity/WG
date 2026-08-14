@@ -6,6 +6,9 @@ import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
 import { sendIfPermissionDenied } from "../utils/permissionError";
 import { fetchAllCursorPages } from "../utils/cursorPages";
+import { fetchRenovatePrs } from "../services/renovateService";
+import { getOrgConfig, updateRenovateBot } from "../services/orgConfigService";
+import { isAwsAdmin } from "../services/authorizationService";
 import { mapAlert, fetchOrgDependencyAlerts } from "../services/dependencyService";
 
 const router = Router();
@@ -253,5 +256,64 @@ function mockCleanAlert(repoName: string, orgName: string) {
     clean: true
   };
 }
+
+/**
+ * Renovate pull requests.
+ *
+ * Read-only by design. The app lists what the bot has raised and links out to
+ * GitHub; merging happens there, with GitHub authorising the person doing it.
+ * There is deliberately no route here that could merge, and repro-renovate.ts
+ * asserts that no code anywhere in the backend can.
+ */
+router.get("/renovate", async (req: Request, res: Response) => {
+  try {
+    const token = getSystemToken() || req.user?.accessToken;
+    if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+
+    const bot = (await getOrgConfig()).renovateBot;
+    // Not an error: most organisations do not run Renovate. The UI says so
+    // rather than showing an empty table, which reads as a broken fetch.
+    if (!bot) return res.json({ configured: false, prs: [], truncated: false, bot: null });
+
+    const octokit = createOctokit(token);
+    const result = await fetchRenovatePrs(
+      async (q, page) => {
+        const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
+          q, per_page: 100, page, advanced_search: "true",
+        });
+        return { items: r.data?.items ?? [] };
+      },
+      getOrg(), bot,
+    );
+    res.json({ configured: true, ...result });
+  } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "renovate") });
+  }
+});
+
+/** Naming the bot account is org-wide configuration, so it is admin-gated. */
+router.put("/renovate/bot", async (req: Request, res: Response) => {
+  try {
+    if (!(await isAwsAdmin(req.user!.login))) {
+      return res.status(403).json({
+        code: "CONTROL_HUB_ADMIN_REQUIRED",
+        error: "Only organisation admins can change which account Renovate raises PRs as.",
+      });
+    }
+    const bot = String(req.body?.bot ?? "").trim();
+    // A GitHub login: letters, digits, hyphens, and the [bot] suffix some
+    // apps carry. Rejected here so it cannot become a malformed search query.
+    if (bot && !/^[A-Za-z0-9][A-Za-z0-9-]{0,38}(\[bot\])?$/.test(bot)) {
+      return res.status(400).json({ error: `"${bot}" is not a valid GitHub username` });
+    }
+    const updated = await updateRenovateBot(bot);
+    await logActivity("config.updated" as any, req.user!.login, "", "renovate_bot",
+      bot ? `Renovate bot set to ${bot}` : "Renovate bot cleared", undefined, "app");
+    res.json({ renovateBot: updated.renovateBot ?? null });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "renovate") });
+  }
+});
 
 export default router;

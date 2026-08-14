@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter, SearchInput, Pager } from "../design";
 import { useTableControls } from "../hooks/useTableControls";
+import { fetchRenovate } from "../api/renovate";
+import { useQuery } from "@tanstack/react-query";
 import AlarmModal from "../components/AlarmModal";
 import { useAlarms } from "../hooks/useAlarms";
 import { useAuth } from "../App";
@@ -17,7 +19,7 @@ import { TagInput } from "../components/TagInput";
 
 type WidgetType = "preset" | "query";
 type DisplayType = "metric" | "table";
-type PresetId = "dependabot" | "bypasses" | "vuln-repos";
+type PresetId = "dependabot" | "bypasses" | "vuln-repos" | "renovate-open";
 
 /**
  * Which severities the "repositories with vulnerabilities" preset counts.
@@ -555,6 +557,7 @@ function detailOf(item: any, config: WidgetConfig): string {
   if (config.type === "preset" && config.presetId === "dependabot") return `${item.total ?? 0} alerts`;
   if (config.type === "preset" && config.presetId === "vuln-repos") return item.worst ?? "";
   if (config.type === "preset" && config.presetId === "bypasses") return `${item.bypasses ?? 0} bypasses`;
+  if (config.type === "preset" && config.presetId === "renovate-open") return `#${item.number} · open ${item.ageDays}d`;
   if (item?.status) return item.status;
   const r = String(item?.reason ?? "");
   return r.length > 28 ? r.slice(0, 27) + "…" : r;
@@ -743,6 +746,13 @@ function CheckCard({
 function useWidgetData(config: WidgetConfig) {
   const { data: depsData, isLoading: depsLoading } = useDependencies();
   const isBypass = config.type === "preset" && config.presetId === "bypasses";
+  const isRenovate = config.type === "preset" && config.presetId === "renovate-open";
+  const { data: renovateData, isLoading: renovateLoading } = useQuery({
+    queryKey: ["renovate"],
+    queryFn: fetchRenovate,
+    staleTime: 120_000,
+    enabled: isRenovate,
+  });
   const { data: bypassData, isLoading: bypassLoading } = useSecurityQuery(isBypass ? "protection-bypasses-ranking" : null);
 
   const isQuery = config.type === "query";
@@ -793,6 +803,11 @@ function useWidgetData(config: WidgetConfig) {
       } else if (config.presetId === "bypasses") {
         loading = bypassLoading;
         rawItems = bypassData || [];
+      } else if (config.presetId === "renovate-open") {
+        // Only the open ones. The card answers "what is waiting to be merged",
+        // which a closed PR has by definition stopped being.
+        loading = renovateLoading;
+        rawItems = (renovateData?.prs ?? []).filter((p: any) => p.state === "open");
       }
     } else {
       loading = queryLoading;
@@ -800,7 +815,7 @@ function useWidgetData(config: WidgetConfig) {
     }
 
     return { items: rawItems, isLoading: loading };
-  }, [config, depsData, depsLoading, bypassData, bypassLoading, queryData, queryLoading]);
+  }, [config, depsData, depsLoading, bypassData, bypassLoading, queryData, queryLoading, renovateData, renovateLoading]);
 
   // Only a check that counts repositories has the organisation as its
   // denominator. Users and teams do not, and a share of the wrong thing is
@@ -1262,6 +1277,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                   <option value="dependabot">Dependabot Issues Ranking</option>
                   <option value="vuln-repos">Repositories with vulnerabilities</option>
                   <option value="bypasses">Protection Rule Bypasses</option>
+                  <option value="renovate-open">Open Renovate PRs</option>
                 </select>
 
                 {presetId === "vuln-repos" && (

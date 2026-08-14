@@ -37,7 +37,8 @@ export type CountMetric =
   | "vulnRepos.total"
   | "bypasses.total"
   | "bypasses.repos"
-  | "query.rows";
+  | "query.rows"
+  | "renovatePrs.open";
 
 export type AlarmCondition =
   | { kind: "count"; metric: CountMetric; op: "gte" | "lte"; threshold: number }
@@ -80,6 +81,11 @@ export function conditionsFor(widget: { type: string; presetId?: string }): Metr
         { metric: "vulnRepos.repos", kind: "count", label: "Matching repositories", unit: "repos" },
         { metric: "vulnRepos.total", kind: "count", label: "Alerts in total", unit: "alerts" },
         { metric: "vulnRepos.worstSeverity", kind: "severity", label: "Worst severity present" },
+      ];
+    case "renovate-open":
+      return [
+        { metric: "renovatePrs.open", kind: "count", label: "Open Renovate PRs", unit: "PRs",
+          hint: "Counts pull requests the Renovate bot has open and nobody has merged." },
       ];
     case "bypasses":
       return [
@@ -142,6 +148,7 @@ export function metricValue(metric: MetricSpec["metric"], rows: any[] | null | u
     case "bypasses.total": return sum(rows, "bypasses");
     case "bypasses.repos": return rows.length;
     case "query.rows": return rows.length;
+    case "renovatePrs.open": return rows.length;
     default: return null;
   }
 }

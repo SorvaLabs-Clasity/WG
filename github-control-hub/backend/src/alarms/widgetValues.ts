@@ -64,6 +64,8 @@ export interface WidgetDataSources {
   /** The organisation's open Dependabot alerts, and whether the sweep worked. */
   dependencyAlerts: () => Promise<{ alerts: DependencyAlert[]; degraded: boolean }>;
   runQuery: (queryId: string, param?: string, advanced?: any) => Promise<any[]>;
+  /** Open Renovate pull requests. Absent when no bot account is configured. */
+  renovateOpenPrs: () => Promise<any[] | null>;
 }
 
 export interface WidgetRows {
@@ -139,6 +141,15 @@ export async function computeWidgetRows(
       }
       case "bypasses":
         return { rows: await sources.runQuery("protection-bypasses-ranking") };
+      case "renovate-open": {
+        const prs = await sources.renovateOpenPrs();
+        // null, not an empty list, when no bot is configured — an alarm must
+        // not read "zero open PRs" off an organisation nobody told us how to
+        // look at, and quietly report all clear.
+        return prs === null
+          ? { rows: null, error: "No Renovate bot account is configured" }
+          : { rows: prs };
+      }
       default:
         return { rows: null, error: `Unknown preset "${widget.presetId}"` };
     }
