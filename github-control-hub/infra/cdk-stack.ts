@@ -606,7 +606,14 @@ export class GitHubControlHubStack extends cdk.Stack {
     // payload content: a ceiling per source address, well above anything
     // GitHub sends, that stops a compromised or misbehaving source from
     // driving the queue.
-    const webhookWaf = new wafv2.CfnWebACL(this, "WebhookWaf", {
+    // Skippable with `-c waf=false`, which is what a second, non-production
+    // deployment should do. The web ACL is a flat $5 a month plus $1 a rule —
+    // most of a small stack's entire bill — to rate-limit an environment
+    // nobody depends on. The IP allow-list and the signature check, which are
+    // what actually keep strangers out, are unaffected either way.
+    const wafEnabled = String(this.node.tryGetContext("waf") ?? "true") !== "false";
+
+    const webhookWaf = wafEnabled ? new wafv2.CfnWebACL(this, "WebhookWaf", {
       name: `${stackPrefix}-webhook`,
       scope: "REGIONAL",
       defaultAction: { allow: {} },
@@ -629,9 +636,9 @@ export class GitHubControlHubStack extends cdk.Stack {
           sampledRequestsEnabled: false,
         },
       }],
-    });
+    }) : undefined;
 
-    new wafv2.CfnWebACLAssociation(this, "WebhookWafAssociation", {
+    if (webhookWaf) new wafv2.CfnWebACLAssociation(this, "WebhookWafAssociation", {
       // Built as a string rather than with formatArn. An API Gateway stage ARN
       // has a leading slash before the resource — arn:…:apigateway:region::/restapis/…
       // — and formatArn joins account and resource with a single colon, which

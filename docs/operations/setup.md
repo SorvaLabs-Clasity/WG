@@ -418,6 +418,41 @@ aws s3api list-objects-v2 --bucket "$BUCKET" --query 'KeyCount' --output text   
 aws s3api delete-bucket --bucket "$BUCKET"                                      # refuses if not empty
 ```
 
+## A second deployment, for a copy you can break
+
+The stack carries no assumption that an organisation has one deployment. A
+second AWS account can run its own copy — its own tables, secrets, queue and
+API Gateway — against the same GitHub organisation, and the desktop app moves
+between them by switching AWS profile.
+
+What is shared is only what lives on GitHub's side: the organisation, and
+optionally the App and OAuth App.
+
+- **A GitHub organisation can hold more than one webhook.** Add a second
+  pointing at the new account's `WebhookUrl`, with its own secret. Both receive
+  every event; each account's worker writes to its own tables.
+- **A separate GitHub App is optional but worth it.** Apps are free and
+  unlimited. The reason is not isolation of permissions — it is that the
+  12,500 requests an hour are *per installation*, so sharing one App means a
+  busy afternoon in the copy spends production's budget.
+- **The OAuth App can be shared.** Both desktop apps redirect to
+  `http://localhost:4321/auth/callback`, so one registration serves both.
+
+Deploy a non-production copy without the web ACL:
+
+```bash
+npx cdk deploy -c enforce=true -c waf=false
+```
+
+That is a flat $5 a month plus $1 a rule — most of a small stack's bill — to
+rate-limit an environment nobody depends on. The IP allow-list and the
+signature check, which are what actually keep strangers out, are unaffected.
+
+One thing to keep apart deliberately: if the copy runs guardrails with
+`enforce=true`, keep production accounts out of its monitored-account list.
+Nothing else in the copy can reach production, but that list is an explicit
+invitation to.
+
 ## Verifying
 
 1. **Create a repository in the org.** It should appear in Activity within
