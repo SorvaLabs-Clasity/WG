@@ -1,6 +1,5 @@
 import { Router, Request, Response } from "express";
 import { createOctokit, getOrg, getSystemToken } from "../github/client";
-import { listRepos } from "../services/repoService";
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
@@ -72,19 +71,19 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       // organisation, every time the tab was opened. GraphQL carries the same
       // flag 100 repositories at a time, and on a different rate-limit budget
       // from everything else here.
-      const repos = await listRepos(octokit);
+      // The same query returns the repository list, so listRepos is not called
+      // here at all — it would be four more REST pages fetching names GraphQL
+      // has already handed over.
       const reposWithAlerts = new Set(allAlerts.map(a => a.repo));
       const alertStatus = await fetchRepoAlertStatus(
         (query, vars) => (octokit as any).graphql(query, vars), org);
 
-      for (const r of repos) {
-        if (reposWithAlerts.has(r.name)) continue;
-        // Unknown rather than assumed. If the status query failed, the
-        // repository is listed without a marker instead of being labelled
-        // "Dependabot off", which would read as a finding rather than a gap.
-        const enabled = alertStatus?.get(r.name);
-        if (enabled === undefined) continue;
-        allAlerts.push(enabled ? mockCleanAlert(r.name, org) : mockDisabledAlert(r.name, org));
+      // A failed status query means no markers rather than a wrong one:
+      // labelling every repository "Dependabot off" would read as 355
+      // findings nobody caused.
+      for (const [name, enabled] of alertStatus ?? []) {
+        if (reposWithAlerts.has(name)) continue;
+        allAlerts.push(enabled ? mockCleanAlert(name, org) : mockDisabledAlert(name, org));
       }
     }
 

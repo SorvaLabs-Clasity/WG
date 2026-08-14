@@ -57,6 +57,13 @@ The flag was checked against the REST endpoint it replaced before the swap, in
 both directions — on repositories with alerts on and off. A field that is
 always false would agree with a mostly-off organisation and still be wrong.
 
+That same query returns the repository names, so the REST repository listing is
+not called here either — four more pages fetching names GraphQL had already
+handed over.
+
+A full load of the tab is now **5 requests** (1 REST + 4 GraphQL), against
+roughly 355 before.
+
 If the query fails, repositories are listed **without** the on/off marker
 rather than falling back to hundreds of calls. A page missing one column beats
 a slow page, and the fallback is the thing being removed.
