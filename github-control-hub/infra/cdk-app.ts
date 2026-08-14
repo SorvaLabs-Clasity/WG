@@ -40,5 +40,4 @@ new GitHubControlHubStack(app, "GitHubControlHub", {
     account: getAccount(),
     region: getRegion(),
   },
-  instanceType: app.node.tryGetContext("instanceType") || "t3.small",
 });

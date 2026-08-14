@@ -30,8 +30,6 @@ const GITHUB_WEBHOOK_CIDRS = [
 ];
 
 interface GitHubControlHubProps extends cdk.StackProps {
-  /** EC2 instance size. Defaults to t3.small */
-  instanceType?: string;
   /** Secrets Manager secret name. Defaults to "github-control-hub/secrets" */
   secretName?: string;
   /** DynamoDB table prefix. Defaults to "github-control-hub" */
@@ -76,9 +74,8 @@ export class GitHubControlHubStack extends cdk.Stack {
     const guardrailRoleName = `${stackPrefix}-guardrail-access`;
 
     // ── AWS guardrails ──
-    // Enforcement runs here rather than on the instance: it needs no inbound
-    // connectivity, so the security group stays closed to everything but
-    // GitHub's webhook ranges.
+    // Enforcement runs here, in Lambda, rather than on a server: it needs no
+    // inbound connectivity at all, so there is nothing for anyone to reach.
     const guardrailDlq = new sqs.Queue(this, "GuardrailDlq", {
       retentionPeriod: cdk.Duration.days(14),
       // Failed invocations carry the event that caused them, which names
