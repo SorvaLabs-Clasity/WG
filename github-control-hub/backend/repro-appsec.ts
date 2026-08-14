@@ -94,10 +94,34 @@ const electron = read("github-control-hub/desktop/src/main.ts");
   // that instance outright, so there is no root volume and no instance
   // metadata service left to check.
   {
-    check("the dead-letter queue is encrypted",
-      /encryption:\s*sqs\.QueueEncryption\./.test(cdk));
-    check("  and refuses plaintext transport",
-      /enforceSSL:\s*true/.test(cdk));
+    // Every queue, not "the dead-letter queue": testing encryption/enforceSSL
+    // against the whole file passes as soon as any one queue has them, so a
+    // fourth queue added without either would pass unnoticed as long as an
+    // already-compliant queue (guardrailDlq, say) still exists anywhere in
+    // cdk-stack.ts. Each `new sqs.Queue(...)` call is sliced out by matching
+    // parens rather than lines, since the deadLetterQueue block nests braces
+    // of its own inside webhookQueue's constructor call.
+    const queues: string[] = [];
+    const marker = "new sqs.Queue(";
+    for (let i = cdk.indexOf(marker); i !== -1; i = cdk.indexOf(marker, i + 1)) {
+      let depth = 0, j = i + marker.length - 1; // start at the "("
+      do {
+        if (cdk[j] === "(") depth++;
+        else if (cdk[j] === ")") depth--;
+        j++;
+      } while (depth > 0 && j < cdk.length);
+      queues.push(cdk.slice(i, j));
+    }
+
+    check("at least one sqs.Queue was found to check", queues.length > 0, queues.length);
+
+    for (const q of queues) {
+      const name = /new sqs\.Queue\(this,\s*"([^"]+)"/.exec(q)?.[1] ?? "(unnamed queue)";
+      check(`${name} is encrypted`,
+        /encryption:\s*sqs\.QueueEncryption\./.test(q));
+      check(`  and ${name} refuses plaintext transport`,
+        /enforceSSL:\s*true/.test(q));
+    }
   }
 
   // ── the renderer cannot reach node ─────────────────────────────────
