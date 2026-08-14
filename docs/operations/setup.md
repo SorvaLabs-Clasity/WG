@@ -418,6 +418,23 @@ aws s3api list-objects-v2 --bucket "$BUCKET" --query 'KeyCount' --output text   
 aws s3api delete-bucket --bucket "$BUCKET"                                      # refuses if not empty
 ```
 
+## Standing up a whole environment
+
+`scripts/migrate-to-account.sh` is the guided path for a fresh account: seven
+steps covering tables, credentials, CloudTrail, the CDK deploy, the org
+webhook, guardrail rules and the desktop app. It calls
+`setup-aws-account.sh` for the tables rather than duplicating them, and runs
+`cdk bootstrap` first.
+
+Its deploy takes no context by default. Pass any through:
+
+```bash
+CDK_CONTEXT="-c enforce=true -c orgEnforcesBucketSsl=true" ./scripts/migrate-to-account.sh
+```
+
+In an organisation running an S3 TLS auto-remediation, the second flag is not
+optional — see the bucket-TLS section below for what happens without it.
+
 ## A second deployment, for a copy you can break
 
 The stack carries no assumption that an organisation has one deployment. A
