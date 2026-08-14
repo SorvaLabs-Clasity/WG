@@ -1,9 +1,8 @@
-import { apiGet, apiPost, apiDelete, apiPut, apiPatch, DEMO_MODE } from "./client";
+import { apiGet, apiPost, apiDelete, apiPatch, DEMO_MODE } from "./client";
 import {
   mockFetchBranches,
   mockCreateBranch,
   mockDeleteBranch,
-  mockProtectBranch,
   mockRenameBranch,
 } from "./mock";
 import type { Branch } from "../types/Branch";
@@ -63,15 +62,6 @@ export async function fetchRepoRulesets(repo: string): Promise<any[]> {
     ];
   }
   return apiGet(`/repos/${repo}/rulesets`);
-}
-
-export function protectBranch(
-  repo: string,
-  branch: string,
-  protection: import("../types/Protection").BranchProtection
-): Promise<{ message: string }> {
-  if (DEMO_MODE) return mockProtectBranch(repo, branch, protection);
-  return apiPut(`/repos/${repo}/protection/${branch}`, protection);
 }
 
 export async function deleteBranchProtection(repo: string, branch: string): Promise<{ message: string }> {

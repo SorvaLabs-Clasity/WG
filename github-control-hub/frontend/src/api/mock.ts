@@ -9175,27 +9175,6 @@ export async function mockRenameBranch(
   return { message: `Branch "${oldName}" renamed to "${newName}" (demo)` };
 }
 
-export async function mockProtectBranch(
-  _repo: string,
-  branch: string,
-  protection: import("../types/Protection").BranchProtection
-): Promise<{ message: string }> {
-  await delay(500);
-  mockActivityLog.unshift({
-    id: crypto.randomUUID(),
-    source: "app",
-    action: "branch.protect",
-    actor: DEMO_USER.login,
-    repo: _repo,
-    target: branch,
-    details: "Applied protection rules",
-    diff: { protection: { old: null, new: protection } },
-    timestamp: new Date().toISOString(),
-    undoPayload: { action: "delete_protection", params: { repo: _repo, branch } },
-  });
-  return { message: `Protection applied to "${branch}" (demo)` };
-}
-
 // ── Scanner mock data ────────────────────────────────────────────
 
 let mockScanners: Scanner[] = [

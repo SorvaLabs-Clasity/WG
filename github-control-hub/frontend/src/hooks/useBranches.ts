@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchBranches, createBranch, deleteBranch, renameBranch, protectBranch, fetchRepoRulesets, fetchBranchProtection, fetchAllBranchProtections, deleteBranchProtection, deleteRepoRuleset, importRepoRuleset } from "../api/branches";
+import { fetchBranches, createBranch, deleteBranch, renameBranch, fetchRepoRulesets, fetchBranchProtection, fetchAllBranchProtections, deleteBranchProtection, deleteRepoRuleset, importRepoRuleset } from "../api/branches";
 
 export function useBranches(repo: string) {
   return useQuery({
@@ -68,19 +68,6 @@ export function useRenameBranch(repo: string) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["branches", repo] });
       qc.invalidateQueries({ queryKey: ["activity"] });
-    },
-  });
-}
-
-export function useProtectBranch(repo: string) {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ branch, protection }: { branch: string, protection: import("../types/Protection").BranchProtection }) => protectBranch(repo, branch, protection),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["branches", repo] });
-      qc.invalidateQueries({ queryKey: ["activity"] });
-      qc.invalidateQueries({ queryKey: ["protection", repo] });
-      qc.invalidateQueries({ queryKey: ["all-protections", repo] });
     },
   });
 }
