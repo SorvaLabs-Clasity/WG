@@ -23,6 +23,7 @@ All prefixed `github-control-hub-` by default (`STACK_NAME` overrides it).
 | `aws-exclusions` | `id` | AWS exclusion lists |
 | `aws-findings` | `pk="FINDING"`, `sk` | Latest verdict per account/region/rule/resource |
 | `alarms` | `id` | Widget alarms and their state, email groups, notification settings — one table, rows told apart by `kind` |
+| `webhook-deliveries` | `deliveryId` | Replay-protection markers, TTL 15 minutes. The only table CDK owns, so `cdk destroy` cannot take user data with it |
 
 ## Two design notes worth knowing
 
