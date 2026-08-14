@@ -94,16 +94,50 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
               it does not wait for the next check.
             </p>
           </div>
-          <button
-            onClick={() => { const next = !enabled; setEnabled(next); save({ enabled: next }); }}
-            disabled={!enabled && !groupId}
-            title={!enabled && !groupId ? "Choose an email group first" : ""}
-            className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-40 ${
-              enabled ? "bg-gh-blue" : "bg-gray-300 dark:bg-slate-600"}`}>
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              enabled ? "translate-x-6" : "translate-x-1"}`} />
-          </button>
+          <div className="shrink-0 flex items-center gap-2">
+            {/* The state, in a word. Choosing a group saves that choice but does
+                not switch anything on, and a toggle whose position is the only
+                clue reads as "configured" once the dropdown is filled in. */}
+            <span className={`text-xs font-bold uppercase tracking-wide ${
+              enabled ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-slate-500"}`}>
+              {enabled ? "On" : "Off"}
+            </span>
+            <button
+              onClick={() => { const next = !enabled; setEnabled(next); save({ enabled: next }); }}
+              disabled={!enabled && !groupId}
+              title={!enabled && !groupId ? "Choose an email group first" : ""}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-40 ${
+                enabled ? "bg-gh-blue" : "bg-gray-300 dark:bg-slate-600"}`}>
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                enabled ? "translate-x-6" : "translate-x-1"}`} />
+            </button>
+          </div>
         </div>
+
+        {/* A group chosen while this is off is the state that looks finished
+            and sends nothing. Say so where the eye already is. */}
+        {!enabled && groupId && (
+          <div className="mt-3 rounded-md bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+            A group is selected but this is <strong>off</strong> — alerts are being recorded and
+            nobody is emailed. Use the switch above to start sending.
+          </div>
+        )}
+        {enabled && groupId && (
+          <div className="mt-3 rounded-md bg-green-50 dark:bg-green-950/40 px-3 py-2 text-sm text-green-800 dark:text-green-300">
+            Sending {minSeverity} and above to{" "}
+            <strong>{groups?.find(g => g.id === groupId)?.name ?? "the selected group"}</strong>
+            {(() => {
+              const g = groups?.find(x => x.id === groupId);
+              if (!g) return null;
+              const ok = g.members.filter(m => m.confirmed).length;
+              const pending = g.members.length - ok;
+              return <> — {ok} confirmed recipient{ok === 1 ? "" : "s"}
+                {pending > 0 && <>, {pending} still pending and receiving nothing</>}
+                {ok === 0 && <strong> — nobody will receive these until someone confirms</strong>}
+              </>;
+            })()}
+          </div>
+        )}
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
