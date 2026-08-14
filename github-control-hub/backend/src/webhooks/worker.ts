@@ -58,7 +58,26 @@ export async function handler(event: SQSEvent): Promise<void> {
   // Resolved once per invocation rather than read from the module singleton.
   // The refresh timer behind the synchronous getter does not fire on schedule
   // in a frozen container, so this is what keeps the token live.
-  const token = await getSystemTokenAsync();
+  //
+  // Not awaited bare: initTokenManager assigns the module-level manager before
+  // awaiting its own init(), so a container whose GitHub App init failed is
+  // left with a non-null manager whose internal auth() is never set. Every
+  // invocation on that container would then have getTokenAsync() throw here,
+  // outside processDelivery's try/catch, failing the whole batch to the DLQ
+  // for as long as the container stays warm. The Express route this replaced
+  // called the synchronous getSystemToken(), which degrades to
+  // SYSTEM_GITHUB_TOKEN and never throws; this restores that fallback.
+  // Downstream code already treats an empty token as "skip GitHub work".
+  let token: string;
+  try {
+    token = await getSystemTokenAsync();
+  } catch (err) {
+    console.error(
+      "[Webhook] Token resolution failed — degrading to SYSTEM_GITHUB_TOKEN for this invocation:",
+      (err as Error).message,
+    );
+    token = process.env.SYSTEM_GITHUB_TOKEN || "";
+  }
 
   for (const record of event.Records) {
     const { deliveryId, event: githubEvent, payload } = JSON.parse(record.body);
@@ -80,13 +99,13 @@ export async function handler(event: SQSEvent): Promise<void> {
 
     // Deliberately not in the try above, and deliberately swallowed.
     //
-    // By here the work is done — activity rows written, templates applied. A
+    // By here the work is done — activity rows written, alerts generated. A
     // release-and-rethrow would hand the message back to SQS and guarantee it
     // is processed a second time, duplicating exactly that work. Leaving the
     // claim in place instead means the redelivery (if any) is refused by the
     // lease and the delivery lapses quietly, which costs nothing but the
-    // shorter `done` window. Losing the marker is much cheaper than reapplying
-    // the templates.
+    // shorter `done` window. Losing the marker is much cheaper than duplicate
+    // activity rows and duplicate alerts.
     try {
       await completeDelivery(deliveryId);
     } catch (err) {

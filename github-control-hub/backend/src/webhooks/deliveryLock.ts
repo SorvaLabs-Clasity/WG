@@ -40,7 +40,7 @@ const LEASE_SEC = 630;
  * worker can succeed and have the message deletion not register, which is
  * ordinary at-least-once behaviour, and the redelivery arrives one visibility
  * timeout later at 660 seconds. A 300-second marker has expired by then, so the
- * delivery would be claimed again and its templates applied a second time.
+ * delivery would be claimed again and its activity rows and alerts duplicated.
  *
  * The cost is that a manual redelivery from GitHub's UI is ignored for fifteen
  * minutes rather than five.

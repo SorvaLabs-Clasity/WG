@@ -178,7 +178,8 @@ const code = (src: string) => src
 
   // At-least-once means a successful delivery can be redelivered when its
   // deletion does not register, one visibility timeout (660s) later. A marker
-  // that expired before then would let templates be applied a second time.
+  // that expired before then would let its activity rows and alerts be
+  // written a second time.
   check("  and the marker outlives the queue's visibility timeout",
     store.get("d-1").expiresAt - Math.floor(Date.now() / 1000) > 660,
     store.get("d-1").expiresAt - Math.floor(Date.now() / 1000));
@@ -199,9 +200,9 @@ const code = (src: string) => src
 //
 // On Express the process outlives the request, so refreshRepo, addRepoEdges and
 // the scan timer were deliberately not awaited. In Lambda the container freezes
-// when the handler resolves: activity rows and template auto-apply would keep
-// working because those are awaited, while compliance refresh, new-repo graph
-// edges and scanner runs silently stopped. A partial success reports nothing.
+// when the handler resolves: activity rows and alerts would keep working
+// because those are awaited, while compliance refresh, new-repo graph edges
+// and scanner runs silently stopped. A partial success reports nothing.
 {
   const fs = await import("fs");
   const nodePath = await import("path");
@@ -231,14 +232,14 @@ const code = (src: string) => src
   check("background work is awaited, not abandoned", settled);
 
   // A flaky scanner must not throw out of processDelivery: the worker would
-  // release its claim, SQS would redeliver, and templates would be applied
-  // again — up to five times.
+  // release its claim, SQS would redeliver, and the activity rows and alerts
+  // already written would be written again — up to five times.
   let threw = false;
   try {
     await awaitBackground([Promise.reject(new Error("scanner exploded"))]);
   } catch { threw = true; }
   check("  a rejecting task does not fail the delivery", !threw,
-    "Promise.all here would arm a redelivery loop that re-applies templates");
+    "Promise.all here would arm a redelivery loop that duplicates activity rows and alerts");
 
   // And work that hangs must not carry the invocation past its timeout, which
   // would kill it before completeDelivery ran and redeliver by another route.
@@ -417,7 +418,7 @@ const code = (src: string) => src
 
   check("  and the done marker outlives the visibility timeout",
     Number(/^const DONE_SEC = (\d+);/m.exec(lockSrc)?.[1] ?? NaN) > visibilitySec,
-    "an expired marker lets an at-least-once redelivery apply the templates twice");
+    "an expired marker lets an at-least-once redelivery write the activity rows and alerts twice");
 }
 
 // ── a container whose first bootstrap loaded nothing retries on the next message ──
@@ -465,7 +466,7 @@ const code = (src: string) => src
 
 // ── failing to mark a delivery done must not reprocess it ──
 //
-// The work is finished by then: activity rows written, templates applied.
+// The work is finished by then: activity rows written, alerts generated.
 // Releasing the claim and rethrowing would hand the message back to SQS and
 // guarantee all of it happens a second time.
 {
@@ -496,6 +497,66 @@ const code = (src: string) => src
   check("a completeDelivery failure does not fail the invocation", !threw,
     "rethrowing here redelivers work that already happened");
   check("  and does not release the claim", releases === 0, releases);
+}
+
+// ── a genuinely broken GitHub App init still lets the delivery complete ──
+//
+// Not mocked: initTokenManager is called for real with a private key that
+// cannot be parsed, so this reproduces the actual failure instead of
+// simulating it (a monkey-patched getSystemTokenAsync was tried first and
+// discarded — esbuild's CJS output exposes named exports as getter-only
+// accessors, so assigning over them is a silent no-op and the real function
+// keeps running underneath; see the require() vs import() note below).
+//
+// initTokenManager (github/client.ts) assigns the module-level token manager
+// before awaiting its own init(). Once init() throws here, a non-null
+// manager is left behind whose auth() was never wired up successfully.
+// getSystemTokenAsync() on that container then throws on every later
+// invocation, outside processDelivery's try/catch — which used to fail the
+// whole batch to the DLQ for as long as the container stayed warm. The
+// Express route this replaced called the synchronous getSystemToken(), which
+// degrades to SYSTEM_GITHUB_TOKEN and never throws; worker.ts now restores
+// that fallback around the await at its line 61.
+{
+  process.env.WEBHOOK_DELIVERIES_TABLE = "test-deliveries";
+  process.env.SYSTEM_GITHUB_TOKEN = "fallback-token";
+  process.env.GITHUB_APP_ID = "bad-app-id";
+  process.env.GITHUB_APP_PRIVATE_KEY = "not-a-real-pem-key";
+  process.env.GITHUB_APP_INSTALLATION_ID = "12345";
+
+  const { docClient } = await import("./src/utils/dynamo");
+  (docClient as any).send = async () => ({});
+
+  const { __setSecretLoaderForTests, __resetSecretCacheForTests } =
+    await import("./src/webhooks/secret");
+  __resetSecretCacheForTests();
+  __setSecretLoaderForTests(async () => ({ GITHUB_ORG: "acme-corp" }));
+
+  // A fresh container: worker.ts's `bootstrapped` and client.ts's
+  // module-level `tokenManager` are both memoised at module scope. Reusing
+  // the instances earlier blocks in this file already imported would reuse
+  // their already-resolved, working bootstrap and never exercise
+  // initTokenManager at all. require(), not the import() used elsewhere in
+  // this file, because a dynamic import() of a CommonJS module hands back a
+  // read-only synthetic namespace that require.cache invalidation does not
+  // reach the same way — require() is what worker.ts's own dependency
+  // resolution actually goes through.
+  for (const m of ["./src/webhooks/worker", "./src/github/client"]) {
+    delete require.cache[require.resolve(m)];
+  }
+  const { handler } = require("./src/webhooks/worker");
+
+  let threw = false;
+  try {
+    await handler({
+      Records: [{ body: JSON.stringify({ deliveryId: "d-broken-app-init", event: "ping", payload: {} }) }],
+    } as any);
+  } catch {
+    threw = true;
+  }
+
+  check("a real, broken GitHub App init does not fail the delivery", !threw,
+    "getSystemTokenAsync throwing here used to escape uncaught and fail the whole SQS batch to the DLQ");
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
