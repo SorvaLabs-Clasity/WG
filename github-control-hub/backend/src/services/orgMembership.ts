@@ -4,7 +4,7 @@ import { createOctokit, getOrg } from "../github/client";
  * Keeps org membership honest between logins.
  *
  * Membership was checked once, at the OAuth callback, and never again — so
- * someone removed from the organisation kept full access until their JWT
+ * someone removed from the organization kept full access until their JWT
  * expired. Offboarding that takes effect "eventually" is not offboarding.
  *
  * Re-checking on every request would mean a GitHub call per request, so the
@@ -61,7 +61,7 @@ export function clearMembershipCache(): void {
 }
 
 /**
- * Whether this user is still in the organisation.
+ * Whether this user is still in the organization.
  *
  * A definite "no" from GitHub is always obeyed. An unreachable GitHub falls
  * back to the last known answer within the grace window, and denies once that

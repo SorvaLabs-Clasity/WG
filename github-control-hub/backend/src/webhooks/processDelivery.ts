@@ -176,7 +176,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   // squashes and rebases that were never written here.
 
   if (event === "delete" && payload.ref_type === "branch" && payload.repository?.name) {
-    // Sanitised like every other field taken from a payload. A branch name is
+    // Sanitized like every other field taken from a payload. A branch name is
     // the one string here that can legally hold < > " ' & — Git's ref rules
     // forbid spaces and ~^:?*[\ but not those — so this is the field most
     // able to carry markup, and it was the one going through raw.
@@ -229,7 +229,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   // Incremental graph edge updates
   const org = getOrg();
   try {
-    // Sanitised before it is stored, like every other payload string. A graph
+    // Sanitized before it is stored, like every other payload string. A graph
     // edge is a row the UI renders, so the branch name reaching it raw was the
     // same gap as the activity log's.
     const branchRef = sanitizeField(payload.ref, 100);

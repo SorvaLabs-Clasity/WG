@@ -13,7 +13,7 @@ import {
  *
  * Open to anyone signed in, like the rest of the reporting surface. Knowing
  * who can write to which repository is not privileged information inside an
- * organisation; it is the thing people most often get wrong because nobody
+ * organization; it is the thing people most often get wrong because nobody
  * could see it.
  */
 

@@ -27,7 +27,7 @@ promise, and re-arms a timer. Callers ask for a token and get a valid one; they
 never see the refresh.
 
 The private key is read from Secrets Manager. Secrets Manager's key/value editor
-strips newlines out of PEM blocks, so the key is normalised on read — a
+strips newlines out of PEM blocks, so the key is normalized on read — a
 single-line PEM is reconstructed rather than rejected.
 
 ## The trade being made

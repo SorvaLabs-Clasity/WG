@@ -9,7 +9,7 @@
  * The finding that prompted most of this: index.html loaded
  * `<script src="https://unpkg.com/@phosphor-icons/web">`, unpinned and with no
  * integrity hash, into an application holding an administrative session for a
- * GitHub organisation and several AWS accounts.
+ * GitHub organization and several AWS accounts.
  */
 import fs from "fs";
 import path from "path";
@@ -187,7 +187,7 @@ const electron = read("github-control-hub/desktop/src/main.ts");
 
     // Only the calls that *store* something are checked. Comparing
     // payload.ref against a default-branch name, or testing ref_type, keeps
-    // nothing and needs no sanitising — an earlier version of this check
+    // nothing and needs no sanitizing — an earlier version of this check
     // flagged those too and failed against correct code.
     const STORING = /\b(logActivity|createAlert|addBranchEdge|removeBranchEdge)\s*\(/;
     const rawStores = deliveryCode
@@ -201,7 +201,7 @@ const electron = read("github-control-hub/desktop/src/main.ts");
       .filter(l => /payload\./.test(l))
       .map(l => l.trim().slice(0, 90));
 
-    check("  nothing from a payload is stored without being sanitised",
+    check("  nothing from a payload is stored without being sanitized",
       rawStores.length === 0,
       rawStores.length ? rawStores
         : "a branch or repository name would reach the activity log and graph raw");
@@ -210,7 +210,7 @@ const electron = read("github-control-hub/desktop/src/main.ts");
   // ── the org-wide token is never served over a socket ───────────────
   //
   // GET /auth/system-token returned the GitHub App installation token —
-  // admin over every repository in the organisation — to anyone who could
+  // admin over every repository in the organization — to anyone who could
   // reach the port, with no authentication of any kind. Its only caller runs
   // in the same process as the backend and now calls the function directly.
   {

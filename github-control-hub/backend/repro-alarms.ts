@@ -243,7 +243,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   const long = sanitizeSubject("x".repeat(500));
   check("  and the length is capped", long.length <= SUBJECT_MAX, long.length);
 
-  check("a subject that sanitises to nothing falls back rather than failing",
+  check("a subject that sanitizes to nothing falls back rather than failing",
     sanitizeSubject("✅✅✅") === "Control Hub alarm",
     sanitizeSubject("✅✅✅"));
 
@@ -327,7 +327,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   check("  and a set round-trips",
     parseSeverities("sev:critical,low").sort().join() === ["critical", "low"].sort().join(),
     parseSeverities("sev:critical,low"));
-  check("an unrecognised filter counts everything rather than nothing",
+  check("an unrecognized filter counts everything rather than nothing",
     parseSeverities("sev:banana").length === 4,
     "an empty selection reads on the card as a clean check");
 }

@@ -25,7 +25,7 @@ AWS.
 
 ## Report and enforce
 
-| Mode | Behaviour |
+| Mode | Behavior |
 |---|---|
 | `report` | Finds the violation, records the fix it *would* make, changes nothing |
 | `enforce` | Also applies the fix, and records an undo payload |

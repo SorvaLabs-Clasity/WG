@@ -40,7 +40,7 @@ The chosen-accounts form uses `AccountFilterType=INTERSECTION`. Without it,
 naming accounts alongside an organizational unit deploys to the whole unit as
 well.
 
-## Behaviour during a sweep
+## Behavior during a sweep
 
 - Each account is visited in turn, each of its regions separately
 - An account that cannot be reached is **reported and skipped** — losing sight

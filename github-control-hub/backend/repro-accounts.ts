@@ -61,7 +61,7 @@ const group = (id: string): ResourceSnapshot => ({
     check("  stamped with the account it came from",
       result.findings.map(f => f.accountId).sort().join() === "111111111111,222222222222",
       result.findings.map(f => f.accountId));
-    check("  and with the name a person would recognise",
+    check("  and with the name a person would recognize",
       result.findings.map(f => f.accountName).sort().join() === "dev,prod",
       result.findings.map(f => f.accountName));
     check("  violations count every account, not just the first",
@@ -285,7 +285,7 @@ const group = (id: string): ResourceSnapshot => ({
     const page = fs.readFileSync(
       path.join(__dirname, "../frontend/src/pages/AwsPage.tsx"), "utf8");
 
-    // Naming accounts alongside an organisational unit deploys to the whole
+    // Naming accounts alongside an organizational unit deploys to the whole
     // unit *as well*, unless the filter narrows it. Getting this wrong means
     // the role lands in every account when someone asked for three.
     for (const [what, src] of [["the script", script], ["the app", page]] as const) {
@@ -380,11 +380,11 @@ const group = (id: string): ResourceSnapshot => ({
       check("a missing IAM permission says to deploy the stack",
         sanitizeError(denied, "t").includes("CDK"), sanitizeError(denied, "t"));
 
-      check("an actionable error survives production sanitising intact",
+      check("an actionable error survives production sanitizing intact",
         sanitizeError(new ActionableError("Run the thing in the place"), "t") === "Run the thing in the place");
 
       // Anything genuinely unknown is still hidden.
-      check("  while an unrecognised error is still generic in production",
+      check("  while an unrecognized error is still generic in production",
         sanitizeError(new Error("host=10.0.3.4 password=hunter2"), "t").includes("unexpected"),
         sanitizeError(new Error("host=10.0.3.4 password=hunter2"), "t"));
     } finally {

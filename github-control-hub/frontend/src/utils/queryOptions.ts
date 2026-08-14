@@ -2,7 +2,7 @@
  * `entity` says what a query counts, because nothing else reliably does.
  *
  * It used to be inferred from whether the id began with "repos-", which is why
- * "repos-with-outside-admins" showed a share of the organisation and
+ * "repos-with-outside-admins" showed a share of the organization and
  * "unowned-repos" did not, though both return repositories. Reading it off the
  * returned rows fails too — an empty result has nothing to read. So it is
  * declared.

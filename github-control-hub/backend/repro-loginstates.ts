@@ -91,7 +91,7 @@ const base = { ghAuthed: false, awsOk: false, ghConfigured: false, settling: tru
 
   // ── signed in ─────────────────────────────────────────────────────
   {
-    check("a signed-in user sees their organisation",
+    check("a signed-in user sees their organization",
       githubSubtitle({ ...base, ghAuthed: true, awsOk: true, ghConfigured: true, org: "acme" })
         === "Member of acme");
     check("  and still resolves when the org is unknown",

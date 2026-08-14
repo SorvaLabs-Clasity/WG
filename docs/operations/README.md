@@ -11,7 +11,7 @@
 
 | Change | Needs |
 |---|---|
-| Backend or frontend code | Desktop rebuild; `cdk deploy` only for webhook or guardrail behaviour |
+| Backend or frontend code | Desktop rebuild; `cdk deploy` only for webhook or guardrail behavior |
 | IAM, Lambda, EventBridge, API Gateway | `cdk deploy` |
 | Guardrail or webhook logic | `cdk deploy` (every Lambda bundles from source) |
 | A new DynamoDB table | `scripts/setup-aws-account.sh` |

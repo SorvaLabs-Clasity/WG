@@ -1,7 +1,7 @@
 /**
  * Tests that this app cannot obtain broad AWS access.
  *
- * These are not tests of behaviour — they read the IAM the project ships and
+ * These are not tests of behavior — they read the IAM the project ships and
  * assert what it does not contain. That is the point: every other test here
  * checks that the code does the right thing, and this one checks that the code
  * *could not* do the wrong thing even if it tried, because AWS would refuse.
@@ -152,7 +152,7 @@ const accountsCode = code(accountsTs);
     // base64-decodes and HMACs a body precisely to find out whether it is
     // genuine — so the useful question is not whether that path can be broken
     // but what breaking it yields. Pointed at the application bundle it
-    // yielded GITHUB_APP_PRIVATE_KEY and the organisation with it. Pointed
+    // yielded GITHUB_APP_PRIVATE_KEY and the organization with it. Pointed
     // here it yields the ability to check signatures.
     const grantAt = receiverBlock.indexOf('sid: "ReadWebhookSecret"');
     const receiverSecrets = grantAt < 0
@@ -289,7 +289,7 @@ const accountsCode = code(accountsTs);
 
   // ── the app cannot create roles anywhere ───────────────────────────
   {
-    // Creating an IAM role across an organisation needs
+    // Creating an IAM role across an organization needs
     // cloudformation:CreateStackSet with CAPABILITY_NAMED_IAM. Whoever holds
     // that can deploy an administrator role into every account — strictly
     // worse than the administrator access this app was built without. So the

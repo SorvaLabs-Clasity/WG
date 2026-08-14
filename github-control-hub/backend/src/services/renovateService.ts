@@ -77,7 +77,7 @@ function dayDiff(from: string, to: string | null): number {
  * of the URL. `repository_url` is the API address of the repo the PR lives in;
  * its last two segments are owner and name.
  */
-export function normalisePr(item: any): RenovatePr {
+export function normalizePr(item: any): RenovatePr {
   const repoUrl: string = item?.repository_url ?? "";
   const parts = repoUrl.split("/").filter(Boolean);
   const repo = parts.length >= 2 ? parts.slice(-1)[0] : "unknown";
@@ -120,7 +120,7 @@ async function collect(search: SearchIssues, q: string): Promise<{ prs: Renovate
   for (let page = 1; page <= MAX_PAGES; page++) {
     const { items } = await search(q, page);
     if (!items?.length) return { prs, truncated: false };
-    prs.push(...items.map(normalisePr));
+    prs.push(...items.map(normalizePr));
     if (items.length < PER_PAGE) return { prs, truncated: false };
   }
   return { prs, truncated: true };

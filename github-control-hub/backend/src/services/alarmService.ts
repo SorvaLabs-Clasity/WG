@@ -59,7 +59,7 @@ export interface EmailGroup {
   updatedAt: string;
 }
 
-/** One row, because there is one security-alert setting for the organisation. */
+/** One row, because there is one security-alert setting for the organization. */
 export const SECURITY_SETTINGS_ID = "security-settings";
 
 export interface SecurityNotifySettings {

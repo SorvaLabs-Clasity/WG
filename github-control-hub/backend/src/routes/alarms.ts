@@ -22,7 +22,7 @@ const router = Router();
 /**
  * Everything here is admin-only, reads included.
  *
- * Unlike a repository action — authorised by GitHub itself, because the call
+ * Unlike a repository action — authorized by GitHub itself, because the call
  * carries the user's own token — these calls run with the app's AWS
  * credentials. Subscribing an address to a topic means this app can send email
  * to anyone, which is a capability worth restricting to the same team that can
@@ -36,7 +36,7 @@ const requireAdmin: RequestHandler = (req, res, next) => {
       res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can manage ` +
-          `alarms and email groups. They send mail on behalf of the whole organisation, so they ` +
+          `alarms and email groups. They send mail on behalf of the whole organization, so they ` +
           `are not scoped to what you personally can reach.`,
       });
     })

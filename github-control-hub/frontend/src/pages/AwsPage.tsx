@@ -802,7 +802,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
  * How to grant this app access to an account, without opening a terminal.
  *
  * The app does not create the role itself, and that is a decision rather than
- * a gap — creating IAM roles across an organisation needs permissions that
+ * a gap — creating IAM roles across an organization needs permissions that
  * would let whoever held them deploy an administrator role everywhere, which
  * is worse than the administrator access this app was built without. So it
  * does everything that costs nothing: works out every value, generates the
@@ -839,7 +839,7 @@ function SetupAccess() {
   const chosenIds = [...picked];
 
   // Aiming a StackSet at some accounts rather than all of them still needs an
-  // organisational unit to work against; AccountFilterType=INTERSECTION narrows
+  // organizational unit to work against; AccountFilterType=INTERSECTION narrows
   // the root down to exactly the ids listed. Without the filter, naming
   // accounts alongside an OU deploys to the OU as well.
   const targets = how === "org"
@@ -1084,7 +1084,7 @@ function SetupAccess() {
                   <b>Find my accounts</b> — it will be listed as ready.
                 </p>
                 {/* Find my accounts reads AWS Organizations, so an account
-                    outside the organisation never appears there however
+                    outside the organization never appears there however
                     correctly its role is set up. Saying only "press Find my
                     accounts" sends those people looking for a list they are
                     not in. */}
@@ -1128,7 +1128,7 @@ function SetupAccess() {
 // ── Accounts ──────────────────────────────────────────────────────────
 
 /**
- * Organisations run more than one account, and the accounts nobody logs into
+ * Organizations run more than one account, and the accounts nobody logs into
  * daily are exactly where a retention setting quietly stays wrong for a year.
  * Reaching them is a role each account grants, so the account that owns the
  * resources decides — and can take the decision back by deleting one stack.
@@ -1147,7 +1147,7 @@ function describeAccess(a: AwsAccount): string {
 }
 
 /**
- * Pick accounts out of the organisation rather than typing them.
+ * Pick accounts out of the organization rather than typing them.
  *
  * The account ids and names already exist somewhere authoritative. Asking a
  * person to retype twelve digits is how an account ends up watched under the
@@ -1291,7 +1291,7 @@ function DiscoverAccounts({ onAdd }: {
             ))}
           </div>
           {/* Stated rather than worked around. AWS already puts an
-              administrator role in every organisation account, and this app is
+              administrator role in every organization account, and this app is
               deliberately unable to assume it — so there is a setup step, and
               pretending otherwise would be the wrong trade made quietly. */}
           <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-[74ch]">
@@ -1755,7 +1755,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
 
   const submit = async () => {
     setError(null);
-    if (!name.trim()) { setError("Give the list a name so you can recognise it later."); return; }
+    if (!name.trim()) { setError("Give the list a name so you can recognize it later."); return; }
     const patterns = rules
       .filter(r => r.value.trim())
       .map(r => ({

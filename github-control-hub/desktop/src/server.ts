@@ -42,7 +42,7 @@ export async function startBackend(
     // Loopback, not every interface.
     //
     // listen(port) with no host binds 0.0.0.0, which put an administrative API
-    // for a GitHub organisation and several AWS accounts on whatever network
+    // for a GitHub organization and several AWS accounts on whatever network
     // the laptop was joined to. Nothing about this server is meant to be
     // reachable from another machine: the only client is the window in this
     // process, and it asks for http://localhost.

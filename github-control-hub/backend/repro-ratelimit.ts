@@ -29,7 +29,7 @@ const ghError = (status: number, message: string, headers: Record<string, string
     "x-ratelimit-limit": "12500", "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(RESET),
   });
   const info = parseRateLimit(err);
-  check("primary limit is recognised", info?.kind === "primary", info);
+  check("primary limit is recognized", info?.kind === "primary", info);
   check("  reset time is carried through",
     info?.resetAt === new Date(RESET * 1000).toISOString(), info?.resetAt);
   check("  so is the limit, for the message", info?.limit === 12500, info?.limit);
@@ -41,7 +41,7 @@ const ghError = (status: number, message: string, headers: Record<string, string
     "retry-after": "23", "x-ratelimit-remaining": "4210",
   });
   const info = parseRateLimit(err);
-  check("secondary limit is recognised", info?.kind === "secondary", info);
+  check("secondary limit is recognized", info?.kind === "secondary", info);
   check("  retry-after is carried through", info?.retryAfter === 23, info?.retryAfter);
 }
 
@@ -74,7 +74,7 @@ const ghError = (status: number, message: string, headers: Record<string, string
 // ── missing headers must not throw ───────────────────────────────────
 {
   const info = parseRateLimit(ghError(403, "API rate limit exceeded"));
-  check("a rate limit with no headers is still recognised", info?.kind === "primary", info);
+  check("a rate limit with no headers is still recognized", info?.kind === "primary", info);
   check("  and simply has no reset time", info?.resetAt === undefined, info?.resetAt);
 }
 

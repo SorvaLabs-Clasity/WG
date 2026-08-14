@@ -104,7 +104,7 @@ learn and a different rate-limit model (points, not requests). The REST calls
 here are mostly bulk listings where the win would be small.
 
 **Raw `fetch`.** Would mean writing pagination, auth refresh, retry and error
-normalisation ourselves — four things that are boring to write and unpleasant to
+normalization ourselves — four things that are boring to write and unpleasant to
 debug, and that fail in ways nobody notices until a page is quietly missing its
 second hundred results.
 

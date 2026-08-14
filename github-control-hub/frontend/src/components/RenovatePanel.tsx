@@ -14,7 +14,7 @@ const inputClass =
  * Renovate's pull requests.
  *
  * Deliberately read-only. Every row links out to GitHub, and there is no merge
- * control anywhere — merging is GitHub's job, where GitHub authorises the
+ * control anywhere — merging is GitHub's job, where GitHub authorizes the
  * person doing it against the repository.
  */
 export default function RenovatePanel() {
@@ -81,7 +81,7 @@ export default function RenovatePanel() {
           </div>
         ) : (
           <p className="mt-3 text-sm text-amber-700 dark:text-amber-400">
-            An organisation admin has to set the bot account.
+            An organization admin has to set the bot account.
           </p>
         )}
         {saveError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{saveError}</p>}
@@ -94,7 +94,7 @@ export default function RenovatePanel() {
       <div className="bg-white dark:bg-slate-900 rounded-[12px] border border-gh-border dark:border-slate-700 p-5">
         <h3 className="text-base font-bold text-gray-900 dark:text-white">Renovate</h3>
         <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
-          GitHub does not recognise the account{" "}
+          GitHub does not recognize the account{" "}
           <code className="px-1 rounded bg-black/5 dark:bg-white/10">{data.bot}</code> — it either
           does not exist, or this app cannot see it. Check the spelling of the bot account.
         </p>

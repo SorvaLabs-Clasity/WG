@@ -169,7 +169,7 @@ export function snapRetention(days: number): number {
 /**
  * One AWS account the guardrails run against.
  *
- * An organisation is rarely one account. The rules that matter — retention
+ * An organization is rarely one account. The rules that matter — retention
  * floors, TLS-only buckets — matter most in the accounts nobody logs into
  * daily, and a tool that can only see the account it happens to be deployed in
  * reports a clean bill of health for an estate it has never looked at.

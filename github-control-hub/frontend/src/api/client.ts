@@ -66,7 +66,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
     if (body.code === "ORG_MEMBERSHIP_REVOKED") {
       clearToken();
       window.location.href = `/login?auth_error=not_member`;
-      throw new Error(body.error ?? "No longer an organisation member");
+      throw new Error(body.error ?? "No longer an organization member");
     }
     throw new Error(body.error ?? `Request failed: ${res.status}`);
   }

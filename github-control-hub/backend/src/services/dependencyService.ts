@@ -2,7 +2,7 @@ import type { Octokit } from "octokit";
 import { fetchAllCursorPages } from "../utils/cursorPages";
 
 /**
- * The organisation's open Dependabot alerts.
+ * The organization's open Dependabot alerts.
  *
  * Extracted from the dependencies route so the alarm evaluator can read the
  * same alerts the Dependabot tab shows. Two callers computing "how many
@@ -50,10 +50,10 @@ export function mapAlert(alert: any, repoName: string, orgName: string): Depende
 }
 
 /**
- * Every open alert in the organisation.
+ * Every open alert in the organization.
  *
  * Throws only on errors that mean the answer is unknown. 400, 403 and 404 are
- * tolerated the same way the route tolerates them — an organisation without
+ * tolerated the same way the route tolerates them — an organization without
  * Dependabot, or a token without the scope, is a real state and not a failure —
  * but the caller is told, because an alarm must not read "no alerts" off a
  * sweep that never ran.
@@ -93,9 +93,9 @@ export async function fetchOrgDependencyAlerts(
  * budget the graph sync and compliance sweep draw on.
  *
  * GraphQL exposes the flag directly, 100 repositories at a time. Measured
- * against this organisation: 4 requests instead of 351, and the answers agree
+ * against this organization: 4 requests instead of 351, and the answers agree
  * in both directions — verified on repositories with alerts on and off, since
- * a field that is always false would agree with a mostly-off organisation and
+ * a field that is always false would agree with a mostly-off organization and
  * still be wrong.
  *
  * GraphQL is also metered separately from REST, so this moves the cost off the

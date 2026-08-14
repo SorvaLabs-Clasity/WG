@@ -19,7 +19,7 @@ It opens on Organization, so the security-relevant feed is what you land on.
 
 Classification lives in `frontend/src/lib/activityCategories.ts` as data rather
 than a switch, and `repro-activitycategories.ts` asserts every action the
-backend can write lands somewhere deliberate. An unrecognised action falls back
+backend can write lands somewhere deliberate. An unrecognized action falls back
 to Organization on purpose: hiding something new in a tab nobody watches is the
 failure worth avoiding.
 

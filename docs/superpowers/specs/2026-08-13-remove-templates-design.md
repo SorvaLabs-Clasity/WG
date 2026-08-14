@@ -66,7 +66,7 @@ read what it did.
 ### `ACTION_CONFIG` entries stay
 
 `ActivityPage.tsx:352`, `:468`, `:475` and `:795` already fall back to
-`{ label: entry.action, … }` for unrecognised actions, so removing the template
+`{ label: entry.action, … }` for unrecognized actions, so removing the template
 entries would not crash — it would render raw strings like `template.apply`.
 
 Keep them. They are four lines of label and colour that make existing history

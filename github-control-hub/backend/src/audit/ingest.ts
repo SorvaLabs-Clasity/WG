@@ -1,6 +1,6 @@
 import type { S3Event } from "aws-lambda";
 import { gunzipSync } from "zlib";
-import { isConsequential, normalise, parseNdjson } from "./events";
+import { isConsequential, normalize, parseNdjson } from "./events";
 
 /**
  * Enterprise audit log, from S3 into the activity feed.
@@ -83,7 +83,7 @@ export async function handler(event: S3Event): Promise<void> {
     console.log(`[Audit] ${key}: ${events.length} events, ${kept.length} indexed, ${skipped} unparseable`);
 
     const rows = kept.map(e => {
-      const n = normalise(e);
+      const n = normalize(e);
       // The id must be stable for the same event, so replaying an object does
       // not duplicate rows. Same event, same key, same row overwritten.
       const id = `audit-${Buffer.from(`${n.timestamp}|${n.target}|${n.actor}|${n.repo}`).toString("base64url").slice(0, 40)}`;

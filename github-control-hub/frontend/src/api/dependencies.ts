@@ -10,7 +10,7 @@ export async function fetchDependencies(): Promise<DependencyAlert[]> {
 }
 
 /**
- * One repository's alerts, rather than the whole organisation.
+ * One repository's alerts, rather than the whole organization.
  *
  * Costs one or two GitHub requests instead of one per repository, which is
  * what makes it usable after every toggle.

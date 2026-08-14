@@ -214,7 +214,7 @@ export async function getActivity(limit = 50, offset = 0): Promise<ActivityEntry
  * evidence either way is the age of the most recent event, so that is what this
  * turns into words.
  *
- * The thresholds are wide on purpose. A quiet organisation is not a broken one,
+ * The thresholds are wide on purpose. A quiet organization is not a broken one,
  * and three days without a single push, repository or membership event across a
  * whole org is roughly where "quiet" stops being the likelier explanation.
  */

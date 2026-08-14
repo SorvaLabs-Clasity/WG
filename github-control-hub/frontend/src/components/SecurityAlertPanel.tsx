@@ -66,8 +66,8 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
     return (
       <div className={cardClass}>
         <p className="text-sm text-gray-600 dark:text-slate-400">
-          Notification settings are managed by organisation admins. They send mail on behalf of the
-          whole organisation, so they are not scoped to what you personally can reach.
+          Notification settings are managed by organization admins. They send mail on behalf of the
+          whole organization, so they are not scoped to what you personally can reach.
         </p>
       </div>
     );

@@ -11,7 +11,7 @@ npx tsx repro-accounts.ts
 ## Why this shape
 
 Each file reproduces a specific failure and then asserts it stays fixed. The
-names read as claims about behaviour, not as coverage:
+names read as claims about behavior, not as coverage:
 
 > `PASS  a role that cannot be assumed does not end the sweep`
 > `PASS  an entry with no id is skipped rather than written under a new one`

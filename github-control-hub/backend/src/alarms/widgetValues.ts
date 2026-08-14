@@ -61,7 +61,7 @@ export interface WidgetLike {
 }
 
 export interface WidgetDataSources {
-  /** The organisation's open Dependabot alerts, and whether the sweep worked. */
+  /** The organization's open Dependabot alerts, and whether the sweep worked. */
   dependencyAlerts: () => Promise<{ alerts: DependencyAlert[]; degraded: boolean }>;
   runQuery: (queryId: string, param?: string, advanced?: any) => Promise<any[]>;
   /** Open Renovate pull requests. Absent when no bot account is configured. */
@@ -130,7 +130,7 @@ export async function computeWidgetRows(
       case "vuln-repos": {
         const { alerts, degraded } = await sources.dependencyAlerts();
         // A degraded sweep returns an empty list, which is indistinguishable
-        // from a clean organisation. Reporting it as no reading is what stops
+        // from a clean organization. Reporting it as no reading is what stops
         // an alarm resolving itself because GitHub answered 403.
         if (degraded) return { rows: null, error: "Dependabot alerts could not be read" };
         return {
@@ -144,7 +144,7 @@ export async function computeWidgetRows(
       case "renovate-open": {
         const prs = await sources.renovateOpenPrs();
         // null, not an empty list, when no bot is configured — an alarm must
-        // not read "zero open PRs" off an organisation nobody told us how to
+        // not read "zero open PRs" off an organization nobody told us how to
         // look at, and quietly report all clear.
         return prs === null
           ? { rows: null, error: "No Renovate bot account is configured" }

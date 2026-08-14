@@ -113,7 +113,7 @@ aws ec2 describe-regions --region-names "$REGION" >/dev/null 2>&1 \
 
 step "This install"
 ask COMPANY   "Company display name (shown in the app)" "Acme Inc"
-ask GH_ORG    "GitHub organisation (the exact login, case-sensitive)"
+ask GH_ORG    "GitHub org name, as it appears in github.com/orgs/<name>"
 ask PREFIX    "Resource name prefix" "github-control-hub"
 SECRET_NAME="${PREFIX}/secrets"
 # Separate on purpose: the receiver Lambda is the only internet-facing piece

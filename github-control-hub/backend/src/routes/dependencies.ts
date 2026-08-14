@@ -68,7 +68,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       // Every repository's alert setting in a handful of requests.
       //
       // This was one REST call per repository — 351 of them on this
-      // organisation, every time the tab was opened. GraphQL carries the same
+      // organization, every time the tab was opened. GraphQL carries the same
       // flag 100 repositories at a time, and on a different rate-limit budget
       // from everything else here.
       // The same query returns the repository list, so listRepos is not called
@@ -101,7 +101,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
 
 router.post("/dependencies/enable", async (req: Request, res: Response) => {
   try {
-    // A write against a specific repo — act as the user so GitHub authorises it.
+    // A write against a specific repo — act as the user so GitHub authorizes it.
     const token = req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
@@ -138,7 +138,7 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
 
 router.post("/dependencies/disable", async (req: Request, res: Response) => {
   try {
-    // A write against a specific repo — act as the user so GitHub authorises it.
+    // A write against a specific repo — act as the user so GitHub authorizes it.
     const token = req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
@@ -260,7 +260,7 @@ function mockCleanAlert(repoName: string, orgName: string) {
  * Renovate pull requests.
  *
  * Read-only by design. The app lists what the bot has raised and links out to
- * GitHub; merging happens there, with GitHub authorising the person doing it.
+ * GitHub; merging happens there, with GitHub authorizing the person doing it.
  * There is deliberately no route here that could merge, and repro-renovate.ts
  * asserts that no code anywhere in the backend can.
  */
@@ -270,7 +270,7 @@ router.get("/renovate", async (req: Request, res: Response) => {
     if (!token) return res.status(401).json({ error: "No GitHub token provided" });
 
     const bot = (await getOrgConfig()).renovateBot;
-    // Not an error: most organisations do not run Renovate. The UI says so
+    // Not an error: most organizations do not run Renovate. The UI says so
     // rather than showing an empty table, which reads as a broken fetch.
     if (!bot) return res.json({ configured: false, prs: [], truncated: false, bot: null });
 
@@ -297,7 +297,7 @@ router.put("/renovate/bot", async (req: Request, res: Response) => {
     if (!(await isAwsAdmin(req.user!.login))) {
       return res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: "Only organisation admins can change which account Renovate raises PRs as.",
+        error: "Only organization admins can change which account Renovate raises PRs as.",
       });
     }
     const bot = String(req.body?.bot ?? "").trim();

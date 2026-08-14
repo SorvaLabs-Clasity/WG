@@ -94,7 +94,7 @@ export function describeSeverities(picked: Severity[]): string {
  * centred number was.
  *
  * So: cards again, built the way the notes actually describe. Each carries a
- * ring showing how much of the organisation it concerns, a bar repeating that
+ * ring showing how much of the organization it concerns, a bar repeating that
  * at full width, and the first few affected repositories by name — because a
  * count tells you the size of a problem and a name tells you where it is.
  *
@@ -300,11 +300,11 @@ export default function AnalyticsPage() {
         <div className="flex items-start justify-between gap-6 flex-wrap">
           <div className="min-w-0">
             <p className={`${TYPE.label} text-slate-400 dark:text-slate-500 mb-3`}>
-              {orgName || "Organisation"} · {posture.total} {posture.total === 1 ? "check" : "checks"}
+              {orgName || "Organization"} · {posture.total} {posture.total === 1 ? "check" : "checks"}
             </p>
             <h1 className="text-[38px] sm:text-[52px] font-black tracking-[-0.035em] leading-[1.02] max-w-[18ch]">
               {widgetsLoading ? (
-                <span className="text-slate-300 dark:text-slate-700">Reading the organisation…</span>
+                <span className="text-slate-300 dark:text-slate-700">Reading the organization…</span>
               ) : posture.total === 0 ? (
                 <>Nothing is being watched yet.</>
               ) : posture.answered === 0 ? (
@@ -353,7 +353,7 @@ export default function AnalyticsPage() {
       ) : widgets.length === 0 ? (
         <Empty
           title="No checks yet"
-          body="A check is a question about the organisation — which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it gets a card here."
+          body="A check is a question about the organization — which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it gets a card here."
           action={canEditDashboard
             ? <Button variant="primary" onClick={() => setShowAddModal(true)}>Add the first check</Button>
             : undefined}
@@ -817,7 +817,7 @@ function useWidgetData(config: WidgetConfig) {
     return { items: rawItems, isLoading: loading };
   }, [config, depsData, depsLoading, bypassData, bypassLoading, queryData, queryLoading, renovateData, renovateLoading]);
 
-  // Only a check that counts repositories has the organisation as its
+  // Only a check that counts repositories has the organization as its
   // denominator. Users and teams do not, and a share of the wrong thing is
   // worse than no share.
   const entity = entityForConfig(config);
@@ -834,7 +834,7 @@ function useWidgetData(config: WidgetConfig) {
 function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: WidgetConfig; items: any[]; graphEmpty?: boolean; orgName?: string }) {
   const [selectedItem, setSelectedItem] = useState<any | null>(null);
 
-  // A widget answering a question about the whole organisation returns a row
+  // A widget answering a question about the whole organization returns a row
   // per repository, so this is the table most likely to be hundreds long.
   //
   // Rows are shaped by whichever query produced them, so search covers the

@@ -277,14 +277,14 @@ rather than shorter is the one thing here that is easy to get backwards. The
 obvious value is 300 seconds, matching the replay window the in-memory `Map`
 used. That is wrong under SQS: a worker can process a delivery successfully and
 have the subsequent message deletion not register, which is ordinary
-at-least-once behaviour. The redelivery then arrives one visibility timeout
+at-least-once behavior. The redelivery then arrives one visibility timeout
 later — 660 seconds — and a 300-second marker has already expired, so the
 delivery is claimed again and processed a second time. Templates applied twice.
 
 The marker therefore has to outlive the visibility timeout, not the replay
 window. The cost is that a manual redelivery from GitHub's UI is silently
 ignored for fifteen minutes rather than five. That is a real change from today's
-behaviour and the right way round: an ignored redelivery is a person waiting and
+behavior and the right way round: an ignored redelivery is a person waiting and
 retrying, while a duplicated one rewrites a repository.
 
 The condition treats a logically expired row as absent. This is the same
@@ -548,7 +548,7 @@ would do real damage.
 
 GitHub treats them as two independent webhooks and gives each delivery its own
 `X-GitHub-Delivery` id for the same underlying event. The deduplication lock is
-keyed on that id, so it would not recognise the pair as duplicates. Both would
+keyed on that id, so it would not recognize the pair as duplicates. Both would
 process: templates applied twice to a new repository, duplicate alerts,
 duplicate activity rows.
 

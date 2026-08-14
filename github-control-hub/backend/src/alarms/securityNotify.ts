@@ -39,7 +39,7 @@ export async function notifySecurityAlert(
   const settings = await deps.settings();
   if (!settings.enabled) return "disabled";
 
-  // A low-severity alert on a busy organisation is a daily occurrence. The
+  // A low-severity alert on a busy organization is a daily occurrence. The
   // floor is what keeps the mailbox worth reading.
   if (!meetsMinimumSeverity(alert.severity, settings.minSeverity)) return "below-threshold";
 

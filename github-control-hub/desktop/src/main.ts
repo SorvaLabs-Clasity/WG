@@ -65,14 +65,14 @@ function createWindow(): void {
   // Sign-in stays in this window; ordinary outbound links go to the browser.
   //
   // The distinction cannot be drawn by listing hosts. GitHub hands off to
-  // whichever identity provider the organisation uses — Google, Entra, Okta —
+  // whichever identity provider the organization uses — Google, Entra, Okta —
   // and often to an MFA host after that. Allowing only github.com meant the
   // hop to accounts.google.com was pushed into the system browser, which then
   // received half of a flow whose state belonged to this window: Google
   // answered 400, and the app was left on a blank page with no way back.
   //
   // So the question is "are we in the middle of signing in", not "is this host
-  // one we recognise". The flow is bounded: it starts at /auth/github and ends
+  // one we recognize". The flow is bounded: it starts at /auth/github and ends
   // when GitHub sends us back to /login.
   mainWindow.webContents.on("will-navigate", (event, url) => {
     if (url.startsWith("http://localhost")) {

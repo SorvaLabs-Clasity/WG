@@ -1,7 +1,7 @@
 /**
  * Tests for the guardrail engine's safety properties.
  *
- * These are the behaviours that, if wrong, cause real damage in a production
+ * These are the behaviors that, if wrong, cause real damage in a production
  * account: writing when the rule said report-only, remediating something the
  * user excluded, or letting one broken rule stop every other rule running.
  */

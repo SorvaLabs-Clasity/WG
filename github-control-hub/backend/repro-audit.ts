@@ -15,7 +15,7 @@
  */
 import fs from "fs";
 import path from "path";
-import { isConsequential, normalise, parseNdjson, toTimestamp, describe, allowList } from "./src/audit/events";
+import { isConsequential, normalize, parseNdjson, toTimestamp, describe, allowList } from "./src/audit/events";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -98,7 +98,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 {
   check("epoch milliseconds are read correctly",
     toTimestamp(1786680000000).startsWith("2026-"), toTimestamp(1786680000000));
-  check("  epoch seconds are recognised and not read as 1970",
+  check("  epoch seconds are recognized and not read as 1970",
     toTimestamp(1786680000).startsWith("2026-"), toTimestamp(1786680000));
   check("  an ISO string is accepted",
     toTimestamp("2026-08-14T04:00:00Z") === "2026-08-14T04:00:00.000Z", toTimestamp("2026-08-14T04:00:00Z"));
@@ -111,19 +111,19 @@ function check(name: string, ok: boolean, got?: unknown) {
     toTimestamp("banana"));
 }
 
-// ── normalising into an activity row ──────────────────────────────────
+// ── normalizing into an activity row ──────────────────────────────────
 {
-  const n = normalise({ action: "protected_branch.destroy", actor: "alice", created_at: 1786680000000, repo: "Org/api" });
+  const n = normalize({ action: "protected_branch.destroy", actor: "alice", created_at: 1786680000000, repo: "Org/api" });
   check("the audit action lands in target, which is what tells rows apart",
     n.target === "protected_branch.destroy", n.target);
   check("  the actor is carried through", n.actor === "alice", n.actor);
   check("  and the repository", n.repo === "Org/api", n.repo);
 
-  const orgScoped = normalise({ action: "org.add_member", actor: "bob", created_at: 1786680000000 });
+  const orgScoped = normalize({ action: "org.add_member", actor: "bob", created_at: 1786680000000 });
   check("an organization-scoped event has an empty repo, not the word undefined",
     orgScoped.repo === "", orgScoped.repo);
 
-  const anon = normalise({ action: "repo.create", created_at: 1786680000000 });
+  const anon = normalize({ action: "repo.create", created_at: 1786680000000 });
   check("a missing actor reads as unknown rather than undefined", anon.actor === "unknown", anon.actor);
 
   check("the summary names who did what",
@@ -159,7 +159,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 
   check("a real event is indexed", isConsequential(String(real.action)));
 
-  const n = normalise(real);
+  const n = normalize(real);
   check("the repository is found outside the `repo` field",
     n.repo === "Sorva-Studios/testing", n.repo);
   check("  and the application is named, so two apps do not read alike",
@@ -173,8 +173,8 @@ function check(name: string, ok: boolean, got?: unknown) {
   // The same deletion produced a second event for the other installed app.
   const other = { ...real, integration: "Sorva Control Hub", name: "Sorva Control Hub" };
   check("two apps on one deletion produce distinguishable rows",
-    normalise(other).details !== n.details,
-    [n.details, normalise(other).details]);
+    normalize(other).details !== n.details,
+    [n.details, normalize(other).details]);
 }
 
 // ── real member and team payloads, captured from the live log ─────────

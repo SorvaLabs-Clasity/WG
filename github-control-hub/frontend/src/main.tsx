@@ -6,7 +6,7 @@ import { createRoot } from "react-dom/client";
  * These came from three third-party CDNs at runtime — Google Fonts, cdnjs, and
  * an unpinned <script> from unpkg. That last one executed third-party
  * JavaScript, with no version and no integrity hash, inside an application
- * that administers a GitHub organisation and several AWS accounts. A bad day
+ * that administers a GitHub organization and several AWS accounts. A bad day
  * at unpkg, or DNS pointed elsewhere, and it would have run with the
  * signed-in user's session.
  *

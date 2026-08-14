@@ -87,7 +87,7 @@ export async function deleteAwsExclusion(id: string): Promise<void> {
  * "what is true now", and the activity log carries the history of what changed.
  *
  * Account and region are in the key because names are not unique across an
- * organisation: two accounts routinely have a log group called
+ * organization: two accounts routinely have a log group called
  * /aws/lambda/api, and keying on the name alone would have prod's verdict and
  * dev's overwrite each other on alternate sweeps.
  *

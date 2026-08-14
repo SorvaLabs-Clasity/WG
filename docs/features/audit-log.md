@@ -1,6 +1,6 @@
 # Enterprise audit log
 
-The organisation's own record of who did what, streamed from GitHub into the
+The organization's own record of who did what, streamed from GitHub into the
 Activity page's **Audit log** stream.
 
 ## Why streaming rather than the API
@@ -40,7 +40,7 @@ So the split is:
   who can do what, what is exposed, or what protects a repository. Those are
   what the Audit stream shows.
 
-The allow-list lives in `backend/src/audit/events.ts` and covers organisation
+The allow-list lives in `backend/src/audit/events.ts` and covers organization
 membership and roles, teams, repository creation and visibility, branch
 protection, rulesets, tokens and third-party access, webhooks, and secret
 scanning alerts.
@@ -112,4 +112,4 @@ Three more details that matter:
 It does not replace the Organization stream. That records what this app did and
 what its webhook heard about, in near real time, with undo. The audit log is
 GitHub's own record, arrives in batches, covers the whole enterprise rather than
-one organisation, and is read-only.
+one organization, and is read-only.

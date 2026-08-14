@@ -28,13 +28,13 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     }
 
     // Membership was verified at login and then trusted for the life of the
-    // token. Someone removed from the organisation kept working until it
+    // token. Someone removed from the organization kept working until it
     // expired, which is not what anyone means by removing access.
     if (!await isStillOrgMember(payload.githubId, payload.login, accessToken)) {
       forgetMembership(payload.githubId);
       removeToken(payload.githubId);
       res.status(403).json({
-        error: `${payload.login} is no longer a member of the ${getOrg()} organisation.`,
+        error: `${payload.login} is no longer a member of the ${getOrg()} organization.`,
         code: "ORG_MEMBERSHIP_REVOKED",
       });
       return;

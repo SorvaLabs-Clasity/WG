@@ -289,7 +289,7 @@ ask_secret() {   # ask_secret VAR_NAME "prompt" existing
   fi
 }
 
-ask_visible GITHUB_ORG        "GITHUB_ORG (organization name)" "$(existing_val GITHUB_ORG)"
+ask_visible GITHUB_ORG        "GITHUB_ORG (as in github.com/orgs/<name>)" "$(existing_val GITHUB_ORG)"
 ask_visible GITHUB_CLIENT_ID  "GITHUB_CLIENT_ID (OAuth app)"   "$(existing_val GITHUB_CLIENT_ID)"
 ask_secret  GITHUB_CLIENT_SECRET "GITHUB_CLIENT_SECRET"        "$(existing_val GITHUB_CLIENT_SECRET)"
 ask_secret  SYSTEM_GITHUB_TOKEN  "SYSTEM_GITHUB_TOKEN (PAT)"   "$(existing_val SYSTEM_GITHUB_TOKEN)"

@@ -551,7 +551,7 @@ const LEASE_SEC = 660;
  * Longer than the lease, which is the counter-intuitive part. The obvious value
  * is 300 — the replay window the in-memory Map used — and it is wrong here: a
  * worker can succeed and have the message deletion not register, which is
- * ordinary at-least-once behaviour, and the redelivery arrives one visibility
+ * ordinary at-least-once behavior, and the redelivery arrives one visibility
  * timeout later at 660 seconds. A 300-second marker has expired by then, so the
  * delivery would be claimed again and its templates applied a second time.
  *
@@ -706,7 +706,7 @@ Append inside the async IIFE of `repro-webhookdelivery.ts`, before the final `co
     !/getSystemToken\(\)/.test(src),
     "the sync getter returns a stale token on a warm container");
 
-  // The next three are behavioural rather than textual, because they are the
+  // The next three are behavioral rather than textual, because they are the
   // ones whose regression reads like a tidy-up.
   const { awaitBackground } = await import("./src/webhooks/processDelivery");
 
@@ -1787,7 +1787,7 @@ git rm github-control-hub/backend/src/routes/webhooks.ts \
 
 - [ ] **Step 3: Fix the stale comment in the desktop**
 
-`desktop/src/server.ts:51` refers to `backend/src/standalone.ts`. Read the surrounding comment and reword it so it does not point at a deleted file. Do not change behaviour.
+`desktop/src/server.ts:51` refers to `backend/src/standalone.ts`. Read the surrounding comment and reword it so it does not point at a deleted file. Do not change behavior.
 
 - [ ] **Step 4: Verify**
 

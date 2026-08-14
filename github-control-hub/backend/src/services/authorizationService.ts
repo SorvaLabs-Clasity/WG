@@ -4,7 +4,7 @@ import { createOctokit, getSystemToken, getOrg } from "../github/client";
 /**
  * Who may change org-wide Control Hub settings.
  *
- * Everything a user does to a *repository* is authorised by GitHub itself —
+ * Everything a user does to a *repository* is authorized by GitHub itself —
  * those calls are made with the user's own token, so GitHub allows exactly what
  * it would allow had they used github.com directly, and there is nothing for us
  * to decide. See routes/branches.ts.

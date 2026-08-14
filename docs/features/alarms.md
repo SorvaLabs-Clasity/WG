@@ -27,7 +27,7 @@ five to thirty seconds after the event itself, most of which is GitHub's
 webhook delivery and your mail provider.
 
 Alerts below the floor are still recorded in the Security tab. They are just
-not emailed, because a low-severity alert on a busy organisation is a daily
+not emailed, because a low-severity alert on a busy organization is a daily
 occurrence and the floor is what keeps the mailbox worth reading.
 
 A notification failure never fails the alert. The alert is already written by

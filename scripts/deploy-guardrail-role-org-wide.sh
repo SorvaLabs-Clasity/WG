@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Give the GitHub Control Hub read access to accounts in your AWS organisation.
+# Give the GitHub Control Hub read access to accounts in your AWS organization.
 #
 # It asks which accounts. "All of them" is offered, not assumed — most estates
 # have accounts nobody wants a tool anywhere near, and a script that quietly
@@ -11,7 +11,7 @@
 # leaves that off, because the point of choosing is that a new account is not
 # automatically in scope.
 #
-# Either way, removing an account from the organisation removes the role with
+# Either way, removing an account from the organization removes the role with
 # it.
 #
 # The alternative — letting the app assume OrganizationAccountAccessRole, which
@@ -25,7 +25,7 @@
 # contents of any bucket or any log line, and by default it cannot change
 # anything at all.
 #
-# Run from your organisation's MANAGEMENT account (or a CloudFormation
+# Run from your organization's MANAGEMENT account (or a CloudFormation
 # delegated administrator).
 
 set -euo pipefail
@@ -44,7 +44,7 @@ ask() { local __v="$1" prompt="$2" default="${3:-}" reply
         printf -v "$__v" '%s' "$reply"; }
 
 # ── Who are we ────────────────────────────────────────────────────────
-ask PROFILE "AWS profile for the organisation MANAGEMENT account" "default"
+ask PROFILE "AWS profile for the organization MANAGEMENT account" "default"
 AWS="aws --profile $PROFILE"
 
 say "Checking that profile"
@@ -76,7 +76,7 @@ FEATURE_SET=$(printf '%s' "$ORG_JSON" | python3 -c 'import json,sys; print(json.
 
 if [[ "$FEATURE_SET" != "ALL" ]]; then
   echo
-  echo "This organisation is in CONSOLIDATED_BILLING mode. StackSets need all features enabled:"
+  echo "This organization is in CONSOLIDATED_BILLING mode. StackSets need all features enabled:"
   echo "  aws organizations enable-all-features --profile $PROFILE"
   echo "(every member account has to approve the invitation, so this is not instant)"
   exit 1
@@ -101,7 +101,7 @@ done
 ask ROLE_NAME "Name for the role in each account" "github-control-hub-guardrail-access"
 
 # ── Which accounts ────────────────────────────────────────────────────
-say "Accounts in this organisation"
+say "Accounts in this organization"
 $AWS organizations list-accounts \
   --query 'Accounts[?Status==`ACTIVE`].[Id,Name]' --output table
 
@@ -122,7 +122,7 @@ else
   for id in ${CHOSEN//,/ }; do
     [[ "$id" =~ ^[0-9]{12}$ ]] || { echo "Not an account id: $id"; exit 1; }
   done
-  # AccountFilterType=INTERSECTION narrows the organisational unit down to
+  # AccountFilterType=INTERSECTION narrows the organizational unit down to
   # exactly these ids. Without it, naming accounts alongside an OU deploys to
   # the whole OU as well — which is the opposite of what was just asked for.
   TARGETS="OrganizationalUnitIds=$ROOT_ID,Accounts=$CHOSEN,AccountFilterType=INTERSECTION"
@@ -155,7 +155,7 @@ ask REGION "Region to run the StackSet in (the role itself is global)" "${AWS_RE
 
 say "About to do this"
 cat <<EOF
-    organisation root:  $ROOT_ID
+    organization root:  $ROOT_ID
     accounts affected:  $SCOPE_SUMMARY
     role name:          $ROLE_NAME
     trusts:             $CONTROL_HUB_ROLE_ARNS
@@ -215,7 +215,7 @@ fi
 
 say "Started"
 cat <<EOF
-Rollout runs in the background — a few minutes for a large organisation.
+Rollout runs in the background — a few minutes for a large organization.
 
 Watch it:
   aws cloudformation list-stack-instances --stack-set-name $STACKSET_NAME \\

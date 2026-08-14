@@ -14,7 +14,7 @@
 import fs from "fs";
 import path from "path";
 import {
-  buildQueries, normalisePr, fetchRenovatePrs, openPrs, retentionCutoff,
+  buildQueries, normalizePr, fetchRenovatePrs, openPrs, retentionCutoff,
   CLOSED_RETENTION_MONTHS, type SearchIssues,
 } from "./src/services/renovateService";
 
@@ -59,7 +59,7 @@ const NOW = new Date("2026-08-14T12:00:00Z");
     state: "open", created_at: "2026-08-04T12:00:00Z", updated_at: "2026-08-10T12:00:00Z",
     closed_at: null, draft: false, pull_request: {},
   };
-  const pr = normalisePr(item);
+  const pr = normalizePr(item);
 
   // Search returns issues, so the repo has to be recovered from the URL.
   check("the repository is recovered from repository_url", pr.repo === "penn-station", pr.repo);
@@ -67,9 +67,9 @@ const NOW = new Date("2026-08-14T12:00:00Z");
     pr.url.startsWith("https://github.com/") && pr.url.endsWith("/pull/42"), pr.url);
   check("  an open PR has no closedAt", pr.state === "open" && pr.closedAt === null, pr);
 
-  const merged = normalisePr({ ...item, state: "closed", closed_at: "2026-08-12T12:00:00Z",
+  const merged = normalizePr({ ...item, state: "closed", closed_at: "2026-08-12T12:00:00Z",
     pull_request: { merged_at: "2026-08-12T12:00:00Z" } });
-  const abandoned = normalisePr({ ...item, state: "closed", closed_at: "2026-08-12T12:00:00Z",
+  const abandoned = normalizePr({ ...item, state: "closed", closed_at: "2026-08-12T12:00:00Z",
     pull_request: {} });
 
   check("a merged PR is distinguishable from an abandoned one",
@@ -80,7 +80,7 @@ const NOW = new Date("2026-08-14T12:00:00Z");
   check("age is measured to the close, not to now, once closed",
     merged.ageDays === 8, merged.ageDays);
 
-  const junk = normalisePr({});
+  const junk = normalizePr({});
   check("a malformed item yields a row rather than throwing",
     junk.repo === "unknown" && junk.number === 0 && junk.state === "open", junk);
 }
@@ -147,7 +147,7 @@ const NOW = new Date("2026-08-14T12:00:00Z");
 
   // ── an unknown bot account is a state, not a crash ────────────────────
   {
-    // Found by running this against a real organisation: GitHub answers
+    // Found by running this against a real organization: GitHub answers
     // `author:` for a user it cannot find with 422 Validation Failed, not with
     // an empty result. Left to propagate it becomes a 500 and reads as the
     // feature being broken, when the fix is to correct one word of config.

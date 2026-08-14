@@ -72,7 +72,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // The only role this app may ever assume, anywhere.
     //
     // Named exactly, and the grants below are scoped to this name alone. The
-    // roles AWS creates by default in organisation member accounts —
+    // roles AWS creates by default in organization member accounts —
     // OrganizationAccountAccessRole, AWSControlTowerExecution — carry
     // AdministratorAccess, and this app is deliberately unable to assume them.
     // Convenience is not worth an application in a production account holding
@@ -183,7 +183,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     guardrailFn.addToRolePolicy(new iam.PolicyStatement({
       sid: "AssumeGuardrailRoleInOtherAccounts",
       actions: ["sts:AssumeRole"],
-      // Exactly one role name. Deploy it across the organisation with
+      // Exactly one role name. Deploy it across the organization with
       // scripts/deploy-guardrail-role-org-wide.sh, which uses a StackSet — one
       // command, every account, including accounts created later.
       resources: [`arn:aws:iam::*:role/${guardrailRoleName}`],
@@ -340,7 +340,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // and HMACs a body no one has authenticated yet — and no review proves
     // that path free of bugs forever. So the question that matters is not
     // whether it can be broken but what breaking it yields. Against the
-    // bundle it yielded GITHUB_APP_PRIVATE_KEY and the whole organisation
+    // bundle it yielded GITHUB_APP_PRIVATE_KEY and the whole organization
     // with it; against this secret it yields the ability to check signatures.
     //
     // The two wildcards must stay disjoint: "…/secrets*" cannot match
@@ -609,7 +609,7 @@ export class GitHubControlHubStack extends cdk.Stack {
         name: "RatePerSourceIp",
         priority: 0,
         // 2,000 requests in five minutes from one address. GitHub delivering a
-        // burst for a large organisation stays far below this; a source
+        // burst for a large organization stays far below this; a source
         // sustaining more than six a second is not delivering webhooks.
         statement: { rateBasedStatement: { limit: 2000, aggregateKeyType: "IP" } },
         action: { block: {} },
@@ -695,7 +695,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // Streaming rather than polling the audit log API: the API is rate limited
     // to 1,750 requests an hour and its history is capped, while a bucket keeps
     // everything for as long as the lifecycle rule below says.
-    // Some organisations run a Config rule that applies a TLS-only bucket
+    // Some organizations run a Config rule that applies a TLS-only bucket
     // policy the moment a bucket appears. That control and enforceSSL want the
     // same thing and cannot both have it: CloudFormation creates the bucket,
     // the remediation writes its policy within seconds, and CloudFormation's

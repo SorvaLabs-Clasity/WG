@@ -14,7 +14,7 @@ github-control-hub/infra/cdk.context.json
 # Vite layers env files: .env.<mode> holds app defaults and is committed,
 # .env.<mode>.local is the per-install layer and is not. The migration script
 # writes the .local one (company name, region), which must not travel with a
-# clone into another organisation.
+# clone into another organization.
 .env.local
 .env.*.local
 github-control-hub/frontend/.env

@@ -10,7 +10,7 @@ import { listGuardrails, putGuardrail, listAwsExclusions, putAwsExclusion } from
 const router = Router();
 
 /**
- * Everything the organisation configured, as one document.
+ * Everything the organization configured, as one document.
  *
  * Scanners, widgets and guardrails live only in DynamoDB. Standing up a second
  * account — which the migration script does with a set of empty tables — meant
@@ -49,7 +49,7 @@ async function refuseUnlessAdmin(res: Response, login: string, verb: string): Pr
   if (await isControlHubAdmin(login)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
-      `configuration — it is every scanner, widget and guardrail the organisation runs on.`,
+      `configuration — it is every scanner, widget and guardrail the organization runs on.`,
     code: "CONTROL_HUB_ADMIN_REQUIRED",
   });
   return true;

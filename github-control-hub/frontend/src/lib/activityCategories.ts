@@ -64,7 +64,7 @@ const PREFIXES: Array<[string, ActivityCategory]> = [
 ];
 
 /**
- * An unrecognised action counts as an organization change.
+ * An unrecognized action counts as an organization change.
  *
  * Defaulting the other way would hide something new in a tab nobody watches.
  * A stray housekeeping row in the organization feed is a small annoyance; a

@@ -12,7 +12,7 @@ import { awsRegion } from "../utils/region";
  * key to the App private key it never read, so any bug in the receiver's
  * pre-authentication path — the base64 decode and the HMAC, which necessarily
  * touch bytes nobody has verified yet — would have surrendered the whole
- * organisation rather than the ability to check signatures. Since no amount of
+ * organization rather than the ability to check signatures. Since no amount of
  * review proves that path bug-free, the containment has to be real: separate
  * secrets, separate grants, and two code paths below that never share a fetch.
  *

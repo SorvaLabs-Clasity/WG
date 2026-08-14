@@ -27,7 +27,7 @@ const FUNCTION_NAME = process.env.GUARDRAIL_FUNCTION_NAME
 
 /**
  * Everything that changes or triggers a guardrail is restricted to the admin
- * team. Unlike the GitHub side — where a repo action is authorised by GitHub
+ * team. Unlike the GitHub side — where a repo action is authorized by GitHub
  * itself, because the call is made with the user's own token — these calls run
  * as the Lambda's role, which holds account-wide write permissions. There is no
  * per-user AWS identity to delegate to, so the app has to decide.
@@ -284,7 +284,7 @@ router.delete("/exclusions/:id", requireAdmin, async (req: Request<{ id: string 
 /**
  * The accounts guardrails run against.
  *
- * An organisation is rarely one account, and the rules that matter most —
+ * An organization is rarely one account, and the rules that matter most —
  * retention floors, TLS-only buckets — matter most in the accounts nobody logs
  * into daily. Access is by assuming a role the target account grants, so
  * revoking it is a change made where the resources live rather than a stored
@@ -356,7 +356,7 @@ router.post("/accounts", requireAdmin, async (req: Request, res: Response) => {
       return;
     }
     if (!name?.trim()) {
-      res.status(400).json({ error: "Give the account a name — twelve digits is not something anyone recognises under pressure." });
+      res.status(400).json({ error: "Give the account a name — twelve digits is not something anyone recognizes under pressure." });
       return;
     }
 
@@ -490,7 +490,7 @@ router.post("/accounts/:accountId/verify", requireAdmin, async (req: Request<{ a
  * Everything needed to grant this app access to an account, pre-filled.
  *
  * The app cannot create the role itself, and that is the point rather than a
- * gap. Creating an IAM role across an organisation requires permissions —
+ * gap. Creating an IAM role across an organization requires permissions —
  * cloudformation:CreateStackSet with CAPABILITY_NAMED_IAM — that would let
  * whoever held them deploy an administrator role into every account. Holding
  * that would be strictly worse than the administrator access this app was

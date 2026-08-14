@@ -45,7 +45,7 @@ export default function AlarmsPage() {
         <PageHeader title="Alarms" subtitle="Thresholds on widgets, and who hears about them." />
         <Empty
           title="Admins only"
-          body={`Alarms send mail on behalf of the whole organisation, so they are managed by ` +
+          body={`Alarms send mail on behalf of the whole organization, so they are managed by ` +
             `members of the "${permissions?.awsAdminTeam ?? "admin"}" team and organization owners.`}
         />
       </Page>

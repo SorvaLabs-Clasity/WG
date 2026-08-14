@@ -58,7 +58,7 @@ function describe(info: RateLimitInfo): string {
     return "GitHub is asking us to slow down — too many requests in a short window. " +
       "This clears on its own in under a minute.";
   }
-  return "GitHub's hourly request budget for this organisation is spent" +
+  return "GitHub's hourly request budget for this organization is spent" +
     (info.limit ? ` (${info.limit.toLocaleString()} requests per hour)` : "") +
     ". Everything that reads from GitHub will fail until it refills.";
 }

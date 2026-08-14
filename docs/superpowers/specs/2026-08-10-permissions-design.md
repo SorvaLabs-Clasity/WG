@@ -37,7 +37,7 @@ repos you can reach, at your existing level."
 
 | Action | Runs as | Why |
 |---|---|---|
-| User-initiated repo writes — apply template, edit/delete protection, create branch, toggle Dependabot | the user's token | GitHub authorises natively |
+| User-initiated repo writes — apply template, edit/delete protection, create branch, toggle Dependabot | the user's token | GitHub authorizes natively |
 | System-initiated writes — auto-apply on repo creation, scheduled scans | App token | No user exists behind a webhook |
 | Reads — dashboards, compliance, knowledge center | App token | Full org visibility, and the 12,500/hr limit |
 
@@ -87,7 +87,7 @@ The auto-apply toggle is disabled, with a lock icon and a note naming the team.
   12,500. Applying one template across hundreds of repos in a single action may
   hit that ceiling where previously it did not.
 - Members who could previously change any repo will start seeing 403s. That is
-  the point, but it is a visible behaviour change.
+  the point, but it is a visible behavior change.
 
 ## Testing
 

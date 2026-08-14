@@ -15,7 +15,7 @@ export const TEMPLATE_VARIABLES: { name: string; description: string }[] = [
   { name: "severity", description: "For security alerts: critical, high, medium, low" },
   { name: "repo", description: "For security alerts: the repository involved" },
   { name: "message", description: "For security alerts: what happened" },
-  { name: "org", description: "The GitHub organisation" },
+  { name: "org", description: "The GitHub organization" },
   { name: "time", description: "When the value was observed (UTC)" },
 ];
 
@@ -79,13 +79,13 @@ export function sanitizeSubject(raw: string, fallback = "Control Hub alarm"): st
 export const DEFAULT_ALARM_SUBJECT = "[{{state}}] {{widget}}: {{metric}} is {{value}}";
 export const DEFAULT_ALARM_BODY =
   `{{widget}}\n\n{{metric}} is now {{value}} (your limit is {{threshold}}).\n\n` +
-  `Organisation: {{org}}\nObserved at: {{time}}\n\n` +
+  `Organization: {{org}}\nObserved at: {{time}}\n\n` +
   `This is an automated message from GitHub Control Hub.`;
 
 export const DEFAULT_SECURITY_SUBJECT = "[{{severity}}] {{repo}}: {{message}}";
 export const DEFAULT_SECURITY_BODY =
   `{{message}}\n\nRepository: {{repo}}\nSeverity: {{severity}}\n` +
-  `Organisation: {{org}}\nDetected at: {{time}}\n\n` +
+  `Organization: {{org}}\nDetected at: {{time}}\n\n` +
   `This is an automated message from GitHub Control Hub.`;
 
 /**

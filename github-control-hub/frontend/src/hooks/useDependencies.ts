@@ -29,7 +29,7 @@ export function useDependencySummary() {
  * time.
  *
  * A single repository costs one or two requests, so the cost is now
- * proportional to what changed rather than to the size of the organisation.
+ * proportional to what changed rather than to the size of the organization.
  * The org-wide totals still need one call, and that one is debounced, since
  * being a few seconds out of date on a summary matters to nobody.
  */

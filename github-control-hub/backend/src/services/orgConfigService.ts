@@ -13,7 +13,7 @@ export interface OrgConfig {
    *
    * Configuration rather than a constant: there is no Renovate API to ask, so
    * authorship is the only marker, and every installation names its bot
-   * differently. Unset means the organisation does not run Renovate, and the
+   * differently. Unset means the organization does not run Renovate, and the
    * tab says so instead of showing an empty table that looks like a failure.
    */
   renovateBot?: string;

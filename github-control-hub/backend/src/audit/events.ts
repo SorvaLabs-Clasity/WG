@@ -159,7 +159,7 @@ export function subjectOf(e: RawAuditEvent): string {
  * Three things make an audit line useful, and they live in different fields
  * depending on the event:
  *
- *   where    the repository, team or organisation it happened in
+ *   where    the repository, team or organization it happened in
  *   who      the person or app it happened *to* — not the actor
  *   change   what it became, and where possible what it was before
  *
@@ -201,7 +201,7 @@ export function describe(e: RawAuditEvent): string {
   return parts.join(" ");
 }
 
-export function normalise(e: RawAuditEvent): IndexedAuditEvent {
+export function normalize(e: RawAuditEvent): IndexedAuditEvent {
   const action = String(e.action ?? "");
   return {
     action,

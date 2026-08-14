@@ -44,7 +44,7 @@ at 1,000 results, and hitting that is reported rather than shown as a total.
 ## It cannot merge
 
 By design, and asserted. Every row links out to GitHub; merging happens there,
-where GitHub authorises the person doing it against the repository.
+where GitHub authorizes the person doing it against the repository.
 
 There is no merge route on the backend, and `repro-renovate.ts` fails if any
 code anywhere gains the ability to merge a pull request — a button somebody

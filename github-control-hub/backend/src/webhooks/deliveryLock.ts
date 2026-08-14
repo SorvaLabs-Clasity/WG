@@ -38,7 +38,7 @@ const LEASE_SEC = 630;
  * Longer than the lease, which is the counter-intuitive part. The obvious value
  * is 300 — the replay window the in-memory Map used — and it is wrong here: a
  * worker can succeed and have the message deletion not register, which is
- * ordinary at-least-once behaviour, and the redelivery arrives one visibility
+ * ordinary at-least-once behavior, and the redelivery arrives one visibility
  * timeout later at 660 seconds. A 300-second marker has expired by then, so the
  * delivery would be claimed again and its activity rows and alerts duplicated.
  *

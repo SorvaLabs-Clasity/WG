@@ -58,7 +58,7 @@ export class MissingGraphDataError extends Error {
  * than "nothing found".
  *
  * Deliberately not listed: has_vulnerable_dependency, where no edges is a
- * legitimate answer — an organisation with no open advisories genuinely has
+ * legitimate answer — an organization with no open advisories genuinely has
  * none, and claiming missing data would be its own kind of wrong.
  */
 const REQUIRES: Record<string, string> = {
@@ -172,7 +172,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     case "highly-privileged-users":
       // Org owners are shown, not hidden. They are admin on everything by
       // virtue of the role, which makes them the most privileged accounts in
-      // the organisation — omitting them would leave the question "who has the
+      // the organization — omitting them would leave the question "who has the
       // most access" answered by everyone except the people who have the most.
       // How the access was obtained goes in the result instead, so a grant
       // somebody made is distinguishable from one the role confers.
@@ -190,7 +190,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       }
       const threshold = parseInt(param as string) || 3;
       const HOW: Record<string, string> = {
-        org_owner: "organisation ownership",
+        org_owner: "organization ownership",
         team: "team membership",
         direct: "a direct grant",
       };
@@ -208,7 +208,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       // Access somebody granted is more actionable than access the role
       // confers, so those sort first.
       results.sort((a, b) => {
-        const owned = (r: any) => (r.details.includes("organisation ownership") ? 1 : 0);
+        const owned = (r: any) => (r.details.includes("organization ownership") ? 1 : 0);
         return owned(a) - owned(b);
       });
       break;
@@ -679,7 +679,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
     case "public-repos": {
       // Becoming public raises an alert; being public raises nothing, so an
-      // organisation could be full of public repositories and the app would
+      // organization could be full of public repositories and the app would
       // have said so once, months ago, in a feed.
       for (const edge of allEdges) {
         if (edge.type !== "repo_meta") continue;

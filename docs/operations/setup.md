@@ -35,31 +35,24 @@ your machine and fails in CI.
 If you need to change it: `nvm install 24 && nvm use 24 && nvm alias default 24`,
 or `brew install node@24 && brew unlink node && brew link --overwrite --force node@24`.
 
-### Credentials and region
+### Credentials
+
+Nothing to export. The migration script asks which profile to use, signs in if
+that profile has no valid session, and asks which region to deploy into. It
+prints the account id and identity ARN it authenticated as before creating
+anything — read that line, it is the checkpoint.
+
+If you would rather not use a profile, the three exports from the AWS access
+portal work instead, and the script then asks nothing about credentials:
 
 ```bash
-export AWS_PROFILE=<your-profile>
-export AWS_REGION=<your-region>
-export CDK_DEFAULT_REGION=<your-region>
-
-aws sso login --profile <your-profile>
-aws sts get-caller-identity        # must print the target account
+export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
 ```
 
-**Both region variables, same value.** They are read by different things and
-neither falls back to the other: the AWS CLI and every SDK read `AWS_REGION`,
-while the CDK app reads `CDK_DEFAULT_REGION`. Nothing defaults to a region on
-your behalf — see [environment](environment.md).
-
-**If `aws sts get-caller-identity` fails** with "the security token included in
-the request is invalid", check for stale credentials overriding your profile:
-
-```bash
-env | grep AWS_
-unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
-```
-
----
+**Region matters and is not guessed.** An organization whose SCP restricts a
+service in one region needs the deploy in another, and a stack built somewhere
+nobody chose is a stack you have to find before you can fix it. The script asks
+rather than defaulting, and rejects a region the account cannot see.
 
 ## Phase 1 — GitHub organization
 
@@ -203,7 +196,7 @@ at any prompt — nothing is written until the step it is in completes.
 | AWS profile | Defaults to `$AWS_PROFILE` |
 | AWS region to deploy into | Defaults to your profile's region, never to a literal |
 | Company display name | Shown in the app |
-| GitHub organisation | The login from the URL, **case-sensitive** |
+| GitHub organization | The login from the URL, **case-sensitive** |
 | Resource name prefix | Enter for `github-control-hub` |
 
 The org login is the part in `github.com/<this>`, which is often not the
@@ -335,7 +328,7 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 > **If a webhook already exists here, edit its URL — do not add a second
 > one.** GitHub gives each webhook its own delivery id for the same
 > underlying event, so two webhooks pointing at two receivers means two
-> unrelated deliveries, and the deduplication lock has no way to recognise
+> unrelated deliveries, and the deduplication lock has no way to recognize
 > them as the same event. Both would process: duplicate activity rows,
 > duplicate alerts. This matters most when repointing an existing install at
 > a new deployment, but it is worth checking on a first setup too, in case a
@@ -362,7 +355,7 @@ The reason is blast radius. The receiver Lambda is the only part of this
 system reachable from the internet, and it has to handle bytes nobody has
 authenticated yet in order to authenticate them. Sharing the bundle meant it
 held a key to `GITHUB_APP_PRIVATE_KEY` it never used, so any bug on that path
-gave up the whole organisation instead of the ability to check signatures. Its
+gave up the whole organization instead of the ability to check signatures. Its
 IAM grants this secret and nothing else.
 
 These events record the changes nobody made through the app — someone disabling
@@ -448,16 +441,16 @@ This stack takes no required context. `-c auditEnterprise=<slug>` is optional, f
 
 ## Running more than one environment
 
-The stack carries no assumption that an organisation has one deployment. Each
+The stack carries no assumption that an organization has one deployment. Each
 AWS account runs its own copy — its own tables, secrets, queue and API Gateway —
-against the same GitHub organisation, and the desktop app moves between them by
+against the same GitHub organization, and the desktop app moves between them by
 switching AWS profile. Dev, UAT and production are the same deployment done
 three times, not three variants of it.
 
-What is shared is only what lives on GitHub's side: the organisation, and
+What is shared is only what lives on GitHub's side: the organization, and
 optionally the App and OAuth App.
 
-- **A GitHub organisation can hold more than one webhook.** Add one per
+- **A GitHub organization can hold more than one webhook.** Add one per
   environment, each pointing at that account's `WebhookUrl` with its own
   secret. Every hook receives every event; each account's worker writes to its
   own tables.

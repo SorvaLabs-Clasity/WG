@@ -87,7 +87,7 @@ export function accessMethod(account: AwsAccount): AwsAccessMethod {
  *
  * The whole registry is one item. At roughly 300 bytes per account that is a
  * thousand accounts before DynamoDB's 400KB item limit is anywhere close, and
- * an organisation with a thousand AWS accounts has bigger questions than this.
+ * an organization with a thousand AWS accounts has bigger questions than this.
  */
 export const ACCOUNTS_TABLE = process.env.ORG_CONFIG_TABLE || `${PREFIX}-org-config`;
 const ACCOUNTS_KEY = "aws-accounts";
@@ -248,7 +248,7 @@ export async function credentialsFor(account: AwsAccount): Promise<AwsCredential
  * Try each candidate role until one lets us in.
  *
  * For an explicitly named role there is exactly one candidate and a failure is
- * a failure. For an organisation account the list is the point: we do not know
+ * a failure. For an organization account the list is the point: we do not know
  * which of the standard roles that account has, and asking the user to find out
  * is the setup step this is meant to remove.
  */
@@ -363,7 +363,7 @@ export async function discoverOrganizationAccounts(): Promise<
     } while (NextToken);
 
     // A StackSet aimed at some accounts rather than all of them still needs an
-    // organisational unit to intersect against, and the root is the one that
+    // organizational unit to intersect against, and the root is the one that
     // always exists.
     const rootId = await (async () => {
       try {

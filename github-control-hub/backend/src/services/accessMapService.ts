@@ -8,16 +8,16 @@ import { scanGraphEdges } from "./graphService";
  * where does each of those come from". Answering it needs the paths, not just
  * the outcome: revoking a direct grant does nothing if the person is also in a
  * team that owns the repository, and removing them from a team does nothing if
- * they are an organisation owner.
+ * they are an organization owner.
  *
  * So every entry here carries every path we can derive, and says plainly when
  * the effective permission is more than the paths explain.
  *
  * One deliberate limit, stated everywhere it matters: read access is not in
- * the graph. Most organisations grant read on everything to every member by
+ * the graph. Most organizations grant read on everything to every member by
  * default, which would be one edge per member per repository — hundreds of
  * thousands of rows saying the same thing. The map reports write and above,
- * and reports the organisation's default separately so the omission is
+ * and reports the organization's default separately so the omission is
  * visible rather than silent.
  */
 
@@ -52,7 +52,7 @@ export interface Person {
   adminCount: number;
   /** Repos reachable only because of a grant made to them personally. */
   directCount: number;
-  /** True when they are not a member of the organisation. */
+  /** True when they are not a member of the organization. */
   outside: boolean;
 }
 
@@ -222,7 +222,7 @@ export async function accessForUser(login: string): Promise<{
 
   // An owner reaches every repository, whether or not a collaborator edge
   // exists for them on it. Listing only the ones GitHub happened to return
-  // would understate the single broadest grant in the organisation.
+  // would understate the single broadest grant in the organization.
   const candidates = new Set<string>([
     ...effective.keys(),
     ...viaTeams.keys(),
@@ -286,7 +286,7 @@ export async function accessForRepo(repo: string): Promise<{
     .sort((a, b) => a.name.localeCompare(b.name));
 
   // Everyone with any route to it: a collaborator edge, a team that owns it,
-  // or organisation ownership.
+  // or organization ownership.
   const logins = new Set<string>();
   for (const [login, repos] of g.effective) if (repos.has(repo)) logins.add(login);
   for (const t of teams) {

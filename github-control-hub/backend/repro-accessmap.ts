@@ -159,7 +159,7 @@ fs.writeFileSync(FIXTURE, JSON.stringify(EDGES));
         by("owner-ann").adminCount === 4, by("owner-ann"));
       check("  a member with no write is listed with zero, not omitted",
         by("lurker-lee").repoCount === 0, by("lurker-lee"));
-      check("the organisation's read default is reported rather than assumed",
+      check("the organization's read default is reported rather than assumed",
         summary.org.defaultRepositoryPermission === "read", summary.org);
       check("  and a graph with people in it is not called stale",
         summary.stale === false, summary.stale);

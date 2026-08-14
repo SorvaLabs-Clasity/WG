@@ -257,7 +257,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
 
   // An unknown operation must demand the most, not the least.
   const unknown = undoRequirement(at({ undoPayload: { action: "something_new", params: {} } }));
-  check("an unrecognised operation demands both checks",
+  check("an unrecognized operation demands both checks",
     unknown.repo === "admin" && unknown.adminTeam === true, unknown);
 
   check("a template edit anywhere in the group triggers the team check",
@@ -350,7 +350,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
    */
   const NOT_ORG_WIDE: Record<string, string> = {
     "auth.ts": "session and local AWS setup; guarded by authMiddleware/serverModeGuard, not by team",
-    "branches.ts": "acts on one repo with the caller's own token — GitHub authorises",
+    "branches.ts": "acts on one repo with the caller's own token — GitHub authorizes",
     "protection.ts": "same: per-repo, the caller's token",
     "repos.ts": "same: per-repo, the caller's token",
     "webhooks.ts": "not a user route — HMAC-verified GitHub deliveries",

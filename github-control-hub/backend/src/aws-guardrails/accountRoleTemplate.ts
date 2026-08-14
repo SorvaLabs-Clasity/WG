@@ -16,7 +16,7 @@ export const ACCOUNT_ROLE_TEMPLATE = String.raw`AWSTemplateFormatVersion: "2010-
 
 # The role the GitHub Control Hub uses to look at this AWS account.
 #
-# For a whole organisation, use scripts/deploy-guardrail-role-org-wide.sh
+# For a whole organization, use scripts/deploy-guardrail-role-org-wide.sh
 # instead of running this per account. It deploys this same template as a
 # StackSet: every existing account and every account created afterwards, in one
 # command.

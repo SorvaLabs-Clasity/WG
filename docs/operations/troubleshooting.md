@@ -74,7 +74,7 @@ the GitHub webhook have genuinely diverged.
 
 ## "An unexpected error occurred"
 
-The sanitiser hides messages it does not recognise. It reads AWS exception
+The sanitizer hides messages it does not recognize. It reads AWS exception
 *names* as well as messages, so a missing table or permission gives a specific
 answer. If you still get the generic one, the server log has the real error.
 

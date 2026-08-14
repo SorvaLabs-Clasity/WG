@@ -62,7 +62,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
       // as ownership — a wrong label, not a missing edge.
     }
 
-    // Everyone in the organisation, whether or not they can write anywhere.
+    // Everyone in the organization, whether or not they can write anywhere.
     //
     // Privileged edges alone cannot answer "who has access to what": someone
     // with read on everything and write on nothing has no edges at all, and a
@@ -87,7 +87,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
       console.warn("[GraphAggregator] Failed to list organization members");
     }
 
-    // People who are not in the organisation but hold access to a repository
+    // People who are not in the organization but hold access to a repository
     // in it. The single most important row in an access review, and invisible
     // without asking for them by name.
     try {
@@ -119,7 +119,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
     // What every member can do without being granted anything.
     //
     // The access map's headline claim — "everyone can read every repository" —
-    // is only true when the organisation's default says so. Asserting it
+    // is only true when the organization's default says so. Asserting it
     // without checking would be the map's biggest statement resting on an
     // assumption.
     try {
@@ -246,7 +246,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
           fork: !!repo.fork,
           pushedAt: repo.pushed_at ?? null,
           defaultBranch: repo.default_branch ?? "main",
-          // Every one of these is off across the sampled organisation, and each
+          // Every one of these is off across the sampled organization, and each
           // is a control an auditor asks about by name.
           secretScanning: repo.security_and_analysis?.secret_scanning?.status ?? "unknown",
           pushProtection: repo.security_and_analysis?.secret_scanning_push_protection?.status ?? "unknown",
@@ -258,7 +258,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
       // This asked for affiliation "direct", meaning only people granted access
       // to the repository individually. Almost nobody gets access that way —
       // it arrives through org membership or a team — so the graph recorded
-      // one collaborator across the whole organisation and every question
+      // one collaborator across the whole organization and every question
       // about people returned nothing.
       //
       // Two deliberate narrowings keep that from turning into noise:

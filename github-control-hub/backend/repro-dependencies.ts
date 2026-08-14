@@ -4,7 +4,7 @@
  * Two bugs, one after the other, in the same handful of lines.
  *
  * The first: all three calls in routes/dependencies.ts asked GitHub for
- * `per_page: 100` and used the single page they got back. An organisation with
+ * `per_page: 100` and used the single page they got back. An organization with
  * more than a hundred open alerts under-counted every severity and under-listed
  * every affected repository — no error, no warning, in the direction that looks
  * like good news.
@@ -15,7 +15,7 @@
  *
  *     400  Pagination using the `page` parameter is not supported.
  *
- * Both the organisation-level and repository-level alert endpoints use cursor
+ * Both the organization-level and repository-level alert endpoints use cursor
  * pagination instead: a `Link` header carrying `rel="next"` with an `after`
  * cursor. The route's catch tolerated only 403 and 404, so the 400 propagated,
  * the request returned 500, and the Dependabot page rendered nothing at all.
@@ -126,7 +126,7 @@ function githubWith(total: number) {
   }
 
   // The bug was not in the loop — it was in what the callers handed it. A
-  // behavioural test of the helper cannot see that, so this reads the source.
+  // behavioral test of the helper cannot see that, so this reads the source.
   {
     // Both files, because the org-wide sweep moved into the service so the
     // alarm evaluator could share it. Reading only the route would have let
@@ -153,10 +153,10 @@ function githubWith(total: number) {
 
   // ── alert status without a request per repository ───────────────────
   {
-    // This replaced one REST call per repo — 351 on the live organisation —
+    // This replaced one REST call per repo — 351 on the live organization —
     // with 100 repos per GraphQL request. Verified against that org in both
     // directions before the swap: a field that is always false would agree
-    // with a mostly-off organisation and still be wrong.
+    // with a mostly-off organization and still be wrong.
     const page = (names: string[], next: string | null) => ({
       organization: { repositories: {
         pageInfo: { hasNextPage: !!next, endCursor: next },
@@ -182,7 +182,7 @@ function githubWith(total: number) {
     check("a failed query reads as unknown, not as all-disabled", broken === null, broken);
 
     const empty = await fetchRepoAlertStatus(async () => ({}), "Org");
-    check("  as does a response with no organisation in it", empty === null, empty);
+    check("  as does a response with no organization in it", empty === null, empty);
 
     // A cursor that never advances would otherwise loop until the rate limit.
     let calls = 0;

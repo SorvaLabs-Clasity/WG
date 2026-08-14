@@ -221,7 +221,7 @@ const code = (src: string) => src
     !/getSystemToken\(\)/.test(src),
     "the sync getter returns a stale token on a warm container");
 
-  // The next three are behavioural rather than textual, because they are the
+  // The next three are behavioral rather than textual, because they are the
   // ones whose regression reads like a tidy-up.
   const { awaitBackground } = await import("./src/webhooks/processDelivery");
 
