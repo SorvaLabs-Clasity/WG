@@ -305,7 +305,12 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // here is not checked, so the list itself is the thing to keep honest — see
     // the completeness assertion below.
     ["awsGuardrails.ts", /router\.(post|put|delete)\(/g, /requireAdmin/],
-    ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted/],
+    // Two gates, because the routes ask different questions. Undo and retry
+    // ask whether this person may reverse this particular action;
+    // audit-stream setup creates IAM in the account and asks whether they are
+    // an org admin at all. Either is a real gate; a route naming neither is
+    // what this catches.
+    ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted|isAwsAdmin/],
     ["alarms.ts",        /router\.(post|put|delete)\(/g, /requireAdmin/],
   ];
 

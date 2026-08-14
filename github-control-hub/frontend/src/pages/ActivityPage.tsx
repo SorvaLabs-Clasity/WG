@@ -1,3 +1,4 @@
+import AuditStreamSetup from "../components/AuditStreamSetup";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { categoryOf, countByCategory, CATEGORY_LABELS, type ActivityCategory } from "../lib/activityCategories";
 import { Page, INTENT } from "../design";
@@ -618,13 +619,7 @@ export default function ActivityPage() {
                           configures streaming at the enterprise. Saying so
                           beats an unexplained blank table. */}
                       {category === "audit" && categoryCounts.audit === 0 ? (
-                        <>
-                          <p className="font-semibold text-slate-700 dark:text-slate-200">Enterprise audit log not connected</p>
-                          <p className="text-sm mt-1 max-w-md mx-auto">
-                            This stream stays empty until audit log streaming is configured at the enterprise
-                            and delivered to this account.
-                          </p>
-                        </>
+                        <AuditStreamSetup />
                       ) : categoryCounts[category] === 0 ? (
                         <>
                           <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing recorded here yet</p>

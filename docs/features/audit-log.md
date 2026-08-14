@@ -13,26 +13,41 @@ lifecycle rule says.
 It also costs nothing extra. Streaming is included with GitHub Enterprise
 Cloud; the AWS side is a few cents a month at any realistic volume.
 
-## What you have to do
+## Setting it up
 
-Nothing in this repository can turn this on. An enterprise owner has to
-configure it, in a browser, once.
+In the app: **Activity → Audit log**. With nothing configured the stream says
+so and offers a field for your enterprise slug — the name in
+`github.com/enterprises/<name>`.
 
-1. Deploy. `scripts/migrate-to-account.sh` asks for the enterprise slug and
-   deploys the role with everything else; a bare `cdk deploy` needs
-   `-c auditEnterprise=<slug>` instead. The slug is the one in the URL at
-   `github.com/enterprises/<slug>`, and unlike the organization name it **is**
-   case-sensitive — it goes into an IAM trust policy, not a GitHub lookup.
+Setting it up creates two things in AWS, using your own credentials:
 
-   The slug is data rather than a preference: the role pins its trust to that
-   one enterprise, and without a subject to pin to it would accept uploads from
-   any GitHub enterprise at all.
-2. In GitHub: **Enterprise settings → Audit log → Streaming → Amazon S3**.
-3. Point it at that bucket and authenticate. GitHub sends a test event on save
-   — if it succeeds, objects start arriving.
+- an **OIDC provider** for GitHub's audit-log issuer, shared account-wide
+- a **role** that issuer may assume, pinned to that one enterprise and allowed
+  `s3:PutObject` on one bucket and nothing else
 
-Until step 2 happens the bucket sits empty, the Lambda never runs, and the
-Audit stream says it is not connected rather than showing a blank table.
+Pinned deliberately. A role trusting the issuer without naming a subject would
+accept uploads from any GitHub enterprise, into the bucket whose whole purpose
+is being the record nobody can rewrite. The slug is validated before it reaches
+the trust policy for the same reason.
+
+The stack does **not** create these. It used to, behind
+`-c auditEnterprise=<slug>`, which made the feature reachable only by someone
+who knew a flag documented in a code comment — and left everyone else with an
+empty bucket and no hint of what it was for. Two owners for one role would also
+race, and whichever lost would fail the deploy.
+
+### The half no app can do
+
+An enterprise owner switches streaming on, once, in a browser:
+
+**Enterprise settings → Audit log → Streaming → Amazon S3**, authenticating with
+**OpenID Connect**. The page shows the bucket name and role ARN to paste, with
+copy buttons.
+
+Until they do, the page says **"AWS is ready — waiting on GitHub"**. That state
+is the reason this lives in the app rather than in a deploy: AWS can be
+perfectly configured while GitHub is sending nothing, and a deploy cannot tell
+you that. It only knows what it created.
 
 ## What is kept
 

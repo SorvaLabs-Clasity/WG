@@ -787,92 +787,15 @@ export class GitHubControlHubStack extends cdk.Stack {
     // record of who did what. OIDC hands GitHub a temporary credential per
     // upload and stores nothing.
     //
-    // Only built when the enterprise slug is supplied, because the trust policy
-    // is worthless without it — a role trusting the issuer but no particular
-    // subject would accept uploads from any GitHub enterprise at all.
+    // The OIDC provider and the role GitHub assumes are NOT created here.
     //
-    //   cdk deploy -c auditEnterprise=your-enterprise-slug
+    // They were, behind `-c auditEnterprise=<slug>`, which made the feature
+    // reachable only by someone who knew a flag documented in a code comment.
+    // The app creates them now, from the Activity page, where it can also say
+    // whether streaming is actually running — something a deploy cannot know.
     //
-    // The slug is the one in the URL at github.com/enterprises/<slug>, and it
-    // is case-sensitive.
-    const auditEnterprise = this.node.tryGetContext("auditEnterprise");
-    if (auditEnterprise) {
-      const auditOidc = new iam.OpenIdConnectProvider(this, "AuditLogOidcProvider", {
-        url: "https://oidc-configuration.audit-log.githubusercontent.com",
-        clientIds: ["sts.amazonaws.com"],
-      });
-
-      const auditStreamRole = new iam.Role(this, "AuditLogStreamRole", {
-        roleName: `${stackPrefix}-audit-log-stream`,
-        description: "Assumed by GitHub to write enterprise audit log objects into the audit bucket",
-        assumedBy: new iam.WebIdentityPrincipal(auditOidc.openIdConnectProviderArn, {
-          // Both conditions matter. The audience alone would let any enterprise
-          // assume this role; the subject pins it to yours.
-          StringEquals: {
-            "oidc-configuration.audit-log.githubusercontent.com:aud": "sts.amazonaws.com",
-            "oidc-configuration.audit-log.githubusercontent.com:sub": `https://github.com/${auditEnterprise}`,
-          },
-        }),
-      });
-
-      // Write only, and only into this bucket. GitHub has no reason to read
-      // back what it has written, and this role should not be able to.
-      auditStreamRole.addToPolicy(new iam.PolicyStatement({
-        sid: "WriteAuditObjects",
-        actions: ["s3:PutObject"],
-        resources: [auditBucket.arnForObjects("*")],
-      }));
-
-      new cdk.CfnOutput(this, "AuditLogStreamRoleArn", {
-        value: auditStreamRole.roleArn,
-        description: "Paste into GitHub: Enterprise settings > Audit log > Streaming > Amazon S3 (OIDC)",
-      });
-    }
-
-    // ── Outputs ──
-    new cdk.CfnOutput(this, "GuardrailFunctionName", {
-      value: guardrailFn.functionName,
-      description: "Guardrail enforcer Lambda (invoked by the app for manual runs)",
-    });
-
-    new cdk.CfnOutput(this, "CanChangeAnything", {
-      value: "three write actions granted; each rule still chooses report or enforce",
-      description: "Whether this deployment's IAM lets the app modify AWS at all",
-    });
-
-    new cdk.CfnOutput(this, "GuardrailRoleName", {
-      value: guardrailRoleName,
-      description: "Role name each additional AWS account must create for guardrails to reach it",
-    });
-
-    new cdk.CfnOutput(this, "GuardrailLambdaRoleArn", {
-      value: guardrailFn.role!.roleArn,
-      description: "Principal to trust in each additional account's guardrail role",
-    });
-
-    new cdk.CfnOutput(this, "GuardrailDlqUrl", {
-      value: guardrailDlq.queueUrl,
-      description: "Dead-letter queue for failed guardrail invocations",
-    });
-
-    new cdk.CfnOutput(this, "AuditLogBucketName", {
-      value: auditBucket.bucketName,
-      description: "Point GitHub's enterprise audit log streaming at this bucket",
-    });
-
-    new cdk.CfnOutput(this, "WebhookUrl", {
-      value: `${webhookApi.url}webhooks/github`,
-      description: "GitHub webhook payload URL — set this in the org's webhook settings",
-    });
-
-    new cdk.CfnOutput(this, "WebhookQueueUrl", {
-      value: webhookQueue.queueUrl,
-      description: "Queue between the receiver and the worker",
-    });
-
-    new cdk.CfnOutput(this, "WebhookDlqUrl", {
-      value: webhookDlq.queueUrl,
-      description: "Dead-letter queue for webhook deliveries that failed five times",
-    });
+    // Left out rather than duplicated: two owners racing to create one role is
+    // the failure the audit bucket's policy used to produce, and it is not
+    // worth reproducing for the sake of a second way to do the same thing.
   }
 }

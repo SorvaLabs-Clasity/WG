@@ -3,6 +3,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
+import { isAwsAdmin } from "../services/authorizationService";
 import {
   getActivity,
   getActivityForRepo,
@@ -965,6 +966,62 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
       // lists have drifted apart.
       throw new Error(`No handler for "${action}"`);
   }
+}
+
+/**
+ * Enterprise audit-log streaming — status, and setting it up.
+ *
+ * Admin-gated: it creates IAM in the account, using the operator's own AWS
+ * credentials. Reading is gated too, because the status names the enterprise
+ * the organization belongs to.
+ */
+router.get("/audit-stream", async (req: Request, res: Response) => {
+  try {
+    if (!(await isAwsAdmin(req.user!.login))) {
+      return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
+        error: "Only organization admins can see audit-log streaming settings." });
+    }
+    const { getStatus, liveDeps } = await import("../services/auditStreamService");
+    const { accountId, prefix } = await auditStreamContext();
+    res.json(await getStatus(await liveDeps(accountId, prefix)));
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "audit stream") });
+  }
+});
+
+router.post("/audit-stream", async (req: Request, res: Response) => {
+  try {
+    if (!(await isAwsAdmin(req.user!.login))) {
+      return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
+        error: "Only organization admins can set up audit-log streaming." });
+    }
+    const enterprise = String(req.body?.enterprise ?? "").trim();
+    const { setupStream, liveDeps, isValidEnterpriseSlug } = await import("../services/auditStreamService");
+    if (!isValidEnterpriseSlug(enterprise)) {
+      return res.status(400).json({
+        error: `"${enterprise}" is not a valid enterprise slug. It is the name in ` +
+               `github.com/enterprises/<name>, and unlike an organization name it is case-sensitive.` });
+    }
+    const { accountId, prefix } = await auditStreamContext();
+    const result = await setupStream(enterprise, await liveDeps(accountId, prefix));
+    await logActivity("config.updated" as any, req.user!.login, "", "audit_stream",
+      `Audit-log streaming set up for enterprise ${enterprise}`, result, "app");
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "audit stream") });
+  }
+});
+
+/** The account this app is pointed at, and its resource prefix. */
+async function auditStreamContext(): Promise<{ accountId: string; prefix: string }> {
+  const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");
+  const { awsRegion } = await import("../utils/region");
+  const sts = new STSClient({ region: awsRegion() });
+  const me = await sts.send(new GetCallerIdentityCommand({}));
+  return {
+    accountId: me.Account!,
+    prefix: process.env.STACK_NAME || "github-control-hub",
+  };
 }
 
 export default router;

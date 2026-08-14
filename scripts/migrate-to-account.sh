@@ -116,25 +116,6 @@ ask COMPANY   "Company display name (shown in the app)" "Acme Inc"
 ask GH_ORG    "GitHub org name, as it appears in github.com/orgs/<name>"
 ask PREFIX    "Resource name prefix" "github-control-hub"
 
-# Asked, not flagged.
-#
-# Enterprise audit-log streaming is part of this app, and it deploys with
-# everything else — but the role GitHub assumes to write to the bucket pins its
-# trust to one enterprise:
-#
-#   "…audit-log.githubusercontent.com:sub": "https://github.com/<slug>"
-#
-# So the slug is data the deploy needs, not a preference. Without it there is
-# no subject to pin to, and a role trusting the issuer alone would accept
-# uploads from any GitHub enterprise at all. Blank is a real answer: most
-# organizations are not part of an enterprise, and then there is nothing to
-# stream and no role to create.
-echo
-echo "    Enterprise audit-log streaming is optional. If this organization"
-echo "    belongs to a GitHub Enterprise, the slug is in the URL at"
-echo "    github.com/enterprises/<slug>. Copy it exactly — it goes into an IAM"
-echo "    trust policy, which unlike GitHub is fussy about case."
-ask GH_ENTERPRISE "GitHub Enterprise slug (blank if not part of one)" ""
 SECRET_NAME="${PREFIX}/secrets"
 # Separate on purpose: the receiver Lambda is the only internet-facing piece
 # and must not hold a key to the App private key it never reads.
@@ -331,20 +312,14 @@ fi
 # the fix it would have made, writing nothing until that rule is switched to
 # enforce.
 #
-# Anything extra is passed straight through, e.g. enterprise audit-log
-# streaming:
+# Anything extra is passed straight through:
 #
-#   CDK_CONTEXT="-c auditEnterprise=acme" ./scripts/migrate-to-account.sh
+#   CDK_CONTEXT="-c someFlag=value" ./scripts/migrate-to-account.sh
 #
 # Unquoted on purpose: this may hold several flags and has to word-split.
 # shellcheck disable=SC2086
-AUDIT_CONTEXT=""
-if [ -n "$GH_ENTERPRISE" ]; then
-  AUDIT_CONTEXT="-c auditEnterprise=$GH_ENTERPRISE"
-fi
-
 # shellcheck disable=SC2086
-STACK_NAME="$PREFIX" npx cdk deploy --require-approval never $AUDIT_CONTEXT ${CDK_CONTEXT:-} \
+STACK_NAME="$PREFIX" npx cdk deploy --require-approval never ${CDK_CONTEXT:-} \
   || die "cdk deploy failed."
 
 WEBHOOK_URL=$(aws cloudformation describe-stacks --stack-name GitHubControlHub \
@@ -374,24 +349,6 @@ echo "    --query SecretString --output text${off}"
 echo
 read -r -p "  Press enter once the webhook is saved… " _
 
-# The half no script can do: streaming is switched on by an enterprise owner,
-# in a browser, once. Until then the bucket sits empty and the Activity page's
-# Audit stream says it is not connected rather than showing a blank table.
-if [ -n "$GH_ENTERPRISE" ]; then
-  echo
-  echo "  Enterprise audit log — the AWS side is deployed. One manual step left,"
-  echo "  and it needs an enterprise owner:"
-  echo
-  echo "    GitHub -> Enterprise settings -> Audit log -> Streaming -> Amazon S3"
-  echo "    Bucket:  ${PREFIX}-audit-log-${ACCOUNT}"
-  echo "    Auth:    OpenID Connect"
-  echo "    Role:    arn:aws:iam::${ACCOUNT}:role/${PREFIX}-audit-log-stream"
-  echo
-  echo "  GitHub sends a test event on save. If it succeeds, objects start"
-  echo "  arriving and the Activity page's Audit stream fills in."
-  echo
-  read -r -p "  Press enter to continue… " _
-fi
 
 # ── 6. guardrail rules ────────────────────────────────────────────────
 step "6/7  Guardrail rules"
