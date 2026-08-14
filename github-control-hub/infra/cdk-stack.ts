@@ -14,6 +14,7 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
+import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Construct } from "constructs";
@@ -29,6 +30,21 @@ const GITHUB_WEBHOOK_CIDRS = [
   "185.199.108.0/22",
   "140.82.112.0/20",
   "143.55.64.0/20",
+];
+
+/**
+ * GitHub's IPv6 hook ranges.
+ *
+ * Kept separate because IAM will not accept a mixed list: `aws:SourceIp` with
+ * IPv4 CIDRs and `aws:SourceIpv6`... in fact both go in aws:SourceIp, but an
+ * IPv6 request compared only against IPv4 ranges matches nothing, so
+ * NotIpAddress evaluates true and the request is denied. Publishing hooks over
+ * IPv6 would have failed every delivery with a 403 that looks exactly like a
+ * stale allow-list.
+ */
+const GITHUB_WEBHOOK_CIDRS_V6 = [
+  "2a0a:a440::/29",
+  "2606:50c0::/32",
 ];
 
 interface GitHubControlHubProps extends cdk.StackProps {
@@ -440,10 +456,69 @@ export class GitHubControlHubStack extends cdk.Stack {
             principals: [new iam.AnyPrincipal()],
             actions: ["execute-api:Invoke"],
             resources: ["execute-api:/*"],
-            conditions: { NotIpAddress: { "aws:SourceIp": GITHUB_WEBHOOK_CIDRS } },
+            // Both families in one list. An IPv6 request compared only against
+            // IPv4 ranges matches nothing, so NotIpAddress evaluates true and
+            // the delivery is denied — a 403 indistinguishable from a stale
+            // allow-list, on an endpoint that had been working until GitHub
+            // resolved AAAA.
+            conditions: {
+              NotIpAddress: { "aws:SourceIp": [...GITHUB_WEBHOOK_CIDRS, ...GITHUB_WEBHOOK_CIDRS_V6] },
+            },
           }),
         ],
       }),
+    });
+
+    // ── WAF in front of the webhook API ──
+    //
+    // The resource policy above is the control that matters: only GitHub's
+    // published ranges reach the integration at all, and the receiver verifies
+    // an HMAC before anything is queued. This is defence in depth on top.
+    //
+    // Deliberately NOT the AWS common rule set. Two of its rules would reject
+    // legitimate deliveries: SizeRestrictions_BODY caps bodies at 8 KB, and
+    // GitHub payloads routinely exceed that, while the XSS and SQLi body rules
+    // inspect content that on a webhook is somebody's code, branch name or
+    // commit message. A managed rule group that blocks real traffic is worse
+    // than no rule group, because the failure is silent at the edge and never
+    // reaches a log this app reads.
+    //
+    // What is here instead is a rate limit that cannot false-positive on
+    // payload content: a ceiling per source address, well above anything
+    // GitHub sends, that stops a compromised or misbehaving source from
+    // driving the queue.
+    const webhookWaf = new wafv2.CfnWebACL(this, "WebhookWaf", {
+      name: `${stackPrefix}-webhook`,
+      scope: "REGIONAL",
+      defaultAction: { allow: {} },
+      visibilityConfig: {
+        cloudWatchMetricsEnabled: true,
+        metricName: `${stackPrefix}-webhook-waf`,
+        sampledRequestsEnabled: false,   // samples would retain payload fragments
+      },
+      rules: [{
+        name: "RatePerSourceIp",
+        priority: 0,
+        // 2,000 requests in five minutes from one address. GitHub delivering a
+        // burst for a large organisation stays far below this; a source
+        // sustaining more than six a second is not delivering webhooks.
+        statement: { rateBasedStatement: { limit: 2000, aggregateKeyType: "IP" } },
+        action: { block: {} },
+        visibilityConfig: {
+          cloudWatchMetricsEnabled: true,
+          metricName: `${stackPrefix}-webhook-waf-rate`,
+          sampledRequestsEnabled: false,
+        },
+      }],
+    });
+
+    new wafv2.CfnWebACLAssociation(this, "WebhookWafAssociation", {
+      // Built as a string rather than with formatArn. An API Gateway stage ARN
+      // has a leading slash before the resource — arn:…:apigateway:region::/restapis/…
+      // — and formatArn joins account and resource with a single colon, which
+      // produces "::restapis/…" and is rejected as malformed.
+      resourceArn: `arn:${cdk.Aws.PARTITION}:apigateway:${this.region}::/restapis/${webhookApi.restApiId}/stages/${webhookApi.deploymentStage.stageName}`,
+      webAclArn: webhookWaf.attrArn,
     });
 
     webhookApi.root

@@ -141,6 +141,19 @@ const accountsCode = code(accountsTs);
     check("  and cannot invoke anything",
       !/lambda:InvokeFunction/.test(receiverBlock));
 
+    // GitHub publishes its hook ranges at api.github.com/meta and changes them.
+    // The list here is a copy, and a copy drifts. An audit found the IPv6
+    // ranges missing entirely — every delivery over IPv6 would have been denied
+    // with a 403 that reads exactly like a stale allow-list on an endpoint that
+    // had been working.
+    check("the allow-list covers IPv6 as well as IPv4",
+      /2a0a:a440::\/29/.test(cdkCode) && /2606:50c0::\/32/.test(cdkCode),
+      "an IPv6 delivery is compared against IPv4 ranges, matches none, and is denied");
+    check("  and both families reach the resource policy, not just the constant",
+      /GITHUB_WEBHOOK_CIDRS_V6/.test(cdkCode)
+        && /\.\.\.GITHUB_WEBHOOK_CIDRS, \.\.\.GITHUB_WEBHOOK_CIDRS_V6/.test(cdkCode),
+      "the IPv6 list exists but is never used");
+
     check("the webhook API restricts source IPs to GitHub",
       /NotIpAddress/.test(cdkCode) && /GITHUB_WEBHOOK_CIDRS/.test(cdkCode),
       "the allow-list the security group used to hold was not carried over");
