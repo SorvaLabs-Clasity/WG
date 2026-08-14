@@ -141,6 +141,38 @@ const accountsCode = code(accountsTs);
     check("  and cannot invoke anything",
       !/lambda:InvokeFunction/.test(receiverBlock));
 
+    // The receiver has to handle bytes nobody has authenticated yet — it
+    // base64-decodes and HMACs a body precisely to find out whether it is
+    // genuine — so the useful question is not whether that path can be broken
+    // but what breaking it yields. Pointed at the application bundle it
+    // yielded GITHUB_APP_PRIVATE_KEY and the organisation with it. Pointed
+    // here it yields the ability to check signatures.
+    const grantAt = receiverBlock.indexOf('sid: "ReadWebhookSecret"');
+    const receiverSecrets = grantAt < 0
+      ? ""
+      : receiverBlock.slice(grantAt, receiverBlock.indexOf("}))", grantAt));
+    check("the receiver reads the webhook secret and not the app bundle",
+      receiverSecrets.length > 0
+        && /\$\{webhookSecretName\}/.test(receiverSecrets)
+        && !/\$\{secretName\}/.test(receiverSecrets),
+      "the internet-facing function can read GITHUB_APP_PRIVATE_KEY");
+
+    // Lookbehind because WEBHOOK_SECRET_NAME ends in the same characters.
+    check("  and is not even told where the bundle lives",
+      receiverBlock.length > 0 && !/(?<![_A-Z])SECRET_NAME:/.test(receiverBlock),
+      "SECRET_NAME is back in the receiver's environment");
+
+    // An IAM wildcard is a prefix match, so the two names are load-bearing:
+    // a webhook secret called ".../secret" would make the receiver's own
+    // grant cover ".../secrets" — the bundle — and undo all of the above
+    // without changing a single line of policy.
+    const bundleDefault = /props\.secretName \?\? "([^"]+)"/.exec(cdkCode)?.[1] ?? "";
+    const webhookDefault = /props\.webhookSecretName \?\? "([^"]+)"/.exec(cdkCode)?.[1] ?? "";
+    check("the receiver's wildcard cannot reach the bundle by prefix",
+      bundleDefault.length > 0 && webhookDefault.length > 0
+        && !bundleDefault.startsWith(webhookDefault),
+      [bundleDefault, webhookDefault]);
+
     // GitHub publishes its hook ranges at api.github.com/meta and changes them.
     // The list here is a copy, and a copy drifts. An audit found the IPv6
     // ranges missing entirely — every delivery over IPv6 would have been denied

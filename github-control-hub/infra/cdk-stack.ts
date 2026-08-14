@@ -50,6 +50,13 @@ const GITHUB_WEBHOOK_CIDRS_V6 = [
 interface GitHubControlHubProps extends cdk.StackProps {
   /** Secrets Manager secret name. Defaults to "github-control-hub/secrets" */
   secretName?: string;
+  /**
+   * Where the webhook HMAC secret lives, on its own.
+   * Defaults to "github-control-hub/webhook-secret".
+   *
+   * Separate from the bundle above on purpose — see the receiver's grant.
+   */
+  webhookSecretName?: string;
   /** DynamoDB table prefix. Defaults to "github-control-hub" */
   stackPrefix?: string;
   /**
@@ -73,6 +80,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     super(scope, id, props);
 
     const secretName = props.secretName ?? "github-control-hub/secrets";
+    const webhookSecretName = props.webhookSecretName ?? "github-control-hub/webhook-secret";
     const stackPrefix = props.stackPrefix ?? "github-control-hub";
 
     // Off unless someone deliberately asks for it, on the command line, in
@@ -326,7 +334,9 @@ export class GitHubControlHubStack extends cdk.Stack {
       memorySize: 256,
       environment: {
         STACK_NAME: stackPrefix,
-        SECRET_NAME: secretName,
+        // Not SECRET_NAME. This function has no business knowing where the
+        // application bundle lives, and cannot read it if it did.
+        WEBHOOK_SECRET_NAME: webhookSecretName,
         WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
       },
       bundling: webhookBundling,
@@ -334,10 +344,22 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     // Two grants, and that is the whole of it. This function is the only thing
     // here reachable from the internet.
+    //
+    // The grant is the webhook secret alone, not the application bundle. The
+    // receiver must touch unverified bytes to verify them — it base64-decodes
+    // and HMACs a body no one has authenticated yet — and no review proves
+    // that path free of bugs forever. So the question that matters is not
+    // whether it can be broken but what breaking it yields. Against the
+    // bundle it yielded GITHUB_APP_PRIVATE_KEY and the whole organisation
+    // with it; against this secret it yields the ability to check signatures.
+    //
+    // The two wildcards must stay disjoint: "…/secrets*" cannot match
+    // "…/webhook-secret*" and vice versa, which is why the latter is not
+    // named something like "secrets-webhook".
     receiverFn.addToRolePolicy(new iam.PolicyStatement({
       sid: "ReadWebhookSecret",
       actions: ["secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${webhookSecretName}*`],
     }));
     webhookQueue.grantSendMessages(receiverFn);
 

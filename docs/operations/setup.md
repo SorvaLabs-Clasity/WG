@@ -351,10 +351,20 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 Reading the secret back if needed:
 
 ```bash
-aws secretsmanager get-secret-value --secret-id <prefix>/secrets \
-  --query SecretString --output text \
-  | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>console.log(JSON.parse(s).GITHUB_WEBHOOK_SECRET))"
+aws secretsmanager get-secret-value --secret-id <prefix>/webhook-secret \
+  --query SecretString --output text
 ```
+
+The webhook secret lives in its own Secrets Manager entry, **not** in
+`<prefix>/secrets` with everything else, and rotating it means changing it
+here and in GitHub — nowhere else.
+
+The reason is blast radius. The receiver Lambda is the only part of this
+system reachable from the internet, and it has to handle bytes nobody has
+authenticated yet in order to authenticate them. Sharing the bundle meant it
+held a key to `GITHUB_APP_PRIVATE_KEY` it never used, so any bug on that path
+gave up the whole organisation instead of the ability to check signatures. Its
+IAM grants this secret and nothing else.
 
 These events record the changes nobody made through the app — someone disabling
 branch protection, a repository going public, a team gaining access. Without

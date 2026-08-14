@@ -16,8 +16,22 @@ Stored as one JSON document at `<STACK_NAME>/secrets`, loaded at startup.
 | `GITHUB_APP_PRIVATE_KEY` | yes | The `.pem`, newlines or literal `\n` both accepted |
 | `GITHUB_APP_INSTALLATION_ID` | yes | From the install URL |
 | `SYSTEM_GITHUB_TOKEN` | fallback | Used only where no App token is available |
-| `GITHUB_WEBHOOK_SECRET` | for webhooks | Signature verification |
 | `JWT_SECRET` | no | Generated per start if absent |
+
+## The webhook secret, on its own
+
+`GITHUB_WEBHOOK_SECRET` is **not** in the bundle above. It is stored by itself,
+as a bare value rather than JSON, at `<STACK_NAME>/webhook-secret`.
+
+Only the receiver Lambda reads it, and its IAM grants that secret and nothing
+else. The receiver is the one component reachable from the internet, and it
+has to handle bytes nobody has authenticated yet in order to authenticate
+them; sharing the bundle meant a bug on that path surrendered
+`GITHUB_APP_PRIVATE_KEY` rather than the ability to check signatures.
+
+Rotating it means changing it in GitHub and here. Nowhere else — nothing in
+the desktop app or the worker reads it, because webhooks are authenticated at
+the edge before anything reaches the queue.
 
 ## Set in the environment
 

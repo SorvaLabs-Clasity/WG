@@ -80,12 +80,12 @@ const code = (src: string) => src
 // ── the secret is cached, and a rotation costs one delivery not fifteen minutes ──
 {
   const { getWebhookSecret, refetchWebhookSecret,
-          __setSecretLoaderForTests, __resetSecretCacheForTests } = await import("./src/webhooks/secret");
+          __setWebhookSecretLoaderForTests, __resetSecretCacheForTests } = await import("./src/webhooks/secret");
 
   let calls = 0;
   let live = "first-secret";
   __resetSecretCacheForTests();
-  __setSecretLoaderForTests(async () => { calls++; return { GITHUB_WEBHOOK_SECRET: live }; });
+  __setWebhookSecretLoaderForTests(async () => { calls++; return live; });
 
   check("the first read fetches", (await getWebhookSecret()) === "first-secret" && calls === 1, calls);
   await getWebhookSecret();
@@ -108,30 +108,30 @@ const code = (src: string) => src
 
 // ── a transient Secrets Manager failure does not discard a working secret ──
 {
-  const { getWebhookSecret, __setSecretLoaderForTests, __resetSecretCacheForTests } =
+  const { getWebhookSecret, __setWebhookSecretLoaderForTests, __resetSecretCacheForTests } =
     await import("./src/webhooks/secret");
 
   __resetSecretCacheForTests();
-  __setSecretLoaderForTests(async () => ({ GITHUB_WEBHOOK_SECRET: "good" }));
+  __setWebhookSecretLoaderForTests(async () => "good");
   await getWebhookSecret();
 
   __resetSecretCacheForTests({ keepValue: true });
-  __setSecretLoaderForTests(async () => { throw new Error("throttled"); });
+  __setWebhookSecretLoaderForTests(async () => { throw new Error("throttled"); });
   check("a fetch failure keeps the last known secret", (await getWebhookSecret()) === "good");
 
   __resetSecretCacheForTests();
-  __setSecretLoaderForTests(async () => ({}));
+  __setWebhookSecretLoaderForTests(async () => "");
   check("  but no secret at all still fails closed", (await getWebhookSecret()) === "");
 }
 
 // ── the test seam does not leave residue ──
 {
-  const { getWebhookSecret, __setSecretLoaderForTests, __resetSecretCacheForTests } =
+  const { getWebhookSecret, __setWebhookSecretLoaderForTests, __resetSecretCacheForTests } =
     await import("./src/webhooks/secret");
 
   let leakedMockRan = false;
   __resetSecretCacheForTests();
-  __setSecretLoaderForTests(async () => { leakedMockRan = true; return { GITHUB_WEBHOOK_SECRET: "leaked" }; });
+  __setWebhookSecretLoaderForTests(async () => { leakedMockRan = true; return "leaked"; });
   __resetSecretCacheForTests();
 
   check("a reset uninstalls the previously injected loader",
@@ -251,10 +251,10 @@ const code = (src: string) => src
 // ── nothing reaches the queue that did not verify ──
 {
   process.env.WEBHOOK_QUEUE_URL = "https://sqs.test/queue";
-  const { __setSecretLoaderForTests, __resetSecretCacheForTests } =
+  const { __setWebhookSecretLoaderForTests, __resetSecretCacheForTests } =
     await import("./src/webhooks/secret");
   __resetSecretCacheForTests();
-  __setSecretLoaderForTests(async () => ({ GITHUB_WEBHOOK_SECRET: SECRET }));
+  __setWebhookSecretLoaderForTests(async () => SECRET);
 
   const { handler, __setQueueSenderForTests } = await import("./src/webhooks/receiver");
 
@@ -435,7 +435,7 @@ const code = (src: string) => src
   const { docClient } = await import("./src/utils/dynamo");
   (docClient as any).send = async () => ({});
 
-  const { __setSecretLoaderForTests, __resetSecretCacheForTests } =
+  const { __setBundleLoaderForTests, __resetSecretCacheForTests } =
     await import("./src/webhooks/secret");
   const { handler } = await import("./src/webhooks/worker");
 
@@ -444,14 +444,14 @@ const code = (src: string) => src
   }) as any;
 
   __resetSecretCacheForTests();
-  __setSecretLoaderForTests(async () => { throw new Error("throttled"); });
+  __setBundleLoaderForTests(async () => { throw new Error("throttled"); });
 
   let firstFailed = false;
   try { await handler(message("d-boot-1")); } catch { firstFailed = true; }
   check("an invocation whose secrets did not load fails rather than half-working", firstFailed);
 
   // Same container, next message. Secrets Manager has recovered.
-  __setSecretLoaderForTests(async () =>
+  __setBundleLoaderForTests(async () =>
     ({ GITHUB_ORG: "acme-corp", SYSTEM_GITHUB_TOKEN: "system-token" }));
 
   let secondError: string | null = null;
@@ -527,10 +527,10 @@ const code = (src: string) => src
   const { docClient } = await import("./src/utils/dynamo");
   (docClient as any).send = async () => ({});
 
-  const { __setSecretLoaderForTests, __resetSecretCacheForTests } =
+  const { __setBundleLoaderForTests, __resetSecretCacheForTests } =
     await import("./src/webhooks/secret");
   __resetSecretCacheForTests();
-  __setSecretLoaderForTests(async () => ({ GITHUB_ORG: "acme-corp" }));
+  __setBundleLoaderForTests(async () => ({ GITHUB_ORG: "acme-corp" }));
 
   // A fresh container: worker.ts's `bootstrapped` and client.ts's
   // module-level `tokenManager` are both memoised at module scope. Reusing

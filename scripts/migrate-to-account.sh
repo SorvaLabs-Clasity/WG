@@ -87,6 +87,9 @@ ask COMPANY   "Company display name (shown in the app)" "Acme Inc"
 ask GH_ORG    "GitHub organisation (the exact login, case-sensitive)"
 ask PREFIX    "Resource name prefix" "github-control-hub"
 SECRET_NAME="${PREFIX}/secrets"
+# Separate on purpose: the receiver Lambda is the only internet-facing piece
+# and must not hold a key to the App private key it never reads.
+WEBHOOK_SECRET_NAME="${PREFIX}/webhook-secret"
 
 echo
 echo "    region  : $REGION"
@@ -192,9 +195,10 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
         GITHUB_APP_PRIVATE_KEY:      fs.readFileSync(process.env.GH_PEM_PATH, "utf8"),
         SYSTEM_GITHUB_TOKEN:         process.env.GH_PAT,
         GITHUB_ORG:                  process.env.GH_ORG,
-        GITHUB_WEBHOOK_SECRET:       process.env.WEBHOOK_SECRET,
         JWT_SECRET:                  process.env.JWT_SECRET,
       }));')
+  # GITHUB_WEBHOOK_SECRET is not in here. It goes to its own secret below, so
+  # the internet-facing receiver never holds a key to GITHUB_APP_PRIVATE_KEY.
 
   # This script runs without `set -e`, so a node that threw would leave
   # SECRET_JSON empty and the upload would carry on and store nothing —
@@ -212,7 +216,23 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
       --description "GitHub Control Hub — GitHub credentials" \
       --secret-string "$SECRET_JSON" >/dev/null
   fi
-  unset SECRET_JSON GH_CLIENT_SECRET GH_PAT
+  # Stored as the bare value, not JSON: the receiver reads this secret and
+  # nothing else, so there is nothing to wrap it in.
+  if [ -n "$WEBHOOK_SECRET" ]; then
+    if aws secretsmanager describe-secret --secret-id "$WEBHOOK_SECRET_NAME" >/dev/null 2>&1; then
+      aws secretsmanager put-secret-value --secret-id "$WEBHOOK_SECRET_NAME" \
+        --secret-string "$WEBHOOK_SECRET" >/dev/null
+    else
+      aws secretsmanager create-secret --name "$WEBHOOK_SECRET_NAME" \
+        --description "GitHub webhook HMAC secret. Read only by the internet-facing receiver Lambda." \
+        --secret-string "$WEBHOOK_SECRET" >/dev/null
+    fi
+    ok "Stored $WEBHOOK_SECRET_NAME"
+  else
+    warn "No webhook secret given — deliveries will be rejected until $WEBHOOK_SECRET_NAME is set"
+  fi
+
+  unset SECRET_JSON GH_CLIENT_SECRET GH_PAT WEBHOOK_SECRET
   ok "Stored $SECRET_NAME"
 
   echo
@@ -285,8 +305,8 @@ echo "                  branch_protection_rule, repository_ruleset"
 echo "    SSL         : leave verification enabled — API Gateway serves a valid"
 echo "                  ACM certificate, so there is nothing to disable it for"
 echo
-echo "  ${dim}aws secretsmanager get-secret-value --secret-id $SECRET_NAME \\"
-echo "    --query SecretString --output text | node -e \"…GITHUB_WEBHOOK_SECRET\"${off}"
+echo "  ${dim}aws secretsmanager get-secret-value --secret-id $WEBHOOK_SECRET_NAME \\"
+echo "    --query SecretString --output text${off}"
 echo
 read -r -p "  Press enter once the webhook is saved… " _
 

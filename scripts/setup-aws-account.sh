@@ -47,6 +47,10 @@ region_or_die() {
 REGION="$(region_or_die)"
 PREFIX="${STACK_NAME:-github-control-hub}"
 SECRET_NAME="${SECRET_NAME:-${PREFIX}/secrets}"
+# The webhook secret lives on its own, because the receiver Lambda is the only
+# internet-facing component and must not hold a key to the App private key it
+# never reads. See the receiver's grant in infra/cdk-stack.ts.
+WEBHOOK_SECRET_NAME="${WEBHOOK_SECRET_NAME:-${PREFIX}/webhook-secret}"
 AWS="aws --region $REGION"
 
 echo "==> Target account"
@@ -262,7 +266,6 @@ SECRET_JSON=$(GITHUB_ORG="$GITHUB_ORG" \
   GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID" \
   GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET" \
   SYSTEM_GITHUB_TOKEN="$SYSTEM_GITHUB_TOKEN" \
-  GITHUB_WEBHOOK_SECRET="$GITHUB_WEBHOOK_SECRET" \
   node -e '
     const out = {
       GITHUB_ORG: process.env.GITHUB_ORG,
@@ -270,7 +273,6 @@ SECRET_JSON=$(GITHUB_ORG="$GITHUB_ORG" \
       GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
       SYSTEM_GITHUB_TOKEN: process.env.SYSTEM_GITHUB_TOKEN,
     };
-    if (process.env.GITHUB_WEBHOOK_SECRET) out.GITHUB_WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
     process.stdout.write(JSON.stringify(out));
   ')
 
@@ -282,6 +284,27 @@ else
   echo "==> Creating secret $SECRET_NAME"
   $AWS secretsmanager create-secret \
     --name "$SECRET_NAME" --secret-string "$SECRET_JSON" >/dev/null
+fi
+
+# Written separately, and stored as the bare value rather than as JSON — the
+# receiver reads this secret and nothing else, so there is nothing to wrap.
+# Skipped rather than blanked when empty: an empty webhook secret would make
+# the receiver fail closed and reject every delivery, which reads exactly like
+# a broken deploy.
+if [ -n "$GITHUB_WEBHOOK_SECRET" ]; then
+  if $AWS secretsmanager describe-secret --secret-id "$WEBHOOK_SECRET_NAME" >/dev/null 2>&1; then
+    echo "==> Updating existing secret $WEBHOOK_SECRET_NAME"
+    $AWS secretsmanager put-secret-value \
+      --secret-id "$WEBHOOK_SECRET_NAME" --secret-string "$GITHUB_WEBHOOK_SECRET" >/dev/null
+  else
+    echo "==> Creating secret $WEBHOOK_SECRET_NAME"
+    $AWS secretsmanager create-secret --name "$WEBHOOK_SECRET_NAME" \
+      --description "GitHub webhook HMAC secret. Read only by the internet-facing receiver Lambda." \
+      --secret-string "$GITHUB_WEBHOOK_SECRET" >/dev/null
+  fi
+else
+  echo "==> No webhook secret given; skipping $WEBHOOK_SECRET_NAME"
+  echo "    Webhook deliveries will be rejected until it is set."
 fi
 
 echo

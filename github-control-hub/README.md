@@ -117,9 +117,14 @@ Loaded from AWS Secrets Manager at startup (key: `{prefix}/secrets`):
 | `GITHUB_APP_INSTALLATION_ID` | App installation ID for your org |
 | `GITHUB_CLIENT_ID` | OAuth App client ID (for user login) |
 | `GITHUB_CLIENT_SECRET` | OAuth App client secret |
-| `GITHUB_WEBHOOK_SECRET` | Webhook signature verification secret |
 | `GITHUB_ORG` | Target GitHub organization |
 | `JWT_SECRET` | JWT signing key |
+
+The webhook signing secret is deliberately **not** in that bundle. It lives by
+itself at `{prefix}/webhook-secret`, read only by the internet-facing receiver
+Lambda, so a bug in the one component that must touch unauthenticated bytes
+cannot reach the GitHub App private key. See
+[environment.md](../docs/operations/environment.md).
 
 ## DynamoDB Tables
 

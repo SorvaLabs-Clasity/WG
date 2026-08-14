@@ -38,7 +38,9 @@ async function loadSecrets(): Promise<void> {
     const result = await client.send(new GetSecretValueCommand({ SecretId: getSecretName() }));
     if (result.SecretString) {
       const secrets = JSON.parse(result.SecretString) as Record<string, string>;
-      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN", "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID"]) {
+      // No GITHUB_WEBHOOK_SECRET: it lives in its own secret and only the
+      // receiver Lambda reads it. Nothing here verifies signatures.
+      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN", "GITHUB_ORG", "JWT_SECRET", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID"]) {
         if (secrets[key]) process.env[key] = secrets[key];
       }
     }
