@@ -101,6 +101,11 @@ export async function handler(event: S3Event): Promise<void> {
             repo: n.repo,
             target: n.target,
             details: n.details,
+            // Carried as its own field, not only inside the summary text, so
+            // the table can show who an event was about in a column. The
+            // Details column is hidden below a large viewport, which is where
+            // the subject was previously the only place it appeared.
+            ...(n.subject && { subject: n.subject }),
             timestamp: n.timestamp,
             ttl: expiryFor(n.timestamp),
           },

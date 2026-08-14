@@ -443,6 +443,18 @@ export default function ActivityPage() {
           <div className="flex items-center gap-2">
             <UserAvatar login={entry.actor} size={24} />
             <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">{entry.actor}</span>
+            {/* Who it was done to, when that is someone else. Audit events are
+                mostly one person acting on another, and the Details column
+                that used to be the only place this appeared is hidden below a
+                large viewport. */}
+            {entry.subject && (
+              <>
+                <i className="fa-solid fa-arrow-right text-[9px] text-gh-muted dark:text-slate-500 mx-0.5"></i>
+                <span className="text-sm font-medium text-gh-textBase dark:text-slate-200 truncate max-w-[14ch]" title={entry.subject}>
+                  {entry.subject}
+                </span>
+              </>
+            )}
           </div>
         </td>
         <td className="px-4 py-3 whitespace-nowrap">

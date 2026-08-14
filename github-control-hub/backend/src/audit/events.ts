@@ -95,6 +95,8 @@ export interface IndexedAuditEvent {
   target: string;
   timestamp: string;
   details: string;
+  /** Who the event was about, when that differs from who did it. */
+  subject: string;
 }
 
 /**
@@ -140,6 +142,18 @@ export function repoOf(e: RawAuditEvent): string {
 }
 
 /**
+ * Who an event was done *to*, as opposed to who did it.
+ *
+ * `user` on most member and team events; `invitee_email` when the person has
+ * been invited and has no username yet. An event someone performs on
+ * themselves repeats the actor, and naming them twice reads as a mistake.
+ */
+export function subjectOf(e: RawAuditEvent): string {
+  const who = firstOf(e, ["user", "invitee_email", "email"]);
+  return who && who !== String(e.actor ?? "") ? who : "";
+}
+
+/**
  * A readable one-line summary. The raw event stays in S3 for the full detail.
  *
  * Three things make an audit line useful, and they live in different fields
@@ -163,7 +177,7 @@ export function describe(e: RawAuditEvent): string {
   // The subject. `user` names the person acted upon; on events someone
   // performs on themselves it repeats the actor, and repeating it reads as a
   // mistake, so it is dropped.
-  const subject = firstOf(e, ["user", "invitee_email", "email"]);
+  const subject = subjectOf(e);
   const app = firstOf(e, ["integration", "application", "oauth_application"]);
 
   // Permission and visibility changes carry both sides on some events and only
@@ -175,7 +189,7 @@ export function describe(e: RawAuditEvent): string {
 
   const parts = [`${actor} — ${action}`];
   if (where) parts.push(`on ${where}`);
-  if (subject && subject !== actor) parts.push(`· ${subject}`);
+  if (subject) parts.push(`· ${subject}`);
   if (app) parts.push(`(${app})`);
 
   if (oldPerm && newPerm) parts.push(`· ${oldPerm} → ${newPerm}`);
@@ -201,6 +215,7 @@ export function normalise(e: RawAuditEvent): IndexedAuditEvent {
     target: action,
     timestamp: toTimestamp(e.created_at),
     details: describe(e),
+    subject: subjectOf(e),
   };
 }
 

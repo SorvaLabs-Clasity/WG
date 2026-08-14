@@ -64,6 +64,8 @@ export interface ActivityEntry {
   repo: string;
   target: string;
   details?: string;
+  /** Who an audit event was about, when that differs from who performed it. */
+  subject?: string;
   diff?: any;
   timestamp: string;
   prNumber?: number;
