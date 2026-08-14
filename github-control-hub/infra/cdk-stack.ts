@@ -1,6 +1,5 @@
 import * as path from "path";
 import * as cdk from "aws-cdk-lib";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
@@ -20,6 +19,9 @@ import { Construct } from "constructs";
 // From https://api.github.com/meta → hooks. Nothing here detects a change:
 // deliveries would begin returning 403 and the app's Activity page would read
 // Stale within 72 hours. See docs/operations/troubleshooting.md.
+//
+// This is the API Gateway resource policy's IP allow-list — the only thing
+// that still reads it now that there is no security group to share it with.
 const GITHUB_WEBHOOK_CIDRS = [
   "192.30.252.0/22",
   "185.199.108.0/22",
@@ -63,23 +65,6 @@ export class GitHubControlHubStack extends cdk.Stack {
     const allowRemediation =
       props.allowRemediation ?? this.node.tryGetContext("enforce") === "true";
 
-    // ── VPC (default VPC) ──
-    const vpc = ec2.Vpc.fromLookup(this, "DefaultVpc", { isDefault: true });
-
-    // ── Security Group ──
-    const sg = new ec2.SecurityGroup(this, "SecurityGroup", {
-      vpc,
-      description: "GitHub Control Hub - HTTPS only, no SSH",
-      allowAllOutbound: true,
-    });
-
-    // HTTPS restricted to GitHub webhook IP ranges (from https://api.github.com/meta → hooks)
-    for (const cidr of GITHUB_WEBHOOK_CIDRS) {
-      sg.addIngressRule(ec2.Peer.ipv4(cidr), ec2.Port.tcp(443), `GitHub webhooks (${cidr})`);
-    }
-
-    // No SSH port — use SSM Session Manager instead
-
     // The only role this app may ever assume, anywhere.
     //
     // Named exactly, and the grants below are scoped to this name alone. The
@@ -89,132 +74,6 @@ export class GitHubControlHubStack extends cdk.Stack {
     // Convenience is not worth an application in a production account holding
     // administrator anywhere.
     const guardrailRoleName = `${stackPrefix}-guardrail-access`;
-
-    // ── IAM Role ──
-    const role = new iam.Role(this, "InstanceRole", {
-      assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
-      // SSM Session Manager — connect to the instance without SSH
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMManagedInstanceCore"),
-      ],
-    });
-
-    // S3 access for deploy script (Docker image transfer)
-    role.addToPolicy(new iam.PolicyStatement({
-      actions: ["s3:GetObject"],
-      resources: [`arn:aws:s3:::github-control-hub-deploy-${this.account}/*`],
-    }));
-
-    // Secrets Manager access
-    role.addToPolicy(new iam.PolicyStatement({
-      actions: ["secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
-    }));
-
-    // Access keys for AWS accounts that are not in an organisation, written
-    // from the Accounts screen. Scoped to this app's own prefix so the grant
-    // cannot reach the GitHub credentials next to it.
-    role.addToPolicy(new iam.PolicyStatement({
-      sid: "StoreAccountKeys",
-      actions: ["secretsmanager:CreateSecret", "secretsmanager:PutSecretValue", "secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${stackPrefix}/aws-account/*`],
-    }));
-
-    // Listing the organisation is what removes the setup work: the account ids
-    // and names are already recorded here, so nobody has to type them.
-    role.addToPolicy(new iam.PolicyStatement({
-      sid: "DiscoverOrganizationAccounts",
-      actions: ["organizations:ListAccounts", "organizations:DescribeOrganization", "organizations:ListRoots"],
-      resources: ["*"],   // neither call supports resource-level scoping
-    }));
-
-    // Adding an account verifies it before storing it, which means the app
-    // itself has to be able to assume the role and ask who it is.
-    //
-    // One role name, in any account. Not "*": a grant of sts:AssumeRole on
-    // every role would let this app become anything that trusts it, which is
-    // the whole ballgame.
-    role.addToPolicy(new iam.PolicyStatement({
-      sid: "VerifyAccountAccess",
-      actions: ["sts:AssumeRole"],
-      resources: [`arn:aws:iam::*:role/${guardrailRoleName}`],
-    }));
-
-    // DynamoDB access for app tables
-    role.addToPolicy(new iam.PolicyStatement({
-      actions: [
-        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:Query",
-        "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem",
-      ],
-      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
-    }));
-
-    // ── EC2 Instance ──
-    const instance = new ec2.Instance(this, "Instance", {
-      vpc,
-      instanceType: new ec2.InstanceType(props.instanceType ?? "t3.small"),
-      machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-      securityGroup: sg,
-      role,
-      ssmSessionPermissions: true,
-      blockDevices: [{
-        deviceName: "/dev/xvda",
-        // Encrypted at rest. The volume holds the application image and
-        // whatever the container writes; secrets are fetched into memory
-        // rather than stored, but a snapshot of an unencrypted root volume is
-        // still a copy of the app somebody can mount.
-        volume: ec2.BlockDeviceVolume.ebs(20, {
-          volumeType: ec2.EbsDeviceVolumeType.GP3,
-          encrypted: true,
-        }),
-      }],
-      // IMDSv2 only. Version 1 answers an unauthenticated GET, so any
-      // server-side request forgery in the app becomes a way to read the
-      // instance role's credentials. The running instance already has this;
-      // stating it here stops a future replacement quietly losing it.
-      requireImdsv2: true,
-    });
-
-    // UserData — install Docker and generate self-signed SSL cert
-    instance.addUserData(
-      "yum update -y",
-      "yum install -y docker",
-      "systemctl enable docker",
-      "systemctl start docker",
-      "usermod -aG docker ec2-user",
-      "",
-      "# Generate self-signed SSL certificate",
-      "mkdir -p /etc/ssl/github-control-hub",
-      'openssl req -x509 -nodes -days 365 -newkey rsa:2048 \\',
-      '  -keyout /etc/ssl/github-control-hub/server.key \\',
-      '  -out /etc/ssl/github-control-hub/server.crt \\',
-      '  -subj "/CN=github-control-hub"',
-      // The certificate is public by definition. The key was chmod'ed 644
-      // alongside it, which made the server's private key readable by every
-      // account on the instance.
-      //
-      // It cannot simply be 600 root-owned: the container runs as the `node`
-      // user and mounts this directory to read the key, which is the reason
-      // the permissive mode was there. So give it to that uid instead of to
-      // everyone — 1000 is `node` in the node:24-alpine image, and ec2-user on
-      // the host. Root still reads it; nothing else does.
-      "chown 1000:1000 /etc/ssl/github-control-hub/server.key",
-      "chmod 600 /etc/ssl/github-control-hub/server.key",
-      "chmod 644 /etc/ssl/github-control-hub/server.crt",
-    );
-
-    cdk.Tags.of(instance).add("Name", "github-control-hub");
-
-    // ── Elastic IP ──
-    // Without this the instance's public IP changes on every stop/start, which
-    // silently breaks the GitHub webhook (it points at a bare IP, not a DNS name).
-    // Free while associated with a running instance.
-    const eip = new ec2.CfnEIP(this, "Eip", {
-      domain: "vpc",
-      instanceId: instance.instanceId,
-      tags: [{ key: "Name", value: "github-control-hub" }],
-    });
 
     // ── AWS guardrails ──
     // Enforcement runs here rather than on the instance: it needs no inbound
@@ -370,18 +229,6 @@ export class GitHubControlHubStack extends cdk.Stack {
       schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
       targets: [new targets.LambdaFunction(guardrailFn, { deadLetterQueue: guardrailDlq })],
     });
-
-    // The app invokes this directly for manual runs and previews.
-    guardrailFn.grantInvoke(role);
-
-    // The Accounts screen shows both role ARNs a watched account must trust,
-    // and one of them is this function's. Reading its own configuration beats
-    // asking a person to go and find it in a stack output.
-    role.addToPolicy(new iam.PolicyStatement({
-      sid: "ReadOwnEngineRole",
-      actions: ["lambda:GetFunctionConfiguration"],
-      resources: [guardrailFn.functionArn],
-    }));
 
     // ── Webhooks ──
     //
@@ -626,16 +473,6 @@ export class GitHubControlHubStack extends cdk.Stack {
       description: "Dead-letter queue for failed guardrail invocations",
     });
 
-    new cdk.CfnOutput(this, "InstanceId", {
-      value: instance.instanceId,
-      description: "EC2 instance ID (use with: aws ssm start-session --target <id>)",
-    });
-
-    new cdk.CfnOutput(this, "PublicIp", {
-      value: eip.ref,
-      description: "Elastic IP — stable across instance restarts",
-    });
-
     new cdk.CfnOutput(this, "WebhookUrl", {
       value: `${webhookApi.url}webhooks/github`,
       description: "GitHub webhook payload URL — set this in the org's webhook settings",
@@ -649,11 +486,6 @@ export class GitHubControlHubStack extends cdk.Stack {
     new cdk.CfnOutput(this, "WebhookDlqUrl", {
       value: webhookDlq.queueUrl,
       description: "Dead-letter queue for webhook deliveries that failed five times",
-    });
-
-    new cdk.CfnOutput(this, "ConnectCommand", {
-      value: `aws ssm start-session --target ${instance.instanceId}`,
-      description: "Connect to instance (no SSH key needed)",
     });
   }
 }

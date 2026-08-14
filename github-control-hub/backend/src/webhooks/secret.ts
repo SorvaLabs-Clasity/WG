@@ -16,7 +16,7 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
  */
 const REFETCH_FLOOR_MS = 60 * 1000;
 
-/** Keys the app expects to find in the secret. Same list standalone.ts used. */
+/** Keys the app expects to find in the secret — the same list the old EC2 app read. */
 const SECRET_KEYS = [
   "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN",
   "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET",
@@ -88,7 +88,7 @@ export async function refetchWebhookSecret(): Promise<string> {
   return cached?.GITHUB_WEBHOOK_SECRET || "";
 }
 
-/** The worker's bootstrap: the same values standalone.ts put in the environment. */
+/** The worker's bootstrap: the same values the old EC2 app put in the environment. */
 export async function loadSecretsIntoEnv(): Promise<void> {
   const bundle = await getBundle();
   for (const key of SECRET_KEYS) {

@@ -383,11 +383,10 @@ cat <<EOF
   instance  $INSTANCE_ID at $PUBLIC_IP
   webhook   $WEBHOOK_URL
 
-  ${bold}The app is not on that instance yet.${off} This script builds the
-  infrastructure; shipping the application to it is one more command, and
-  without it the webhook URL above answers nothing:
-
-      ./scripts/deploy.sh $INSTANCE_ID
+  The webhook is already live: cdk deploy (above) packages the receiver and
+  worker Lambdas from source and deploys them along with the rest of the
+  infrastructure, so there is no separate app-shipping step. The webhook URL
+  above is answering requests now.
 
   Not done by this script, because it needs decisions rather than commands:
     · Other AWS accounts. Open AWS -> Accounts -> "How do I add an account?"
