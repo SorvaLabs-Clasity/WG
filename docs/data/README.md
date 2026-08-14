@@ -9,9 +9,9 @@ All prefixed `github-control-hub-` by default (`STACK_NAME` overrides it).
 | Table | Key | Holds |
 |---|---|---|
 | `activity` | `pk="ACTIVITY"`, `sk="<ts>#<id>"` | The audit feed, TTL 13 months |
-| `templates` | `id` | Repository templates |
-| `rule-templates` | `id` | Reusable protection / ruleset definitions |
-| `exclusions` | `id` | GitHub exclusion lists |
+| `templates` | `id` | Historical only — the Templates feature was removed; rows are kept readable, nothing writes new ones |
+| `rule-templates` | `id` | Historical only, same reason |
+| `exclusions` | `id` | Historical only, same reason |
 | `widgets` | `id` | Saved Overview cards |
 | `scanners` | `id` | Saved multi-condition scans |
 | `alerts` | `id` | Alert configuration |
@@ -38,5 +38,5 @@ would have them overwrite each other's verdict on alternate sweeps.
 ## Cost
 
 Trivially small. On-demand pricing, a few thousand items, a few thousand
-requests a day — measured at roughly $0.02/month. The expensive part of this
-system is the EC2 instance. See [cost](../infrastructure/cost.md).
+requests a day — measured at roughly $0.02/month. See
+[cost](../infrastructure/cost.md) for what the rest of the system costs.

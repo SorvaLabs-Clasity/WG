@@ -27,11 +27,12 @@ What is remembered, and what is not:
 - **An explicit `AWS_PROFILE` wins**, because someone setting it is being
   deliberate.
 
-## EC2
+## Lambda
 
-No profiles. The instance role provides credentials, and the app skips the
-remembered-profile logic entirely when `__SERVER_MODE__` is set — pointing a
-server at a profile that does not exist there would break it.
+No profiles. Each function — `webhook-receiver`, `webhook-worker`, the
+guardrail engine — gets its own execution role and reads its own credentials
+from the Lambda runtime, scoped to exactly what that function needs. See
+[Lambda](../infrastructure/lambda.md).
 
 ## What AWS access buys
 

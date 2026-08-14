@@ -44,9 +44,32 @@ The deployment is read-only. The finding says so in words. Redeploy with
 
 ## Activity stopped recording changes made in GitHub
 
-The EC2 is down or the webhook is misconfigured. The Activity page shows how
-long since GitHub last said anything. Deliveries during downtime are lost, not
-queued.
+The webhook is misconfigured, or a delivery is failing somewhere in the path.
+The Activity page shows how long since GitHub last said anything. A delivery
+rejected at the API Gateway is lost, not queued; one that reached the queue and
+failed is retried and, after five attempts, sits in the dead-letter queue
+rather than vanishing. See [webhooks](../github-api/webhooks.md).
+
+## GitHub's webhook IP ranges changed
+
+Nothing detects this automatically — it is the same position the security
+group held before this moved to Lambda. The symptom is 403s at the API
+Gateway and the Activity page reading **Stale** within 72 hours, because every
+delivery is being rejected before it reaches the receiver.
+
+The current list comes from `https://api.github.com/meta` → `hooks`, and lives
+in `GITHUB_WEBHOOK_CIDRS` in `infra/cdk-stack.ts`. Update it there and
+`cdk deploy` the resource policy.
+
+## A delivery that used to work now gets a 401
+
+More likely a rotated webhook secret than a bug in the signature logic. The
+receiver caches the secret for fifteen minutes and refetches once per
+verification failure, with a sixty-second floor between refetches — so a
+single rotated secret costs roughly one lost delivery, not fifteen minutes of
+them. Give it a minute before investigating further; if 401s are still
+happening after that, the secret in Secrets Manager and the one configured on
+the GitHub webhook have genuinely diverged.
 
 ## "An unexpected error occurred"
 

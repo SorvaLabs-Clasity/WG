@@ -53,8 +53,10 @@ body, with replay rejection. No secret means no delivery is accepted.
 
 **The desktop app is not a network service.** Its backend binds loopback, so
 the administrative API it serves is reachable only from the machine it runs on.
-The EC2 deployment is the deliberate exception, and a security group decides
-who reaches it.
+The webhook receiver is the deliberate exception — the only part of this
+system reachable from the internet — and it holds almost no privilege: one
+secret to read, one queue to write to. An API Gateway resource policy decides
+who reaches it at all, evaluated before any code runs.
 
 **No route hands out the system token.** The GitHub App token stays in the
 process that holds it. The only component that needs it — the updater — runs in

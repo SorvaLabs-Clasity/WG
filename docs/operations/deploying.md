@@ -20,24 +20,7 @@ whether the packaged app starts:
 "release/mac-arm64/GitHub Control Hub.app/Contents/MacOS/GitHub Control Hub"
 ```
 
-## EC2
-
-```bash
-./scripts/deploy.sh <instance-id>
-```
-
-Builds for `linux/amd64`, ships the image through the stack's S3 bucket, loads
-it over SSM. ~1 minute of downtime, during which **webhook deliveries are
-lost** — so avoid doing repository admin at the same time.
-
-Confirm the new code is actually running:
-
-```bash
-aws ssm send-command --instance-ids <id> --document-name AWS-RunShellScript \
-  --parameters 'commands=["docker ps --format \"{{.Image}} {{.Status}}\""]'
-```
-
-## Infrastructure
+## Infrastructure, including the webhook and guardrail Lambdas
 
 ```bash
 cd github-control-hub/infra
@@ -45,6 +28,12 @@ npx cdk diff                    # read the IAM changes before applying them
 npx cdk deploy                  # read-only
 npx cdk deploy -c enforce=true  # plus three write actions
 ```
+
+This is the only deploy step for backend changes that affect webhook handling
+or guardrail evaluation — `cdk deploy` bundles all three Lambdas straight from
+`backend/src`, so there is nothing to build or ship separately. A few minutes
+of deploy time, with no downtime for webhooks: API Gateway and the queue keep
+accepting deliveries while the functions behind them update.
 
 The stack prints `CanChangeAnything` so the deployment states which it is.
 

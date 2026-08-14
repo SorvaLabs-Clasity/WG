@@ -28,12 +28,13 @@ Stored as one JSON document at `<STACK_NAME>/secrets`, loaded at startup.
 | `AWS_PROFILE` | remembered, then `default` | Desktop only; see [AWS credentials](../auth/aws-credentials.md) |
 | `PORT` | `4321` desktop, `4000` web | |
 | `BACKEND_URL` / `FRONTEND_URL` | set by the desktop app | OAuth redirect construction |
-| `CONTROL_HUB_ADMIN_TEAM` | `control-hub-admins` | Team gating templates and config |
+| `CONTROL_HUB_ADMIN_TEAM` | `control-hub-admins` | Team gating scanners, widgets, alerts and config import |
 | `AWS_ADMIN_TEAM` | `aws-guardrail-admins` | Team gating AWS rules and accounts |
 | `ACTIVITY_RETENTION_MONTHS` | `13` | Activity TTL |
 | `GUARDRAIL_FUNCTION_NAME` | `<prefix>-guardrail-enforcer` | |
 | `GUARDRAIL_ROLE_NAME` | `<prefix>-guardrail-access` | The one role the app may assume |
-| `__SERVER_MODE__` | unset | Set on EC2. Disables desktop-only endpoints and profile handling |
+| `WEBHOOK_QUEUE_URL` | set by CDK | Read by the receiver; where a verified delivery is sent |
+| `WEBHOOK_DELIVERIES_TABLE` | set by CDK | Read by the worker; the dedup lock table |
 
 ## Table names
 
