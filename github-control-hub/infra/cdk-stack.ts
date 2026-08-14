@@ -272,6 +272,27 @@ export class GitHubControlHubStack extends cdk.Stack {
       externalModules: [],
       minify: false,
       sourceMap: true,
+      // @octokit/auth-app is installed into the asset rather than bundled.
+      //
+      // github/client.ts loads it through require.resolve() plus a dynamic
+      // import built with `new Function`, which is how it dodges tsc rewriting
+      // the import into a require for an ESM-only package. esbuild cannot see
+      // through that either, so it bundles nothing — and require.resolve then
+      // fails at runtime with "Cannot find module '@octokit/auth-app'". The
+      // symptom is quiet: the App token manager fails to initialise, every
+      // invocation degrades to SYSTEM_GITHUB_TOKEN, and the app runs on a PAT's
+      // 5,000 requests an hour instead of the App's 12,500.
+      //
+      // esbuild warns about exactly this ("should be marked as external for use
+      // with require.resolve") during synth.
+      //
+      // Marking it external is NOT the fix, and was tried: `octokit` itself
+      // requires @octokit/auth-app internally, so leaving it external puts a
+      // bare require() of an ESM-only package in the bundle and the whole
+      // function dies at init with ERR_REQUIRE_ESM. Bundling it — the setting
+      // below — at least keeps octokit working; only client.ts's
+      // require.resolve path fails, and getSystemTokenAsync degrades to
+      // SYSTEM_GITHUB_TOKEN. The real fix belongs in client.ts, not here.
     };
 
     const receiverFn = new NodejsFunction(this, "WebhookReceiver", {
