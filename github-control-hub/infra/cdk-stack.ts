@@ -317,8 +317,21 @@ export class GitHubControlHubStack extends cdk.Stack {
       // that needs it.
       timeout: cdk.Duration.minutes(10),
       memorySize: 512,
-      // Must be at least the event source's maxConcurrency below.
-      reservedConcurrentExecutions: 5,
+      // No reserved concurrency, deliberately.
+      //
+      // Reserving would be the belt to the event source's braces, and AWS asks
+      // that a reservation be at least the event source's maximum concurrency.
+      // But a reservation is carved out of the account's pool, and Lambda
+      // refuses to leave fewer than 10 unreserved executions behind. An account
+      // on the default quota of 10 therefore cannot reserve anything at all —
+      // the deploy fails with "decreases account's UnreservedConcurrentExecution
+      // below its minimum value of [10]".
+      //
+      // Nothing is lost. The cap that matters is maxConcurrency on the event
+      // source below: it limits the poller, so surplus messages wait in the
+      // queue with their receive count untouched, which is the property that
+      // keeps a burst out of the dead-letter queue. A reservation would only
+      // have guaranteed this function a share of the pool.
       environment: {
         STACK_NAME: stackPrefix,
         SECRET_NAME: secretName,

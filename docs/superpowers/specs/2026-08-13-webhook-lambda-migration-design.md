@@ -363,7 +363,7 @@ response.
 | `maxReceiveCount` | 5 |
 | Batch size | 1 |
 | Event source `maxConcurrency` | 5 |
-| Worker reserved concurrency | 5 |
+| Worker reserved concurrency | none — see below |
 
 The receiver's eight seconds is a ceiling, not a target — warm invocations are
 tens of milliseconds, and a cold start plus the secret fetch is one to two
@@ -394,9 +394,24 @@ that way, reserved concurrency would *cause* the DLQ problem it was meant to
 prevent, sending messages to the dead-letter queue that no worker ever saw.
 
 Maximum concurrency limits the poller instead, so surplus messages stay in the
-queue with their receive count untouched. AWS is explicit that the function's
-reserved concurrency must be greater than or equal to the event source's maximum
-concurrency, so both are 5.
+queue with their receive count untouched.
+
+AWS asks that a function's reserved concurrency be at least the event source's
+maximum concurrency, so the first version of this design set both to 5. **That
+version cannot be deployed**, and the first real deploy is what found it: a
+reservation is carved out of the account's pool, and Lambda refuses to leave
+fewer than ten unreserved executions behind. An account on the default quota of
+ten can therefore reserve nothing at all — the stack fails with *"decreases
+account's UnreservedConcurrentExecution below its minimum value of [10]"* and
+rolls back.
+
+The reservation is dropped. Nothing is lost, because the two settings were never
+doing the same job: `maxConcurrency` limits the poller, which is what keeps a
+burst out of the dead-letter queue, while a reservation would only have
+guaranteed this function a share of a pool it is already the main consumer of.
+
+Worth raising the account's concurrency quota regardless — ten is the un-raised
+default, and it is shared with the guardrail function and the receiver.
 
 `maxReceiveCount` is 5 rather than 3 for the same reason, and AWS's own
 guidance says so: a message can be received and returned without ever being
