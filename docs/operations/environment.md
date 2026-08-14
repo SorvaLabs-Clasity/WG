@@ -38,7 +38,7 @@ Stored as one JSON document at `<STACK_NAME>/secrets`, loaded at startup.
 ## Table names
 
 Derived from `STACK_NAME`, but each is individually overridable —
-`ACTIVITY_TABLE`, `TEMPLATES_TABLE`, `GRAPH_EDGES_TABLE`, `ORG_CONFIG_TABLE`
+`ACTIVITY_TABLE`, `GRAPH_EDGES_TABLE`, `ORG_CONFIG_TABLE`
 and so on. Setting them by hand is only useful when sharing tables across
 installs, which is rarely what you want.
 
