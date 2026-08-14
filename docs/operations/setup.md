@@ -435,40 +435,60 @@ CDK_CONTEXT="-c enforce=true -c orgEnforcesBucketSsl=true" ./scripts/migrate-to-
 In an organisation running an S3 TLS auto-remediation, the second flag is not
 optional — see the bucket-TLS section below for what happens without it.
 
-## A second deployment, for a copy you can break
+## Running more than one environment
 
-The stack carries no assumption that an organisation has one deployment. A
-second AWS account can run its own copy — its own tables, secrets, queue and
-API Gateway — against the same GitHub organisation, and the desktop app moves
-between them by switching AWS profile.
+The stack carries no assumption that an organisation has one deployment. Each
+AWS account runs its own copy — its own tables, secrets, queue and API Gateway —
+against the same GitHub organisation, and the desktop app moves between them by
+switching AWS profile. Dev, UAT and production are the same deployment done
+three times, not three variants of it.
 
 What is shared is only what lives on GitHub's side: the organisation, and
 optionally the App and OAuth App.
 
-- **A GitHub organisation can hold more than one webhook.** Add a second
-  pointing at the new account's `WebhookUrl`, with its own secret. Both receive
-  every event; each account's worker writes to its own tables.
-- **A separate GitHub App is optional but worth it.** Apps are free and
-  unlimited. The reason is not isolation of permissions — it is that the
+- **A GitHub organisation can hold more than one webhook.** Add one per
+  environment, each pointing at that account's `WebhookUrl` with its own
+  secret. Every hook receives every event; each account's worker writes to its
+  own tables.
+- **A separate GitHub App per environment is optional but worth it.** Apps are
+  free and unlimited. The reason is not permission isolation — it is that the
   12,500 requests an hour are *per installation*, so sharing one App means a
-  busy afternoon in the copy spends production's budget.
-- **The OAuth App can be shared.** Both desktop apps redirect to
-  `http://localhost:4321/auth/callback`, so one registration serves both.
+  busy afternoon in UAT spends production's budget.
+- **The OAuth App can be shared.** Every desktop app redirects to
+  `http://localhost:4321/auth/callback`, so one registration serves all of
+  them.
 
-Deploy a non-production copy without the web ACL:
+### What to set differently outside production
+
+**The web ACL is worth skipping where there is no bill to protect:**
 
 ```bash
 npx cdk deploy -c enforce=true -c waf=false
 ```
 
-That is a flat $5 a month plus $1 a rule — most of a small stack's bill — to
-rate-limit an environment nobody depends on. The IP allow-list and the
-signature check, which are what actually keep strangers out, are unaffected.
+A flat $5 a month plus $1 a rule is most of a small stack's bill. What it
+actually buys is cost containment — it cuts off a single address sustaining
+more than about seven requests a second, which otherwise runs up API Gateway
+charges on requests the resource policy is already rejecting. That is worth
+paying for where the bill matters and not where it does not. The IP allow-list
+and the signature check, which are what keep strangers out, are unaffected
+either way.
 
-One thing to keep apart deliberately: if the copy runs guardrails with
-`enforce=true`, keep production accounts out of its monitored-account list.
-Nothing else in the copy can reach production, but that list is an explicit
-invitation to.
+**Security-alert email belongs in one environment, or in different groups.**
+Three environments with notifications on means three emails per event and no
+way to tell which one shouted.
+
+**Keep production AWS accounts out of a non-production guardrail's
+monitored-account list.** Nothing else in another environment can reach
+production, but that list is an explicit invitation to.
+
+### What is not supported yet
+
+Two deployments in the **same account and region**. The stack name, table
+prefix and secret names are fixed, so a second copy beside the first would
+collide on all three — and two guardrail engines in one account would scan the
+same resources and both try to remediate them. A separate account per
+environment is the supported shape.
 
 ## Verifying
 
