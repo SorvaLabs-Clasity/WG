@@ -373,6 +373,51 @@ half of an audit trail. See [webhooks](../github-api/webhooks.md).
 
 ---
 
+## If the organisation already enforces bucket TLS
+
+Some accounts run an AWS Config rule that applies a TLS-only policy to every new
+S3 bucket, within seconds of it appearing. That control and this stack's own
+`enforceSSL` want the same thing and cannot both have it:
+
+```
+CloudFormation creates the audit bucket
+  -> the remediation writes its policy
+  -> CloudFormation's CreateBucketPolicy fails, "the bucket policy already exists"
+  -> rollback; RemovalPolicy.RETAIN keeps the bucket and the foreign policy
+  -> the next attempt hits the same race one resource earlier
+```
+
+No number of retries wins it. Deploy with the flag instead:
+
+```bash
+npx cdk deploy -c enforce=true -c orgEnforcesBucketSsl=true
+```
+
+The bucket still refuses plaintext — the organisation's control is what puts
+that in writing rather than this stack.
+
+To confirm that is what you are hitting, ask who wrote the policy. The error
+names the bucket, never whatever wrote to it:
+
+```bash
+aws cloudtrail lookup-events \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=PutBucketPolicy \
+  --max-results 5 --query 'Events[].[EventTime,Username]' --output text
+```
+
+A username that is not yours — `s3-ssl-auto-remediate` or similar — is the
+answer.
+
+A bucket left behind by a failed attempt is still there and unmanaged by the
+stack. Delete it first, or CloudFormation will refuse to create one of the same
+name:
+
+```bash
+BUCKET=github-control-hub-audit-log-$(aws sts get-caller-identity --query Account --output text)
+aws s3api list-objects-v2 --bucket "$BUCKET" --query 'KeyCount' --output text   # expect 0
+aws s3api delete-bucket --bucket "$BUCKET"                                      # refuses if not empty
+```
+
 ## Verifying
 
 1. **Create a repository in the org.** It should appear in Activity within
