@@ -550,6 +550,56 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     auditBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(auditIngestFn));
 
+    // ── Audit log streaming: how GitHub authenticates ──
+    //
+    // GitHub offers two ways to write to the bucket: an AWS access key pair,
+    // or OpenID Connect. The key pair means storing long-lived AWS credentials
+    // on GitHub, which is a standing liability for a bucket that holds the
+    // record of who did what. OIDC hands GitHub a temporary credential per
+    // upload and stores nothing.
+    //
+    // Only built when the enterprise slug is supplied, because the trust policy
+    // is worthless without it — a role trusting the issuer but no particular
+    // subject would accept uploads from any GitHub enterprise at all.
+    //
+    //   cdk deploy -c auditEnterprise=your-enterprise-slug
+    //
+    // The slug is the one in the URL at github.com/enterprises/<slug>, and it
+    // is case-sensitive.
+    const auditEnterprise = this.node.tryGetContext("auditEnterprise");
+    if (auditEnterprise) {
+      const auditOidc = new iam.OpenIdConnectProvider(this, "AuditLogOidcProvider", {
+        url: "https://oidc-configuration.audit-log.githubusercontent.com",
+        clientIds: ["sts.amazonaws.com"],
+      });
+
+      const auditStreamRole = new iam.Role(this, "AuditLogStreamRole", {
+        roleName: `${stackPrefix}-audit-log-stream`,
+        description: "Assumed by GitHub to write enterprise audit log objects into the audit bucket",
+        assumedBy: new iam.WebIdentityPrincipal(auditOidc.openIdConnectProviderArn, {
+          // Both conditions matter. The audience alone would let any enterprise
+          // assume this role; the subject pins it to yours.
+          StringEquals: {
+            "oidc-configuration.audit-log.githubusercontent.com:aud": "sts.amazonaws.com",
+            "oidc-configuration.audit-log.githubusercontent.com:sub": `https://github.com/${auditEnterprise}`,
+          },
+        }),
+      });
+
+      // Write only, and only into this bucket. GitHub has no reason to read
+      // back what it has written, and this role should not be able to.
+      auditStreamRole.addToPolicy(new iam.PolicyStatement({
+        sid: "WriteAuditObjects",
+        actions: ["s3:PutObject"],
+        resources: [auditBucket.arnForObjects("*")],
+      }));
+
+      new cdk.CfnOutput(this, "AuditLogStreamRoleArn", {
+        value: auditStreamRole.roleArn,
+        description: "Paste into GitHub: Enterprise settings > Audit log > Streaming > Amazon S3 (OIDC)",
+      });
+    }
+
     // ── Outputs ──
     new cdk.CfnOutput(this, "GuardrailFunctionName", {
       value: guardrailFn.functionName,

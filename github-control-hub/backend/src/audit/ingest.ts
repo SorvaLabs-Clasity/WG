@@ -56,6 +56,19 @@ export async function handler(event: S3Event): Promise<void> {
     // without this, and the object is skipped with no obvious reason.
     const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, " "));
 
+    // GitHub writes a plain-text object called `_check` when you press "Check
+    // endpoint", and again periodically while streaming is enabled. It is not
+    // an audit batch and never parses as one.
+    //
+    // Skipped by name rather than left to fail: counting it as unparseable
+    // logged a failure every time GitHub verified the connection, which would
+    // bury a real corrupted batch among routine noise. The count only means
+    // something if it only counts real problems.
+    if (key === "_check" || key.endsWith("/_check")) {
+      console.log(`[Audit] ${key}: endpoint check from GitHub, connection is live`);
+      continue;
+    }
+
     const res = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
     const raw = Buffer.from(await res.Body!.transformToByteArray());
 

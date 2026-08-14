@@ -13,6 +13,8 @@
  *   - the allow-list decides what is kept forever and what is only ever in S3.
  *     Getting it wrong silently drops the events an auditor came for.
  */
+import fs from "fs";
+import path from "path";
 import { isConsequential, normalise, parseNdjson, toTimestamp, describe, allowList } from "./src/audit/events";
 
 let failures = 0;
@@ -128,6 +130,25 @@ function check(name: string, ok: boolean, got?: unknown) {
     describe({ action: "repo.access", actor: "carol", repo: "api" }).includes("carol")
       && describe({ action: "repo.access", actor: "carol", repo: "api" }).includes("repo.access"),
     describe({ action: "repo.access", actor: "carol", repo: "api" }));
+}
+
+// ── GitHub's endpoint probe is not a batch ────────────────────────────
+{
+  // Found the moment streaming was switched on for real: GitHub writes a
+  // plain-text object called `_check` on every connection verification, and
+  // repeatedly while streaming stays enabled. Parsing it as NDJSON yields one
+  // unparseable line, so every check logged what looked like corruption —
+  // which would bury a genuinely corrupted batch in routine noise.
+  const { events, skipped } = parseNdjson("GitHub audit log streaming check");
+  check("the check object contains no events", events.length === 0, events.length);
+  check("  and would read as a parse failure, which is why it is skipped by name",
+    skipped === 1, skipped);
+
+  const src = fs.readFileSync(path.join(__dirname, "src/audit/ingest.ts"), "utf8");
+  check("the handler skips _check before it tries to fetch or parse anything",
+    /key === "_check"/.test(src)
+      && src.indexOf('key === "_check"') < src.indexOf("GetObjectCommand({ Bucket: bucket"),
+    "an endpoint check would be counted as corruption");
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

@@ -91,7 +91,13 @@ and writes the rest as activity rows with `source: "audit"` and
 `action: "audit.event"`. The specific GitHub event — `protected_branch.destroy`,
 `org.add_member` — goes in `target`, which is what distinguishes rows in the UI.
 
-Three details that matter:
+GitHub also writes a plain-text object called `_check` whenever it verifies the
+connection, and periodically while streaming is on. It is skipped by name
+before anything tries to parse it — left to fail it counted as an unparseable
+line, so every routine check logged what looked like a corrupted batch and the
+count stopped meaning anything.
+
+Three more details that matter:
 
 - **One malformed line does not discard the file.** A partial batch is worth
   more than none, and the count of unparseable lines is logged.
