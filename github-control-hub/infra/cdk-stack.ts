@@ -524,7 +524,28 @@ export class GitHubControlHubStack extends cdk.Stack {
     webhookApi.root
       .addResource("webhooks")
       .addResource("github")
-      .addMethod("POST", new apigateway.LambdaIntegration(receiverFn));
+      .addMethod("POST", new apigateway.LambdaIntegration(receiverFn), {
+        // Both headers are required to be *present*, and API Gateway rejects
+        // the request with 400 before the integration runs if either is
+        // missing. GitHub sends both on every delivery.
+        //
+        // This is not authentication and does not pretend to be — presence is
+        // not validity, and the signature is still verified against the body in
+        // the receiver. What it buys is that a request with no signature at all
+        // never becomes a Lambda invocation.
+        requestParameters: {
+          "method.request.header.X-Hub-Signature-256": true,
+          "method.request.header.X-GitHub-Event": true,
+        },
+        requestValidatorOptions: {
+          requestValidatorName: `${stackPrefix}-webhook-headers`,
+          validateRequestParameters: true,
+          // Bodies are not validated. A schema here would have to describe
+          // every event GitHub sends, would reject anything they add, and
+          // would be a second place to keep in step with their API.
+          validateRequestBody: false,
+        },
+      });
 
     // A queue nobody watches is a queue that quietly fills up. The guardrail
     // DLQ had this gap too, so it gets one as well.
