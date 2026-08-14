@@ -71,6 +71,12 @@ export interface SecurityNotifySettings {
   minSeverity: Severity;
   subjectTemplate: string;
   bodyTemplate: string;
+  /**
+   * IANA zone the {{time}} variable is rendered in, for both alarm and
+   * security emails. UTC by default, because one email reaches a group who may
+   * be anywhere; set it when everyone reading them is in one place.
+   */
+  timezone: string;
   updatedBy?: string;
   updatedAt?: string;
 }
@@ -281,6 +287,7 @@ export const DEFAULT_SECURITY_SETTINGS: SecurityNotifySettings = {
   // emailing whoever happened to be in a group the moment they created one.
   enabled: false,
   minSeverity: "high",
+  timezone: "UTC",
   subjectTemplate: DEFAULT_SECURITY_SUBJECT,
   bodyTemplate: DEFAULT_SECURITY_BODY,
 };
@@ -293,7 +300,7 @@ export async function getSecuritySettings(): Promise<SecurityNotifySettings> {
 
 export async function saveSecuritySettings(
   data: Partial<Pick<SecurityNotifySettings, "enabled" | "groupId" | "minSeverity"
-    | "subjectTemplate" | "bodyTemplate">>,
+    | "subjectTemplate" | "bodyTemplate" | "timezone">>,
   actor: string,
 ): Promise<SecurityNotifySettings> {
   const current = await getSecuritySettings();

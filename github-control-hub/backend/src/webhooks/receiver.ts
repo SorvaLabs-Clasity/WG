@@ -57,7 +57,15 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
     return { statusCode: 400, body: "Body is not JSON" };
   }
 
-  const message = JSON.stringify({ deliveryId, event: githubEvent, payload });
+  // When GitHub delivered this, recorded here rather than in the worker.
+  // The worker's clock is whenever the queue got round to it — seconds
+  // later normally, minutes after a retry, and days later for a redelivery
+  // of an old event. Stamping at the edge keeps the alert's time close to
+  // the thing it describes.
+  const message = JSON.stringify({
+    deliveryId, event: githubEvent, payload,
+    receivedAt: new Date().toISOString(),
+  });
 
   // SQS refuses a message over 256 KB, and the Express route this replaces
   // accepted up to 1 MB — so a push on a busy default branch or a large

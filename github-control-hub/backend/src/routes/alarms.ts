@@ -249,7 +249,7 @@ router.get("/security", async (_req: Request, res: Response) => {
 
 router.put("/security", async (req: Request, res: Response) => {
   try {
-    const { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate } = req.body ?? {};
+    const { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate, timezone } = req.body ?? {};
 
     if (enabled && !groupId) {
       return res.status(400).json({ error: "Choose an email group before turning this on" });
@@ -261,11 +261,18 @@ router.put("/security", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Unknown severity" });
     }
 
+    // Rejected here rather than at send time: an unknown zone makes
+    // Intl.DateTimeFormat throw, and a thrown formatter takes the email with it.
+    if (timezone !== undefined) {
+      try { new Intl.DateTimeFormat("en-CA", { timeZone: timezone }); }
+      catch { return res.status(400).json({ error: `"${timezone}" is not a known timezone` }); }
+    }
+
     const problem = templateProblem(subjectTemplate, bodyTemplate);
     if (problem) return res.status(400).json({ error: problem });
 
     res.json(await saveSecuritySettings(
-      { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate }, req.user!.login));
+      { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate, timezone }, req.user!.login));
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "alarm settings") });
   }

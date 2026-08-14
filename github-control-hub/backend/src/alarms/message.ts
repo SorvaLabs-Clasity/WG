@@ -100,13 +100,29 @@ export const DEFAULT_SECURITY_BODY =
  * several places and a single canonical zone is the only one that means the
  * same thing to all of them. It just says so now.
  */
-export function formatTimestamp(iso: string | undefined): string {
+export function formatTimestamp(iso: string | undefined, timeZone = "UTC"): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
-         `${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
+
+  try {
+    // en-CA for the year-month-day ordering, and timeZoneName so the reader is
+    // never left guessing which clock this is.
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "short",
+    }).formatToParts(d);
+    const at = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+    const zone = at("timeZoneName");
+    return `${at("year")}-${at("month")}-${at("day")} ${at("hour")}:${at("minute")}` +
+           (zone ? ` ${zone}` : "");
+  } catch {
+    // An unknown zone name throws rather than falling back, and a rejected
+    // timestamp would take the whole email with it. UTC is always valid.
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
+           `${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
+  }
 }
 
 export interface BuiltMessage { subject: string; body: string; }

@@ -50,7 +50,15 @@ export async function createAlert(
   type: AlertType,
   message: string,
   severity: AlertSeverity,
-  details?: any
+  details?: any,
+  /**
+   * When the event happened, if known. Defaults to now.
+   *
+   * Without it every alert carried the moment the worker processed it, so a
+   * redelivered webhook produced an alert dated today for something that
+   * happened last week, and a queue backlog quietly shifted every timestamp.
+   */
+  occurredAt?: string,
 ): Promise<SecurityAlert> {
   const newAlert: SecurityAlert = {
     id: crypto.randomUUID(),
@@ -58,7 +66,7 @@ export async function createAlert(
     type,
     message,
     severity,
-    timestamp: new Date().toISOString(),
+    timestamp: occurredAt || new Date().toISOString(),
     resolved: false,
     details,
   };

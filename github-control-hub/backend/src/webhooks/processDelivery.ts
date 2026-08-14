@@ -22,6 +22,17 @@ export interface Delivery {
    * "No GitHub token available" on some containers and not others.
    */
   token: string;
+  /**
+   * When the receiver took the delivery from GitHub.
+   *
+   * Used as the alert's timestamp instead of the worker's own clock. GitHub
+   * delivers within a second or so of the event, whereas the worker runs
+   * whenever the queue reaches it — later after a retry, and much later for a
+   * redelivery of an old event. A redelivery still reads as "now", because the
+   * payload carries no original timestamp to recover; it is at least honest
+   * about when the event was learned of.
+   */
+  receivedAt?: string;
 }
 
 /** Strip characters that could be used for XSS when reflected in the frontend. */
@@ -72,7 +83,7 @@ export async function awaitBackground(
   }
 }
 
-export async function processDelivery({ event, payload, token }: Delivery): Promise<void> {
+export async function processDelivery({ event, payload, token, receivedAt }: Delivery): Promise<void> {
   console.log(`[Webhook] Received GitHub event: ${event}`);
 
   let repoName: string | null = null;
@@ -81,11 +92,15 @@ export async function processDelivery({ event, payload, token }: Delivery): Prom
     repoName = sanitizeField(payload.repository.name, 100) || null;
   }
 
+  // One timestamp for every alert this delivery produces, taken from when
+  // GitHub handed it over rather than from whenever each write happens.
+  const occurredAt = receivedAt || new Date().toISOString();
+
   const actor = sanitizeField(payload.sender?.login || payload.installation?.account?.login, 64) || "github";
 
   if (repoName) {
     if (event === "repository" && payload.action === "publicized") {
-      await createAlert(repoName, "repo_made_public", `Repository ${repoName} was made public.`, "critical");
+      await createAlert(repoName, "repo_made_public", `Repository ${repoName} was made public.`, "critical", undefined, occurredAt);
       await logActivity("repo.publicized", actor, repoName, repoName, "Repository was made public", undefined, "github");
     }
 
@@ -95,19 +110,19 @@ export async function processDelivery({ event, payload, token }: Delivery): Prom
 
     if (event === "member" && payload.action === "added") {
       const userAdded = sanitizeField(payload.member?.login, 64);
-      await createAlert(repoName, "admin_added", `User ${userAdded} was added to ${repoName}. Verify privileges.`, "medium");
+      await createAlert(repoName, "admin_added", `User ${userAdded} was added to ${repoName}. Verify privileges.`, "medium", undefined, occurredAt);
     }
 
     if (event === "team" && payload.action === "added_to_repository") {
-      await createAlert(repoName, "team_added", `Team ${sanitizeField(payload.team?.name, 100)} was added to ${repoName}.`, "medium");
+      await createAlert(repoName, "team_added", `Team ${sanitizeField(payload.team?.name, 100)} was added to ${repoName}.`, "medium", undefined, occurredAt);
     }
 
     if (event === "team" && payload.action === "removed_from_repository") {
-      await createAlert(repoName, "team_removed", `Team ${sanitizeField(payload.team?.name, 100)} was removed from ${repoName}.`, "medium");
+      await createAlert(repoName, "team_removed", `Team ${sanitizeField(payload.team?.name, 100)} was removed from ${repoName}.`, "medium", undefined, occurredAt);
     }
 
     if (event === "team" && payload.action === "edited" && payload.changes?.repository?.permissions) {
-      await createAlert(repoName, "team_permission_changed", `Team ${sanitizeField(payload.team?.name, 100)} permissions were changed in ${repoName}.`, "high");
+      await createAlert(repoName, "team_permission_changed", `Team ${sanitizeField(payload.team?.name, 100)} permissions were changed in ${repoName}.`, "high", undefined, occurredAt);
     }
 
     if (event === "repository" && payload.action === "privatized") {
@@ -116,24 +131,24 @@ export async function processDelivery({ event, payload, token }: Delivery): Prom
 
     if (event === "branch_protection_rule") {
       if (payload.action === "deleted") {
-        await createAlert(repoName, "protection_removed", `Branch protection was completely removed.`, "critical");
+        await createAlert(repoName, "protection_removed", `Branch protection was completely removed.`, "critical", undefined, occurredAt);
         await logActivity("branch.unprotect", actor, repoName, sanitizeField(payload.changes?.name?.from, 100) || "branch", "Branch protection removed via GitHub", undefined, "github");
       } else if (payload.action === "created") {
         await autoResolveAlerts(repoName, "protection_removed");
       } else if (payload.action === "edited") {
-        await createAlert(repoName, "protection_drift", `Branch protection rules were modified (drift detected).`, "high");
+        await createAlert(repoName, "protection_drift", `Branch protection rules were modified (drift detected).`, "high", undefined, occurredAt);
         await logActivity("github.branch_protection_edited", actor, repoName, sanitizeField(payload.rule?.name, 100) || "branch", "Branch protection rules modified", undefined, "github");
       }
     }
 
     if (event === "repository_ruleset") {
       if (payload.action === "deleted") {
-        await createAlert(repoName, "ruleset_disabled", `A repository ruleset was deleted.`, "critical");
+        await createAlert(repoName, "ruleset_disabled", `A repository ruleset was deleted.`, "critical", undefined, occurredAt);
         await logActivity("repo.ruleset.delete", actor, repoName, sanitizeField(String(payload.ruleset?.id || ""), 64), "Ruleset deleted via GitHub", undefined, "github");
       } else if (payload.action === "created") {
         await autoResolveAlerts(repoName, "ruleset_disabled");
       } else if (payload.action === "edited") {
-        await createAlert(repoName, "protection_drift", `Repository ruleset was modified (drift detected).`, "high");
+        await createAlert(repoName, "protection_drift", `Repository ruleset was modified (drift detected).`, "high", undefined, occurredAt);
         await logActivity("github.ruleset_edited", actor, repoName, sanitizeField(payload.ruleset?.name, 100) || "ruleset", "Repository ruleset modified", undefined, "github");
       }
     }

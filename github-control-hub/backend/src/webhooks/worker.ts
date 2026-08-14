@@ -87,7 +87,7 @@ export async function handler(event: SQSEvent): Promise<void> {
   }
 
   for (const record of event.Records) {
-    const { deliveryId, event: githubEvent, payload } = JSON.parse(record.body);
+    const { deliveryId, event: githubEvent, payload, receivedAt } = JSON.parse(record.body);
 
     if (!(await claimDelivery(deliveryId))) {
       console.log(`[Webhook] Delivery ${deliveryId} is already handled — skipping`);
@@ -95,7 +95,7 @@ export async function handler(event: SQSEvent): Promise<void> {
     }
 
     try {
-      await processDelivery({ event: githubEvent, deliveryId, payload, token });
+      await processDelivery({ event: githubEvent, deliveryId, payload, token, receivedAt });
     } catch (err) {
       // Hand the claim back before rethrowing, so SQS's retry can re-take it.
       // Swallowing this would delete the message and lose the event.

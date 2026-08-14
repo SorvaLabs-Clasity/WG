@@ -5,7 +5,7 @@ import { evaluateAlarms } from "./evaluate";
 import { computeWidgetRows } from "./widgetValues";
 import { fetchOrgDependencyAlerts } from "../services/dependencyService";
 import { evaluateSecurityQuery } from "../services/graphService";
-import { listAlarms, getGroup, saveAlarmRuntime } from "../services/alarmService";
+import { listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings } from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
 
@@ -91,6 +91,7 @@ export async function handler(): Promise<void> {
   const summary = await evaluateAlarms({
     now: Date.now(),
     org,
+    timezone: (await getSecuritySettings()).timezone,
     listAlarms,
     getWidget: (id: string) => getWidget(id) as any,
     topicArnFor: async (groupId: string) => (await getGroup(groupId))?.topicArn,

@@ -22,7 +22,7 @@ export interface NotifiableAlert {
 export interface SecurityNotifyDeps {
   settings: () => Promise<{
     enabled: boolean; groupId?: string; minSeverity: string;
-    subjectTemplate: string; bodyTemplate: string;
+    subjectTemplate: string; bodyTemplate: string; timezone?: string;
   }>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   publish: (topicArn: string, subject: string, body: string) => Promise<boolean>;
@@ -53,7 +53,7 @@ export async function notifySecurityAlert(
     severity: alert.severity,
     state: "ALARM",
     org: deps.org,
-    time: formatTimestamp(alert.timestamp),
+    time: formatTimestamp(alert.timestamp, settings.timezone),
     widget: alert.type,
   });
 

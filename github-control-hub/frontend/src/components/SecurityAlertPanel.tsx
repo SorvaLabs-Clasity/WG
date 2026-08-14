@@ -7,6 +7,20 @@ import type { Severity } from "../api/alarms";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
+/** The viewer's own zone, offered first so the common case is one click. */
+const browserZone = (() => {
+  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"; }
+  catch { return "UTC"; }
+})();
+
+const TIMEZONES = [...new Set([browserZone, "UTC",
+  "America/Los_Angeles", "America/Denver", "America/Chicago", "America/New_York",
+  "America/Toronto", "America/Sao_Paulo", "Europe/London", "Europe/Dublin",
+  "Europe/Paris", "Europe/Berlin", "Europe/Madrid", "Europe/Warsaw",
+  "Africa/Johannesburg", "Asia/Jerusalem", "Asia/Dubai", "Asia/Kolkata",
+  "Asia/Singapore", "Asia/Shanghai", "Asia/Tokyo", "Australia/Sydney",
+  "Pacific/Auckland"])];
+
 const inputClass =
   "block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue " +
   "focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset " +
@@ -31,6 +45,7 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
   const [enabled, setEnabled] = useState(false);
   const [groupId, setGroupId] = useState("");
   const [minSeverity, setMinSeverity] = useState<Severity>("high");
+  const [timezone, setTimezone] = useState("UTC");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [showTemplates, setShowTemplates] = useState(false);
@@ -42,6 +57,7 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
     setEnabled(settings.enabled);
     setGroupId(settings.groupId ?? "");
     setMinSeverity(settings.minSeverity);
+    setTimezone(settings.timezone || "UTC");
     setSubject(settings.subjectTemplate);
     setBody(settings.bodyTemplate);
   }, [settings]);
@@ -59,12 +75,13 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
 
   async function save(next: Partial<{
     enabled: boolean; groupId: string; minSeverity: Severity;
-    subjectTemplate: string; bodyTemplate: string;
+    subjectTemplate: string; bodyTemplate: string; timezone: string;
   }>) {
     setError(""); setNotice("");
     try {
       await saveSettings.mutateAsync({
-        enabled, groupId, minSeverity, subjectTemplate: subject, bodyTemplate: body, ...next,
+        enabled, groupId, minSeverity, timezone,
+        subjectTemplate: subject, bodyTemplate: body, ...next,
       });
       setNotice("Saved");
     } catch (err: any) {
@@ -169,6 +186,18 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
               Lower-severity alerts are still recorded, just not emailed.
             </p>
           </div>
+        </div>
+
+        <div className="mt-4 sm:w-1/2 sm:pr-2">
+          <label className={labelClass}>Show times in</label>
+          <select value={timezone} className={inputClass}
+            onChange={e => { setTimezone(e.target.value); save({ timezone: e.target.value }); }}>
+            {TIMEZONES.map(z => <option key={z} value={z}>{z === browserZone ? `${z} (yours)` : z}</option>)}
+          </select>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+            Applies to alarm emails too. Every email names its timezone, so UTC is
+            safe when recipients are spread out.
+          </p>
         </div>
 
         <button type="button" onClick={() => setShowTemplates(v => !v)}

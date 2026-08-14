@@ -282,6 +282,19 @@ function check(name: string, ok: boolean, got?: unknown) {
     formatTimestamp("not a date") === "not a date", formatTimestamp("not a date"));
   check("  and an absent one renders empty", formatTimestamp(undefined) === "");
 
+  // 13:15 UTC is 09:15 in Toronto. The hour has to move, and the label with it.
+  const local = formatTimestamp("2026-08-14T13:15:50.911Z", "America/Toronto");
+  check("a timezone shifts the clock and renames it",
+    local.startsWith("2026-08-14 09:15") && !local.includes("UTC"), local);
+  check("  and a zone crossing midnight moves the date too",
+    formatTimestamp("2026-08-14T02:30:00Z", "America/Toronto").startsWith("2026-08-13 22:30"),
+    formatTimestamp("2026-08-14T02:30:00Z", "America/Toronto"));
+
+  // Intl throws on an unknown zone, and a thrown formatter takes the email.
+  check("an unknown timezone falls back to UTC rather than throwing",
+    formatTimestamp("2026-08-14T13:15:50.911Z", "Mars/Olympus").endsWith(" UTC"),
+    formatTimestamp("2026-08-14T13:15:50.911Z", "Mars/Olympus"));
+
   // Both senders must use it; one raw path is one confusing email.
   for (const f of ["src/alarms/evaluate.ts", "src/alarms/securityNotify.ts"]) {
     const src = fs.readFileSync(path.join(__dirname, f), "utf8");

@@ -31,6 +31,7 @@ export interface AlarmLike {
 export interface EvaluatorDeps {
   now: number;
   org: string;
+  timezone?: string;
   listAlarms: () => Promise<AlarmLike[]>;
   getWidget: (id: string) => Promise<WidgetLike | undefined>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
@@ -137,7 +138,7 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
           threshold: thresholdText(alarm.condition),
           state: fire === "alarm" ? "ALARM" : "OK",
           org: deps.org,
-          time: formatTimestamp(nowIso),
+          time: formatTimestamp(nowIso, deps.timezone),
         });
         const ok = await deps.publish(topicArn, subject, body);
         if (ok) lastFiredAt = nowIso;

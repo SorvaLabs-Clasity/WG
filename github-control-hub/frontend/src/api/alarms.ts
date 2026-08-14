@@ -59,6 +59,8 @@ export interface SecurityNotifySettings {
   minSeverity: Severity;
   subjectTemplate: string;
   bodyTemplate: string;
+  /** IANA zone that {{time}} is rendered in, for alarm and security emails. */
+  timezone: string;
   updatedBy?: string;
   updatedAt?: string;
 }
