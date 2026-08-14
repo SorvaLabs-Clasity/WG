@@ -150,6 +150,14 @@ export default function SecurityPage() {
                           <Pill intent={a.resolved ? "neutral" : intent}>
                             {TYPE_LABELS[a.type] ?? a.type}
                           </Pill>
+                          {/* Severity was carried only by the card's colour,
+                              which cannot be read aloud, searched by eye, or
+                              told apart by anyone who does not already know
+                              the palette. It is also what decides whether an
+                              email is sent, so it is worth stating. */}
+                          <Pill intent={a.resolved ? "neutral" : intent}>
+                            {String(a.severity ?? "unknown").toUpperCase()}
+                          </Pill>
                         </div>
                         <p className={`${TYPE.sub} mt-1.5 ${a.resolved ? "text-slate-400 dark:text-slate-500" : "text-slate-600 dark:text-slate-300"}`}>
                           {a.message}
