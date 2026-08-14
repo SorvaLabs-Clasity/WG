@@ -416,10 +416,13 @@ authenticated as, prompts for the region, and refuses one the account cannot
 see. Nothing is assumed — a stack deployed to the wrong region is a stack you
 have to find first.
 
-**Authenticate before running it.** The script refuses to start otherwise
-rather than offering `default`, because on a machine with one profile per
-environment that suggestion is wrong most of the time and pressing enter is how
-a stack lands in the wrong account. Either kind of credential works:
+It asks which profile to use, with **no default** — on a machine with one
+profile per environment, a pre-filled suggestion is wrong most of the time, and
+this creates tables, secrets and a stack before anyone reads the account id it
+prints. It signs in for you if that profile has no valid session.
+
+If `AWS_PROFILE` is already exported it offers that; if credentials are already
+in the environment it uses them and asks nothing:
 
 ```bash
 export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
@@ -427,8 +430,7 @@ export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
 ```
 
 That is the shape the AWS access portal hands out, and it needs no profile to
-exist at all. With a profile instead, `export AWS_PROFILE=<name>` after
-`aws sso login --profile <name>`.
+exist at all.
 
 It creates **no guardrail rules**. Which rules an account runs is a decision
 about that account, and the S3 one rewrites bucket policies the moment it is

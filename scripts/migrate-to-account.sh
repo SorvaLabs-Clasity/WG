@@ -60,27 +60,30 @@ step "Target account"
 #
 # This is the shape the AWS access portal hands you: three exports, good for a
 # few hours. It needs no profile to exist at all, which is the point.
-# Authenticate before running this, and say which account you mean.
+# Which account, asked with no default.
 #
-# This used to prompt with "default" pre-filled, so pressing enter targeted
-# whatever the default profile happened to be — on a machine with one profile
-# per environment, that is the wrong account roughly two times in three. It
-# refuses to choose instead.
+# It used to offer "default", so pressing enter targeted whatever that happened
+# to be — on a machine with one profile per environment, the wrong account most
+# of the time, and this creates tables, secrets and a stack before anyone reads
+# the id it prints. Removing the default is the fix; removing the question just
+# moved the work to an export nobody should have to remember.
+#
+# `ask` with no default loops until something is typed, so there is no enter to
+# press by mistake.
 if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
   echo "  using credentials from the environment"
-elif [ -n "${AWS_PROFILE:-}" ]; then
-  echo "  using profile $AWS_PROFILE"
 else
-  die "No AWS credentials in this shell. Do one of these first, then re-run:
+  ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-}"
+  export AWS_PROFILE="$AWS_PROFILE_IN"
 
-    export AWS_PROFILE=<profile>        # after: aws sso login --profile <profile>
-
-  or paste the three exports from the AWS access portal:
-
-    export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
-
-  Naming the account is deliberate: this script creates tables, secrets and a
-  CloudFormation stack, and there is no undo for having done it to the wrong one."
+  # Log in here rather than making it a prerequisite. An expired SSO session is
+  # the single most common reason this script stops on its first AWS call, and
+  # the fix is one command it can run itself.
+  if ! aws sts get-caller-identity >/dev/null 2>&1; then
+    echo "  no valid session for $AWS_PROFILE — signing in"
+    aws sso login --profile "$AWS_PROFILE" \
+      || die "Could not sign in to '$AWS_PROFILE'. Check the profile name in ~/.aws/config."
+  fi
 fi
 
 if ! CALLER=$(aws sts get-caller-identity --output json 2>&1); then
