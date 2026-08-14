@@ -16,7 +16,6 @@ import {
   markActivityRetried,
   updateActivityError,
   updateActivityUndoPayload,
-  updateActivityConflictResolution,
   clearConflictResolution,
   logActivity,
 } from "../services/activityService";

@@ -2,7 +2,7 @@ import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { runScan, listScanners } from "../services/scannerService";
 import { createAlert, autoResolveAlerts } from "../services/alertService";
-import { logActivity, updateActivityOutcome } from "../services/activityService";
+import { logActivity } from "../services/activityService";
 import { refreshRepo } from "../services/complianceCacheService";
 import {
   addBranchEdge, removeBranchEdge, updateBranchProtection,
