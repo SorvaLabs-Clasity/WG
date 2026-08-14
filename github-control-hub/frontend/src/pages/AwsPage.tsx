@@ -387,7 +387,12 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
             <p className="text-sm text-slate-500 dark:text-slate-400">Not checked yet. Run this rule to populate it.</p>
           ) : (
             <>
-            {candidates.length > 8 && (
+            {/* Threshold on the whole finding set, not the visible subset.
+                Keying it off `candidates` meant a rule with five failures and
+                three hundred passes showed no search box until you revealed
+                the passing ones — and the control appeared and vanished as you
+                toggled, which reads as a bug even when you find it. */}
+            {findings.length > 8 && (
               <div className="flex items-center gap-2 mb-3 flex-wrap">
                 <SearchInput value={table.search} onChange={table.setSearch} placeholder="Search resources…" />
                 <Segmented value={table.sortKey ?? "verdict"} onChange={table.toggleSort} options={[

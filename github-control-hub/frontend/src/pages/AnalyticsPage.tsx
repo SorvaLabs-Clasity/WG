@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter, SearchInput, Pager } from "../design";
 import { useTableControls } from "../hooks/useTableControls";
 import { useAuth } from "../App";
@@ -832,7 +833,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
   return (
     <>
       {items.length > 8 && (
-        <div className="px-6 pt-4 pb-1">
+        <div className="px-6 py-4">
           <SearchInput value={table.search} onChange={table.setSearch} placeholder="Search rows…" />
         </div>
       )}
@@ -970,7 +971,16 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
     githubLink = `https://github.com/${item.user}`;
   }
 
-  return (
+  // Rendered into <body>, not in place.
+  //
+  // The expanded widget sits inside a div carrying enter(), whose fadeInUp
+  // animation runs with fill-mode `both` and so leaves transform:translateY(0)
+  // applied for good. A transform on an ancestor makes that ancestor the
+  // containing block for position:fixed descendants, so `fixed inset-0`
+  // measured against the card instead of the viewport and the dialog opened
+  // below the fold. A portal escapes the whole chain, and keeps doing so if
+  // someone adds a transform higher up later.
+  return createPortal((
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6">
       <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-fade-in" onClick={onClose}></div>
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
@@ -1066,7 +1076,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 /* ─── Widget Details Modal (expanded from grid card) ─── */
