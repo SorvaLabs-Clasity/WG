@@ -5,7 +5,7 @@ around that fact rather than hiding it.
 
 | | What it unlocks | Where it comes from |
 |---|---|---|
-| **AWS** | The app's own storage — DynamoDB, Secrets Manager | Your AWS profile, or the EC2 instance role |
+| **AWS** | The app's own storage — DynamoDB, Secrets Manager | Your AWS profile, or a Lambda's own role |
 | **GitHub** | Everything the app reports on and changes | OAuth, in your browser |
 
 AWS comes first, because the GitHub OAuth secrets are *stored in* Secrets

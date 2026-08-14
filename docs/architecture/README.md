@@ -1,16 +1,17 @@
 # Architecture
 
-Three processes run the same codebase for different reasons.
+The same backend code runs as a desktop app and as Lambda functions, started
+differently for different reasons.
 
 ```
 ┌──────────────────────┐         ┌──────────────────────┐
-│  Desktop (Electron)  │         │  EC2 instance        │
-│  ──────────────────  │         │  ──────────────────  │
-│  React UI            │         │  Same Express app,   │
-│  Express backend     │         │  no UI in practice   │
-│  Your AWS profile    │         │  Instance role       │
-│                      │         │                      │
-│  Everything you do   │         │  Receives webhooks   │
+│  Desktop (Electron)  │         │  API Gateway →        │
+│  ──────────────────  │         │  webhook-receiver →   │
+│  React UI            │         │  SQS → webhook-worker │
+│  Express backend     │         │  ──────────────────  │
+│  Your AWS profile    │         │  Receives webhooks    │
+│                      │         │                       │
+│  Everything you do   │         │                       │
 └──────────┬───────────┘         └──────────┬───────────┘
            │                                │
            │      ┌──────────────────┐      │
@@ -25,18 +26,20 @@ Three processes run the same codebase for different reasons.
                   └──────────────────┘
 ```
 
-## Why three
+## Why split this way
 
 **Desktop** is the product. It runs its own backend on `localhost:4321` so that
 GitHub calls carry *your* OAuth token — see [authentication](../auth/).
 
-**EC2** exists for one reason: GitHub webhooks need a public HTTPS endpoint and
-a laptop does not have one. See [where code runs](where-code-runs.md) for what
-is lost if it is off.
+**The webhook receiver and worker** exist for one reason: GitHub webhooks need
+a public HTTPS endpoint and a laptop does not have one. Splitting receiving
+from processing means the only function reachable from the internet holds
+almost no privilege. See [where code runs](where-code-runs.md) for what is
+lost if either is down.
 
-**Lambda** evaluates [AWS guardrails](../aws-guardrails/). It is separate
-because it needs no inbound connectivity, which lets the EC2 security group
-stay closed to everything but GitHub.
+**The guardrail Lambda** evaluates [AWS guardrails](../aws-guardrails/). It is
+separate because it needs no inbound connectivity, and because the AWS
+permissions it needs are unrelated to anything GitHub-facing.
 
 ## What there isn't
 

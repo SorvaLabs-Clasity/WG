@@ -22,6 +22,9 @@ function normalizePemKey(key: string): string {
   return normalized;
 }
 
+/** The one export we need from @octokit/auth-app, however it is loaded. */
+export type CreateAppAuth = (opts: { appId: string; privateKey: string; installationId: number }) => any;
+
 let tokenManager: GitHubTokenManager | null = null;
 
 /** Refresh this long before expiry, and treat a token inside the window as stale. */
@@ -34,11 +37,23 @@ class GitHubTokenManager {
   private refreshTimer: NodeJS.Timeout | null = null;
   private auth: any;
 
-  async init(appId: string, privateKey: string, installationId: string) {
-    // @octokit/auth-app is ESM-only — use require.resolve to find the full path,
-    // then dynamic import() via new Function to prevent tsc from converting to require()
-    const resolved = require.resolve("@octokit/auth-app");
-    const { createAppAuth } = await (new Function('specifier', 'return import(specifier)'))("file://" + resolved);
+  async init(appId: string, privateKey: string, installationId: string, createAppAuthFn?: CreateAppAuth) {
+    // Two ways in, because two builds load this file.
+    //
+    // The desktop runs tsc's CommonJS output, where a plain `await import()`
+    // would be rewritten to require() — fatal for an ESM-only package. Hence
+    // require.resolve plus a dynamic import built with `new Function`, which
+    // tsc cannot see through.
+    //
+    // A bundled build cannot use that path at all: esbuild inlines the package
+    // and there is no file on disk for require.resolve to find, so it throws
+    // "Cannot find module '@octokit/auth-app'". Those callers pass the factory
+    // in from a static import the bundler can follow. See webhooks/worker.ts.
+    const createAppAuth = createAppAuthFn ?? await (async () => {
+      const resolved = require.resolve("@octokit/auth-app");
+      const mod = await (new Function('specifier', 'return import(specifier)'))("file://" + resolved);
+      return mod.createAppAuth as CreateAppAuth;
+    })();
     this.auth = createAppAuth({
       appId,
       privateKey: normalizePemKey(privateKey),
@@ -100,10 +115,26 @@ class GitHubTokenManager {
   }
 }
 
-/** Initialize the GitHub App token manager. Call once at startup. */
-export async function initTokenManager(appId: string, privateKey: string, installationId: string): Promise<void> {
-  tokenManager = new GitHubTokenManager();
-  await tokenManager.init(appId, privateKey, installationId);
+/**
+ * Initialize the GitHub App token manager. Call once at startup.
+ *
+ * `createAppAuthFn` lets a bundled caller supply the factory from a static
+ * import; omitted, the manager resolves it from disk itself.
+ *
+ * The manager is published only once it works. Assigning it first left a
+ * half-built object behind on failure — `auth` undefined — and every later
+ * getTokenAsync() threw "this.auth is not a function" rather than falling back
+ * to SYSTEM_GITHUB_TOKEN, turning a missing App into a total outage.
+ */
+export async function initTokenManager(
+  appId: string,
+  privateKey: string,
+  installationId: string,
+  createAppAuthFn?: CreateAppAuth,
+): Promise<void> {
+  const manager = new GitHubTokenManager();
+  await manager.init(appId, privateKey, installationId, createAppAuthFn);
+  tokenManager = manager;
 }
 
 /** Sync getter — returns cached App token or falls back to SYSTEM_GITHUB_TOKEN env var. */

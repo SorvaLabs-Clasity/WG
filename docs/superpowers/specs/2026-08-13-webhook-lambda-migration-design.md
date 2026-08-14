@@ -151,6 +151,31 @@ outage, because nothing reports it.
 failure cannot suppress the other two. The existing `.catch()` handlers stay:
 they are what turns a rejection into a logged line rather than a thrown error.
 
+**Awaiting them must not let them fail the delivery.** All three swallow their
+own errors today, and that property has to survive. If a flaky scanner could
+throw out of `processDelivery`, the worker would release its claim, SQS would
+redeliver, and the whole delivery would be reprocessed — re-applying templates
+and writing a second set of `template.apply` rows, up to five times.
+`Promise.allSettled` never rejects, which is why it is the right primitive here
+rather than `Promise.all`.
+
+**And it must not let them run long.** Swallowing errors does not help if the
+enrichment simply takes too long: a pathological scan set pushes the invocation
+past ten minutes, Lambda kills it, `completeDelivery` never runs, the lease
+expires, and SQS redelivers into the same duplicate-template outcome by a
+different route. The enrichment phase is therefore raced against a four-minute
+ceiling, after which it is abandoned and the delivery is marked done regardless.
+
+An abandoned scan costs a stale compliance cache until the next event for that
+repository. An abandoned invocation costs a repository having its templates
+applied twice. These are not close, and the ceiling is what keeps the cheap
+failure the one that happens.
+
+This is the direct cost of awaiting the work at all: what was unbounded
+background time on a long-lived server is now inside a bounded invocation.
+Awaiting it was still right — silently dropping it was worse — but bounded work
+needs a bound.
+
 The `setTimeout` wrapper is dropped rather than awaited. Its one-second delay
 existed to let the HTTP response go out first, and in the worker there is no
 response to get out of the way of.
@@ -216,20 +241,51 @@ the rollout below safe.
 ```
 claim     PutItem   ConditionExpression:
                       attribute_not_exists(deliveryId) OR expiresAt < :now
-                    → state = "processing", expiresAt = now + 660   (a lease)
+                    → state = "processing", expiresAt = now + 630   (a lease)
 
-complete  PutItem   → state = "done", expiresAt = now + 300, ttl = now + 300
+complete  PutItem   → state = "done", expiresAt = now + 900, ttl = now + 900
 
 fail      DeleteItem, then rethrow → SQS redelivers → DLQ after 5 attempts
 ```
 
-The two durations differ on purpose. The lease is 660 seconds to match the
-queue's visibility timeout, so it outlives the worker's own 600-second timeout —
-a lease equal to the function timeout would expire at the exact moment a
+The lease is 630 seconds, and the constraint is an ordering rather than a
+value: `600 < lease < 660`. It has to sit strictly *between* the worker's own
+600-second timeout and the queue's 660-second visibility timeout.
+
+Above 600, so a legitimately slow invocation never has its claim stolen. A
+lease equal to the function timeout would expire at the exact moment a
 maximally slow invocation was still finishing, letting a second worker claim a
-delivery the first had not released. The `done` marker is 300 seconds because
-that is the replay window, which is a separate question from how long a claim is
-held.
+delivery the first had not released.
+
+Below 660, because the two clocks do not start together. The lease starts at
+`claimDelivery`; the visibility timeout starts at `ReceiveMessage`, one
+pre-claim latency δ earlier — cold start, `bootstrapOnce`,
+`getSystemTokenAsync`. So the redelivery lands at `receive + 660` while the
+lease expires at `receive + δ + LEASE_SEC`, and re-claiming requires
+`expiresAt < now`, which is `δ + LEASE_SEC < 660`. Matching the lease to the
+visibility timeout makes that false for *every* δ, including δ = 0, because the
+comparison is strict. A worker hard-killed by its timeout, by OOM, or by a
+`releaseDelivery` that itself threw would then leave a claim the redelivery
+cannot re-take: the worker logs "already handled — skipping", returns success,
+SQS deletes the message, and the event is lost with no DLQ entry and no alarm.
+Silent loss is the one failure mode this design is meant to exclude, so the
+lease must be under the visibility timeout, not equal to it. 630 leaves thirty
+seconds of headroom for δ.
+
+The `done` marker is 900 seconds, and the reason it is longer than the lease
+rather than shorter is the one thing here that is easy to get backwards. The
+obvious value is 300 seconds, matching the replay window the in-memory `Map`
+used. That is wrong under SQS: a worker can process a delivery successfully and
+have the subsequent message deletion not register, which is ordinary
+at-least-once behaviour. The redelivery then arrives one visibility timeout
+later — 660 seconds — and a 300-second marker has already expired, so the
+delivery is claimed again and processed a second time. Templates applied twice.
+
+The marker therefore has to outlive the visibility timeout, not the replay
+window. The cost is that a manual redelivery from GitHub's UI is silently
+ignored for fifteen minutes rather than five. That is a real change from today's
+behaviour and the right way round: an ignored redelivery is a person waiting and
+retrying, while a duplicated one rewrites a repository.
 
 The condition treats a logically expired row as absent. This is the same
 reasoning as the one-time auth codes in `routes/auth.ts` — DynamoDB's TTL sweep
@@ -241,9 +297,12 @@ times out mid-delivery leaves a claim nothing will ever release, and that event
 is lost permanently. With it, the claim expires after the function's own timeout
 and the next SQS attempt takes it.
 
-The `done` marker's five-minute TTL is deliberately the same window as today's
-`DELIVERY_TTL_MS`, so a manual redelivery from GitHub's UI behaves exactly as it
-does now.
+The `done` marker is fifteen minutes, not the five of today's
+`DELIVERY_TTL_MS`. Matching the old window looks right and is wrong: it expires
+before the queue's redelivery lands, so a delivery that succeeded but whose
+message deletion did not register would be processed a second time. The
+consequence is that a manual redelivery from GitHub's UI is ignored for fifteen
+minutes rather than five — the reasoning is set out with the constants above.
 
 ### 3. The GitHub App token
 
@@ -304,7 +363,7 @@ response.
 | `maxReceiveCount` | 5 |
 | Batch size | 1 |
 | Event source `maxConcurrency` | 5 |
-| Worker reserved concurrency | 5 |
+| Worker reserved concurrency | none — see below |
 
 The receiver's eight seconds is a ceiling, not a target — warm invocations are
 tens of milliseconds, and a cold start plus the secret fetch is one to two
@@ -335,9 +394,24 @@ that way, reserved concurrency would *cause* the DLQ problem it was meant to
 prevent, sending messages to the dead-letter queue that no worker ever saw.
 
 Maximum concurrency limits the poller instead, so surplus messages stay in the
-queue with their receive count untouched. AWS is explicit that the function's
-reserved concurrency must be greater than or equal to the event source's maximum
-concurrency, so both are 5.
+queue with their receive count untouched.
+
+AWS asks that a function's reserved concurrency be at least the event source's
+maximum concurrency, so the first version of this design set both to 5. **That
+version cannot be deployed**, and the first real deploy is what found it: a
+reservation is carved out of the account's pool, and Lambda refuses to leave
+fewer than ten unreserved executions behind. An account on the default quota of
+ten can therefore reserve nothing at all — the stack fails with *"decreases
+account's UnreservedConcurrentExecution below its minimum value of [10]"* and
+rolls back.
+
+The reservation is dropped. Nothing is lost, because the two settings were never
+doing the same job: `maxConcurrency` limits the poller, which is what keeps a
+burst out of the dead-letter queue, while a reservation would only have
+guaranteed this function a share of a pool it is already the main consumer of.
+
+Worth raising the account's concurrency quota regardless — ten is the un-raised
+default, and it is shared with the guardrail function and the receiver.
 
 `maxReceiveCount` is 5 rather than 3 for the same reason, and AWS's own
 guidance says so: a message can be received and returned without ever being
@@ -425,13 +499,16 @@ New suite `repro-webhookdelivery.ts`:
 - a second claim on the same delivery id is refused
 - a claim whose lease has expired can be re-taken
 - a failed delivery releases its claim
-- `processDelivery` resolves only after its downstream work has settled
+- background work is awaited rather than abandoned when the handler resolves
+- a rejecting background task does not fail the delivery
+- background work that hangs is abandoned at the ceiling rather than running on
 
-The last one guards the fire-and-forget problem above. It is asserted by handing
-`processDelivery` stubs that record when they were called and resolve on a
-deferred promise, then checking that the returned promise is still pending until
-those stubs settle. A regression that reverted an `await` would otherwise pass
-every other test in this suite.
+The last three guard the fire-and-forget problem above, and the last two matter
+more than they look. A future edit swapping `Promise.allSettled` for
+`Promise.all` would arm a redelivery loop that re-applies templates up to five
+times, and nothing else in the suite would notice — the change reads like a
+simplification. Removing the ceiling fails the same way through a timeout
+instead of a rejection.
 
 The first two are the reason this suite exists. Base64 handling is the single
 most likely way this migration fails silently, and it fails in a way that looks

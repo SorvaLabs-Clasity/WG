@@ -10,7 +10,7 @@ Start here depending on what you need.
 
 | | |
 |---|---|
-| [Architecture](architecture/) | The three processes, and which one does what |
+| [Architecture](architecture/) | The processes, and which one does what |
 | [Authentication](auth/) | The two keys: AWS and GitHub, and why both |
 | [Data](data/) | The DynamoDB tables and the graph model |
 
@@ -25,7 +25,7 @@ data comes from, and what it deliberately does not do.
 |---|---|
 | [Operations](operations/) | Setting one up, deploying, troubleshooting |
 | [Security](security/) | What the app can and cannot do, and the last review |
-| [Infrastructure](infrastructure/) | The CDK stack, EC2, Lambda, cost |
+| [Infrastructure](infrastructure/) | The CDK stack, Lambda, cost |
 | [Development](development/) | Testing, conventions |
 
 ## I want to know what it can do to my AWS account
@@ -39,7 +39,7 @@ handed to whoever approves the deployment.
 ## The one-paragraph version
 
 An Electron app runs a local Express backend and talks to the GitHub REST API
-as **you**, so GitHub decides what you are allowed to do. An EC2 instance runs
-the same backend purely to receive GitHub webhooks, which no desktop app can.
-A Lambda evaluates AWS guardrails on a schedule. State lives in DynamoDB.
-Nothing is installed into the repositories or accounts being watched.
+as **you**, so GitHub decides what you are allowed to do. API Gateway and two
+Lambdas receive GitHub webhooks, which no desktop app can, and process them off
+a queue. A third Lambda evaluates AWS guardrails on a schedule. State lives in
+DynamoDB. Nothing is installed into the repositories or accounts being watched.

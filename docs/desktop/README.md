@@ -10,9 +10,11 @@ server.ts   Starts the Express backend on localhost:4321
 preload     The narrow bridge exposed to the renderer
 ```
 
-The backend is the **same compiled code** the EC2 runs. It is packaged as
-`extraResources` alongside a production-only `node_modules`, so the app ships
-with its dependencies rather than expecting a toolchain.
+The backend is the **same compiled code** the Lambda functions run — receiver,
+worker and guardrail engine all bundle from the same `backend/src` tree the
+desktop compiles. It is packaged as `extraResources` alongside a
+production-only `node_modules`, so the app ships with its dependencies rather
+than expecting a toolchain.
 
 ## Navigation control
 

@@ -44,10 +44,3 @@ export function undoResolution(
 ): Promise<{ success: boolean }> {
   return apiPost<{ success: boolean }>(`/activity/${activityId}/undo-resolution`, {});
 }
-
-export function resolveConflict(
-  activityId: string,
-  resolution: "override" | "skip"
-): Promise<{ resolved: boolean; resolution: string }> {
-  return apiPost<{ resolved: boolean; resolution: string }>(`/activity/${activityId}/resolve-conflict`, { resolution });
-}

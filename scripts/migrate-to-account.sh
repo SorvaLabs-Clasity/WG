@@ -14,7 +14,7 @@
 # What it does NOT do, because it cannot:
 #   - create the GitHub OAuth App / GitHub App (browser, human)
 #   - install the GitHub App on the org (browser, human)
-#   - create the org webhook (needs the EC2 address, which step 5 prints)
+#   - create the org webhook (needs the API Gateway URL, which step 4 prints)
 # Each of those pauses with the exact values to paste.
 set -uo pipefail
 
@@ -104,7 +104,12 @@ AWS_PROFILE="$AWS_PROFILE" AWS_REGION="$REGION" STACK_NAME="$PREFIX" \
   SKIP_SECRET=1 SKIP_CONFIRM=1 \
   bash "$HERE/setup-aws-account.sh" </dev/null \
   || die "Table creation failed. The output above says why."
-ok "14 tables present (on-demand billing; idle tables cost nothing)"
+# Counted rather than stated. This line has claimed 13 and 14 at various points,
+# each time going stale the moment a table was added or removed — so it now asks
+# the script that just ran how many it creates.
+TABLE_COUNT=$(( $(sed -n '/^TABLES=(/,/^)/p' "$HERE/setup-aws-account.sh" | grep -cE '^[[:space:]]+[a-z-]+')
+                + $(grep -cE 'create_table "\$\{PREFIX\}-[a-z-]+"' "$HERE/setup-aws-account.sh") ))
+ok "$TABLE_COUNT tables present (on-demand billing; idle tables cost nothing)"
 
 # ── 2. secrets ────────────────────────────────────────────────────────
 step "2/7  GitHub credentials"
@@ -233,7 +238,7 @@ else
 fi
 
 # ── 4. infrastructure ─────────────────────────────────────────────────
-step "4/7  EC2, Lambda and event rules"
+step "4/7  API Gateway, Lambda, SQS and event rules"
 # The workspace root, not only infra.
 #
 # The Lambda is bundled from backend/src, so its projectRoot is the workspace
@@ -258,17 +263,11 @@ fi
 STACK_NAME="$PREFIX" npx cdk deploy --require-approval never \
   || die "cdk deploy failed."
 
-INSTANCE_ID=$(aws cloudformation describe-stacks --stack-name GitHubControlHub \
-  --query "Stacks[0].Outputs[?OutputKey=='InstanceId'].OutputValue" --output text 2>/dev/null)
-PUBLIC_IP=$(aws cloudformation describe-stacks --stack-name GitHubControlHub \
-  --query "Stacks[0].Outputs[?OutputKey=='PublicIp'].OutputValue" --output text 2>/dev/null)
 WEBHOOK_URL=$(aws cloudformation describe-stacks --stack-name GitHubControlHub \
   --query "Stacks[0].Outputs[?OutputKey=='WebhookUrl'].OutputValue" --output text 2>/dev/null)
-ok "Instance $INSTANCE_ID is up at $PUBLIC_IP"
-# Read after the deploy, not before. Encryption at rest and the IMDSv2 pin
-# replace the instance rather than updating it, so an id noted earlier can be
-# for a machine that no longer exists — and deploy.sh would then ship the app
-# to nothing.
+ok "Webhook is up at $WEBHOOK_URL"
+# Read after the deploy, not before: cdk deploy is what creates the API
+# Gateway stage this URL points at, so reading it earlier would read nothing.
 cd "$ROOT"
 
 # ── 5. webhook ────────────────────────────────────────────────────────
@@ -283,8 +282,8 @@ echo "                  (read it back with the command below if needed)"
 echo "    Events      : push, repository, create, delete, member, team,"
 echo "                  organization, pull_request, issues,"
 echo "                  branch_protection_rule, repository_ruleset"
-echo "    SSL         : disable verification — the instance uses a self-signed"
-echo "                  certificate on its IP address"
+echo "    SSL         : leave verification enabled — API Gateway serves a valid"
+echo "                  ACM certificate, so there is nothing to disable it for"
 echo
 echo "  ${dim}aws secretsmanager get-secret-value --secret-id $SECRET_NAME \\"
 echo "    --query SecretString --output text | node -e \"…GITHUB_WEBHOOK_SECRET\"${off}"
@@ -380,14 +379,12 @@ cat <<EOF
   region    $REGION
   org       $GH_ORG
   company   $COMPANY
-  instance  $INSTANCE_ID at $PUBLIC_IP
   webhook   $WEBHOOK_URL
 
-  ${bold}The app is not on that instance yet.${off} This script builds the
-  infrastructure; shipping the application to it is one more command, and
-  without it the webhook URL above answers nothing:
-
-      ./scripts/deploy.sh $INSTANCE_ID
+  The webhook is already live: cdk deploy (above) packages the receiver and
+  worker Lambdas from source and deploys them along with the rest of the
+  infrastructure, so there is no separate app-shipping step. The webhook URL
+  above is answering requests now.
 
   Not done by this script, because it needs decisions rather than commands:
     · Other AWS accounts. Open AWS -> Accounts -> "How do I add an account?"

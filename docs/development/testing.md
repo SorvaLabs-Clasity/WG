@@ -1,7 +1,7 @@
 # Testing
 
-Seventeen suites, each a standalone script named `repro-*.ts`, run with `tsx`.
-No framework.
+Twenty-one suites, each a script named `repro-*.ts`, run with `tsx`. No
+framework.
 
 ```bash
 cd github-control-hub/backend
@@ -40,6 +40,10 @@ the wrong place.
 | `repro-prefs` | Remembered AWS profile |
 | `repro-setupauth` | Setup-time auth |
 | `repro-repodetails` | Repository detail assembly |
+| `repro-appsec` | Source-level security controls — CSP, no-shell, fail-closed webhooks |
+| `repro-dependencies` | Dependabot alert paging — counts every alert, not the first hundred |
+| `repro-loginstates` | What the sign-in page says in each state, and in what order |
+| `repro-webhookdelivery` | Signature verification over raw bytes, and the delivery lock |
 
 ## Two unusual ones
 

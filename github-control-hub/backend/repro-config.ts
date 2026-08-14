@@ -42,9 +42,77 @@ const HOUR = 3_600_000;
       webhookHealth(ago(5.06), now).ageHours === 5.1, webhookHealth(ago(5.06), now));
   }
 
+  // ── what a bundle carries ──────────────────────────────────────────
+  {
+    const { SECTION_ORDER, FORMAT } = await import("./src/routes/config");
+
+    check("the format is 2, so an older build refuses a bundle it cannot read",
+      FORMAT === 2, FORMAT);
+
+    // The templates feature is gone. A bundle must stop claiming to carry it,
+    // otherwise an import would report writing sections that no longer have a
+    // writer behind them.
+    const removed = ["templates", "ruleTemplates", "exclusions"]
+      .filter(n => (SECTION_ORDER as readonly string[]).includes(n));
+    check("no deleted section is still exported or imported", removed.length === 0, removed);
+    check("  and what remains is the configuration that still exists",
+      [...SECTION_ORDER].join() === "scanners,widgets,awsGuardrails,awsExclusions", SECTION_ORDER);
+  }
+
+  // ── a format-1 bundle predates the templates removal ────────────────
+  {
+    const { applyBundle, SECTION_ORDER, FORMAT } = await import("./src/routes/config");
+
+    // A literal fixture as it would have looked before templates,
+    // ruleTemplates and exclusions were deleted and FORMAT moved off 1. The
+    // backward-compatibility guarantee this pins: an *older* bundle must
+    // still import cleanly, its now-unknown sections simply ignored rather
+    // than erroring. (FORMAT only rejects the other direction — a bundle
+    // newer than this app reads.)
+    const oldBundle = {
+      format: 1,
+      exportedAt: "2025-01-01T00:00:00.000Z",
+      exportedBy: "past-user",
+      org: "test-org",
+      counts: { templates: 1, ruleTemplates: 1, exclusions: 1, scanners: 1 },
+      templates: [{ id: "t1", name: "Old Template" }],
+      ruleTemplates: [{ id: "rt1", name: "Old Rule Template" }],
+      exclusions: [{ id: "ex1", pattern: "*-archived" }],
+      scanners: [{ id: "s1" }],
+    } as any;
+
+    check("format 1 is not rejected as newer than this app reads",
+      !(oldBundle.format > FORMAT), oldBundle.format);
+
+    const written: string[] = [];
+    const writers = Object.fromEntries(
+      SECTION_ORDER.map(name => [name, async (x: any) => { written.push(`${name}/${x.id}`); }])
+    );
+
+    let threw: unknown = null;
+    let result: { applied: Record<string, number>; errors: string[] } | null = null;
+    try {
+      result = await applyBundle(oldBundle, false, writers);
+    } catch (err) {
+      threw = err;
+    }
+
+    check("importing a format-1 bundle does not throw", threw === null, threw);
+    check("  its templates/ruleTemplates/exclusions sections are silently ignored, not errored",
+      result !== null && result.errors.length === 0, result?.errors);
+    check("  and are not reported as applied, since nothing writes them anymore",
+      result !== null
+        && !("templates" in result.applied)
+        && !("ruleTemplates" in result.applied)
+        && !("exclusions" in result.applied),
+      result?.applied);
+    check("  while the section that still exists today is applied normally",
+      written.join() === "scanners/s1", written);
+  }
+
   // ── importing a bundle ─────────────────────────────────────────────
   {
-    const { applyBundle, SECTION_ORDER } = await import("./src/routes/config");
+    const { applyBundle, SECTION_ORDER, FORMAT } = await import("./src/routes/config");
 
     const written: string[] = [];
     const writers = Object.fromEntries(
@@ -52,28 +120,29 @@ const HOUR = 3_600_000;
     );
 
     const bundle = {
-      format: 1,
-      templates: [{ id: "t1" }, { id: "t2" }],
-      ruleTemplates: [{ id: "r1" }],
+      format: FORMAT,
+      // Listed out of SECTION_ORDER on purpose — sections are written in the
+      // order the app decides, not the order the file happens to list them.
       widgets: [{ id: "w1" }],
-      // Sections a bundle from an older version simply would not have.
-      exclusions: undefined,
+      scanners: [{ id: "s1" }, { id: "s2" }],
+      // A section a bundle from another account simply would not have.
+      awsGuardrails: undefined,
     } as any;
 
     // Dry run.
     const dry = await applyBundle(bundle, true, writers);
     check("a dry run writes nothing at all", written.length === 0, written);
     check("  but still counts what it would write",
-      dry.applied.templates === 2 && dry.applied.ruleTemplates === 1, dry.applied);
+      dry.applied.scanners === 2 && dry.applied.widgets === 1, dry.applied);
     check("  and does not invent counts for sections the bundle omits",
-      !("exclusions" in dry.applied) && !("scanners" in dry.applied), dry.applied);
+      !("awsGuardrails" in dry.applied) && !("awsExclusions" in dry.applied), dry.applied);
 
     // For real.
     const real = await applyBundle(bundle, false, writers);
     check("applying writes each record once",
-      written.length === 4, written);
-    check("  rule templates land before the templates that reference them",
-      written.indexOf("ruleTemplates/r1") < written.indexOf("templates/t1"), written);
+      written.length === 3, written);
+    check("  sections land in SECTION_ORDER, not in the order the bundle lists them",
+      written.indexOf("scanners/s1") < written.indexOf("widgets/w1"), written);
     check("  and the counts match what was actually written",
       Object.values(real.applied).reduce((a, b) => a + b, 0) === written.length, real.applied);
     check("  a clean import reports no errors", real.errors.length === 0, real.errors);
@@ -92,7 +161,7 @@ const HOUR = 3_600_000;
     );
 
     const r = await applyBundle(
-      { format: 1, widgets: [{ id: "ok" }, { name: "no id here" }, { id: "explodes" }, { id: "ok2" }] } as any,
+      { format: 2, widgets: [{ id: "ok" }, { name: "no id here" }, { id: "explodes" }, { id: "ok2" }] } as any,
       false, writers,
     );
 

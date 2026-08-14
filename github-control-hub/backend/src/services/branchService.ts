@@ -1,7 +1,113 @@
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 
-type Protection = NonNullable<import("./templateService").BranchRule["protection"]>;
+/**
+ * The shapes of a protection rule.
+ *
+ * These lived alongside the templates that carried them around. Templates are
+ * gone; protecting a branch, a tag or a push by hand is not, and this module is
+ * what performs it.
+ */
+export interface BranchProtection {
+
+    type: "classic" | "ruleset" | "ruleset_json";
+    rawJson?: any;
+    rulesetName?: string;
+    enforcement?: "active" | "evaluate" | "disabled";
+
+    restrictCreations?: boolean;
+    restrictUpdates?: boolean;
+
+    requirePr: boolean;
+    requiredApprovals: number;
+    dismissStaleReviews: boolean;
+    requireCodeOwnerReviews: boolean;
+    requireLastPushApproval?: boolean;
+    requireConversationResolution: boolean;
+    allowedMergeMethods?: string[];
+
+    requireStatusChecks: boolean;
+    strictStatusChecks: boolean;
+    doNotRequireStatusChecksOnCreation?: boolean;
+    statusCheckContexts?: string[];
+
+    requireDeployments?: boolean;
+    requiredDeploymentEnvironments?: string[];
+
+    requireSignedCommits: boolean;
+    requireLinearHistory: boolean;
+    enforceAdmins: boolean;
+    preventForcePush: boolean;
+    preventDeletion: boolean;
+
+    requireCodeScanning?: boolean;
+    codeScanningTool?: string;
+    codeScanningAlertsThreshold?: string;
+    codeScanningSecurityAlertsThreshold?: string;
+
+    requireCodeQuality?: boolean;
+    codeQualitySeverity?: string;
+
+    copilotCodeReview?: boolean;
+    copilotReviewOnPush?: boolean;
+    copilotReviewDraftPrs?: boolean;
+
+    bypassActors?: Array<{
+      actor_id: number;
+      actor_type: "RepositoryRole" | "Team" | "Integration" | "OrganizationAdmin";
+      bypass_mode: "always" | "pull_request";
+    }>;
+
+    restrictPushes?: boolean;
+    restrictMatchingBranchCreation?: boolean;
+    pushRestrictionUsers?: string[];
+    pushRestrictionTeams?: string[];
+    pushRestrictionApps?: string[];
+}
+
+export interface TagRule {
+  tagPatterns: string[];
+  rulesetName?: string;
+  enforcement?: "active" | "evaluate" | "disabled";
+  preventCreation?: boolean;
+  preventUpdate?: boolean;
+  preventDeletion?: boolean;
+  preventForcePush?: boolean;
+  requireSignedCommits?: boolean;
+  rawJson?: any;
+  namePattern?: {
+    operator: "starts_with" | "ends_with" | "contains" | "regex";
+    pattern: string;
+    negate?: boolean;
+    name?: string;
+  };
+  bypassActors?: Array<{
+    actor_id: number;
+    actor_type: "RepositoryRole" | "Team" | "Integration" | "OrganizationAdmin";
+    bypass_mode: "always" | "pull_request";
+  }>;
+}
+
+export interface PushRule {
+  rulesetName?: string;
+  enforcement?: "active" | "evaluate" | "disabled";
+  filePathRestriction?: {
+    restrictedFilePaths: string[];
+  };
+  maxFilePathLength?: number;
+  maxFileSize?: number;
+  fileExtensionRestriction?: {
+    restrictedFileExtensions: string[];
+  };
+  rawJson?: any;
+  bypassActors?: Array<{
+    actor_id: number;
+    actor_type: "RepositoryRole" | "Team" | "Integration" | "OrganizationAdmin";
+    bypass_mode: "always" | "pull_request";
+  }>;
+}
+
+type Protection = BranchProtection;
 
 export function buildRulesetRules(protection: Protection): any[] {
   const rules: any[] = [];
@@ -86,7 +192,7 @@ export function buildRulesetRules(protection: Protection): any[] {
   return rules;
 }
 
-type TagProtection = import("./templateService").TagRule;
+type TagProtection = TagRule;
 
 export function buildTagRulesetRules(tag: TagProtection): any[] {
   const rules: any[] = [];
@@ -112,7 +218,7 @@ export function buildTagRulesetRules(tag: TagProtection): any[] {
   return rules;
 }
 
-type PushProtection = import("./templateService").PushRule;
+type PushProtection = PushRule;
 
 export function buildPushRulesetRules(push: PushProtection): any[] {
   const rules: any[] = [];
@@ -381,7 +487,7 @@ export async function protectBranch(
   octokit: Octokit,
   repo: string,
   branch: string,
-  protection: NonNullable<import("./templateService").BranchRule["protection"]>
+  protection: BranchProtection
 ): Promise<{ rulesetId?: number }> {
   const org = getOrg();
 

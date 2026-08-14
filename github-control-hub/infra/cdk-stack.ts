@@ -1,17 +1,35 @@
 import * as path from "path";
 import * as cdk from "aws-cdk-lib";
-import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as apigateway from "aws-cdk-lib/aws-apigateway";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
+import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
+import * as logs from "aws-cdk-lib/aws-logs";
+import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 import { Construct } from "constructs";
 
+// From https://api.github.com/meta → hooks. Nothing here detects a change:
+// deliveries would begin returning 403 and the app's Activity page would read
+// Stale within 72 hours. See docs/operations/troubleshooting.md.
+//
+// This is the API Gateway resource policy's IP allow-list — the only thing
+// that still reads it now that there is no security group to share it with.
+const GITHUB_WEBHOOK_CIDRS = [
+  "192.30.252.0/22",
+  "185.199.108.0/22",
+  "140.82.112.0/20",
+  "143.55.64.0/20",
+];
+
 interface GitHubControlHubProps extends cdk.StackProps {
-  /** EC2 instance size. Defaults to t3.small */
-  instanceType?: string;
   /** Secrets Manager secret name. Defaults to "github-control-hub/secrets" */
   secretName?: string;
   /** DynamoDB table prefix. Defaults to "github-control-hub" */
@@ -45,28 +63,6 @@ export class GitHubControlHubStack extends cdk.Stack {
     const allowRemediation =
       props.allowRemediation ?? this.node.tryGetContext("enforce") === "true";
 
-    // ── VPC (default VPC) ──
-    const vpc = ec2.Vpc.fromLookup(this, "DefaultVpc", { isDefault: true });
-
-    // ── Security Group ──
-    const sg = new ec2.SecurityGroup(this, "SecurityGroup", {
-      vpc,
-      description: "GitHub Control Hub - HTTPS only, no SSH",
-      allowAllOutbound: true,
-    });
-
-    // HTTPS restricted to GitHub webhook IP ranges (from https://api.github.com/meta → hooks)
-    for (const cidr of [
-      "192.30.252.0/22",
-      "185.199.108.0/22",
-      "140.82.112.0/20",
-      "143.55.64.0/20",
-    ]) {
-      sg.addIngressRule(ec2.Peer.ipv4(cidr), ec2.Port.tcp(443), `GitHub webhooks (${cidr})`);
-    }
-
-    // No SSH port — use SSM Session Manager instead
-
     // The only role this app may ever assume, anywhere.
     //
     // Named exactly, and the grants below are scoped to this name alone. The
@@ -77,136 +73,9 @@ export class GitHubControlHubStack extends cdk.Stack {
     // administrator anywhere.
     const guardrailRoleName = `${stackPrefix}-guardrail-access`;
 
-    // ── IAM Role ──
-    const role = new iam.Role(this, "InstanceRole", {
-      assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
-      // SSM Session Manager — connect to the instance without SSH
-      managedPolicies: [
-        iam.ManagedPolicy.fromAwsManagedPolicyName("AmazonSSMManagedInstanceCore"),
-      ],
-    });
-
-    // S3 access for deploy script (Docker image transfer)
-    role.addToPolicy(new iam.PolicyStatement({
-      actions: ["s3:GetObject"],
-      resources: [`arn:aws:s3:::github-control-hub-deploy-${this.account}/*`],
-    }));
-
-    // Secrets Manager access
-    role.addToPolicy(new iam.PolicyStatement({
-      actions: ["secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
-    }));
-
-    // Access keys for AWS accounts that are not in an organisation, written
-    // from the Accounts screen. Scoped to this app's own prefix so the grant
-    // cannot reach the GitHub credentials next to it.
-    role.addToPolicy(new iam.PolicyStatement({
-      sid: "StoreAccountKeys",
-      actions: ["secretsmanager:CreateSecret", "secretsmanager:PutSecretValue", "secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${stackPrefix}/aws-account/*`],
-    }));
-
-    // Listing the organisation is what removes the setup work: the account ids
-    // and names are already recorded here, so nobody has to type them.
-    role.addToPolicy(new iam.PolicyStatement({
-      sid: "DiscoverOrganizationAccounts",
-      actions: ["organizations:ListAccounts", "organizations:DescribeOrganization", "organizations:ListRoots"],
-      resources: ["*"],   // neither call supports resource-level scoping
-    }));
-
-    // Adding an account verifies it before storing it, which means the app
-    // itself has to be able to assume the role and ask who it is.
-    //
-    // One role name, in any account. Not "*": a grant of sts:AssumeRole on
-    // every role would let this app become anything that trusts it, which is
-    // the whole ballgame.
-    role.addToPolicy(new iam.PolicyStatement({
-      sid: "VerifyAccountAccess",
-      actions: ["sts:AssumeRole"],
-      resources: [`arn:aws:iam::*:role/${guardrailRoleName}`],
-    }));
-
-    // DynamoDB access for app tables
-    role.addToPolicy(new iam.PolicyStatement({
-      actions: [
-        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:Query",
-        "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem",
-      ],
-      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
-    }));
-
-    // ── EC2 Instance ──
-    const instance = new ec2.Instance(this, "Instance", {
-      vpc,
-      instanceType: new ec2.InstanceType(props.instanceType ?? "t3.small"),
-      machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-      securityGroup: sg,
-      role,
-      ssmSessionPermissions: true,
-      blockDevices: [{
-        deviceName: "/dev/xvda",
-        // Encrypted at rest. The volume holds the application image and
-        // whatever the container writes; secrets are fetched into memory
-        // rather than stored, but a snapshot of an unencrypted root volume is
-        // still a copy of the app somebody can mount.
-        volume: ec2.BlockDeviceVolume.ebs(20, {
-          volumeType: ec2.EbsDeviceVolumeType.GP3,
-          encrypted: true,
-        }),
-      }],
-      // IMDSv2 only. Version 1 answers an unauthenticated GET, so any
-      // server-side request forgery in the app becomes a way to read the
-      // instance role's credentials. The running instance already has this;
-      // stating it here stops a future replacement quietly losing it.
-      requireImdsv2: true,
-    });
-
-    // UserData — install Docker and generate self-signed SSL cert
-    instance.addUserData(
-      "yum update -y",
-      "yum install -y docker",
-      "systemctl enable docker",
-      "systemctl start docker",
-      "usermod -aG docker ec2-user",
-      "",
-      "# Generate self-signed SSL certificate",
-      "mkdir -p /etc/ssl/github-control-hub",
-      'openssl req -x509 -nodes -days 365 -newkey rsa:2048 \\',
-      '  -keyout /etc/ssl/github-control-hub/server.key \\',
-      '  -out /etc/ssl/github-control-hub/server.crt \\',
-      '  -subj "/CN=github-control-hub"',
-      // The certificate is public by definition. The key was chmod'ed 644
-      // alongside it, which made the server's private key readable by every
-      // account on the instance.
-      //
-      // It cannot simply be 600 root-owned: the container runs as the `node`
-      // user and mounts this directory to read the key, which is the reason
-      // the permissive mode was there. So give it to that uid instead of to
-      // everyone — 1000 is `node` in the node:24-alpine image, and ec2-user on
-      // the host. Root still reads it; nothing else does.
-      "chown 1000:1000 /etc/ssl/github-control-hub/server.key",
-      "chmod 600 /etc/ssl/github-control-hub/server.key",
-      "chmod 644 /etc/ssl/github-control-hub/server.crt",
-    );
-
-    cdk.Tags.of(instance).add("Name", "github-control-hub");
-
-    // ── Elastic IP ──
-    // Without this the instance's public IP changes on every stop/start, which
-    // silently breaks the GitHub webhook (it points at a bare IP, not a DNS name).
-    // Free while associated with a running instance.
-    const eip = new ec2.CfnEIP(this, "Eip", {
-      domain: "vpc",
-      instanceId: instance.instanceId,
-      tags: [{ key: "Name", value: "github-control-hub" }],
-    });
-
     // ── AWS guardrails ──
-    // Enforcement runs here rather than on the instance: it needs no inbound
-    // connectivity, so the security group stays closed to everything but
-    // GitHub's webhook ranges.
+    // Enforcement runs here, in Lambda, rather than on a server: it needs no
+    // inbound connectivity at all, so there is nothing for anyone to reach.
     const guardrailDlq = new sqs.Queue(this, "GuardrailDlq", {
       retentionPeriod: cdk.Duration.days(14),
       // Failed invocations carry the event that caused them, which names
@@ -358,17 +227,256 @@ export class GitHubControlHubStack extends cdk.Stack {
       targets: [new targets.LambdaFunction(guardrailFn, { deadLetterQueue: guardrailDlq })],
     });
 
-    // The app invokes this directly for manual runs and previews.
-    guardrailFn.grantInvoke(role);
+    // ── Webhooks ──
+    //
+    // The instance this replaces could not be reached at all in the work
+    // account: that VPC has no internet gateway, so inbound from the internet
+    // is impossible however the security group is written. API Gateway needs
+    // no VPC ingress.
 
-    // The Accounts screen shows both role ARNs a watched account must trust,
-    // and one of them is this function's. Reading its own configuration beats
-    // asking a person to go and find it in a stack output.
-    role.addToPolicy(new iam.PolicyStatement({
-      sid: "ReadOwnEngineRole",
-      actions: ["lambda:GetFunctionConfiguration"],
-      resources: [guardrailFn.functionArn],
+    // The only table CDK owns. The other eleven are created by
+    // scripts/setup-aws-account.sh and deliberately stay outside
+    // CloudFormation, so `cdk destroy` cannot take the activity log with it.
+    // This one holds five-minute deduplication state and nothing else.
+    const deliveriesTable = new dynamodb.Table(this, "WebhookDeliveries", {
+      tableName: `${stackPrefix}-webhook-deliveries`,
+      partitionKey: { name: "deliveryId", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: "ttl",
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const webhookDlq = new sqs.Queue(this, "WebhookDlq", {
+      retentionPeriod: cdk.Duration.days(14),
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+    });
+
+    const webhookQueue = new sqs.Queue(this, "WebhookQueue", {
+      // Must exceed the worker's own timeout.
+      visibilityTimeout: cdk.Duration.minutes(11),
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+      deadLetterQueue: {
+        queue: webhookDlq,
+        // Sized for throttling, not for processing failures: a throttled
+        // invocation still increments a message's receive count, so a burst
+        // could otherwise send messages to the DLQ that no worker ever saw.
+        // AWS's own guidance is a minimum of five. Do not tidy this down.
+        maxReceiveCount: 5,
+      },
+    });
+
+    const webhookBundling = {
+      externalModules: [],
+      minify: false,
+      sourceMap: true,
+      // @octokit/auth-app is installed into the asset rather than bundled.
+      //
+      // github/client.ts loads it through require.resolve() plus a dynamic
+      // import built with `new Function`, which is how it dodges tsc rewriting
+      // the import into a require for an ESM-only package. esbuild cannot see
+      // through that either, so it bundles nothing — and require.resolve then
+      // fails at runtime with "Cannot find module '@octokit/auth-app'". The
+      // symptom is quiet: the App token manager fails to initialise, every
+      // invocation degrades to SYSTEM_GITHUB_TOKEN, and the app runs on a PAT's
+      // 5,000 requests an hour instead of the App's 12,500.
+      //
+      // esbuild warns about exactly this ("should be marked as external for use
+      // with require.resolve") during synth.
+      //
+      // Marking it external is NOT the fix, and was tried: `octokit` itself
+      // requires @octokit/auth-app internally, so leaving it external puts a
+      // bare require() of an ESM-only package in the bundle and the whole
+      // function dies at init with ERR_REQUIRE_ESM. Bundling it — the setting
+      // below — at least keeps octokit working; only client.ts's
+      // require.resolve path fails, and getSystemTokenAsync degrades to
+      // SYSTEM_GITHUB_TOKEN. The real fix belongs in client.ts, not here.
+    };
+
+    const receiverFn = new NodejsFunction(this, "WebhookReceiver", {
+      functionName: `${stackPrefix}-webhook-receiver`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, "..", "backend", "src", "webhooks", "receiver.ts"),
+      handler: "handler",
+      projectRoot: path.join(__dirname, ".."),
+      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+      // Below GitHub's ten-second timeout on purpose: past that nobody is
+      // listening for the response, so there is no value in still working.
+      timeout: cdk.Duration.seconds(8),
+      memorySize: 256,
+      environment: {
+        STACK_NAME: stackPrefix,
+        SECRET_NAME: secretName,
+        WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
+      },
+      bundling: webhookBundling,
+    });
+
+    // Two grants, and that is the whole of it. This function is the only thing
+    // here reachable from the internet.
+    receiverFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "ReadWebhookSecret",
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
     }));
+    webhookQueue.grantSendMessages(receiverFn);
+
+    const workerFn = new NodejsFunction(this, "WebhookWorker", {
+      functionName: `${stackPrefix}-webhook-worker`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, "..", "backend", "src", "webhooks", "worker.ts"),
+      handler: "handler",
+      projectRoot: path.join(__dirname, ".."),
+      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+      // A single invocation can chain a compliance refresh, graph edge
+      // updates and scanner runs — background work that used to be unbounded
+      // on a long-lived server and now happens inside the invocation. Lambda
+      // bills by duration actually used, so a high ceiling here costs nothing
+      // when the work finishes early and only matters on the rare delivery
+      // that needs it.
+      timeout: cdk.Duration.minutes(10),
+      memorySize: 512,
+      // No reserved concurrency, deliberately.
+      //
+      // Reserving would be the belt to the event source's braces, and AWS asks
+      // that a reservation be at least the event source's maximum concurrency.
+      // But a reservation is carved out of the account's pool, and Lambda
+      // refuses to leave fewer than 10 unreserved executions behind. An account
+      // on the default quota of 10 therefore cannot reserve anything at all —
+      // the deploy fails with "decreases account's UnreservedConcurrentExecution
+      // below its minimum value of [10]".
+      //
+      // Nothing is lost. The cap that matters is maxConcurrency on the event
+      // source below: it limits the poller, so surplus messages wait in the
+      // queue with their receive count untouched, which is the property that
+      // keeps a burst out of the dead-letter queue. A reservation would only
+      // have guaranteed this function a share of the pool.
+      environment: {
+        STACK_NAME: stackPrefix,
+        SECRET_NAME: secretName,
+        ACTIVITY_TABLE: `${stackPrefix}-activity`,
+        SCANNERS_TABLE: `${stackPrefix}-scanners`,
+        ALERTS_TABLE: `${stackPrefix}-alerts`,
+        ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
+        GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+        COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
+        WEBHOOK_DELIVERIES_TABLE: deliveriesTable.tableName,
+      },
+      bundling: webhookBundling,
+    });
+
+    workerFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "ReadAppSecrets",
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+    }));
+
+    workerFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "AppTables",
+      actions: [
+        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:Query",
+        "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem",
+      ],
+      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+    }));
+
+    // Limited at the poller rather than at the function. Reserved concurrency
+    // alone would let the event source keep scaling its polling and have the
+    // surplus invocations throttled — and a throttled invocation still
+    // increments the message's receive count, so the setting meant to protect
+    // GitHub's rate limit would instead fill the dead-letter queue with
+    // messages no worker ever saw.
+    //
+    // The rate limit is the reason any cap exists: createOctokit sets
+    // onRateLimit to false, so a throttled GitHub call fails rather than
+    // retrying.
+    workerFn.addEventSource(new SqsEventSource(webhookQueue, {
+      batchSize: 1,
+      maxConcurrency: 5,
+    }));
+
+    const apiLogGroup = new logs.LogGroup(this, "WebhookApiAccessLogs", {
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const webhookApi = new apigateway.RestApi(this, "WebhookApi", {
+      restApiName: `${stackPrefix}-webhooks`,
+      description: "GitHub webhook receiver",
+      // REST rather than HTTP API for one reason: HTTP APIs do not support
+      // resource policies, and the IP allow-list is the resource policy.
+      endpointTypes: [apigateway.EndpointType.REGIONAL],
+      deployOptions: {
+        stageName: "prod",
+        throttlingRateLimit: 20,
+        throttlingBurstLimit: 40,
+        accessLogDestination: new apigateway.LogGroupLogDestination(apiLogGroup),
+        // Deliberately no body. Payloads name repositories, people and teams.
+        accessLogFormat: apigateway.AccessLogFormat.custom(JSON.stringify({
+          requestId: apigateway.AccessLogField.contextRequestId(),
+          sourceIp: apigateway.AccessLogField.contextIdentitySourceIp(),
+          status: apigateway.AccessLogField.contextStatus(),
+          latency: apigateway.AccessLogField.contextResponseLatency(),
+        })),
+      },
+      // The allow-list the security group used to hold. Better here: API
+      // Gateway evaluates this before the integration runs, so the code never
+      // executes for a request from anywhere else.
+      policy: new iam.PolicyDocument({
+        statements: [
+          new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            principals: [new iam.AnyPrincipal()],
+            actions: ["execute-api:Invoke"],
+            resources: ["execute-api:/*"],
+          }),
+          new iam.PolicyStatement({
+            effect: iam.Effect.DENY,
+            principals: [new iam.AnyPrincipal()],
+            actions: ["execute-api:Invoke"],
+            resources: ["execute-api:/*"],
+            conditions: { NotIpAddress: { "aws:SourceIp": GITHUB_WEBHOOK_CIDRS } },
+          }),
+        ],
+      }),
+    });
+
+    webhookApi.root
+      .addResource("webhooks")
+      .addResource("github")
+      .addMethod("POST", new apigateway.LambdaIntegration(receiverFn));
+
+    // A queue nobody watches is a queue that quietly fills up. The guardrail
+    // DLQ had this gap too, so it gets one as well.
+    const alarmTopic = this.node.tryGetContext("alertEmail")
+      ? new sns.Topic(this, "AlarmTopic", { displayName: `${stackPrefix} alarms` })
+      : undefined;
+    if (alarmTopic) {
+      alarmTopic.addSubscription(
+        new snsSubscriptions.EmailSubscription(this.node.tryGetContext("alertEmail")),
+      );
+    }
+
+    for (const [id, queue, description] of [
+      ["WebhookDlqAlarm", webhookDlq, "A webhook delivery failed five times and was dead-lettered"],
+      ["GuardrailDlqAlarm", guardrailDlq, "A guardrail invocation failed and was dead-lettered"],
+    ] as Array<[string, sqs.Queue, string]>) {
+      const alarm = new cloudwatch.Alarm(this, id, {
+        metric: queue.metricApproximateNumberOfMessagesVisible({
+          period: cdk.Duration.minutes(5),
+          statistic: "Maximum",
+        }),
+        threshold: 1,
+        evaluationPeriods: 1,
+        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+        alarmDescription: description,
+      });
+      if (alarmTopic) alarm.addAlarmAction(new cwActions.SnsAction(alarmTopic));
+    }
 
     // ── Outputs ──
     new cdk.CfnOutput(this, "GuardrailFunctionName", {
@@ -396,24 +504,19 @@ export class GitHubControlHubStack extends cdk.Stack {
       description: "Dead-letter queue for failed guardrail invocations",
     });
 
-    new cdk.CfnOutput(this, "InstanceId", {
-      value: instance.instanceId,
-      description: "EC2 instance ID (use with: aws ssm start-session --target <id>)",
-    });
-
-    new cdk.CfnOutput(this, "PublicIp", {
-      value: eip.ref,
-      description: "Elastic IP — stable across instance restarts",
-    });
-
     new cdk.CfnOutput(this, "WebhookUrl", {
-      value: `https://${eip.ref}/api/webhooks/github`,
-      description: "GitHub webhook payload URL",
+      value: `${webhookApi.url}webhooks/github`,
+      description: "GitHub webhook payload URL — set this in the org's webhook settings",
     });
 
-    new cdk.CfnOutput(this, "ConnectCommand", {
-      value: `aws ssm start-session --target ${instance.instanceId}`,
-      description: "Connect to instance (no SSH key needed)",
+    new cdk.CfnOutput(this, "WebhookQueueUrl", {
+      value: webhookQueue.queueUrl,
+      description: "Queue between the receiver and the worker",
+    });
+
+    new cdk.CfnOutput(this, "WebhookDlqUrl", {
+      value: webhookDlq.queueUrl,
+      description: "Dead-letter queue for webhook deliveries that failed five times",
     });
   }
 }

@@ -17,16 +17,13 @@ function resolveTableNames(): void {
   const prefix = getPrefix();
   const tables: Record<string, string> = {
     ACTIVITY_TABLE: `${prefix}-activity`,
-    TEMPLATES_TABLE: `${prefix}-templates`,
     SCANNERS_TABLE: `${prefix}-scanners`,
     ALERTS_TABLE: `${prefix}-alerts`,
     ORG_CONFIG_TABLE: `${prefix}-org-config`,
     AUTH_CODES_TABLE: `${prefix}-auth-codes`,
     GRAPH_EDGES_TABLE: `${prefix}-graph-edges`,
-    EXCLUSIONS_TABLE: `${prefix}-exclusions`,
     WIDGETS_TABLE: `${prefix}-widgets`,
     COMPLIANCE_CACHE_TABLE: `${prefix}-compliance-cache`,
-    RULE_TEMPLATES_TABLE: `${prefix}-rule-templates`,
   };
   for (const [key, val] of Object.entries(tables)) {
     if (!process.env[key]) process.env[key] = val;

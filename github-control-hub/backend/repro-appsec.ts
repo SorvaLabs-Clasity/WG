@@ -88,16 +88,40 @@ const electron = read("github-control-hub/desktop/src/main.ts");
   }
 
   // ── infrastructure at rest ─────────────────────────────────────────
+  //
+  // The EBS-encryption and IMDSv2 checks that used to live here asserted
+  // properties of the EC2 instance. The webhook-on-Lambda migration deleted
+  // that instance outright, so there is no root volume and no instance
+  // metadata service left to check.
   {
-    check("the instance root volume is encrypted",
-      /encrypted:\s*true/.test(cdk), "EBS encryption is not requested");
-    check("instance metadata requires v2",
-      /requireImdsv2:\s*true/.test(cdk),
-      "IMDSv1 would turn any SSRF into instance-role credentials");
-    check("the dead-letter queue is encrypted",
-      /encryption:\s*sqs\.QueueEncryption\./.test(cdk));
-    check("  and refuses plaintext transport",
-      /enforceSSL:\s*true/.test(cdk));
+    // Every queue, not "the dead-letter queue": testing encryption/enforceSSL
+    // against the whole file passes as soon as any one queue has them, so a
+    // fourth queue added without either would pass unnoticed as long as an
+    // already-compliant queue (guardrailDlq, say) still exists anywhere in
+    // cdk-stack.ts. Each `new sqs.Queue(...)` call is sliced out by matching
+    // parens rather than lines, since the deadLetterQueue block nests braces
+    // of its own inside webhookQueue's constructor call.
+    const queues: string[] = [];
+    const marker = "new sqs.Queue(";
+    for (let i = cdk.indexOf(marker); i !== -1; i = cdk.indexOf(marker, i + 1)) {
+      let depth = 0, j = i + marker.length - 1; // start at the "("
+      do {
+        if (cdk[j] === "(") depth++;
+        else if (cdk[j] === ")") depth--;
+        j++;
+      } while (depth > 0 && j < cdk.length);
+      queues.push(cdk.slice(i, j));
+    }
+
+    check("at least one sqs.Queue was found to check", queues.length > 0, queues.length);
+
+    for (const q of queues) {
+      const name = /new sqs\.Queue\(this,\s*"([^"]+)"/.exec(q)?.[1] ?? "(unnamed queue)";
+      check(`${name} is encrypted`,
+        /encryption:\s*sqs\.QueueEncryption\./.test(q));
+      check(`  and ${name} refuses plaintext transport`,
+        /enforceSSL:\s*true/.test(q));
+    }
   }
 
   // ── the renderer cannot reach node ─────────────────────────────────
@@ -112,13 +136,43 @@ const electron = read("github-control-hub/desktop/src/main.ts");
 
   // ── the webhook cannot be forged ───────────────────────────────────
   {
-    const hook = read("github-control-hub/backend/src/routes/webhooks.ts");
+    const verify   = read("github-control-hub/backend/src/webhooks/verify.ts");
+    const receiver = read("github-control-hub/backend/src/webhooks/receiver.ts");
+    const worker   = read("github-control-hub/backend/src/webhooks/worker.ts");
+
+    // code() throughout this block: a comment can name the same call or
+    // condition it documents, and a raw regex cannot tell a live line from
+    // a dead one wearing its comment as camouflage.
     check("webhook signatures are compared in constant time",
-      /timingSafeEqual/.test(hook));
+      /timingSafeEqual/.test(code(verify)));
     check("  and a missing secret fails closed",
-      /if \(!secret\) return false/.test(hook), "an absent webhook secret would accept anything");
+      /if \(!secret\) return false/.test(code(verify)), "an absent webhook secret would accept anything");
+
+    // Sliced to the handler body: claimDelivery is also named in the import
+    // statement above it, so a check against the full source would still
+    // pass if the handler's own call to it were deleted and the now-unused
+    // import were left behind.
+    const workerCode = code(worker);
+    const workerBody = workerCode.slice(workerCode.indexOf("export async function handler"));
     check("  replays are rejected",
-      /isDuplicateDelivery/.test(hook));
+      /claimDelivery/.test(workerBody));
+
+    // Sliced to the handler body rather than checked against the whole file:
+    // verifyGitHubSignature is also named in the import statement above the
+    // handler, so a check against the full source would still pass if the
+    // handler body itself called things in the wrong order.
+    const receiverCode = code(receiver);
+    const receiverBody = receiverCode.slice(receiverCode.indexOf("export async function handler"));
+
+    // The receiver's whole job is to not put anything unverified on the queue.
+    check("  nothing is queued before the signature verifies",
+      receiverBody.indexOf("statusCode: 401") < receiverBody.indexOf("await send("),
+      "an unverified payload would reach the worker");
+
+    // The signature covers the bytes as sent. Parsing first breaks every one.
+    check("  the body is not parsed before it is verified",
+      receiverBody.indexOf("verifyGitHubSignature") < receiverBody.indexOf("JSON.parse"),
+      "a re-serialised body is a different sequence of bytes");
   }
 
   // ── the org-wide token is never served over a socket ───────────────
@@ -196,17 +250,11 @@ const electron = read("github-control-hub/desktop/src/main.ts");
       "verification accepts whatever the library infers");
   }
 
-  // ── the private key is not world-readable ──────────────────────────
-  {
-    const deploy = read("scripts/deploy.sh");
-    for (const [name, src] of [["the CDK user-data", cdk], ["deploy.sh", deploy]] as const) {
-      check(`${name} does not chmod the TLS key 644`,
-        !/chmod 644 [^\n']*server\.key/.test(src),
-        "the server's private key is readable by every account on the instance");
-    }
-    check("  the CDK gives the key mode 600",
-      /chmod 600 \/etc\/ssl\/github-control-hub\/server\.key/.test(cdk));
-  }
+  // The self-signed TLS key this block used to guard existed solely on the
+  // EC2 instance's user-data: a chmod-644 check would have caught it being
+  // made world-readable, and a chmod-600 check confirmed the correct mode.
+  // The webhook-on-Lambda migration deleted that instance and its user-data
+  // outright, so there is no key left to protect and nothing left to assert.
 
   // ── CI holds no more than it needs ─────────────────────────────────
   {
@@ -249,7 +297,7 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     files.forEach(walk);
     check("no code falls back to a region nobody chose", offenders.length === 0, offenders);
 
-    const scripts = ["scripts/setup-aws-account.sh", "scripts/deploy.sh", "scripts/setup-cloudtrail.sh"];
+    const scripts = ["scripts/setup-aws-account.sh", "scripts/setup-cloudtrail.sh"];
     for (const sc of scripts) {
       const src = fs.readFileSync(path.join(ROOT, sc), "utf8");
       check(`  ${sc.split("/")[1]} requires a region rather than assuming one`,

@@ -6,17 +6,18 @@ One CDK stack, `GitHubControlHub`, in TypeScript alongside the app.
 
 | Resource | Purpose |
 |---|---|
-| EC2 instance (t3.small) | [Webhook receiver](ec2.md) |
-| Elastic IP | Stable address for GitHub's webhook config |
-| Security group | 443 from GitHub's four CIDR ranges. No SSH |
-| Instance role | DynamoDB, Secrets Manager, STS, Organizations |
-| Lambda | [Guardrail engine](lambda.md) |
-| SQS dead-letter queue | Failed guardrail invocations, 14-day retention |
-| EventBridge rules | 15-minute sweep, plus CloudTrail triggers |
+| API Gateway (REST) | Public endpoint for GitHub webhooks; resource policy allow-lists GitHub's four CIDR ranges |
+| Lambda × 3 | [Webhook receiver, webhook worker](lambda.md), and the [guardrail engine](lambda.md) |
+| SQS queue | Between the receiver and the worker |
+| SQS dead-letter queues | Failed webhook deliveries and failed guardrail invocations, 14-day retention, each with a CloudWatch alarm |
+| DynamoDB table (deliveries) | The one table this stack owns — five-minute dedup state for the worker |
+| EventBridge rules | 15-minute guardrail sweep, plus CloudTrail triggers |
 
-DynamoDB tables are **not** in the stack — they are created by
-`scripts/setup-aws-account.sh`, so tearing the stack down does not take the data
-with it.
+The other eleven DynamoDB tables are **not** in the stack — they are created by
+`scripts/setup-aws-account.sh`, so tearing the stack down does not take the
+data with it. The deliveries table is the exception: it holds nothing but
+short-lived dedup state, so it belongs with the infrastructure that depends on
+it and is destroyed along with the stack.
 
 ## Deploying
 
@@ -35,15 +36,16 @@ CanChangeAnything = no - read-only
 
 ## Why the stack is TypeScript
 
-The Lambda is bundled straight from `backend/src/aws-guardrails/handler.ts`, so
-the deployed function and the app share one source tree and cannot drift apart.
-The role name is a shared constant across the stack, the app and the account
-role template, with a test asserting all three agree.
+All three Lambdas bundle straight from `backend/src` — the guardrail engine
+from `aws-guardrails/handler.ts`, the receiver and worker from `webhooks/`. The
+deployed functions and the desktop app share one source tree and cannot drift
+apart. The guardrail role name is a shared constant across the stack, the app
+and the account role template, with a test asserting all three agree.
 
 Defining infrastructure in the same language as the code it deploys is what
 makes both of those possible.
 
 ## Read next
 
-- [EC2](ec2.md) · [Lambda](lambda.md) · [Cost](cost.md)
+- [Lambda](lambda.md) · [Cost](cost.md)
 - [Permissions](../aws-guardrails/permissions.md)

@@ -15,22 +15,44 @@ without a test failing.
 
 ## 1. The account the app runs in
 
-Two identities. The EC2 instance running the app, and the Lambda that evaluates
-guardrails.
+Three Lambda roles, each scoped to what that one function does, plus your own
+AWS credentials wherever the desktop app is what's asking.
 
-### The app (EC2 instance role)
+### The webhook receiver
 
 | Action | Scoped to | Why |
 |---|---|---|
-| `s3:GetObject` | `github-control-hub-deploy-<account>/*` | The deploy script ships the Docker image through this bucket. One bucket, created by this stack. |
+| `secretsmanager:GetSecretValue` | `github-control-hub/secrets*` | Reads the webhook secret to verify a delivery's signature. |
+| `sqs:SendMessage` | the webhook queue | Hands a verified delivery to the worker. |
+
+No DynamoDB, no STS, no Organizations, no Lambda invoke. This is the only
+function reachable from the internet, and this list is the point of splitting
+it from the worker.
+
+### The webhook worker
+
+| Action | Scoped to | Why |
+|---|---|---|
 | `secretsmanager:GetSecretValue` | `github-control-hub/secrets*` | The GitHub App key and OAuth secrets. |
-| `secretsmanager:CreateSecret`, `PutSecretValue`, `GetSecretValue` | `github-control-hub/aws-account/*` | Access keys for AWS accounts outside your organization, if you use that option. Cannot reach the secret above. |
-| `dynamodb:*Item`, `Scan`, `Query` | `github-control-hub-*` tables | The app's own tables. Not `dynamodb:*`, and not every table in the account. |
-| `organizations:ListAccounts`, `DescribeOrganization` | — | Reads your account list so nobody has to type twelve-digit ids. Read-only; neither call supports resource scoping. |
-| `sts:AssumeRole` | `arn:aws:iam::*:role/github-control-hub-guardrail-access` | Verifies an account is reachable before storing it. **One role name.** |
-| `lambda:GetFunctionConfiguration` | the guardrail function | Reads the engine's role ARN, so the Accounts screen can show both principals a watched account must trust. |
-| `lambda:InvokeFunction` | the guardrail function | Manual sweeps from the UI. |
-| `AmazonSSMManagedInstanceCore` | AWS managed policy | Session Manager, so the instance has no SSH port open. |
+| `dynamodb:*Item`, `Scan`, `Query`, `BatchGetItem`, `BatchWriteItem` | `github-control-hub-*` tables | The app's own tables. Not `dynamodb:*`, and not every table in the account. |
+
+### Your own credentials, on the desktop
+
+`organizations:ListAccounts`, the `sts:AssumeRole` that verifies a new account
+is reachable before it is stored, and reading or invoking the guardrail
+function from the Accounts screen — none of these are granted by this stack to
+any role. They run under whichever AWS credentials you signed in with on the
+desktop app (see [AWS credentials](../auth/aws-credentials.md)), the same as
+every other AWS read the desktop makes. There is no shared "app" identity for
+them the way there was when the instance ran this same Express app; the
+instance and its role are gone along with it, and nothing replaced them,
+because nothing needed to — a browser has never been able to reach that part
+of the app anywhere but the desktop.
+
+Creating the AWS-account secret (`secretsmanager:CreateSecret`,
+`PutSecretValue` on `github-control-hub/aws-account/*`, for access keys to
+accounts outside your organization) is the same story: it runs under your own
+credentials when you add such an account from the desktop.
 
 ### The guardrail engine (Lambda role)
 

@@ -7,11 +7,11 @@ import { createOctokit, getSystemToken, getOrg } from "../github/client";
  * Everything a user does to a *repository* is authorised by GitHub itself —
  * those calls are made with the user's own token, so GitHub allows exactly what
  * it would allow had they used github.com directly, and there is nothing for us
- * to decide. See routes/templates.ts.
+ * to decide. See routes/branches.ts.
  *
- * Settings that are not GitHub actions have no such natural gate. Turning on
- * auto-apply changes every repository created from that moment on, so it is
- * restricted to a named team.
+ * Settings that are not GitHub actions have no such natural gate. A scanner
+ * reads every repository with the app's own credentials, so it is restricted to
+ * a named team.
  */
 export const CONTROL_HUB_ADMIN_TEAM = process.env.CONTROL_HUB_ADMIN_TEAM || "control-hub-admins";
 

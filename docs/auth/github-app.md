@@ -6,8 +6,8 @@ that has to happen without a person present.
 ## What it is used for
 
 - Listing repositories, teams, members, branches (hundreds of calls per sync)
-- The webhook receiver's own actions on EC2, where no user is signed in
-- Auto-applying templates to newly created repositories
+- The webhook worker's own actions, processing a delivery where no user is
+  signed in
 
 ## Why not use the user's token for reads
 

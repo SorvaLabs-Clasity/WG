@@ -16,14 +16,13 @@ import {
   markActivityRetried,
   updateActivityError,
   updateActivityUndoPayload,
-  updateActivityConflictResolution,
   clearConflictResolution,
   logActivity,
 } from "../services/activityService";
 import type { ActivityEntry } from "../services/activityService";
 import { createOctokit, getOrg } from "../github/client";
 import { assertWritable, RepoAccessDenied } from "../github/permissions";
-import { undoBlockedReason, undoRequirement, retryRequirement, requirementsFor, isReversible, ALLOWED_UNDO_ACTIONS } from "../services/undoPolicy";
+import { undoBlockedReason, undoRequirement, retryRequirement, requirementsFor, isReversible, ALLOWED_UNDO_ACTIONS, unsupportedUndoReason } from "../services/undoPolicy";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { permissionMessage } from "../utils/permissionError";
 import {
@@ -40,10 +39,6 @@ import {
   buildTagRulesetRules,
 } from "../services/branchService";
 import {
-  putTemplateRaw,
-  deleteTemplateRaw,
-} from "../services/templateService";
-import {
   putWidgetRaw,
   deleteWidgetRaw,
 } from "../services/widgetService";
@@ -51,10 +46,6 @@ import {
   putScannerRaw,
   deleteScannerRaw,
 } from "../services/scannerService";
-import {
-  putExclusionRaw,
-  deleteExclusionRaw,
-} from "../services/exclusionService";
 
 const router = Router();
 
@@ -444,211 +435,15 @@ router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) =>
   }
 });
 
-router.post("/:id/resolve-conflict", async (req: Request<{ id: string }>, res: Response) => {
-  try {
-    const { resolution } = req.body;
-    if (resolution !== "override" && resolution !== "skip") {
-      res.status(400).json({ error: "resolution must be 'override' or 'skip'" });
-      return;
-    }
-
-    const entry = await getActivityById(req.params.id);
-    if (!entry) {
-      res.status(404).json({ error: "Activity entry not found" });
-      return;
-    }
-    if (!entry.conflictPayload) {
-      res.status(400).json({ error: "This entry has no conflict to resolve" });
-      return;
-    }
-    if (entry.conflictResolution) {
-      res.status(400).json({ error: `This conflict has already been resolved as "${entry.conflictResolution}"` });
-      return;
-    }
-
-    // Overriding a conflict applies protection to the repository; skipping
-    // records a decision not to. Both are changes to that repo's posture and
-    // need the same rights as applying a template to it.
-    const deniedResolve = await denyIfNotPermitted(
-      [entry], req.user!.login, req.user!.accessToken, "resolve this conflict for",
-      () => ({ repo: "admin" as const }));
-    if (deniedResolve) {
-      res.status(deniedResolve.status).json(deniedResolve.body);
-      return;
-    }
-
-    const cp = entry.conflictPayload;
-    const octokit = createOctokit(req.user!.accessToken);
-    const org = getOrg();
-    const actor = req.user!.login;
-
-    if (resolution === "override") {
-      if (cp.type === "ruleset") {
-        const isTagRuleset = !!cp.templateConfig?._isTagRuleset;
-
-        let originalConfig: any;
-        let currentExistingId: number | undefined;
-        try {
-          const rulesets = await octokit.rest.repos.getRepoRulesets({ owner: org, repo: cp.repo, per_page: 100, includes_parents: false });
-          const list = Array.isArray(rulesets.data) ? rulesets.data : [];
-          const match = list.find((r: any) => r.name === cp.name);
-          if (match) currentExistingId = match.id;
-        } catch { /* best effort - fall back to stored ID */ }
-        if (!currentExistingId && cp.existingId) currentExistingId = cp.existingId;
-
-        if (currentExistingId) {
-          try {
-            const { data: full } = await octokit.rest.repos.getRepoRuleset({ owner: org, repo: cp.repo, ruleset_id: currentExistingId });
-            originalConfig = full;
-          } catch { /* best effort */ }
-          try { await deleteRuleset(octokit, cp.repo, currentExistingId); } catch { /* may already be gone */ }
-        }
-
-        const protection = cp.templateConfig;
-        let createdId: number | undefined;
-
-        if (isTagRuleset) {
-          const tagPatterns: string[] = protection.tagPatterns || cp.existingConfig?.conditions?.ref_name?.include?.map((ref: string) => ref.replace("refs/tags/", "")) || [];
-
-          if (protection.rawJson) {
-            const { id: _id, source: _s, source_type: _st, node_id: _n, _links: _l, created_at: _ca, updated_at: _ua, ...payload } = protection.rawJson;
-            if (payload.bypass_actors) {
-              payload.bypass_actors = payload.bypass_actors.map((a: any) => ({ ...a, bypass_mode: "always" }));
-            }
-            const { data: created } = await octokit.rest.repos.createRepoRuleset({
-              owner: org, repo: cp.repo, ...payload,
-              name: cp.name,
-              target: "tag",
-              conditions: { ref_name: { include: tagPatterns.map((t: string) => `refs/tags/${t}`), exclude: [] } },
-            });
-            createdId = created.id;
-          } else {
-            const rules: any[] = buildTagRulesetRules(protection);
-            if (rules.length === 0) rules.push({ type: "creation" });
-            const bypassActors = (protection.bypassActors && protection.bypassActors.length > 0)
-              ? protection.bypassActors.map((a: any) => ({ ...a, bypass_mode: "always" }))
-              : [];
-            const { data: created } = await octokit.rest.repos.createRepoRuleset({
-              owner: org, repo: cp.repo,
-              name: cp.name,
-              target: "tag",
-              enforcement: (protection.enforcement as any) || "active",
-              bypass_actors: bypassActors,
-              conditions: { ref_name: { include: tagPatterns.map((t: string) => `refs/tags/${t}`), exclude: [] } },
-              rules,
-            });
-            createdId = created.id;
-          }
-
-          const undoPayload = {
-            action: "undo_override_ruleset",
-            params: { repo: cp.repo, newRulesetId: createdId, originalConfig: originalConfig || cp.existingConfig, templateConfig: cp.templateConfig, tagPatterns, isTagRuleset: true },
-          };
-          await updateActivityConflictResolution(entry.id, "override");
-          await updateActivityUndoPayload(entry.id, undoPayload);
-        } else {
-          const branchNames: string[] = cp.existingConfig?.conditions?.ref_name?.include?.map((ref: string) => ref.replace("refs/heads/", "")) || [cp.name];
-
-          if (protection.type === "ruleset_json" && protection.rawJson) {
-            const { id: _id, source: _s, source_type: _st, node_id: _n, _links: _l, ...payload } = protection.rawJson;
-            const { data: created } = await octokit.rest.repos.createRepoRuleset({
-              owner: org, repo: cp.repo, ...payload,
-              name: cp.name,
-              conditions: { ref_name: { include: branchNames.map((b: string) => `refs/heads/${b}`), exclude: [] } },
-            });
-            createdId = created.id;
-          } else {
-            const rules: any[] = buildRulesetRules(protection);
-            if (rules.length === 0) rules.push({ type: "pull_request", parameters: { required_approving_review_count: 0 } });
-            let bypassActors: any[];
-            if (protection.bypassActors && protection.bypassActors.length > 0) {
-              bypassActors = protection.bypassActors;
-            } else if (protection.enforceAdmins) {
-              bypassActors = [];
-            } else {
-              bypassActors = [{ actor_id: 5, actor_type: "RepositoryRole", bypass_mode: "always" }];
-            }
-            const { data: created } = await octokit.rest.repos.createRepoRuleset({
-              owner: org, repo: cp.repo,
-              name: cp.name,
-              target: "branch",
-              enforcement: (protection.enforcement as any) || "active",
-              bypass_actors: bypassActors,
-              conditions: { ref_name: { include: branchNames.map((b: string) => `refs/heads/${b}`), exclude: [] } },
-              rules,
-            });
-            createdId = created.id;
-          }
-
-          const undoPayload = {
-            action: "undo_override_ruleset",
-            params: { repo: cp.repo, newRulesetId: createdId, originalConfig: originalConfig || cp.existingConfig, templateConfig: cp.templateConfig, branchNames },
-          };
-          await updateActivityConflictResolution(entry.id, "override");
-          await updateActivityUndoPayload(entry.id, undoPayload);
-        }
-        await logActivity(
-          "conflict.override" as any, actor, cp.repo, cp.name,
-          `Overrode existing ${isTagRuleset ? "tag " : ""}ruleset "${cp.name}" with template configuration`,
-          undefined, "app", undefined, undefined,
-          { linkedActivityId: entry.id }
-        );
-      } else {
-        const protection = cp.templateConfig;
-
-        let originalConfig: any;
-        try {
-          originalConfig = await getProtection(octokit, cp.repo, cp.name);
-        } catch { /* best effort */ }
-
-        const classicRestrictions = protection.restrictPushes
-          ? { users: protection.pushRestrictionUsers || [], teams: protection.pushRestrictionTeams || [], apps: protection.pushRestrictionApps || [] }
-          : { users: [] as string[], teams: [] as string[], apps: [] as string[] };
-
-        await octokit.rest.repos.updateBranchProtection({
-          owner: org, repo: cp.repo, branch: cp.name,
-          required_status_checks: protection.requireStatusChecks ? { strict: protection.strictStatusChecks, contexts: [] } : null,
-          enforce_admins: protection.enforceAdmins,
-          required_pull_request_reviews: protection.requirePr
-            ? { required_approving_review_count: protection.requiredApprovals, dismiss_stale_reviews: protection.dismissStaleReviews, require_code_owner_reviews: protection.requireCodeOwnerReviews, dismissal_restrictions: {} }
-            : null,
-          restrictions: classicRestrictions,
-          required_linear_history: protection.requireLinearHistory,
-          allow_force_pushes: !protection.preventForcePush,
-          allow_deletions: !protection.preventDeletion,
-          required_conversation_resolution: protection.requireConversationResolution,
-          required_signatures: protection.requireSignedCommits,
-        });
-
-        const undoPayload = {
-          action: "undo_override_protection",
-          params: { repo: cp.repo, branch: cp.name, originalConfig: originalConfig || cp.existingConfig, templateConfig: cp.templateConfig },
-        };
-        await updateActivityConflictResolution(entry.id, "override");
-        await updateActivityUndoPayload(entry.id, undoPayload);
-        await logActivity(
-          "conflict.override" as any, actor, cp.repo, cp.name,
-          `Overrode existing classic protection on "${cp.name}" with template configuration`,
-          undefined, "app", undefined, undefined,
-          { linkedActivityId: entry.id }
-        );
-      }
-    } else {
-      await updateActivityConflictResolution(entry.id, "skip");
-      await logActivity(
-        "conflict.skip" as any, actor, cp.repo, cp.name,
-        `Skipped conflict for ${cp.type === "ruleset" ? (cp.templateConfig?._isTagRuleset ? "tag ruleset" : "ruleset") : "classic protection"} "${cp.name}"`,
-        undefined, "app", undefined, undefined,
-        { linkedActivityId: entry.id }
-      );
-    }
-
-    res.json({ resolved: true, resolution });
-  } catch (err) {
-    if (sendIfRateLimited(res, err)) return;
-    res.status(500).json({ error: sanitizeError(err, "activity") });
-  }
-});
+/*
+ * There was a POST /:id/resolve-conflict here.
+ *
+ * Resolving with "override" applied a template's configuration to a repository,
+ * which is exactly what was deleted. Conflicts were only ever raised by the
+ * template apply path, so no new one can occur; the rows that exist stay
+ * readable, and undo-resolution below still reverses an override that was
+ * already carried out.
+ */
 
 router.post("/:id/undo-resolution", async (req: Request<{ id: string }>, res: Response) => {
   try {
@@ -782,7 +577,7 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
   const org = getOrg();
 
   if (!ALLOWED_UNDO_ACTIONS.has(action)) {
-    throw new Error(`"${action}" is not something the Control Hub can reverse`);
+    throw new Error(unsupportedUndoReason(action));
   }
 
   switch (action) {
@@ -906,21 +701,6 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
         await octokit.rest.repos.createRepoRuleset({ owner: org, repo: params.repo, ...payload });
       }
       break;
-    case "revert_template":
-      if (params.previousState && params.templateId) {
-        await putTemplateRaw({ ...params.previousState, updatedAt: new Date().toISOString() });
-      }
-      break;
-    case "restore_template":
-      if (params.templateData) {
-        await putTemplateRaw(params.templateData);
-      }
-      break;
-    case "delete_template":
-      if (params.templateId) {
-        await deleteTemplateRaw(params.templateId);
-      }
-      break;
     case "delete_widget":
       if (params.widgetId) {
         await deleteWidgetRaw(params.widgetId);
@@ -951,21 +731,6 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
         await putScannerRaw({ ...params.previousState, updatedAt: new Date().toISOString() });
       }
       break;
-    case "delete_exclusion":
-      if (params.exclusionId) {
-        await deleteExclusionRaw(params.exclusionId);
-      }
-      break;
-    case "restore_exclusion":
-      if (params.exclusionData) {
-        await putExclusionRaw(params.exclusionData);
-      }
-      break;
-    case "revert_exclusion":
-      if (params.previousState && params.exclusionId) {
-        await putExclusionRaw({ ...params.previousState, updatedAt: new Date().toISOString() });
-      }
-      break;
     case "disable_dependabot": {
       const depOctokit = createOctokit(accessToken);
       await depOctokit.rest.repos.disableVulnerabilityAlerts({ owner: org, repo: params.repo });
@@ -990,7 +755,7 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
   const org = getOrg();
 
   if (!ALLOWED_UNDO_ACTIONS.has(action)) {
-    throw new Error(`"${action}" is not something the Control Hub can reverse`);
+    throw new Error(unsupportedUndoReason(action));
   }
 
   switch (action) {
@@ -1147,24 +912,6 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
       }
       break;
 
-    case "revert_template":
-      if (params.currentState && params.templateId) {
-        await putTemplateRaw({ ...params.currentState, updatedAt: new Date().toISOString() });
-      }
-      break;
-
-    case "restore_template":
-      if (params.templateData) {
-        await deleteTemplateRaw(params.templateData.id);
-      }
-      break;
-
-    case "delete_template":
-      if (params.templateData) {
-        await putTemplateRaw(params.templateData);
-      }
-      break;
-
     case "delete_widget":
       if (params.widgetData) {
         await putWidgetRaw(params.widgetData);
@@ -1198,24 +945,6 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
     case "revert_scanner":
       if (params.currentState && params.scannerId) {
         await putScannerRaw({ ...params.currentState, updatedAt: new Date().toISOString() });
-      }
-      break;
-
-    case "delete_exclusion":
-      if (params.exclusionData) {
-        await putExclusionRaw(params.exclusionData);
-      }
-      break;
-
-    case "restore_exclusion":
-      if (params.exclusionData) {
-        await deleteExclusionRaw(params.exclusionData.id);
-      }
-      break;
-
-    case "revert_exclusion":
-      if (params.currentState && params.exclusionId) {
-        await putExclusionRaw({ ...params.currentState, updatedAt: new Date().toISOString() });
       }
       break;
 

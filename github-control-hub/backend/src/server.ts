@@ -8,11 +8,7 @@ import repoRoutes from "./routes/repos";
 import branchRoutes from "./routes/branches";
 import protectionRoutes from "./routes/protection";
 import activityRoutes from "./routes/activity";
-import templateRoutes from "./routes/templates";
-import ruleTemplateRoutes from "./routes/ruleTemplates";
-import exclusionRoutes from "./routes/exclusions";
 import scannerRoutes from "./routes/scanners";
-import webhookRoutes from "./routes/webhooks";
 import alertRoutes from "./routes/alerts";
 import complianceRoutes from "./routes/compliance";
 import dependencyRoutes from "./routes/dependencies";
@@ -94,12 +90,6 @@ const apiLimiter = rateLimit({
   message: { error: "Too many requests, please try again later" },
 });
 
-// Webhook route MUST be mounted before global express.json() so we can capture the raw body for HMAC verification
-app.use("/api/webhooks", express.json({
-  limit: "1mb",
-  verify: (req: any, _res, buf) => { req.rawBody = buf; },
-}), webhookRoutes);
-
 app.use(express.json({ limit: "1mb" }));
 
 app.get("/health", (_req, res) => {
@@ -114,9 +104,6 @@ app.use("/api/repos", authMiddleware, repoRoutes);
 app.use("/api/repos", authMiddleware, branchRoutes);
 app.use("/api/repos", authMiddleware, protectionRoutes);
 app.use("/api/activity", authMiddleware, activityRoutes);
-app.use("/api/templates", authMiddleware, templateRoutes);
-app.use("/api/rule-templates", authMiddleware, ruleTemplateRoutes);
-app.use("/api/exclusions", authMiddleware, exclusionRoutes);
 app.use("/api/scanners", authMiddleware, scannerRoutes);
 app.use("/api/alerts", authMiddleware, alertRoutes);
 app.use("/api/compliance", authMiddleware, complianceRoutes);
@@ -175,7 +162,7 @@ app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
   }
 })();
 
-// When imported by standalone.ts or the desktop app, skip auto-listen
+// When imported by the desktop app, skip auto-listen — it calls listen() itself
 if (!process.env.__STANDALONE__) {
   // Loopback. This branch is the developer's local server, whose only client is
   // Vite on the same machine; binding every interface published an unfinished

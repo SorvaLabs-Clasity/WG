@@ -3,11 +3,11 @@ import { Page, INTENT } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import UserAvatar from "../components/UserAvatar";
 import { useAuth } from "../App";
-import { useActivity, useUndoActivity, useRedoActivity, useRetryActivity, useResolveConflict, useUndoResolution } from "../hooks/useActivity";
+import { useActivity, useUndoActivity, useRedoActivity, useRetryActivity, useUndoResolution } from "../hooks/useActivity";
 import { useOrgConfig } from "../hooks/useOrgConfig";
 import { useWebhookHealth } from "../hooks/useWebhookHealth";
 import type { Activity, ActivityAction } from "../types/Activity";
-import { buildConflictComparison } from "../api/templates";
+import { buildConflictComparison } from "../utils/conflictComparison";
 
 const ACTION_CONFIG: Record<
   ActivityAction,
@@ -44,6 +44,7 @@ const ACTION_CONFIG: Record<
   "repo.publicized": { label: "Repo Made Public", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-globe text-[10px]" },
   "github.branch_protection_edited": { label: "Protection Changed", colorClass: "bg-blue-50 text-blue-700 border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800", iconClass: "fa-solid fa-shield-halved text-[10px]" },
   "github.ruleset_edited": { label: "Ruleset Changed", colorClass: "bg-indigo-50 text-indigo-700 border-indigo-200/60 dark:bg-indigo-950/50 dark:text-indigo-400 dark:border-indigo-800", iconClass: "fa-solid fa-list-check text-[10px]" },
+  "config.import": { label: "Configuration Imported", colorClass: "bg-sky-50 text-sky-700 border-sky-200/60 dark:bg-sky-950/50 dark:text-sky-400 dark:border-sky-800", iconClass: "fa-solid fa-file-import text-[10px]" },
   "scanner.create": { label: "Scanner Created", colorClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800", iconClass: "fa-solid fa-radar text-[10px]" },
   "scanner.update": { label: "Scanner Updated", colorClass: "bg-yellow-50 text-yellow-700 border-yellow-200/60 dark:bg-yellow-950/50 dark:text-yellow-400 dark:border-yellow-800", iconClass: "fa-solid fa-radar text-[10px]" },
   "scanner.delete": { label: "Scanner Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-radar text-[10px]" },
@@ -202,7 +203,6 @@ export default function ActivityPage() {
   const undoMutation = useUndoActivity();
   const redoMutation = useRedoActivity();
   const retryMutation = useRetryActivity();
-  const resolveConflictMutation = useResolveConflict();
   const undoResolutionMutation = useUndoResolution();
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | "app" | "github">("all");
@@ -217,7 +217,7 @@ export default function ActivityPage() {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const isBusy = undoMutation.isPending || redoMutation.isPending || retryMutation.isPending || resolveConflictMutation.isPending || undoResolutionMutation.isPending;
+  const isBusy = undoMutation.isPending || redoMutation.isPending || retryMutation.isPending || undoResolutionMutation.isPending;
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds(prev => {
@@ -270,19 +270,6 @@ export default function ActivityPage() {
       onError: (err) => { setSnack({ msg: (err as Error).message, severity: "error" }); },
     });
   }, [undoResolutionMutation]);
-
-  const handleResolveConflictFromPopup = useCallback((entry: Activity, resolution: "override" | "skip") => {
-    resolveConflictMutation.mutate(
-      { activityId: entry.id, resolution },
-      {
-        onSuccess: () => {
-          setSnack({ msg: `Conflict ${resolution === "override" ? "overridden" : "skipped"} for "${entry.target}"`, severity: "success" });
-          setSelectedEvent(null);
-        },
-        onError: (err) => { setSnack({ msg: (err as Error).message, severity: "error" }); },
-      }
-    );
-  }, [resolveConflictMutation]);
 
   const filtered = useMemo(() => {
     if (!data?.entries) return [];
@@ -362,7 +349,12 @@ export default function ActivityPage() {
 
     const isHold = entry.action === "conflict.pending" && !entry.conflictResolution && !entry.undone;
     const containsHold = !isHold && hasUnresolvedHold(entry);
-    const showHoldHighlight = isHold || (containsHold && !isExpanded);
+    // A hold on this row itself is a historical, unresolvable state — the
+    // templates feature that could act on it is gone — so it gets an
+    // identifying badge below but not the amber "needs attention" row
+    // treatment. Collapsed rows that merely contain one still get it, since
+    // expanding them is an action a user can still take.
+    const showHoldHighlight = containsHold && !isExpanded;
 
     const isHighlighted = highlightedId === entry.id;
     rows.push(
@@ -398,7 +390,7 @@ export default function ActivityPage() {
             </span>
             {isUndoneEntry && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 border border-gray-200 dark:border-slate-700 font-medium">Undone</span>}
             {entry.action === "conflict.pending" && !entry.conflictResolution && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold animate-pulse">On Hold</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold">On Hold</span>
             )}
             {entry.conflictResolution === "override" && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium">Overridden</span>
@@ -822,19 +814,7 @@ export default function ActivityPage() {
                           )}
                           {child.undone && !childFailed && <span className="text-[10px] text-orange-500 ml-auto">undone</span>}
                           {child.action === "conflict.pending" && !child.conflictResolution && !childFailed && (
-                            <span className="flex items-center gap-1.5 ml-auto shrink-0">
-                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold">On Hold</span>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleResolveConflictFromPopup(child, "skip"); }}
-                                disabled={isBusy}
-                                className="text-[10px] px-2 py-0.5 rounded border border-gh-border dark:border-slate-700 text-gh-textSecondary dark:text-slate-400 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 font-medium"
-                              >Skip</button>
-                              <button
-                                onClick={(e) => { e.stopPropagation(); handleResolveConflictFromPopup(child, "override"); }}
-                                disabled={isBusy}
-                                className="text-[10px] px-2 py-0.5 rounded border border-transparent text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 font-medium"
-                              >Override</button>
-                            </span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold ml-auto">On Hold</span>
                           )}
                           {child.conflictResolution === "override" && (
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium ml-auto">Overridden</span>
@@ -852,7 +832,7 @@ export default function ActivityPage() {
                 </div>
               )}
 
-              {/* Conflict details + resolve buttons */}
+              {/* Conflict details, as history */}
               {popupEntry.conflictPayload && (
                 <div className="border border-amber-200 dark:border-amber-800 rounded-lg overflow-hidden">
                   <div className="bg-amber-50 dark:bg-amber-950/50 px-3 py-2 border-b border-amber-200 dark:border-amber-800 flex items-center gap-2">
@@ -907,22 +887,11 @@ export default function ActivityPage() {
                       );
                     })()}
                     {!popupEntry.conflictResolution && (
-                      <div className="flex items-center gap-2 pt-2">
-                        <button
-                          onClick={() => handleResolveConflictFromPopup(popupEntry, "skip")}
-                          disabled={isBusy}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-gh-border dark:border-slate-700 text-gh-textSecondary dark:text-slate-400 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
-                        >
-                          Skip
-                        </button>
-                        <button
-                          onClick={() => handleResolveConflictFromPopup(popupEntry, "override")}
-                          disabled={isBusy}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors"
-                        >
-                          {resolveConflictMutation.isPending ? "Resolving..." : "Override"}
-                        </button>
-                      </div>
+                      <p className="text-[11px] text-gh-muted dark:text-slate-400 pt-2">
+                        This conflict was never resolved, and can no longer be — the templates
+                        feature that raised it has been removed. The repository still has the
+                        configuration shown under &ldquo;Existing&rdquo;.
+                      </p>
                     )}
                   </div>
                 </div>

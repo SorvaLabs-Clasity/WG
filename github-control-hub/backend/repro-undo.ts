@@ -80,6 +80,36 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   check("  and is not counted as reversible", !isReversible(aws));
 }
 
+// ── a deleted feature's undos are refused, not silently skipped ───────
+{
+  // Templates and exclusion lists are gone. Their rows are still in the log and
+  // still carry undo payloads, and canUndo in the frontend offers the button on
+  // the strength of a payload existing — so this path is reachable by pressing
+  // Undo on a template row, and it has to fail rather than report success.
+  const { REMOVED_UNDO_ACTIONS, undoRequirement: reqFor } = require("./src/services/undoPolicy");
+
+  for (const action of REMOVED_UNDO_ACTIONS) {
+    const row = at({ action: "template.create" as any,
+      undoPayload: { action, params: { templateId: "t1" } } });
+
+    const reason = undoBlockedReason(row);
+    check(`${action} is refused`, !!reason, reason);
+    check(`  and says the feature was removed`,
+      (reason ?? "").includes("no longer be undone") && (reason ?? "").includes("removed"), reason);
+    check(`  and is not counted as reversible`, !isReversible(row));
+
+    // Absent from the requirements map, so it must inherit the strictest
+    // default rather than sailing through with no check.
+    const r = reqFor(row);
+    check(`  and an absent requirement fails closed`,
+      r.repo === "admin" && r.adminTeam === true, r);
+  }
+
+  // The allow-list is what denies them; the message only explains the denial.
+  const stillAllowed = [...REMOVED_UNDO_ACTIONS].filter(a => ALLOWED_UNDO_ACTIONS.has(a));
+  check("no removed operation is still on the allow-list", stillAllowed.length === 0, stillAllowed);
+}
+
 // ── permission scope keys on the operation, not the repo field ────────
 {
   // AWS rows put a log group name in `repo`; checking GitHub for it would ask
@@ -96,11 +126,11 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     at({ id: "b", repo: "acme-web", undoPayload: { action: "restore_protection", params: {} } }),
     at({ id: "c", repo: "acme-api", undoPayload: { action: "delete_ruleset", params: {} } }),
     aws,
-    at({ id: "d", repo: "acme-docs", undoPayload: { action: "delete_template", params: {} } }),
+    at({ id: "d", repo: "acme-docs", undoPayload: { action: "delete_scanner", params: {} } }),
   ]);
   check("every repo an undo would touch is collected, once",
     [...repos.admin, ...repos.push].sort().join() === "acme-api,acme-web", repos);
-  check("  a template operation contributes no repo", !repos.admin.includes("acme-docs"), repos);
+  check("  an org-wide operation contributes no repo", !repos.admin.includes("acme-docs"), repos);
 }
 
 // ── the allow-list and the handlers must not drift ────────────────────
@@ -209,12 +239,8 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   check("deleting a template branch needs repo admin", req("delete_branch").repo === "admin");
   check("recreating a branch only needs push", req("recreate_branch").repo === "push");
 
-  check("reverting a template needs the admin team", req("revert_template").adminTeam === true);
-  check("  and is not repo-scoped", req("revert_template").repo === undefined);
-  check("reverting an exclusion needs the admin team", req("revert_exclusion").adminTeam === true);
-  check("  because excluding a repo stops templates protecting it",
-    req("delete_exclusion").adminTeam === true && req("restore_exclusion").adminTeam === true);
   check("reverting a widget needs the admin team", req("revert_widget").adminTeam === true);
+  check("  and is not repo-scoped", req("revert_widget").repo === undefined);
   check("  because there is one dashboard, shared by everyone",
     req("delete_widget").adminTeam === true && req("restore_widget").adminTeam === true);
 
@@ -268,17 +294,16 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   const read = (f: string) => fs.readFileSync(path.join(__dirname, "src/routes", f), "utf8");
 
   const GUARDED: [string, RegExp, RegExp][] = [
-    ["templates.ts",     /router\.(post|put|delete)\(/g, /refusedTemplateChange|assertWritable/],
-    ["exclusions.ts",    /router\.(post|put|delete)\(/g, /refusedExclusionChange/],
     ["scanners.ts",      /router\.(post|put|delete)\(/g, /refusedScannerChange/],
     ["widgets.ts",       /router\.(post|put|delete)\(/g, /refusedWidgetChange/],
     ["alerts.ts",        /router\.(post|put|delete)\(/g, /refusedAlertChange/],
     ["config.ts",        /router\.(post|put|delete)\(/g, /refuseUnlessAdmin/],
-    // Absent from this list until the August 2026 review, which is why it was
-    // the one org-wide config router shipping with no authorization at all.
-    // A file that is not listed here is not checked, so the list itself is the
-    // thing to keep honest — see the completeness assertion below.
-    ["ruleTemplates.ts", /router\.(post|put|delete)\(/g, /refusedRuleTemplateChange/],
+    // The rule-template router was absent from this list until the August 2026
+    // review, which is why it was the one org-wide config router shipping with
+    // no authorization at all. It has since been deleted along with the rest of
+    // the templates feature, but the lesson stands: a file that is not listed
+    // here is not checked, so the list itself is the thing to keep honest — see
+    // the completeness assertion below.
     ["awsGuardrails.ts", /router\.(post|put|delete)\(/g, /requireAdmin/],
     ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted/],
   ];

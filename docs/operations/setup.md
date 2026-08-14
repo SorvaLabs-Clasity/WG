@@ -3,8 +3,8 @@
 From a fresh clone to a running app. Every prompt the migration script asks,
 what each step does, and what tends to go wrong.
 
-Two people are involved. Phases 1 and 4 need someone with GitHub organization
-settings access; phases 0, 2 and 3 need an AWS profile with admin on the target
+Two people are involved. Phases 1 and 3 need someone with GitHub organization
+settings access; phases 0 and 2 need an AWS profile with admin on the target
 account. The handover points are where this stalls, so each phase says whose it
 is.
 
@@ -13,8 +13,7 @@ is.
 | [0 — Prerequisites](#phase-0--prerequisites) | operator | 5 min |
 | [1 — GitHub organization](#phase-1--github-organization) | org owner | 15 min |
 | [2 — The migration script](#phase-2--the-migration-script) | operator | 20 min |
-| [3 — Ship the app](#phase-3--ship-the-app) | operator | 5 min |
-| [4 — The webhook](#phase-4--the-webhook) | org owner | 5 min |
+| [3 — The webhook](#phase-3--the-webhook) | org owner | 5 min |
 | [Verifying](#verifying) | operator | 5 min |
 
 ---
@@ -25,15 +24,13 @@ is.
 
 ```bash
 node -v                          # must be 24.x
-docker --version                 # must be running, not just installed
 aws --version
-session-manager-plugin --version # deploy.sh reaches the instance through it
 ```
 
 **Node 24, not 25.** Node's even releases are LTS and its odd ones never are —
-25 reached end of life in June 2026 and gets no further security patches. The
-Docker image and CI are both on 24, so building locally on anything else risks
-a build that works on your machine and fails in CI.
+25 reached end of life in June 2026 and gets no further security patches. CI
+runs on 24, so building locally on anything else risks a build that works on
+your machine and fails in CI.
 
 If you need to change it: `nvm install 24 && nvm use 24 && nvm alias default 24`,
 or `brew install node@24 && brew unlink node && brew link --overwrite --force node@24`.
@@ -111,7 +108,7 @@ Then **Generate a new client secret**. GitHub shows it once.
 |---|---|
 | Name | `<company>-control-hub` — unique across all of GitHub |
 | Homepage URL | `http://localhost:4321` |
-| Webhook → Active | **untick** — the org webhook in phase 4 does this |
+| Webhook → Active | **untick** — the org webhook in phase 3 does this |
 | Where can this app be installed | **Only on this account** |
 
 Do not tick "Request user authorization (OAuth) during installation" — the
@@ -121,8 +118,8 @@ separate OAuth App handles sign-in, and ticking it confuses the flow.
 
 | Permission | Access | Why |
 |---|---|---|
-| Administration | Read & write | Branch protection, rulesets, Dependabot |
-| Contents | Read & write | Creating branches, seeding template files |
+| Administration | Read | Branch protection, rulesets, Dependabot |
+| Contents | Read | Compliance checks reading file contents |
 | Metadata | Read | Mandatory; listing repositories |
 | Dependabot alerts | Read | Vulnerability reporting |
 | Actions | Read | Listing workflows |
@@ -157,20 +154,20 @@ Then, in order:
 
 | Team slug | Controls |
 |---|---|
-| `control-hub-admins` | Templates, rule templates, exclusions, scanners, widgets, config import |
+| `control-hub-admins` | Scanners, widgets, alerts, config import, and undoing changes to any of them |
 | `aws-guardrail-admins` | AWS rules, accounts, sweeps, enforce mode |
 
 The slugs must be exactly these — membership is checked by slug, and both are
 overridable only by environment variable. Anyone outside them gets a read-only
 app.
 
-They are separate deliberately. The person curating branch-protection templates
+They are separate deliberately. The person curating scanners and alert rules
 is not necessarily the person who should be able to let an application write to
 production S3 buckets.
 
-**Neither team grants anything in GitHub.** A member of `control-hub-admins`
-still cannot apply a template to a repository they do not administer — the call
-is made with their own token, and GitHub refuses it. See
+**Neither team grants anything outside this app.** Membership only changes
+what the app's own UI lets a person click; GitHub and AWS still decide what
+happens when they click it, using that person's own credentials. See
 [permissions model](../auth/permissions-model.md).
 
 ### 4. Add the operator to both teams
@@ -220,11 +217,16 @@ account. Use the same value everywhere afterwards.
 
 ### Step 1 — DynamoDB tables
 
-Creates **14** tables, the activity table's two indexes, and TTL. All on-demand,
-so idle tables cost nothing — measured at about two cents a month in use.
+Creates **11** tables, the activity table's two indexes, and TTL. All
+on-demand, so idle tables cost nothing — measured at about two cents a month in
+use.
 
 Delegates to `setup-aws-account.sh`. Existing tables are reported as `exists:`
-and left alone.
+and left alone. A twelfth table — the webhook delivery dedup lock — is created
+later, in [step 4](#step-4--api-gateway-lambda-and-event-rules), by `cdk
+deploy` rather than this script: it holds nothing but five-minute state, so it
+lives with the infrastructure that depends on it instead of the durable
+application data this script owns.
 
 ### Step 2 — GitHub credentials
 
@@ -253,7 +255,7 @@ appears in the URL after installing.
 
 Secrets are read without echoing and written straight to Secrets Manager at
 `<prefix>/secrets`. They never touch disk. The webhook secret and JWT secret are
-generated here — `openssl rand -hex 32` and `-hex 48` — which is why phase 4
+generated here — `openssl rand -hex 32` and `-hex 48` — which is why phase 3
 cannot happen earlier.
 
 ### Step 3 — CloudTrail
@@ -262,22 +264,28 @@ Detects an existing trail and leaves it alone; a second trail is billed per
 event. Without any trail, guardrails run only on the 15-minute sweep instead of
 reacting within seconds of a resource changing. Optional.
 
-### Step 4 — EC2, Lambda and event rules
+### Step 4 — API Gateway, Lambda and event rules
 
-Bootstraps CDK if needed, then deploys the stack: the instance, the guardrail
-Lambda, the EventBridge rules, the dead-letter queue and the IAM.
+Bootstraps CDK if needed, then deploys the stack: API Gateway, the webhook
+receiver and worker Lambdas, the guardrail Lambda, the SQS queue and its
+dead-letter queue, the EventBridge rules, the CloudWatch alarms and the IAM.
+Every Lambda bundles its code straight from `backend/src`, so this step ships
+working functions, not just infrastructure to load code onto later.
 
-**Deployed read-only.** The app can report on the account and is incapable of
-changing it. A rule set to enforce still finds violations and records the fix it
-would have made; AWS refuses the write and the finding says so. Redeploy with
-`-c enforce=true` later to grant exactly three write actions.
+**Guardrail enforcement is deployed read-only.** The app can report on the
+account and is incapable of changing it. A rule set to enforce still finds
+violations and records the fix it would have made; AWS refuses the write and
+the finding says so. Redeploy with `-c enforce=true` later to grant exactly
+three write actions. This has no bearing on the webhook path, which has no
+concept of enforce mode.
 
-Prints the instance ID and the webhook URL. Takes a few minutes.
+Prints the webhook URL (the stack's `WebhookUrl` output) among the other
+outputs. Takes a few minutes.
 
 ### Step 5 — Org webhook
 
 Prints everything the org owner needs and waits. **You cannot do this yet** —
-press enter and come back at [phase 4](#phase-4--the-webhook).
+press enter and come back at [phase 3](#phase-3--the-webhook).
 
 ### Step 6 — Guardrail rules
 
@@ -306,40 +314,12 @@ main is protected.
 
 ---
 
-## Phase 3 — Ship the app
+## Phase 3 — The webhook
 
-The migration script builds the infrastructure. It does **not** put the
-application on the instance.
-
-```bash
-./scripts/deploy.sh <InstanceId>
-```
-
-Without this the webhook URL answers nothing.
-
-> Use the instance ID the migration script printed **at the end**, not one noted
-> from an earlier run. Encryption at rest and the IMDSv2 pin replace the
-> instance rather than updating it, so an older ID can name a machine that no
-> longer exists — and the failure looks like a networking problem. The Elastic
-> IP re-associates, so the webhook URL is unchanged.
-
-Builds for `linux/amd64`, ships the image through an S3 bucket the stack owns,
-and loads it over SSM. A few minutes on Apple Silicon, which cross-compiles.
-About a minute of downtime, during which webhook deliveries are lost.
-
-Confirm the new code is running:
-
-```bash
-aws ssm send-command --instance-ids <InstanceId> \
-  --document-name AWS-RunShellScript \
-  --parameters 'commands=["docker ps --format \"{{.Image}} {{.Status}}\""]'
-```
-
----
-
-## Phase 4 — The webhook
-
-Back to the org owner.
+Back to the org owner. The migration script already deployed a working
+endpoint in [step 4](#step-4--api-gateway-lambda-and-event-rules) — there is
+no separate step to ship application code, because `cdk deploy` bundled the
+Lambdas from source. This phase only points GitHub at the URL it printed.
 
 **Organization → Settings → Webhooks → Add webhook**
 
@@ -349,10 +329,18 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 
 | Field | Value |
 |---|---|
-| Payload URL | from the migration script |
+| Payload URL | the `WebhookUrl` output from the migration script |
 | Content type | `application/json` |
 | Secret | from the migration script |
-| SSL verification | **Disable** — self-signed certificate on an IP |
+
+> **If a webhook already exists here, edit its URL — do not add a second
+> one.** GitHub gives each webhook its own delivery id for the same
+> underlying event, so two webhooks pointing at two receivers means two
+> unrelated deliveries, and the deduplication lock has no way to recognise
+> them as the same event. Both would process: duplicate activity rows,
+> duplicate alerts. This matters most when repointing an existing install at
+> a new deployment, but it is worth checking on a first setup too, in case a
+> teammate already ran phase 1 twice.
 
 **Events** — "Let me select individual events":
 
