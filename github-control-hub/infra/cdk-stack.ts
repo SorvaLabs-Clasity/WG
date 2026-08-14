@@ -465,9 +465,12 @@ export class GitHubControlHubStack extends cdk.Stack {
       handler: "handler",
       projectRoot: path.join(__dirname, ".."),
       depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-      // Auto-apply waits five seconds for provisioning and then retries four
-      // times, and the scanner runs that used to be unbounded background time
-      // on a long-lived server now happen inside the invocation.
+      // A single invocation can chain a compliance refresh, graph edge
+      // updates and scanner runs — background work that used to be unbounded
+      // on a long-lived server and now happens inside the invocation. Lambda
+      // bills by duration actually used, so a high ceiling here costs nothing
+      // when the work finishes early and only matters on the rare delivery
+      // that needs it.
       timeout: cdk.Duration.minutes(10),
       memorySize: 512,
       // Must be at least the event source's maxConcurrency below.
