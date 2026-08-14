@@ -54,8 +54,18 @@ command -v node >/dev/null || die "node not found."
 # ── who and where ─────────────────────────────────────────────────────
 step "Target account"
 
-ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-default}"
-export AWS_PROFILE="$AWS_PROFILE_IN"
+# Credentials pasted into the environment beat any profile, so asking for one
+# would be asking a question with no effect — and answering it "default" reads
+# as though the default account is the target when it is not.
+#
+# This is the shape the AWS access portal hands you: three exports, good for a
+# few hours. It needs no profile to exist at all, which is the point.
+if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
+  echo "  using credentials from the environment; no profile needed"
+else
+  ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-default}"
+  export AWS_PROFILE="$AWS_PROFILE_IN"
+fi
 
 if ! CALLER=$(aws sts get-caller-identity --output json 2>&1); then
   printf "  %s\n" "$CALLER"

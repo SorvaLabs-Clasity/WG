@@ -426,6 +426,25 @@ webhook, guardrail rules and the desktop app. It calls
 `setup-aws-account.sh` for the tables rather than duplicating them, and runs
 `cdk bootstrap` first.
 
+It asks which account and region to act on rather than reading them from the
+environment and hoping: it prints the account ID and identity ARN it
+authenticated as, prompts for the region, and refuses one the account cannot
+see. Nothing is assumed — a stack deployed to the wrong region is a stack you
+have to find first.
+
+Either kind of credential works. With a profile it asks which one; with keys
+already exported it says so and skips the question, since environment
+credentials take precedence over a profile anyway and asking would be asking
+something with no effect:
+
+```bash
+export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
+CDK_CONTEXT="-c enforce=true -c orgEnforcesBucketSsl=true" ./scripts/migrate-to-account.sh
+```
+
+That is the shape the AWS access portal hands out, and it needs no profile to
+exist at all.
+
 Its deploy takes no context by default. Pass any through:
 
 ```bash
