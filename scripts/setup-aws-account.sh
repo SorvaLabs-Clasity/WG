@@ -279,6 +279,28 @@ SECRET_JSON=$(GITHUB_ORG="$GITHUB_ORG" \
 
 if $AWS secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1; then
   echo "==> Updating existing secret $SECRET_NAME"
+  # Merged, not replaced.
+  #
+  # put-secret-value overwrites the whole document, and this script only asks
+  # for four of the values in it. Re-running it on a configured account used to
+  # delete GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_INSTALLATION_ID
+  # and JWT_SECRET — App auth would fail and every call would quietly drop to
+  # the PAT's lower rate limit, which looks like the app getting slower rather
+  # than like a wiped credential.
+  EXISTING=$($AWS secretsmanager get-secret-value --secret-id "$SECRET_NAME" \
+    --query SecretString --output text 2>/dev/null || echo '{}')
+  SECRET_JSON=$(EXISTING="$EXISTING" INCOMING="$SECRET_JSON" node -e '
+    const existing = JSON.parse(process.env.EXISTING || "{}");
+    const incoming = JSON.parse(process.env.INCOMING || "{}");
+    // Only overwrite with values that were actually supplied.
+    for (const [k, v] of Object.entries(incoming)) if (v) existing[k] = v;
+    process.stdout.write(JSON.stringify(existing));
+  ')
+  KEPT=$(EXISTING="$EXISTING" node -e '
+    const k = Object.keys(JSON.parse(process.env.EXISTING || "{}"));
+    process.stdout.write(String(k.length));
+  ')
+  echo "    merged into $KEPT existing key(s); nothing removed"
   $AWS secretsmanager put-secret-value \
     --secret-id "$SECRET_NAME" --secret-string "$SECRET_JSON" >/dev/null
 else
