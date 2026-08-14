@@ -196,7 +196,7 @@ at any prompt — nothing is written until the step it is in completes.
 | AWS profile | Defaults to `$AWS_PROFILE` |
 | AWS region to deploy into | Defaults to your profile's region, never to a literal |
 | Company display name | Shown in the app |
-| GitHub organization | The login from the URL, **case-sensitive** |
+| GitHub organization | The name as it appears in `github.com/orgs/<name>` |
 | Resource name prefix | Enter for `github-control-hub` |
 
 The org login is the part in `github.com/<this>`, which is often not the

@@ -9,7 +9,7 @@ Stored as one JSON document at `<STACK_NAME>/secrets`, loaded at startup.
 
 | Key | Required | What |
 |---|---|---|
-| `GITHUB_ORG` | yes | The organization login, case-sensitive |
+| `GITHUB_ORG` | yes | The name as it appears in `github.com/orgs/<name>` |
 | `GITHUB_CLIENT_ID` | yes | OAuth App client ID |
 | `GITHUB_CLIENT_SECRET` | yes | OAuth App client secret |
 | `GITHUB_APP_ID` | yes | GitHub App ID |
