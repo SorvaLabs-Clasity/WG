@@ -8,6 +8,8 @@ and the app share one source tree.
 | `github-control-hub-guardrail-enforcer` | `aws-guardrails/handler.ts` | Evaluates AWS guardrails |
 | `github-control-hub-webhook-receiver` | `webhooks/receiver.ts` | Verifies a GitHub webhook's signature and enqueues it |
 | `github-control-hub-webhook-worker` | `webhooks/worker.ts` | Reads the queue, claims the delivery, does the actual processing |
+| `github-control-hub-alarm-evaluator` | `alarms/handler.ts` | Evaluates widget alarms that are due, emails the ones that cross |
+| `github-control-hub-audit-ingest` | `audit/ingest.ts` | Turns each streamed enterprise audit object into activity rows |
 
 ## Configuration
 
@@ -24,6 +26,10 @@ ten minutes is Lambda's maximum: a single delivery can chain a compliance
 refresh, graph edge updates and scanner runs, and duration is billed as used,
 not as allocated, so the higher ceiling costs nothing on the ordinary delivery
 that finishes in two seconds.
+
+Only the receiver is reachable from outside AWS. The worker takes work from a
+queue, the enforcer and the evaluator are woken by EventBridge, and the audit
+ingester by an S3 notification — none of them has a path from the internet.
 
 ## Why the functions are separate from each other
 
@@ -43,6 +49,8 @@ EC2 instance these replaced go, security group and all.
 |---|---|---|
 | Guardrail enforcer | EventBridge schedule, every 15 minutes | Full sweep |
 | Guardrail enforcer | EventBridge on a CloudTrail event | Just the resource that changed, in the account it changed in |
+| Alarm evaluator | EventBridge schedule, every 15 minutes | Only alarms whose own interval is up — Dependabot-backed ones are hourly |
+| Audit ingest | S3 object-created notification | One streamed batch |
 | Guardrail enforcer | Direct invoke from the app | Whatever the caller asked for |
 | Webhook receiver | API Gateway, `POST /webhooks/github` | One delivery |
 | Webhook worker | SQS event source mapping, batch size 1 | One delivery, claimed from the queue |

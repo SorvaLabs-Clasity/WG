@@ -52,16 +52,26 @@ A self-hosted GitHub governance platform for managing repository protections, co
 - Incrementally updates graph, compliance cache, and scanners on each event
 - Generates alerts for security-relevant events
 
+### Alarms & Email Notifications
+- Thresholds on any dashboard widget, with conditions specific to what that widget measures
+- Security alerts emailed within seconds of the event, above a severity floor you choose
+- Email groups are SNS topics managed in the app, with confirmation status shown per recipient
+- Fires on crossing into breach, not every cycle; two clean checks required before an all-clear
+
+### Enterprise Audit Log
+- GitHub Enterprise audit events streamed to S3 and indexed into the Activity page
+- Raw events kept complete in S3; only consequential events indexed, to keep the feed readable
+
 ## Tech Stack
 
 | Layer          | Technologies                                           |
 |----------------|--------------------------------------------------------|
-| Frontend       | React, TypeScript, Vite, Material UI, TanStack Query, React Router |
+| Frontend       | React, TypeScript, Vite, Tailwind CSS, TanStack Query, React Router |
 | Backend        | Node.js, TypeScript, Express, Octokit                  |
 | Auth           | GitHub App (API access) + GitHub OAuth (user login), JWT |
-| Database       | AWS DynamoDB (12 tables)                               |
+| Database       | AWS DynamoDB (13 tables)                               |
 | Secrets        | AWS Secrets Manager                                    |
-| Infrastructure | AWS CDK (API Gateway, Lambda, SQS, EventBridge, IAM)   |
+| Infrastructure | AWS CDK (API Gateway, Lambda, SQS, SNS, EventBridge, S3, IAM) |
 | Deployment     | `cdk deploy` — bundles and deploys the Lambdas directly from source |
 | Desktop        | Electron (runs the backend locally, talking to AWS directly) |
 
@@ -75,14 +85,20 @@ GitHub webhook events are the only part of the backend that runs continuously in
 - API Gateway REST API, restricted by resource policy to GitHub's published webhook IP ranges
 - Receiver and worker Lambdas, connected by an SQS queue (with a DLQ)
 - A scheduled Lambda for AWS guardrail enforcement, with its own DLQ
+- A scheduled Lambda evaluating widget alarms, publishing to SNS when one crosses its threshold
+- An S3-triggered Lambda ingesting the enterprise audit log stream
+- SNS topics (`{prefix}-notify-*`) for alarm and security-alert email; the Lambdas may publish to
+  them and nothing else — no Subscribe, no CreateTopic
 - IAM role scoped to Secrets Manager, DynamoDB, and (for guardrails) read-only AWS config APIs
 - No inbound network surface beyond API Gateway — there is no EC2 instance, no security group, no SSH
 
 **Deploy:**
 ```bash
-cd infra && npx cdk deploy
+cd infra && npx cdk deploy -c enforce=true
 ```
-This is the entire deployment step. There is no separate build-and-upload — CDK bundles the Lambdas straight from `backend/src` and deploys them along with the rest of the stack.
+`-c enforce=true` is not optional if you want guardrails to remediate. Without it the engine still
+finds violations and reports the fix it would make, but is not granted the three write actions, so
+nothing is ever changed. This is the entire deployment step. There is no separate build-and-upload — CDK bundles the Lambdas straight from `backend/src` and deploys them along with the rest of the stack.
 
 ### 2. Desktop App (REST API + UI, local or production use)
 
@@ -143,7 +159,13 @@ All tables are prefixed with the stack name (default: `github-control-hub`):
 | `{prefix}-aws-guardrails` | AWS guardrail rule definitions |
 | `{prefix}-aws-exclusions` | AWS guardrail exclusion lists |
 | `{prefix}-aws-findings` | AWS guardrail scan findings |
+| `{prefix}-alarms` | Widget alarms, their state, email groups, notification settings |
 | `{prefix}-webhook-deliveries` | Webhook replay-protection markers (created by the CDK stack, not `setup-aws-account.sh`) |
+
+An account set up before the Templates feature was removed may still hold `{prefix}-templates`,
+`{prefix}-rule-templates` and `{prefix}-exclusions`. Nothing reads them. They are left in place
+rather than dropped — an unread table costs nothing at `PAY_PER_REQUEST`, and a deletion cannot be
+undone.
 
 ## Local Development
 
@@ -157,7 +179,9 @@ npm install
 npm run dev
 ```
 
-Requires a `.env` file in `backend/` with the environment variables listed above.
+No `.env` file is needed. The backend reads its configuration from AWS Secrets Manager at startup
+using whatever AWS credentials are active, which is the same path the desktop app and the Lambdas
+take — so there is one place credentials live and one way they are loaded.
 
 ## Project Structure
 
@@ -177,6 +201,8 @@ github-control-hub/
 │       ├── routes/          # API route handlers
 │       ├── services/        # Business logic (scanners, compliance, graph, etc.)
 │       ├── webhooks/        # Receiver/worker Lambda handlers (API Gateway → SQS → worker)
+│       ├── alarms/          # Widget alarm evaluation, email templating, SNS delivery
+│       ├── audit/           # Enterprise audit log ingestion (S3 → activity rows)
 │       ├── aws-guardrails/  # Scheduled Lambda handler for AWS guardrail enforcement
 │       ├── jobs/            # Background jobs (graph aggregator)
 │       └── utils/           # Shared utilities
@@ -203,6 +229,7 @@ scripts/                      # Account setup and migration scripts (repo root, 
 | Widgets | `/api/widgets` | Dashboard widget CRUD |
 | Config | `/api/config` | Export/import org configuration |
 | AWS Guardrails | `/api/aws` | Guardrail rules, findings, exclusions, monitored accounts |
+| Alarms | `/api/alarms` | Widget alarms, email groups and members, security-alert settings (admin only) |
 
 All `/api/*` endpoints require `Authorization: Bearer <jwt>`.
 

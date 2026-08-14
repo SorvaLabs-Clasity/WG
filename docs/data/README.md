@@ -22,6 +22,7 @@ All prefixed `github-control-hub-` by default (`STACK_NAME` overrides it).
 | `aws-guardrails` | `id` | AWS rules |
 | `aws-exclusions` | `id` | AWS exclusion lists |
 | `aws-findings` | `pk="FINDING"`, `sk` | Latest verdict per account/region/rule/resource |
+| `alarms` | `id` | Widget alarms and their state, email groups, notification settings — one table, rows told apart by `kind` |
 
 ## Two design notes worth knowing
 

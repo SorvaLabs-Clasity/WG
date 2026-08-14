@@ -4,13 +4,21 @@ Figures below assume an organization of roughly 350 repositories.
 
 | Item | Monthly |
 |---|---|
-| API Gateway (REST), $3.50/M requests | pennies |
-| Lambda (guardrail enforcer, webhook receiver, webhook worker) | ~$0.01 |
-| SQS | pennies |
-| DynamoDB (on-demand, including the deliveries table) | ~$0.02 |
-| Secrets Manager | ~$0.40 |
-| CloudWatch Logs | pennies |
-| **Total** | **≈ $0.50** |
+| WAF (web ACL $5 + one rule $1) | **$6.00** |
+| API Gateway (REST), $3.50/M requests | ~$0.35 |
+| Secrets Manager, 2 secrets | ~$0.80 |
+| CloudWatch alarms (2) | $0.20 |
+| Lambda — 5 functions: webhook receiver and worker, guardrail enforcer, alarm evaluator, audit ingest | ~$0.01 |
+| DynamoDB (on-demand, 13 tables) | ~$0.02 |
+| SNS email, $2 per 100,000 | pennies |
+| S3 (audit log archive), SQS, CloudWatch Logs | pennies |
+| **Total** | **≈ $7.50** |
+
+The WAF is 80% of that, and it protects a rate limit that cannot bind: its rule
+allows 2,000 requests per five minutes per IP (≈6.6/second) while API Gateway's
+own throttle is 20/second aggregate, which is always the tighter of the two.
+It is kept for the compliance checkbox and the option of adding real rules
+later. Removing it takes the bill to roughly **60 cents**.
 
 ## Where it went
 
@@ -34,6 +42,11 @@ use.
 
 ## Reducing it further
 
-Not urgent at fifty cents a month. The one lever left is Secrets Manager,
-which charges per secret regardless of how often it's read — consolidating
-further would save at most a few dimes and is not worth the complexity.
+One lever, and it is the WAF: dropping it removes roughly $6 of a $7.50 bill.
+See above for why that is a real option rather than a saving to regret.
+
+Secrets Manager is the only other fixed cost, at ~40¢ per secret. There are two
+deliberately — the webhook secret is kept apart from the application bundle so
+the internet-facing Lambda cannot read the GitHub App private key. That
+separation is worth far more than the 40 cents it costs, and consolidating them
+would undo it.

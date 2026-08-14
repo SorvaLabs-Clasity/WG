@@ -19,6 +19,10 @@ Start here depending on what you need.
 [Features](features/) — one page per tab in the app: what it answers, where the
 data comes from, and what it deliberately does not do.
 
+Two that cut across tabs: [alarms and email](features/alarms.md) — thresholds on
+widgets and security alerts by email — and the
+[enterprise audit log](features/audit-log.md).
+
 ## I want to run or change it
 
 | | |
