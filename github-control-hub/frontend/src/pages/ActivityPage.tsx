@@ -458,9 +458,20 @@ export default function ActivityPage() {
           </div>
         </td>
         <td className="px-4 py-3 whitespace-nowrap">
-          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${entry.repo === '*' ? 'bg-gray-600 text-white border-gray-700' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-gray-200 dark:border-slate-600'}`}>
-            {entry.repo === '*' ? '* (Global)' : entry.repo}
-          </span>
+          {/* Plenty of events are not about a repository at all — organization
+              membership, teams, tokens. An empty pill reads as a missing value;
+              a rule reads as "does not apply", which is what it is. */}
+          {!entry.repo ? (
+            <span
+              className="inline-block w-6 h-px bg-slate-300 dark:bg-slate-600 align-middle"
+              title="Not scoped to a repository"
+              aria-label="Not scoped to a repository"
+            />
+          ) : (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${entry.repo === '*' ? 'bg-gray-600 text-white border-gray-700' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-gray-200 dark:border-slate-600'}`}>
+              {entry.repo === '*' ? '* (Global)' : entry.repo}
+            </span>
+          )}
         </td>
         <td className="px-4 py-3 whitespace-nowrap">
           <span className="font-mono text-xs text-gh-textBase dark:text-slate-200 bg-gray-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200/50 dark:border-slate-700">

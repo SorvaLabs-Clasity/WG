@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { usePermissions } from "../hooks/usePermissions";
 import { useNavigate, useLocation } from "react-router-dom";
 import UserAvatar from "./UserAvatar";
 import { useTheme } from "../hooks/useTheme";
@@ -30,15 +29,9 @@ const ITEMS = [
   { label: "Dependabot", short: "Deps", icon: "ph-bug-beetle", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies") },
   { label: "Repos", short: "Repos", icon: "ph-books", path: "/graph", match: (p: string) => p.startsWith("/graph") },
   { label: "Activity", short: "Activity", icon: "ph-pulse", path: "/activity", match: (p: string) => p.startsWith("/activity") },
-  // Spend is admin-only on the server. Hiding the tab from everyone else keeps
-  // the nav honest — an item that always leads to "you may not see this" is
-  // worse than no item.
-  { label: "Usage", short: "Usage", icon: "ph-currency-dollar", path: "/billing", match: (p: string) => p.startsWith("/billing"), adminOnly: true },
 ];
 
 export default function Navbar({ login, avatarUrl }: NavbarProps) {
-  const { data: navPermissions } = usePermissions();
-  const items = ITEMS.filter(i => !(i as any).adminOnly || (navPermissions?.isControlHubAdmin ?? false));
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -88,7 +81,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
           </button>
 
           <div className="hidden xl:flex items-center gap-0.5">
-            {items.map(item => {
+            {ITEMS.map(item => {
               const on = item.match(pathname);
               return (
                 <button key={item.path} onClick={() => navigate(item.path)}
@@ -146,7 +139,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
       {menuOpen && (
         <div className="fixed inset-0 top-16 z-30 bg-white dark:bg-[#11141c] xl:hidden overflow-y-auto animate-fade-in">
           <div className="p-4 grid gap-1">
-            {items.map(item => {
+            {ITEMS.map(item => {
               const on = item.match(pathname);
               return (
                 <button key={item.path}

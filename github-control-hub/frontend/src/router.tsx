@@ -2,7 +2,6 @@ import { createBrowserRouter, Navigate } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
 import AuthCallback from "./pages/AuthCallback";
 import ActivityPage from "./pages/ActivityPage";
-import BillingPage from "./pages/BillingPage";
 import AccessPage from "./pages/AccessPage";
 import SecurityPage from "./pages/SecurityPage";
 import DependencyDashboardPage from "./pages/DependencyDashboardPage";
@@ -30,14 +29,6 @@ export const router = createBrowserRouter([
   {
     path: "/",
     element: <Navigate to="/analytics" replace />,
-  },
-  {
-    path: "/billing",
-    element: (
-      <RequireAuth>
-        <BillingPage />
-      </RequireAuth>
-    ),
   },
   {
     path: "/activity",
