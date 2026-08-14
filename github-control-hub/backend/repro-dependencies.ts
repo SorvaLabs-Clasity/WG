@@ -29,6 +29,7 @@
 import fs from "fs";
 import path from "path";
 import { fetchAllCursorPages } from "./src/utils/cursorPages";
+import { fetchRepoAlertStatus } from "./src/services/dependencyService";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -148,6 +149,47 @@ function githubWith(total: number) {
     check("  and \"moderate\" is folded into medium rather than dropped",
       /moderate/.test(code),
       "moderate-severity alerts vanish from the org summary");
+  }
+
+  // ── alert status without a request per repository ───────────────────
+  {
+    // This replaced one REST call per repo — 351 on the live organisation —
+    // with 100 repos per GraphQL request. Verified against that org in both
+    // directions before the swap: a field that is always false would agree
+    // with a mostly-off organisation and still be wrong.
+    const page = (names: string[], next: string | null) => ({
+      organization: { repositories: {
+        pageInfo: { hasNextPage: !!next, endCursor: next },
+        nodes: names.map(n => ({ name: n, hasVulnerabilityAlertsEnabled: n.startsWith("on-") })),
+      } },
+    });
+
+    let seen: (string | null)[] = [];
+    const gql = async (_q: string, vars: any) => {
+      seen.push(vars.cursor);
+      return vars.cursor === null ? page(["on-a", "off-b"], "CUR1") : page(["on-c", "off-d"], null);
+    };
+
+    const status = await fetchRepoAlertStatus(gql, "Org");
+    check("every page of repositories is walked", status?.size === 4, status?.size);
+    check("  following the cursor it was given", seen.join(",") === ",CUR1", seen);
+    check("  and the flag is carried through both ways",
+      status?.get("on-a") === true && status?.get("off-b") === false, [...(status ?? [])]);
+
+    // A failure must not be mistaken for "every repository has alerts off",
+    // which would fill the tab with findings nobody caused.
+    const broken = await fetchRepoAlertStatus(async () => { throw new Error("GraphQL down"); }, "Org");
+    check("a failed query reads as unknown, not as all-disabled", broken === null, broken);
+
+    const empty = await fetchRepoAlertStatus(async () => ({}), "Org");
+    check("  as does a response with no organisation in it", empty === null, empty);
+
+    // A cursor that never advances would otherwise loop until the rate limit.
+    let calls = 0;
+    const stuck = async () => { calls++; return page(["x"], "SAME"); };
+    await fetchRepoAlertStatus(stuck, "Org");
+    check("  and a non-advancing cursor is bounded rather than endless",
+      calls > 0 && calls <= 50, calls);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

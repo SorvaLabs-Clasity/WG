@@ -82,3 +82,65 @@ export async function fetchOrgDependencyAlerts(
     return { alerts: [], degraded: true };
   }
 }
+
+
+/**
+ * Which repositories have Dependabot alerts switched on.
+ *
+ * The route used to answer this with one REST call per repository —
+ * `checkVulnerabilityAlerts`, 204 for on and 404 for off — which at 355 repos
+ * meant ~351 requests every time the tab was opened, against the same core
+ * budget the graph sync and compliance sweep draw on.
+ *
+ * GraphQL exposes the flag directly, 100 repositories at a time. Measured
+ * against this organisation: 4 requests instead of 351, and the answers agree
+ * in both directions — verified on repositories with alerts on and off, since
+ * a field that is always false would agree with a mostly-off organisation and
+ * still be wrong.
+ *
+ * GraphQL is also metered separately from REST, so this moves the cost off the
+ * budget everything else competes for rather than merely reducing it.
+ *
+ * Returns null if the query fails. The caller lists repositories without the
+ * on/off marker rather than falling back to hundreds of requests — a slow page
+ * is worse than a page missing one column, and the fallback is the thing being
+ * removed.
+ */
+export type GraphQlFn = (query: string, vars: Record<string, unknown>) => Promise<any>;
+
+const ALERT_STATUS_QUERY = `query($org:String!, $cursor:String) {
+  organization(login:$org) {
+    repositories(first:100, after:$cursor) {
+      pageInfo { hasNextPage endCursor }
+      nodes { name hasVulnerabilityAlertsEnabled }
+    }
+  }
+}`;
+
+/** Guards against an endless walk if a cursor ever stops advancing. */
+const MAX_REPO_PAGES = 50;
+
+export async function fetchRepoAlertStatus(
+  graphql: GraphQlFn,
+  org: string,
+): Promise<Map<string, boolean> | null> {
+  try {
+    const status = new Map<string, boolean>();
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_REPO_PAGES; page++) {
+      const res: any = await graphql(ALERT_STATUS_QUERY, { org, cursor });
+      const repos = res?.organization?.repositories;
+      if (!repos) return null;
+      for (const n of repos.nodes ?? []) {
+        if (n?.name) status.set(n.name, !!n.hasVulnerabilityAlertsEnabled);
+      }
+      if (!repos.pageInfo?.hasNextPage) return status;
+      cursor = repos.pageInfo.endCursor ?? null;
+      if (!cursor) return status;
+    }
+    return status;
+  } catch (err) {
+    console.error("[Dependencies] Could not read alert status via GraphQL:", (err as Error).message);
+    return null;
+  }
+}

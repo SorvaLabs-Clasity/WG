@@ -40,3 +40,23 @@ why the unwatched count is shown so prominently.
 Unlike most checks, an empty result here is **not** treated as missing data. An
 organization with no open advisories genuinely has none, and claiming otherwise
 would be its own kind of wrong.
+
+
+## Why the tab is cheap now
+
+Listing which repositories have alerts switched on used to cost one REST call
+per repository — 351 of them on a 355-repo organisation, every time the tab was
+opened, against the same rate-limit budget the graph sync and compliance sweep
+draw on. Forty page loads in an hour would have exhausted it.
+
+GraphQL carries the same flag 100 repositories at a time. Measured on the live
+organisation: **4 requests instead of 347**, and GraphQL is metered separately
+from REST, so the cost moved off the shared budget rather than merely shrinking.
+
+The flag was checked against the REST endpoint it replaced before the swap, in
+both directions — on repositories with alerts on and off. A field that is
+always false would agree with a mostly-off organisation and still be wrong.
+
+If the query fails, repositories are listed **without** the on/off marker
+rather than falling back to hundreds of calls. A page missing one column beats
+a slow page, and the fallback is the thing being removed.

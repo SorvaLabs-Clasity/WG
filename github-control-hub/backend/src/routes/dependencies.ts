@@ -9,7 +9,7 @@ import { fetchAllCursorPages } from "../utils/cursorPages";
 import { fetchRenovatePrs } from "../services/renovateService";
 import { getOrgConfig, updateRenovateBot } from "../services/orgConfigService";
 import { isAwsAdmin } from "../services/authorizationService";
-import { mapAlert, fetchOrgDependencyAlerts } from "../services/dependencyService";
+import { mapAlert, fetchOrgDependencyAlerts, fetchRepoAlertStatus } from "../services/dependencyService";
 
 const router = Router();
 
@@ -66,25 +66,25 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       allAlerts = sweep.alerts;
 
 
-      // Also fetch all repos and check if any have dependabot disabled
+      // Every repository's alert setting in a handful of requests.
+      //
+      // This was one REST call per repository — 351 of them on this
+      // organisation, every time the tab was opened. GraphQL carries the same
+      // flag 100 repositories at a time, and on a different rate-limit budget
+      // from everything else here.
       const repos = await listRepos(octokit);
       const reposWithAlerts = new Set(allAlerts.map(a => a.repo));
-      const reposToCheck = repos.filter(r => !reposWithAlerts.has(r.name));
-      
-      // Check in batches of 10 to avoid rate limits
-      const CHUNK_SIZE = 10;
-      for (let i = 0; i < reposToCheck.length; i += CHUNK_SIZE) {
-        const chunk = reposToCheck.slice(i, i + CHUNK_SIZE);
-        await Promise.all(chunk.map(async (r) => {
-          try {
-            await octokit.rest.repos.checkVulnerabilityAlerts({ owner: org, repo: r.name });
-            allAlerts.push(mockCleanAlert(r.name, org));
-          } catch (err: any) {
-            if (err.status === 404) {
-              allAlerts.push(mockDisabledAlert(r.name, org));
-            }
-          }
-        }));
+      const alertStatus = await fetchRepoAlertStatus(
+        (query, vars) => (octokit as any).graphql(query, vars), org);
+
+      for (const r of repos) {
+        if (reposWithAlerts.has(r.name)) continue;
+        // Unknown rather than assumed. If the status query failed, the
+        // repository is listed without a marker instead of being labelled
+        // "Dependabot off", which would read as a finding rather than a gap.
+        const enabled = alertStatus?.get(r.name);
+        if (enabled === undefined) continue;
+        allAlerts.push(enabled ? mockCleanAlert(r.name, org) : mockDisabledAlert(r.name, org));
       }
     }
 
