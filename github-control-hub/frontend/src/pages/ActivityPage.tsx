@@ -349,7 +349,12 @@ export default function ActivityPage() {
 
     const isHold = entry.action === "conflict.pending" && !entry.conflictResolution && !entry.undone;
     const containsHold = !isHold && hasUnresolvedHold(entry);
-    const showHoldHighlight = isHold || (containsHold && !isExpanded);
+    // A hold on this row itself is a historical, unresolvable state — the
+    // templates feature that could act on it is gone — so it gets an
+    // identifying badge below but not the amber "needs attention" row
+    // treatment. Collapsed rows that merely contain one still get it, since
+    // expanding them is an action a user can still take.
+    const showHoldHighlight = containsHold && !isExpanded;
 
     const isHighlighted = highlightedId === entry.id;
     rows.push(
@@ -385,7 +390,7 @@ export default function ActivityPage() {
             </span>
             {isUndoneEntry && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 border border-gray-200 dark:border-slate-700 font-medium">Undone</span>}
             {entry.action === "conflict.pending" && !entry.conflictResolution && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold animate-pulse">On Hold</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold">On Hold</span>
             )}
             {entry.conflictResolution === "override" && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium">Overridden</span>
