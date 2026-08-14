@@ -108,6 +108,11 @@ relied on.
 Subject and body are templates using `{{widget}} {{metric}} {{value}}
 {{threshold}} {{state}} {{severity}} {{repo}} {{message}} {{org}} {{time}}`.
 
+`{{time}}` is rendered as `2026-08-14 13:15 UTC` — readable, and explicit about
+the clock. One email reaches a group who may be in several places, so a single
+canonical zone is the only value that means the same thing to all of them; the
+raw ISO form was correct but read as hours off to anyone not on UTC.
+
 A name that is not a real variable is rejected when you save, and left
 literally in the output if it ever reaches rendering — blanking it would make
 the email look broken rather than the template look wrong.

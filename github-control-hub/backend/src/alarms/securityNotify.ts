@@ -1,4 +1,4 @@
-import { buildMessage } from "./message";
+import { buildMessage, formatTimestamp } from "./message";
 import { meetsMinimumSeverity } from "./evaluate";
 
 /**
@@ -53,7 +53,7 @@ export async function notifySecurityAlert(
     severity: alert.severity,
     state: "ALARM",
     org: deps.org,
-    time: alert.timestamp,
+    time: formatTimestamp(alert.timestamp),
     widget: alert.type,
   });
 

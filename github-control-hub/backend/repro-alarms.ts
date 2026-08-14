@@ -22,7 +22,7 @@ import {
 } from "./src/alarms/conditions";
 import {
   render, unknownVariables, sanitizeSubject, buildMessage, SUBJECT_MAX,
-  DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY, TEMPLATE_VARIABLES,
+  DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY, TEMPLATE_VARIABLES, formatTimestamp,
 } from "./src/alarms/message";
 import {
   parseSeverities, aggregateDependabot, aggregateVulnRepos, computeWidgetRows,
@@ -262,6 +262,33 @@ function check(name: string, ok: boolean, got?: unknown) {
   check("  and its subject is legal",
     built.subject.length <= SUBJECT_MAX && /^[\x20-\x7E]+$/.test(built.subject),
     built.subject);
+}
+
+// ── timestamps say which clock they are on ────────────────────────────
+{
+  // The raw ISO form was correct and unreadable: to anyone not on UTC the
+  // alarm looked like it had fired hours away, and the only thing saying
+  // otherwise was a trailing Z lost among the milliseconds.
+  const t = formatTimestamp("2026-08-14T13:15:50.911Z");
+  check("a timestamp names its timezone", t.endsWith(" UTC"), t);
+  check("  and keeps the date and the minute", t.startsWith("2026-08-14 13:15"), t);
+  // No milliseconds, and no ISO "T" wedged between the date and the time.
+  // Matching a bare "T" would flag the word UTC, which is the part that makes
+  // the whole thing readable.
+  check("  without milliseconds or an ISO separator",
+    !t.includes(".") && !/\dT\d/.test(t), t);
+
+  check("an unreadable timestamp is passed through rather than dropped",
+    formatTimestamp("not a date") === "not a date", formatTimestamp("not a date"));
+  check("  and an absent one renders empty", formatTimestamp(undefined) === "");
+
+  // Both senders must use it; one raw path is one confusing email.
+  for (const f of ["src/alarms/evaluate.ts", "src/alarms/securityNotify.ts"]) {
+    const src = fs.readFileSync(path.join(__dirname, f), "utf8");
+    check(`  ${f.split("/").pop()} formats the time it sends`,
+      /time:\s*formatTimestamp\(/.test(src),
+      "this sender still puts a raw ISO string in the email");
+  }
 }
 
 // ── the variable catalogue is honest ──────────────────────────────────

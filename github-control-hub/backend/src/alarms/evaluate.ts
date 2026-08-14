@@ -2,7 +2,7 @@ import {
   conditionsFor, intervalFor, isDue, isBreaching, metricValue, step,
   severityRank, type AlarmState,
 } from "./conditions";
-import { buildMessage } from "./message";
+import { buildMessage, formatTimestamp } from "./message";
 import type { WidgetLike, WidgetRows } from "./widgetValues";
 
 /**
@@ -137,7 +137,7 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
           threshold: thresholdText(alarm.condition),
           state: fire === "alarm" ? "ALARM" : "OK",
           org: deps.org,
-          time: nowIso,
+          time: formatTimestamp(nowIso),
         });
         const ok = await deps.publish(topicArn, subject, body);
         if (ok) lastFiredAt = nowIso;

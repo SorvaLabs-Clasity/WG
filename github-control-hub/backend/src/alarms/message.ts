@@ -88,6 +88,27 @@ export const DEFAULT_SECURITY_BODY =
   `Organisation: {{org}}\nDetected at: {{time}}\n\n` +
   `This is an automated message from GitHub Control Hub.`;
 
+/**
+ * A timestamp a person can read, and cannot misread.
+ *
+ * {{time}} used to render the raw ISO string. It is correct, but it is UTC —
+ * so to anyone not on UTC it looks like the alarm fired hours in the future or
+ * the past, and the only thing saying otherwise is a trailing "Z" that is easy
+ * to miss among the milliseconds.
+ *
+ * UTC is still the value sent, because one email reaches a group who may be in
+ * several places and a single canonical zone is the only one that means the
+ * same thing to all of them. It just says so now.
+ */
+export function formatTimestamp(iso: string | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return String(iso);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
+         `${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
+}
+
 export interface BuiltMessage { subject: string; body: string; }
 
 export function buildMessage(
