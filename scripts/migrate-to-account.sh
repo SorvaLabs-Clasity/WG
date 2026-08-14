@@ -60,11 +60,27 @@ step "Target account"
 #
 # This is the shape the AWS access portal hands you: three exports, good for a
 # few hours. It needs no profile to exist at all, which is the point.
+# Authenticate before running this, and say which account you mean.
+#
+# This used to prompt with "default" pre-filled, so pressing enter targeted
+# whatever the default profile happened to be — on a machine with one profile
+# per environment, that is the wrong account roughly two times in three. It
+# refuses to choose instead.
 if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
-  echo "  using credentials from the environment; no profile needed"
+  echo "  using credentials from the environment"
+elif [ -n "${AWS_PROFILE:-}" ]; then
+  echo "  using profile $AWS_PROFILE"
 else
-  ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-default}"
-  export AWS_PROFILE="$AWS_PROFILE_IN"
+  die "No AWS credentials in this shell. Do one of these first, then re-run:
+
+    export AWS_PROFILE=<profile>        # after: aws sso login --profile <profile>
+
+  or paste the three exports from the AWS access portal:
+
+    export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
+
+  Naming the account is deliberate: this script creates tables, secrets and a
+  CloudFormation stack, and there is no undo for having done it to the wrong one."
 fi
 
 if ! CALLER=$(aws sts get-caller-identity --output json 2>&1); then
@@ -353,6 +369,19 @@ seed_rule() {
   }" >/dev/null && ok "$name (report mode)"
 }
 
+# Offered, not assumed.
+#
+# Which rules an account should run is a decision about that account, and
+# arriving to find two already there — one of which rewrites bucket policies
+# the moment it is switched to enforce — is inheriting somebody else's opinion.
+# Rules are added in the app, in the AWS tab, whenever you want them.
+ask SEED_RULES "Seed two starter guardrail rules, in report mode? (y/N)" "n"
+# tr rather than ${VAR,,}: that is bash 4, and macOS ships bash 3.2.
+SEED_RULES_LC=$(printf '%s' "$SEED_RULES" | tr '[:upper:]' '[:lower:]')
+if [ "$SEED_RULES_LC" != "y" ] && [ "$SEED_RULES_LC" != "yes" ]; then
+  skip "No rules seeded — add them in the app under the AWS tab"
+else
+
 # Both start in report mode on purpose. Enforce is a decision to make after
 # seeing what a real account actually contains, not a default to inherit.
 seed_rule "r-https" "s3_https_only" "S3 — deny non-TLS requests" \
@@ -363,6 +392,7 @@ seed_rule "r-retention" "log_retention_min" "CloudWatch Logs — minimum retenti
   '{"minDays":{"N":"365"},"setToDays":{"N":"365"},"leaveLongerAlone":{"BOOL":true},"neverExpireIsCompliant":{"BOOL":true}}'
 
 warn "Both rules report only. Review findings before switching either to enforce."
+fi
 
 # ── 7. build ──────────────────────────────────────────────────────────
 step "7/7  Desktop app"

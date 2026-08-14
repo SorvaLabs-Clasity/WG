@@ -432,10 +432,10 @@ authenticated as, prompts for the region, and refuses one the account cannot
 see. Nothing is assumed — a stack deployed to the wrong region is a stack you
 have to find first.
 
-Either kind of credential works. With a profile it asks which one; with keys
-already exported it says so and skips the question, since environment
-credentials take precedence over a profile anyway and asking would be asking
-something with no effect:
+**Authenticate before running it.** The script refuses to start otherwise
+rather than offering `default`, because on a machine with one profile per
+environment that suggestion is wrong most of the time and pressing enter is how
+a stack lands in the wrong account. Either kind of credential works:
 
 ```bash
 export AWS_ACCESS_KEY_ID=...  AWS_SECRET_ACCESS_KEY=...  AWS_SESSION_TOKEN=...
@@ -443,7 +443,13 @@ CDK_CONTEXT="-c enforce=true -c orgEnforcesBucketSsl=true" ./scripts/migrate-to-
 ```
 
 That is the shape the AWS access portal hands out, and it needs no profile to
-exist at all.
+exist at all. With a profile instead, `export AWS_PROFILE=<name>` after
+`aws sso login --profile <name>`.
+
+It also **offers** rather than seeds guardrail rules. Which rules an account
+should run is a decision about that account, and one of them rewrites bucket
+policies once switched to enforce — arriving to find it already there is
+inheriting somebody else's opinion. Add rules in the app, under the AWS tab.
 
 Its deploy takes no context by default. Pass any through:
 
