@@ -531,7 +531,11 @@ export default function ActivityPage() {
           {/* Four streams, because four things write here and they are not read
               for the same reason. A widget being renamed and branch protection
               being removed were previously the same list. */}
-          <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto">
+          {/* overflow-y-hidden is load-bearing: setting overflow-x to anything but
+              visible makes overflow-y compute to auto rather than staying visible,
+              and the tabs' -mb-px against a 2px bottom border overflows by exactly
+              enough to raise a vertical scrollbar on a row of buttons. */}
+          <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto overflow-y-hidden">
             {(["github", "aws", "app", "audit"] as ActivityCategory[]).map(c => {
               const active = category === c;
               const n = categoryCounts[c];

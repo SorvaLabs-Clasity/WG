@@ -46,6 +46,8 @@ export interface AuditStreamDeps {
   putRolePolicy: (roleName: string, policyName: string, policy: any) => Promise<void>;
   /** Repoints an existing role at a different enterprise. */
   updateTrustPolicy: (roleName: string, trustPolicy: any) => Promise<void>;
+  deleteRolePolicy: (roleName: string, policyName: string) => Promise<void>;
+  deleteRole: (roleName: string) => Promise<void>;
   countBucketObjects: (bucket: string) => Promise<number>;
 }
 
@@ -187,6 +189,50 @@ export async function setupStream(
   };
 }
 
+export interface DisconnectResult {
+  removedRole: boolean;
+  bucket: string;
+  /** Objects left in the archive, capped at what one listing returns. */
+  objectsKept: number;
+}
+
+/**
+ * Turn streaming off.
+ *
+ * Deletes the role, and nothing else. GitHub's next upload has nothing to
+ * assume and fails at its end; no new objects arrive.
+ *
+ * Deliberately not the bucket. That is the record of who did what, kept under
+ * RemovalPolicy.RETAIN precisely so a teardown cannot take it, and deleting it
+ * would also leave CloudFormation owning a bucket that no longer exists. An
+ * archive is worth more than the pennies it costs, and it already expires on
+ * its own after 400 days.
+ *
+ * Deliberately not the OIDC provider either: it is account-wide, another role
+ * may trust the same issuer, and with no role pointing at it it grants nobody
+ * anything.
+ *
+ * Reversible — setting up again recreates the role and streaming resumes,
+ * assuming GitHub's own switch is still on.
+ */
+export async function disconnectStream(deps: AuditStreamDeps): Promise<DisconnectResult> {
+  const bucket = bucketName(deps.prefix, deps.accountId);
+  const role = roleName(deps.prefix);
+
+  const existing = await deps.getRoleTrustPolicy(role).catch(() => null);
+  if (!existing) {
+    return { removedRole: false, bucket, objectsKept: await deps.countBucketObjects(bucket).catch(() => 0) };
+  }
+
+  // AWS refuses to delete a role that still has an inline policy attached, so
+  // the policy goes first. A missing one is not an error — somebody may have
+  // removed it by hand, and failing here would leave the role in place.
+  await deps.deleteRolePolicy(role, `${deps.prefix}-audit-log-write`).catch(() => {});
+  await deps.deleteRole(role);
+
+  return { removedRole: true, bucket, objectsKept: await deps.countBucketObjects(bucket).catch(() => 0) };
+}
+
 // ── the live wiring ───────────────────────────────────────────────────
 
 export async function liveDeps(accountId: string, prefix: string): Promise<AuditStreamDeps> {
@@ -194,6 +240,7 @@ export async function liveDeps(accountId: string, prefix: string): Promise<Audit
     IAMClient, GetRoleCommand, CreateRoleCommand, PutRolePolicyCommand,
     ListOpenIDConnectProvidersCommand, CreateOpenIDConnectProviderCommand,
     GetOpenIDConnectProviderCommand, UpdateAssumeRolePolicyCommand,
+    DeleteRolePolicyCommand, DeleteRoleCommand,
   } = await import("@aws-sdk/client-iam");
   const { S3Client, ListObjectsV2Command } = await import("@aws-sdk/client-s3");
 
@@ -241,6 +288,12 @@ export async function liveDeps(accountId: string, prefix: string): Promise<Audit
       await iam.send(new PutRolePolicyCommand({
         RoleName: name, PolicyName: policyName, PolicyDocument: JSON.stringify(policy),
       }));
+    },
+    async deleteRolePolicy(name, policyName) {
+      await iam.send(new DeleteRolePolicyCommand({ RoleName: name, PolicyName: policyName }));
+    },
+    async deleteRole(name) {
+      await iam.send(new DeleteRoleCommand({ RoleName: name }));
     },
     async updateTrustPolicy(name, trustPolicy) {
       await iam.send(new UpdateAssumeRolePolicyCommand({

@@ -36,6 +36,27 @@ who knew a flag documented in a code comment — and left everyone else with an
 empty bucket and no hint of what it was for. Two owners for one role would also
 race, and whichever lost would fail the deploy.
 
+### Turning it off
+
+**Turn off streaming** on the same page deletes the role GitHub assumes. The
+next upload has nothing to assume and fails at GitHub's end; no new batches
+arrive. Setting it up again restores it.
+
+**The archive is kept.** The bucket and everything already collected stay
+exactly as they are, and objects still expire on their own after 400 days. That
+record is the point of the feature — it is held under `RemovalPolicy.RETAIN` so
+that even destroying the stack cannot take it — and an off switch that erased
+history would be a different, much louder button.
+
+Growth is not a reason to reach for one. Gzipped audit batches are small, the
+lifecycle rule already caps the archive at 400 days, and objects move to
+Infrequent Access after 30 — a few cents a month at any realistic volume. If
+you genuinely want the archive gone, delete it deliberately in the S3 console
+rather than as a side effect of pausing a stream.
+
+The account-wide OIDC provider is left in place too: another role may trust the
+same issuer, and with nothing pointing at it, it grants nobody anything.
+
 ### The half no app can do
 
 An enterprise owner switches streaming on, once, in a browser:

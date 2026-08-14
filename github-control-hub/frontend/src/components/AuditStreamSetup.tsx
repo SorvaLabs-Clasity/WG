@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiGet, apiPost } from "../api/client";
+import { apiGet, apiPost, apiDelete } from "../api/client";
 import { usePermissions } from "../hooks/usePermissions";
 
 interface AuditStreamStatus {
@@ -58,6 +58,13 @@ export default function AuditStreamSetup() {
 
   const [slug, setSlug] = useState("");
   const [error, setError] = useState("");
+  const [confirmOff, setConfirmOff] = useState(false);
+
+  const disconnect = useMutation({
+    mutationFn: () => apiDelete<{ removedRole: boolean; objectsKept: number }>("/activity/audit-stream"),
+    onSuccess: () => { setError(""); setConfirmOff(false); qc.invalidateQueries({ queryKey: ["audit-stream"] }); },
+    onError: (e: any) => setError(e?.message || "Could not turn it off."),
+  });
 
   const setup = useMutation({
     mutationFn: (enterprise: string) =>
@@ -79,6 +86,35 @@ export default function AuditStreamSetup() {
 
   if (isLoading) return <p className="text-sm">Checking…</p>;
 
+  const OffSwitch = () => confirmOff ? (
+    <div className="mt-4 rounded-md bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
+      <p>
+        This deletes the role GitHub assumes, so no new batches arrive. <strong>The archive is
+        kept</strong> — the bucket and everything already collected stay exactly as they are, and
+        objects still expire on their own after 400 days.
+      </p>
+      <p className="mt-1 text-xs">
+        GitHub's own streaming switch is left alone; it will simply fail to deliver. Turning this
+        back on later restores it.
+      </p>
+      <div className="flex gap-2 mt-3">
+        <button onClick={() => disconnect.mutate()} disabled={disconnect.isPending}
+          className="px-3 py-1.5 text-xs font-semibold rounded-md bg-red-600 text-white hover:opacity-90 disabled:opacity-50">
+          {disconnect.isPending ? "Turning off…" : "Turn off streaming"}
+        </button>
+        <button onClick={() => setConfirmOff(false)}
+          className="px-3 py-1.5 text-xs font-semibold rounded-md border border-gh-border dark:border-slate-600">
+          Cancel
+        </button>
+      </div>
+    </div>
+  ) : (
+    <button onClick={() => setConfirmOff(true)}
+      className="mt-4 text-xs font-semibold text-red-600 dark:text-red-400 hover:underline">
+      Turn off streaming
+    </button>
+  );
+
   // Set up in AWS, and objects are arriving. Nothing left to do.
   if (status?.configured && status.receiving) {
     return (
@@ -88,6 +124,7 @@ export default function AuditStreamSetup() {
           Streaming from <strong>{status.enterprise}</strong>. {status.objectCount}+ batches
           delivered. Rows appear here as GitHub writes them — expect minutes, not seconds.
         </p>
+        <OffSwitch />
       </>
     );
   }
@@ -125,6 +162,7 @@ export default function AuditStreamSetup() {
             </button>
           </div>
         </details>
+        <OffSwitch />
         {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       </div>
     );

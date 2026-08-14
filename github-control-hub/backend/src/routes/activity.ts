@@ -1012,6 +1012,23 @@ router.post("/audit-stream", async (req: Request, res: Response) => {
   }
 });
 
+router.delete("/audit-stream", async (req: Request, res: Response) => {
+  try {
+    if (!(await isAwsAdmin(req.user!.login))) {
+      return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
+        error: "Only organization admins can turn off audit-log streaming." });
+    }
+    const { disconnectStream, liveDeps } = await import("../services/auditStreamService");
+    const { accountId, prefix } = await auditStreamContext();
+    const result = await disconnectStream(await liveDeps(accountId, prefix));
+    await logActivity("config.updated" as any, req.user!.login, "", "audit_stream",
+      "Audit-log streaming disconnected; the archive was kept", result, "app");
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "audit stream") });
+  }
+});
+
 /** The account this app is pointed at, and its resource prefix. */
 async function auditStreamContext(): Promise<{ accountId: string; prefix: string }> {
   const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");
