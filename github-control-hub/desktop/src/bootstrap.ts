@@ -24,6 +24,7 @@ function resolveTableNames(): void {
     GRAPH_EDGES_TABLE: `${prefix}-graph-edges`,
     WIDGETS_TABLE: `${prefix}-widgets`,
     COMPLIANCE_CACHE_TABLE: `${prefix}-compliance-cache`,
+    ALARMS_TABLE: `${prefix}-alarms`,
   };
   for (const [key, val] of Object.entries(tables)) {
     if (!process.env[key]) process.env[key] = val;

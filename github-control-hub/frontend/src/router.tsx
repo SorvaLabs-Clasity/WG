@@ -4,6 +4,7 @@ import AuthCallback from "./pages/AuthCallback";
 import ActivityPage from "./pages/ActivityPage";
 import AccessPage from "./pages/AccessPage";
 import SecurityPage from "./pages/SecurityPage";
+import AlarmsPage from "./pages/AlarmsPage";
 import DependencyDashboardPage from "./pages/DependencyDashboardPage";
 import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
@@ -51,6 +52,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <AccessPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/alarms",
+    element: (
+      <RequireAuth>
+        <AlarmsPage />
       </RequireAuth>
     ),
   },

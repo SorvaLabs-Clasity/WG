@@ -8,6 +8,7 @@ Two ways to be told something happened, deliberately built differently.
 | Latency | seconds | up to one interval |
 | Answers | "this just happened" | "this has been true for a while" |
 | Set up in | Security → Notifications | any widget → Add alarm |
+| Managed in | Security tab | **Alarms tab** |
 
 Everything here is admin-only, including reads. These calls run with the app's
 AWS credentials rather than the caller's GitHub token, and subscribing an
@@ -83,6 +84,10 @@ the error is recorded. Letting it count would mean two consecutive GitHub
 failures sending an all-clear about a value nobody looked at.
 
 ## Email groups
+
+Created and managed on the **Alarms** tab, and only there. The Security tab
+chooses among existing groups; it does not make them. Two screens producing SNS
+topics is how you end up with two half-remembered sets of recipients.
 
 A group is an SNS topic named `<prefix>-notify-<slug>`. The prefix is a
 permission boundary, not a convention: the Lambdas' IAM grants

@@ -8,7 +8,7 @@ import {
   SearchInput, Pager,
 } from "../design";
 import { useTableControls } from "../hooks/useTableControls";
-import NotificationsPanel from "../components/NotificationsPanel";
+import SecurityAlertPanel from "../components/SecurityAlertPanel";
 
 const TYPE_LABELS: Record<string, string> = {
   protection_removed: "Protection removed",
@@ -195,9 +195,9 @@ export default function SecurityPage() {
         <div className="mt-10">
           <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Notifications</h2>
           <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
-            Email delivery for the alerts above, and the groups that alarms on other tabs send to.
+            Email delivery for the alerts above. Groups are created on the Alarms page.
           </p>
-          <NotificationsPanel isAdmin={permissions?.isAwsAdmin ?? false} />
+          <SecurityAlertPanel isAdmin={permissions?.isAwsAdmin ?? false} />
         </div>
 
     </Page>

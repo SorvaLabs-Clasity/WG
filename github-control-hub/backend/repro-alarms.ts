@@ -505,6 +505,84 @@ function check(name: string, ok: boolean, got?: unknown) {
       "routes declared above the gate are ungated");
   }
 
+  // ── a new table has to be registered in three places ────────────────
+  {
+    // The alarms table was created, named in the CDK for the Lambdas, and
+    // missed in the desktop app's own list — so every Lambda could reach it
+    // and the app itself answered "Missing required DynamoDB table env var".
+    // Three lists that must agree, and nothing compared them.
+    const root = path.join(__dirname, "../..");
+    const rd = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
+
+    const srcDir = path.join(__dirname, "src");
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap(e =>
+        e.isDirectory() ? walk(path.join(dir, e.name))
+          : e.name.endsWith(".ts") ? [path.join(dir, e.name)] : []);
+
+    // Every table the backend actually asks for by name.
+    const required = new Set<string>();
+    for (const f of walk(srcDir)) {
+      for (const m of fs.readFileSync(f, "utf8").matchAll(/tableName\(\s*["'](\w+_TABLE)["']/g)) {
+        required.add(m[1]);
+      }
+    }
+
+    /**
+     * Tables the desktop app deliberately does not resolve, with the reason.
+     * Listed rather than filtered out silently, so adding one is a decision
+     * somebody writes down.
+     */
+    const LAMBDA_ONLY: Record<string, string> = {
+      WEBHOOK_DELIVERIES_TABLE:
+        "deduplication state read only by the webhook Lambdas; created by CDK, " +
+        "not by the setup script, so cdk destroy can take it without touching user data",
+    };
+
+    const bootstrap = rd("github-control-hub/desktop/src/bootstrap.ts");
+    const setup = rd("scripts/setup-aws-account.sh");
+
+    const missingFromApp = [...required]
+      .filter(t => !(t in LAMBDA_ONLY))
+      .filter(t => !new RegExp(`\\b${t}\\s*:`).test(bootstrap));
+    check("every table the code reads is resolved by the desktop app",
+      required.size > 0 && missingFromApp.length === 0,
+      missingFromApp.length ? missingFromApp : "no tableName() calls found — wrong directory");
+
+    // And the table has to exist for the name to be worth anything.
+    const suffixes = [...required]
+      .filter(t => !(t in LAMBDA_ONLY))
+      .map(t => t.replace(/_TABLE$/, "").toLowerCase().replace(/_/g, "-"));
+    const missingFromSetup = suffixes.filter(s => !new RegExp(`\\b${s}\\b`).test(setup));
+    check("  and created by the setup script",
+      missingFromSetup.length === 0, missingFromSetup);
+  }
+
+  // ── the UI's label mirror must cover the real catalogue ─────────────
+  {
+    // The alarm list names a condition without asking the server, so the
+    // labels are duplicated in the frontend. Only the words — never the rules
+    // about which widget may use which metric — and this is what stops a new
+    // metric shipping with its raw identifier showing in the UI.
+    const mirror = fs.readFileSync(
+      path.join(__dirname, "../frontend/src/lib/alarmSpecs.ts"), "utf8");
+
+    const everyMetric = new Set<string>();
+    for (const w of [
+      { type: "preset", presetId: "dependabot" },
+      { type: "preset", presetId: "vuln-repos" },
+      { type: "preset", presetId: "bypasses" },
+      { type: "query" },
+    ]) {
+      for (const spec of conditionsFor(w)) everyMetric.add(spec.metric);
+    }
+
+    const missing = [...everyMetric].filter(m => !mirror.includes(`"${m}"`));
+    check("the frontend knows a label for every metric the backend offers",
+      everyMetric.size > 0 && missing.length === 0,
+      missing.length ? missing : "no metrics found — the catalogue is empty");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();
