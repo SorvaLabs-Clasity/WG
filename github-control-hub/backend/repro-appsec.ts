@@ -227,13 +227,14 @@ const electron = read("github-control-hub/desktop/src/main.ts");
   }
 
   // ── the private key is not world-readable ──────────────────────────
+  //
+  // deploy.sh shipped the application to the instance but never touched the
+  // TLS key itself, so its removal in the webhook-on-Lambda migration drops
+  // no coverage here; the CDK user-data is what sets the key's permissions.
   {
-    const deploy = read("scripts/deploy.sh");
-    for (const [name, src] of [["the CDK user-data", cdk], ["deploy.sh", deploy]] as const) {
-      check(`${name} does not chmod the TLS key 644`,
-        !/chmod 644 [^\n']*server\.key/.test(src),
-        "the server's private key is readable by every account on the instance");
-    }
+    check("the CDK user-data does not chmod the TLS key 644",
+      !/chmod 644 [^\n']*server\.key/.test(cdk),
+      "the server's private key is readable by every account on the instance");
     check("  the CDK gives the key mode 600",
       /chmod 600 \/etc\/ssl\/github-control-hub\/server\.key/.test(cdk));
   }
@@ -279,7 +280,7 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     files.forEach(walk);
     check("no code falls back to a region nobody chose", offenders.length === 0, offenders);
 
-    const scripts = ["scripts/setup-aws-account.sh", "scripts/deploy.sh", "scripts/setup-cloudtrail.sh"];
+    const scripts = ["scripts/setup-aws-account.sh", "scripts/setup-cloudtrail.sh"];
     for (const sc of scripts) {
       const src = fs.readFileSync(path.join(ROOT, sc), "utf8");
       check(`  ${sc.split("/")[1]} requires a region rather than assuming one`,
