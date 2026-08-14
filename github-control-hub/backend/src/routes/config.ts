@@ -161,7 +161,7 @@ router.post("/import", async (req: Request, res: Response) => {
     if (!dryRun) {
       const total = Object.values(applied).reduce((a, b) => a + b, 0);
       await logActivity(
-        "template.update" as any, req.user!.login, "*", "configuration",
+        "config.import", req.user!.login, "*", "configuration",
         `Imported ${total} configuration ${total === 1 ? "record" : "records"} ` +
         `from an export taken ${bundle.exportedAt ?? "at an unknown time"}` +
         (bundle.org && bundle.org !== process.env.GITHUB_ORG ? ` for ${bundle.org}` : ""),

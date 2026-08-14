@@ -38,6 +38,7 @@ export type ActivityAction =
   | "github.issue_opened"
   | "github.branch_protection_edited"
   | "github.ruleset_edited"
+  | "config.import"
   | "audit.event";
 
 export interface UndoPayload {
