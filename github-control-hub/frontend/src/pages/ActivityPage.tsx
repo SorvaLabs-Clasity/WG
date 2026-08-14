@@ -599,6 +599,17 @@ export default function ActivityPage() {
         {isLoading && <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gh-blue"></div></div>}
         {error && <div className="bg-red-50 dark:bg-red-950/50 border-l-4 border-red-500 p-4 rounded-md mb-6"><p className="text-red-700 dark:text-red-400">Failed to load activity: {(error as Error).message}</p></div>}
 
+        {/* Streaming status and its controls, above the table rather than in
+            the empty state. Putting them in the empty state meant they were
+            reachable only while nothing was arriving — so a stream working
+            correctly hid its own off switch, which is the one moment somebody
+            goes looking for it. */}
+        {!isLoading && !error && category === "audit" && (
+          <div className="mb-4 bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 p-4 text-center">
+            <AuditStreamSetup />
+          </div>
+        )}
+
         {!isLoading && !error && (
           <div className="bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 shadow-subtle overflow-hidden relative">
             <div className="overflow-x-auto">
@@ -623,7 +634,7 @@ export default function ActivityPage() {
                           configures streaming at the enterprise. Saying so
                           beats an unexplained blank table. */}
                       {category === "audit" && categoryCounts.audit === 0 ? (
-                        <AuditStreamSetup />
+                        <p className="text-sm">Nothing streamed yet. The panel above shows where it is up to.</p>
                       ) : categoryCounts[category] === 0 ? (
                         <>
                           <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing recorded here yet</p>
