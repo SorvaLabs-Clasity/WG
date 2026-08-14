@@ -8,37 +8,56 @@ import { sendIfPermissionDenied } from "../utils/permissionError";
 
 const router = Router();
 
+/** The `after` cursor from a Link header's rel="next", if there is one. */
+function nextCursor(link: string | undefined): string | undefined {
+  if (!link) return undefined;
+  for (const part of link.split(",")) {
+    if (!/rel="next"/.test(part)) continue;
+    const url = part.match(/<([^>]+)>/)?.[1];
+    if (!url) continue;
+    const after = new URL(url).searchParams.get("after");
+    if (after) return after;
+  }
+  return undefined;
+}
+
 /**
- * Every open alert, not the first hundred.
+ * Every open alert, not the first hundred — walked the way these endpoints
+ * actually paginate.
  *
- * All three Dependabot calls in this file asked for `per_page: 100` and used
- * the page they got back. Past a hundred open alerts an organisation
- * under-counted every severity and under-listed every repository — silently,
- * and in the direction that reads as good news. "12 critical" when the answer
- * is 300 is worse than showing nothing, and it is the same failure
- * MissingGraphDataError exists to prevent on the graph checks.
+ * Two bugs live here. Originally all three Dependabot calls asked for
+ * `per_page: 100` and used the single page they got back, so past a hundred
+ * open alerts an organisation under-counted every severity and under-listed
+ * every repository — silently, in the direction that reads as good news.
  *
- * Shaped like listRepos' loop rather than octokit.paginate, because that loop
- * is the pattern already used everywhere else here, and because createOctokit
- * disables throttle retries — a rate-limited page throws, which every caller
- * below already handles.
+ * The fix for that walked pages with `?page=N`, shaped like listRepos' loop
+ * because that is the pattern everywhere else here. But listRepos calls an
+ * endpoint that supports page numbers and the Dependabot alerts endpoints do
+ * not — organisation-level and repository-level alike answer:
+ *
+ *     400  Pagination using the `page` parameter is not supported.
+ *
+ * They use cursor pagination: a Link header with rel="next" carrying an
+ * `after` cursor. So the walk follows that instead, and ends when GitHub stops
+ * offering a next link rather than when a page looks short. A short page is not
+ * reliable evidence of the end here, and the link is.
  *
  * Exported for repro-dependencies.ts.
  */
-export async function fetchAllPages(
-  fetchPage: (page: number) => Promise<{ data: any[] }>,
+export async function fetchAllCursorPages(
+  fetchPage: (cursor: string | undefined) => Promise<{ data: any[]; headers?: Record<string, any> }>,
 ): Promise<any[]> {
   const all: any[] = [];
-  let page = 1;
+  let cursor: string | undefined = undefined;
 
   while (true) {
-    const { data } = await fetchPage(page);
-    if (data.length === 0) break;
+    const { data, headers } = await fetchPage(cursor);
+    if (!data || data.length === 0) break;
     all.push(...data);
-    // A short page is the last page. Asking for one more would cost a request
-    // per call to learn nothing.
-    if (data.length < 100) break;
-    page++;
+
+    const next = nextCursor(headers?.link);
+    if (!next) break;
+    cursor = next;
   }
 
   return all;
@@ -60,13 +79,13 @@ router.get("/dependencies", async (req: Request, res: Response) => {
     let allAlerts: any[] = [];
 
     if (repoFilter) {
-      const data = await fetchAllPages((page) =>
+      const data = await fetchAllCursorPages((after) =>
         octokit.rest.dependabot.listAlertsForRepo({
           owner: org,
           repo: repoFilter,
           state: "open",
           per_page: 100,
-          page,
+          ...(after ? { after } : {}),
         })
       );
       allAlerts = data.map((a: any) => mapAlert(a, repoFilter, org));
@@ -88,19 +107,29 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       }
     } else {
       try {
-        const data = await fetchAllPages((page) =>
+        const data = await fetchAllCursorPages((after) =>
           octokit.rest.dependabot.listAlertsForOrg({
             org,
             state: "open",
             per_page: 100,
-            page,
+            ...(after ? { after } : {}),
           })
         );
         allAlerts = data.map((a: any) => mapAlert(a, a.repository?.name || "unknown", org));
       } catch (err: any) {
-        if (err.status !== 403 && err.status !== 404) {
+        // The alert sweep failing should cost the alerts, not the page. Every
+        // repository below is still listed with its Dependabot state, which is
+        // most of what this screen is for.
+        //
+        // 400 is here because of how this broke: the walk asked for `?page=N`,
+        // which these endpoints reject, and a rethrown 400 turned the whole
+        // request into a 500 and the screen into a blank one. The pagination is
+        // fixed above; this makes the next such mistake cost less than
+        // everything.
+        if (err.status !== 400 && err.status !== 403 && err.status !== 404) {
           throw err;
         }
+        console.error(`[Dependencies] Org-wide alert sweep failed (${err.status}) — listing repositories without alert data:`, err.message);
       }
       
       // Also fetch all repos and check if any have dependabot disabled
@@ -223,12 +252,12 @@ router.get("/summary", async (req: Request, res: Response) => {
 
     let allAlerts: any[] = [];
     try {
-      allAlerts = await fetchAllPages((page) =>
+      allAlerts = await fetchAllCursorPages((after) =>
         octokit.rest.dependabot.listAlertsForOrg({
           org,
           state: "open",
           per_page: 100,
-          page,
+          ...(after ? { after } : {}),
         })
       );
     } catch (err: any) {

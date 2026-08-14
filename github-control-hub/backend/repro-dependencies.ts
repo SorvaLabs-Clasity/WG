@@ -1,18 +1,34 @@
 /**
  * Dependabot alert paging.
  *
- * All three calls in routes/dependencies.ts asked GitHub for `per_page: 100`
- * and then used the single page they got back. An organisation with more than
- * a hundred open alerts therefore under-counted every severity and
- * under-listed every affected repository — with no error, no warning, and in
- * the direction that looks like good news.
+ * Two bugs, one after the other, in the same handful of lines.
  *
- * That is the same failure MissingGraphDataError guards against on the graph
- * checks: reporting fewer findings than exist is the worst thing a security
- * dashboard can do, because nobody goes looking for the ones it did not
- * mention.
+ * The first: all three calls in routes/dependencies.ts asked GitHub for
+ * `per_page: 100` and used the single page they got back. An organisation with
+ * more than a hundred open alerts under-counted every severity and under-listed
+ * every affected repository — no error, no warning, in the direction that looks
+ * like good news.
+ *
+ * The second was the fix for the first. It walked pages with `?page=N`, which
+ * is how every other paginated call in this codebase works — and which the
+ * Dependabot alerts endpoints reject outright:
+ *
+ *     400  Pagination using the `page` parameter is not supported.
+ *
+ * Both the organisation-level and repository-level alert endpoints use cursor
+ * pagination instead: a `Link` header carrying `rel="next"` with an `after`
+ * cursor. The route's catch tolerated only 403 and 404, so the 400 propagated,
+ * the request returned 500, and the Dependabot page rendered nothing at all.
+ * Under-reporting became reporting nothing.
+ *
+ * The previous version of this suite passed throughout, because its fake
+ * accepted `page` and returned arrays. It proved the loop agreed with the fake.
+ * The fake was the thing that was wrong, so the fake here refuses `page` the
+ * way GitHub does.
  */
-import { fetchAllPages } from "./src/routes/dependencies";
+import fs from "fs";
+import path from "path";
+import { fetchAllCursorPages } from "./src/routes/dependencies";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -20,85 +36,107 @@ function check(name: string, ok: boolean, got?: unknown) {
   if (!ok) failures++;
 }
 
-/** A fake GitHub holding `total` alerts, recording which pages were asked for. */
+/**
+ * A fake GitHub holding `total` alerts behind cursor pagination.
+ *
+ * It mirrors the real endpoint in the one way that matters: asking for a `page`
+ * is a 400, not a silently different result.
+ */
 function githubWith(total: number) {
-  const pagesRequested: number[] = [];
-  const fetchPage = async (page: number) => {
-    pagesRequested.push(page);
-    const start = (page - 1) * 100;
+  const cursorsRequested: Array<string | undefined> = [];
+
+  const fetchPage = async (cursor: string | undefined, extra?: Record<string, unknown>) => {
+    if (extra && "page" in extra) {
+      const err: any = new Error("Pagination using the `page` parameter is not supported.");
+      err.status = 400;
+      throw err;
+    }
+    cursorsRequested.push(cursor);
+    const start = cursor ? Number(cursor) : 0;
     const data = Array.from(
       { length: Math.max(0, Math.min(100, total - start)) },
       (_, i) => ({ number: start + i + 1 }),
     );
-    return { data };
+    const nextStart = start + data.length;
+    // GitHub only sends rel="next" when there is more to come.
+    const headers = nextStart < total ? { link: `<https://api.github.com/x?after=${nextStart}>; rel="next"` } : {};
+    return { data, headers };
   };
-  return { fetchPage, pagesRequested };
+
+  return { fetchPage, cursorsRequested };
 }
 
 (async () => {
-  // The reported bug, at the boundary where it starts.
+  // The original bug, at the boundary where it starts.
   {
-    const { fetchPage, pagesRequested } = githubWith(250);
-    const all = await fetchAllPages(fetchPage);
+    const { fetchPage, cursorsRequested } = githubWith(250);
+    const all = await fetchAllCursorPages(fetchPage);
     check("250 alerts are all returned, not the first 100", all.length === 250, all.length);
-    check("  three pages were fetched", pagesRequested.length === 3, pagesRequested);
-    check("  and the last alert is present",
-      all[all.length - 1]?.number === 250, all[all.length - 1]);
+    check("  three requests were made", cursorsRequested.length === 3, cursorsRequested);
+    check("  the first asks for no cursor", cursorsRequested[0] === undefined, cursorsRequested[0]);
+    check("  and the last alert is present", all[all.length - 1]?.number === 250, all[all.length - 1]);
   }
 
-  // Exactly one full page is the case a naive loop gets wrong in the other
-  // direction: 100 back means "there may be more", so page 2 must be asked
-  // for, and it comes back empty.
+  // Exactly one full page: a naive loop gets this wrong in the other direction.
+  // Here the absence of a next link is what ends it, not the page size.
   {
-    const { fetchPage, pagesRequested } = githubWith(100);
-    const all = await fetchAllPages(fetchPage);
+    const { fetchPage, cursorsRequested } = githubWith(100);
+    const all = await fetchAllCursorPages(fetchPage);
     check("exactly 100 alerts returns 100", all.length === 100, all.length);
-    check("  and stops once the next page is empty",
-      pagesRequested.length === 2, pagesRequested);
+    check("  and stops without a second request, because there is no next link",
+      cursorsRequested.length === 1, cursorsRequested);
   }
 
-  // A short first page is the last page — asking again costs a request per
-  // call across the whole org and learns nothing.
   {
-    const { fetchPage, pagesRequested } = githubWith(12);
-    const all = await fetchAllPages(fetchPage);
-    check("a short page ends the walk", all.length === 12 && pagesRequested.length === 1,
-      { got: all.length, pages: pagesRequested });
+    const { fetchPage } = githubWith(12);
+    const all = await fetchAllCursorPages(fetchPage);
+    check("a short page ends the walk", all.length === 12, all.length);
   }
 
-  // A clean org: no alerts, one request, empty list rather than a throw.
   {
-    const { fetchPage, pagesRequested } = githubWith(0);
-    const all = await fetchAllPages(fetchPage);
+    const { fetchPage, cursorsRequested } = githubWith(0);
+    const all = await fetchAllCursorPages(fetchPage);
     check("no alerts returns an empty list in one request",
-      all.length === 0 && pagesRequested.length === 1, { got: all.length, pages: pagesRequested });
+      all.length === 0 && cursorsRequested.length === 1, { all: all.length, cursorsRequested });
   }
 
-  // Rate limiting throws rather than retrying (createOctokit sets
-  // onRateLimit: () => false), and the routes turn that into a 429. Swallowing
-  // it here would silently return a partial list, which is the very thing this
+  // Truncating on error would under-report, which is the failure this whole
   // file exists to prevent.
   {
     let reached = 0;
-    const fetchPage = async (page: number) => {
+    const failing = async (cursor: string | undefined) => {
       reached++;
-      if (page === 2) throw Object.assign(new Error("rate limited"), { status: 403 });
-      return { data: Array.from({ length: 100 }, (_, i) => ({ number: i + 1 })) };
+      if (reached === 2) { const e: any = new Error("rate limited"); e.status = 403; throw e; }
+      return { data: Array.from({ length: 100 }, (_, i) => ({ number: i + 1 })),
+               headers: { link: `<https://api.github.com/x?after=100>; rel="next"` } };
     };
     let threw = false;
-    try { await fetchAllPages(fetchPage); } catch { threw = true; }
-    check("a failed page propagates instead of truncating", threw && reached === 2,
-      { threw, reached });
+    try { await fetchAllCursorPages(failing); } catch { threw = true; }
+    check("a failed page propagates instead of truncating", threw && reached === 2, { threw, reached });
   }
 
-  // The property, stated plainly: the count never depends on the page size.
   {
     for (const n of [1, 99, 100, 101, 199, 200, 201, 1000]) {
       const { fetchPage } = githubWith(n);
-      const all = await fetchAllPages(fetchPage);
+      const all = await fetchAllCursorPages(fetchPage);
       if (all.length !== n) { check(`${n} alerts round-trip`, false, all.length); break; }
     }
-    check("every size from 1 to 1000 round-trips exactly", true);
+    check("every size boundary round-trips exactly", true);
+  }
+
+  // The bug was not in the loop — it was in what the callers handed it. A
+  // behavioural test of the helper cannot see that, so this reads the source.
+  {
+    const src = fs.readFileSync(path.join(__dirname, "src/routes/dependencies.ts"), "utf8");
+    const code = src.split("\n").filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+
+    check("no Dependabot call passes a page parameter",
+      !/dependabot\.list\w+\(\{[^}]*\bpage\b/s.test(code),
+      "the alerts endpoints answer `page` with 400");
+
+    check("  and the org-wide call tolerates a 400 rather than 500ing the route",
+      /err\.status !== 400/.test(code) || !/listAlertsForOrg/.test(code),
+      "a rejected page walk took the whole page down with it");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
