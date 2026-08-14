@@ -5,63 +5,10 @@ import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
 import { sendIfPermissionDenied } from "../utils/permissionError";
+import { fetchAllCursorPages } from "../utils/cursorPages";
+import { mapAlert, fetchOrgDependencyAlerts } from "../services/dependencyService";
 
 const router = Router();
-
-/** The `after` cursor from a Link header's rel="next", if there is one. */
-function nextCursor(link: string | undefined): string | undefined {
-  if (!link) return undefined;
-  for (const part of link.split(",")) {
-    if (!/rel="next"/.test(part)) continue;
-    const url = part.match(/<([^>]+)>/)?.[1];
-    if (!url) continue;
-    const after = new URL(url).searchParams.get("after");
-    if (after) return after;
-  }
-  return undefined;
-}
-
-/**
- * Every open alert, not the first hundred — walked the way these endpoints
- * actually paginate.
- *
- * Two bugs live here. Originally all three Dependabot calls asked for
- * `per_page: 100` and used the single page they got back, so past a hundred
- * open alerts an organisation under-counted every severity and under-listed
- * every repository — silently, in the direction that reads as good news.
- *
- * The fix for that walked pages with `?page=N`, shaped like listRepos' loop
- * because that is the pattern everywhere else here. But listRepos calls an
- * endpoint that supports page numbers and the Dependabot alerts endpoints do
- * not — organisation-level and repository-level alike answer:
- *
- *     400  Pagination using the `page` parameter is not supported.
- *
- * They use cursor pagination: a Link header with rel="next" carrying an
- * `after` cursor. So the walk follows that instead, and ends when GitHub stops
- * offering a next link rather than when a page looks short. A short page is not
- * reliable evidence of the end here, and the link is.
- *
- * Exported for repro-dependencies.ts.
- */
-export async function fetchAllCursorPages(
-  fetchPage: (cursor: string | undefined) => Promise<{ data: any[]; headers?: Record<string, any> }>,
-): Promise<any[]> {
-  const all: any[] = [];
-  let cursor: string | undefined = undefined;
-
-  while (true) {
-    const { data, headers } = await fetchPage(cursor);
-    if (!data || data.length === 0) break;
-    all.push(...data);
-
-    const next = nextCursor(headers?.link);
-    if (!next) break;
-    cursor = next;
-  }
-
-  return all;
-}
 
 router.get("/dependencies", async (req: Request, res: Response) => {
   try {
@@ -106,32 +53,16 @@ router.get("/dependencies", async (req: Request, res: Response) => {
         }
       }
     } else {
-      try {
-        const data = await fetchAllCursorPages((after) =>
-          octokit.rest.dependabot.listAlertsForOrg({
-            org,
-            state: "open",
-            per_page: 100,
-            ...(after ? { after } : {}),
-          })
-        );
-        allAlerts = data.map((a: any) => mapAlert(a, a.repository?.name || "unknown", org));
-      } catch (err: any) {
-        // The alert sweep failing should cost the alerts, not the page. Every
-        // repository below is still listed with its Dependabot state, which is
-        // most of what this screen is for.
-        //
-        // 400 is here because of how this broke: the walk asked for `?page=N`,
-        // which these endpoints reject, and a rethrown 400 turned the whole
-        // request into a 500 and the screen into a blank one. The pagination is
-        // fixed above; this makes the next such mistake cost less than
-        // everything.
-        if (err.status !== 400 && err.status !== 403 && err.status !== 404) {
-          throw err;
-        }
-        console.error(`[Dependencies] Org-wide alert sweep failed (${err.status}) — listing repositories without alert data:`, err.message);
-      }
-      
+      // The alert sweep failing should cost the alerts, not the page. Every
+      // repository below is still listed with its Dependabot state, which is
+      // most of what this screen is for — so a degraded sweep is tolerated
+      // here, and reported rather than thrown. The alarm evaluator reads the
+      // same function and treats `degraded` as "no reading", because an alarm
+      // must not resolve itself off a sweep that never ran.
+      const sweep = await fetchOrgDependencyAlerts(octokit, org);
+      allAlerts = sweep.alerts;
+
+
       // Also fetch all repos and check if any have dependabot disabled
       const repos = await listRepos(octokit);
       const reposWithAlerts = new Set(allAlerts.map(a => a.repo));
@@ -250,33 +181,29 @@ router.get("/summary", async (req: Request, res: Response) => {
     const octokit = createOctokit(token);
     const org = getOrg();
 
-    let allAlerts: any[] = [];
-    try {
-      allAlerts = await fetchAllCursorPages((after) =>
-        octokit.rest.dependabot.listAlertsForOrg({
-          org,
-          state: "open",
-          per_page: 100,
-          ...(after ? { after } : {}),
-        })
-      );
-    } catch (err: any) {
-      if (err.status === 403 || err.status === 404) {
-        return res.json({ critical: 0, high: 0, medium: 0, low: 0, repos_with_vulns: 0 });
-      }
-      throw err;
+    // Shares the sweep with the tab above and with the alarm evaluator, which
+    // also brings the 400 tolerance here. This endpoint caught 403 and 404 but
+    // not 400 — the same rejected-pagination failure that blanked the
+    // Dependabot tab would have turned this summary into a 500.
+    const sweep = await fetchOrgDependencyAlerts(octokit, org);
+    if (sweep.degraded) {
+      return res.json({ critical: 0, high: 0, medium: 0, low: 0, repos_with_vulns: 0 });
     }
 
     const counts = { critical: 0, high: 0, medium: 0, low: 0 };
     const reposWithVulns = new Set<string>();
 
-    for (const alert of allAlerts) {
-      const severity = alert.security_advisory?.severity || alert.security_vulnerability?.severity || "low";
+    for (const alert of sweep.alerts) {
+      // GitHub says "moderate" where this app says "medium". Counting only the
+      // app's spelling meant every moderate alert fell through `severity in
+      // counts` and was reported in no severity at all — the org's totals were
+      // short by however many moderates it had, in the reassuring direction.
+      const severity = alert.severity === "moderate" ? "medium" : alert.severity;
       if (severity in counts) {
         counts[severity as keyof typeof counts]++;
       }
-      if (alert.repository?.name) {
-        reposWithVulns.add(alert.repository.name);
+      if (alert.repo && alert.repo !== "unknown") {
+        reposWithVulns.add(alert.repo);
       }
     }
 
@@ -291,23 +218,9 @@ router.get("/summary", async (req: Request, res: Response) => {
   }
 });
 
-function mapAlert(alert: any, repoName: string, orgName: string) {
-  const advisory = alert.security_advisory || {};
-  const vuln = alert.security_vulnerability || {};
-
-  return {
-    id: `dep-${alert.number}`,
-    repo: repoName,
-    org: orgName,
-    dependency: vuln.package?.name || advisory.summary || "unknown",
-    severity: advisory.severity || vuln.severity || "low",
-    cve: advisory.cve_id || (advisory.identifiers || []).find((i: any) => i.type === "CVE")?.value || "",
-    ecosystem: vuln.package?.ecosystem || "",
-    vulnerable_version: vuln.vulnerable_version_range || "",
-    patched_version: vuln.first_patched_version?.identifier || null,
-    detected_at: alert.created_at || new Date().toISOString(),
-  };
-}
+// mapAlert lives in services/dependencyService.ts, shared with the alarm
+// evaluator so the number on the screen and the number in the email come from
+// the same code.
 
 function mockDisabledAlert(repoName: string, orgName: string) {
   return {

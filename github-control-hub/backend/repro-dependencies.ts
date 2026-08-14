@@ -28,7 +28,7 @@
  */
 import fs from "fs";
 import path from "path";
-import { fetchAllCursorPages } from "./src/routes/dependencies";
+import { fetchAllCursorPages } from "./src/utils/cursorPages";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -127,16 +127,27 @@ function githubWith(total: number) {
   // The bug was not in the loop — it was in what the callers handed it. A
   // behavioural test of the helper cannot see that, so this reads the source.
   {
-    const src = fs.readFileSync(path.join(__dirname, "src/routes/dependencies.ts"), "utf8");
-    const code = src.split("\n").filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n");
+    // Both files, because the org-wide sweep moved into the service so the
+    // alarm evaluator could share it. Reading only the route would have let
+    // the tolerance disappear with the code that carried it.
+    const code = ["src/routes/dependencies.ts", "src/services/dependencyService.ts"]
+      .map(f => fs.readFileSync(path.join(__dirname, f), "utf8"))
+      .map(s => s.split("\n").filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n"))
+      .join("\n");
 
     check("no Dependabot call passes a page parameter",
       !/dependabot\.list\w+\(\{[^}]*\bpage\b/s.test(code),
       "the alerts endpoints answer `page` with 400");
 
-    check("  and the org-wide call tolerates a 400 rather than 500ing the route",
+    check("  and every org-wide sweep tolerates a 400 rather than 500ing its caller",
       /err\.status !== 400/.test(code) || !/listAlertsForOrg/.test(code),
       "a rejected page walk took the whole page down with it");
+
+    // The summary endpoint counted GitHub's "moderate" into a `medium` bucket
+    // it never matched, so moderate alerts were reported in no severity at all.
+    check("  and \"moderate\" is folded into medium rather than dropped",
+      /moderate/.test(code),
+      "moderate-severity alerts vanish from the org summary");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

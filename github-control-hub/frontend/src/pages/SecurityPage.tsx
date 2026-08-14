@@ -8,6 +8,7 @@ import {
   SearchInput, Pager,
 } from "../design";
 import { useTableControls } from "../hooks/useTableControls";
+import NotificationsPanel from "../components/NotificationsPanel";
 
 const TYPE_LABELS: Record<string, string> = {
   protection_removed: "Protection removed",
@@ -186,6 +187,17 @@ export default function SecurityPage() {
             matchCount={table.matchCount} totalCount={table.totalCount}
             filtered={table.filtered} noun="alerts"
           />
+        </div>
+
+        {/* Who hears about these, and how quickly. Placed under the alerts
+            rather than in a settings screen, because the question "should
+            somebody be emailed about this?" arrives while looking at one. */}
+        <div className="mt-10">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Notifications</h2>
+          <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
+            Email delivery for the alerts above, and the groups that alarms on other tabs send to.
+          </p>
+          <NotificationsPanel isAdmin={permissions?.isAwsAdmin ?? false} />
         </div>
 
     </Page>

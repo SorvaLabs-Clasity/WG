@@ -306,19 +306,36 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // the completeness assertion below.
     ["awsGuardrails.ts", /router\.(post|put|delete)\(/g, /requireAdmin/],
     ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted/],
+    ["alarms.ts",        /router\.(post|put|delete)\(/g, /requireAdmin/],
   ];
 
   for (const [file, routeRe, guardRe] of GUARDED) {
     const src = read(file);
     const starts = [...src.matchAll(routeRe)].map(m => m.index!);
+
+    /**
+     * A router-wide `router.use(guard)` gates everything declared after it.
+     *
+     * Accepted as an alternative to naming the guard on each route, and only
+     * when it precedes the first route — a gate installed halfway down the
+     * file leaves everything above it open, which is the same bug as
+     * forgetting it. This is the stronger of the two patterns, because a route
+     * added later inherits it instead of having to remember it.
+     */
+    const blanketAt = src.search(new RegExp(`router\\.use\\(\\s*(?:${guardRe.source})\\s*\\)`));
+    const firstRouteAt = starts.length ? starts[0] : Infinity;
+    const blanketGuarded = blanketAt >= 0 && blanketAt < firstRouteAt;
+
     const ungated: string[] = [];
-    starts.forEach((start, i) => {
-      const end = i + 1 < starts.length ? starts[i + 1] : src.length;
-      const body = src.slice(start, end);
-      const name = body.slice(0, body.indexOf("\n")).trim();
-      // The guard may sit on the router line itself (middleware) or in the body.
-      if (!guardRe.test(body)) ungated.push(name);
-    });
+    if (!blanketGuarded) {
+      starts.forEach((start, i) => {
+        const end = i + 1 < starts.length ? starts[i + 1] : src.length;
+        const body = src.slice(start, end);
+        const name = body.slice(0, body.indexOf("\n")).trim();
+        // The guard may sit on the router line itself (middleware) or in the body.
+        if (!guardRe.test(body)) ungated.push(name);
+      });
+    }
     check(`${file}: every write route names its guard`, ungated.length === 0, ungated);
   }
 

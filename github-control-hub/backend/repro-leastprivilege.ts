@@ -194,6 +194,42 @@ const accountsCode = code(accountsTs);
       "an allow alone does not exclude anyone");
   }
 
+  // ── the alarm path can send mail, and only that ────────────────────
+  {
+    const snsGrants = [...cdkCode.matchAll(/sns:[\s\S]{0,300}?resources:\s*\[([^\]]*)\]/g)]
+      .map(m => m[1]);
+
+    check("SNS grants exist for the alarm path", snsGrants.length > 0, snsGrants);
+    check("  and none of them reaches every topic in the account",
+      snsGrants.every(r => !/:\*[`"']/.test(r) && !/["'`]\*["'`]/.test(r)), snsGrants);
+    // The grants name a shared constant rather than repeating the ARN, so the
+    // constant is what has to be checked — asserting on the literal alone
+    // would pass for any value the variable happened to hold.
+    const notifyTopicsDef = /const notifyTopics = ([`"'])([^`"']*)\1/.exec(cdkCode)?.[2] ?? "";
+    check("  the shared topic ARN is scoped to this stack's notify topics",
+      /\$\{stackPrefix\}-notify-\*$/.test(notifyTopicsDef), notifyTopicsDef);
+    check("  and every SNS grant uses it or an equally scoped literal",
+      snsGrants.every(r => /notify-\*/.test(r) || r.trim() === "notifyTopics"), snsGrants);
+
+    // Creating a topic and subscribing an address are how mail reaches a new
+    // person. Those run in the desktop app under the operator's own
+    // credentials; a Lambda that could do them could mail anyone it liked.
+    const lambdaSnsActions = [...cdkCode.matchAll(/actions:\s*\["(sns:[^"]+)"\]/g)].map(m => m[1]);
+    check("no Lambda may subscribe anyone or create a topic",
+      lambdaSnsActions.every(a => a === "sns:Publish"), lambdaSnsActions);
+
+    // The evaluator only ever overwrites an alarm's own runtime fields.
+    const alarmBlock = cdkCode.slice(
+      cdkCode.indexOf("const alarmFn"),
+      cdkCode.indexOf("AlarmSchedule"),
+    );
+    check("the alarm evaluator cannot delete a row",
+      alarmBlock.length > 0 && !/dynamodb:DeleteItem/.test(alarmBlock),
+      "a scheduled job gained the ability to destroy alarms or activity");
+    check("  and holds no IAM, STS or Lambda-invoke rights",
+      !/iam:|sts:AssumeRole|lambda:InvokeFunction/.test(alarmBlock), alarmBlock.slice(0, 200));
+  }
+
   // ── the writes that do exist are exactly three ─────────────────────
   {
     const block = cdkCode.split("RemediateThreeThings")[1]?.split("}))")[0] ?? "";

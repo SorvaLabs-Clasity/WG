@@ -17,3 +17,4 @@ Also here:
 
 - [Config transfer](config-transfer.md) — export and import the app's own setup
 - [Audit log](audit-log.md) — the enterprise's own record of who did what
+- [Alarms and email](alarms.md) — thresholds on widgets, and security alerts by email

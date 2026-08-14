@@ -79,6 +79,28 @@ export async function createAlert(
     "app"
   );
 
+  // Emailed if the security toggle is on. Wrapped and swallowed on purpose:
+  // the alert is already recorded by this point, and a failure to notify must
+  // not turn into a failure to alert. The webhook worker would otherwise
+  // release its claim and retry the whole delivery, duplicating activity rows
+  // and alerts because SNS was briefly unavailable.
+  try {
+    const { notifySecurityAlert } = await import("../alarms/securityNotify");
+    const { getSecuritySettings, getGroup } = await import("./alarmService");
+    const { publish } = await import("./notifyService");
+    const outcome = await notifySecurityAlert(newAlert, {
+      settings: getSecuritySettings,
+      topicArnFor: async (id: string) => (await getGroup(id))?.topicArn,
+      publish,
+      org: process.env.GITHUB_ORG || "",
+    });
+    if (outcome === "sent") console.log(`[Alarm] Security alert emailed: ${type} on ${repo}`);
+    else if (outcome === "no-group") console.error("[Alarm] Security emails are on but no email group is set");
+    else if (outcome === "publish-failed") console.error(`[Alarm] Security alert email failed: ${type} on ${repo}`);
+  } catch (err) {
+    console.error("[Alarm] Security alert notification failed:", (err as Error).message);
+  }
+
   return newAlert;
 }
 

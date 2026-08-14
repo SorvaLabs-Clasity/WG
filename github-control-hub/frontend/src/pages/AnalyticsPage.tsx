@@ -2,6 +2,8 @@ import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter, SearchInput, Pager } from "../design";
 import { useTableControls } from "../hooks/useTableControls";
+import AlarmModal from "../components/AlarmModal";
+import { useAlarms } from "../hooks/useAlarms";
 import { useAuth } from "../App";
 import { useSecurityQuery, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
@@ -222,6 +224,11 @@ export default function AnalyticsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingWidget, setEditingWidget] = useState<WidgetConfig | null>(null);
   const [focusId, setFocusId] = useState<string | null>(null);
+  const [alarmWidgetId, setAlarmWidgetId] = useState<string | null>(null);
+  // Admin-gated on the server; this only avoids offering a control that would
+  // be refused, and avoids a 403 for everyone else.
+  const isAwsAdmin = permissions?.isAwsAdmin ?? false;
+  const { data: alarms } = useAlarms(isAwsAdmin);
   const focused = useMemo(() => widgets.find(w => w.id === focusId) ?? null, [widgets, focusId]);
 
   /**
@@ -278,6 +285,9 @@ export default function AnalyticsPage() {
           config={focused}
           onBack={() => setFocusId(null)}
           onEdit={() => setEditingWidget(focused)}
+          onAlarm={() => setAlarmWidgetId(focused.id)}
+          canAlarm={isAwsAdmin}
+          alarmCount={alarms?.filter(a => a.widgetId === focused.id).length ?? 0}
           canEdit={canEditDashboard}
           graphEmpty={graphEmpty}
           orgName={orgName}
@@ -375,6 +385,15 @@ export default function AnalyticsPage() {
           initialData={editingWidget || undefined}
         />
       )}
+
+      {alarmWidgetId && (
+        <AlarmModal
+          isOpen
+          widgetId={alarmWidgetId}
+          existing={alarms?.find(a => a.widgetId === alarmWidgetId) ?? null}
+          onClose={() => setAlarmWidgetId(null)}
+        />
+      )}
     </Page>
   );
 }
@@ -421,8 +440,10 @@ function Ring({ share, tone, children }: { share: number; tone: typeof TONE[Leve
  * uses, and the table gets the whole width without anything moving underneath
  * it.
  */
-function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName }: {
+function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName,
+                      onAlarm, canAlarm, alarmCount }: {
   config: WidgetConfig; onBack: () => void; onEdit: () => void;
+  onAlarm: () => void; canAlarm: boolean; alarmCount: number;
   canEdit: boolean; graphEmpty?: boolean; orgName?: string;
 }) {
   const { items, isLoading, total, entity } = useWidgetData(config);
@@ -456,11 +477,19 @@ function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName }: {
             </p>
           </div>
 
-          {canEdit && (
-            <Button onClick={onEdit}>
-              <i className="ph-bold ph-pencil-simple mr-2"></i>Edit check
-            </Button>
-          )}
+          <div className="flex gap-2">
+            {canAlarm && (
+              <Button onClick={onAlarm}>
+                <i className="ph-bold ph-bell mr-2"></i>
+                {alarmCount > 0 ? `Alarms (${alarmCount})` : "Add alarm"}
+              </Button>
+            )}
+            {canEdit && (
+              <Button onClick={onEdit}>
+                <i className="ph-bold ph-pencil-simple mr-2"></i>Edit check
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 

@@ -403,6 +403,9 @@ export class GitHubControlHubStack extends cdk.Stack {
         GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
         COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
         WEBHOOK_DELIVERIES_TABLE: deliveriesTable.tableName,
+        // The worker emails security alerts as it records them, so it reads
+        // the toggle and the group from here.
+        ALARMS_TABLE: `${stackPrefix}-alarms`,
       },
       bundling: webhookBundling,
     });
@@ -411,6 +414,20 @@ export class GitHubControlHubStack extends cdk.Stack {
       sid: "ReadAppSecrets",
       actions: ["secretsmanager:GetSecretValue"],
       resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+    }));
+
+    // Publish only, and only to this app's own topics.
+    //
+    // The name prefix is the boundary: topics are created as
+    // `${stackPrefix}-notify-<slug>`, so this grant cannot reach a topic
+    // belonging to anything else in the account, and cannot subscribe anyone
+    // to anything. Adding recipients happens in the desktop app, under the
+    // operator's own credentials.
+    const notifyTopics = `arn:aws:sns:${this.region}:${this.account}:${stackPrefix}-notify-*`;
+    workerFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "PublishAlarmEmails",
+      actions: ["sns:Publish"],
+      resources: [notifyTopics],
     }));
 
     workerFn.addToRolePolicy(new iam.PolicyStatement({
@@ -437,6 +454,74 @@ export class GitHubControlHubStack extends cdk.Stack {
       batchSize: 1,
       maxConcurrency: 5,
     }));
+
+    // ── widget alarms ───────────────────────────────────────────────────
+    //
+    // Reachable only from EventBridge. It reads whichever widgets have a due
+    // alarm, compares the value against the alarm's condition, and publishes
+    // to that alarm's topic when the state changes.
+    const alarmFn = new NodejsFunction(this, "AlarmEvaluator", {
+      functionName: `${stackPrefix}-alarm-evaluator`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, "..", "backend", "src", "alarms", "handler.ts"),
+      handler: "handler",
+      projectRoot: path.join(__dirname, ".."),
+      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+      // A pass walks the org's Dependabot alerts once and runs a graph query
+      // per non-Dependabot alarm. Nothing is waiting on the answer, and Lambda
+      // bills for time actually used, so the ceiling is set for the slow case
+      // rather than the usual one.
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 512,
+      environment: {
+        STACK_NAME: stackPrefix,
+        SECRET_NAME: secretName,
+        ALARMS_TABLE: `${stackPrefix}-alarms`,
+        WIDGETS_TABLE: `${stackPrefix}-widgets`,
+        ACTIVITY_TABLE: `${stackPrefix}-activity`,
+        ALERTS_TABLE: `${stackPrefix}-alerts`,
+        SCANNERS_TABLE: `${stackPrefix}-scanners`,
+        ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
+        GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+        COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
+      },
+      bundling: webhookBundling,
+    });
+
+    alarmFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "ReadAppSecrets",
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+    }));
+
+    alarmFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "AppTables",
+      actions: [
+        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+        "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem",
+      ],
+      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+    }));
+
+    alarmFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "PublishAlarmEmails",
+      actions: ["sns:Publish"],
+      resources: [notifyTopics],
+    }));
+
+    // Fifteen minutes, and the only schedule in the feature.
+    //
+    // Alarms that read Dependabot are due hourly instead, which the evaluator
+    // decides per alarm rather than with a second rule — GitHub only rescans
+    // when advisories are published, so asking four times an hour spends rate
+    // limit to receive the same answer four times. Keeping it one rule means
+    // changing that tiering is a constant in the code, not a deploy.
+    new events.Rule(this, "AlarmSchedule", {
+      ruleName: `${stackPrefix}-alarm-schedule`,
+      description: "Evaluates widget alarms that are due",
+      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      targets: [new targets.LambdaFunction(alarmFn)],
+    });
 
     const apiLogGroup = new logs.LogGroup(this, "WebhookApiAccessLogs", {
       retention: logs.RetentionDays.ONE_MONTH,

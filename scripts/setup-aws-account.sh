@@ -87,6 +87,7 @@ fi
 TABLES=(
   alerts             # alertService.ts:86         Key: { id }
   widgets            # widgetService.ts:37        Key: { id }
+  alarms             # alarmService.ts            Key: { id }
 )
 
 create_table() {

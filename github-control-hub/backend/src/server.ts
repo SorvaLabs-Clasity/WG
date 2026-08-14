@@ -4,6 +4,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import authRoutes from "./routes/auth";
 import awsGuardrailRoutes from "./routes/awsGuardrails";
+import alarmRoutes from "./routes/alarms";
 import repoRoutes from "./routes/repos";
 import branchRoutes from "./routes/branches";
 import protectionRoutes from "./routes/protection";
@@ -114,6 +115,7 @@ app.use("/api/access", authMiddleware, accessRoutes);
 app.use("/api/widgets", authMiddleware, widgetRoutes);
 app.use("/api/config", authMiddleware, configRoutes);
 app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
+app.use("/api/alarms", authMiddleware, alarmRoutes);
 
 // Try to load secrets from Secrets Manager at startup (covers auto-connected AWS)
 // then initialize the GitHub App token manager
