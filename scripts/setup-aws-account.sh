@@ -252,11 +252,54 @@ echo "==> GitHub credentials for $SECRET_NAME"
 echo "    These are GitHub values, not AWS — they carry over from the old account."
 echo "    The OAuth app callback URL must be http://localhost:4321/auth/callback"
 echo
-read -r -p "  GITHUB_ORG (organization name): " GITHUB_ORG
-read -r -p "  GITHUB_CLIENT_ID (OAuth app):   " GITHUB_CLIENT_ID
-read -r -s -p "  GITHUB_CLIENT_SECRET:           " GITHUB_CLIENT_SECRET; echo
-read -r -s -p "  SYSTEM_GITHUB_TOKEN (PAT):      " SYSTEM_GITHUB_TOKEN; echo
-read -r -s -p "  GITHUB_WEBHOOK_SECRET (blank to skip): " GITHUB_WEBHOOK_SECRET; echo
+# What the account already holds, so an update does not demand credentials it
+# could read. Re-running this on a configured account is the supported way to
+# pick up new tables and new secrets; making that mean retyping the OAuth
+# secret and the PAT is how people paste the wrong thing into the wrong prompt.
+EXISTING_JSON=$($AWS secretsmanager get-secret-value --secret-id "$SECRET_NAME" \
+  --query SecretString --output text 2>/dev/null || echo '{}')
+
+existing_val() {
+  EXISTING_JSON="$EXISTING_JSON" KEY="$1" node -e '
+    const d = JSON.parse(process.env.EXISTING_JSON || "{}");
+    process.stdout.write(d[process.env.KEY] || "");
+  ' 2>/dev/null
+}
+
+# Visible values show what is there; secrets only say that something is.
+ask_visible() {  # ask_visible VAR_NAME "prompt" existing
+  local __var="$1" __prompt="$2" __cur="$3" __in
+  if [ -n "$__cur" ]; then
+    read -r -p "  $__prompt [$__cur]: " __in
+    printf -v "$__var" '%s' "${__in:-$__cur}"
+  else
+    read -r -p "  $__prompt: " __in
+    printf -v "$__var" '%s' "$__in"
+  fi
+}
+
+ask_secret() {   # ask_secret VAR_NAME "prompt" existing
+  local __var="$1" __prompt="$2" __cur="$3" __in
+  if [ -n "$__cur" ]; then
+    read -r -s -p "  $__prompt [set — enter to keep]: " __in; echo
+    printf -v "$__var" '%s' "${__in:-$__cur}"
+  else
+    read -r -s -p "  $__prompt: " __in; echo
+    printf -v "$__var" '%s' "$__in"
+  fi
+}
+
+ask_visible GITHUB_ORG        "GITHUB_ORG (organization name)" "$(existing_val GITHUB_ORG)"
+ask_visible GITHUB_CLIENT_ID  "GITHUB_CLIENT_ID (OAuth app)"   "$(existing_val GITHUB_CLIENT_ID)"
+ask_secret  GITHUB_CLIENT_SECRET "GITHUB_CLIENT_SECRET"        "$(existing_val GITHUB_CLIENT_SECRET)"
+ask_secret  SYSTEM_GITHUB_TOKEN  "SYSTEM_GITHUB_TOKEN (PAT)"   "$(existing_val SYSTEM_GITHUB_TOKEN)"
+
+# The webhook secret moved out of the bundle into its own secret. On an account
+# set up before that, the bundle still holds it — offered here so the move needs
+# no retyping and cannot end up with the two copies disagreeing.
+WEBHOOK_CURRENT=$($AWS secretsmanager get-secret-value --secret-id "$WEBHOOK_SECRET_NAME" \
+  --query SecretString --output text 2>/dev/null || existing_val GITHUB_WEBHOOK_SECRET)
+ask_secret GITHUB_WEBHOOK_SECRET "GITHUB_WEBHOOK_SECRET (blank to skip)" "$WEBHOOK_CURRENT"
 
 : "${GITHUB_ORG:?GITHUB_ORG is required}"
 : "${GITHUB_CLIENT_ID:?GITHUB_CLIENT_ID is required}"
