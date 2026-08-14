@@ -1,5 +1,4 @@
 import type { Repo, RepoDetails } from "../types/Repo";
-import type { Branch } from "../types/Branch";
 import type { Activity } from "../types/Activity";
 import type { Scanner, ScanResult } from "../types/Scanner";
 import type { SecurityAlert } from "../types/Alert";
@@ -9014,30 +9013,6 @@ const MOCK_REPOS: Repo[] = [
   }
 ];
 
-const MOCK_BRANCHES: Record<string, Branch[]> = {
-  "web-platform": [
-    { name: "main", protected: true, sha: "a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0" },
-    { name: "develop", protected: true, sha: "b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1" },
-    { name: "feature/dark-mode", protected: false, sha: "c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2" },
-    { name: "feature/dashboard-v2", protected: false, sha: "d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3" },
-    { name: "bugfix/auth-redirect", protected: false, sha: "e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4" },
-  ],
-  "api-gateway": [
-    { name: "main", protected: true, sha: "f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5" },
-    { name: "feature/rate-limiter", protected: false, sha: "a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6" },
-    { name: "feature/grpc-support", protected: false, sha: "b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7" },
-  ],
-  "design-system": [
-    { name: "main", protected: true, sha: "c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8" },
-    { name: "feature/new-tokens", protected: false, sha: "d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9" },
-  ],
-  "ml-pipeline": [
-    { name: "develop", protected: true, sha: "e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0" },
-    { name: "main", protected: true, sha: "f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1" },
-    { name: "experiment/transformer-v3", protected: false, sha: "a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2" },
-  ],
-};
-
 function delay(ms = 400): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -9107,72 +9082,6 @@ export async function mockFetchRepoDetails(repo: string): Promise<RepoDetails> {
     environments: ["production", "staging"],
     hygiene: { hasReadme: true, hasLicense: true, hasCodeowners: false, hasDescription: true, hasTopics: true },
   };
-}
-
-export async function mockFetchBranches(repo: string): Promise<Branch[]> {
-  await delay(300);
-  return MOCK_BRANCHES[repo] ?? [
-    { name: "main", protected: true, sha: "abcdef1234567890abcdef1234567890abcdef12" },
-    { name: "develop", protected: false, sha: "1234567890abcdef1234567890abcdef12345678" },
-  ];
-}
-
-export async function mockCreateBranch(
-  _repo: string,
-  branchName: string,
-  _baseBranch: string
-): Promise<{ message: string }> {
-  await delay(500);
-  mockActivityLog.unshift({
-    id: crypto.randomUUID(),
-    source: "app",
-    action: "branch.create",
-    actor: DEMO_USER.login,
-    repo: _repo,
-    target: branchName,
-    details: `Created from ${_baseBranch}`,
-    timestamp: new Date().toISOString(),
-    undoPayload: { action: "delete_branch", params: { repo: _repo, branch: branchName } },
-  });
-  return { message: `Branch "${branchName}" created (demo)` };
-}
-
-export async function mockDeleteBranch(
-  _repo: string,
-  branch: string
-): Promise<{ message: string }> {
-  await delay(500);
-  mockActivityLog.unshift({
-    id: crypto.randomUUID(),
-    source: "app",
-    action: "branch.delete",
-    actor: DEMO_USER.login,
-    repo: _repo,
-    target: branch,
-    details: `Deleted branch "${branch}"`,
-    timestamp: new Date().toISOString(),
-  });
-  return { message: `Branch "${branch}" deleted (demo)` };
-}
-
-export async function mockRenameBranch(
-  _repo: string,
-  oldName: string,
-  newName: string
-): Promise<{ message: string }> {
-  await delay(500);
-  mockActivityLog.unshift({
-    id: crypto.randomUUID(),
-    source: "app",
-    action: "branch.rename",
-    actor: DEMO_USER.login,
-    repo: _repo,
-    target: oldName,
-    details: `Renamed to ${newName}`,
-    timestamp: new Date().toISOString(),
-    undoPayload: { action: "rename_branch", params: { repo: _repo, from: newName, to: oldName } },
-  });
-  return { message: `Branch "${oldName}" renamed to "${newName}" (demo)` };
 }
 
 // ── Scanner mock data ────────────────────────────────────────────
