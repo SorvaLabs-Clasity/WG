@@ -494,13 +494,25 @@ export class GitHubControlHubStack extends cdk.Stack {
       resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
     }));
 
+    // Reads widely, writes to one table.
+    //
+    // Evaluating an alarm means reading widgets, graph edges and the
+    // compliance cache; the only thing it ever writes is the alarm's own
+    // runtime state. Granting writes across the prefix would have let a
+    // scheduled job with no user in front of it modify the activity log — the
+    // record used to reconstruct what happened, including to itself.
     alarmFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "AppTables",
+      sid: "AppTablesRead",
       actions: [
-        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-        "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem",
+        "dynamodb:GetItem", "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem",
       ],
       resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+    }));
+
+    alarmFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "AlarmStateWrite",
+      actions: ["dynamodb:PutItem", "dynamodb:UpdateItem"],
+      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-alarms`],
     }));
 
     alarmFn.addToRolePolicy(new iam.PolicyStatement({

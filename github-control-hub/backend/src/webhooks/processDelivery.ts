@@ -129,7 +129,7 @@ export async function processDelivery({ event, payload, token }: Delivery): Prom
     if (event === "repository_ruleset") {
       if (payload.action === "deleted") {
         await createAlert(repoName, "ruleset_disabled", `A repository ruleset was deleted.`, "critical");
-        await logActivity("repo.ruleset.delete", actor, repoName, String(payload.ruleset?.id || ""), "Ruleset deleted via GitHub", undefined, "github");
+        await logActivity("repo.ruleset.delete", actor, repoName, sanitizeField(String(payload.ruleset?.id || ""), 64), "Ruleset deleted via GitHub", undefined, "github");
       } else if (payload.action === "created") {
         await autoResolveAlerts(repoName, "ruleset_disabled");
       } else if (payload.action === "edited") {
@@ -161,16 +161,20 @@ export async function processDelivery({ event, payload, token }: Delivery): Prom
   // squashes and rebases that were never written here.
 
   if (event === "delete" && payload.ref_type === "branch" && payload.repository?.name) {
-    const repo = payload.repository.name;
-    const actorLogin = payload.sender?.login || "github";
-    await logActivity("branch.delete", actorLogin, repo, payload.ref || "branch", "Branch deleted via GitHub", undefined, "github");
+    // Sanitised like every other field taken from a payload. A branch name is
+    // the one string here that can legally hold < > " ' & — Git's ref rules
+    // forbid spaces and ~^:?*[\ but not those — so this is the field most
+    // able to carry markup, and it was the one going through raw.
+    const repo = sanitizeField(payload.repository.name, 100);
+    const actorLogin = sanitizeField(payload.sender?.login, 64) || "github";
+    await logActivity("branch.delete", actorLogin, repo, sanitizeField(payload.ref, 100) || "branch", "Branch deleted via GitHub", undefined, "github");
   }
 
   if (event === "repository" && (payload.action === "created" || payload.action === "unarchived")) {
-    repoName = payload.repository.name;
+    repoName = sanitizeField(payload.repository.name, 100) || null;
   } else if (event === "branch_protection_rule" || event === "repository_ruleset" || event === "create" || event === "delete") {
     if (payload.repository) {
-      repoName = payload.repository.name;
+      repoName = sanitizeField(payload.repository.name, 100) || null;
     }
   }
 
@@ -210,14 +214,19 @@ export async function processDelivery({ event, payload, token }: Delivery): Prom
   // Incremental graph edge updates
   const org = getOrg();
   try {
-    if (event === "create" && payload.ref_type === "branch" && repoName && payload.ref) {
-      console.log(`[Webhook] Adding graph edge: branch "${payload.ref}" in ${repoName}`);
-      await addBranchEdge(repoName, payload.ref, false);
+    // Sanitised before it is stored, like every other payload string. A graph
+    // edge is a row the UI renders, so the branch name reaching it raw was the
+    // same gap as the activity log's.
+    const branchRef = sanitizeField(payload.ref, 100);
+
+    if (event === "create" && payload.ref_type === "branch" && repoName && branchRef) {
+      console.log(`[Webhook] Adding graph edge: branch "${branchRef}" in ${repoName}`);
+      await addBranchEdge(repoName, branchRef, false);
     }
 
-    if (event === "delete" && payload.ref_type === "branch" && repoName && payload.ref) {
-      console.log(`[Webhook] Removing graph edge: branch "${payload.ref}" from ${repoName}`);
-      await removeBranchEdge(repoName, payload.ref);
+    if (event === "delete" && payload.ref_type === "branch" && repoName && branchRef) {
+      console.log(`[Webhook] Removing graph edge: branch "${branchRef}" from ${repoName}`);
+      await removeBranchEdge(repoName, branchRef);
     }
 
     if (event === "repository" && payload.action === "created" && repoName && token) {

@@ -173,6 +173,38 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     check("  the body is not parsed before it is verified",
       receiverBody.indexOf("verifyGitHubSignature") < receiverBody.indexOf("JSON.parse"),
       "a re-serialised body is a different sequence of bytes");
+
+    // A verified payload is authentic, not trustworthy. GitHub really sent it,
+    // but its contents are whatever a person typed — and anyone who can push a
+    // branch chooses that string. Git's ref rules forbid spaces and ~^:?*[\
+    // and allow < > " ' &, so a branch name is the field here most able to
+    // carry markup into a row the UI later renders.
+    //
+    // Nothing renders raw HTML today, so this is depth rather than a live
+    // hole. It is pinned because the day something does — an HTML export, a
+    // dangerouslySetInnerHTML — the gap would already be in the stored data.
+    const deliveryCode = code(read("github-control-hub/backend/src/webhooks/processDelivery.ts"));
+
+    // Only the calls that *store* something are checked. Comparing
+    // payload.ref against a default-branch name, or testing ref_type, keeps
+    // nothing and needs no sanitising — an earlier version of this check
+    // flagged those too and failed against correct code.
+    const STORING = /\b(logActivity|createAlert|addBranchEdge|removeBranchEdge)\s*\(/;
+    const rawStores = deliveryCode
+      .split("\n")
+      .filter(l => STORING.test(l))
+      // Blank out the wrapped uses; whatever payload reference survives is raw.
+      .map(l => l.replace(/sanitizeField\([^)]*\)/g, "SAFE"))
+      // A comparison keeps nothing. `payload.action === "created" ? a : b`
+      // chooses between two literals, so the payload never reaches the row.
+      .map(l => l.replace(/payload\.[\w?.]+\s*===/g, "CMP ==="))
+      .filter(l => /payload\./.test(l))
+      .map(l => l.trim().slice(0, 90));
+
+    check("  nothing from a payload is stored without being sanitised",
+      rawStores.length === 0,
+      rawStores.length ? rawStores
+        : "a branch or repository name would reach the activity log and graph raw");
   }
 
   // ── the org-wide token is never served over a socket ───────────────
