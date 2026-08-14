@@ -47,9 +47,9 @@ export async function startBackend(
     // reachable from another machine: the only client is the window in this
     // process, and it asks for http://localhost.
     //
-    // The EC2/Docker deployment is the opposite case and binds normally —
-    // see backend/src/standalone.ts, where reaching it from outside is the
-    // entire point and a security group decides who may.
+    // A network-facing deployment is the opposite case and binds normally,
+    // where reaching it from outside is the entire point and a security
+    // group decides who may.
     server = expressApp.listen(port, "127.0.0.1", () => {
       console.log(`[desktop] Backend + Frontend running on http://127.0.0.1:${port}`);
       resolve();
