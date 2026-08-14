@@ -1,4 +1,10 @@
 import type { SQSEvent } from "aws-lambda";
+// Statically imported so esbuild follows it and inlines the package into the
+// bundle. client.ts's own loader cannot work here: it finds the module with
+// require.resolve, and in a bundle there is no file on disk to find. Passing
+// the factory in is what gets this function App auth instead of silently
+// falling back to the PAT's lower rate limit.
+import { createAppAuth } from "@octokit/auth-app";
 import { initTokenManager, getSystemTokenAsync } from "../github/client";
 import { loadSecretsIntoEnv } from "./secret";
 import { claimDelivery, completeDelivery, releaseDelivery } from "./deliveryLock";
@@ -41,6 +47,7 @@ function bootstrapOnce(): Promise<void> {
             process.env.GITHUB_APP_ID,
             process.env.GITHUB_APP_PRIVATE_KEY,
             process.env.GITHUB_APP_INSTALLATION_ID,
+            createAppAuth,
           );
           console.log("[Webhook] GitHub App token manager initialized");
         } catch (err) {
