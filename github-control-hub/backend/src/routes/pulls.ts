@@ -1,12 +1,12 @@
 import { Router, Request, Response } from "express";
 
-import { createOctokit } from "../github/client";
+import { createOctokit, getSystemToken } from "../github/client";
 import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
 import { sanitizeError } from "../utils/errorSanitizer";
-import { getPrState, listPrStates, setPrPause } from "../services/alarmService";
+import { getPrState, listPrStates, setPrPause, recordNudge } from "../services/alarmService";
 import {
   fetchOpenPrs, sortByStaleness, daysSinceLastCommit, isStale,
-  blockReason, pendingReviewers, nudgeTargets, STALE_DAYS,
+  pendingReviewers, nudgeTargets, runNudgePass, staleSeconds,
 } from "../services/prNudgeService";
 
 const router = Router();
@@ -59,7 +59,7 @@ router.get("/", async (req: Request, res: Response) => {
     });
 
     res.json({
-      staleDays: STALE_DAYS,
+      staleSeconds: staleSeconds(),
       truncated,
       open: rows.length,
       stale: rows.filter(r => r.stale).length,
@@ -113,6 +113,66 @@ router.put("/pause", async (req: Request, res: Response) => {
       repo: updated.repo, number: updated.number,
       paused: !!updated.paused, pausedLogins: updated.pausedLogins ?? [],
     });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "pull requests") });
+  }
+});
+
+/**
+ * Run the reminder pass now, rather than waiting for the next tick.
+ *
+ * The scheduled pass runs every five minutes, which is a long time to sit and
+ * watch when checking whether this works at all. It also gives an admin a way
+ * to act immediately rather than waiting, which is worth having regardless.
+ *
+ * Posts as the app, not as the caller. The reminder has to come from the same
+ * account every time or the next cycle cannot recognise its own comment to
+ * replace it — and a reminder appearing to come from whoever pressed the button
+ * would be misleading about who is chasing whom.
+ */
+router.post("/run", async (req: Request, res: Response) => {
+  const login = req.user!.login;
+  if (!(await isAwsAdmin(login).catch(() => false))) {
+    return res.status(403).json({
+      code: "CONTROL_HUB_ADMIN_REQUIRED",
+      error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can send `
+        + `reminders.`,
+    });
+  }
+
+  const appToken = getSystemToken();
+  if (!appToken) {
+    return res.status(503).json({
+      error: "No app token available, so a reminder would have no account to post from",
+    });
+  }
+  const octokit = createOctokit(appToken);
+  const split = (repo: string) => { const [owner, name] = repo.split("/"); return { owner, repo: name }; };
+
+  try {
+    const summary = await runNudgePass({
+      listPrs: () => fetchOpenPrs(
+        (query, variables) => (octokit as any).graphql(query, variables), org()),
+      getState: (repo, number) => getPrState(repo, number),
+      recordNudge,
+      listComments: async (repo, number) => {
+        const { data } = await (octokit as any).rest.issues.listComments({
+          ...split(repo), issue_number: number, per_page: 100,
+        });
+        return data.map((c: any) => ({
+          id: c.id, body: c.body ?? "", authorIsApp: c.user?.type === "Bot",
+        }));
+      },
+      deleteComment: async (repo, id) =>
+        void await (octokit as any).rest.issues.deleteComment({ ...split(repo), comment_id: id }),
+      postComment: async (repo, number, body) => {
+        const { data } = await (octokit as any).rest.issues.createComment({
+          ...split(repo), issue_number: number, body,
+        });
+        return data?.id;
+      },
+    });
+    res.json(summary);
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "pull requests") });
   }

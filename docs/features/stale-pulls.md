@@ -81,6 +81,29 @@ one screen.
 The pass runs on the alarm evaluator's existing five-minute tick and is gated by
 its own seven-day interval, so one clock exists rather than two.
 
+## Testing it
+
+Waiting seven days to find out whether this works is not a test. Two things
+make it immediate:
+
+**Shorten the threshold.** `PR_STALE_SECONDS=10` treats a pull request as stale
+ten seconds after its last commit, and reminds again ten seconds after that.
+Anything absent, zero, negative or unparseable falls back to seven days, so a
+typo cannot silently disable staleness or turn it into a reminder every pass.
+The page shows a banner whenever the threshold is not the real one, because an
+override left on by accident would otherwise remind everyone every few minutes
+with nothing on screen explaining why.
+
+**Send reminders now.** An admin button on the page runs the pass immediately
+rather than waiting for the next five-minute tick. It posts as the app, not as
+whoever pressed it — the reminder has to come from the same account every cycle
+or the next one cannot recognise its own comment to replace it.
+
+A full run-through: set `PR_STALE_SECONDS=10`, open a pull request, wait ten
+seconds, press **Send reminders now**, and the reminder appears on the pull
+request. Press it again and the previous comment is replaced rather than
+added to.
+
 ## Requirements
 
 `pull_requests: write` on the GitHub App, for posting and deleting the reminder.

@@ -12,6 +12,23 @@
 
 export const STALE_DAYS = 7;
 
+/**
+ * The threshold, in seconds, with an override for testing.
+ *
+ * Seven days is the real value. PR_STALE_SECONDS exists so the behaviour can be
+ * exercised in minutes rather than fortnights — set it to 10 and a pull request
+ * goes stale ten seconds after its last commit, and is reminded again ten
+ * seconds after that.
+ *
+ * Read on every call rather than captured once, so changing it takes effect
+ * without a redeploy and a test cannot be fooled by a value frozen at import.
+ */
+export function staleSeconds(): number {
+  const override = Number(process.env.PR_STALE_SECONDS);
+  if (Number.isFinite(override) && override > 0) return override;
+  return STALE_DAYS * 86_400;
+}
+
 export type BlockReason =
   | "ready"           // nothing in the way; somebody just has to press merge
   | "needs-approval"  // waiting on reviewers who have not reviewed
@@ -59,8 +76,12 @@ export function daysSinceLastCommit(pr: PullRequest, now = Date.now()): number {
   return Math.max(0, (now - t) / 86_400_000);
 }
 
-export function isStale(pr: PullRequest, now = Date.now(), staleDays = STALE_DAYS): boolean {
-  return daysSinceLastCommit(pr, now) >= staleDays;
+export function secondsSinceLastCommit(pr: PullRequest, now = Date.now()): number {
+  return daysSinceLastCommit(pr, now) * 86_400;
+}
+
+export function isStale(pr: PullRequest, now = Date.now(), threshold = staleSeconds()): boolean {
+  return secondsSinceLastCommit(pr, now) >= threshold;
 }
 
 /**
@@ -145,9 +166,9 @@ export function isNudgeDue(
   pr: PullRequest,
   lastNudgedAt: string | null,
   now = Date.now(),
-  staleDays = STALE_DAYS,
+  threshold = staleSeconds(),
 ): boolean {
-  if (!isStale(pr, now, staleDays)) return false;
+  if (!isStale(pr, now, threshold)) return false;
   if (!lastNudgedAt) return true;
 
   const last = new Date(lastNudgedAt).getTime();
@@ -159,7 +180,7 @@ export function isNudgeDue(
   // commit to be at least staleDays old, so any nudge older than that commit is
   // older than staleDays too and the interval check below returns true anyway.
   // A mutation removing it changed no outcome, which is how it was found.
-  return (now - last) / 86_400_000 >= staleDays;
+  return (now - last) / 1000 >= threshold;
 }
 
 /** Oldest first, by the clock this feature runs on. */

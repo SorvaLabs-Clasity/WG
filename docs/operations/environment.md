@@ -70,3 +70,16 @@ Baked in at build, not read at runtime.
 | `VITE_COMPANY_NAME` | Shown in the app |
 | `VITE_API_URL` | Overrides the API base; unset means same origin |
 | `VITE_DEMO_MODE` | Skips authentication. Never set this for a real build |
+
+## PR_STALE_SECONDS
+
+Optional, and for testing only. Overrides the seven-day staleness threshold used
+by [stale pull request reminders](../features/stale-pulls.md), in seconds.
+
+`PR_STALE_SECONDS=10` makes a pull request stale ten seconds after its last
+commit and reminds again every ten seconds. Absent, zero, negative or
+unparseable values fall back to seven days rather than to zero — a typo must not
+turn this into a reminder on every pass.
+
+The pull request page shows a banner while it is set, so an override left on by
+accident is visible rather than mysterious.

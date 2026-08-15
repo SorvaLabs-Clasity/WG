@@ -20,7 +20,7 @@ import path from "path";
 import {
   daysSinceLastCommit, isStale, hasReviewed, pendingReviewers, blockReason,
   nudgeTargets, isNudgeDue, sortByStaleness, fetchOpenPrs, STALE_DAYS,
-  buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass,
+  buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass, staleSeconds,
   type PullRequest, type NudgeDeps, type NudgeRunDeps,
 } from "./src/services/prNudgeService";
 
@@ -483,6 +483,46 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     check("a repository we cannot comment on does not stop the rest",
       !escaped && r5?.posted === 1 && r5?.failed === 1 && f.posted[0]?.repo === "o/good",
       { escaped, r5, posted: f.posted.map(p => p.repo) });
+  }
+
+  // ── the threshold can be shortened for testing ──────────────────────
+  {
+    const original = process.env.PR_STALE_SECONDS;
+    try {
+      delete process.env.PR_STALE_SECONDS;
+      check("with no override the threshold is seven days",
+        staleSeconds() === STALE_DAYS * 86_400, staleSeconds());
+
+      process.env.PR_STALE_SECONDS = "10";
+      check("  an override shortens it to seconds",
+        staleSeconds() === 10, staleSeconds());
+
+      const justPushed = pr({ lastCommitAt: new Date(NOW - 5_000).toISOString() });
+      const quiet = pr({ lastCommitAt: new Date(NOW - 30_000).toISOString() });
+      check("  a pull request 5 seconds old is not stale at a 10-second threshold",
+        !isStale(justPushed, NOW), "5s < 10s");
+      check("  one 30 seconds old is",
+        isStale(quiet, NOW), "30s >= 10s");
+      check("  and the reminder interval follows the same threshold",
+        isNudgeDue(quiet, new Date(NOW - 20_000).toISOString(), NOW)
+          && !isNudgeDue(quiet, new Date(NOW - 3_000).toISOString(), NOW),
+        "20s since the last reminder is due, 3s is not");
+
+      // Read per call, not captured at import, or changing it would need a
+      // redeploy and a test could be fooled by a frozen value.
+      process.env.PR_STALE_SECONDS = "60";
+      check("  changing it takes effect immediately", staleSeconds() === 60, staleSeconds());
+
+      // Nonsense must not silently disable the feature.
+      for (const bad of ["0", "-5", "banana", ""]) {
+        process.env.PR_STALE_SECONDS = bad;
+        check(`  "${bad}" falls back to seven days rather than to zero`,
+          staleSeconds() === STALE_DAYS * 86_400, { bad, got: staleSeconds() });
+      }
+    } finally {
+      if (original === undefined) delete process.env.PR_STALE_SECONDS;
+      else process.env.PR_STALE_SECONDS = original;
+    }
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
