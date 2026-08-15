@@ -18,3 +18,6 @@ github-control-hub/infra/cdk.context.json
 .env.local
 .env.*.local
 github-control-hub/frontend/.env
+
+# Local Claude Code permissions — contains machine paths
+.claude/settings.local.json

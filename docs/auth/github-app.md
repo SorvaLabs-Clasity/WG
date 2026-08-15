@@ -12,7 +12,7 @@ that has to happen without a person present.
 ## Why not use the user's token for reads
 
 A user OAuth token has **5,000 requests/hour, per user**. One graph sync across
-350 repositories costs roughly 1,500 calls. Two syncs and a person is locked out
+500 repositories costs roughly 1,500 calls. Two syncs and a person is locked out
 of GitHub — not just this app.
 
 The App's installation token has **12,500/hour shared across the whole

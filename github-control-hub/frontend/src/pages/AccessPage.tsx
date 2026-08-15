@@ -11,7 +11,7 @@ import type { AccessPath, Person, OrgRole } from "../api/access";
  * Who can reach what.
  *
  * The map is read-only on purpose. Its job is to answer the question people
- * currently answer by clicking through 356 repositories one at a time, and
+ * currently answer by clicking through every repository one at a time, and
  * the answer is only useful if it shows the route: revoking a direct grant
  * changes nothing if the person is also in a team that owns the repository.
  */

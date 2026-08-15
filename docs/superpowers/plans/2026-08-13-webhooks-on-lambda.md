@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Receive GitHub webhooks through API Gateway and Lambda instead of an EC2 instance the work account's VPC cannot route to, then delete the instance.
+**Goal:** Receive GitHub webhooks through API Gateway and Lambda instead of an EC2 instance in a VPC that cannot accept inbound from the internet, then delete the instance.
 
 **Architecture:** A REST API (chosen over HTTP API because only REST supports resource policies, which is how the GitHub IP allow-list survives) invokes a receiver Lambda that verifies the HMAC and enqueues to SQS. A worker Lambda drains the queue and runs the processing logic that today lives in the Express route. The split exists so the internet-facing function holds nothing but one secret and one queue.
 
@@ -49,7 +49,7 @@
 
 ## Phases
 
-**Phase 1 (Tasks 1–8)** adds the new path with the instance still standing. Ends at a deployable milestone the user verifies in the personal account.
+**Phase 1 (Tasks 1–8)** adds the new path with the instance still standing. Ends at a deployable milestone verified in one account before the rest.
 
 **Phase 2 (Tasks 9–11)** deletes the instance. Ends at a second deployable milestone.
 
@@ -242,7 +242,7 @@ EOF
 - Consumes: `awsRegion()` from `../utils/region`.
 - Produces: `getWebhookSecret(): Promise<string>`, `refetchWebhookSecret(): Promise<string>`, `loadSecretsIntoEnv(): Promise<void>`, and the test seams `__setSecretLoaderForTests(fn)` / `__resetSecretCacheForTests()`.
 
-One module fetches the secret bundle once per container. The receiver reads one key out of it; the worker copies nine keys into `process.env`. Two Secrets Manager calls for the same JSON would be wasteful and would double the exposure to the work account's SCP.
+One module fetches the secret bundle once per container. The receiver reads one key out of it; the worker copies nine keys into `process.env`. Two Secrets Manager calls for the same JSON would be wasteful and would double the exposure to any service control policy restricting that API.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -321,7 +321,7 @@ import { awsRegion } from "../utils/region";
  * The receiver needs GITHUB_WEBHOOK_SECRET on the hot path; the worker needs
  * the whole bundle in process.env. Fetching per delivery would add latency
  * against GitHub's ten-second budget, cost a call per invocation, and make
- * every webhook depend on an API the work account restricts by SCP.
+ * every webhook depend on an API a service control policy may restrict.
  */
 const CACHE_TTL_MS = 15 * 60 * 1000;
 
@@ -1348,7 +1348,7 @@ Insert after the guardrail section, before `// ── Outputs ──`:
     // ── Webhooks ──
     //
     // The instance this replaces could not be reached at all in the work
-    // account: that VPC has no internet gateway, so inbound from the internet
+    // such a VPC has no internet gateway, so inbound from the internet
     // is impossible however the security group is written. API Gateway needs
     // no VPC ingress.
 
@@ -1599,7 +1599,7 @@ Expected: no type errors; synth succeeds. If `maxConcurrency` is rejected as an 
 ```bash
 git add github-control-hub/infra/cdk-stack.ts
 git commit -m "$(cat <<'EOF'
-Put the webhook endpoint somewhere the work account can actually route to
+Put the webhook endpoint somewhere reachable from the internet
 
 REST rather than HTTP API because only REST supports resource policies, and the
 resource policy is how the GitHub IP allow-list survives the move off the
@@ -1734,7 +1734,7 @@ EOF
 
 Report to the user, and ask them to run these and paste the output:
 
-1. Deploy to **personal** (`<account-id>`, us-east-1, profile `<profile>`):
+1. Deploy to the first account:
    ```bash
    cd github-control-hub/infra && npx cdk deploy
    ```
@@ -1742,7 +1742,7 @@ Report to the user, and ask them to run these and paste the output:
 
 2. Take `WebhookUrl` from the stack outputs.
 
-3. In `SorvaLabs-Clasity` → Settings → Webhooks, **edit the existing webhook's URL**. Do not add a second one — GitHub issues a separate delivery id per webhook, so the lock cannot dedupe across them and templates would be applied twice.
+3. In your organization → Settings → Webhooks, **edit the existing webhook's URL**. Do not add a second one — GitHub issues a separate delivery id per webhook, so the lock cannot dedupe across them and templates would be applied twice.
 
 4. Confirm the `ping` shows a green tick with a 202.
 
@@ -1777,7 +1777,7 @@ Leave `app.use(express.json({ limit: "1mb" }));` — it is now the only body par
 - [ ] **Step 2: Delete the files**
 
 ```bash
-cd /Users/ronidaou/Documents/GitHub/WG
+cd <repo-root>
 git rm github-control-hub/backend/src/routes/webhooks.ts \
        github-control-hub/backend/src/standalone.ts \
        Dockerfile docker-compose.yml .dockerignore scripts/deploy.sh
@@ -1867,7 +1867,7 @@ git commit -m "$(cat <<'EOF'
 Stop paying for an instance in a subnet nothing can reach
 
 The security group, the Elastic IP and the self-signed certificate all existed
-to get GitHub to an address the work VPC never had a route from. With the
+to get GitHub to an address such a VPC never had a route from. With the
 webhook on API Gateway there is nothing left for the instance to do.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
@@ -1965,19 +1965,19 @@ EOF
 
 **Stop. Report to the user and ask them to run:**
 
-1. Personal (`<account-id>`, us-east-1):
+1. The first account:
    ```bash
    cd github-control-hub/infra && npx cdk deploy
    ```
    This destroys the instance, security group and Elastic IP. Confirm webhooks still arrive afterwards — create another test repository.
 
-2. Work (`<account-id>`, us-east-2). Region matters: an SCP denies `secretsmanager:GetSecretValue` in us-east-1.
+2. Each remaining account. Region matters: a service control policy may deny `secretsmanager:GetSecretValue` in some regions.
    ```bash
-   cd github-control-hub/infra && AWS_REGION=us-east-2 npx cdk deploy
+   cd github-control-hub/infra && AWS_REGION=<region> npx cdk deploy
    ```
-   Then set the webhook URL in the work org and repeat the verification.
+   Then set the webhook URL in that organization and repeat the verification.
 
-3. Confirm the work account's Activity page reaches **Receiving events** — the thing that has never worked and is the reason for all of this.
+3. Confirm the Activity page reaches **Receiving events** in each account.
 
 Then ask whether to open a PR. Do not push to `main` without asking.
 

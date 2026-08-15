@@ -26,7 +26,7 @@ GitHub App token and writes edges to DynamoDB:
 | `team_meta` | team names |
 | `org_meta` | default repository permission, member count |
 
-Roughly 1,500 API calls for 350 repositories. It is **not scheduled** — it runs
+Roughly 1,500 API calls for 500 repositories. It is **not scheduled** — it runs
 when pressed. See [the graph model](../data/graph-model.md).
 
 ## Why sync is manual

@@ -88,12 +88,12 @@ export async function fetchOrgDependencyAlerts(
  * Which repositories have Dependabot alerts switched on.
  *
  * The route used to answer this with one REST call per repository —
- * `checkVulnerabilityAlerts`, 204 for on and 404 for off — which at 355 repos
- * meant ~351 requests every time the tab was opened, against the same core
- * budget the graph sync and compliance sweep draw on.
+ * `checkVulnerabilityAlerts`, 204 for on and 404 for off — one request per
+ * repository every time the tab was opened, against the same core budget the
+ * graph sync and compliance sweep draw on.
  *
- * GraphQL exposes the flag directly, 100 repositories at a time. Measured
- * against this organization: 4 requests instead of 351, and the answers agree
+ * GraphQL exposes the flag directly, 100 repositories at a time. That turns
+ * hundreds of requests into a handful, and the answers agree
  * in both directions — verified on repositories with alerts on and off, since
  * a field that is always false would agree with a mostly-off organization and
  * still be wrong.

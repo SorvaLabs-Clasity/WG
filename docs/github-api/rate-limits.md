@@ -10,7 +10,7 @@ Two budgets, and they behave very differently.
 ## Why that split drives the design
 
 Reads use the App token because bulk work is expensive. A full graph sync across
-350 repositories costs roughly 1,500 requests — repos, branches, collaborators,
+500 repositories costs roughly 1,500 requests — repos, branches, collaborators,
 workflows, Dependabot alerts. Run that on a user's own budget and two syncs lock
 that person out of GitHub entirely, not just out of this app.
 
@@ -23,7 +23,7 @@ Writes use the user's token because there are few of them and because
 |---|---|
 | Loading a page | single digits |
 | Opening one repository | ~5 |
-| Full graph sync (~350 repos) | ~1,500 |
+| Full graph sync (500 repos) | ~1,500 |
 | Enabling Dependabot on one repo | 1–2 |
 
 Fifteen admins using the app normally do not come close to 12,500/hour. A few

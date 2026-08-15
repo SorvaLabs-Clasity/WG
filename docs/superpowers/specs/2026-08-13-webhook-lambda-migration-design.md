@@ -6,11 +6,11 @@
 
 Receive GitHub webhooks without an EC2 instance, and then delete the instance.
 
-The work account's VPC has no internet gateway. Its default route goes to a
-NAT/transit gateway, so egress works and inbound from the internet is
-impossible. GitHub's deliveries fail with "failed to connect to host", and no
-amount of security-group work fixes that — the security group is already
-correct. API Gateway is public by nature and needs no VPC ingress, which removes
+An instance in a VPC with no internet gateway cannot receive deliveries. Where
+the default route goes to a NAT or transit gateway, egress works and inbound
+from the internet is impossible; GitHub's deliveries fail with "failed to
+connect to host", and no amount of security-group work fixes that — the security
+group is already correct. API Gateway is public by nature and needs no VPC ingress, which removes
 the problem rather than working around it.
 
 Since the instance exists *only* to receive webhooks, it can then go, and with
@@ -422,7 +422,7 @@ failures. It should not be tidied back down.
 
 Fetched once per container, cached fifteen minutes. Per delivery it would add
 latency against GitHub's ten-second budget, cost a call per invocation, and make
-every webhook depend on an API the work account restricts by SCP.
+every webhook depend on an API a service control policy may restrict.
 
 A cache that long would ordinarily mean up to fifteen minutes of rejected
 deliveries after the webhook secret is rotated — and rejected deliveries are
@@ -530,15 +530,15 @@ Both are strengthened. Neither is weakened.
 Two commits, because the deletion should not be load-bearing on the first
 deploy being right.
 
-1. Add the API Gateway path with the instance still standing. Deploy to
-   personal (`<account-id>`, us-east-1), where webhooks work today and a
-   regression is visible immediately. Repoint the org's webhook URL; GitHub
-   sends `ping`. Create a test repository and confirm the activity row, the
-   auto-applied template, and the Activity page reading **Receiving events**.
-2. Delete the instance and everything in the table above. Deploy to personal,
-   then to work (`<account-id>`, us-east-2).
+1. Add the API Gateway path with the instance still standing. Deploy first
+   where webhooks already work, so a regression is visible immediately. Repoint
+   the org's webhook URL; GitHub sends `ping`. Create a test repository and
+   confirm the activity row, the auto-applied template, and the Activity page
+   reading **Receiving events**.
+2. Delete the instance and everything in the table above, then deploy to the
+   remaining accounts.
 
-The end state is one stack with no EC2 in either account.
+The end state is one stack with no EC2 in any account.
 
 ### Repoint the webhook, do not add a second one
 

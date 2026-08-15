@@ -153,10 +153,10 @@ function githubWith(total: number) {
 
   // ── alert status without a request per repository ───────────────────
   {
-    // This replaced one REST call per repo — 351 on the live organization —
-    // with 100 repos per GraphQL request. Verified against that org in both
-    // directions before the swap: a field that is always false would agree
-    // with a mostly-off organization and still be wrong.
+    // This replaced one REST call per repository with 100 repositories per
+    // GraphQL request. Checked in both directions before the swap: a field that
+    // is always false would agree with a mostly-off organization and still be
+    // wrong.
     const page = (names: string[], next: string | null) => ({
       organization: { repositories: {
         pageInfo: { hasNextPage: !!next, endCursor: next },

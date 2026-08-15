@@ -52,7 +52,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
 
     // Org owners are admin on every repository by virtue of the role. Recorded
     // so queries can ask "who has admin that ownership does not explain",
-    // rather than reporting the owner against all 356 repositories.
+    // rather than reporting the owner against every repository.
     const orgOwners = new Set<string>();
     try {
       const { data } = await octokit.rest.orgs.listMembers({ org, role: "admin", per_page: 100 });

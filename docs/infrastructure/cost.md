@@ -1,6 +1,6 @@
 # Cost
 
-Figures below assume an organization of roughly 350 repositories.
+Figures below assume an example organization of 500 repositories.
 
 | Item | Monthly |
 |---|---|

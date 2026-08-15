@@ -35,7 +35,7 @@ sends in `listForOrg` and that `repoService.listRepos` currently discards.
 ### Right: knowledge panel
 
 Loads on demand for the selected repo only. This is what makes the richer stats
-affordable: roughly a dozen API calls for one repo, not for all 348.
+affordable: roughly a dozen API calls for one repo, not for every repo.
 
 - **Header** — description, visibility, primary language, license, size, topics,
   archived/fork/template badges, link to GitHub

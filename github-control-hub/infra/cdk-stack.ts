@@ -245,10 +245,9 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     // ── Webhooks ──
     //
-    // The instance this replaces could not be reached at all in the work
-    // account: that VPC has no internet gateway, so inbound from the internet
-    // is impossible however the security group is written. API Gateway needs
-    // no VPC ingress.
+    // The instance this replaces cannot be reached in a VPC with no internet
+    // gateway: inbound from the internet is impossible however the security
+    // group is written. API Gateway needs no VPC ingress.
 
     // The only table CDK owns. The other eleven are created by
     // scripts/setup-aws-account.sh and deliberately stay outside

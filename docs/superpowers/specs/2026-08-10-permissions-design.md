@@ -11,7 +11,7 @@ everything.
 Worse, write routes ran as `getSystemToken() || req.user.accessToken`. With the
 App token present, writes executed with org-admin privilege regardless of who
 asked — so a member with read-only access to one repository could strip branch
-protection from all 348.
+protection from every repository.
 
 ## The rule
 
