@@ -390,11 +390,14 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     const scanNames = (p: string) => {
       const full = path.join(ROOT, p);
       if (fs.statSync(full).isDirectory()) {
-        if (p.endsWith("cdk.out") || p.endsWith("node_modules")) return;
-        for (const e of fs.readdirSync(full)) scanNames(path.join(p, e));
+        if (/(^|\/)(cdk\.out|node_modules|dist|build|\.git|coverage)$/.test(p)) return;
+        for (const e of fs.readdirSync(full)) scanNames(p ? path.join(p, e) : e);
         return;
       }
-      if (!/\.(ts|tsx)$/.test(p)) return;
+      // Docs, scripts and manifests too, not only code. Restricting this to
+      // .ts/.tsx let two AWS account ids sit in a pair of markdown design docs:
+      // an identifier in prose is as readable as one in a string literal.
+      if (!/\.(ts|tsx|md|json|sh|ya?ml)$/.test(p)) return;
       const src2 = fs.readFileSync(full, "utf8")
         // Placeholders first, so they are not reported as real. 123456789012 is
         // the account id AWS uses throughout its own documentation; an
@@ -410,7 +413,10 @@ const electron = read("github-control-hub/desktop/src/main.ts");
       const shaped = /\b\d{12}\b|Iv1\.(?!0{16})[A-Za-z0-9]{16}|Iv23[A-Za-z0-9]{14,}/;
       if (shaped.test(src2) || nameRe?.test(src2)) named.push(p);
     };
-    files.forEach(scanNames);
+    // The whole repository, not a list of source directories. The account ids
+    // that got through were in docs/, which no such list had any reason to
+    // name — so the default is everything, minus what is generated or vendored.
+    scanNames("");
     for (const dir of alsoScan) {
       for (const e of fs.readdirSync(path.join(ROOT, dir))) {
         if (/^repro-.*\.ts$/.test(e)) scanNames(path.join(dir, e));

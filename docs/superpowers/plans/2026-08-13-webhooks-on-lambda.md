@@ -1734,7 +1734,7 @@ EOF
 
 Report to the user, and ask them to run these and paste the output:
 
-1. Deploy to **personal** (`774941662655`, us-east-1, profile `n8n`):
+1. Deploy to **personal** (`<account-id>`, us-east-1, profile `<profile>`):
    ```bash
    cd github-control-hub/infra && npx cdk deploy
    ```
@@ -1965,13 +1965,13 @@ EOF
 
 **Stop. Report to the user and ask them to run:**
 
-1. Personal (`774941662655`, us-east-1):
+1. Personal (`<account-id>`, us-east-1):
    ```bash
    cd github-control-hub/infra && npx cdk deploy
    ```
    This destroys the instance, security group and Elastic IP. Confirm webhooks still arrive afterwards — create another test repository.
 
-2. Work (`792424903548`, us-east-2). Region matters: an SCP denies `secretsmanager:GetSecretValue` in us-east-1.
+2. Work (`<account-id>`, us-east-2). Region matters: an SCP denies `secretsmanager:GetSecretValue` in us-east-1.
    ```bash
    cd github-control-hub/infra && AWS_REGION=us-east-2 npx cdk deploy
    ```

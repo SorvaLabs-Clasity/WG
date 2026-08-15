@@ -531,12 +531,12 @@ Two commits, because the deletion should not be load-bearing on the first
 deploy being right.
 
 1. Add the API Gateway path with the instance still standing. Deploy to
-   personal (`774941662655`, us-east-1), where webhooks work today and a
+   personal (`<account-id>`, us-east-1), where webhooks work today and a
    regression is visible immediately. Repoint the org's webhook URL; GitHub
    sends `ping`. Create a test repository and confirm the activity row, the
    auto-applied template, and the Activity page reading **Receiving events**.
 2. Delete the instance and everything in the table above. Deploy to personal,
-   then to work (`792424903548`, us-east-2).
+   then to work (`<account-id>`, us-east-2).
 
 The end state is one stack with no EC2 in either account.
 
