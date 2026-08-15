@@ -696,6 +696,54 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       /isAwsAdmin/.test(settingsBody.slice(0, 400)));
   }
 
+  // ── only a commit resets the clock ──────────────────────────────────
+  {
+    // Everything else people do on a pull request is conversation about work,
+    // not work. An approval that reset the timer would let a stalled pull
+    // request be kept quiet indefinitely by anyone clicking approve, which is
+    // the opposite of what this is for.
+    const base = pr({ createdAt: daysAgo(30), lastCommitAt: daysAgo(9) });
+    const before = daysSinceLastCommit(base, NOW);
+
+    const events: Array<[string, Partial<PullRequest>]> = [
+      ["an approval", { reviews: [{ login: "bob", state: "APPROVED" }], reviewDecision: "APPROVED" }],
+      ["changes requested", { reviews: [{ login: "bob", state: "CHANGES_REQUESTED" }], reviewDecision: "CHANGES_REQUESTED" }],
+      ["a comment", { reviews: [{ login: "bob", state: "COMMENTED" }] }],
+      ["a reviewer added", { requestedReviewers: ["bob", "carol"] }],
+      ["a reviewer removed", { requestedReviewers: [] }],
+      ["a review re-requested", { requestedReviewers: ["bob"], reviews: [] }],
+      ["checks turning green", { checksState: "SUCCESS" }],
+      ["checks starting to fail", { checksState: "FAILURE" }],
+      ["becoming mergeable", { mergeStateStatus: "CLEAN" }],
+      ["becoming blocked", { mergeStateStatus: "BLOCKED" }],
+      ["conflicts appearing", { mergeable: "CONFLICTING", mergeStateStatus: "DIRTY" }],
+      ["the title being edited", { title: "renamed" }],
+      ["the base branch changing", { baseRef: "develop" }],
+      ["being marked draft", { isDraft: true }],
+    ];
+
+    const moved = events.filter(([, over]) =>
+      daysSinceLastCommit({ ...base, ...over }, NOW) !== before).map(([n]) => n);
+    check(`none of ${events.length} non-commit events resets the clock`,
+      moved.length === 0, moved);
+
+    check("  an approval leaves it stale and still due",
+      isStale({ ...base, reviews: [{ login: "bob", state: "APPROVED" }] }, NOW, SEVEN_DAYS)
+        && isNudgeDue({ ...base, reviews: [{ login: "bob", state: "APPROVED" }] }, null, NOW, SEVEN_DAYS),
+      "approving would silence a stalled pull request without touching it");
+
+    check("  while a commit does reset it",
+      daysSinceLastCommit({ ...base, lastCommitAt: daysAgo(1) }, NOW) < before);
+
+    // The clock reads committedDate, so a rebase or amend counts as a commit —
+    // the branch genuinely moved. Nothing else in the payload is consulted.
+    const src = fs.readFileSync(path.join(__dirname, "src/services/prNudgeService.ts"), "utf8");
+    check("  and the clock is fed only by the branch's last commit",
+      /lastCommitAt: commit\?\.committedDate/.test(src)
+        && /const basis = pr\.lastCommitAt \?\? pr\.createdAt;/.test(src),
+      "any other field feeding it would let conversation pass for work");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

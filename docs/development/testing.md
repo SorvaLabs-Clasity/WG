@@ -62,3 +62,22 @@ for t in repro-*.ts; do echo "== $t"; npx tsx "$t" | tail -1; done
 ```
 
 Plus `npx tsc --noEmit` in `backend`, `frontend`, `desktop` and `infra`.
+
+## Mutation testing: a crash is a catch
+
+Mutations are verified by breaking the code on purpose and checking the suite
+notices. The obvious way to count that — how many FAIL lines were printed — is
+wrong, and was wrong three separate times in one afternoon.
+
+An uncaught exception ends the process. No FAIL lines are printed, the count
+reads zero, and the mutation looks like it survived when the suite actually
+detected it by dying.
+
+Count the verdict, not the failures:
+
+
+
+The same trap appears inside a test: an assertion that awaits something which
+throws takes the whole file with it. Where behaviour under failure is the thing
+being asserted, catch it explicitly and assert on the outcome, so a throw
+becomes a readable failure rather than a silent exit.
