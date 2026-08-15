@@ -21,7 +21,7 @@ import {
   daysSinceLastCommit, isStale, hasApproved, pendingReviewers, blockReason,
   blockedByMoreThanApprovals,
   nudgeTargets, isNudgeDue, sortByStaleness, fetchOpenPrs, STALE_DAYS,
-  buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass, staleSeconds,
+  buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass, staleSeconds, describeIdle,
   SEVEN_DAYS, STALE_SECONDS,
   type PullRequest, type NudgeDeps, type NudgeRunDeps,
 } from "./src/services/prNudgeService";
@@ -411,8 +411,29 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       pr({ author: "alice" }), "ready", ["alice", "bob"], 8, 1);
     check("  a ready pull request tells the author to merge, and only the author",
       /@alice — .*merg/i.test(ready) && !/@bob — .*merg/i.test(ready), ready);
-    check("  says how long it has been idle, in whole days",
+    check("  says how long it has been idle",
       body.includes("9 days") && !body.includes("9.7"), body);
+
+    // Seen on a real pull request: "No commits for 0 days", because the value
+    // was floored to whole days while the pull request had been idle for
+    // seconds. A reminder whose first line is visibly wrong is one nobody
+    // reads twice.
+    check("  and never says zero, since something must have elapsed to be here",
+      !/for 0 /.test(buildNudgeComment(pr(), "ready", ["alice"], 10 / 86_400, 1)),
+      buildNudgeComment(pr(), "ready", ["alice"], 10 / 86_400, 1));
+
+    for (const [secs, want] of [
+      [1, "1 second"], [10, "10 seconds"], [60, "60 seconds"],
+      [3_600, "1 hour"], [7_200, "2 hours"], [86_400, "24 hours"],
+      [172_800, "2 days"], [604_800, "7 days"],
+    ] as const) {
+      check(`  ${secs}s reads as "${want}"`,
+        describeIdle(secs / 86_400) === want, describeIdle(secs / 86_400));
+    }
+    check("  and nothing ever reads as a plural one",
+      !/\b1 (seconds|minutes|hours|days)\b/.test(
+        [1, 60, 3_600, 86_400 * 1.2].map(x => describeIdle(x / 86_400)).join(" ")),
+      [1, 60, 3_600, 86_400 * 1.2].map(x => describeIdle(x / 86_400)));
     check("  says what is blocking it", /waiting on review/i.test(body), body);
     check("  and carries the marker that lets the next one find it",
       body.includes(NUDGE_MARKER), body);

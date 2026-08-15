@@ -410,6 +410,24 @@ const AUTHOR_TEXT: Record<BlockReason, string> = {
   "blocked": "this is blocked from merging",
 };
 
+/**
+ * How long it has been idle, in a unit a person would use.
+ *
+ * Never rounds down to zero: something has to have elapsed for a reminder to
+ * exist at all, so "0 days" is always a rendering fault rather than a fact.
+ */
+export function describeIdle(days: number): string {
+  const secs = Math.max(0, days * 86_400);
+  const unit = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+  if (secs < 90) return unit(Math.max(1, Math.round(secs)), "second");
+  if (secs < 3_600) return unit(Math.round(secs / 60), "minute");
+  // Days only once there is more than one, so nothing ever reads "1 days" or
+  // rounds a day and a half down to one.
+  if (secs < 172_800) return unit(Math.round(secs / 3_600), "hour");
+  return unit(Math.floor(days), "day");
+}
+
 export function buildNudgeComment(
   pr: PullRequest,
   reason: BlockReason,
@@ -417,7 +435,12 @@ export function buildNudgeComment(
   idleDays: number,
   nudgeNumber: number,
 ): string {
-  const days = Math.floor(idleDays);
+  // Rendered in whatever unit is actually true.
+  //
+  // It said "No commits for 0 days" on a real pull request, because the value
+  // was floored to whole days and the pull request had been idle for seconds.
+  // A reminder whose first line is visibly wrong is one nobody reads twice.
+  const idle = describeIdle(idleDays);
   const nth = nudgeNumber > 1 ? ` This is reminder ${nudgeNumber}.` : "";
 
   // Split by role, because the two are being asked for different things and a
@@ -428,7 +451,7 @@ export function buildNudgeComment(
 
   const lines = [
     NUDGE_MARKER_VALUE,
-    `**No commits for ${days} day${days === 1 ? "" : "s"}.**${nth}`,
+    `**No commits for ${idle}.**${nth}`,
     "",
   ];
 
