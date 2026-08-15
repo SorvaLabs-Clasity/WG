@@ -1,6 +1,9 @@
 import AuditStreamSetup from "../components/AuditStreamSetup";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { categoryOf, countByCategory, CATEGORY_LABELS, type ActivityCategory } from "../lib/activityCategories";
+import {
+  categoryOf, countByCategory, inView, sourcesFor, CATEGORY_LABELS, VIEW_ORDER,
+  type ActivityView,
+} from "../lib/activityCategories";
 import { Page, INTENT } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import UserAvatar from "../components/UserAvatar";
@@ -201,12 +204,26 @@ function WebhookPulse() {
   );
 }
 
-/** What each stream holds, said plainly, because the tab label cannot. */
-const CATEGORY_DESCRIPTIONS: Record<ActivityCategory, string> = {
-  github: "Changes to the organization — branches, protection, rulesets, repositories. Newest first.",
+/**
+ * What each stream holds, said plainly, because the tab label cannot.
+ *
+ * A row lands in a stream by what its action *changed*, not by where the change
+ * came from — which is the part that reads as arbitrary until it is stated.
+ * Removing branch protection is an Organization row whether somebody did it in
+ * this app or on github.com, because the same thing changed either way.
+ */
+const CATEGORY_DESCRIPTIONS: Record<ActivityView, string> = {
+  all: "Every row from all four streams, newest first. Each row is tagged with the stream it belongs to.",
+  github: "Things that changed your GitHub organization — branches, protection, rulesets, repositories, Dependabot. Whether the change was made here or on github.com.",
   aws: "Findings and remediations from the AWS guardrail engine.",
-  app: "This app's own settings — widgets, scanners, imports, and undo history.",
-  audit: "The enterprise audit log.",
+  app: "This app's own settings — widgets, scanners, imports, and undo history. Nothing here changed GitHub or AWS.",
+  audit: "The enterprise audit log, streamed from GitHub. Read-only, and the widest of the four.",
+};
+
+const SOURCE_LABELS: Record<string, string> = {
+  app: "Control Hub app",
+  github: "GitHub webhook",
+  audit: "Audit log stream",
 };
 
 export default function ActivityPage() {
@@ -218,10 +235,12 @@ export default function ActivityPage() {
   const retryMutation = useRetryActivity();
   const undoResolutionMutation = useUndoResolution();
   const [search, setSearch] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<"all" | "app" | "github">("all");
-  // Defaults to the organization stream. That is what this app exists to
-  // record — dashboard housekeeping is one click away rather than mixed in.
-  const [category, setCategory] = useState<ActivityCategory>("github");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "app" | "github" | "audit">("all");
+  // Defaults to the organization stream rather than to Everything. That is what
+  // this app exists to record, and opening on a merged feed puts dashboard
+  // housekeeping beside branch protection disappearing — which is the mixing
+  // the streams were introduced to undo. Everything is one click away.
+  const [category, setCategory] = useState<ActivityView>("github");
   const [repoFilter, setRepoFilter] = useState("");
   const [targetFilter, setTargetFilter] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -289,7 +308,7 @@ export default function ActivityPage() {
 
   const filtered = useMemo(() => {
     if (!data?.entries) return [];
-    let entries = data.entries.filter((e) => categoryOf(e.action) === category);
+    let entries = data.entries.filter((e) => inView(e.action, category));
     if (sourceFilter !== "all") entries = entries.filter((e) => e.source === sourceFilter);
     if (repoFilter) { const q = repoFilter.toLowerCase(); entries = entries.filter((e) => e.repo.toLowerCase().includes(q)); }
     if (targetFilter) { const q = targetFilter.toLowerCase(); entries = entries.filter((e) => e.target.toLowerCase().includes(q) || (e.prNumber && e.prNumber.toString() === q) || (e.commitSha && e.commitSha.toLowerCase().includes(q))); }
@@ -304,6 +323,13 @@ export default function ActivityPage() {
     [data],
   );
 
+  // Which sources exist in this view, and therefore whether offering the
+
+  // filter can change anything at all.
+
+  const availableSources = useMemo(() => sourcesFor(category), [category]);
+
+
   const totalTopLevel = filtered.length;
   const totalPages = Math.max(1, Math.ceil(totalTopLevel / perPage));
   const safePage = Math.min(currentPage, totalPages);
@@ -311,6 +337,15 @@ export default function ActivityPage() {
   const paginatedEntries = filtered.slice(pageStart, pageStart + perPage);
 
   useEffect(() => { setCurrentPage(1); }, [search, sourceFilter, repoFilter, targetFilter, perPage, category]);
+
+  // A source that cannot occur in the new view would filter every row away and
+  // read as an empty stream. Switching from Organization with "GitHub webhook"
+  // selected to App settings is exactly that: no app row is ever source github.
+  useEffect(() => {
+    if (sourceFilter !== "all" && !sourcesFor(category).includes(sourceFilter)) {
+      setSourceFilter("all");
+    }
+  }, [category, sourceFilter]);
 
   useEffect(() => {
     if (!highlightedId) return;
@@ -398,11 +433,17 @@ export default function ActivityPage() {
                 <i className={`fa-solid fa-chevron-${isExpanded ? 'down' : 'right'} text-[10px]`}></i>
               </button>
             ) : <span className="w-5 inline-block" />}
+            {/* Audit rows had no case here and fell through to the shield,
+                captioned "Control Hub App Event" — which is the one thing they
+                are certainly not. They come from GitHub's enterprise stream and
+                this app never wrote them. */}
             {isFailedEntry
               ? <i className="fa-solid fa-circle-exclamation text-base text-red-500" title="Failed"></i>
               : entry.source === "github"
-                ? <i className="fa-brands fa-github text-base text-gh-textBase dark:text-slate-200" title="Native GitHub Event"></i>
-                : <i className="fa-solid fa-shield-halved text-base text-gh-blue dark:text-blue-400" title="Control Hub App Event"></i>}
+                ? <i className="fa-brands fa-github text-base text-gh-textBase dark:text-slate-200" title="Reported by GitHub webhook"></i>
+                : entry.source === "audit"
+                  ? <i className="fa-solid fa-scroll text-base text-purple-600 dark:text-purple-400" title="From the enterprise audit log"></i>
+                  : <i className="fa-solid fa-shield-halved text-base text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
           </div>
         </td>
         <td className="px-4 py-3 whitespace-nowrap">
@@ -411,6 +452,20 @@ export default function ActivityPage() {
               <i className={isFailedEntry ? 'fa-solid fa-xmark text-[10px]' : cfg.iconClass}></i>
               {isFailedEntry ? `${cfg.label} (Failed)` : cfg.label}
             </span>
+            {/* Which stream this row would be under, shown only while they are
+                merged. Without it the combined view is the undifferentiated
+                list the streams were introduced to break up — and clicking
+                through to find out which tab a row lives in defeats the point
+                of merging them. Hidden in a single stream, where every row
+                would carry the same badge. */}
+            {category === "all" && (
+              <button
+                onClick={(e) => { e.stopPropagation(); setCategory(categoryOf(entry.action)); }}
+                title={`Show only ${CATEGORY_LABELS[categoryOf(entry.action)]}`}
+                className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 font-medium hover:border-gh-blue hover:text-gh-blue dark:hover:text-blue-400">
+                {CATEGORY_LABELS[categoryOf(entry.action)]}
+              </button>
+            )}
             {isUndoneEntry && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 border border-gray-200 dark:border-slate-700 font-medium">Undone</span>}
             {entry.action === "conflict.pending" && !entry.conflictResolution && (
               <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold">On Hold</span>
@@ -530,13 +585,17 @@ export default function ActivityPage() {
 
           {/* Four streams, because four things write here and they are not read
               for the same reason. A widget being renamed and branch protection
-              being removed were previously the same list. */}
+              being removed were previously the same list.
+              Everything sits first and merges all four, for the times you know
+              roughly when something happened but not which stream recorded it —
+              a repository going public shows up in Organization and again in the
+              audit log, and searching one at a time is how you miss it. */}
           {/* overflow-y-hidden is load-bearing: setting overflow-x to anything but
               visible makes overflow-y compute to auto rather than staying visible,
               and the tabs' -mb-px against a 2px bottom border overflows by exactly
               enough to raise a vertical scrollbar on a row of buttons. */}
           <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto overflow-y-hidden">
-            {(["github", "aws", "app", "audit"] as ActivityCategory[]).map(c => {
+            {VIEW_ORDER.map(c => {
               const active = category === c;
               const n = categoryCounts[c];
               return (
@@ -563,15 +622,26 @@ export default function ActivityPage() {
               <i className="fa-solid fa-filter text-gh-muted dark:text-slate-400 text-sm"></i>
               <span className="text-sm font-semibold text-gh-textBase dark:text-slate-200">Advanced Filters</span>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Source</label>
-                <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as any)} className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
-                  <option value="all">All Sources</option>
-                  <option value="app">Control Hub App</option>
-                  <option value="github">GitHub webhooks</option>
-                </select>
-              </div>
+            {/* Three columns when Source does not apply, so the remaining
+                filters spread rather than leaving a gap where it was. */}
+            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${
+              availableSources.length > 1 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
+              {/* Offered only where it can change what is shown. In three of the
+                  four streams every row carries the same source, so the dropdown
+                  could only ever empty the table — and in the audit stream it did
+                  exactly that, offering app and github when every audit row is
+                  source `audit`. */}
+              {availableSources.length > 1 && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Source</label>
+                  <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as any)} className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    <option value="all">All sources</option>
+                    {availableSources.map(src => (
+                      <option key={src} value={src}>{SOURCE_LABELS[src]}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div>
                 <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Repository</label>
                 <input type="text" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} placeholder="e.g. web-platform" className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200" />

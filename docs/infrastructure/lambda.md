@@ -49,7 +49,7 @@ EC2 instance these replaced go, security group and all.
 |---|---|---|
 | Guardrail enforcer | EventBridge schedule, every 15 minutes | Full sweep |
 | Guardrail enforcer | EventBridge on a CloudTrail event | Just the resource that changed, in the account it changed in |
-| Alarm evaluator | EventBridge schedule, every 15 minutes | Only alarms whose own interval is up — Dependabot-backed ones are hourly |
+| Alarm evaluator | EventBridge schedule, every 5 minutes | Only alarms whose own interval is up — Dependabot-backed ones every 10 minutes, everything else every 15 |
 | Audit ingest | S3 object-created notification | One streamed batch |
 | Guardrail enforcer | Direct invoke from the app | Whatever the caller asked for |
 | Webhook receiver | API Gateway, `POST /webhooks/github` | One delivery |

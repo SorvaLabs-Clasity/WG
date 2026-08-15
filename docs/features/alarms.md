@@ -65,13 +65,25 @@ triggering.
 
 ### How often they run
 
-One schedule, every fifteen minutes. Each alarm is due on its own interval:
+One schedule — the *tick* — every **five minutes**. Each alarm carries its own
+interval and is evaluated on the first tick after it comes due:
 
-- **Dependabot-backed widgets: hourly.** GitHub only rescans on push and when
-  advisories are published, which happens in batches a few times a day.
-  Checking four times an hour spends rate limit to receive the same answer.
-- **Everything else: fifteen minutes.** Configuration state, read from the
-  graph tables, changed by people.
+| Widget reads | Interval | Ticks |
+|---|---|---|
+| Dependabot or vulnerable-repo counts | **10 minutes** | every 2nd |
+| Everything else | **15 minutes** | every 3rd |
+
+The tick has to divide every interval, because an alarm can only be evaluated
+when the rule fires. A ten-minute interval under a fifteen-minute tick is a
+fifteen-minute alarm that still reads as ten everywhere — nothing fails, the
+value is just older than it claims. A test asserts the tick divides both
+intervals and that the deployed rule matches the constant.
+
+Dependabot alarms were hourly when that data cost one API request per
+repository. It is now a single org-wide sweep, paginated at 100 alerts per
+request and fetched once per run however many alarms read it — so the cost
+tracks how many alerts are open, not how many repositories, widgets or alarms
+exist. Ten minutes is affordable where sixty was not.
 
 There is no interval setting. The system knows what kind of data each widget
 reads and picks accordingly, and the tiering is a constant in the code rather
@@ -79,8 +91,9 @@ than a deploy.
 
 The due check carries two minutes of slack, because EventBridge fires within
 about a minute either side of the scheduled time. Without it a tick arriving at
-59m50s reads as "not yet an hour" and defers, so an hourly alarm quietly
-becomes a 75-minute one and the drift compounds.
+9m50s reads as "not yet ten minutes" and defers a whole tick, so the interval
+quietly stretches and the drift compounds. The slack is necessarily shorter than
+one tick, or a check would come due before its interval had elapsed.
 
 ### Firing and recovering
 
@@ -150,7 +163,7 @@ production access.
 ## Cost
 
 Effectively nothing. SNS email is $2 per 100,000; the evaluator runs about a
-second every fifteen minutes; the table is on-demand and holds a handful of
+second every five minutes; the table is on-demand and holds a handful of
 rows. Under 10¢/month at any realistic volume.
 
 ## What it is not

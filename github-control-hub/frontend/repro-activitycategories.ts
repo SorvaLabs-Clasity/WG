@@ -12,7 +12,11 @@
  *
  * Run:  npx tsx repro-activitycategories.ts   from github-control-hub/frontend
  */
-import { categoryOf, countByCategory, FALLBACK_CATEGORY, type ActivityCategory } from "./src/lib/activityCategories";
+import {
+  categoryOf, countByCategory, FALLBACK_CATEGORY, inView, sourcesFor,
+  CATEGORY_LABELS, CATEGORY_SOURCES, CATEGORY_ORDER, VIEW_ORDER,
+  type ActivityCategory,
+} from "./src/lib/activityCategories";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -92,6 +96,62 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
     counts.github === 2 && counts.app === 1 && counts.aws === 1 && counts.audit === 1, counts);
   check("  and an empty feed counts zero everywhere",
     Object.values(countByCategory([])).every(n => n === 0), countByCategory([]));
+
+  // The tab label has to agree with what the tab holds, or the count says one
+  // thing and the table shows another.
+  check("  the Everything count is the sum of the four streams",
+    counts.all === counts.github + counts.app + counts.aws + counts.audit, counts);
+}
+
+// ── the combined view ─────────────────────────────────────────────────
+{
+  check("Everything holds a row from every stream",
+    ["branch.protect", "widget.create", "aws.guardrail", "audit.event"]
+      .every(a => inView(a, "all")));
+
+  check("  while a single stream holds only its own",
+    inView("branch.protect", "github") && !inView("widget.create", "github"));
+
+  // "all" must not become a fifth bucket rows can be classified into, or the
+  // exhaustiveness check above stops meaning anything.
+  check("  and no action is ever classified as \"all\"",
+    ["branch.protect", "widget.create", "aws.guardrail", "audit.event", "who.knows"]
+      .every(a => (categoryOf(a) as string) !== "all"));
+
+  check("  Everything is offered first, before the streams it merges",
+    VIEW_ORDER[0] === "all" && VIEW_ORDER.length === CATEGORY_ORDER.length + 1, VIEW_ORDER);
+
+  check("  and every view has a label",
+    VIEW_ORDER.every(v => typeof CATEGORY_LABELS[v] === "string" && CATEGORY_LABELS[v].length > 0));
+}
+
+// ── the source filter, which used to be offered where it could only empty ──
+{
+  // Offered in all four streams, listing app and github. In the audit stream
+  // every row is source `audit`, so either choice matched nothing: the filter
+  // could only ever empty the table.
+  check("a stream with one possible source does not offer the filter",
+    sourcesFor("audit").length === 1 && sourcesFor("app").length === 1
+      && sourcesFor("aws").length === 1,
+    { audit: sourcesFor("audit"), app: sourcesFor("app"), aws: sourcesFor("aws") });
+
+  check("  the organization stream does, being the only one written both ways",
+    sourcesFor("github").length === 2
+      && sourcesFor("github").includes("app") && sourcesFor("github").includes("github"),
+    sourcesFor("github"));
+
+  check("  and Everything offers each source once",
+    sourcesFor("all").length === new Set(sourcesFor("all")).size
+      && sourcesFor("all").includes("audit"),
+    sourcesFor("all"));
+
+  // The audit source was missing from the dropdown entirely, so audit rows
+  // could not be isolated in the combined view even though they are the
+  // majority of it.
+  const everySource = new Set(CATEGORY_ORDER.flatMap(c => CATEGORY_SOURCES[c]));
+  check("  covering every source any stream can produce",
+    [...everySource].every(src => sourcesFor("all").includes(src)),
+    { offered: sourcesFor("all"), exist: [...everySource] });
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

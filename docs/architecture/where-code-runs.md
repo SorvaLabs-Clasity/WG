@@ -58,6 +58,23 @@ where a CloudWatch alarm fires and it can be redriven. See
 All three run the same function with different options, so a manual run cannot
 behave differently from an automatic one.
 
+## Alarm evaluator
+
+`github-control-hub-alarm-evaluator`, on an EventBridge schedule every **five
+minutes**. That is the tick, not the interval: each alarm carries its own and is
+evaluated on the first tick after it comes due — Dependabot-backed widgets every
+10 minutes, everything else every 15. Ticks with nothing due read the alarms
+table and return.
+
+The tick must divide every interval, since an alarm can only be evaluated when
+the rule fires. See [alarms](../features/alarms.md).
+
+## Audit log ingest
+
+`github-control-hub-audit-log-ingest`, on no schedule at all. S3 invokes it when
+GitHub writes a batch into the audit-log bucket, so it runs only when there is
+something to read.
+
 ## What runs nowhere on a schedule
 
 Graph aggregation. It rebuilds only when someone presses **Sync data**, on

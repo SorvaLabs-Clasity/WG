@@ -25,11 +25,38 @@
 
 export type ActivityCategory = "github" | "aws" | "app" | "audit";
 
-export const CATEGORY_LABELS: Record<ActivityCategory, string> = {
+/**
+ * "all" is a view, not a category.
+ *
+ * No row is ever classified as "all" — `categoryOf` still returns one of the
+ * four. Keeping it out of ActivityCategory is what stops it becoming a fifth
+ * bucket that rows could accidentally land in, and keeps the exhaustiveness
+ * check in repro-activitycategories.ts meaningful.
+ */
+export type ActivityView = ActivityCategory | "all";
+
+export const CATEGORY_ORDER: ActivityCategory[] = ["github", "aws", "app", "audit"];
+
+/** Tab order: everything first, then the four streams it is made of. */
+export const VIEW_ORDER: ActivityView[] = ["all", ...CATEGORY_ORDER];
+
+export const CATEGORY_LABELS: Record<ActivityView, string> = {
+  all: "Everything",
   github: "Organization",
   aws: "AWS",
   app: "App settings",
   audit: "Audit log",
+};
+
+/** Which sources a row in each stream can actually carry. */
+export const CATEGORY_SOURCES: Record<ActivityCategory, Array<"app" | "github" | "audit">> = {
+  // The only stream written from both directions: this app makes a change, or
+  // a webhook reports one somebody made on github.com.
+  github: ["app", "github"],
+  // The guardrail Lambda writes these itself.
+  aws: ["app"],
+  app: ["app"],
+  audit: ["audit"],
 };
 
 /**
@@ -85,8 +112,28 @@ export function categoryOf(action: string): ActivityCategory {
 }
 
 /** Rows in each stream, in one pass. */
-export function countByCategory(actions: string[]): Record<ActivityCategory, number> {
-  const counts: Record<ActivityCategory, number> = { github: 0, aws: 0, app: 0, audit: 0 };
-  for (const a of actions) counts[categoryOf(a)]++;
+export function countByCategory(actions: string[]): Record<ActivityView, number> {
+  const counts: Record<ActivityView, number> = { all: 0, github: 0, aws: 0, app: 0, audit: 0 };
+  for (const a of actions) { counts[categoryOf(a)]++; counts.all++; }
   return counts;
+}
+
+/** Whether a row belongs in the current view. "all" holds everything. */
+export function inView(action: string, view: ActivityView): boolean {
+  return view === "all" || categoryOf(action) === view;
+}
+
+/**
+ * The sources worth offering as a filter in this view.
+ *
+ * Returns fewer than two when filtering cannot change what is shown, so the
+ * control can be hidden rather than offered. It was offered in every stream,
+ * where in three of the four it could only ever empty the table: an audit row
+ * is always source `audit`, and the dropdown listed only app and github.
+ */
+export function sourcesFor(view: ActivityView): Array<"app" | "github" | "audit"> {
+  if (view === "all") {
+    return [...new Set(CATEGORY_ORDER.flatMap(c => CATEGORY_SOURCES[c]))];
+  }
+  return CATEGORY_SOURCES[view];
 }

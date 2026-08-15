@@ -30,6 +30,10 @@ export default function RenovatePanel() {
 
   const [filter, setFilter] = useState<"open" | "closed" | "all">("open");
   const [botDraft, setBotDraft] = useState("");
+  // The name was settable once and then permanently fixed: the input rendered
+  // only in the unconfigured branch. Renaming the bot, or a typo, left the
+  // panel telling you to check the spelling with nothing to correct it with.
+  const [editingBot, setEditingBot] = useState(false);
   const [saveError, setSaveError] = useState("");
 
   const saveBot = useMutation({
@@ -53,6 +57,30 @@ export default function RenovatePanel() {
     ],
     perPage: 25,
   });
+
+  const botEditor = () => (
+    <div className="mt-3 max-w-md">
+      <div className="flex gap-2">
+        <input value={botDraft} onChange={e => setBotDraft(e.target.value)}
+          placeholder="e.g. my-renovate" className={inputClass} autoFocus />
+        <button onClick={() => saveBot.mutate(botDraft, { onSuccess: () => setEditingBot(false) })}
+          disabled={!botDraft.trim() || saveBot.isPending}
+          className="shrink-0 px-4 py-2 text-sm font-semibold rounded-md bg-gh-blue text-white hover:opacity-90 disabled:opacity-50">
+          {saveBot.isPending ? "Saving…" : "Save"}
+        </button>
+        <button onClick={() => { setEditingBot(false); setBotDraft(""); }}
+          className="shrink-0 px-3 py-2 text-sm font-semibold rounded-md text-gh-textBase dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5">
+          Cancel
+        </button>
+      </div>
+      <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+        The <code>[bot]</code> suffix an App's login carries is added for you if you leave it off.
+        Changing this only changes which pull requests are shown and emailed; nothing on GitHub is
+        touched.
+      </p>
+      {saveError && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{saveError}</p>}
+    </div>
+  );
 
   if (isLoading) return <Spinner />;
 
@@ -100,9 +128,15 @@ export default function RenovatePanel() {
           <code className="px-1 rounded bg-black/5 dark:bg-white/10">{data.bot}</code> — it either
           does not exist, or this app cannot see it. Check the spelling of the bot account.
         </p>
+        {isAdmin
+          ? botEditor()
+          : <p className="mt-3 text-sm text-gray-600 dark:text-slate-400">
+              An organization admin can correct it.
+            </p>}
       </div>
     );
   }
+
 
   const openCount = (data.prs ?? []).filter(p => p.state === "open").length;
   const closedCount = (data.prs ?? []).length - openCount;
@@ -118,7 +152,14 @@ export default function RenovatePanel() {
             Raised by{" "}
             <code className="px-1 rounded bg-black/5 dark:bg-white/10">
               {data.resolvedBot ?? data.bot}
-            </code>.
+            </code>
+            {isAdmin && (
+              <>
+                {" "}
+                <button onClick={() => { setBotDraft(data.bot ?? ""); setEditingBot(true); }}
+                  className="font-semibold text-gh-blue hover:underline">change</button>
+              </>
+            )}.
             Closed ones drop off {CLOSED_RETENTION_MONTHS} months after they close.
           </p>
         </div>
@@ -128,6 +169,8 @@ export default function RenovatePanel() {
           ["all", `All ${openCount + closedCount}`],
         ]} />
       </div>
+
+      {editingBot && botEditor()}
 
       {data.truncated && (
         <div className="rounded-md bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">

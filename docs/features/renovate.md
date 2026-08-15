@@ -29,6 +29,20 @@ empty result.** So an unrecognised name is reported as its own state, naming
 both forms that were tried, rather than surfacing as a 500 that reads as the
 feature being broken.
 
+## Changing the bot account
+
+The name is stored in org config, not in code or in an environment variable, and
+an admin can change it at any time from the panel — the **change** link beside
+the account name, or the editor shown when the account is not recognized.
+
+Changing it only changes which pull requests this app looks for and emails
+about. Nothing on GitHub is touched, and no history is lost: the list is a live
+search, so it re-runs against the new name immediately.
+
+It was settable exactly once. The input rendered only in the unconfigured state,
+so after a rename — or a typo — the panel said the account was unrecognized and
+offered nothing to correct it with.
+
 ## Retention
 
 Open pull requests are always shown, however old. Closed ones drop off three
