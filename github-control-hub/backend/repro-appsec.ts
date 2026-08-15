@@ -424,6 +424,64 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     }
     check("  and no shipped source names one organization, bot or account",
       named.length === 0, named);
+
+    /**
+     * The guard proves its own teeth before its silence is believed.
+     *
+     * A clean repository passes this check however weak the check is, so
+     * "no findings" says nothing on its own. Mutating the scanner — narrowing
+     * it back to .ts only, emptying the shape pattern, pointing it at a single
+     * directory — left every assertion above green, because there was nothing
+     * there to miss either way.
+     *
+     * So a canary is planted in each file type the scanner claims to read, in a
+     * directory it claims to walk, and the scan is required to find every one.
+     * Removed in a finally: a leftover canary would fail this check on the next
+     * run and look like a real leak.
+     */
+    const canaryDir = path.join(ROOT, "docs", ".appsec-canary");
+
+    // Assembled at runtime, never written out whole. A canary spelled as a
+    // literal is an identifier in this file, and this file is scanned — the
+    // first version of this made the guard report itself. The same reason the
+    // pattern descriptions above avoid spelling a match.
+    const acct = ["9876", "5432", "1098"].join("");
+    const client = "Iv" + "23" + "abcdefghijklmno";
+
+    const canaries: Array<[string, string]> = [
+      ["leak.md", `the account is ${acct} in prose`],
+      ["leak.ts", `const account = "${acct}";`],
+      ["leak.json", `{ "account": "${acct}" }`],
+      ["leak.sh", `ACCOUNT=${acct}`],
+      ["leak.yaml", `account: ${acct}`],
+      ["client.ts", `const id = "${client}";`],
+    ];
+    try {
+      fs.mkdirSync(canaryDir, { recursive: true });
+      for (const [name, body] of canaries) {
+        fs.writeFileSync(path.join(canaryDir, name), body + "\n");
+      }
+
+      const found: string[] = [];
+      const scanCanaries = (p: string) => {
+        const full = path.join(ROOT, p);
+        if (fs.statSync(full).isDirectory()) {
+          for (const e of fs.readdirSync(full)) scanCanaries(path.join(p, e));
+          return;
+        }
+        named.length = 0;
+        scanNames(p);
+        if (named.length) found.push(path.basename(p));
+      };
+      scanCanaries(path.join("docs", ".appsec-canary"));
+
+      const missed = canaries.map(([n]) => n).filter(n => !found.includes(n));
+      check(`  the scanner catches a planted identifier in all ${canaries.length} file types it reads`,
+        missed.length === 0, { missed, found });
+    } finally {
+      fs.rmSync(canaryDir, { recursive: true, force: true });
+      named.length = 0;
+    }
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

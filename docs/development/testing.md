@@ -94,3 +94,21 @@ the summary is silence rather than a failure. Where behaviour *under* failure is
 what is being asserted — a delete that 404s, a repository that cannot be
 commented on — catch it explicitly and assert on the outcome, so a throw becomes
 a readable failure instead of a silent exit.
+
+## A guard cannot prove itself on clean input
+
+repro-appsec scans the repository for leaked identifiers. On a clean repository
+it passes — and it passes just as happily with the scanner narrowed to one file
+type, pointed at one directory, or with its pattern emptied. Three mutations
+doing exactly that changed nothing, because there was nothing there to miss
+either way.
+
+"No findings" is therefore not evidence. The guard now plants a canary in every
+file type it claims to read, inside a directory it claims to walk, and requires
+the scan to find all of them before its silence about the real repository counts
+for anything. The canaries are removed in a finally, since one left behind reads
+as a genuine leak on the next run.
+
+The canary values are assembled at runtime rather than written as literals. The
+first version spelled them out, and since the guard scans its own source, it
+reported itself.
