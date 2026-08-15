@@ -66,6 +66,15 @@ export const SIGNAL_WEIGHT: Record<Signal, number> = {
  */
 export const HALF_LIFE_DAYS = 90;
 
+/**
+ * How many manifest searches one library question may cost.
+ *
+ * Code search has its own rate limit of thirty a minute, far smaller than the
+ * rest of the API, so a lookup that walked every ecosystem would spend a third
+ * of a minute's budget answering one question.
+ */
+export const MAX_LIBRARY_SEARCHES = 4;
+
 export function decay(at: string, now: number): number {
   const t = new Date(at).getTime();
   if (!Number.isFinite(t)) return 0;
@@ -81,9 +90,22 @@ export function decay(at: string, now: number): number {
  * humans off it, which is the one outcome that makes this feature useless.
  */
 export function isBot(login: string): boolean {
-  const l = login.toLowerCase();
-  return l.endsWith("[bot]") || l === "web-flow" || l.endsWith("-bot")
-    || l === "github-actions" || l === "dependabot" || l === "renovate";
+  const l = login.trim().toLowerCase();
+  if (!l) return false;
+  if (l.endsWith("[bot]") || l === "web-flow") return true;
+  if (l === "github-actions" || l === "dependabot" || l === "renovate") return true;
+
+  // "Bot" as a whole word, anywhere.
+  //
+  // A commit with no linked GitHub account falls back to the git config name,
+  // which is a display name rather than a login — "Acme Studios Bot", not
+  // "acme-bot[bot]". Matching only the login forms let exactly that account
+  // rank first on a live lookup, which is the one result that makes this
+  // feature worse than useless.
+  //
+  // Word-boundary matched on purpose: "Abbot", "Botha" and "Robotics" are
+  // people and companies, and excluding them would silently drop humans.
+  return /\bbots?\b/.test(l);
 }
 
 export function rankExperts(
@@ -235,26 +257,50 @@ export async function expertsForLibrary(
   maxRepos = 12,
 ): Promise<{ experts: ExpertRow[]; repos: string[]; degraded: string[] }> {
   const degraded: string[] = [];
-  let hits: Array<{ repo: string; path: string }> = [];
-  try {
-    hits = await gh.searchCode(`"${library}" org:${org} in:file`);
-  } catch {
+
+  // Scoped by filename, not `in:file`.
+  //
+  // A bare `"react" org:X in:file` search returns every source file mentioning
+  // the word — nearly five thousand on a real organization, of which the first
+  // page contained no manifests at all, so the whole lookup returned nothing.
+  // `filename:package.json` returns only manifests and answers the question
+  // actually being asked.
+  //
+  // One search per ecosystem, stopping as soon as there are enough
+  // repositories. Most organizations are one or two ecosystems, so this is
+  // usually a single search; the cap is what stops a miss from walking the
+  // whole list against a rate limit of thirty a minute.
+  const seen = new Set<string>();
+  const targets: Array<{ repo: string; path: string }> = [];
+  let searched = 0;
+
+  for (const manifest of MANIFESTS) {
+    if (targets.length >= maxRepos || searched >= MAX_LIBRARY_SEARCHES) break;
+    // Globs cannot be used with filename:, and the ecosystems behind them are
+    // covered by the named manifests above.
+    if (manifest.startsWith("*")) continue;
+    searched++;
+    let hits: Array<{ repo: string; path: string }> = [];
+    try {
+      hits = await gh.searchCode(`"${library}" org:${org} filename:${manifest}`);
+    } catch {
+      degraded.push(`search:${manifest}`);
+      continue;
+    }
+    for (const h of hits) {
+      if (!isManifest(h.path) || seen.has(h.repo)) continue;
+      seen.add(h.repo);
+      targets.push(h);
+      if (targets.length >= maxRepos) break;
+    }
+  }
+
+  if (searched > 0 && degraded.length === searched) {
     return { experts: [], repos: [], degraded: ["search"] };
   }
 
-  // Manifests only, and one per repository: a repository with a manifest in
-  // every package directory would otherwise use the whole budget by itself.
-  const seen = new Set<string>();
-  const targets: Array<{ repo: string; path: string }> = [];
-  for (const h of hits) {
-    if (!isManifest(h.path) || seen.has(h.repo)) continue;
-    seen.add(h.repo);
-    targets.push(h);
-    if (targets.length >= maxRepos) break;
-  }
-
   if (targets.length === 0) {
-    return { experts: [], repos: [], degraded: hits.length ? ["no-manifest"] : [] };
+    return { experts: [], repos: [], degraded };
   }
 
   const perRepo = await Promise.all(targets.map(async t => {

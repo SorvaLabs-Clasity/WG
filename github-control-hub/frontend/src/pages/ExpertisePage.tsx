@@ -163,12 +163,21 @@ export default function ExpertisePage() {
               matters at three in the morning. */}
           {data.experts.length === 0 ? (
             <Empty
-              title="Nobody found"
-              body={data.degraded.length
-                ? `Could not read: ${data.degraded.join(", ")}. This may be a permissions or `
-                  + `visibility problem rather than an empty history.`
-                : "No commits, reviews or discussion match. Check the name is right — "
-                  + "this searches only what your own account can see."} />
+              title={data.repos?.length ? "Only automated accounts" : "Nobody found"}
+              body={
+                // Three different situations that all render as an empty list,
+                // and telling somebody to check the spelling when the name was
+                // right and the history is simply all bot-authored sends them
+                // looking for a problem that is not there.
+                data.repos?.length
+                  ? `Found in ${data.repos.length} repositor${data.repos.length === 1 ? "y" : "ies"}, `
+                    + `but every change to those files was made by an automated account. `
+                    + `Bots are excluded from the ranking, so there is nobody here to ask.`
+                  : data.degraded.length
+                    ? `Could not read: ${data.degraded.join(", ")}. This may be a permissions or `
+                      + `visibility problem rather than an empty history.`
+                    : "No commits, reviews or discussion match. Check the name is right — "
+                      + "this searches only what your own account can see."} />
           ) : (
             <>
               <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">

@@ -17,7 +17,7 @@ import fs from "fs";
 import path from "path";
 import {
   rankExperts, decay, isBot, isManifest, expertsForRepo, expertsForPath,
-  expertsForLibrary, SIGNAL_WEIGHT, HALF_LIFE_DAYS,
+  expertsForLibrary, SIGNAL_WEIGHT, HALF_LIFE_DAYS, MAX_LIBRARY_SEARCHES,
   type Contribution, type GithubReader,
 } from "./src/services/expertiseService";
 
@@ -72,7 +72,20 @@ const c = (login: string, signal: Contribution["signal"], days: number): Contrib
                        "web-flow", "acme-renovate[bot]", "some-bot"]) {
       check(`  ${bot} is recognised as not a person`, isBot(bot));
     }
+
+    // A commit with no linked GitHub account falls back to the git config
+    // *name*, which is a display name and not a login. A live lookup ranked
+    // "Acme Studios Bot" first because nothing here matched a name shaped like
+    // that — the exact outcome the exclusion exists to prevent.
+    for (const bot of ["Acme Studios Bot", "CI Bot", "build bot", "Release Bot"]) {
+      check(`  "${bot}" is too, being a display name rather than a login`, isBot(bot));
+    }
+
     check("  while a human login is not", !isBot("alice") && !isBot("bobby-tables"));
+    // Word-boundary matched, or the exclusion starts dropping people.
+    for (const human of ["Abbot", "Botha", "Robotics Team", "Elliot", "Bobby"]) {
+      check(`  and "${human}" is not mistaken for one`, !isBot(human));
+    }
 
     const ranked = rankExperts([
       ...Array.from({ length: 500 }, () => c("dependabot[bot]", "commit", 1)),
@@ -191,17 +204,24 @@ const c = (login: string, signal: Contribution["signal"], days: number): Contrib
   // ── the library question ────────────────────────────────────────────
   {
     const calls: string[] = [];
+    const queries: string[] = [];
     const gh: GithubReader = {
       listCommits: async (r, p) => { calls.push(`${r}:${p}`); return [{ login: "alice", at: daysAgo(5) }]; },
       listReviewComments: async () => [],
       listIssueComments: async () => [],
-      searchCode: async () => [
-        { repo: "o/api", path: "package.json" },
-        { repo: "o/api", path: "web/package.json" },
-        { repo: "o/web", path: "package.json" },
-        { repo: "o/web", path: "package-lock.json" },
-        { repo: "o/docs", path: "README.md" },
-      ],
+      searchCode: async (q: string) => {
+        queries.push(q);
+        // Only the package.json search returns anything, as on a single-
+        // ecosystem organization.
+        if (!q.includes("filename:package.json")) return [];
+        return [
+          { repo: "o/api", path: "package.json" },
+          { repo: "o/api", path: "web/package.json" },
+          { repo: "o/web", path: "package.json" },
+          { repo: "o/web", path: "package-lock.json" },
+          { repo: "o/docs", path: "README.md" },
+        ];
+      },
     };
     const res = await expertsForLibrary(gh, "o", "react-router", NOW);
 
@@ -214,12 +234,21 @@ const c = (login: string, signal: Contribution["signal"], days: number): Contrib
     check("  and the repositories searched are reported back",
       res.repos.includes("o/api") && res.repos.includes("o/web"), res.repos);
 
+    // The live failure: `in:file` returned nearly five thousand source-file
+    // hits on a real organization and no manifests at all on the first page,
+    // so the lookup answered empty. Scoping by filename is what makes it work.
+    check("  the search is scoped to manifest filenames, not to file contents",
+      queries.every(q => q.includes("filename:")) && !queries.some(q => q.includes("in:file")),
+      queries);
+    check("  and never spends more than the search budget allows",
+      queries.length <= MAX_LIBRARY_SEARCHES, queries.length);
+
     // The whole point of the cap is that one search cannot spend the budget.
     const many: GithubReader = {
       ...gh,
-      searchCode: async () => Array.from({ length: 100 }, (_, i) => ({
-        repo: `o/repo-${i}`, path: "package.json",
-      })),
+      searchCode: async (q: string) => (q.includes("filename:package.json")
+        ? Array.from({ length: 100 }, (_, i) => ({ repo: `o/repo-${i}`, path: "package.json" }))
+        : []),
     };
     const calls2: string[] = [];
     const capped = await expertsForLibrary(
