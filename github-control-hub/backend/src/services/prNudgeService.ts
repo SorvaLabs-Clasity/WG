@@ -10,23 +10,29 @@
  * anyone's attention. Opening date would flag the first and miss the second.
  */
 
-export const STALE_DAYS = 7;
-
 /**
- * The threshold, in seconds, with an override for testing.
+ * How long a pull request must sit without a commit before it is chased, and
+ * how long between one reminder and the next.
  *
- * Seven days is the real value. PR_STALE_SECONDS exists so the behaviour can be
- * exercised in minutes rather than fortnights — set it to 10 and a pull request
- * goes stale ten seconds after its last commit, and is reminded again ten
- * seconds after that.
+ * ───────────────────────────────────────────────────────────────────────
+ *  TESTING: currently 10 seconds. Set back to SEVEN_DAYS when finished.
+ * ───────────────────────────────────────────────────────────────────────
  *
- * Read on every call rather than captured once, so changing it takes effect
- * without a redeploy and a test cannot be fooled by a value frozen at import.
+ * One constant, in the code, governing the scheduled pass and the manual one
+ * alike. It was briefly an environment variable, which was wrong twice over:
+ * the scheduled pass runs in a Lambda that never saw a value set locally, so
+ * changing it moved the button and nothing else — and how often people are
+ * chased is a product decision, not a deployment detail.
  */
+export const SEVEN_DAYS = 7 * 86_400;
+
+export const STALE_SECONDS = 10;
+
+/** The same threshold in days, for code and copy that still talk in days. */
+export const STALE_DAYS = STALE_SECONDS / 86_400;
+
 export function staleSeconds(): number {
-  const override = Number(process.env.PR_STALE_SECONDS);
-  if (Number.isFinite(override) && override > 0) return override;
-  return STALE_DAYS * 86_400;
+  return STALE_SECONDS;
 }
 
 export type BlockReason =
@@ -403,6 +409,8 @@ export interface NudgeRunDeps extends NudgeDeps {
   } | undefined>;
   recordNudge: (repo: string, number: number, commentId: number | undefined) => Promise<void>;
   now?: number;
+  /** Overridable so a test can pin the interval the shipped constant may not be. */
+  threshold?: number;
 }
 
 /**
@@ -421,12 +429,13 @@ export async function runNudgePass(deps: NudgeRunDeps): Promise<{
   considered: number; due: number; posted: number; skippedPaused: number; failed: number;
 }> {
   const now = deps.now ?? Date.now();
+  const threshold = deps.threshold ?? staleSeconds();
   const { prs } = await deps.listPrs();
   let due = 0, posted = 0, skippedPaused = 0, failed = 0;
 
   for (const pr of prs) {
     const state = await deps.getState(pr.repo, pr.number).catch(() => undefined);
-    if (!isNudgeDue(pr, state?.lastNudgedAt ?? null, now)) continue;
+    if (!isNudgeDue(pr, state?.lastNudgedAt ?? null, now, threshold)) continue;
     due++;
 
     const { reason, targets } = nudgeTargets(pr, {

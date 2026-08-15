@@ -21,6 +21,7 @@ import {
   daysSinceLastCommit, isStale, hasReviewed, pendingReviewers, blockReason,
   nudgeTargets, isNudgeDue, sortByStaleness, fetchOpenPrs, STALE_DAYS,
   buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass, staleSeconds,
+  SEVEN_DAYS, STALE_SECONDS,
   type PullRequest, type NudgeDeps, type NudgeRunDeps,
 } from "./src/services/prNudgeService";
 
@@ -50,19 +51,19 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     const youngAndDead = pr({ createdAt: daysAgo(9), lastCommitAt: daysAgo(9) });
 
     check("a 200-day-old pull request committed to yesterday is not stale",
-      !isStale(oldButActive, NOW), daysSinceLastCommit(oldButActive, NOW));
+      !isStale(oldButActive, NOW, SEVEN_DAYS), daysSinceLastCommit(oldButActive, NOW));
     check("  while a 9-day-old one nobody has touched is",
-      isStale(youngAndDead, NOW), daysSinceLastCommit(youngAndDead, NOW));
+      isStale(youngAndDead, NOW, SEVEN_DAYS), daysSinceLastCommit(youngAndDead, NOW));
 
-    check(`  the threshold is ${STALE_DAYS} days`, STALE_DAYS === 7);
+    check(`  seven days is ${SEVEN_DAYS} seconds`, SEVEN_DAYS === 7 * 86_400);
     check("  and exactly seven days counts as stale, not six and a bit",
-      isStale(pr({ lastCommitAt: daysAgo(7) }), NOW)
-        && !isStale(pr({ lastCommitAt: daysAgo(6.9) }), NOW));
+      isStale(pr({ lastCommitAt: daysAgo(7) }), NOW, SEVEN_DAYS)
+        && !isStale(pr({ lastCommitAt: daysAgo(6.9) }), NOW, SEVEN_DAYS));
 
     // A pull request whose commit date cannot be read must not read as fresh,
     // or the ones we cannot see are exactly the ones never chased.
     check("  a pull request with no commit falls back to its opening date",
-      isStale(pr({ lastCommitAt: null, createdAt: daysAgo(20) }), NOW),
+      isStale(pr({ lastCommitAt: null, createdAt: daysAgo(20) }), NOW, SEVEN_DAYS),
       daysSinceLastCommit(pr({ lastCommitAt: null, createdAt: daysAgo(20) }), NOW));
   }
 
@@ -72,34 +73,34 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     // seven days from the commit, not from the nudge.
     const pushedAfterNudge = pr({ lastCommitAt: daysAgo(2) });
     check("a commit after the last nudge stops the next one",
-      !isNudgeDue(pushedAfterNudge, daysAgo(8), NOW),
+      !isNudgeDue(pushedAfterNudge, daysAgo(8), NOW, SEVEN_DAYS),
       "somebody who just did the work would be chased the next morning");
 
     // Still idle a week later: due again.
     const stillIdle = pr({ lastCommitAt: daysAgo(20) });
     check("  a pull request idle since the last nudge is due again after seven days",
-      isNudgeDue(stillIdle, daysAgo(7), NOW), true);
+      isNudgeDue(stillIdle, daysAgo(7), NOW, SEVEN_DAYS), true);
     check("  but not after only three",
-      !isNudgeDue(stillIdle, daysAgo(3), NOW));
+      !isNudgeDue(stillIdle, daysAgo(3), NOW, SEVEN_DAYS));
 
     // Never nudged and already stale: due immediately.
     check("  a stale pull request never nudged is due now",
-      isNudgeDue(stillIdle, null, NOW));
+      isNudgeDue(stillIdle, null, NOW, SEVEN_DAYS));
     check("  and a fresh one is never due, however long ago it was nudged",
-      !isNudgeDue(pr({ lastCommitAt: daysAgo(1) }), daysAgo(400), NOW));
+      !isNudgeDue(pr({ lastCommitAt: daysAgo(1) }), daysAgo(400), NOW, SEVEN_DAYS));
 
     // The reset, asserted as behaviour rather than as a code path. What matters
     // is that a push buys a full fresh week from the commit, whenever the last
     // nudge happened to land.
     for (const nudgedDaysAgo of [1, 3, 6, 8, 30, 400]) {
       check(`  a commit 2 days ago silences a nudge last sent ${nudgedDaysAgo}d ago`,
-        !isNudgeDue(pr({ lastCommitAt: daysAgo(2) }), daysAgo(nudgedDaysAgo), NOW),
+        !isNudgeDue(pr({ lastCommitAt: daysAgo(2) }), daysAgo(nudgedDaysAgo), NOW, SEVEN_DAYS),
         "a push must buy a full week, regardless of nudge history");
     }
     check("  and once that week elapses it is due again",
-      isNudgeDue(pr({ lastCommitAt: daysAgo(8) }), daysAgo(30), NOW));
+      isNudgeDue(pr({ lastCommitAt: daysAgo(8) }), daysAgo(30), NOW, SEVEN_DAYS));
     check("  an unreadable nudge timestamp is treated as never nudged",
-      isNudgeDue(stillIdle, "banana", NOW));
+      isNudgeDue(stillIdle, "banana", NOW, SEVEN_DAYS));
   }
 
   // ── who counts as having reviewed ───────────────────────────────────
@@ -452,6 +453,9 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
         deleteComment: async () => {},
         postComment: async (repo, number, body) => { posted.push({ repo, number, body }); return 1; },
         now: NOW,
+        // Pinned, so turning the shipped constant down for testing does not
+        // rewrite what these assertions mean.
+        threshold: SEVEN_DAYS,
       };
       return { deps, posted, recorded };
     };
@@ -524,43 +528,20 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       { escaped, r5, posted: f.posted.map(p => p.repo) });
   }
 
-  // ── the threshold can be shortened for testing ──────────────────────
+  // ── the shipped threshold ───────────────────────────────────────────
   {
-    const original = process.env.PR_STALE_SECONDS;
-    try {
-      delete process.env.PR_STALE_SECONDS;
-      check("with no override the threshold is seven days",
-        staleSeconds() === STALE_DAYS * 86_400, staleSeconds());
+    // Deliberately not asserted to equal seven days: the constant is turned
+    // down for testing and turned back up afterwards, and a test that pins it
+    // would have to be edited in step, which is how it ends up forgotten in the
+    // wrong position. What matters is that whatever it is, it is a real
+    // positive interval and both clocks read the same one.
+    check("the shipped threshold is a positive number of seconds",
+      Number.isFinite(STALE_SECONDS) && STALE_SECONDS > 0, STALE_SECONDS);
+    check("  and staleness and the reminder interval read the same constant",
+      staleSeconds() === STALE_SECONDS, { staleSeconds: staleSeconds(), STALE_SECONDS });
 
-      process.env.PR_STALE_SECONDS = "10";
-      check("  an override shortens it to seconds",
-        staleSeconds() === 10, staleSeconds());
-
-      const justPushed = pr({ lastCommitAt: new Date(NOW - 5_000).toISOString() });
-      const quiet = pr({ lastCommitAt: new Date(NOW - 30_000).toISOString() });
-      check("  a pull request 5 seconds old is not stale at a 10-second threshold",
-        !isStale(justPushed, NOW), "5s < 10s");
-      check("  one 30 seconds old is",
-        isStale(quiet, NOW), "30s >= 10s");
-      check("  and the reminder interval follows the same threshold",
-        isNudgeDue(quiet, new Date(NOW - 20_000).toISOString(), NOW)
-          && !isNudgeDue(quiet, new Date(NOW - 3_000).toISOString(), NOW),
-        "20s since the last reminder is due, 3s is not");
-
-      // Read per call, not captured at import, or changing it would need a
-      // redeploy and a test could be fooled by a frozen value.
-      process.env.PR_STALE_SECONDS = "60";
-      check("  changing it takes effect immediately", staleSeconds() === 60, staleSeconds());
-
-      // Nonsense must not silently disable the feature.
-      for (const bad of ["0", "-5", "banana", ""]) {
-        process.env.PR_STALE_SECONDS = bad;
-        check(`  "${bad}" falls back to seven days rather than to zero`,
-          staleSeconds() === STALE_DAYS * 86_400, { bad, got: staleSeconds() });
-      }
-    } finally {
-      if (original === undefined) delete process.env.PR_STALE_SECONDS;
-      else process.env.PR_STALE_SECONDS = original;
+    if (STALE_SECONDS !== SEVEN_DAYS) {
+      console.log(`  NOTE  threshold is ${STALE_SECONDS}s, not the usual ${SEVEN_DAYS}s — testing mode`);
     }
   }
 

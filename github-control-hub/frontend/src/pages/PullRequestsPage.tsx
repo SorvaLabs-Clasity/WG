@@ -259,9 +259,10 @@ export default function PullRequestsPage() {
       {(data?.staleSeconds ?? 604_800) < 86_400 && (
         <div className="mb-4 rounded-md bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
           <strong>Test threshold active.</strong> Pull requests are treated as stale after{" "}
-          {humanThreshold} instead of 7 days, and reminded again on the same interval. Unset
-          <code className="mx-1 px-1 rounded bg-black/10 dark:bg-white/10">PR_STALE_SECONDS</code>
-          to restore normal behaviour.
+          {humanThreshold} instead of 7 days, and reminded again on the same interval.
+          <code className="mx-1 px-1 rounded bg-black/10 dark:bg-white/10">STALE_SECONDS</code>
+          in <code className="px-1 rounded bg-black/10 dark:bg-white/10">prNudgeService.ts</code>
+          controls this; set it back to <code className="px-1 rounded bg-black/10 dark:bg-white/10">SEVEN_DAYS</code> and redeploy.
         </div>
       )}
 

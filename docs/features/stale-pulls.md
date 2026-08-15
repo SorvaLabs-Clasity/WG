@@ -96,13 +96,18 @@ its own seven-day interval, so one clock exists rather than two.
 Waiting seven days to find out whether this works is not a test. Two things
 make it immediate:
 
-**Shorten the threshold.** `PR_STALE_SECONDS=10` treats a pull request as stale
-ten seconds after its last commit, and reminds again ten seconds after that.
-Anything absent, zero, negative or unparseable falls back to seven days, so a
-typo cannot silently disable staleness or turn it into a reminder every pass.
-The page shows a banner whenever the threshold is not the real one, because an
-override left on by accident would otherwise remind everyone every few minutes
-with nothing on screen explaining why.
+**Shorten the threshold.** `STALE_SECONDS` in `prNudgeService.ts` is the one
+number governing both staleness and the interval between reminders, for the
+scheduled pass and the manual one alike. Set it to 10, deploy, and a pull
+request is stale ten seconds after its last commit and reminded again ten
+seconds later. Set it back to `SEVEN_DAYS` and deploy when finished.
+
+It is a constant rather than an environment variable on purpose. The scheduled
+pass runs in a Lambda, which never sees a value set on a developer machine — so
+an environment variable moved the manual button and nothing else, which is
+exactly the confusion it caused when it was one. The page shows a banner while
+the threshold is not seven days, and the test suite prints a note, so it cannot
+be left turned down unnoticed.
 
 **Send reminders now.** An admin button on the page runs the pass immediately
 rather than waiting for the next five-minute tick. It posts as the app, not as
