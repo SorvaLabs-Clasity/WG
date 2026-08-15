@@ -35,6 +35,8 @@ export type CountMetric =
   | "dependabot.repos"
   | "vulnRepos.repos"
   | "vulnRepos.total"
+  | "ciClusters.count"
+  | "ciClusters.largestRepos"
   | "bypasses.total"
   | "bypasses.repos"
   | "query.rows"
@@ -86,6 +88,11 @@ export function conditionsFor(widget: { type: string; presetId?: string }): Metr
       return [
         { metric: "renovatePrs.open", kind: "count", label: "Open Renovate PRs", unit: "PRs",
           hint: "Counts pull requests the Renovate bot has open and nobody has merged." },
+      ];
+    case "ci-clusters":
+      return [
+        { metric: "ciClusters.count", kind: "count", label: "Correlated failure clusters", unit: "clusters" },
+        { metric: "ciClusters.largestRepos", kind: "count", label: "Repositories in the largest cluster", unit: "repos" },
       ];
     case "bypasses":
       return [
@@ -145,6 +152,11 @@ export function metricValue(metric: MetricSpec["metric"], rows: any[] | null | u
     case "vulnRepos.total": return sum(rows, "total");
     case "vulnRepos.worstSeverity":
       return rows.reduce((worst, r) => Math.max(worst, severityRank(r?.worst)), 0);
+    // One row per cluster, so counting rows counts clusters. The largest is
+    // the first, because correlate() sorts by repository count.
+    case "ciClusters.count": return rows.length;
+    case "ciClusters.largestRepos":
+      return rows.length === 0 ? 0 : Math.max(...rows.map((r: any) => (r.repos?.length ?? 0)));
     case "bypasses.total": return sum(rows, "bypasses");
     case "bypasses.repos": return rows.length;
     case "query.rows": return rows.length;

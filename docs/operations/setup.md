@@ -334,7 +334,7 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 > a new deployment, but it is worth checking on a first setup too, in case a
 > teammate already ran phase 1 twice.
 
-**Events** — choose "Let me select individual events", then tick these eleven.
+**Events** — choose "Let me select individual events", then tick these twelve.
 
 The checkboxes are labelled in prose, not by event name, and several do not
 resemble the name at all — `member` is "Collaborator add, remove, or changed"
@@ -355,6 +355,7 @@ what you are looking for on the page.
 | **Repositories** | `repository` |
 | **Repository rulesets** | `repository_ruleset` |
 | **Teams** | `team` |
+| **Workflow jobs** | `workflow_job` |
 
 Two that are easy to tick by mistake: **Branch protection configurations** is a
 different event from **Branch protection rules**, and **Dependabot alerts** is
@@ -371,6 +372,10 @@ it — it reads alerts from the API.
 Ticking it does not send anything for alerts that already exist. The event fires
 when an alert is *created*, so the first email arrives with the next new
 vulnerability, not for the backlog already in the table.
+
+**Workflow jobs** feeds [correlated CI failures](../features/ci-correlation.md).
+Only completed failures are kept, so the volume stored is far smaller than the
+volume delivered. Without it that panel stays empty and nothing says why.
 
 **These are the organization webhook's events, not the GitHub App's.** The App
 subscribes to none; every delivery this app receives comes from the webhook

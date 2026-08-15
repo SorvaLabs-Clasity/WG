@@ -297,6 +297,42 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
     }
   }
 
+  // ── CI failures, for correlation ─────────────────────────────────────
+  //
+  // These deliveries were already arriving and being discarded. Only completed
+  // failures are kept: a success answers no question anyone asks, and keeping
+  // every job would be thousands of rows a day for nothing.
+  //
+  // workflow_job rather than workflow_run, because the job payload carries the
+  // runner labels and the per-step conclusions — which step failed and on what
+  // runner is the whole basis of correlating one repository's failure with
+  // another's. The run payload has neither.
+  if (event === "workflow_job" && payload.action === "completed"
+      && payload.workflow_job?.conclusion === "failure") {
+    try {
+      const { recordFailure, firstFailedStep } = await import("../services/ciFailureService");
+      const j = payload.workflow_job;
+      await recordFailure({
+        repo: sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
+        workflow: sanitizeField(j.workflow_name, 200) || "(unnamed workflow)",
+        job: sanitizeField(j.name, 200) || "(unnamed job)",
+        step: firstFailedStep(j.steps),
+        // Runner labels arrive as an array; the self-hosted case can carry
+        // several. Kept whole rather than reduced to the first, so a cluster
+        // can be described by whichever label the members actually share.
+        labels: Array.isArray(j.labels)
+          ? j.labels.slice(0, 8).map((l: any) => sanitizeField(String(l), 60)).filter(Boolean)
+          : [],
+        url: sanitizeField(j.html_url, 300),
+        failedAt: sanitizeField(j.completed_at, 40) || occurredAt,
+      });
+    } catch (err) {
+      // Swallowed like the notify blocks: losing one failure record must not
+      // fail the delivery and re-run everything else it triggers.
+      console.error("[CI] Recording a failed job failed:", (err as Error).message);
+    }
+  }
+
   if (event === "delete" && payload.ref_type === "branch" && payload.repository?.name) {
     // Sanitized like every other field taken from a payload. A branch name is
     // the one string here that can legally hold < > " ' & — Git's ref rules
