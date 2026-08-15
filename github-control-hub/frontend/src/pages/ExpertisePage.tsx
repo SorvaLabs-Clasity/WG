@@ -24,6 +24,8 @@ interface Answer {
   degraded: string[];
 }
 
+const labelClass = "block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1";
+
 const inputClass =
   "block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue " +
   "focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset " +
@@ -43,9 +45,10 @@ const MODES: Record<Kind, { label: string; hint: string; placeholder: string }> 
   },
   path: {
     label: "File or folder",
-    hint: "Commits touching that path only. Reviews are not counted here — they "
-      + "belong to the pull request, not to one file, and attributing them would "
-      + "rank people who never opened it.",
+    hint: "Needs both boxes: a path only means something inside one repository, and "
+      + "GitHub has no organization-wide search for who touched a file. A folder works "
+      + "as well as a file. Commits only — reviews belong to the pull request, not to "
+      + "one file, and attributing them here would rank people who never opened it.",
     placeholder: "src/billing/charge.ts",
   },
   library: {
@@ -123,23 +126,38 @@ export default function ExpertisePage() {
           ))}
         </div>
 
-        <form className="grid gap-3 sm:grid-cols-[1fr_auto]"
+        {/* Labelled, not just placeheld. Two unlabelled boxes side by side is a
+            guess, and the placeholder — the only thing saying which is which —
+            disappears the moment anyone types. */}
+        <form className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
           onSubmit={e => { e.preventDefault(); if (canAsk) setAsked({ kind, repo, path, library }); }}>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className={`grid gap-3 ${kind === "path" ? "sm:grid-cols-2" : ""}`}>
             {kind !== "library" && (
-              <input value={repo} onChange={e => setRepo(e.target.value)}
-                placeholder={MODES.repo.placeholder} className={inputClass} />
+              <div>
+                <label className={labelClass} htmlFor="wk-repo">Repository</label>
+                <input id="wk-repo" value={repo} onChange={e => setRepo(e.target.value)}
+                  placeholder={MODES.repo.placeholder} className={inputClass} />
+              </div>
             )}
             {kind === "path" && (
-              <input value={path} onChange={e => setPath(e.target.value)}
-                placeholder={MODES.path.placeholder} className={inputClass} />
+              <div>
+                <label className={labelClass} htmlFor="wk-path">File or folder inside it</label>
+                <input id="wk-path" value={path} onChange={e => setPath(e.target.value)}
+                  placeholder={MODES.path.placeholder} className={inputClass} />
+              </div>
             )}
             {kind === "library" && (
-              <input value={library} onChange={e => setLibrary(e.target.value)}
-                placeholder={MODES.library.placeholder} className={inputClass} />
+              <div>
+                <label className={labelClass} htmlFor="wk-lib">Package name</label>
+                <input id="wk-lib" value={library} onChange={e => setLibrary(e.target.value)}
+                  placeholder={MODES.library.placeholder} className={inputClass} />
+              </div>
             )}
           </div>
           <button type="submit" disabled={!canAsk || isFetching}
+            title={canAsk ? "" : kind === "path"
+              ? "Both a repository and a path are needed — a path only means something inside one repository"
+              : "Fill this in first"}
             className="px-5 py-2 text-sm font-semibold rounded-md bg-gh-blue text-white hover:opacity-90 disabled:opacity-40 h-fit">
             {isFetching ? "Looking…" : "Ask"}
           </button>
