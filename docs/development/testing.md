@@ -71,13 +71,26 @@ wrong, and was wrong three separate times in one afternoon.
 
 An uncaught exception ends the process. No FAIL lines are printed, the count
 reads zero, and the mutation looks like it survived when the suite actually
-detected it by dying.
+detected it by dying. One mutation here crashed at line 555, long before
+reaching the assertion aimed at it, and scored zero.
 
 Count the verdict, not the failures:
 
+- **caught** — the run does not end in ALL PASS, whether it reported failures or
+  crashed
+- **survived** — the run ends in ALL PASS
 
+A shell harness for that:
 
-The same trap appears inside a test: an assertion that awaits something which
-throws takes the whole file with it. Where behaviour under failure is the thing
-being asserted, catch it explicitly and assert on the outcome, so a throw
-becomes a readable failure rather than a silent exit.
+    verdict() {
+      local out; out=$(npx tsx "$1" 2>&1)
+      if echo "$out" | tail -1 | grep -q "ALL PASS"; then echo SURVIVED
+      else echo caught; fi
+    }
+
+The same trap appears inside a test. An assertion that awaits something which
+throws takes the whole file with it, so the remaining assertions never run and
+the summary is silence rather than a failure. Where behaviour *under* failure is
+what is being asserted — a delete that 404s, a repository that cannot be
+commented on — catch it explicitly and assert on the outcome, so a throw becomes
+a readable failure instead of a silent exit.
