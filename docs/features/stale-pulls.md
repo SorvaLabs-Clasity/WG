@@ -7,6 +7,23 @@ Closed pull requests never appear. The search is `is:pr is:open`, asserted in
 the tests, because a list that accumulates closed work is an archive rather than
 a queue.
 
+## Two switches
+
+| Switch | Default | Off means |
+|---|---|---|
+| **Monitor pull requests** | On | Nothing is fetched, listed or posted, and the scheduled pass does no work on its behalf |
+| **Post reminders** | **Off** | The list works; nothing is posted |
+
+Admin only, and both stop the work rather than hiding its result. The list route
+refuses before it queries GitHub, the scheduled pass checks before fetching, and
+the page stops polling — otherwise "off" would still spend a sweep every time
+somebody opened the tab. Tests assert the guard sits before the fetch in both
+places.
+
+Reminders default to off. Seeing the queue is inert; commenting on somebody's
+pull request is not, and a feature that starts posting the moment it deploys is
+a surprise nobody asked for.
+
 ## What "stale" means
 
 **Seven days with no commit** — not seven days since it was opened. That

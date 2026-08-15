@@ -650,6 +650,52 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     }
   }
 
+  // ── the switches must stop the work, not hide it ────────────────────
+  {
+    const src = fs.readFileSync(path.join(__dirname, "src/routes/pulls.ts"), "utf8");
+    const handler = fs.readFileSync(path.join(__dirname, "src/alarms/handler.ts"), "utf8");
+
+    // The list route must decide before it queries GitHub. Checking afterwards
+    // means "off" still spends a sweep every time somebody opens the page,
+    // which is a switch in appearance only.
+    const listBody = src.slice(src.indexOf('router.get("/"'), src.indexOf('router.put("/pause"'));
+    // The guard itself, not merely the word appearing somewhere. Looking for
+    // any occurrence passed with the condition replaced by `if (false)`,
+    // because the message inside the dead branch still mentioned the field.
+    const guard = listBody.indexOf("if (!settings.monitoringEnabled)");
+    const fetchCall = listBody.indexOf("fetchOpenPrs");
+    check("the list refuses before it queries GitHub, not after",
+      guard !== -1 && fetchCall !== -1 && guard < fetchCall,
+      { guard, fetchCall });
+
+    // Same for the scheduled pass.
+    const passBody = handler.slice(handler.indexOf("── stale pull requests ──"));
+    const passGate = passBody.indexOf("!prSettings.monitoringEnabled");
+    const passFetch = passBody.indexOf("fetchOpenPrs");
+    check("  and the scheduled pass checks before fetching anything",
+      passGate !== -1 && passFetch !== -1 && passGate < passFetch,
+      { passGate, passFetch });
+
+    check("  reminders being off also stops the pass",
+      /!prSettings\.remindersEnabled/.test(passBody),
+      "the pass would post with reminders switched off");
+
+    // Turning the feature off must not read as a failure in the logs.
+    check("  a switched-off feature is not logged as an error",
+      /__skip/.test(handler), "an off switch would fill the log with failures");
+
+    // The manual button cannot bypass either switch.
+    const runBody = src.slice(src.indexOf('router.post("/run"'), src.indexOf('router.get("/settings"'));
+    check("  the manual run refuses when either switch is off",
+      /!settings\.monitoringEnabled \|\| !settings\.remindersEnabled/.test(runBody),
+      runBody.slice(0, 240));
+
+    // Only admins may flip them.
+    const settingsBody = src.slice(src.indexOf('router.put("/settings"'));
+    check("  and only an admin may change them",
+      /isAwsAdmin/.test(settingsBody.slice(0, 400)));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

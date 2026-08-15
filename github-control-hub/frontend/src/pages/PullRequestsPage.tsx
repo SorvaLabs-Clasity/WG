@@ -31,6 +31,8 @@ interface Pull {
 }
 
 interface Answer {
+  monitoringEnabled: boolean;
+  remindersEnabled: boolean;
   staleSeconds: number;
   truncated: boolean;
   open: number;
@@ -51,6 +53,31 @@ const BLOCK: Record<BlockReason, { label: string; chip: string }> = {
   "blocked": { label: "Blocked", chip: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
 };
 
+function Toggle({ on, onChange, title, body, disabled }: {
+  on: boolean; onChange: (v: boolean) => void; title: string; body: string; disabled?: boolean;
+}) {
+  return (
+    <div className={`flex items-start justify-between gap-4 ${disabled ? "opacity-50" : ""}`}>
+      <div>
+        <p className="font-semibold text-sm text-gh-textBase dark:text-slate-200">{title}</p>
+        <p className="text-xs text-gray-500 dark:text-slate-400 max-w-2xl mt-0.5">{body}</p>
+      </div>
+      <div className="shrink-0 flex items-center gap-2">
+        <span className={`text-xs font-bold uppercase tracking-wide ${
+          on ? "text-green-600 dark:text-green-400" : "text-gray-400 dark:text-slate-500"}`}>
+          {on ? "On" : "Off"}
+        </span>
+        <button onClick={() => onChange(!on)} disabled={disabled}
+          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:cursor-not-allowed ${
+            on ? "bg-gh-blue" : "bg-gray-300 dark:bg-slate-600"}`}>
+          <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+            on ? "translate-x-6" : "translate-x-1"}`} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function PullRequestsPage() {
   const { user } = useAuth();
   const { data: permissions } = usePermissions();
@@ -69,8 +96,18 @@ export default function PullRequestsPage() {
     queryKey: ["pulls"],
     queryFn: () => apiGet<Answer>("/pulls"),
     staleTime: 15_000,
-    refetchInterval: 30_000,
+    // Polling stops when the feature is off. Otherwise "off" would keep asking
+    // the backend every thirty seconds for a list it has already declined to
+    // build, which is the sort of switch that only looks like one.
+    refetchInterval: (q) => (q.state.data?.monitoringEnabled === false ? false : 30_000),
     refetchOnWindowFocus: true,
+  });
+
+  const saveSettings = useMutation({
+    mutationFn: (body: { monitoringEnabled?: boolean; remindersEnabled?: boolean }) =>
+      apiPut<unknown>("/pulls/settings", body),
+    onSuccess: () => { setError(""); setNotice(""); qc.invalidateQueries({ queryKey: ["pulls"] }); },
+    onError: (e: any) => setError(e?.message || "Could not change that."),
   });
 
   const runNow = useMutation({
@@ -237,6 +274,30 @@ export default function PullRequestsPage() {
         </p>
       </header>
 
+      {isAdmin && (
+        <div className="mb-4 rounded-[12px] bg-white dark:bg-slate-900 border border-gh-border dark:border-slate-700 p-4 flex flex-col gap-3">
+          <Toggle
+            on={data?.monitoringEnabled !== false}
+            onChange={(v) => saveSettings.mutate({ monitoringEnabled: v })}
+            title="Monitor pull requests"
+            body="Off means this app never asks GitHub about pull requests: no list, no reminders, and nothing running on its behalf on the schedule." />
+          <Toggle
+            on={!!data?.remindersEnabled}
+            disabled={data?.monitoringEnabled === false}
+            onChange={(v) => saveSettings.mutate({ remindersEnabled: v })}
+            title="Post reminders on stale pull requests"
+            body="Off leaves the list working and posts nothing. On, a single comment appears on anything with no commit for 7 days, replacing itself each time rather than adding another." />
+        </div>
+      )}
+
+      {data?.monitoringEnabled === false ? (
+        <Empty
+          title="Pull request monitoring is off"
+          body={isAdmin
+            ? "Nothing is being fetched, listed or posted, and nothing runs on the schedule for it. Use the switch above to turn it back on."
+            : "An organization admin has switched this off. Nothing is being fetched or posted."} />
+      ) : (
+      <>
       <div className="mb-4 flex items-center gap-3 flex-wrap">
         <div className="flex-1 min-w-[240px]">
           <SearchInput value={search} onChange={(v: string) => { setSearch(v); setStalePage(1); setFreshPage(1); }}
@@ -246,7 +307,7 @@ export default function PullRequestsPage() {
           className="px-3 py-2 text-sm font-semibold rounded-md text-gh-textBase dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5 disabled:opacity-40">
           {isFetching ? "Refreshing…" : "Refresh"}
         </button>
-        {isAdmin && (
+        {isAdmin && data?.remindersEnabled && (
           <button onClick={() => runNow.mutate()} disabled={runNow.isPending}
             title="Run the reminder pass now instead of waiting for the next scheduled one"
             className="px-4 py-2 text-sm font-semibold rounded-md bg-gh-blue text-white hover:opacity-90 disabled:opacity-40">
@@ -297,8 +358,10 @@ export default function PullRequestsPage() {
               <span className="ml-2 text-sm font-normal text-gray-500 dark:text-slate-400">{stale.length}</span>
             </h2>
             <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">
-              These get a reminder on the pull request naming whoever is holding them up. It
-              replaces itself each cycle rather than adding a comment, and a commit resets the clock.
+              {data?.remindersEnabled
+                ? "These get a reminder on the pull request naming whoever is holding them up. It "
+                  + "replaces itself each cycle rather than adding a comment, and a commit resets the clock."
+                : "Reminders are off, so nothing is posted — this is the list only."}
             </p>
             {stale.length === 0
               ? <p className="text-sm text-gray-500 dark:text-slate-400">Nothing has gone quiet.</p>
@@ -339,6 +402,8 @@ export default function PullRequestsPage() {
                 </>}
           </section>
         </div>
+      )}
+      </>
       )}
     </Page>
   );

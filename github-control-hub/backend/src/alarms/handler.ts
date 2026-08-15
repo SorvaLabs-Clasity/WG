@@ -12,7 +12,7 @@ import { getOrgConfig } from "../services/orgConfigService";
 import {
   listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings,
   getFeedSettings, listPending, markPendingSent,
-  getPrState, recordNudge,
+  getPrState, recordNudge, getPrSettings,
 } from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
@@ -188,6 +188,13 @@ export async function handler(): Promise<void> {
   //
   // Its own try, so a GitHub outage cannot take the alarm summary with it.
   try {
+    // Checked before anything is fetched. A feature switched off must cost
+    // nothing on the tick, not fetch the world and then decline to act on it.
+    const prSettings = await getPrSettings();
+    if (!prSettings.monitoringEnabled || !prSettings.remindersEnabled) {
+      throw { __skip: true };
+    }
+
     const { fetchOpenPrs } = await import("../services/prNudgeService");
     const graphql = (query: string, variables: Record<string, unknown>) =>
       (octokit as any).graphql(query, variables);
@@ -228,6 +235,9 @@ export async function handler(): Promise<void> {
       );
     }
   } catch (err) {
-    console.error("[PR] Stale pull request pass failed:", (err as Error).message);
+    // The switch is not a failure, so it is not logged as one.
+    if (!(err as any)?.__skip) {
+      console.error("[PR] Stale pull request pass failed:", (err as Error).message);
+    }
   }
 }

@@ -3,7 +3,10 @@ import { Router, Request, Response } from "express";
 import { createOctokit, getSystemToken } from "../github/client";
 import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
 import { sanitizeError } from "../utils/errorSanitizer";
-import { getPrState, listPrStates, setPrPause, recordNudge } from "../services/alarmService";
+import {
+  getPrState, listPrStates, setPrPause, recordNudge,
+  getPrSettings, savePrSettings,
+} from "../services/alarmService";
 import {
   fetchOpenPrs, sortByStaleness, daysSinceLastCommit, isStale,
   pendingReviewers, nudgeTargets, runNudgePass, staleSeconds,
@@ -32,6 +35,18 @@ router.get("/", async (req: Request, res: Response) => {
   if (!token) return res.status(401).json({ error: "No GitHub token provided" });
 
   try {
+    const settings = await getPrSettings();
+
+    // Returned before the query, not after. Switching monitoring off has to
+    // stop the work, not hide its result — otherwise "off" still spends a
+    // GraphQL sweep every time somebody opens the page.
+    if (!settings.monitoringEnabled) {
+      return res.json({
+        monitoringEnabled: false, remindersEnabled: settings.remindersEnabled,
+        staleSeconds: staleSeconds(), truncated: false, open: 0, stale: 0, pulls: [],
+      });
+    }
+
     const [{ prs, truncated }, states] = await Promise.all([
       fetchOpenPrs(graphqlFor(token), org()),
       listPrStates(),
@@ -59,6 +74,8 @@ router.get("/", async (req: Request, res: Response) => {
     });
 
     res.json({
+      monitoringEnabled: true,
+      remindersEnabled: settings.remindersEnabled,
       staleSeconds: staleSeconds(),
       truncated,
       open: rows.length,
@@ -140,6 +157,15 @@ router.post("/run", async (req: Request, res: Response) => {
     });
   }
 
+  const settings = await getPrSettings();
+  if (!settings.monitoringEnabled || !settings.remindersEnabled) {
+    return res.status(409).json({
+      error: settings.monitoringEnabled
+        ? "Reminders are switched off for this organization"
+        : "Pull request monitoring is switched off for this organization",
+    });
+  }
+
   const appToken = getSystemToken();
   if (!appToken) {
     return res.status(503).json({
@@ -173,6 +199,36 @@ router.post("/run", async (req: Request, res: Response) => {
       },
     });
     res.json(summary);
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "pull requests") });
+  }
+});
+
+router.get("/settings", async (_req: Request, res: Response) => {
+  try {
+    res.json(await getPrSettings());
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "pull requests") });
+  }
+});
+
+router.put("/settings", async (req: Request, res: Response) => {
+  const login = req.user!.login;
+  if (!(await isAwsAdmin(login).catch(() => false))) {
+    return res.status(403).json({
+      code: "CONTROL_HUB_ADMIN_REQUIRED",
+      error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can switch `
+        + `pull request monitoring or reminders on and off.`,
+    });
+  }
+  const { monitoringEnabled, remindersEnabled } = req.body ?? {};
+  for (const [name, v] of [["monitoringEnabled", monitoringEnabled], ["remindersEnabled", remindersEnabled]]) {
+    if (v !== undefined && typeof v !== "boolean") {
+      return res.status(400).json({ error: `${name} must be true or false` });
+    }
+  }
+  try {
+    res.json(await savePrSettings({ monitoringEnabled, remindersEnabled }, login));
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "pull requests") });
   }

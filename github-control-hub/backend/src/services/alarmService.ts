@@ -83,7 +83,7 @@ export interface SecurityNotifySettings {
   updatedAt?: string;
 }
 
-type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState;
+type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState | PrFeatureSettings;
 
 const TABLE = () => tableName("ALARMS_TABLE");
 
@@ -563,6 +563,74 @@ export async function markPendingSent(ids: string[]): Promise<void> {
     if (!row || row.kind !== "pending" || row.sentAt) continue;
     await put({ ...row, sentAt: now });
   }
+}
+
+// ── the pull request feature's own switches ───────────────────────────
+//
+// Two, not one. Monitoring off means the whole feature is dormant: no GitHub
+// query, no list, no reminders, nothing scheduled doing work on its behalf.
+// Reminders off leaves the list working and stops anything being posted, which
+// is the common case — people want to see the queue without the app talking to
+// anyone.
+
+export const PR_SETTINGS_ID = "pr-settings";
+
+export interface PrFeatureSettings {
+  id: typeof PR_SETTINGS_ID;
+  kind: "pr-settings";
+  /** The whole feature. Off means nothing is fetched or shown. */
+  monitoringEnabled: boolean;
+  /** Reminders only. Off leaves the list live and posts nothing. */
+  remindersEnabled: boolean;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+/**
+ * On by default for the list, off by default for reminders.
+ *
+ * Seeing the queue is inert; posting on somebody's pull request is not, and a
+ * feature that starts commenting the moment it is deployed would be a surprise
+ * nobody asked for.
+ */
+const DEFAULT_PR_SETTINGS: PrFeatureSettings = {
+  id: PR_SETTINGS_ID,
+  kind: "pr-settings",
+  monitoringEnabled: true,
+  remindersEnabled: false,
+};
+
+export async function getPrSettings(): Promise<PrFeatureSettings> {
+  const found = await getById<PrFeatureSettings>(PR_SETTINGS_ID);
+  if (found?.kind === "pr-settings") return { ...DEFAULT_PR_SETTINGS, ...found };
+  return { ...DEFAULT_PR_SETTINGS };
+}
+
+export async function savePrSettings(
+  data: Partial<Pick<PrFeatureSettings, "monitoringEnabled" | "remindersEnabled">>,
+  actor: string,
+): Promise<PrFeatureSettings> {
+  const current = await getPrSettings();
+  const updated: PrFeatureSettings = {
+    ...current,
+    ...Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)),
+    id: PR_SETTINGS_ID,
+    kind: "pr-settings",
+    updatedBy: actor,
+    updatedAt: new Date().toISOString(),
+  };
+  await put(updated);
+
+  const changes = describeChanges(current, updated, [
+    ["monitoringEnabled", "pull request monitoring"],
+    ["remindersEnabled", "stale reminders"],
+  ]);
+  await logActivity(
+    "config.updated" as any, actor, "", "pr_monitoring",
+    changes.length ? `Pull requests: ${changes.join(", ")}` : "Pull request settings saved with no change",
+    { ...updated }, "app",
+  );
+  return updated;
 }
 
 // ── stale pull requests: nudge history and pauses ─────────────────────
