@@ -802,5 +802,55 @@ export class GitHubControlHubStack extends cdk.Stack {
     // Left out rather than duplicated: two owners racing to create one role is
     // the failure the audit bucket's policy used to produce, and it is not
     // worth reproducing for the sake of a second way to do the same thing.
+
+    // ── Outputs ──
+    //
+    // AuditLogStreamRoleArn is deliberately absent: the app creates that role
+    // and shows the ARN on the page where it is pasted. Every other output
+    // below is read by a person following the docs, which name them.
+    new cdk.CfnOutput(this, "GuardrailFunctionName", {
+      value: guardrailFn.functionName,
+      description: "Guardrail enforcer Lambda (invoked by the app for manual runs)",
+    });
+
+    new cdk.CfnOutput(this, "CanChangeAnything", {
+      value: "three write actions granted; each rule still chooses report or enforce",
+      description: "Whether this deployment's IAM lets the app modify AWS at all",
+    });
+
+    new cdk.CfnOutput(this, "GuardrailRoleName", {
+      value: guardrailRoleName,
+      description: "Role name each additional AWS account must create for guardrails to reach it",
+    });
+
+    new cdk.CfnOutput(this, "GuardrailLambdaRoleArn", {
+      value: guardrailFn.role!.roleArn,
+      description: "Principal to trust in each additional account's guardrail role",
+    });
+
+    new cdk.CfnOutput(this, "GuardrailDlqUrl", {
+      value: guardrailDlq.queueUrl,
+      description: "Dead-letter queue for failed guardrail invocations",
+    });
+
+    new cdk.CfnOutput(this, "AuditLogBucketName", {
+      value: auditBucket.bucketName,
+      description: "Point GitHub's enterprise audit log streaming at this bucket",
+    });
+
+    new cdk.CfnOutput(this, "WebhookUrl", {
+      value: `${webhookApi.url}webhooks/github`,
+      description: "GitHub webhook payload URL — set this in the org's webhook settings",
+    });
+
+    new cdk.CfnOutput(this, "WebhookQueueUrl", {
+      value: webhookQueue.queueUrl,
+      description: "Queue between the receiver and the worker",
+    });
+
+    new cdk.CfnOutput(this, "WebhookDlqUrl", {
+      value: webhookDlq.queueUrl,
+      description: "Dead-letter queue for webhook deliveries that failed five times",
+    });
   }
 }
