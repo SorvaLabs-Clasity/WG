@@ -14,7 +14,7 @@
 import fs from "fs";
 import path from "path";
 import {
-  buildQueries, normalizePr, fetchRenovatePrs, openPrs, retentionCutoff,
+  buildQueries, normalizePr, fetchRenovatePrs, openPrs, retentionCutoff, botCandidates,
   CLOSED_RETENTION_MONTHS, type SearchIssues,
 } from "./src/services/renovateService";
 
@@ -168,6 +168,58 @@ const NOW = new Date("2026-08-14T12:00:00Z");
     try { await fetchRenovatePrs(broken, "Org", "bot", NOW); } catch { threw = true; }
     check("  but a genuine error still surfaces", threw,
       "a 401 would be reported as an unknown bot account");
+  }
+
+  // ── a GitHub App's login carries a [bot] suffix ───────────────────────
+  {
+    // Verified against live GitHub: `author:renovate[bot]` returns results,
+    // `author:renovate` answers 422. The suffix is invisible in the UI, which
+    // shows the App's display name with a separate "Bot" label — so the
+    // obvious thing to type is the thing search rejects.
+    check("the App form is tried first",
+      botCandidates("trx-renovate")[0] === "trx-renovate[bot]", botCandidates("trx-renovate"));
+    check("  and the plain form is still tried",
+      botCandidates("trx-renovate").includes("trx-renovate"), botCandidates("trx-renovate"));
+    check("  a name already carrying the suffix is not doubled",
+      botCandidates("trx-renovate[bot]")[0] === "trx-renovate[bot]"
+        && !botCandidates("trx-renovate[bot]").some(c => c.includes("[bot][bot]")),
+      botCandidates("trx-renovate[bot]"));
+
+    // Typing the display name must find the App.
+    // Matched on the whole token, not a substring: "author:some-user[bot]"
+    // contains "author:some-user", so a loose check accepts the wrong login
+    // and the test passes for a reason the real API would not.
+    const only = (login: string): SearchIssues => async (q) => {
+      const asked = /author:(\S+)/.exec(q)?.[1];
+      if (asked !== login) {
+        const e: any = new Error("Validation Failed"); e.status = 422; throw e;
+      }
+      return { items: q.includes("is:open") ? [{
+        id: 1, number: 7, title: "Update dependency", state: "open",
+        repository_url: "https://api.github.com/repos/Org/api",
+        html_url: "https://github.com/Org/api/pull/7",
+        created_at: "2026-08-01T00:00:00Z", updated_at: "2026-08-01T00:00:00Z",
+        closed_at: null, pull_request: {},
+      }] : [] };
+    };
+
+    const typedPlain = await fetchRenovatePrs(only("trx-renovate[bot]"), "Org", "trx-renovate", NOW);
+    check("typing the display name finds the App behind it",
+      !typedPlain.unknownBot && typedPlain.prs.length === 1, typedPlain);
+    check("  and reports which login actually matched",
+      typedPlain.resolvedBot === "trx-renovate[bot]", typedPlain.resolvedBot);
+
+    // And a genuine user account still works.
+    const typedUser = await fetchRenovatePrs(only("some-user"), "Org", "some-user", NOW);
+    check("a real user account still resolves",
+      !typedUser.unknownBot && typedUser.resolvedBot === "some-user", typedUser.resolvedBot);
+
+    // Neither form existing is still an unknown bot.
+    const neither: SearchIssues = async () => {
+      const e: any = new Error("Validation Failed"); e.status = 422; throw e;
+    };
+    const nope = await fetchRenovatePrs(neither, "Org", "nobody", NOW);
+    check("  a name matching neither form reports unknown", nope.unknownBot === true, nope);
   }
 
   // ── the app must not be able to merge ─────────────────────────────────

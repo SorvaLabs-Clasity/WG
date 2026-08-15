@@ -6,7 +6,7 @@ says what is vulnerable; Renovate says what has been raised to fix it.
 ## How the PRs are found
 
 There is no Renovate API to ask. Self-hosted Renovate raises pull requests as a
-bot account, and that authorship is the only marker — so the account name is
+**GitHub App**, and that authorship is the only marker — so the account name is
 configuration, set by an admin on the tab itself:
 
 ```
@@ -17,9 +17,17 @@ is:pr org:<org> author:<bot> is:closed closed:>=<three months ago>
 Two bounded queries rather than a walk over every repository. Unset, the tab
 says so instead of showing an empty table that reads like a failure.
 
+**An App's login carries a `[bot]` suffix that the GitHub UI never shows.** Next
+to a pull request you see the App's display name with a separate "Bot" label, so
+the obvious thing to type is the thing search rejects — verified against live
+GitHub, where `author:renovate[bot]` returns results and `author:renovate`
+answers 422. Both forms are tried, App form first, and the login that actually
+matched is shown back.
+
 **GitHub answers `author:` for an account it cannot find with 422, not with an
-empty result.** A typo would otherwise surface as a 500 and read as the feature
-being broken, so it is reported as its own state naming the account.
+empty result.** So an unrecognised name is reported as its own state, naming
+both forms that were tried, rather than surfacing as a 500 that reads as the
+feature being broken.
 
 ## Retention
 

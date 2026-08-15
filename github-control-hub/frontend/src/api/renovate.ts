@@ -24,6 +24,8 @@ export interface RenovateResponse {
   bot: string | null;
   /** The configured account does not exist or is not visible. */
   unknownBot?: boolean;
+  /** The login that actually matched — a GitHub App's carries a [bot] suffix. */
+  resolvedBot?: string;
 }
 
 export const fetchRenovate = () => apiGet<RenovateResponse>("/security/renovate");

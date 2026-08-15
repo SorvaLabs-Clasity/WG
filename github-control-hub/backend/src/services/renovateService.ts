@@ -132,6 +132,15 @@ export interface RenovateResult {
   /** Echoed back so the UI can say which account it looked for. */
   bot: string;
   /**
+   * What actually matched, which may not be what was typed.
+   *
+   * Renovate self-hosted raises PRs as a GitHub App, and an App's login is
+   * `<name>[bot]`. The name shown beside a pull request is the App's display
+   * name without that suffix, so the obvious thing to type is the thing search
+   * rejects.
+   */
+  resolvedBot?: string;
+  /**
    * The configured account does not exist, or is not visible to this token.
    *
    * GitHub answers `author:` for an unknown user with 422 Validation Failed
@@ -143,11 +152,43 @@ export interface RenovateResult {
   unknownBot?: boolean;
 }
 
+/**
+ * The candidate logins for a name somebody typed.
+ *
+ * `author:` wants the exact login. A GitHub App's is `<name>[bot]`, and that
+ * suffix is invisible in the GitHub UI — it shows the display name with a
+ * separate "Bot" label beside it. So both are tried, App form first, because
+ * an App is what raises these.
+ */
+export function botCandidates(bot: string): string[] {
+  const trimmed = bot.trim();
+  if (trimmed.endsWith("[bot]")) return [trimmed, trimmed.slice(0, -"[bot]".length)];
+  return [`${trimmed}[bot]`, trimmed];
+}
+
 export async function fetchRenovatePrs(
   search: SearchIssues,
   org: string,
   bot: string,
   now = new Date(),
+): Promise<RenovateResult> {
+  // Search answers an unknown author with 422 rather than an empty result, so
+  // an unrecognised name is a signal to try the other form rather than a
+  // failure to report.
+  let lastUnknown = true;
+  for (const candidate of botCandidates(bot)) {
+    const attempt = await fetchForExactLogin(search, org, candidate, now);
+    if (!attempt.unknownBot) return { ...attempt, bot, resolvedBot: candidate };
+    lastUnknown = true;
+  }
+  return { prs: [], truncated: false, bot, unknownBot: lastUnknown };
+}
+
+async function fetchForExactLogin(
+  search: SearchIssues,
+  org: string,
+  bot: string,
+  now: Date,
 ): Promise<RenovateResult> {
   const { open, closed } = buildQueries(org, bot, now);
 

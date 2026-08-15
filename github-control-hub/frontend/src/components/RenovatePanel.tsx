@@ -66,8 +66,10 @@ export default function RenovatePanel() {
       <div className="bg-white dark:bg-slate-900 rounded-[12px] border border-gh-border dark:border-slate-700 p-5">
         <h3 className="text-base font-bold text-gray-900 dark:text-white">Renovate</h3>
         <p className="mt-1 text-sm text-gray-600 dark:text-slate-400 max-w-2xl">
-          Self-hosted Renovate raises pull requests as a bot account. There is no Renovate API to
-          ask, so that account name is the only way to find them. Name it and this fills in.
+          Self-hosted Renovate raises pull requests as a GitHub App, and its authorship is the
+          only way to find them — there is no Renovate API to ask. Type the name shown beside a
+          Renovate pull request; the <code>[bot]</code> suffix an App's login carries is added for
+          you if you leave it off.
         </p>
         {isAdmin ? (
           <div className="mt-4 flex gap-2 max-w-md">
@@ -113,7 +115,10 @@ export default function RenovatePanel() {
             Renovate pull requests
           </h3>
           <p className="text-sm text-gray-600 dark:text-slate-400">
-            Raised by <code className="px-1 rounded bg-black/5 dark:bg-white/10">{data.bot}</code>.
+            Raised by{" "}
+            <code className="px-1 rounded bg-black/5 dark:bg-white/10">
+              {data.resolvedBot ?? data.bot}
+            </code>.
             Closed ones drop off {CLOSED_RETENTION_MONTHS} months after they close.
           </p>
         </div>
