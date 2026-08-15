@@ -59,6 +59,22 @@ on a re-request, rather than `latestOpinionatedReviews`, which keeps the stale
 approval forever — reading the wrong one meant the person asked to look again
 was the one person never reminded.
 
+## What the reminder says
+
+The author and the reviewers are asked for different things, so they are
+addressed on separate lines:
+
+> **No commits for 9 days.**
+>
+> @alice — this is approved and green, so it just needs merging.
+> @dave @erin — a review was requested from you and is still outstanding.
+
+A single sentence addressed to everyone tells at least one of them something
+they cannot act on — the first version said "it just needs merging" to
+reviewers who have no ability to merge.
+
+Where only the author is named, only their line appears.
+
 ## One comment, not fifty-two
 
 The reminder is a single sticky comment that **replaces itself**. Fifty-two

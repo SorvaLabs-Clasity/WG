@@ -393,16 +393,24 @@ export async function fetchOpenPrs(
 // nobody. The notification is the entire point, and GitHub only sends one for a
 // new comment — so an edit would leave a tidy thread that reaches no one.
 
-const MARKER = "<!-- github-control-hub:stale-pr -->";
+const NUDGE_MARKER_VALUE = "<!-- github-control-hub:stale-pr -->";
+const MARKER = NUDGE_MARKER_VALUE;
 
-const REASON_TEXT: Record<BlockReason, string> = {
-  "ready": "This is approved and green — it just needs merging.",
-  "needs-approval": "This is waiting on review.",
-  "changes-requested": "Changes were requested and have not been addressed.",
-  "draft": "This is still a draft.",
-  "conflict": "This has conflicts with its base branch.",
-  "checks-failing": "Checks are failing.",
-  "blocked": "This is blocked from merging.",
+/**
+ * What the author is being asked to do, per state.
+ *
+ * Addressed to them specifically. The reviewers get their own line, because
+ * "it just needs merging" sent to somebody who cannot merge reads as an
+ * instruction they are unable to follow — which is what the first version did.
+ */
+const AUTHOR_TEXT: Record<BlockReason, string> = {
+  "ready": "this is approved and green, so it just needs merging",
+  "needs-approval": "this is waiting on review",
+  "changes-requested": "changes were requested and have not been addressed yet",
+  "draft": "this is still a draft",
+  "conflict": "this has conflicts with its base branch",
+  "checks-failing": "checks are failing",
+  "blocked": "this is blocked from merging",
 };
 
 export function buildNudgeComment(
@@ -412,19 +420,34 @@ export function buildNudgeComment(
   idleDays: number,
   nudgeNumber: number,
 ): string {
-  const mentions = targets.map(t => `@${t}`).join(" ");
   const days = Math.floor(idleDays);
   const nth = nudgeNumber > 1 ? ` This is reminder ${nudgeNumber}.` : "";
 
-  return [
-    MARKER,
-    `**No commits for ${days} days.**${nth}`,
+  // Split by role, because the two are being asked for different things and a
+  // single sentence addressed to everyone tells at least one of them something
+  // they cannot act on.
+  const author = targets.find(t => t.toLowerCase() === pr.author.toLowerCase());
+  const reviewers = targets.filter(t => t.toLowerCase() !== pr.author.toLowerCase());
+
+  const lines = [
+    NUDGE_MARKER_VALUE,
+    `**No commits for ${days} day${days === 1 ? "" : "s"}.**${nth}`,
     "",
-    `${REASON_TEXT[reason]} ${mentions}`,
+  ];
+
+  if (author) lines.push(`@${author} — ${AUTHOR_TEXT[reason]}.`);
+  if (reviewers.length) {
+    lines.push(
+      `${reviewers.map(r => `@${r}`).join(" ")} — a review was requested from you and is `
+      + `still outstanding.`);
+  }
+
+  lines.push(
     "",
     `<sub>Posted by GitHub Control Hub. This reminder replaces itself rather than `
       + `adding a new comment each time. An organization admin can pause it.</sub>`,
-  ].join("\n");
+  );
+  return lines.join("\n");
 }
 
 export interface NudgeDeps {

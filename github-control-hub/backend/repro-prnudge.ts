@@ -389,9 +389,28 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   // ── the comment itself ──────────────────────────────────────────────
   {
     const p = pr();
-    const body = buildNudgeComment(p, "needs-approval", ["bob", "carol"], 9.7, 1);
+    const body = buildNudgeComment(
+      pr({ author: "alice" }), "needs-approval", ["alice", "bob", "carol"], 9.7, 1);
     check("the comment mentions everyone being chased",
-      body.includes("@bob") && body.includes("@carol"), body);
+      body.includes("@alice") && body.includes("@bob") && body.includes("@carol"), body);
+
+    // The author and the reviewers are asked for different things. A single
+    // sentence addressed to all of them told reviewers to merge a pull request
+    // they cannot merge, which is what the first version did.
+    const authorLine = body.split("\n").find(l => l.startsWith("@alice")) ?? "";
+    const reviewerLine = body.split("\n").find(l => l.startsWith("@bob")) ?? "";
+    check("  the author and the reviewers are addressed separately",
+      !!authorLine && !!reviewerLine && authorLine !== reviewerLine,
+      { authorLine, reviewerLine });
+    check("  and the reviewers are not told to merge it",
+      !/merg/i.test(reviewerLine), reviewerLine);
+    check("  they are told a review is outstanding",
+      /review .* (requested|outstanding)/i.test(reviewerLine), reviewerLine);
+
+    const ready = buildNudgeComment(
+      pr({ author: "alice" }), "ready", ["alice", "bob"], 8, 1);
+    check("  a ready pull request tells the author to merge, and only the author",
+      /@alice — .*merg/i.test(ready) && !/@bob — .*merg/i.test(ready), ready);
     check("  says how long it has been idle, in whole days",
       body.includes("9 days") && !body.includes("9.7"), body);
     check("  says what is blocking it", /waiting on review/i.test(body), body);
@@ -403,9 +422,7 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     check("  but later ones say which they are",
       buildNudgeComment(p, "ready", ["alice"], 30, 5).includes("reminder 5"));
 
-    const ready = buildNudgeComment(p, "ready", ["alice"], 8, 1);
-    check("  a ready pull request is told it just needs merging",
-      /needs merging/i.test(ready) && ready.includes("@alice"), ready);
+
   }
 
   // ── the old comment is found even without a stored id ───────────────
