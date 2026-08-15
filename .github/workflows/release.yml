@@ -79,6 +79,12 @@ jobs:
         shell: bash
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          # The updater's publish target, read by desktop/package.json. Taken
+          # from the repository this run belongs to rather than written down, so
+          # a copy of this repository releases to itself instead of to whichever
+          # repository the source was originally taken from.
+          UPDATE_REPO_OWNER: ${{ github.repository_owner }}
+          UPDATE_REPO_NAME: ${{ github.event.repository.name }}
         # onTag, and no GH_TOKEN. Two belts, because on CI electron-builder's
         # default policy is `always` — it will try to publish and then fail on
         # the missing token, which is exactly what it did. onTag only fires
