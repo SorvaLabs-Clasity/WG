@@ -510,17 +510,23 @@ export class GitHubControlHubStack extends cdk.Stack {
       resources: [notifyTopics],
     }));
 
-    // Fifteen minutes, and the only schedule in the feature.
+    // Five minutes, and the only schedule in the feature.
     //
-    // Alarms that read Dependabot are due hourly instead, which the evaluator
-    // decides per alarm rather than with a second rule — GitHub only rescans
-    // when advisories are published, so asking four times an hour spends rate
-    // limit to receive the same answer four times. Keeping it one rule means
-    // changing that tiering is a constant in the code, not a deploy.
+    // This is the tick, not the interval. Each alarm carries its own interval
+    // and the evaluator decides per alarm which are due, so one rule serves
+    // every tiering and changing that tiering stays a constant in the code
+    // rather than a deploy. Ticks with nothing due read the alarms table and
+    // return.
+    //
+    // It has to divide every interval in INTERVAL_MINUTES, because an alarm can
+    // only be evaluated on a tick — a ten-minute interval under a fifteen-minute
+    // rule is a fifteen-minute alarm that reads as ten everywhere else.
+    // backend/src/alarms/conditions.ts declares TICK_MINUTES, which this must
+    // match, and repro-alarms.ts fails if the two disagree.
     new events.Rule(this, "AlarmSchedule", {
       ruleName: `${stackPrefix}-alarm-schedule`,
       description: "Evaluates widget alarms that are due",
-      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
       targets: [new targets.LambdaFunction(alarmFn)],
     });
 

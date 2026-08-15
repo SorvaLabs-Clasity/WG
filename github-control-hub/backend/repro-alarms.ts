@@ -17,7 +17,7 @@ import fs from "fs";
 import path from "path";
 import {
   conditionsFor, isValidCondition, metricValue, isBreaching, step, intervalFor,
-  isDue, severityRank, INTERVAL_MINUTES, RECOVERY_CHECKS, DUE_TOLERANCE_MS,
+  isDue, severityRank, INTERVAL_MINUTES, RECOVERY_CHECKS, DUE_TOLERANCE_MS, TICK_MINUTES,
   type AlarmCondition, type AlarmRuntime,
 } from "./src/alarms/conditions";
 import {
@@ -621,6 +621,111 @@ function check(name: string, ok: boolean, got?: unknown) {
     check("the frontend knows a label for every metric the backend offers",
       everyMetric.size > 0 && missing.length === 0,
       missing.length ? missing : "no metrics found — the catalogue is empty");
+  }
+
+  // ── the tick has to divide every interval ──────────────────────────
+  {
+    // An alarm is only evaluated when the rule fires, so an interval the tick
+    // does not divide silently rounds up to the next tick: ten minutes under a
+    // fifteen-minute rule is a fifteen-minute alarm, displayed as ten in the
+    // app and in the email. Nothing fails, and the reading is simply late.
+    for (const [name, minutes] of Object.entries(INTERVAL_MINUTES)) {
+      check(`the ${name} interval is a whole number of ticks`,
+        minutes % TICK_MINUTES === 0,
+        `${minutes}m interval under a ${TICK_MINUTES}m tick rounds up to ${
+          Math.ceil(minutes / TICK_MINUTES) * TICK_MINUTES}m`);
+    }
+
+    // The tolerance pulls a check slightly early so jitter cannot defer it a
+    // whole tick. It must stay under one tick, or a check becomes due before
+    // its interval has elapsed and the interval means nothing.
+    check("  and the tolerance is shorter than one tick",
+      DUE_TOLERANCE_MS < TICK_MINUTES * 60_000,
+      `${DUE_TOLERANCE_MS / 60_000}m tolerance against a ${TICK_MINUTES}m tick`);
+
+    // CDK owns the rule and cannot import this constant — infra/ compiles with
+    // rootDir "." and does not include backend/. So the two are asserted equal
+    // here rather than shared, which is the only thing keeping them together.
+    const stack = fs.readFileSync(
+      path.join(__dirname, "..", "infra", "cdk-stack.ts"), "utf8");
+    const alarmRule = stack.slice(stack.indexOf('new events.Rule(this, "AlarmSchedule"'));
+    const rate = /Schedule\.rate\(cdk\.Duration\.minutes\((\d+)\)\)/.exec(alarmRule)?.[1];
+    check("  and the deployed rule fires at exactly that rate",
+      rate !== undefined && Number(rate) === TICK_MINUTES,
+      rate === undefined ? "no rate found on AlarmSchedule" : `rule fires every ${rate}m, code assumes ${TICK_MINUTES}m`);
+  }
+
+  // ── one sweep per run, however many alarms read it ──────────────────
+  {
+    // Several Dependabot alarms are the normal case — one for criticals, one
+    // for highs, one per team. Each doing its own org-wide sweep would multiply
+    // the request cost by the number of alarms for identical data, and nothing
+    // else would notice: every alarm still reports the right number.
+    //
+    // The handler memoises on the *promise* rather than the result, so reads
+    // that overlap share one call instead of racing. Both orderings are checked
+    // because only the concurrent one catches a memo that caches too late.
+    const makeSources = () => {
+      let fetches = 0;
+      let pending: any = null;
+      const dependencyAlerts = () => {
+        if (!pending) {
+          pending = (async () => {
+            fetches++;
+            return { alerts: [{ severity: "critical" }, { severity: "high" }], degraded: false };
+          })();
+        }
+        return pending;
+      };
+      return {
+        count: () => fetches,
+        sources: { dependencyAlerts, renovateOpenPrs: async () => [], runQuery: async () => [] },
+      };
+    };
+
+    // Both Dependabot-backed presets, since they share the one sweep.
+    const widgets = [
+      ...Array(6).fill({ type: "preset", presetId: "dependabot" }),
+      ...Array(4).fill({ type: "preset", presetId: "vuln-repos" }),
+    ];
+
+    const seq = makeSources();
+    const seqRows = [];
+    for (const w of widgets) seqRows.push(await computeWidgetRows(w as any, seq.sources as any));
+    check(`${widgets.length} alarms sequentially cost one sweep`,
+      seq.count() === 1, `${seq.count()} sweeps`);
+    check("  and every one of them still got rows",
+      seqRows.every(r => r.rows != null), seqRows.filter(r => r.rows == null).length + " empty");
+
+    const par = makeSources();
+    const parRows = await Promise.all(
+      widgets.map(w => computeWidgetRows(w as any, par.sources as any)));
+    check("  concurrently too, which is how the evaluator reads them",
+      par.count() === 1, `${par.count()} sweeps`);
+    check("  and those got rows as well",
+      parRows.every(r => r.rows != null), parRows.filter(r => r.rows == null).length + " empty");
+
+    // Sharing only holds while every preset goes through the injected source.
+    // A preset that imported the service and called it directly would still
+    // return the right rows — and would add one org-wide sweep per alarm, which
+    // the counts above cannot see because they only observe the injected one.
+    const wv = fs.readFileSync(
+      path.join(__dirname, "src", "alarms", "widgetValues.ts"), "utf8");
+    const valueImports = [...wv.matchAll(/^import\s+(?!type\b)[^;]*?from\s+"([^"]+)"/gm)].map(m => m[1]);
+    check("  and widget values reach GitHub only through the injected sources",
+      !valueImports.some(i => /services\/|github\//.test(i)),
+      valueImports.filter(i => /services\/|github\//.test(i)));
+
+    // The memo must not outlive the run: a module-level cache would serve the
+    // previous invocation's alerts, so an alarm would report a number that had
+    // already changed and a resolved vulnerability would keep firing.
+    const handler = fs.readFileSync(
+      path.join(__dirname, "src", "alarms", "handler.ts"), "utf8");
+    const body = handler.slice(handler.indexOf("export async function handler"));
+    check("  and the memo is declared inside the handler, not at module scope",
+      /^\s+let dependencyPromise/m.test(body)
+        && !/^let dependencyPromise/m.test(handler.slice(0, handler.indexOf("export async function handler"))),
+      "a module-scope memo would serve one run's alerts to the next");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

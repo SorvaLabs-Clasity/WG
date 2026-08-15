@@ -197,17 +197,32 @@ export function step(runtime: AlarmRuntime, breaching: boolean): { runtime: Alar
 // ── how often each widget is worth re-reading ─────────────────────────
 
 /**
+ * How often the EventBridge rule invokes the evaluator.
+ *
+ * Every interval below has to be a multiple of this, because an alarm can only
+ * be evaluated on a tick: setting one to ten minutes while the rule fires every
+ * fifteen produces a fifteen-minute alarm that reads as ten everywhere in the
+ * app. cdk-stack.ts owns the rule and must match; repro-alarms.ts asserts both.
+ */
+export const TICK_MINUTES = 5;
+
+/**
  * Minutes between evaluations, by what the widget actually reads.
  *
- * Dependabot data is one GitHub request per repository and only changes when
- * GitHub rescans — on push, and when advisories are published, which happens
- * in batches a few times a day. Asking four times an hour spends real rate
- * limit to receive the same answer four times.
+ * Dependabot alarms cost one org-wide sweep per run — paginated at 100 alerts
+ * per request, and memoised in the handler so that however many alarms read it,
+ * the run fetches once. The cost therefore tracks how many alerts are open, not
+ * how many repositories, widgets or alarms exist, which is what makes a short
+ * interval affordable: at a few thousand open alerts a ten-minute cadence is a
+ * low single-digit percentage of an installation's hourly budget.
+ *
+ * It was hourly when the same data cost one request per repository. That was
+ * the right interval for that implementation and the wrong one for this.
  *
  * Everything else reads configuration state out of the graph tables, which is
  * cheap, and changes whenever a person changes it.
  */
-export const INTERVAL_MINUTES = { dependabot: 60, standard: 15 } as const;
+export const INTERVAL_MINUTES = { dependabot: 10, standard: 15 } as const;
 
 export function intervalFor(widget: { type: string; presetId?: string }): number {
   const dependabotBacked = widget.type === "preset"
@@ -216,8 +231,9 @@ export function intervalFor(widget: { type: string; presetId?: string }): number
 }
 
 /**
- * The scheduler ticks every 15 minutes; an hourly alarm is due on every fourth
- * tick. The tolerance is what makes that true.
+ * The scheduler ticks every TICK_MINUTES; a ten-minute alarm is due on every
+ * second tick, a fifteen-minute one on every third. The tolerance is what makes
+ * that true.
  *
  * EventBridge fires within about a minute either side of the scheduled time.
  * Without slack, a tick arriving at 59m50s reads "not yet an hour" and defers
