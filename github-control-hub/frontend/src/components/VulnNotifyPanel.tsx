@@ -37,8 +37,8 @@ const FEEDS: Record<NotifyFeed, {
       "Only pull requests from the bot account configured above — everything else " +
       "your team opens is ignored.",
     severity: false,
-    volume: "One email per Renovate pull request. On a large dependency tree that can be " +
-      "several a day, and more the first time Renovate runs against a repository.",
+    volume: "The first time Renovate runs against a repository it can open many pull requests " +
+      "at once, which is what grouping is for.",
     prerequisite: null,
   },
   "dependabot-alert": {
@@ -46,8 +46,8 @@ const FEEDS: Record<NotifyFeed, {
     blurb: "One email per new alert, sent within seconds of GitHub raising it, rather " +
       "than waiting for the next scheduled check.",
     severity: true,
-    volume: "One email per new alert at or above the severity you choose. Existing alerts " +
-      "are not re-sent — only ones raised from now on.",
+    volume: "Only alerts at or above the severity you choose, and only ones raised from now on — " +
+      "switching this on does not send the backlog already in the table.",
     prerequisite: "This needs the Dependabot alert event on the webhook that feeds this app — " +
       "Organization → Settings → Webhooks → the Control Hub webhook → Edit, then tick " +
       "“Dependabot alerts” under “Let me select individual events”. It is the same webhook " +
@@ -74,6 +74,7 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
   const [enabled, setEnabled] = useState(false);
   const [groupId, setGroupId] = useState("");
   const [minSeverity, setMinSeverity] = useState<Severity>("high");
+  const [grouping, setGrouping] = useState<"per-alert" | "per-repository">("per-repository");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [showTemplates, setShowTemplates] = useState(false);
@@ -85,6 +86,7 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
     setEnabled(settings.enabled);
     setGroupId(settings.groupId ?? "");
     if (settings.minSeverity) setMinSeverity(settings.minSeverity);
+    if (settings.grouping) setGrouping(settings.grouping);
     setSubject(settings.subjectTemplate);
     setBody(settings.bodyTemplate);
   }, [settings]);
@@ -102,6 +104,7 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
 
   async function save(next: Partial<{
     enabled: boolean; groupId: string; minSeverity: Severity;
+    grouping: "per-alert" | "per-repository";
     subjectTemplate: string; bodyTemplate: string;
   }>) {
     setError(""); setNotice("");
@@ -111,7 +114,7 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
         // Sent only where it means something. The backend rejects it on the
         // Renovate feed rather than storing a filter it will never read.
         ...(spec.severity ? { minSeverity } : {}),
-        subjectTemplate: subject, bodyTemplate: body, ...next,
+        grouping, subjectTemplate: subject, bodyTemplate: body, ...next,
       });
       setNotice("Saved");
     } catch (err: any) {
@@ -218,6 +221,26 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
               </p>
             </div>
           )}
+        </div>
+
+        <div className="mt-4 sm:w-1/2 sm:pr-2">
+          <label className={labelClass}>Group emails</label>
+          <select value={grouping} className={inputClass}
+            onChange={e => {
+              const v = e.target.value as "per-alert" | "per-repository";
+              setGrouping(v); save({ grouping: v });
+            }}>
+            <option value="per-repository">One email per repository</option>
+            <option value="per-alert">One email per {spec.severity ? "alert" : "pull request"}</option>
+          </select>
+          <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
+            {grouping === "per-repository"
+              ? "Events are held briefly and sent together, so switching Dependabot on for a "
+                + "repository produces one email listing everything it found rather than one each. "
+                + "Adds up to five minutes."
+              : "Sends within seconds of each event. Enabling Dependabot on a repository with "
+                + "twenty vulnerable dependencies sends twenty emails."}
+          </p>
         </div>
 
         <p className="mt-3 text-xs text-gray-500 dark:text-slate-400">{spec.volume}</p>

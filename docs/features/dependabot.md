@@ -94,3 +94,37 @@ subscribes to nothing — every delivery comes from that webhook — so an empty
 GitHub calls the middle severity "moderate" and this app calls it "medium". The
 translation happens once, where the webhook is read, so a floor of medium
 catches GitHub's moderate alerts rather than silently dropping them.
+
+## Grouping
+
+Two ways to be told, chosen per feed:
+
+| Setting | What arrives | Delay |
+|---|---|---|
+| **One email per repository** (default) | One message listing everything that arrived for that repository | Up to 5 minutes |
+| **One email per alert** | One message each | Seconds |
+
+Per-repository exists because the common case is not one event arriving. It is
+Dependabot being switched on for a repository and raising every alert it has at
+once, or Renovate running against a repository for the first time. One email
+each is a blast nobody reads, and a feed people filter is a feed that is off.
+
+The webhook writes the event into a buffer instead of publishing, and the alarm
+evaluator — which already ticks every five minutes — drains it, grouping by feed
+and repository. Buffered rows are marked sent rather than deleted and expire on
+their own after 24 hours.
+
+A group whose publish fails is left unmarked, so the next tick retries it. That
+risks a repeated digest if SNS accepted the message and the failure came later,
+which is the right way round: a repeat is noticed and ignored, a silent loss is
+not noticed at all.
+
+The digest keeps your templates. The subject counts the items and names the
+repository; the body lists them worst-severity first, so a critical is not
+buried at position fourteen, and your rendered single-item body follows. A
+buffer holding one item is sent exactly as the template rendered it, not as a
+digest of one.
+
+Turning a feed off, or switching it back to per-event, while events are buffered
+sends nothing — those rows are cleared rather than left to be reconsidered on
+every future tick.

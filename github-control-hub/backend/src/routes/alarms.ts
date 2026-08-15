@@ -305,7 +305,11 @@ router.put("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response)
     return res.status(404).json({ error: "Unknown notification feed" });
   }
   try {
-    const { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate } = req.body ?? {};
+    const { enabled, groupId, minSeverity, grouping, subjectTemplate, bodyTemplate } = req.body ?? {};
+
+    if (grouping !== undefined && !["per-alert", "per-repository"].includes(grouping)) {
+      return res.status(400).json({ error: "Grouping must be per-alert or per-repository" });
+    }
 
     if (enabled && !groupId) {
       return res.status(400).json({ error: "Choose an email group before turning this on" });
@@ -330,7 +334,7 @@ router.put("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response)
 
     res.json(await saveFeedSettings(
       feed as NotifyFeed,
-      { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate },
+      { enabled, groupId, minSeverity, grouping, subjectTemplate, bodyTemplate },
       req.user!.login,
     ));
   } catch (error: any) {

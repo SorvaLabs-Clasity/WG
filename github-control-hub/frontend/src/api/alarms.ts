@@ -112,6 +112,8 @@ export interface FeedNotifySettings {
   enabled: boolean;
   groupId?: string;
   minSeverity?: Severity;
+  /** per-repository holds events briefly and sends one message per repository. */
+  grouping: "per-alert" | "per-repository";
   subjectTemplate: string;
   bodyTemplate: string;
   updatedBy?: string;

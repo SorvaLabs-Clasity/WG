@@ -83,7 +83,7 @@ export interface SecurityNotifySettings {
   updatedAt?: string;
 }
 
-type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings;
+type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification;
 
 const TABLE = () => tableName("ALARMS_TABLE");
 
@@ -404,6 +404,15 @@ export interface FeedNotifySettings {
    * absent there rather than set to a value that quietly filters nothing.
    */
   minSeverity?: Severity;
+  /**
+   * How many emails an event storm produces.
+   *
+   * `per-repository` holds events briefly and sends one message per repository,
+   * because the common case is not one alert arriving — it is Dependabot being
+   * switched on and raising every alert a repository has at once.
+   * `per-alert` sends immediately, which is faster and much louder.
+   */
+  grouping: "per-alert" | "per-repository";
   subjectTemplate: string;
   bodyTemplate: string;
   updatedBy?: string;
@@ -418,6 +427,7 @@ const FEED_DEFAULTS: Record<NotifyFeed, FeedNotifySettings> = {
     // Off until somebody turns it on, for the same reason the security toggle
     // is: enabling by default emails whoever is in a group the moment one exists.
     enabled: false,
+    grouping: "per-repository",
     subjectTemplate: DEFAULT_RENOVATE_SUBJECT,
     bodyTemplate: DEFAULT_RENOVATE_BODY,
   },
@@ -430,6 +440,7 @@ const FEED_DEFAULTS: Record<NotifyFeed, FeedNotifySettings> = {
     // and above is the floor that keeps the first week from training people to
     // filter it, and it is adjustable.
     minSeverity: "high",
+    grouping: "per-repository",
     subjectTemplate: DEFAULT_DEPENDABOT_SUBJECT,
     bodyTemplate: DEFAULT_DEPENDABOT_BODY,
   },
@@ -444,7 +455,7 @@ export async function getFeedSettings(feed: NotifyFeed): Promise<FeedNotifySetti
 export async function saveFeedSettings(
   feed: NotifyFeed,
   data: Partial<Pick<FeedNotifySettings, "enabled" | "groupId" | "minSeverity"
-    | "subjectTemplate" | "bodyTemplate">>,
+    | "grouping" | "subjectTemplate" | "bodyTemplate">>,
   actor: string,
 ): Promise<FeedNotifySettings> {
   const current = await getFeedSettings(feed);
@@ -466,6 +477,7 @@ export async function saveFeedSettings(
     ["enabled", `${label} emails`],
     ["groupId", "email group"],
     ["minSeverity", "severity floor"],
+    ["grouping", "grouping"],
     ["subjectTemplate", "subject template edited"],
     ["bodyTemplate", "body template edited"],
   ]);
@@ -477,6 +489,80 @@ export async function saveFeedSettings(
     { enabled: updated.enabled, minSeverity: updated.minSeverity, changed: changes }, "app",
   );
   return updated;
+}
+
+// ── the pending-notification buffer ───────────────────────────────────
+//
+// Grouping needs somewhere to hold an event until its neighbours arrive.
+// Enabling Dependabot on one repository raises every alert it has at once, and
+// one email each is a blast nobody reads — so events land here and the alarm
+// evaluator, which already runs on a tick, sends one message per repository.
+//
+// Rows are marked sent rather than deleted, and expire on their own. Deleting
+// them would be tidier and is deliberately not done: a delete that raced with a
+// flush would lose a notification with nothing to show it ever existed, and
+// this table is the same one alarms live in.
+
+export interface PendingNotification {
+  id: string;
+  kind: "pending";
+  feed: NotifyFeed;
+  /** What the digest groups by. */
+  repo: string;
+  /** Rendered fields for one line of the digest. */
+  item: Record<string, string>;
+  /** The event's own time, not the flush's. */
+  occurredAt: string;
+  sentAt?: string;
+  /** Epoch seconds. Long enough to survive an evaluator outage. */
+  ttl: number;
+}
+
+const PENDING_TTL_HOURS = 24;
+
+export async function bufferNotification(
+  feed: NotifyFeed,
+  repo: string,
+  item: Record<string, string>,
+  occurredAt: string,
+): Promise<void> {
+  const row: PendingNotification = {
+    id: `pending#${feed}#${crypto.randomUUID()}`,
+    kind: "pending",
+    feed,
+    repo,
+    item,
+    occurredAt,
+    ttl: Math.floor(Date.now() / 1000) + PENDING_TTL_HOURS * 3600,
+  };
+  await put(row);
+}
+
+/** Everything buffered and not yet sent, oldest first. */
+export async function listPending(feed?: NotifyFeed): Promise<PendingNotification[]> {
+  const rows = (await allRecords()).filter(
+    r => r.kind === "pending" && !(r as PendingNotification).sentAt,
+  ) as PendingNotification[];
+  return rows
+    .filter(r => !feed || r.feed === feed)
+    .sort((a, b) => a.occurredAt.localeCompare(b.occurredAt));
+}
+
+/**
+ * Marked one at a time and only after a successful publish.
+ *
+ * Marking the batch before publishing would drop the whole group if SNS failed;
+ * marking after means a failure leaves them pending and the next tick tries
+ * again. The cost of that choice is a possible duplicate digest rather than a
+ * silent loss, which is the right way round for a notification.
+ */
+export async function markPendingSent(ids: string[]): Promise<void> {
+  const now = new Date().toISOString();
+  for (const id of ids) {
+    const row = await getById<PendingNotification>(id);
+    if (!row || row.kind !== "pending" || row.sentAt) continue;
+    await put({ ...row, sentAt: now });
+  }
 }
 
 // ── test seam ──

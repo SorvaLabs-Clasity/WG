@@ -13,8 +13,8 @@
 import fs from "fs";
 import path from "path";
 import {
-  notifyRenovatePr, notifyDependabotAlert, isConfiguredBot,
-  type FeedNotifyDeps,
+  notifyRenovatePr, notifyDependabotAlert, isConfiguredBot, buildDigest, flushPending,
+  type FeedNotifyDeps, type PendingRow,
 } from "./src/alarms/feedNotify";
 
 let failures = 0;
@@ -193,9 +193,10 @@ function deps(over: Partial<{
 
     // A throw here fails the whole delivery: the worker releases its claim and
     // every other effect of that delivery runs again on retry.
-    const prBlock = src.slice(src.indexOf('event === "pull_request"'));
+    const prStart = src.indexOf('event === "pull_request"');
+    const prBlock = src.slice(prStart, src.indexOf('event === "dependabot_alert"', prStart));
     check("  a notify failure cannot fail the delivery",
-      /try \{/.test(prBlock.slice(0, 200)) && /catch \(err\)/.test(prBlock.slice(0, 2600)),
+      /try \{/.test(prBlock) && /catch \(err\)/.test(prBlock),
       "SNS being briefly unavailable would duplicate every other effect of the delivery");
   }
 
@@ -230,6 +231,130 @@ function deps(over: Partial<{
       "a feed on by default emails whoever is in a group the moment one exists");
     check("  and the Renovate record cannot keep a severity",
       /if \(feed !== "dependabot-alert"\) delete updated\.minSeverity;/.test(svc));
+  }
+
+  // ── grouping, which exists because per-alert is a blast ─────────────
+  {
+    // Switching Dependabot on for one repository raises every alert it has at
+    // once. One email each is what grouping was added to stop.
+    const row = (repo: string, pkg: string, sev: string, at: string): PendingRow => ({
+      id: `p-${repo}-${pkg}`, feed: "dependabot-alert", repo,
+      item: { repo, package: pkg, severity: sev, url: `https://x/${pkg}`, advisory: "adv" },
+      occurredAt: at,
+    });
+
+    const make = (pending: PendingRow[], over: Partial<{ enabled: boolean; grouping: string; groupId?: string }> = {}) => {
+      const sent: { subject: string; body: string }[] = [];
+      const marked: string[] = [];
+      const deps = {
+        listPending: async () => pending.filter(r => !marked.includes(r.id)),
+        markSent: async (ids: string[]) => { marked.push(...ids); },
+        settings: async () => ({
+          enabled: over.enabled ?? true,
+          grouping: over.grouping ?? "per-repository",
+          groupId: "groupId" in over ? over.groupId : "g1",
+          subjectTemplate: "{{repo}}: {{package}}",
+          bodyTemplate: "{{url}} {{severity}}",
+        }),
+        topicArnFor: async () => "arn:aws:sns:::t",
+        publish: async (_t: string, subject: string, body: string) => { sent.push({ subject, body }); return true; },
+        timezone: async () => "UTC",
+        org: "Acme-Org",
+      };
+      return { deps, sent, marked };
+    };
+
+    const many = [
+      row("acme/api", "lodash", "critical", "2026-08-15T10:00:00Z"),
+      row("acme/api", "minimist", "low", "2026-08-15T10:00:01Z"),
+      row("acme/api", "axios", "high", "2026-08-15T10:00:02Z"),
+      row("acme/web", "react", "medium", "2026-08-15T10:00:03Z"),
+    ];
+
+    const a = make(many);
+    const res = await flushPending(a.deps as any);
+    check("four alerts across two repositories send two emails, not four",
+      a.sent.length === 2 && res.messages === 2, { sent: a.sent.length, res });
+    check("  and every buffered row is marked, so none is sent twice",
+      a.marked.length === 4, a.marked);
+
+    const apiMail = a.sent.find(m => m.subject.includes("acme/api"))!;
+    check("  the subject counts them rather than naming one",
+      /\[3\]/.test(apiMail.subject) && /3 Dependabot alerts/.test(apiMail.subject), apiMail.subject);
+    check("  the body lists all three",
+      ["lodash", "minimist", "axios"].every(p => apiMail.body.includes(p)), apiMail.body);
+    check("  worst severity first, so a critical is not buried",
+      apiMail.body.indexOf("lodash") < apiMail.body.indexOf("axios")
+        && apiMail.body.indexOf("axios") < apiMail.body.indexOf("minimist"),
+      apiMail.body);
+
+    // A single buffered event must read like a normal email, not a digest of one.
+    const one = make([row("acme/api", "lodash", "critical", "2026-08-15T10:00:00Z")]);
+    await flushPending(one.deps as any);
+    check("a single event uses the template rather than a digest of one",
+      one.sent[0].subject === "acme/api: lodash", one.sent[0].subject);
+
+    // Nothing buffered must not publish an empty message.
+    const none = make([]);
+    const r2 = await flushPending(none.deps as any);
+    check("an empty buffer sends nothing", none.sent.length === 0 && r2.messages === 0, r2);
+
+    // Switched off, or back to per-alert, while events sat in the buffer.
+    const off = make(many, { enabled: false });
+    await flushPending(off.deps as any);
+    check("a feed switched off while buffered sends nothing",
+      off.sent.length === 0, off.sent.length);
+    check("  but its rows are cleared, not left to be reconsidered forever",
+      off.marked.length === 4, off.marked.length);
+
+    const perAlert = make(many, { grouping: "per-alert" });
+    await flushPending(perAlert.deps as any);
+    check("  the same when switched back to per-alert", perAlert.sent.length === 0);
+
+    // A failed publish must leave the rows pending so the next tick retries.
+    const failing = {
+      ...make(many).deps,
+      publish: async () => false,
+    };
+    const markedOnFail: string[] = [];
+    (failing as any).markSent = async (ids: string[]) => { markedOnFail.push(...ids); };
+    const r3 = await flushPending(failing as any);
+    check("a publish failure leaves the rows pending for the next tick",
+      markedOnFail.length === 0 && r3.failures === 2 && r3.messages === 0,
+      { marked: markedOnFail.length, r3 });
+
+    // Two feeds for one repository are different subjects with different
+    // templates; merging them would produce a message no template describes.
+    const mixed: PendingRow[] = [
+      row("acme/api", "lodash", "high", "2026-08-15T10:00:00Z"),
+      { id: "pr1", feed: "renovate-pr", repo: "acme/api",
+        item: { repo: "acme/api", title: "Bump lodash", url: "https://x/pr/1", number: "1" },
+        occurredAt: "2026-08-15T10:00:01Z" },
+    ];
+    const m = make(mixed);
+    await flushPending(m.deps as any);
+    check("one repository with both feeds waiting gets one email per feed",
+      m.sent.length === 2, m.sent.length);
+  }
+
+  // ── the digest itself ───────────────────────────────────────────────
+  {
+    const rendered = { subject: "one", body: "the single-item body" };
+    const label = { singular: "alert", plural: "alerts" };
+
+    check("a digest of one is left exactly as the template rendered it",
+      buildDigest([{ item: { package: "a" }, occurredAt: "t" }], rendered, label, "r") === rendered);
+
+    const d = buildDigest([
+      { item: { package: "zzz-low-pkg", severity: "low", url: "u1" }, occurredAt: "t1" },
+      { item: { package: "qqq-crit-pkg", severity: "critical", url: "u2" }, occurredAt: "t2" },
+    ], rendered, label, "acme/api");
+    check("  a digest of two names the repository and the count",
+      d.subject.includes("acme/api") && d.subject.includes("2 alerts"), d.subject);
+    check("  keeps the rendered single-item body below the list",
+      d.body.includes("the single-item body"), d.body);
+    check("  and still sorts critical above low",
+      d.body.indexOf("qqq-crit-pkg") < d.body.indexOf("zzz-low-pkg"), d.body);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

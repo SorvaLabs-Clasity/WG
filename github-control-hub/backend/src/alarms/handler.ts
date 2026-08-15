@@ -6,16 +6,21 @@ import { computeWidgetRows } from "./widgetValues";
 import { fetchOrgDependencyAlerts } from "../services/dependencyService";
 import { evaluateSecurityQuery } from "../services/graphService";
 import { fetchRenovatePrs, openPrs } from "../services/renovateService";
+import { flushPending } from "./feedNotify";
 import { getOrgConfig } from "../services/orgConfigService";
-import { listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings } from "../services/alarmService";
+import {
+  listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings,
+  getFeedSettings, listPending, markPendingSent,
+} from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
 
 /**
  * The scheduled half of alarms.
  *
- * Runs every fifteen minutes and evaluates whichever alarms are due. Nothing
- * on the internet can reach it; EventBridge is its only trigger.
+ * Runs every five minutes, evaluates whichever alarms are due, and flushes the
+ * buffered per-repository notifications. Nothing on the internet can reach it;
+ * EventBridge is its only trigger.
  *
  * The bootstrap mirrors the webhook worker's, including the reasons: App auth
  * needs createAppAuth passed in because require.resolve finds nothing inside a
@@ -143,4 +148,33 @@ export async function handler(): Promise<void> {
   // Deliberately not thrown. A publish failure is already logged and counted,
   // and failing the invocation would only make EventBridge retry the whole
   // pass — re-reading every widget and re-sending whatever did succeed.
+
+  // ── the grouped feeds ──
+  //
+  // Buffered by the webhook, drained here, because this is already a tick that
+  // runs every few minutes and a second schedule would be a second thing to
+  // keep in step with the first. The cost is latency: an event waits up to one
+  // tick, which is the trade grouping was asked for.
+  //
+  // Its own try, so a failure to flush cannot lose the alarm summary above.
+  try {
+    const flushed = await flushPending({
+      listPending,
+      markSent: markPendingSent,
+      settings: getFeedSettings,
+      topicArnFor: async (groupId: string) => (await getGroup(groupId))?.topicArn,
+      publish,
+      timezone: async () => (await getSecuritySettings()).timezone,
+      org,
+    });
+    if (flushed.messages > 0 || flushed.failures > 0) {
+      console.log(
+        `[Notify] Flushed ${flushed.items} buffered events as ${flushed.messages} ` +
+        `message(s) across ${flushed.repos} repositor${flushed.repos === 1 ? "y" : "ies"}` +
+        (flushed.failures ? `, ${flushed.failures} publish failure(s) left pending` : ""),
+      );
+    }
+  } catch (err) {
+    console.error("[Notify] Flushing buffered notifications failed:", (err as Error).message);
+  }
 }

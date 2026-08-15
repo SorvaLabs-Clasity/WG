@@ -186,11 +186,34 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   // every other effect of that delivery runs again so SNS can be retried.
   if (event === "pull_request" && payload.action === "opened" && payload.pull_request) {
     try {
-      const { notifyRenovatePr } = await import("../alarms/feedNotify");
-      const { getFeedSettings, getGroup, getSecuritySettings } = await import("../services/alarmService");
+      const { notifyRenovatePr, isConfiguredBot } = await import("../alarms/feedNotify");
+      const { getFeedSettings, getGroup, getSecuritySettings, bufferNotification } =
+        await import("../services/alarmService");
       const { getOrgConfig } = await import("../services/orgConfigService");
       const { publish } = await import("../services/notifyService");
-      const outcome = await notifyRenovatePr(
+      const settings = await getFeedSettings("renovate-pr");
+      const bot = (await getOrgConfig()).renovateBot;
+      let buffered = false;
+
+      // Grouped feeds buffer instead of publishing. The filters that decide
+      // whether this event matters at all are applied here rather than at flush
+      // time, so a buffer only ever holds things that would have been sent.
+      if (settings.enabled && settings.grouping === "per-repository"
+          && isConfiguredBot(sanitizeField(payload.pull_request.user?.login, 64), bot)) {
+        await bufferNotification("renovate-pr",
+          sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
+          {
+            repo: sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
+            title: sanitizeField(payload.pull_request.title, 200),
+            url: sanitizeField(payload.pull_request.html_url, 300),
+            number: String(Number(payload.pull_request.number) || 0),
+          },
+          sanitizeField(payload.pull_request.created_at, 40) || occurredAt);
+        console.log(`[Notify] Renovate PR buffered: ${payload.repository?.name}#${payload.pull_request.number}`);
+        buffered = true;
+      }
+
+      const outcome = buffered ? "buffered" as const : await notifyRenovatePr(
         {
           repo: sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
           number: Number(payload.pull_request.number) || 0,
@@ -219,10 +242,33 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   if (event === "dependabot_alert" && payload.action === "created" && payload.alert) {
     try {
       const { notifyDependabotAlert } = await import("../alarms/feedNotify");
-      const { getFeedSettings, getGroup, getSecuritySettings } = await import("../services/alarmService");
+      const { getFeedSettings, getGroup, getSecuritySettings, bufferNotification } =
+        await import("../services/alarmService");
+      const { meetsMinimumSeverity } = await import("../alarms/evaluate");
       const { publish } = await import("../services/notifyService");
       const a = payload.alert;
-      const outcome = await notifyDependabotAlert(
+      const severity = (a.security_advisory?.severity === "moderate" ? "medium"
+        : sanitizeField(a.security_advisory?.severity, 20)) || "low";
+      const settings = await getFeedSettings("dependabot-alert");
+      let buffered = false;
+
+      if (settings.enabled && settings.grouping === "per-repository"
+          && (!settings.minSeverity || meetsMinimumSeverity(severity, settings.minSeverity))) {
+        await bufferNotification("dependabot-alert",
+          sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
+          {
+            repo: sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
+            package: sanitizeField(a.dependency?.package?.name, 140) || "unknown package",
+            advisory: sanitizeField(a.security_advisory?.summary, 300) || "No summary provided",
+            severity,
+            url: sanitizeField(a.html_url, 300),
+          },
+          sanitizeField(a.created_at, 40) || occurredAt);
+        console.log(`[Notify] Dependabot alert buffered: ${payload.repository?.name}`);
+        buffered = true;
+      }
+
+      const outcome = buffered ? "buffered" as const : await notifyDependabotAlert(
         {
           repo: sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
           package: sanitizeField(a.dependency?.package?.name, 140) || "unknown package",

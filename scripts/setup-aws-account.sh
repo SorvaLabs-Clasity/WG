@@ -225,6 +225,22 @@ else
   echo "    enabled"
 fi
 
+# The alarms table also holds the pending-notification buffer, which is the only
+# thing in it that expires. Without TTL those rows accumulate forever in a table
+# the alarm evaluator scans on every tick.
+echo "==> Enabling TTL on ${PREFIX}-alarms"
+alarm_ttl=$($AWS dynamodb describe-time-to-live \
+  --table-name "${PREFIX}-alarms" \
+  --query 'TimeToLiveDescription.TimeToLiveStatus' --output text)
+if [[ "$alarm_ttl" == "ENABLED" || "$alarm_ttl" == "ENABLING" ]]; then
+  echo "    already $alarm_ttl"
+else
+  $AWS dynamodb update-time-to-live \
+    --table-name "${PREFIX}-alarms" \
+    --time-to-live-specification "Enabled=true,AttributeName=ttl" >/dev/null
+  echo "    enabled"
+fi
+
 echo "==> Enabling TTL on ${PREFIX}-auth-codes"
 ttl_status=$($AWS dynamodb describe-time-to-live \
   --table-name "${PREFIX}-auth-codes" \

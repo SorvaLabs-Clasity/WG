@@ -95,7 +95,11 @@ about a minute either side of the scheduled time. Without it a tick arriving at
 quietly stretches and the drift compounds. The slack is necessarily shorter than
 one tick, or a check would come due before its interval had elapsed.
 
-### Firing and recovering
+#The same tick also flushes the buffered per-repository notification digests for
+the Vulnerabilities tab, which is why those arrive within five minutes rather
+than instantly. See [dependabot.md](dependabot.md).
+
+## Firing and recovering
 
 An alarm fires when it *crosses* into breach, not on every cycle it stays
 there. Recovery is deliberately asymmetric: firing waits for nothing, but two
