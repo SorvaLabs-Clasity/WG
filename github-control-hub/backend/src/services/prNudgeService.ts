@@ -357,3 +357,61 @@ export async function postStickyNudge(
 }
 
 export { MARKER as NUDGE_MARKER };
+
+// ── the scheduled pass ────────────────────────────────────────────────
+
+export interface NudgeRunDeps extends NudgeDeps {
+  listPrs: () => Promise<{ prs: PullRequest[]; truncated: boolean }>;
+  getState: (repo: string, number: number) => Promise<{
+    lastNudgedAt?: string; lastCommentId?: number; nudgeCount?: number;
+    paused?: boolean; pausedLogins?: string[];
+  } | undefined>;
+  recordNudge: (repo: string, number: number, commentId: number | undefined) => Promise<void>;
+  now?: number;
+}
+
+/**
+ * One pass over every open pull request.
+ *
+ * Re-evaluates from scratch each time rather than trusting what was decided
+ * last cycle: a reviewer may have approved since, the conflict may be resolved,
+ * the block may have moved from approvals to a failing check. The spec asks for
+ * exactly this — rerun the logic, see who still has not reviewed — and it also
+ * means no state has to be kept beyond when we last posted.
+ *
+ * One pull request failing does not stop the rest. A repository the token
+ * cannot comment on would otherwise silence every reminder behind it.
+ */
+export async function runNudgePass(deps: NudgeRunDeps): Promise<{
+  considered: number; due: number; posted: number; skippedPaused: number; failed: number;
+}> {
+  const now = deps.now ?? Date.now();
+  const { prs } = await deps.listPrs();
+  let due = 0, posted = 0, skippedPaused = 0, failed = 0;
+
+  for (const pr of prs) {
+    const state = await deps.getState(pr.repo, pr.number).catch(() => undefined);
+    if (!isNudgeDue(pr, state?.lastNudgedAt ?? null, now)) continue;
+    due++;
+
+    const { reason, targets } = nudgeTargets(pr, {
+      pr: state?.paused, logins: state?.pausedLogins,
+    });
+    // Nobody to name. Deliberately no comment and no recorded nudge: recording
+    // one would start the seven-day clock again, so lifting the pause would be
+    // followed by a week of silence rather than the next reminder.
+    if (targets.length === 0) { skippedPaused++; continue; }
+
+    try {
+      const body = buildNudgeComment(
+        pr, reason, targets, daysSinceLastCommit(pr, now), (state?.nudgeCount ?? 0) + 1);
+      const { commentId } = await postStickyNudge(deps, pr, body, state?.lastCommentId);
+      await deps.recordNudge(pr.repo, pr.number, commentId);
+      posted++;
+    } catch {
+      failed++;
+    }
+  }
+
+  return { considered: prs.length, due, posted, skippedPaused, failed };
+}

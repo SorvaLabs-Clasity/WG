@@ -311,6 +311,10 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // what this catches.
     ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted|isAwsAdmin/],
     ["alarms.ts",        /router\.(post|put|delete)\(/g, /requireAdmin/],
+    // Pausing a stale-pull-request reminder silences it for everyone on that
+    // pull request, not just for the person clicking, so it is an org-wide act
+    // and gated the same way.
+    ["pulls.ts",         /router\.(post|put|delete)\(/g, /isAwsAdmin/],
   ];
 
   for (const [file, routeRe, guardRe] of GUARDED) {

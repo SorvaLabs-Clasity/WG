@@ -20,8 +20,8 @@ import path from "path";
 import {
   daysSinceLastCommit, isStale, hasReviewed, pendingReviewers, blockReason,
   nudgeTargets, isNudgeDue, sortByStaleness, fetchOpenPrs, STALE_DAYS,
-  buildNudgeComment, postStickyNudge, NUDGE_MARKER,
-  type PullRequest, type NudgeDeps,
+  buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass,
+  type PullRequest, type NudgeDeps, type NudgeRunDeps,
 } from "./src/services/prNudgeService";
 
 let failures = 0;
@@ -398,6 +398,91 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     // try/catch scored zero until this was wrapped.
     check("  and a delete that fails does not stop the new one posting",
       postedAnyway && !threw, { postedAnyway, threw });
+  }
+
+  // ── the scheduled pass ──────────────────────────────────────────────
+  {
+    const mkDeps = (prs: PullRequest[], states: Record<string, any> = {}) => {
+      const posted: Array<{ repo: string; number: number; body: string }> = [];
+      const recorded: string[] = [];
+      const deps: NudgeRunDeps = {
+        listPrs: async () => ({ prs, truncated: false }),
+        getState: async (repo, number) => states[`${repo}#${number}`],
+        recordNudge: async (repo, number) => { recorded.push(`${repo}#${number}`); },
+        listComments: async () => [],
+        deleteComment: async () => {},
+        postComment: async (repo, number, body) => { posted.push({ repo, number, body }); return 1; },
+        now: NOW,
+      };
+      return { deps, posted, recorded };
+    };
+
+    const staleOne = pr({ number: 1, lastCommitAt: daysAgo(10), reviewDecision: "APPROVED" });
+    const freshOne = pr({ number: 2, lastCommitAt: daysAgo(1) });
+
+    const a = mkDeps([staleOne, freshOne]);
+    const r1 = await runNudgePass(a.deps);
+    check("only the stale pull request is nudged",
+      r1.posted === 1 && a.posted[0].number === 1, { r1, posted: a.posted.map(p => p.number) });
+    check("  and the pass reports what it considered", r1.considered === 2 && r1.due === 1, r1);
+    check("  a posted reminder is recorded, or the interval never advances",
+      a.recorded.join() === "o/api#1", a.recorded);
+
+    // The consequence, asserted directly: a second pass straight after the
+    // first must post nothing.
+    const a2 = mkDeps([staleOne], { "o/api#1": { lastNudgedAt: new Date(NOW).toISOString() } });
+    check("  so an immediate second pass posts nothing",
+      (await runNudgePass(a2.deps)).posted === 0, a2.posted.length);
+
+    // Nudged three days ago: not due again for another four.
+    const b = mkDeps([staleOne], { "o/api#1": { lastNudgedAt: daysAgo(3) } });
+    check("a pull request nudged three days ago is left alone",
+      (await runNudgePass(b.deps)).posted === 0, b.posted.length);
+
+    // Nudged eight days ago and still idle: due.
+    const c = mkDeps([staleOne], { "o/api#1": { lastNudgedAt: daysAgo(8), nudgeCount: 3 } });
+    const r3 = await runNudgePass(c.deps);
+    check("  one nudged eight days ago and still idle is nudged again", r3.posted === 1);
+    check("  and the comment counts the reminders", c.posted[0].body.includes("reminder 4"),
+      c.posted[0].body.slice(0, 60));
+
+    // A paused pull request must not be recorded as nudged. Recording one would
+    // restart the seven-day clock, so lifting the pause would be followed by a
+    // week of silence instead of the next reminder.
+    const d = mkDeps([staleOne], { "o/api#1": { paused: true } });
+    const r4 = await runNudgePass(d.deps);
+    check("a paused pull request posts nothing", r4.posted === 0 && d.posted.length === 0);
+    check("  is counted as paused rather than as done", r4.skippedPaused === 1, r4);
+    check("  and is not recorded as nudged, so unpausing does not cost a week of silence",
+      d.recorded.length === 0, d.recorded);
+
+    // The block is re-evaluated every pass, so somebody approving between
+    // cycles changes who is named without any stored state being updated.
+    const waiting = pr({
+      number: 5, lastCommitAt: daysAgo(20), reviewDecision: "REVIEW_REQUIRED",
+      requestedReviewers: ["bob", "carol"], reviews: [{ login: "bob", state: "APPROVED" }],
+    });
+    const e = mkDeps([waiting]);
+    await runNudgePass(e.deps);
+    check("the pass re-evaluates who still owes a review",
+      e.posted[0].body.includes("@carol") && !e.posted[0].body.includes("@bob"),
+      e.posted[0].body);
+
+    // One failure must not silence everything behind it.
+    const f = mkDeps([
+      pr({ repo: "o/bad", number: 8, lastCommitAt: daysAgo(10), reviewDecision: "APPROVED" }),
+      pr({ repo: "o/good", number: 9, lastCommitAt: daysAgo(10), reviewDecision: "APPROVED" }),
+    ]);
+    f.deps.postComment = async (repo, number, body) => {
+      if (repo === "o/bad") throw new Error("403 — cannot comment here");
+      f.posted.push({ repo, number, body });
+      return 1;
+    };
+    let r5: any = null, escaped = false;
+    try { r5 = await runNudgePass(f.deps); } catch { escaped = true; }
+    check("a repository we cannot comment on does not stop the rest",
+      !escaped && r5?.posted === 1 && r5?.failed === 1 && f.posted[0]?.repo === "o/good",
+      { escaped, r5, posted: f.posted.map(p => p.repo) });
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

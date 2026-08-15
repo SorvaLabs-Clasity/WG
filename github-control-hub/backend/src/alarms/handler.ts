@@ -7,10 +7,12 @@ import { fetchOrgDependencyAlerts } from "../services/dependencyService";
 import { evaluateSecurityQuery } from "../services/graphService";
 import { fetchRenovatePrs, openPrs } from "../services/renovateService";
 import { flushPending } from "./feedNotify";
+import { runNudgePass } from "../services/prNudgeService";
 import { getOrgConfig } from "../services/orgConfigService";
 import {
   listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings,
   getFeedSettings, listPending, markPendingSent,
+  getPrState, recordNudge,
 } from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
@@ -176,5 +178,56 @@ export async function handler(): Promise<void> {
     }
   } catch (err) {
     console.error("[Notify] Flushing buffered notifications failed:", (err as Error).message);
+  }
+
+  // ── stale pull requests ──
+  //
+  // On the same tick, and gated by its own seven-day interval rather than the
+  // tick's. Running here rather than on a schedule of its own keeps one clock
+  // in the system; the pass itself decides what is actually due.
+  //
+  // Its own try, so a GitHub outage cannot take the alarm summary with it.
+  try {
+    const { fetchOpenPrs } = await import("../services/prNudgeService");
+    const graphql = (query: string, variables: Record<string, unknown>) =>
+      (octokit as any).graphql(query, variables);
+
+    const summary = await runNudgePass({
+      listPrs: () => fetchOpenPrs(graphql, org),
+      getState: (repo, number) => getPrState(repo, number),
+      recordNudge,
+      listComments: async (repo, number) => {
+        const [owner, name] = repo.split("/");
+        const { data } = await (octokit as any).rest.issues.listComments({
+          owner, repo: name, issue_number: number, per_page: 100,
+        });
+        // Ours means posted by this App's bot account. Comparing on type rather
+        // than on a name, so renaming the App does not orphan every reminder it
+        // has already posted and start a second pile.
+        return data.map((c: any) => ({
+          id: c.id, body: c.body ?? "", authorIsApp: c.user?.type === "Bot",
+        }));
+      },
+      deleteComment: async (repo, id) => {
+        const [owner, name] = repo.split("/");
+        await (octokit as any).rest.issues.deleteComment({ owner, repo: name, comment_id: id });
+      },
+      postComment: async (repo, number, body) => {
+        const [owner, name] = repo.split("/");
+        const { data } = await (octokit as any).rest.issues.createComment({
+          owner, repo: name, issue_number: number, body,
+        });
+        return data?.id;
+      },
+    });
+
+    if (summary.due > 0) {
+      console.log(
+        `[PR] ${summary.considered} open, ${summary.due} due, ${summary.posted} reminded, ` +
+        `${summary.skippedPaused} paused, ${summary.failed} failed`,
+      );
+    }
+  } catch (err) {
+    console.error("[PR] Stale pull request pass failed:", (err as Error).message);
   }
 }

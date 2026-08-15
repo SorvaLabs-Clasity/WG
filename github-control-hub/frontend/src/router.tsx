@@ -10,6 +10,7 @@ import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import AwsPage from "./pages/AwsPage";
 import ExpertisePage from "./pages/ExpertisePage";
+import PullRequestsPage from "./pages/PullRequestsPage";
 import { isAuthenticated } from "./api/client";
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
@@ -31,6 +32,14 @@ export const router = createBrowserRouter([
   {
     path: "/",
     element: <Navigate to="/analytics" replace />,
+  },
+  {
+    path: "/pulls",
+    element: (
+      <RequireAuth>
+        <PullRequestsPage />
+      </RequireAuth>
+    ),
   },
   {
     path: "/who-knows",

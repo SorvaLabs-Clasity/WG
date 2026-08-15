@@ -115,6 +115,7 @@ The backend authenticates to GitHub using a **GitHub App** (not a personal acces
 | Permission | Level | Purpose |
 |---|---|---|
 | Repository administration | Read & write | Branch protections, rulesets |
+| Pull requests | Read & write | Stale pull request reminders |
 | Contents | Read & write | Branch creation; required-file compliance checks |
 | Members | Read | Org member visibility |
 | Organization administration | Read | Org config and audit logs |
