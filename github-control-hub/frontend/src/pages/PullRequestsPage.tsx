@@ -8,7 +8,7 @@ import UserAvatar from "../components/UserAvatar";
 
 type BlockReason =
   | "ready" | "needs-approval" | "changes-requested"
-  | "draft" | "conflict" | "checks-failing" | "blocked";
+  | "draft" | "conflict" | "behind" | "checks-failing" | "checks-pending" | "blocked";
 
 interface Pull {
   repo: string;
@@ -45,6 +45,8 @@ const BLOCK: Record<BlockReason, { label: string; chip: string }> = {
   "changes-requested": { label: "Changes requested", chip: "bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300" },
   "draft": { label: "Draft", chip: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
   "conflict": { label: "Conflicts", chip: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300" },
+  "behind": { label: "Behind base", chip: "bg-orange-100 text-orange-800 dark:bg-orange-950/60 dark:text-orange-300" },
+  "checks-pending": { label: "Checks running", chip: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
   "checks-failing": { label: "Checks failing", chip: "bg-red-100 text-red-800 dark:bg-red-950/60 dark:text-red-300" },
   "blocked": { label: "Blocked", chip: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300" },
 };

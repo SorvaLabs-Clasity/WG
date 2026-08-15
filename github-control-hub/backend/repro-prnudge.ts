@@ -589,6 +589,67 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     }
   }
 
+  // ── the message and the mentions can never disagree ─────────────────
+  {
+    // The bug this exists for: the comment announced "waiting on review" while
+    // deliberately naming no reviewer, because a pending check had shielded
+    // them. Seventeen combinations did that, from two functions deciding the
+    // same thing independently. Now one decides and the other is derived, and
+    // this walks every combination rather than the handful anybody thinks of.
+    const states = ["CLEAN", "BLOCKED", "DIRTY", "BEHIND", "UNSTABLE", "DRAFT", "UNKNOWN", null];
+    const decisions = ["APPROVED", "REVIEW_REQUIRED", "CHANGES_REQUESTED", null];
+    const checkStates = ["SUCCESS", "FAILURE", "ERROR", "PENDING", null];
+
+    let saysReviewButNamesNone = 0;
+    let namesReviewerButBlamesOther = 0;
+    let reviewersOnAuthorOnlyState = 0;
+    let combos = 0;
+
+    for (const st of states) for (const d of decisions) for (const c of checkStates) {
+      combos++;
+      const p = pr({
+        mergeStateStatus: st, reviewDecision: d, checksState: c,
+        requestedReviewers: ["bob"], author: "alice",
+      });
+      const reason = blockReason(p);
+      const targets = nudgeTargets(p).targets;
+      const named = targets.includes("bob");
+      const body = buildNudgeComment(p, reason, targets, 9, 1);
+      const claimsReviewOutstanding = /review was requested from you/.test(body);
+
+      if (claimsReviewOutstanding && !named) saysReviewButNamesNone++;
+      if (reason === "needs-approval" && !named) saysReviewButNamesNone++;
+      if (named && blockedByMoreThanApprovals(p)) namesReviewerButBlamesOther++;
+      // Anything the author alone can fix must never name a reviewer.
+      if (named && ["draft", "conflict", "behind", "checks-failing", "checks-pending", "changes-requested", "blocked"]
+            .includes(reason)) reviewersOnAuthorOnlyState++;
+    }
+
+    check(`across all ${combos} merge-state combinations, none claims a review is outstanding while naming no reviewer`,
+      saysReviewButNamesNone === 0, saysReviewButNamesNone);
+    check("  none names a reviewer while blaming something they cannot fix",
+      namesReviewerButBlamesOther === 0, namesReviewerButBlamesOther);
+    check("  and no author-only state ever names a reviewer",
+      reviewersOnAuthorOnlyState === 0, reviewersOnAuthorOnlyState);
+
+    // The specific states that were wrong, named so a regression is readable.
+    check("a pending required check reads as checks pending, not as waiting on review",
+      blockReason(pr({ mergeStateStatus: "BLOCKED", checksState: "PENDING", reviewDecision: "REVIEW_REQUIRED" }))
+        === "checks-pending");
+    check("  and a branch behind its base reads as behind",
+      blockReason(pr({ mergeStateStatus: "BEHIND", reviewDecision: "REVIEW_REQUIRED" })) === "behind");
+    check("  both of which chase the author alone",
+      nudgeTargets(pr({ mergeStateStatus: "BEHIND", reviewDecision: "REVIEW_REQUIRED", requestedReviewers: ["bob"] })).targets.join() === "alice");
+
+    // Every reason must have wording, or a state renders as undefined.
+    for (const r of ["ready", "needs-approval", "changes-requested", "draft",
+                     "conflict", "behind", "checks-failing", "checks-pending", "blocked"] as const) {
+      const body = buildNudgeComment(pr({ author: "alice" }), r, ["alice"], 3, 1);
+      check(`  the "${r}" state has wording`,
+        !/undefined/.test(body) && body.includes("@alice —"), body.slice(0, 80));
+    }
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

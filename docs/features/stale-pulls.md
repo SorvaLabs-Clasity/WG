@@ -41,6 +41,13 @@ Reviewers are never chased about a failing build. No amount of approving fixes
 one, so reminding six people would send six of them to look at a pull request
 they cannot help with.
 
+**The message and the mentions come from one decision.** They used to be two
+functions computing the same thing, and seventeen combinations of merge state,
+review decision and check state made them disagree — the comment announcing
+"waiting on review" while deliberately naming no reviewer, because a pending
+check had shielded them. `blockReason` now decides, and who to chase is derived
+from it, so the two cannot drift. A test walks all 160 combinations.
+
 `mergeStateStatus` is what makes this answerable. `BLOCKED` means a rule is
 unsatisfied; `UNSTABLE` means a check failed that no rule requires, so the merge
 is still possible and reviews are still the thing missing. A failing check only

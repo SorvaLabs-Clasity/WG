@@ -41,7 +41,9 @@ export type BlockReason =
   | "changes-requested"
   | "draft"
   | "conflict"
+  | "behind"          // base branch has moved on; the author must update
   | "checks-failing"
+  | "checks-pending"  // still running, so nobody can do anything yet
   | "blocked";        // GitHub says blocked and will not say why
 
 export interface PullRequest {
@@ -134,71 +136,63 @@ export function pendingReviewers(pr: PullRequest): string[] {
 }
 
 /**
- * Whether something other than missing approvals is stopping the merge.
+ * What is holding this up.
  *
- * This decides whether reviewers are worth chasing at all. If the branch has
- * conflicts, or a required check is failing, no amount of approving fixes it —
- * the author has work to do, and reminding six reviewers would send six people
- * to look at a pull request they cannot help with.
+ * The single source of truth for both the message and the targeting. They were
+ * two functions computing the same thing independently, and seventeen
+ * combinations of merge state, review decision and check state made them
+ * disagree — the comment announcing "waiting on review" while deliberately
+ * telling no reviewer anything, because a pending check had shielded them.
  *
- * mergeStateStatus is what makes this answerable. BLOCKED means a rule is
- * unsatisfied; UNSTABLE means a check failed that no rule requires, so the
- * merge is still possible and reviews are still the thing missing.
- */
-export function blockedByMoreThanApprovals(pr: PullRequest): boolean {
-  if (pr.isDraft) return true;
-  if (pr.mergeable === "CONFLICTING") return true;
-
-  const state = pr.mergeStateStatus;
-  if (state === "DIRTY" || state === "BEHIND" || state === "DRAFT") return true;
-
-  // Somebody has asked for changes. Until the author addresses them, the other
-  // reviewers have nothing to do.
-  if (pr.reviewDecision === "CHANGES_REQUESTED") return true;
-
-  if (state === "BLOCKED") {
-    // Blocked with checks unhealthy means the checks are the blocker, whether
-    // or not approvals are also missing. The author fixes checks; reviewers
-    // cannot, so they are not chased.
-    const checks = pr.checksState;
-    if (checks === "FAILURE" || checks === "ERROR" || checks === "PENDING") return true;
-    // Blocked purely on reviews. That is what reviewers are for.
-    if (pr.reviewDecision === "REVIEW_REQUIRED") return false;
-    // Blocked for a reason we cannot name. The author is the only safe target.
-    return true;
-  }
-
-  return false;
-}
-
-/**
- * What is holding this up, for display.
- *
- * Ordered by what a person would act on first, and kept separate from who gets
- * reminded — the two questions have different answers, and conflating them is
- * how reviewers end up chased about a failing build.
+ * Ordered so that everything the author alone can fix is decided before
+ * approvals are considered at all.
  */
 export function blockReason(pr: PullRequest): BlockReason {
-  if (pr.isDraft) return "draft";
-  if (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY") return "conflict";
+  const state = pr.mergeStateStatus;
+
+  if (pr.isDraft || state === "DRAFT") return "draft";
+  if (pr.mergeable === "CONFLICTING" || state === "DIRTY") return "conflict";
+  if (state === "BEHIND") return "behind";
   if (pr.reviewDecision === "CHANGES_REQUESTED") return "changes-requested";
 
-  if (pr.mergeStateStatus === "BLOCKED") {
+  if (state === "BLOCKED") {
     const checks = pr.checksState;
+    // Only when the state is BLOCKED do failing checks mean anything: UNSTABLE
+    // is a check that failed with no rule requiring it, so the merge is still
+    // possible and reviews are still the thing missing.
     if (checks === "FAILURE" || checks === "ERROR") return "checks-failing";
+    if (checks === "PENDING") return "checks-pending";
     if (pr.reviewDecision === "REVIEW_REQUIRED") return "needs-approval";
     return "blocked";
   }
 
   if (pr.reviewDecision === "REVIEW_REQUIRED") return "needs-approval";
-  if (pr.checksState === "FAILURE" || pr.checksState === "ERROR") return "checks-failing";
 
-  // Requested but not required still counts as waiting on review: GitHub
-  // reports no decision at all when protection demands nothing, so a repository
-  // with no rule reads as ready while somebody waits on a review they asked for.
+  // Requested but not required still counts as waiting: GitHub reports no
+  // decision at all when protection demands nothing, so a repository with no
+  // rule reads as ready while somebody waits on a review they asked for.
   if (pr.reviewDecision === null && pendingReviewers(pr).length > 0) return "needs-approval";
 
   return "ready";
+}
+
+/**
+ * The two states where reviewers are worth chasing.
+ *
+ * Derived from the reason rather than recomputed, so the comment cannot say one
+ * thing while the mention list does another.
+ */
+const REVIEWERS_CAN_HELP: ReadonlySet<BlockReason> = new Set(["ready", "needs-approval"]);
+
+/**
+ * Whether something other than missing approvals is stopping the merge.
+ *
+ * If so, no amount of approving fixes it — the author has work to do, and
+ * reminding six reviewers would send six people to look at a pull request they
+ * cannot help with.
+ */
+export function blockedByMoreThanApprovals(pr: PullRequest): boolean {
+  return !REVIEWERS_CAN_HELP.has(blockReason(pr));
 }
 
 /**
@@ -409,7 +403,9 @@ const AUTHOR_TEXT: Record<BlockReason, string> = {
   "changes-requested": "changes were requested and have not been addressed yet",
   "draft": "this is still a draft",
   "conflict": "this has conflicts with its base branch",
+  "behind": "this branch is behind its base and needs updating",
   "checks-failing": "checks are failing",
+  "checks-pending": "checks are still running",
   "blocked": "this is blocked from merging",
 };
 
