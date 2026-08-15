@@ -79,11 +79,17 @@ Driven by the `dependabot_alert` webhook, so it arrives within seconds and costs
 no GitHub requests. Only alerts raised from that point on — switching it on does
 not send the backlog already in the table.
 
-**It needs one setup step this app cannot do.** The GitHub App has to be
-subscribed to the Dependabot alert event, under Permissions & events in the
-App's settings. Until it is, the toggle can be switched on and nothing will ever
-arrive: GitHub never sends the event, so there is no error to report. The panel
-says so, and [setup.md](../operations/setup.md) lists the event.
+**It needs one setup step this app cannot do.** The organization webhook has to
+send the `dependabot_alert` event: Organization → Settings → Webhooks → the
+Control Hub webhook → Edit → "Let me select individual events" → tick
+**Dependabot alerts**. Until it is ticked the toggle can be switched on and
+nothing will ever arrive, because GitHub never sends the event and there is no
+error to report.
+
+It is the organization webhook, not the GitHub App's own event list. The App
+subscribes to nothing — every delivery comes from that webhook — so an empty
+`events` list on the App is expected. The panel says where to go, and
+[setup.md](../operations/setup.md) lists the full event set.
 
 GitHub calls the middle severity "moderate" and this app calls it "medium". The
 translation happens once, where the webhook is read, so a floor of medium

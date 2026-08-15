@@ -15,7 +15,7 @@
  */
 import fs from "fs";
 import path from "path";
-import { isConsequential, normalize, parseNdjson, toTimestamp, describe, allowList } from "./src/audit/events";
+import { isConsequential, normalize, parseNdjson, toTimestamp, describe, allowList, actorOf, SYSTEM_ACTOR } from "./src/audit/events";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -123,8 +123,24 @@ function check(name: string, ok: boolean, got?: unknown) {
   check("an organization-scoped event has an empty repo, not the word undefined",
     orgScoped.repo === "", orgScoped.repo);
 
+  // GitHub raises some events itself — repository_vulnerability_alert.create
+  // has no actor field at all, because no person did it. Recording that as
+  // "unknown" claims the actor could not be identified, which is a different
+  // and more alarming statement than "there was none", and it drove the UI to
+  // look up github.com/unknown.png — a real account, whose owner's photograph
+  // then appeared beside changes they had nothing to do with.
   const anon = normalize({ action: "repo.create", created_at: 1786680000000 });
-  check("a missing actor reads as unknown rather than undefined", anon.actor === "unknown", anon.actor);
+  check("an event with no actor is attributed to the system, not to nobody",
+    anon.actor === SYSTEM_ACTOR, anon.actor);
+  check("  and never to the literal string \"unknown\"",
+    anon.actor !== "unknown",
+    "github.com/unknown.png resolves to a real person's avatar");
+  check("  an empty actor is treated the same as a missing one",
+    actorOf({ action: "x", actor: "" }) === SYSTEM_ACTOR
+      && actorOf({ action: "x", actor: "   " }) === SYSTEM_ACTOR,
+    actorOf({ action: "x", actor: "" }));
+  check("  while a real actor is passed through untouched",
+    actorOf({ action: "x", actor: "alice" }) === "alice");
 
   check("the summary names who did what",
     describe({ action: "repo.access", actor: "carol", repo: "api" }).includes("carol")

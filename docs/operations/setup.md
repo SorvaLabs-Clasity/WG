@@ -346,6 +346,12 @@ switched on and will never send anything: GitHub simply never delivers the
 event, so nothing errors and nothing arrives. The tab itself does not depend on
 it — it reads alerts from the API.
 
+**These are the organization webhook's events, not the GitHub App's.** The App
+subscribes to none; every delivery this app receives comes from the webhook
+configured under Organization → Settings → Webhooks. `GET /app` reporting an
+empty `events` list is therefore expected, and is not the thing to fix if events
+stop arriving.
+
 Reading the secret back if needed:
 
 ```bash

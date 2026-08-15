@@ -168,9 +168,25 @@ export function subjectOf(e: RawAuditEvent): string {
  * line saying somebody was added to a repository, without saying who, is the
  * one fact worth recording.
  */
+/**
+ * Who did it, or the fact that nobody did.
+ *
+ * Some audit events have no actor at all, and correctly so: GitHub raises
+ * `repository_vulnerability_alert.create` itself when a scan finds something,
+ * and no person is involved. Calling that "unknown" says the actor could not be
+ * identified, which is a different and more alarming claim than "there was
+ * none" — and it made every such row look like an unattributed change.
+ */
+export const SYSTEM_ACTOR = "github[system]";
+
+export function actorOf(e: RawAuditEvent): string {
+  const actor = String(e.actor ?? "").trim();
+  return actor || SYSTEM_ACTOR;
+}
+
 export function describe(e: RawAuditEvent): string {
   const action = String(e.action ?? "");
-  const actor = String(e.actor ?? "unknown");
+  const actor = actorOf(e);
 
   const where = repoOf(e) || firstOf(e, ["team", "org"]);
 
@@ -205,7 +221,7 @@ export function normalize(e: RawAuditEvent): IndexedAuditEvent {
   const action = String(e.action ?? "");
   return {
     action,
-    actor: String(e.actor ?? "unknown"),
+    actor: actorOf(e),
     // Repository-scoped events name a repo; organization-scoped ones do not,
     // and an empty string is how the rest of the activity feed says "no repo".
     repo: repoOf(e),

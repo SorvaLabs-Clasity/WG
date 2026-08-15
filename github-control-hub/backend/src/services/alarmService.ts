@@ -194,9 +194,21 @@ export async function updateAlarm(
   }
 
   await put(updated);
+  const changes = describeChanges(existing, updated, [
+    ["name", "renamed"],
+    ["enabled", "alarm"],
+    ["groupId", "email group"],
+    ["notifyOnRecovery", "recovery email"],
+    ["subjectTemplate", "subject template edited"],
+    ["bodyTemplate", "body template edited"],
+  ]);
+  if (conditionChanged) changes.unshift("condition changed");
   await logActivity(
     "config.updated" as any, actor, "", "alarm",
-    `Updated alarm "${updated.name}"`, { alarmId: id, conditionChanged }, "app",
+    changes.length
+      ? `Alarm "${updated.name}": ${changes.join(", ")}`
+      : `Alarm "${updated.name}" saved with no change`,
+    { alarmId: id, conditionChanged, changed: changes }, "app",
   );
   return updated;
 }
@@ -294,6 +306,33 @@ export const DEFAULT_SECURITY_SETTINGS: SecurityNotifySettings = {
   bodyTemplate: DEFAULT_SECURITY_BODY,
 };
 
+/**
+ * What actually changed, for the activity row.
+ *
+ * Every save wrote the same sentence — "Security alert emails enabled (high and
+ * above)" — whether somebody toggled it, moved the severity floor or rewrote the
+ * email body. Editing a template produced a row indistinguishable from the row
+ * before it, which reads as the change not having been recorded at all.
+ *
+ * Templates are reported as changed, never quoted: a body is several lines and
+ * belongs in the record of the setting, not in a one-line feed entry.
+ */
+function describeChanges(
+  before: Record<string, any>,
+  after: Record<string, any>,
+  fields: Array<[string, string]>,
+): string[] {
+  const changed: string[] = [];
+  for (const [key, label] of fields) {
+    if (after[key] === undefined) continue;
+    if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
+    if (key === "subjectTemplate" || key === "bodyTemplate") changed.push(label);
+    else if (typeof after[key] === "boolean") changed.push(`${label} ${after[key] ? "on" : "off"}`);
+    else changed.push(`${label} → ${after[key]}`);
+  }
+  return changed;
+}
+
 export async function getSecuritySettings(): Promise<SecurityNotifySettings> {
   const found = await getById<SecurityNotifySettings>(SECURITY_SETTINGS_ID);
   if (found?.kind === "security") return { ...DEFAULT_SECURITY_SETTINGS, ...found };
@@ -315,12 +354,22 @@ export async function saveSecuritySettings(
     updatedAt: new Date().toISOString(),
   };
   await put(updated);
+  const changes = describeChanges(current, updated, [
+    ["enabled", "Security alert emails"],
+    ["groupId", "email group"],
+    ["minSeverity", "severity floor"],
+    ["timezone", "timezone"],
+    ["subjectTemplate", "subject template edited"],
+    ["bodyTemplate", "body template edited"],
+  ]);
   await logActivity(
     "config.updated" as any, actor, "", "alarm_security",
-    updated.enabled
-      ? `Security alert emails enabled (${updated.minSeverity} and above)`
-      : "Security alert emails disabled",
-    { enabled: updated.enabled, minSeverity: updated.minSeverity }, "app",
+    changes.length
+      ? `Security alerts: ${changes.join(", ")}`
+      // Saved with nothing different. Still recorded, because "somebody opened
+      // this and pressed save" is itself worth seeing in an audit trail.
+      : "Security alert settings saved with no change",
+    { enabled: updated.enabled, minSeverity: updated.minSeverity, changed: changes }, "app",
   );
   return updated;
 }
@@ -413,12 +462,19 @@ export async function saveFeedSettings(
   if (feed !== "dependabot-alert") delete updated.minSeverity;
   await put(updated);
   const label = feed === "renovate-pr" ? "Renovate pull request" : "Dependabot alert";
+  const changes = describeChanges(current, updated, [
+    ["enabled", `${label} emails`],
+    ["groupId", "email group"],
+    ["minSeverity", "severity floor"],
+    ["subjectTemplate", "subject template edited"],
+    ["bodyTemplate", "body template edited"],
+  ]);
   await logActivity(
     "config.updated" as any, actor, "", `notify_${feed}`,
-    updated.enabled
-      ? `${label} emails enabled${updated.minSeverity ? ` (${updated.minSeverity} and above)` : ""}`
-      : `${label} emails disabled`,
-    { enabled: updated.enabled, minSeverity: updated.minSeverity }, "app",
+    changes.length
+      ? `${label}: ${changes.join(", ")}`
+      : `${label} settings saved with no change`,
+    { enabled: updated.enabled, minSeverity: updated.minSeverity, changed: changes }, "app",
   );
   return updated;
 }

@@ -728,6 +728,67 @@ function check(name: string, ok: boolean, got?: unknown) {
       "a module-scope memo would serve one run's alerts to the next");
   }
 
+  // ── the activity row says what changed ─────────────────────────────
+  {
+    // Exercised rather than grepped. The first version of this checked the
+    // source for `describeChanges(` and for the phrase it produces, and passed
+    // with the call rewired to `false ?` — the patterns were all still present,
+    // just no longer reachable. Two mutations proved it before this was rewritten.
+    delete process.env.ACTIVITY_TABLE;
+    delete process.env.ALARMS_TABLE;
+    const { saveSecuritySettings, saveFeedSettings, __resetAlarmStoreForTests } =
+      await import("./src/services/alarmService");
+    const { getActivity } = await import("./src/services/activityService");
+
+    __resetAlarmStoreForTests();
+    const since = () => getActivity(20);
+    const latest = async () => (await since())[0]?.details ?? "";
+
+    await saveSecuritySettings({ enabled: false, groupId: "g1", minSeverity: "high" }, "tester");
+
+    // The case that started this: change only the body, nothing else.
+    await saveSecuritySettings({ bodyTemplate: "a totally new body {{repo}}" }, "tester");
+    const bodyRow = await latest();
+    check("editing only the body logs that the body was edited",
+      /body template edited/i.test(bodyRow), bodyRow);
+    check("  and does not claim the toggle changed",
+      !/emails on\b|emails off\b/i.test(bodyRow), bodyRow);
+
+    await saveSecuritySettings({ subjectTemplate: "new subject {{repo}}" }, "tester");
+    check("editing only the subject logs the subject",
+      /subject template edited/i.test(await latest()), await latest());
+
+    await saveSecuritySettings({ minSeverity: "low" }, "tester");
+    const sevRow = await latest();
+    check("moving the severity floor names the new value",
+      /severity floor/i.test(sevRow) && /low/.test(sevRow), sevRow);
+    check("  and does not mention templates that did not change",
+      !/template edited/i.test(sevRow), sevRow);
+
+    // Saving the identical settings again must not claim a change.
+    await saveSecuritySettings({ minSeverity: "low" }, "tester");
+    check("re-saving unchanged settings says so",
+      /no change/i.test(await latest()), await latest());
+
+    // The same for both feeds, since they share the implementation.
+    await saveFeedSettings("dependabot-alert", { enabled: false, groupId: "g1" }, "tester");
+    await saveFeedSettings("dependabot-alert", { bodyTemplate: "new {{package}}" }, "tester");
+    check("the Dependabot feed logs a template edit too",
+      /body template edited/i.test(await latest()), await latest());
+
+    await saveFeedSettings("renovate-pr", { enabled: false, groupId: "g1" }, "tester");
+    await saveFeedSettings("renovate-pr", { subjectTemplate: "new {{title}}" }, "tester");
+    check("  and so does the Renovate feed",
+      /subject template edited/i.test(await latest()), await latest());
+
+    // The body itself must not end up in the feed: it is several lines, and a
+    // one-line entry is not where a template belongs.
+    const rows = await since();
+    check("  but the template text itself is never quoted into the row",
+      !rows.some(r => (r.details || "").includes("a totally new body")),
+      rows.map(r => r.details).slice(0, 4));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

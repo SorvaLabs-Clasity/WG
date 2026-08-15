@@ -48,10 +48,11 @@ const FEEDS: Record<NotifyFeed, {
     severity: true,
     volume: "One email per new alert at or above the severity you choose. Existing alerts " +
       "are not re-sent — only ones raised from now on.",
-    prerequisite: "This needs the GitHub App subscribed to the Dependabot alert event. " +
-      "In the App's settings under Permissions & events, tick “Dependabot alerts”. " +
-      "Until that is done nothing arrives here and nothing reports an error, " +
-      "because GitHub simply never sends it.",
+    prerequisite: "This needs the Dependabot alert event on the webhook that feeds this app — " +
+      "Organization → Settings → Webhooks → the Control Hub webhook → Edit, then tick " +
+      "“Dependabot alerts” under “Let me select individual events”. It is the same webhook " +
+      "and the same page used during setup. Until that is ticked nothing arrives here and " +
+      "nothing reports an error, because GitHub never sends the event at all.",
   },
 };
 

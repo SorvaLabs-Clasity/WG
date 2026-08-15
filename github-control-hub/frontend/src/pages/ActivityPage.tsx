@@ -205,6 +205,19 @@ function WebhookPulse() {
 }
 
 /**
+ * How an actor reads in the table.
+ *
+ * Audit events GitHub raises itself carry no actor — a vulnerability alert being
+ * created is not something a person did. Older rows say "unknown", which claims
+ * the actor could not be identified rather than that there was none.
+ */
+function actorLabel(actor: string): string {
+  const a = (actor || "").trim().toLowerCase();
+  if (!a || a === "unknown" || a === "github[system]" || a === "system") return "GitHub (automatic)";
+  return actor;
+}
+
+/**
  * What each stream holds, said plainly, because the tab label cannot.
  *
  * A row lands in a stream by what its action *changed*, not by where the change
@@ -498,7 +511,7 @@ export default function ActivityPage() {
         <td className="px-4 py-3 whitespace-nowrap">
           <div className="flex items-center gap-2">
             <UserAvatar login={entry.actor} size={24} />
-            <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">{entry.actor}</span>
+            <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">{actorLabel(entry.actor)}</span>
             {/* Who it was done to, when that is someone else. Audit events are
                 mostly one person acting on another, and the Details column
                 that used to be the only place this appeared is hidden below a
@@ -939,7 +952,7 @@ export default function ActivityPage() {
                 <span className="text-gh-muted dark:text-slate-400 font-medium">User</span>
                 <div className="flex items-center gap-2">
                   <UserAvatar login={popupEntry.actor} size={20} />
-                  <span className="font-medium text-gh-textBase dark:text-slate-200">{popupEntry.actor}</span>
+                  <span className="font-medium text-gh-textBase dark:text-slate-200">{actorLabel(popupEntry.actor)}</span>
                 </div>
                 <span className="text-gh-muted dark:text-slate-400 font-medium">Repository</span>
                 <span className="font-mono text-xs bg-gray-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700 w-fit">{popupEntry.repo === '*' ? '* (Global)' : popupEntry.repo}</span>
