@@ -14,6 +14,7 @@ import fs from "fs";
 import path from "path";
 import {
   notifyRenovatePr, notifyDependabotAlert, isConfiguredBot, buildDigest, flushPending,
+  normalizeSeverity,
   type FeedNotifyDeps, type PendingRow,
 } from "./src/alarms/feedNotify";
 import { SUBJECT_MAX } from "./src/alarms/message";
@@ -188,9 +189,24 @@ function deps(over: Partial<{
       .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
       .map(l => l.replace(/\s*\/\/.*$/, ""))
       .join("\n");
-    check("  GitHub's \"moderate\" is translated at the boundary",
-      /severity === "moderate"\s*\?\s*"medium"/.test(code),
-      "a moderate alert would rank below low and never clear any floor");
+    // Exercised, not grepped. The pattern used to be asserted as text, which
+    // passed while the buffered path — the default — had lost it, because an
+    // identical copy still existed on the immediate path.
+    check("  GitHub's \"moderate\" becomes this app's \"medium\"",
+      normalizeSeverity("moderate") === "medium", normalizeSeverity("moderate"));
+    for (const s of ["critical", "high", "medium", "low"]) {
+      check(`  and "${s}" is passed through`, normalizeSeverity(s) === s);
+    }
+    check("  an absent severity reads as low rather than as empty",
+      normalizeSeverity(undefined) === "low" && normalizeSeverity("") === "low");
+    check("  and case is normalised, since GitHub is not consistent",
+      normalizeSeverity("MODERATE") === "medium" && normalizeSeverity("High") === "high");
+
+    // One implementation, so a path cannot lose it while another keeps it.
+    check("  the translation exists once, not once per call site",
+      (code.match(/=== "moderate" \? "medium"/g) || []).length === 0
+        && /normalizeSeverity/.test(code),
+      "two copies let a mutation break one while the test read the other");
 
     // A throw here fails the whole delivery: the worker releases its claim and
     // every other effect of that delivery runs again on retry.

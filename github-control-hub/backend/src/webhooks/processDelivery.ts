@@ -247,8 +247,8 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
       const { meetsMinimumSeverity } = await import("../alarms/evaluate");
       const { publish } = await import("../services/notifyService");
       const a = payload.alert;
-      const severity = (a.security_advisory?.severity === "moderate" ? "medium"
-        : sanitizeField(a.security_advisory?.severity, 20)) || "low";
+      const { normalizeSeverity } = await import("../alarms/feedNotify");
+      const severity = normalizeSeverity(sanitizeField(a.security_advisory?.severity, 20));
       const settings = await getFeedSettings("dependabot-alert");
       let buffered = false;
 
@@ -273,11 +273,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
           repo: sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
           package: sanitizeField(a.dependency?.package?.name, 140) || "unknown package",
           summary: sanitizeField(a.security_advisory?.summary, 300) || "No summary provided",
-          // GitHub says "moderate"; every threshold in this app is expressed in
-          // the app's own vocabulary, so it is translated once here rather than
-          // at each comparison.
-          severity: (a.security_advisory?.severity === "moderate" ? "medium"
-            : sanitizeField(a.security_advisory?.severity, 20)) || "low",
+          severity,
           url: sanitizeField(a.html_url, 300),
           createdAt: sanitizeField(a.created_at, 40) || occurredAt,
         },

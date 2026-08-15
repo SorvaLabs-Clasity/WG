@@ -18,6 +18,24 @@ import { meetsMinimumSeverity } from "./evaluate";
  * getting it wrong is either a duplicate or a silence.
  */
 
+/**
+ * GitHub's severity vocabulary, translated into this app's.
+ *
+ * GitHub calls the middle one "moderate"; every threshold here is written as
+ * "medium", so an untranslated value ranks below low and clears no floor at
+ * all — the alert is silently never emailed.
+ *
+ * One function because there are two call sites, the buffered path and the
+ * immediate one. They were separate copies, and a mutation removing the
+ * translation from the buffered path — the default — left the test passing on
+ * the strength of the other copy.
+ */
+export function normalizeSeverity(raw: string | null | undefined): string {
+  const s = (raw ?? "").trim().toLowerCase();
+  if (s === "moderate") return "medium";
+  return s || "low";
+}
+
 export interface RenovatePrEvent {
   repo: string;
   number: number;
