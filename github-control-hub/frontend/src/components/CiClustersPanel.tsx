@@ -36,7 +36,7 @@ function when(iso: string): string {
  * only ever groups across repositories: one repository failing repeatedly is
  * that repository's own business and its owner already knows.
  */
-export default function CiClustersPanel({ hideWhenEmpty = false }: { hideWhenEmpty?: boolean } = {}) {
+export default function CiClustersPanel({ compact = false }: { compact?: boolean } = {}) {
   const { data, isLoading, error } = useQuery<Clusters>({
     queryKey: ["ci-clusters"],
     queryFn: () => apiGet<Clusters>("/ci/clusters"),
@@ -46,14 +46,33 @@ export default function CiClustersPanel({ hideWhenEmpty = false }: { hideWhenEmp
 
   const clusters = data?.clusters ?? [];
 
-  // Somewhere it is one section among many, an empty state is worth showing.
-  // Somewhere it is wedged above an unrelated feed, a daily "no failures" card
-  // is just something to scroll past, so it disappears instead.
-  if (hideWhenEmpty && (isLoading || error || clusters.length === 0)) return null;
+  // Quiet, not invisible.
+  //
+  // This used to render nothing at all when there was nothing correlated, on
+  // the grounds that a daily "no failures" card is just something to scroll
+  // past. That was wrong in a way the first person to use it demonstrated: they
+  // did not know the feature existed, because on a normal day there is nothing
+  // on screen to find. A feature nobody can find is a feature that is not
+  // there.
+  //
+  // One line when quiet, full cards when not.
+  if (isLoading || error) return compact ? null : (isLoading ? <Spinner /> : (
+    <Empty title="Could not read CI failures" body={(error as Error).message} />
+  ));
 
-  if (isLoading) return <Spinner />;
-  if (error) {
-    return <Empty title="Could not read CI failures" body={(error as Error).message} />;
+  if (compact && clusters.length === 0) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+        <i className="ph ph-check-circle text-green-600 dark:text-green-400" aria-hidden="true"></i>
+        <span>
+          <strong className="font-semibold">CI:</strong>{" "}
+          {data?.failuresInWindow
+            ? `${data.failuresInWindow} job${data.failuresInWindow === 1 ? "" : "s"} failed in the `
+              + `last ${data.windowHours}h, none correlated across repositories`
+            : `no failures in the last ${data?.windowHours ?? 2}h`}
+        </span>
+      </div>
+    );
   }
 
   return (
