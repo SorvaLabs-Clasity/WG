@@ -142,17 +142,17 @@ function check(name: string, ok: boolean, got?: unknown) {
   const real = {
     "@timestamp": 1786693698311,
     action: "integration_installation.repositories_removed",
-    actor: "RDaou05",
+    actor: "alice",
     actor_id: 83796134,
     application_client_id: "Iv23lihcaOcBUj3kaytI",
-    business: "sorva-ent",
+    business: "acme-ent",
     created_at: 1786693698311,
-    integration: "Sorva Studios Pipeline",
-    name: "Sorva Studios Pipeline",
+    integration: "Acme Deploy Pipeline",
+    name: "Acme Deploy Pipeline",
     operation_type: "remove",
-    org: "Sorva-Studios",
+    org: "Acme-Org",
     repositories_removed: [1333268087],
-    repositories_removed_names: ["Sorva-Studios/testing"],
+    repositories_removed_names: ["Acme-Org/testing"],
     repository_selection: "all",
     topic: "github.repositories.v1.Deleted",
   };
@@ -161,17 +161,17 @@ function check(name: string, ok: boolean, got?: unknown) {
 
   const n = normalize(real);
   check("the repository is found outside the `repo` field",
-    n.repo === "Sorva-Studios/testing", n.repo);
+    n.repo === "Acme-Org/testing", n.repo);
   check("  and the application is named, so two apps do not read alike",
-    n.details.includes("Sorva Studios Pipeline"), n.details);
+    n.details.includes("Acme Deploy Pipeline"), n.details);
   check("  with the actor and action intact",
-    n.details.includes("RDaou05") && n.details.includes("integration_installation.repositories_removed"),
+    n.details.includes("alice") && n.details.includes("integration_installation.repositories_removed"),
     n.details);
   check("  and the timestamp read from epoch milliseconds",
     n.timestamp.startsWith("2026-08-14T07:48"), n.timestamp);
 
   // The same deletion produced a second event for the other installed app.
-  const other = { ...real, integration: "Sorva Control Hub", name: "Sorva Control Hub" };
+  const other = { ...real, integration: "Acme Control Hub", name: "Acme Control Hub" };
   check("two apps on one deletion produce distinguishable rows",
     normalize(other).details !== n.details,
     [n.details, normalize(other).details]);
@@ -185,31 +185,31 @@ function check(name: string, ok: boolean, got?: unknown) {
   // a repository without saying who.
   const cases: Array<[string, any, string[]]> = [
     ["repo.add_member names the person and the permission",
-      { action: "repo.add_member", actor: "RDaou05", org: "Sorva-Studios",
-        repo: "Sorva-Studios/penn-station", user: "gchaoticalt1219",
+      { action: "repo.add_member", actor: "alice", org: "Acme-Org",
+        repo: "Acme-Org/payments-api", user: "bob",
         permission: "maintain", visibility: "private" },
-      ["Sorva-Studios/penn-station", "gchaoticalt1219", "maintain"]],
+      ["Acme-Org/payments-api", "bob", "maintain"]],
 
     ["team.add_member names the team and the person",
-      { action: "team.add_member", actor: "RDaou05", org: "Sorva-Studios",
-        team: "Sorva-Studios/aws-guardrail-admins", user: "gchaoticalt1219" },
-      ["aws-guardrail-admins", "gchaoticalt1219"]],
+      { action: "team.add_member", actor: "alice", org: "Acme-Org",
+        team: "Acme-Org/aws-guardrail-admins", user: "bob" },
+      ["aws-guardrail-admins", "bob"]],
 
     ["org.invite_member names the invitee, who has no username yet",
-      { action: "org.invite_member", actor: "RDaou05", org: "Sorva-Studios",
-        email: "enzodow90@gmail.com", invitee_email: "enzodow90@gmail.com" },
-      ["enzodow90@gmail.com"]],
+      { action: "org.invite_member", actor: "alice", org: "Acme-Org",
+        email: "newhire@example.com", invitee_email: "newhire@example.com" },
+      ["newhire@example.com"]],
 
     ["repo.update_member shows both sides of the permission change",
-      { action: "repo.update_member", actor: "RDaou05", org: "Sorva-Studios",
-        repo: "Sorva-Studios/24-7-power-washer", user: "gchaoticalt1219",
+      { action: "repo.update_member", actor: "alice", org: "Acme-Org",
+        repo: "Acme-Org/billing-service", user: "bob",
         old_repo_permission: "admin", new_repo_permission: "maintain", visibility: "private" },
-      ["gchaoticalt1219", "admin → maintain"]],
+      ["bob", "admin → maintain"]],
 
     ["org.add_member names the person and the role",
-      { action: "org.add_member", actor: "RDaou05", org: "Sorva-Studios",
-        user: "gchaoticalt1219", permission: "read" },
-      ["gchaoticalt1219", "read"]],
+      { action: "org.add_member", actor: "alice", org: "Acme-Org",
+        user: "bob", permission: "read" },
+      ["bob", "read"]],
   ];
 
   for (const [name, event, expected] of cases) {
@@ -219,10 +219,10 @@ function check(name: string, ok: boolean, got?: unknown) {
   }
 
   // team.create carries user === actor. Repeating the actor reads as an error.
-  const selfActed = describe({ action: "team.create", actor: "RDaou05", org: "Sorva-Studios",
-    team: "Sorva-Studios/aws-guardrail-admins", user: "RDaou05" });
+  const selfActed = describe({ action: "team.create", actor: "alice", org: "Acme-Org",
+    team: "Acme-Org/aws-guardrail-admins", user: "alice" });
   check("an actor acting on themselves is not named twice",
-    (selfActed.match(/RDaou05/g) || []).length === 1, selfActed);
+    (selfActed.match(/alice/g) || []).length === 1, selfActed);
 }
 
 // ── an arrow must mean "changed to" ───────────────────────────────────
@@ -230,11 +230,11 @@ function check(name: string, ok: boolean, got?: unknown) {
   // repo.destroy carries `visibility` as context — what the repository was
   // when it went. Rendered with an arrow it read "repo.destroy … → private",
   // as though deleting it had made it private.
-  const destroyed = describe({ action: "repo.destroy", actor: "RDaou05", repo: "Org/testing", visibility: "private" });
+  const destroyed = describe({ action: "repo.destroy", actor: "alice", repo: "Org/testing", visibility: "private" });
   check("a non-change does not get an arrow", !destroyed.includes("→"), destroyed);
   check("  but the visibility is still shown as context", destroyed.includes("[private]"), destroyed);
 
-  const changed = describe({ action: "repo.access", actor: "RDaou05", repo: "Org/testing", visibility: "public" });
+  const changed = describe({ action: "repo.access", actor: "alice", repo: "Org/testing", visibility: "public" });
   check("an actual visibility change does get one", changed.includes("→ public"), changed);
 }
 

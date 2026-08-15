@@ -29,7 +29,7 @@ const rows: Row[] = [
   { repo: "auth-service", severity: "critical", count: 12 },
   { repo: "billing-api", severity: "low", count: 3 },
   { repo: "Checkout-Web", severity: "high", count: 7 },
-  { repo: "dev-hola", severity: "low", count: 0 },
+  { repo: "sandbox-repo", severity: "low", count: 0 },
   { repo: "auth-proxy", severity: "high", count: 5 },
 ];
 const columns: Column<Row>[] = [
@@ -72,7 +72,7 @@ const base = {
     asc.visible.map(r => r.repo));
 
   const desc = applyTableControls({ ...base, sortKey: "repo", sortDir: "desc" });
-  check("  and reverses", desc.visible[0].repo === "dev-hola", desc.visible[0].repo);
+  check("  and reverses", desc.visible[0].repo === "sandbox-repo", desc.visible[0].repo);
 
   const num = applyTableControls({ ...base, sortKey: "count", sortDir: "desc" });
   check("numbers sort numerically, not as text",

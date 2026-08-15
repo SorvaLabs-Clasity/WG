@@ -254,7 +254,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   // The whole path, as the evaluator will call it.
   const built = buildMessage(DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY, {
     state: "ALARM", widget: "Dependabot", metric: "Critical alerts",
-    value: 12, threshold: 5, org: "Sorva-Studios", time: "2026-08-14T09:00:00Z",
+    value: 12, threshold: 5, org: "Acme-Org", time: "2026-08-14T09:00:00Z",
   });
   check("a built message carries the numbers that matter",
     built.subject.includes("12") && built.body.includes("12") && built.body.includes("5"),
@@ -409,7 +409,7 @@ function check(name: string, ok: boolean, got?: unknown) {
     const saved: any[] = [];
     const deps: any = {
       now: Date.now(),
-      org: "Sorva-Studios",
+      org: "Acme-Org",
       listAlarms: async () => [{ ...baseAlarm }],
       getWidget: async (id: string) => (id === "w1" ? widget : undefined),
       topicArnFor: async () => "arn:aws:sns:us-east-1:1:topic",

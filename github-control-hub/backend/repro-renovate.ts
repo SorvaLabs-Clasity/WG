@@ -28,11 +28,11 @@ const NOW = new Date("2026-08-14T12:00:00Z");
 
 // ── the two queries ───────────────────────────────────────────────────
 {
-  const q = buildQueries("Sorva-Studios", "trx-renovate", NOW);
+  const q = buildQueries("Acme-Org", "trx-renovate", NOW);
 
   check("both queries scope to the org and the bot",
-    q.open.includes("org:Sorva-Studios") && q.open.includes("author:trx-renovate")
-      && q.closed.includes("org:Sorva-Studios") && q.closed.includes("author:trx-renovate"), q);
+    q.open.includes("org:Acme-Org") && q.open.includes("author:trx-renovate")
+      && q.closed.includes("org:Acme-Org") && q.closed.includes("author:trx-renovate"), q);
 
   check("  open asks only for open", q.open.includes("is:open") && !q.open.includes("is:closed"), q.open);
   check("  and restricts nothing else — an old open PR still counts",
@@ -54,15 +54,15 @@ const NOW = new Date("2026-08-14T12:00:00Z");
 {
   const item = {
     id: 991, number: 42, title: "Update dependency lodash to v4.17.21",
-    repository_url: "https://api.github.com/repos/Sorva-Studios/penn-station",
-    html_url: "https://github.com/Sorva-Studios/penn-station/pull/42",
+    repository_url: "https://api.github.com/repos/Acme-Org/payments-api",
+    html_url: "https://github.com/Acme-Org/payments-api/pull/42",
     state: "open", created_at: "2026-08-04T12:00:00Z", updated_at: "2026-08-10T12:00:00Z",
     closed_at: null, draft: false, pull_request: {},
   };
   const pr = normalizePr(item);
 
   // Search returns issues, so the repo has to be recovered from the URL.
-  check("the repository is recovered from repository_url", pr.repo === "penn-station", pr.repo);
+  check("the repository is recovered from repository_url", pr.repo === "payments-api", pr.repo);
   check("  the browser link is kept, not the API url",
     pr.url.startsWith("https://github.com/") && pr.url.endsWith("/pull/42"), pr.url);
   check("  an open PR has no closedAt", pr.state === "open" && pr.closedAt === null, pr);
