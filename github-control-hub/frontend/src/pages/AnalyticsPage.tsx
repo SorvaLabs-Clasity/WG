@@ -20,7 +20,7 @@ import { TagInput } from "../components/TagInput";
 
 type WidgetType = "preset" | "query";
 type DisplayType = "metric" | "table";
-type PresetId = "dependabot" | "bypasses" | "vuln-repos" | "renovate-open" | "ci-clusters";
+type PresetId = "dependabot" | "bypasses" | "vuln-repos" | "renovate-open";
 
 /**
  * Which severities the "repositories with vulnerabilities" preset counts.
@@ -754,16 +754,6 @@ function useWidgetData(config: WidgetConfig) {
     staleTime: 120_000,
     enabled: isRenovate,
   });
-
-  // No GitHub call at all — the webhook already stored these — so this is the
-  // one widget that costs nothing to refresh.
-  const isClusters = config.type === "preset" && config.presetId === "ci-clusters";
-  const { data: clusterData, isLoading: clustersLoading } = useQuery({
-    queryKey: ["ci-clusters"],
-    queryFn: () => apiGet<{ clusters: any[] }>("/ci/clusters"),
-    staleTime: 60_000,
-    enabled: isClusters,
-  });
   const { data: bypassData, isLoading: bypassLoading } = useSecurityQuery(isBypass ? "protection-bypasses-ranking" : null);
 
   const isQuery = config.type === "query";
@@ -814,10 +804,7 @@ function useWidgetData(config: WidgetConfig) {
       } else if (config.presetId === "bypasses") {
         loading = bypassLoading;
         rawItems = bypassData || [];
-      } else if (config.presetId === "ci-clusters") {
-        loading = clustersLoading;
-        rawItems = clusterData?.clusters ?? [];
-      } else if (config.presetId === "renovate-open") {
+            } else if (config.presetId === "renovate-open") {
         // Only the open ones. The card answers "what is waiting to be merged",
         // which a closed PR has by definition stopped being.
         loading = renovateLoading;
@@ -829,7 +816,7 @@ function useWidgetData(config: WidgetConfig) {
     }
 
     return { items: rawItems, isLoading: loading };
-  }, [config, depsData, depsLoading, bypassData, bypassLoading, queryData, queryLoading, renovateData, renovateLoading, clusterData, clustersLoading]);
+  }, [config, depsData, depsLoading, bypassData, bypassLoading, queryData, queryLoading, renovateData, renovateLoading]);
 
   // Only a check that counts repositories has the organization as its
   // denominator. Users and teams do not, and a share of the wrong thing is
@@ -1292,7 +1279,6 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                   <option value="vuln-repos">Repositories with vulnerabilities</option>
                   <option value="bypasses">Protection Rule Bypasses</option>
                   <option value="renovate-open">Open Renovate PRs</option>
-                  <option value="ci-clusters">Correlated CI failures</option>
                 </select>
 
                 {presetId === "vuln-repos" && (

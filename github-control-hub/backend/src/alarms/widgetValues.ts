@@ -141,12 +141,6 @@ export async function computeWidgetRows(
       }
       case "bypasses":
         return { rows: await sources.runQuery("protection-bypasses-ranking") };
-      case "ci-clusters": {
-        // Read from storage, not GitHub: the webhook already captured these,
-        // so an alarm on them costs nothing against the rate limit.
-        const { listFailures, correlate } = await import("../services/ciFailureService");
-        return { rows: correlate(await listFailures(), Date.now()) };
-      }
       case "renovate-open": {
         const prs = await sources.renovateOpenPrs();
         // null, not an empty list, when no bot is configured — an alarm must

@@ -20,8 +20,6 @@ export const ALL_METRIC_SPECS: MetricSpec[] = [
   { metric: "vulnRepos.repos", kind: "count", label: "Matching repositories", unit: "repos" },
   { metric: "vulnRepos.total", kind: "count", label: "Alerts in total", unit: "alerts" },
   { metric: "vulnRepos.worstSeverity", kind: "severity", label: "Worst severity present" },
-  { metric: "ciClusters.count", kind: "count", label: "Correlated failure clusters", unit: "clusters" },
-  { metric: "ciClusters.largestRepos", kind: "count", label: "Repositories in the largest cluster", unit: "repos" },
   { metric: "bypasses.total", kind: "count", label: "Bypasses in total", unit: "bypasses" },
   { metric: "bypasses.repos", kind: "count", label: "Repositories with a bypass", unit: "repos" },
   { metric: "query.rows", kind: "count", label: "Matching rows", unit: "rows" },

@@ -25,7 +25,6 @@ function resolveTableNames(): void {
     WIDGETS_TABLE: `${prefix}-widgets`,
     COMPLIANCE_CACHE_TABLE: `${prefix}-compliance-cache`,
     ALARMS_TABLE: `${prefix}-alarms`,
-    CI_FAILURES_TABLE: `${prefix}-ci-failures`,
   };
   for (const [key, val] of Object.entries(tables)) {
     if (!process.env[key]) process.env[key] = val;

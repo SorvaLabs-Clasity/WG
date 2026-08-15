@@ -7,7 +7,6 @@ import {
 import { Page, INTENT } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import UserAvatar from "../components/UserAvatar";
-import CiClustersPanel from "../components/CiClustersPanel";
 import { useAuth } from "../App";
 import { useActivity, useUndoActivity, useRedoActivity, useRetryActivity, useUndoResolution } from "../hooks/useActivity";
 import { useOrgConfig } from "../hooks/useOrgConfig";
@@ -608,10 +607,6 @@ export default function ActivityPage() {
               visible makes overflow-y compute to auto rather than staying visible,
               and the tabs' -mb-px against a 2px bottom border overflows by exactly
               enough to raise a vertical scrollbar on a row of buttons. */}
-          {/* Above the streams, because when CI is broken this is the answer
-              and the feed below is the evidence. One quiet line on a normal
-              day, so it is findable without being noise. */}
-          <CiClustersPanel compact />
 
           <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto overflow-y-hidden">
             {VIEW_ORDER.map(c => {

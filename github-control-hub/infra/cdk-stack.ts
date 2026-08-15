@@ -395,7 +395,6 @@ export class GitHubControlHubStack extends cdk.Stack {
         // The worker emails security alerts as it records them, so it reads
         // the toggle and the group from here.
         ALARMS_TABLE: `${stackPrefix}-alarms`,
-        CI_FAILURES_TABLE: `${stackPrefix}-ci-failures`,
       },
       bundling: webhookBundling,
     });
@@ -467,7 +466,6 @@ export class GitHubControlHubStack extends cdk.Stack {
         STACK_NAME: stackPrefix,
         SECRET_NAME: secretName,
         ALARMS_TABLE: `${stackPrefix}-alarms`,
-        CI_FAILURES_TABLE: `${stackPrefix}-ci-failures`,
         WIDGETS_TABLE: `${stackPrefix}-widgets`,
         ACTIVITY_TABLE: `${stackPrefix}-activity`,
         ALERTS_TABLE: `${stackPrefix}-alerts`,

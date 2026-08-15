@@ -88,7 +88,6 @@ TABLES=(
   alerts             # alertService.ts:86         Key: { id }
   widgets            # widgetService.ts:37        Key: { id }
   alarms             # alarmService.ts            Key: { id }
-  ci-failures        # ciFailureService.ts        Key: { id }
 )
 
 create_table() {
@@ -229,20 +228,6 @@ fi
 # The alarms table also holds the pending-notification buffer, which is the only
 # thing in it that expires. Without TTL those rows accumulate forever in a table
 # the alarm evaluator scans on every tick.
-# CI failure records expire after a week; correlation only looks at hours.
-echo "==> Enabling TTL on ${PREFIX}-ci-failures"
-ci_ttl=$($AWS dynamodb describe-time-to-live \
-  --table-name "${PREFIX}-ci-failures" \
-  --query 'TimeToLiveDescription.TimeToLiveStatus' --output text)
-if [[ "$ci_ttl" == "ENABLED" || "$ci_ttl" == "ENABLING" ]]; then
-  echo "    already $ci_ttl"
-else
-  $AWS dynamodb update-time-to-live \
-    --table-name "${PREFIX}-ci-failures" \
-    --time-to-live-specification "Enabled=true,AttributeName=ttl" >/dev/null
-  echo "    enabled"
-fi
-
 echo "==> Enabling TTL on ${PREFIX}-alarms"
 alarm_ttl=$($AWS dynamodb describe-time-to-live \
   --table-name "${PREFIX}-alarms" \
