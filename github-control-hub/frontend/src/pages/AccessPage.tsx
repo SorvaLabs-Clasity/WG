@@ -4,7 +4,7 @@ import {
   Page, Back, Note, Pill, Empty, Spinner, RailCard, Sheet, SheetHeader, Block,
   InsetRow, SearchInput, Segmented, RefreshButton, enter, type Intent,
 } from "../design";
-import { useAccessSummary, useUserAccess, useRepoAccess, useAccessRepos } from "../hooks/useAccess";
+import { useAccessSummary, useUserAccess, useRepoAccess, useAccessRepos, useAccessTeams, useTeamAccess } from "../hooks/useAccess";
 import type { AccessPath, Person, OrgRole } from "../api/access";
 
 /**
@@ -77,13 +77,23 @@ function OrgRoleTag({ role }: { role: OrgRole }) {
 
 export default function AccessPage() {
   const { user } = useAuth();
-  const [mode, setMode] = useState<"people" | "repos">("people");
+  const [mode, setMode] = useState<"people" | "repos" | "teams">("people");
+  const [openTeam, setOpenTeam] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [openPerson, setOpenPerson] = useState<string | null>(null);
   const [openRepo, setOpenRepo] = useState<string | null>(null);
 
   const { data, isLoading, isFetching, refetch } = useAccessSummary();
   const { data: repos } = useAccessRepos(mode === "repos");
+  const { data: teams } = useAccessTeams(mode === "teams");
+
+  // Matched on both the display name and the slug: people refer to a team by
+  // either, and the slug is what appears on an access path.
+  const teamList = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const all = teams ?? [];
+    return q ? all.filter(t => t.name.toLowerCase().includes(q) || t.slug.toLowerCase().includes(q)) : all;
+  }, [teams, query]);
 
   const people = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -181,11 +191,12 @@ export default function AccessPage() {
         <Segmented
           value={mode}
           onChange={m => { setMode(m); setQuery(""); }}
-          options={[["people", "By person"], ["repos", "By repository"]]}
+          options={[["people", "By person"], ["teams", "By team"], ["repos", "By repository"]]}
         />
         <div className="flex-1 min-w-[220px]">
           <SearchInput value={query} onChange={setQuery}
-            placeholder={mode === "people" ? "Find a person or team" : "Find a repository"} />
+            placeholder={mode === "people" ? "Find a person or team"
+                : mode === "teams" ? "Find a team" : "Find a repository"} />
         </div>
       </div>
 
@@ -199,6 +210,36 @@ export default function AccessPage() {
             {people.map((p, i) => (
               <PersonRow key={p.login} person={p} index={i} onOpen={() => setOpenPerson(p.login)} />
             ))}
+          </div>
+        )
+      )}
+
+      {mode === "teams" && (
+        teamList.length === 0 ? (
+          <Empty title="No teams" body="Nothing in the graph matches that." />
+        ) : (
+          <div className="grid gap-1.5">
+            {teamList.slice(0, LIST_CAP).map((t, i) => (
+              <button key={t.slug} onClick={() => setOpenTeam(t.slug)}
+                style={enter(i, 12, 200)}
+                className="w-full text-left px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-500 transition-colors flex items-center justify-between gap-4">
+                <span className="font-semibold text-[13.5px] text-slate-800 dark:text-slate-100 truncate">
+                  {t.name}
+                  <span className="ml-2 font-mono text-[12px] text-slate-400 dark:text-slate-500">{t.slug}</span>
+                </span>
+                <span className="shrink-0 text-[12.5px] text-slate-500 dark:text-slate-400 tabular-nums">
+                  {t.memberCount} member{t.memberCount === 1 ? "" : "s"} · {t.repoCount} repo{t.repoCount === 1 ? "" : "s"}
+                  {t.adminCount > 0 && (
+                    <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">{t.adminCount} admin</span>
+                  )}
+                </span>
+              </button>
+            ))}
+            {teamList.length > LIST_CAP && (
+              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-3">
+                Showing {LIST_CAP} of {teamList.length}. Search to narrow it down.
+              </p>
+            )}
           </div>
         )
       )}
@@ -397,6 +438,89 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
             </ul>
           )}
         </Block>
+      </Sheet>
+    </>
+  );
+}
+
+/**
+ * One team: who is in it, and what it opens.
+ *
+ * The repositories listed are what this team grants. A member may well reach
+ * others by their own collaborator edge or by owning the organization, and
+ * that is not this team's doing — so it is not counted here, and the person
+ * view is where that whole picture lives.
+ */
+function TeamDetail({ slug, onBack, onOpenPerson, onOpenRepo }: {
+  slug: string; onBack: () => void;
+  onOpenPerson: (login: string) => void; onOpenRepo: (repo: string) => void;
+}) {
+  const { data, isLoading } = useTeamAccess(slug);
+
+  if (isLoading) return <><Back onClick={onBack}>Access</Back><Spinner /></>;
+  if (!data) return <><Back onClick={onBack}>Access</Back><Empty title="Not found" /></>;
+
+  const admins = data.repos.filter(r => r.permission === "admin");
+
+  return (
+    <>
+      <Back onClick={onBack}>Access</Back>
+
+      <Sheet>
+        <SheetHeader
+          intent={admins.length > 0 ? "warn" : "neutral"}
+          title={data.name}
+          subtitle={<span className="font-mono text-[13px]">{data.slug}</span>}
+        />
+      </Sheet>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 my-6">
+        <Stat value={data.members.length} label="members" />
+        <Stat value={data.repos.length} label="repositories" hint="granted by this team" />
+        <Stat value={admins.length} label="as admin"
+          tone={admins.length > 0 ? "warn" : "neutral"}
+          hint={admins.length > 0 ? "membership confers admin on these" : undefined} />
+      </div>
+
+      <Sheet>
+        <SheetHeader title="Members" subtitle={`${data.members.length} in this team`} />
+        {data.members.length === 0 ? (
+          <Empty title="Nobody is in this team"
+            body="An empty team grants nothing. It may be new, or everyone in it may have left." />
+        ) : (
+          <div className="grid gap-1.5 p-3">
+            {data.members.map((m, i) => (
+              <button key={m.login} onClick={() => onOpenPerson(m.login)} style={enter(i, 10, 180)}
+                className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 transition-colors flex items-center justify-between gap-3">
+                <span className="font-semibold text-[13.5px] text-slate-800 dark:text-slate-100">{m.login}</span>
+                <span className="text-[12px] text-slate-500 dark:text-slate-400">
+                  {m.orgRole === "owner" ? "org owner" : m.outside ? "outside collaborator" : "member"}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </Sheet>
+
+      <Sheet>
+        <SheetHeader title="Repositories this team opens" subtitle={`${data.repos.length} granted by membership`} />
+        {data.repos.length === 0 ? (
+          <Empty title="This team grants no repository access"
+            body="It may exist for mentions or reviews rather than permissions." />
+        ) : (
+          <div className="grid gap-1.5 p-3">
+            {data.repos.map((r, i) => (
+              <button key={r.repo} onClick={() => onOpenRepo(r.repo)} style={enter(i, 10, 180)}
+                className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 transition-colors flex items-center justify-between gap-3">
+                <span className="font-mono text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+                  {r.repo}
+                  {r.archived && <span className="ml-2 text-[11px] text-slate-400">archived</span>}
+                </span>
+                <Pill intent={r.permission === "admin" ? "warn" : "neutral"}>{r.permission}</Pill>
+              </button>
+            ))}
+          </div>
+        )}
       </Sheet>
     </>
   );

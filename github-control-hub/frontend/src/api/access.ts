@@ -62,4 +62,23 @@ export const fetchUserAccess = (login: string) =>
   apiGet<UserAccess>(`/access/user/${encodeURIComponent(login)}`);
 export const fetchRepoAccess = (repo: string) =>
   apiGet<RepoAccessDetail>(`/access/repo/${encodeURIComponent(repo)}`);
+export interface TeamSummary {
+  slug: string;
+  name: string;
+  memberCount: number;
+  repoCount: number;
+  adminCount: number;
+}
+
+export interface TeamAccessDetail {
+  slug: string;
+  name: string;
+  members: { login: string; orgRole: OrgRole; outside: boolean }[];
+  repos: { repo: string; permission: string; archived?: boolean; visibility?: string }[];
+}
+
+export const fetchAccessTeams = () => apiGet<TeamSummary[]>("/access/teams");
+export const fetchTeamAccess = (slug: string) =>
+  apiGet<TeamAccessDetail>(`/access/team/${encodeURIComponent(slug)}`);
+
 export const fetchAccessRepos = () => apiGet<string[]>("/access/repos");

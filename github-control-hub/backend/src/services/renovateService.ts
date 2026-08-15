@@ -1,10 +1,10 @@
 /**
  * Renovate's pull requests, found by who opened them.
  *
- * Self-hosted Renovate raises PRs as a bot account — `trx-renovate`, or
- * whatever the installation is called. There is no Renovate API to ask; the
- * bot's authorship is the only marker, which is why the account name is
- * configuration rather than a constant.
+ * Self-hosted Renovate raises PRs as a GitHub App, and every installation
+ * names its own. There is no Renovate API to ask; the App's authorship is the
+ * only marker, which is why the account name is configuration rather than a
+ * constant here.
  *
  * Read through GitHub's search API rather than by walking repositories. Search
  * is metered in its own bucket (30 requests a minute) separate from the core

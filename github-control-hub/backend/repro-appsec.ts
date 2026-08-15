@@ -361,6 +361,37 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     };
     files.forEach(walk);
     check("no credential is committed in source", bad.length === 0, bad);
+
+    // Nor the name of one organization.
+    //
+    // This repository is copied and run against a different organization, so a
+    // name typed into shipped source travels with the copy. It has happened
+    // twice: the work bot's login reached a UI placeholder, and an org name
+    // reached test fixtures along with two usernames and somebody's email.
+    //
+    // Everything org-specific arrives at runtime — GITHUB_ORG from Secrets
+    // Manager, the enterprise slug read back from a trust policy, the Renovate
+    // bot from org-config, the account id from STS.
+    const named: string[] = [];
+    const scanNames = (p: string) => {
+      const full = path.join(ROOT, p);
+      if (fs.statSync(full).isDirectory()) {
+        if (p.endsWith("cdk.out") || p.endsWith("node_modules")) return;
+        for (const e of fs.readdirSync(full)) scanNames(path.join(p, e));
+        return;
+      }
+      if (!/\.(ts|tsx)$/.test(p)) return;
+      // A 12-digit AWS account id, and the specific names that leaked before.
+      // 123456789012 is excluded: it is the account id AWS uses throughout its
+      // own documentation, and it is the right thing to put in a placeholder.
+      const src2 = fs.readFileSync(full, "utf8").replace(/\b123456789012\b/g, "");
+      if (/\b\d{12}\b|Sorva|sorva|trx-renovate|RDaou05/.test(src2)) {
+        named.push(p);
+      }
+    };
+    files.forEach(scanNames);
+    check("  and no shipped source names one organization, bot or account",
+      named.length === 0, named);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

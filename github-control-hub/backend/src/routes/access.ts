@@ -43,6 +43,24 @@ router.get("/repo/:repo", async (req: Request<{ repo: string }>, res: Response) 
   }
 });
 
+router.get("/teams", async (_req: Request, res: Response) => {
+  try {
+    const { teamSummary } = await import("../services/accessMapService");
+    res.json(await teamSummary());
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "access") });
+  }
+});
+
+router.get("/team/:slug", async (req: Request<{ slug: string }>, res: Response) => {
+  try {
+    const { accessForTeam } = await import("../services/accessMapService");
+    res.json(await accessForTeam(String(req.params.slug)));
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "access") });
+  }
+});
+
 router.get("/repos", async (_req: Request, res: Response) => {
   try {
     res.json(await knownRepos());

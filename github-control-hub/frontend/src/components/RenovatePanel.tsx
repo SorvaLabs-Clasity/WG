@@ -74,7 +74,7 @@ export default function RenovatePanel() {
         {isAdmin ? (
           <div className="mt-4 flex gap-2 max-w-md">
             <input value={botDraft} onChange={e => setBotDraft(e.target.value)}
-              placeholder="e.g. trx-renovate" className={inputClass} />
+              placeholder="e.g. my-renovate" className={inputClass} />
             <button onClick={() => saveBot.mutate(botDraft)}
               disabled={!botDraft.trim() || saveBot.isPending}
               className="shrink-0 px-4 py-2 text-sm font-semibold rounded-md bg-gh-blue text-white hover:opacity-90 disabled:opacity-50">

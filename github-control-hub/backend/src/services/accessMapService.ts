@@ -314,6 +314,81 @@ export async function accessForRepo(repo: string): Promise<{
   return { repo, archived: meta?.archived, visibility: meta?.visibility, people, teams };
 }
 
+export interface TeamSummary {
+  slug: string;
+  name: string;
+  memberCount: number;
+  repoCount: number;
+  adminCount: number;
+}
+
+/**
+ * One row per team.
+ *
+ * Built from the same graph the other two views read, so a team's repository
+ * count here and the team shown on a person's access path cannot disagree.
+ *
+ * Teams with no members and no repositories are included rather than filtered.
+ * An empty team is not noise — it is a team somebody made and never used, or
+ * one whose members left, and both are worth seeing on a page about who can
+ * reach what.
+ */
+export async function teamSummary(): Promise<TeamSummary[]> {
+  const g = await load();
+
+  const slugs = new Set<string>([...g.teamNames.keys(), ...g.teamRepos.keys()]);
+  for (const set of g.teamsOf.values()) for (const slug of set) slugs.add(slug);
+
+  return [...slugs].map(slug => {
+    const repos = g.teamRepos.get(slug) ?? new Map<string, string>();
+    return {
+      slug,
+      name: g.teamNames.get(slug) ?? slug,
+      memberCount: [...g.teamsOf.values()].filter(set => set.has(slug)).length,
+      repoCount: repos.size,
+      adminCount: [...repos.values()].filter(r => r === "admin").length,
+    };
+  }).sort((a, b) => b.repoCount - a.repoCount || a.name.localeCompare(b.name));
+}
+
+/**
+ * One team: who is in it, and what it opens.
+ *
+ * The repository list is what the team grants directly. A member may reach a
+ * repository by another route entirely — their own collaborator edge, or
+ * organization ownership — and that is not this team's doing, so it is not
+ * counted here.
+ */
+export async function accessForTeam(slug: string): Promise<{
+  slug: string;
+  name: string;
+  members: { login: string; orgRole: OrgRole; outside: boolean }[];
+  repos: { repo: string; permission: string; archived?: boolean; visibility?: string }[];
+}> {
+  const g = await load();
+
+  const members = [...g.teamsOf.entries()]
+    .filter(([, slugs]) => slugs.has(slug))
+    .map(([login]) => {
+      const person = g.people.get(login);
+      return {
+        login,
+        orgRole: person?.orgRole ?? "unknown" as OrgRole,
+        outside: person?.orgRole === "outside_collaborator",
+      };
+    })
+    .sort((a, b) => a.login.localeCompare(b.login));
+
+  const repos = [...(g.teamRepos.get(slug) ?? new Map<string, string>()).entries()]
+    .map(([repo, permission]) => {
+      const meta = g.repoMeta.get(repo);
+      return { repo, permission, archived: meta?.archived, visibility: meta?.visibility };
+    })
+    .sort((a, b) => (RANK[b.permission] ?? 0) - (RANK[a.permission] ?? 0) || a.repo.localeCompare(b.repo));
+
+  return { slug, name: g.teamNames.get(slug) ?? slug, members, repos };
+}
+
 /** One row per person, enough to render the list without loading every detail. */
 export async function accessSummary(): Promise<AccessMapSummary> {
   const g = await load();

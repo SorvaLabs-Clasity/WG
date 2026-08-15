@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchAccessSummary, fetchUserAccess, fetchRepoAccess, fetchAccessRepos,
+  fetchAccessTeams, fetchTeamAccess,
 } from "../api/access";
 
 /**
@@ -29,6 +30,22 @@ export function useRepoAccess(repo: string | null) {
     queryFn: () => fetchRepoAccess(repo!),
     enabled: !!repo,
     ...SETTLED,
+  });
+}
+
+export function useAccessTeams(enabled: boolean) {
+  return useQuery({
+    queryKey: ["access", "teams"],
+    queryFn: fetchAccessTeams,
+    enabled,
+  });
+}
+
+export function useTeamAccess(slug: string | null) {
+  return useQuery({
+    queryKey: ["access", "team", slug],
+    queryFn: () => fetchTeamAccess(slug!),
+    enabled: !!slug,
   });
 }
 
