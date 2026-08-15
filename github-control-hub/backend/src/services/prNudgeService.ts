@@ -59,9 +59,25 @@ export interface PullRequest {
   /** GitHub's own summary: APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, null. */
   reviewDecision: string | null;
   mergeable: string | null;
+  /**
+   * Why a merge is or is not possible: CLEAN, BLOCKED, DIRTY, BEHIND, UNSTABLE,
+   * DRAFT, HAS_HOOKS, UNKNOWN.
+   *
+   * The field that distinguishes "checks failed and the rules require them"
+   * (BLOCKED) from "checks failed and nothing requires them" (UNSTABLE), which
+   * decides whether reviewers are worth chasing at all.
+   */
+  mergeStateStatus: string | null;
   /** Everyone asked to review, whether or not they have. */
   requestedReviewers: string[];
-  /** Who has actually left a review, and what they said. */
+  /**
+   * Reviews that still stand, per person.
+   *
+   * From latestReviews, not latestOpinionatedReviews. The latter keeps an
+   * approval after the author has re-requested review from that person, so
+   * somebody asked to look again reads as having already approved and is never
+   * chased — which is exactly what happened the first time this ran for real.
+   */
   reviews: Array<{ login: string; state: string }>;
   /** Rolled-up check state: SUCCESS, FAILURE, PENDING, null when no checks ran. */
   checksState: string | null;
@@ -91,68 +107,116 @@ export function isStale(pr: PullRequest, now = Date.now(), threshold = staleSeco
 }
 
 /**
- * Who has actually reviewed, ignoring anything that is not a verdict.
+ * Whether this person's approval currently stands.
  *
- * A COMMENTED review is somebody talking, not somebody approving, and treating
- * it as a review would let a "looks good!" with no approval silence the nudge
- * for a pull request that is still genuinely waiting.
+ * "Currently" is the whole point. Re-requesting a review from somebody who has
+ * already approved puts them back on the hook, and their old approval must stop
+ * counting the moment that happens — otherwise the person being asked to look
+ * again is the one person never reminded.
+ *
+ * This reads latestReviews, which GitHub empties on a re-request, rather than
+ * latestOpinionatedReviews, which does not.
  */
-export function hasReviewed(pr: PullRequest, login: string): boolean {
+export function hasApproved(pr: PullRequest, login: string): boolean {
   return pr.reviews.some(r =>
-    r.login.toLowerCase() === login.toLowerCase()
-    && (r.state === "APPROVED" || r.state === "CHANGES_REQUESTED" || r.state === "DISMISSED"));
-}
-
-/** Requested reviewers who still owe a verdict. */
-export function pendingReviewers(pr: PullRequest): string[] {
-  return pr.requestedReviewers.filter(r => !hasReviewed(pr, r));
+    r.login.toLowerCase() === login.toLowerCase() && r.state === "APPROVED");
 }
 
 /**
- * What is actually holding this pull request up.
+ * Requested reviewers whose approval does not currently stand.
  *
- * Ordered by what a person would act on first. A draft is not waiting on
- * anyone, so it is reported as a draft rather than as missing approvals, and
- * conflicts come before checks because a conflicted branch cannot merge however
- * green it is.
+ * Everyone still carrying a review request is included, whatever their approval
+ * counts for. A reviewer whose approval cannot satisfy the rule — no write
+ * access, wrong team — was still asked, and is still not answering.
+ */
+export function pendingReviewers(pr: PullRequest): string[] {
+  return pr.requestedReviewers.filter(r => !hasApproved(pr, r));
+}
+
+/**
+ * Whether something other than missing approvals is stopping the merge.
+ *
+ * This decides whether reviewers are worth chasing at all. If the branch has
+ * conflicts, or a required check is failing, no amount of approving fixes it —
+ * the author has work to do, and reminding six reviewers would send six people
+ * to look at a pull request they cannot help with.
+ *
+ * mergeStateStatus is what makes this answerable. BLOCKED means a rule is
+ * unsatisfied; UNSTABLE means a check failed that no rule requires, so the
+ * merge is still possible and reviews are still the thing missing.
+ */
+export function blockedByMoreThanApprovals(pr: PullRequest): boolean {
+  if (pr.isDraft) return true;
+  if (pr.mergeable === "CONFLICTING") return true;
+
+  const state = pr.mergeStateStatus;
+  if (state === "DIRTY" || state === "BEHIND" || state === "DRAFT") return true;
+
+  // Somebody has asked for changes. Until the author addresses them, the other
+  // reviewers have nothing to do.
+  if (pr.reviewDecision === "CHANGES_REQUESTED") return true;
+
+  if (state === "BLOCKED") {
+    // Blocked with checks unhealthy means the checks are the blocker, whether
+    // or not approvals are also missing. The author fixes checks; reviewers
+    // cannot, so they are not chased.
+    const checks = pr.checksState;
+    if (checks === "FAILURE" || checks === "ERROR" || checks === "PENDING") return true;
+    // Blocked purely on reviews. That is what reviewers are for.
+    if (pr.reviewDecision === "REVIEW_REQUIRED") return false;
+    // Blocked for a reason we cannot name. The author is the only safe target.
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * What is holding this up, for display.
+ *
+ * Ordered by what a person would act on first, and kept separate from who gets
+ * reminded — the two questions have different answers, and conflating them is
+ * how reviewers end up chased about a failing build.
  */
 export function blockReason(pr: PullRequest): BlockReason {
   if (pr.isDraft) return "draft";
-  if (pr.mergeable === "CONFLICTING") return "conflict";
+  if (pr.mergeable === "CONFLICTING" || pr.mergeStateStatus === "DIRTY") return "conflict";
   if (pr.reviewDecision === "CHANGES_REQUESTED") return "changes-requested";
-  if (pr.reviewDecision === "REVIEW_REQUIRED") return "needs-approval";
 
-  // Requested but not required still counts as waiting on review — but only
-  // where GitHub has no opinion at all.
-  //
-  // reviewDecision is null when branch protection does not demand an approval,
-  // even with reviewers sitting on the request, so an unprotected repository
-  // reads as "ready to merge" while somebody plainly waits on a review they
-  // asked for. Chasing the author there tells the one person not holding it up.
-  //
-  // Restricted to null on purpose. APPROVED means the requirement is already
-  // satisfied; a second reviewer who was also asked is not blocking anything,
-  // and chasing them would nag someone whose review is not needed. Two existing
-  // tests caught that when this was first written without the guard.
-  if (pr.reviewDecision === null && pendingReviewers(pr).length > 0) return "needs-approval";
+  if (pr.mergeStateStatus === "BLOCKED") {
+    const checks = pr.checksState;
+    if (checks === "FAILURE" || checks === "ERROR") return "checks-failing";
+    if (pr.reviewDecision === "REVIEW_REQUIRED") return "needs-approval";
+    return "blocked";
+  }
+
+  if (pr.reviewDecision === "REVIEW_REQUIRED") return "needs-approval";
   if (pr.checksState === "FAILURE" || pr.checksState === "ERROR") return "checks-failing";
-  if (pr.checksState === "PENDING") return "blocked";
-  // APPROVED, or a repository that requires no review at all.
-  if (pr.reviewDecision === "APPROVED" || pr.reviewDecision === null) return "ready";
-  return "blocked";
+
+  // Requested but not required still counts as waiting on review: GitHub
+  // reports no decision at all when protection demands nothing, so a repository
+  // with no rule reads as ready while somebody waits on a review they asked for.
+  if (pr.reviewDecision === null && pendingReviewers(pr).length > 0) return "needs-approval";
+
+  return "ready";
 }
 
 /**
- * Who to nudge, and why.
+ * Who to remind.
  *
- * The rule asked for: waiting on approvals means the reviewers who have not
- * reviewed; anything else, including ready-to-merge, means the author. The
- * author is the only person who can act on a conflict, a failing check or a
- * merge that nobody has pressed.
+ * The author is always included. They can chase people in person, they can
+ * merge once it is possible, and they are the one person who always has
+ * something they could do about it.
+ *
+ * Beyond that there is one question: is anything other than approvals stopping
+ * this? If so, only the author — reviewers cannot fix a failing check or a
+ * conflict, and reminding them wastes the attention this feature is spending.
+ * If not, everyone still carrying a review request whose approval does not
+ * currently stand, whether or not their approval is one the rule counts.
  *
  * Paused logins are removed here rather than at send time, so a pull request
- * whose every remaining reviewer is paused produces no nudge at all instead of
- * a nudge addressed to nobody.
+ * with nobody left to name produces no reminder at all instead of one addressed
+ * to nobody.
  */
 export function nudgeTargets(
   pr: PullRequest,
@@ -162,13 +226,23 @@ export function nudgeTargets(
   if (paused.pr) return { reason, targets: [] };
 
   const pausedSet = new Set((paused.logins ?? []).map(l => l.toLowerCase()));
-  const keep = (l: string) => l && !pausedSet.has(l.toLowerCase());
+  const keep = (l: string) => !!l && !pausedSet.has(l.toLowerCase());
 
-  if (reason === "needs-approval") {
-    return { reason, targets: pendingReviewers(pr).filter(keep) };
-  }
-  // Everything else is the author's to move, ready-to-merge included.
-  return { reason, targets: [pr.author].filter(keep) };
+  const targets = [pr.author];
+  if (!blockedByMoreThanApprovals(pr)) targets.push(...pendingReviewers(pr));
+
+  // The author can also be a requested reviewer on their own pull request in
+  // some setups; naming them twice reads as a mistake.
+  const seen = new Set<string>();
+  return {
+    reason,
+    targets: targets.filter(l => {
+      const k = l.toLowerCase();
+      if (!keep(l) || seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    }),
+  };
 }
 
 /**
@@ -224,7 +298,7 @@ query($q: String!, $cursor: String) {
     pageInfo { hasNextPage endCursor }
     nodes {
       ... on PullRequest {
-        number title url createdAt isDraft mergeable reviewDecision
+        number title url createdAt isDraft mergeable mergeStateStatus reviewDecision
         headRefName baseRefName
         author { login }
         repository { nameWithOwner }
@@ -237,7 +311,7 @@ query($q: String!, $cursor: String) {
         reviewRequests(first: 25) {
           nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } } }
         }
-        latestOpinionatedReviews(first: 25) {
+        latestReviews(first: 25) {
           nodes { author { login } state }
         }
       }
@@ -285,6 +359,7 @@ export async function fetchOpenPrs(
         isDraft: !!n.isDraft,
         reviewDecision: n.reviewDecision ?? null,
         mergeable: n.mergeable ?? null,
+        mergeStateStatus: n.mergeStateStatus ?? null,
         // Teams can be requested as reviewers. Only individuals are nudged —
         // there is no person behind a team handle to hold responsible, and
         // mentioning the team would notify people who were never asked.
@@ -292,7 +367,7 @@ export async function fetchOpenPrs(
           .map((r: any) => r?.requestedReviewer)
           .filter((r: any) => r?.__typename === "User" && r.login)
           .map((r: any) => r.login),
-        reviews: (n.latestOpinionatedReviews?.nodes ?? [])
+        reviews: (n.latestReviews?.nodes ?? [])
           .filter((r: any) => r?.author?.login)
           .map((r: any) => ({ login: r.author.login, state: r.state })),
         checksState: commit?.statusCheckRollup?.state ?? null,

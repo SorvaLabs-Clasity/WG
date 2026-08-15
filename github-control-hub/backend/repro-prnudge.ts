@@ -18,7 +18,8 @@
 import fs from "fs";
 import path from "path";
 import {
-  daysSinceLastCommit, isStale, hasReviewed, pendingReviewers, blockReason,
+  daysSinceLastCommit, isStale, hasApproved, pendingReviewers, blockReason,
+  blockedByMoreThanApprovals,
   nudgeTargets, isNudgeDue, sortByStaleness, fetchOpenPrs, STALE_DAYS,
   buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass, staleSeconds,
   SEVEN_DAYS, STALE_SECONDS,
@@ -38,7 +39,7 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   repo: "o/api", number: 1, title: "Add thing", url: "https://x/1",
   author: "alice", headRef: "feature", baseRef: "main",
   createdAt: daysAgo(30), lastCommitAt: daysAgo(1),
-  isDraft: false, reviewDecision: null, mergeable: "MERGEABLE",
+  isDraft: false, reviewDecision: null, mergeable: "MERGEABLE", mergeStateStatus: "CLEAN",
   requestedReviewers: [], reviews: [], checksState: null, ...over,
 });
 
@@ -103,122 +104,145 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       isNudgeDue(stillIdle, "banana", NOW, SEVEN_DAYS));
   }
 
-  // ── who counts as having reviewed ───────────────────────────────────
+  // ── whose approval currently stands ─────────────────────────────────
   {
-    const commented = pr({
+    // The bug found in use. Re-requesting a review from somebody who has
+    // already approved puts them back on the hook, and GitHub empties
+    // latestReviews to say so — while latestOpinionatedReviews keeps the old
+    // approval forever. Reading the wrong one meant the person being asked to
+    // look again was the one person never reminded.
+    const reRequested = pr({
       requestedReviewers: ["bob"],
-      reviews: [{ login: "bob", state: "COMMENTED" }],
+      reviews: [],            // latestReviews is emptied by the re-request
     });
-    check("a COMMENTED review is not a verdict",
-      !hasReviewed(commented, "bob") && pendingReviewers(commented).includes("bob"),
-      "a \"looks good!\" with no approval would silence the nudge");
+    check("a re-requested reviewer is pending again, whatever they approved before",
+      pendingReviewers(reRequested).join() === "bob",
+      "the person asked to look again would be the one never chased");
 
-    for (const state of ["APPROVED", "CHANGES_REQUESTED", "DISMISSED"]) {
-      const p = pr({ requestedReviewers: ["bob"], reviews: [{ login: "bob", state }] });
-      check(`  ${state} is`, hasReviewed(p, "bob") && !pendingReviewers(p).includes("bob"));
-    }
-
-    check("  the comparison is case-insensitive, since GitHub is",
-      hasReviewed(pr({ reviews: [{ login: "Bob", state: "APPROVED" }] }), "bob"));
-
-    const mixed = pr({
-      requestedReviewers: ["bob", "carol", "dave"],
-      reviews: [{ login: "bob", state: "APPROVED" }, { login: "carol", state: "COMMENTED" }],
-    });
-    check("  only the ones who owe a verdict are pending",
-      pendingReviewers(mixed).join() === "carol,dave", pendingReviewers(mixed));
-  }
-
-  // ── what is blocking it ─────────────────────────────────────────────
-  {
-    check("a draft is reported as a draft, not as missing approvals",
-      blockReason(pr({ isDraft: true, reviewDecision: "REVIEW_REQUIRED" })) === "draft",
-      "a draft is not waiting on anyone");
-    check("  a conflict outranks a failing check",
-      blockReason(pr({ mergeable: "CONFLICTING", checksState: "FAILURE" })) === "conflict",
-      "a conflicted branch cannot merge however green it is");
-    check("  changes requested is its own state",
-      blockReason(pr({ reviewDecision: "CHANGES_REQUESTED" })) === "changes-requested");
-    check("  review required means approvals",
-      blockReason(pr({ reviewDecision: "REVIEW_REQUIRED" })) === "needs-approval");
-    check("  a failing check when reviews are done",
-      blockReason(pr({ reviewDecision: "APPROVED", checksState: "FAILURE" })) === "checks-failing");
-    check("  approved and green is ready",
-      blockReason(pr({ reviewDecision: "APPROVED", checksState: "SUCCESS" })) === "ready");
-    check("  and a repository requiring no review at all, with nobody asked, is ready",
-      blockReason(pr({ reviewDecision: null, checksState: "SUCCESS" })) === "ready");
-
-    // The live case that prompted this. A repository with no protection rule
-    // reports reviewDecision: null even with a reviewer sitting on the request,
-    // so it read as "ready to merge" and would have chased the author — the one
-    // person not holding it up.
-    check("  but a requested reviewer who has not reviewed is still waiting on review",
-      blockReason(pr({
-        reviewDecision: null, checksState: "SUCCESS",
-        requestedReviewers: ["bob"],
-      })) === "needs-approval",
-      "an unprotected repository reads as ready while somebody waits on a review");
-
-    check("  and once they review, it is ready again",
-      blockReason(pr({
-        reviewDecision: null, checksState: "SUCCESS",
-        requestedReviewers: ["bob"], reviews: [{ login: "bob", state: "APPROVED" }],
-      })) === "ready");
-
-    // APPROVED means the requirement is met. Somebody else who was also asked
-    // is not blocking anything, and chasing them nags a person whose review is
-    // not needed.
-    check("  an extra reviewer on an approved pull request is not blocking it",
-      blockReason(pr({
-        reviewDecision: "APPROVED", checksState: "SUCCESS",
-        requestedReviewers: ["bob", "carol"], reviews: [{ login: "carol", state: "APPROVED" }],
-      })) === "ready",
-      "chasing bob would nag somebody whose review is not required");
-
-    check("  a conflict still outranks a pending reviewer",
-      blockReason(pr({
-        reviewDecision: null, mergeable: "CONFLICTING", requestedReviewers: ["bob"],
-      })) === "conflict");
-
-    const t = nudgeTargets(pr({
-      author: "alice", reviewDecision: null, checksState: "SUCCESS",
+    const stillStands = pr({
       requestedReviewers: ["bob"],
-    }));
-    check("  and it chases the reviewer, not the author",
-      t.targets.join() === "bob", t);
-  }
-
-  // ── who gets chased ─────────────────────────────────────────────────
-  {
-    const needsApproval = pr({
-      author: "alice",
-      reviewDecision: "REVIEW_REQUIRED",
-      requestedReviewers: ["bob", "carol", "dave"],
       reviews: [{ login: "bob", state: "APPROVED" }],
     });
-    const t = nudgeTargets(needsApproval);
-    check("waiting on approval chases the reviewers who have not reviewed",
-      t.targets.join() === "carol,dave", t);
-    check("  and not the one who already approved", !t.targets.includes("bob"));
-    check("  nor the author, who cannot approve their own pull request",
-      !t.targets.includes("alice"), t.targets);
+    check("  while an approval that still stands takes them off it",
+      pendingReviewers(stillStands).length === 0 && hasApproved(stillStands, "bob"));
 
-    for (const [reason, over] of [
-      ["ready", { reviewDecision: "APPROVED", checksState: "SUCCESS" }],
-      ["conflict", { mergeable: "CONFLICTING" }],
-      ["checks-failing", { reviewDecision: "APPROVED", checksState: "FAILURE" }],
-      ["changes-requested", { reviewDecision: "CHANGES_REQUESTED" }],
+    check("  a COMMENTED review is not an approval",
+      pendingReviewers(pr({
+        requestedReviewers: ["bob"], reviews: [{ login: "bob", state: "COMMENTED" }],
+      })).join() === "bob");
+
+    check("  nor is CHANGES_REQUESTED",
+      pendingReviewers(pr({
+        requestedReviewers: ["bob"], reviews: [{ login: "bob", state: "CHANGES_REQUESTED" }],
+      })).join() === "bob");
+
+    check("  and the comparison is case-insensitive",
+      hasApproved(pr({ reviews: [{ login: "Bob", state: "APPROVED" }] }), "bob"));
+  }
+
+  // ── the author is always named ──────────────────────────────────────
+  {
+    for (const [name, over] of [
+      ["ready to merge", { reviewDecision: "APPROVED", mergeStateStatus: "CLEAN" }],
+      ["waiting on review", { reviewDecision: "REVIEW_REQUIRED", mergeStateStatus: "BLOCKED", requestedReviewers: ["bob"] }],
+      ["conflicted", { mergeStateStatus: "DIRTY", mergeable: "CONFLICTING" }],
+      ["checks failing", { mergeStateStatus: "BLOCKED", checksState: "FAILURE" }],
+      ["a draft", { isDraft: true }],
     ] as const) {
-      const r = nudgeTargets(pr({ ...over, requestedReviewers: ["bob"] }));
-      check(`  ${reason} chases the author, who is the only one who can move it`,
-        r.reason === reason && r.targets.join() === "alice", r);
+      const t = nudgeTargets(pr({ author: "alice", ...over }));
+      check(`  the author is named on ${name}`, t.targets.includes("alice"), t);
+    }
+    check("  and never twice, even if they are also a requested reviewer",
+      nudgeTargets(pr({
+        author: "alice", reviewDecision: "REVIEW_REQUIRED", mergeStateStatus: "BLOCKED",
+        requestedReviewers: ["alice", "bob"],
+      })).targets.filter(x => x === "alice").length === 1);
+  }
+
+  // ── reviewers are only chased when reviews are the thing missing ────
+  {
+    // Five approvals required, three given, a required check failing, seven
+    // reviewers outstanding. Only the author: nobody else can fix a build.
+    const checksBlocking = pr({
+      author: "alice",
+      mergeStateStatus: "BLOCKED", checksState: "FAILURE",
+      reviewDecision: "REVIEW_REQUIRED",
+      requestedReviewers: ["r1", "r2", "r3", "r4", "r5", "r6", "r7"],
+    });
+    check("a failing required check chases the author alone",
+      nudgeTargets(checksBlocking).targets.join() === "alice",
+      "seven people would be sent to look at a pull request they cannot help with");
+    check("  and blockedByMoreThanApprovals says why", blockedByMoreThanApprovals(checksBlocking));
+
+    // Same pull request once the build is green: now the reviewers matter.
+    const reviewsOnly = pr({
+      author: "alice",
+      mergeStateStatus: "BLOCKED", checksState: "SUCCESS",
+      reviewDecision: "REVIEW_REQUIRED",
+      requestedReviewers: ["r1", "r2", "r3"],
+      reviews: [{ login: "r1", state: "APPROVED" }],
+    });
+    check("  with checks green, everyone still owing a review is chased",
+      nudgeTargets(reviewsOnly).targets.join() === "alice,r2,r3", nudgeTargets(reviewsOnly).targets);
+    check("  and whoever has approved is not", !nudgeTargets(reviewsOnly).targets.includes("r1"));
+
+    // Enough approvals to merge, but others were asked and have not answered.
+    // The author may be waiting on them deliberately, so both are named.
+    const enoughButWaiting = pr({
+      author: "alice", reviewDecision: "APPROVED", mergeStateStatus: "CLEAN",
+      requestedReviewers: ["r1", "r2", "r3", "r4"],
+      reviews: [{ login: "r1", state: "APPROVED" }, { login: "r2", state: "APPROVED" }],
+    });
+    check("enough approvals to merge still chases the ones who have not answered",
+      nudgeTargets(enoughButWaiting).targets.join() === "alice,r3,r4",
+      nudgeTargets(enoughButWaiting).targets);
+
+    // Everyone asked has approved, but the rule wants somebody who was never
+    // asked. Nobody to chase but the author.
+    const needsSomeoneElse = pr({
+      author: "alice", reviewDecision: "REVIEW_REQUIRED", mergeStateStatus: "BLOCKED",
+      checksState: "SUCCESS",
+      requestedReviewers: ["r1"], reviews: [{ login: "r1", state: "APPROVED" }],
+    });
+    check("when everyone asked has approved, only the author is chased",
+      needsSomeoneElse && nudgeTargets(needsSomeoneElse).targets.join() === "alice",
+      nudgeTargets(needsSomeoneElse).targets);
+
+    // Reviewers whose approval cannot satisfy the rule were still asked.
+    const wrongPeopleAsked = pr({
+      author: "alice", reviewDecision: "REVIEW_REQUIRED", mergeStateStatus: "BLOCKED",
+      checksState: "SUCCESS", requestedReviewers: ["nobody-with-write"],
+    });
+    check("a reviewer whose approval does not count is still chased, having been asked",
+      nudgeTargets(wrongPeopleAsked).targets.join() === "alice,nobody-with-write");
+
+    // A failing check that no rule requires does not block, so reviews are
+    // still the thing missing.
+    const unstable = pr({
+      author: "alice", mergeStateStatus: "UNSTABLE", checksState: "FAILURE",
+      reviewDecision: "REVIEW_REQUIRED", requestedReviewers: ["r1"],
+    });
+    check("a failing check no rule requires does not shield the reviewers",
+      nudgeTargets(unstable).targets.join() === "alice,r1",
+      "UNSTABLE means mergeable; the reviews are still what is missing");
+
+    for (const [name, over] of [
+      ["conflicts", { mergeStateStatus: "DIRTY", mergeable: "CONFLICTING" }],
+      ["being behind the base", { mergeStateStatus: "BEHIND" }],
+      ["changes requested", { reviewDecision: "CHANGES_REQUESTED" }],
+      ["a draft", { isDraft: true }],
+      ["an unexplained block", { mergeStateStatus: "BLOCKED", reviewDecision: null }],
+    ] as const) {
+      const t = nudgeTargets(pr({ author: "alice", requestedReviewers: ["r1", "r2"], ...over }));
+      check(`  ${name} chases the author alone`, t.targets.join() === "alice", t.targets);
     }
   }
 
   // ── pausing, which people notice when it fails ──────────────────────
   {
     const p = pr({
-      reviewDecision: "REVIEW_REQUIRED",
+      author: "alice",
+      reviewDecision: "REVIEW_REQUIRED", mergeStateStatus: "BLOCKED", checksState: "SUCCESS",
       requestedReviewers: ["bob", "carol"],
     });
 
@@ -228,18 +252,21 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       nudgeTargets(p, { pr: true }).reason === "needs-approval");
 
     const oneOff = nudgeTargets(p, { logins: ["bob"] });
-    check("  pausing one reviewer leaves the others being chased",
-      oneOff.targets.join() === "carol", oneOff.targets);
+    check("  muting one reviewer leaves the others, and the author",
+      oneOff.targets.join() === "alice,carol", oneOff.targets);
 
-    check("  pausing every remaining reviewer produces no nudge at all",
-      nudgeTargets(p, { logins: ["bob", "carol"] }).targets.length === 0,
-      "a nudge addressed to nobody would still post a comment");
+    // The author is always named, so muting every reviewer does not silence the
+    // reminder — it narrows it to the one person who can always do something.
+    check("  muting every reviewer leaves the author, who is always named",
+      nudgeTargets(p, { logins: ["bob", "carol"] }).targets.join() === "alice",
+      nudgeTargets(p, { logins: ["bob", "carol"] }).targets);
 
-    check("  a paused login matches case-insensitively",
-      nudgeTargets(p, { logins: ["BOB"] }).targets.join() === "carol");
+    check("  muting the author as well leaves nobody, and so no reminder",
+      nudgeTargets(p, { logins: ["alice", "bob", "carol"] }).targets.length === 0,
+      "a reminder addressed to nobody would still post a comment");
 
-    check("  and an author can be paused on their own pull request",
-      nudgeTargets(pr({ reviewDecision: "APPROVED" }), { logins: ["alice"] }).targets.length === 0);
+    check("  a muted login matches case-insensitively",
+      nudgeTargets(p, { logins: ["BOB"] }).targets.join() === "alice,carol");
   }
 
   // ── ordering ────────────────────────────────────────────────────────

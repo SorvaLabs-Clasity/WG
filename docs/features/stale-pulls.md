@@ -24,33 +24,40 @@ never chased.
 
 ## Who gets reminded
 
-| What is blocking it | Who is named |
+**The author, always.** They can chase people in person, they can merge once it
+is possible, and they are the one person who always has something they could do.
+
+Beyond that there is a single question: **is anything other than missing
+approvals stopping this merge?**
+
+| Situation | Who is reminded |
 |---|---|
-| Waiting on review | The requested reviewers who have **not** reviewed |
-| Ready to merge | The author |
-| Conflicts, failing checks, changes requested, draft | The author |
+| Reviews are the only thing missing | Author **+** everyone still owing a review |
+| Required check failing, conflicts, behind base, changes requested, draft | **Author alone** |
+| Approved and mergeable, but people were asked and have not answered | Author **+** those who have not answered |
+| Everyone asked has approved, rule wants somebody who was never asked | **Author alone** |
 
-Reviewers who have already approved are never named. Neither is the author when
-the block is missing approvals — they cannot approve their own pull request.
+Reviewers are never chased about a failing build. No amount of approving fixes
+one, so reminding six people would send six of them to look at a pull request
+they cannot help with.
 
-A reviewer who was **requested but is not required** still counts as waiting on
-review. GitHub reports no review decision at all when branch protection does not
-demand an approval, so an unprotected repository reads as "ready to merge" while
-somebody plainly waits on a review they asked for — and chasing the author there
-names the one person who is not holding it up.
+`mergeStateStatus` is what makes this answerable. `BLOCKED` means a rule is
+unsatisfied; `UNSTABLE` means a check failed that no rule requires, so the merge
+is still possible and reviews are still the thing missing. A failing check only
+shields the reviewers when it is actually blocking.
 
-That applies only where GitHub has no opinion. Once a pull request is approved
-the requirement is met, and a second reviewer who was also asked is not blocking
-anything; chasing them would nag somebody whose review is not needed.
+Everyone carrying a review request is included, **whatever their approval counts
+for**. A reviewer without write access, or on the wrong team, cannot satisfy the
+rule — but they were asked, and they are not answering. Equally, having enough
+approvals to merge does not stop the others being chased: the author may be
+waiting on them deliberately.
 
-A `COMMENTED` review is not a verdict. Treating "looks good!" as one would
-silence a pull request that is genuinely still waiting.
-
-Teams requested as reviewers are ignored. There is no person behind the handle
-to hold responsible, and naming it would notify people who were never asked.
-
-Everything is re-evaluated on every pass. Somebody approving between cycles
-changes who is named, with no stored state to update.
+**"Approved" means approved right now.** Re-requesting a review from somebody who
+already approved puts them back on the hook, and their previous approval stops
+counting the moment it happens. This reads `latestReviews`, which GitHub empties
+on a re-request, rather than `latestOpinionatedReviews`, which keeps the stale
+approval forever — reading the wrong one meant the person asked to look again
+was the one person never reminded.
 
 ## One comment, not fifty-two
 
