@@ -96,8 +96,8 @@ GitHub webhook events are the only part of the backend that runs continuously in
 ```bash
 cd infra && npx cdk deploy
 ```
-finds violations and reports the fix it would make, but is not granted the three write actions, so
-nothing is ever changed. This is the entire deployment step. There is no separate build-and-upload — CDK bundles the Lambdas straight from `backend/src` and deploys them along with the rest of the stack.
+
+This is the entire deployment step. There is no separate build-and-upload — CDK bundles the Lambdas straight from `backend/src` and deploys them along with the rest of the stack.
 
 ### 2. Desktop App (REST API + UI, local or production use)
 
@@ -119,7 +119,7 @@ The backend authenticates to GitHub using a **GitHub App** (not a personal acces
 | Members | Read | Org member visibility |
 | Organization administration | Read | Org config and audit logs |
 
-**Required webhook events:** `push`, `pull_request`, `create`, `delete`, `repository`, `branch_protection_rule`, `repository_ruleset`, `member`, `team`, `issues`
+**Required webhook events:** `push`, `pull_request`, `create`, `delete`, `repository`, `branch_protection_rule`, `repository_ruleset`, `member`, `team`, `organization`, and `dependabot_alert` for Dependabot alert emails. The checkboxes in GitHub's UI are labelled in prose rather than by event name — see [setup.md](../docs/operations/setup.md) for which box each one is.
 
 ## Environment Variables
 

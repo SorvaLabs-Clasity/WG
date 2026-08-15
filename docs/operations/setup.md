@@ -334,17 +334,43 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 > a new deployment, but it is worth checking on a first setup too, in case a
 > teammate already ran phase 1 twice.
 
-**Events** — "Let me select individual events":
+**Events** — choose "Let me select individual events", then tick these eleven.
 
-`push` · `repository` · `create` · `delete` · `member` · `team` ·
-`organization` · `pull_request` · `branch_protection_rule` ·
-`repository_ruleset` · `dependabot_alert`
+The checkboxes are labelled in prose, not by event name, and several do not
+resemble the name at all — `member` is "Collaborator add, remove, or changed"
+and `create`/`delete` are about branches and tags rather than repositories. The
+API name is given only so you can match it against a delivery later; it is not
+what you are looking for on the page.
 
-`dependabot_alert` is only needed for the "email me when Dependabot finds a
+| Tick this box | API name |
+|---|---|
+| **Branch or tag creation** | `create` |
+| **Branch or tag deletion** | `delete` |
+| **Branch protection rules** | `branch_protection_rule` |
+| **Collaborator add, remove, or changed** | `member` |
+| **Dependabot alerts** | `dependabot_alert` |
+| **Organizations** | `organization` |
+| **Pull requests** | `pull_request` |
+| **Pushes** | `push` |
+| **Repositories** | `repository` |
+| **Repository rulesets** | `repository_ruleset` |
+| **Teams** | `team` |
+
+Two that are easy to tick by mistake: **Branch protection configurations** is a
+different event from **Branch protection rules**, and **Dependabot alerts** is
+not the same as **Repository vulnerability alerts**, which is the deprecated
+predecessor. Neither wrong choice reports an error; the app simply never sees
+the event.
+
+**Dependabot alerts** is only needed for the "email me when Dependabot finds a
 vulnerability" toggle on the Vulnerabilities tab. Without it that toggle can be
 switched on and will never send anything: GitHub simply never delivers the
 event, so nothing errors and nothing arrives. The tab itself does not depend on
 it — it reads alerts from the API.
+
+Ticking it does not send anything for alerts that already exist. The event fires
+when an alert is *created*, so the first email arrives with the next new
+vulnerability, not for the backlog already in the table.
 
 **These are the organization webhook's events, not the GitHub App's.** The App
 subscribes to none; every delivery this app receives comes from the webhook
