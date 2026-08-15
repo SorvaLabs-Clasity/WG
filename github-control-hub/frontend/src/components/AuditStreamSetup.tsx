@@ -3,6 +3,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiGet, apiPost, apiDelete } from "../api/client";
 import { usePermissions } from "../hooks/usePermissions";
 
+interface SetupResult {
+  roleArn: string;
+  bucket: string;
+  createdProvider: boolean;
+  createdRole: boolean;
+}
+
 interface AuditStreamStatus {
   configured: boolean;
   enterprise: string | null;
@@ -66,9 +73,18 @@ export default function AuditStreamSetup() {
     onError: (e: any) => setError(e?.message || "Could not turn it off."),
   });
 
+  /**
+   * Returns what it created, and that is what the next screen is built from.
+   *
+   * Not the refetched status: IAM is eventually consistent, so a GetRole issued
+   * straight after CreateRole can answer NoSuchEntity. Trusting the refetch
+   * meant a successful setup could render as "not connected" and drop somebody
+   * back to the form they had just completed, with no sign of the half still
+   * left to do.
+   */
   const setup = useMutation({
     mutationFn: (enterprise: string) =>
-      apiPost<AuditStreamStatus>("/activity/audit-stream", { enterprise }),
+      apiPost<SetupResult>("/activity/audit-stream", { enterprise }),
     onSuccess: () => { setError(""); qc.invalidateQueries({ queryKey: ["audit-stream"] }); },
     onError: (e: any) => setError(e?.message || "Could not set that up."),
   });
@@ -137,6 +153,41 @@ export default function AuditStreamSetup() {
     </div>
   );
 
+  const GitHubStep = ({ bucket, roleArn }: { bucket: string; roleArn: string }) => (
+    <>
+      <p className="text-sm mt-3 font-semibold">
+        Enterprise settings → Audit log → Streaming → Amazon S3
+      </p>
+      <Copyable label="Bucket" value={bucket} />
+      <Copyable label="Role ARN" value={roleArn} />
+      <p className="text-xs mt-3 text-gray-500 dark:text-slate-400">
+        Choose <strong>OpenID Connect</strong> as the authentication method. GitHub sends a test
+        event on save; if it succeeds, batches start arriving and this page fills in.
+      </p>
+    </>
+  );
+
+  // Just set up. Built from what the call returned rather than from a refetch,
+  // so the second half is shown even while IAM is still catching up.
+  if (setup.isSuccess && setup.data) {
+    return (
+      <div className="max-w-xl mx-auto text-left">
+        <p className="font-semibold text-green-700 dark:text-green-400 text-center">
+          AWS side done — one step left, and it is not in this app
+        </p>
+        <p className="text-sm mt-2 text-center">
+          The role exists and trusts your enterprise. Nothing will arrive until an
+          <strong> enterprise owner</strong> switches streaming on in GitHub:
+        </p>
+        <GitHubStep bucket={setup.data.bucket} roleArn={setup.data.roleArn} />
+        <button onClick={() => setup.reset()}
+          className="mt-4 text-xs font-semibold text-gh-blue hover:underline">
+          Done — check status
+        </button>
+      </div>
+    );
+  }
+
   // Set up in AWS, and objects are arriving. Nothing left to do.
   if (status?.configured && status.receiving) {
     return (
@@ -163,15 +214,7 @@ export default function AuditStreamSetup() {
           The role exists and trusts <strong>{status.enterprise}</strong>, but nothing has arrived
           yet. An enterprise owner has to switch streaming on, once, in a browser:
         </p>
-        <p className="text-sm mt-3 font-semibold">
-          Enterprise settings → Audit log → Streaming → Amazon S3
-        </p>
-        <Copyable label="Bucket" value={status.bucket} />
-        <Copyable label="Role ARN" value={status.roleArn ?? ""} />
-        <p className="text-xs mt-3 text-gray-500 dark:text-slate-400">
-          Choose <strong>OpenID Connect</strong> as the authentication method. GitHub sends a test
-          event on save; if it succeeds, batches start arriving and this page fills in.
-        </p>
+        <GitHubStep bucket={status.bucket} roleArn={status.roleArn ?? ""} />
         <details className="mt-4">
           <summary className="text-xs font-semibold cursor-pointer text-gh-blue">
             Point it at a different enterprise
@@ -200,9 +243,19 @@ export default function AuditStreamSetup() {
       </p>
       <p className="text-sm mt-2 text-center">
         GitHub can stream your enterprise's audit log into this account, and it appears here.
-        Setting it up creates two things in AWS: an OIDC provider for GitHub's audit-log issuer,
-        and a role that may write to one bucket and nothing else.
       </p>
+      <div className="mt-3 rounded-md bg-slate-50 dark:bg-white/[0.04] px-3 py-2 text-sm">
+        <p className="font-semibold text-gh-textBase dark:text-slate-200">This takes two steps</p>
+        <p className="mt-1 text-gray-600 dark:text-slate-400">
+          <strong>1. Here.</strong> Creates an OIDC provider for GitHub's audit-log issuer and a
+          role that may write to one bucket and nothing else.
+        </p>
+        <p className="mt-1 text-gray-600 dark:text-slate-400">
+          <strong>2. In GitHub</strong>, by an enterprise owner — switching streaming on and
+          pointing it at that bucket. This app cannot do that part, and nothing arrives until
+          somebody does. You will get the bucket and role to paste once step 1 finishes.
+        </p>
+      </div>
       <div className="flex gap-2 mt-4">
         <input value={slug} onChange={e => setSlug(e.target.value)}
           placeholder="enterprise slug" className={inputClass} />
