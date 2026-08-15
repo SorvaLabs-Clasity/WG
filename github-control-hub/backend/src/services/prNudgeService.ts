@@ -115,6 +115,20 @@ export function blockReason(pr: PullRequest): BlockReason {
   if (pr.mergeable === "CONFLICTING") return "conflict";
   if (pr.reviewDecision === "CHANGES_REQUESTED") return "changes-requested";
   if (pr.reviewDecision === "REVIEW_REQUIRED") return "needs-approval";
+
+  // Requested but not required still counts as waiting on review — but only
+  // where GitHub has no opinion at all.
+  //
+  // reviewDecision is null when branch protection does not demand an approval,
+  // even with reviewers sitting on the request, so an unprotected repository
+  // reads as "ready to merge" while somebody plainly waits on a review they
+  // asked for. Chasing the author there tells the one person not holding it up.
+  //
+  // Restricted to null on purpose. APPROVED means the requirement is already
+  // satisfied; a second reviewer who was also asked is not blocking anything,
+  // and chasing them would nag someone whose review is not needed. Two existing
+  // tests caught that when this was first written without the guard.
+  if (pr.reviewDecision === null && pendingReviewers(pr).length > 0) return "needs-approval";
   if (pr.checksState === "FAILURE" || pr.checksState === "ERROR") return "checks-failing";
   if (pr.checksState === "PENDING") return "blocked";
   // APPROVED, or a repository that requires no review at all.

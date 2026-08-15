@@ -33,6 +33,16 @@ never chased.
 Reviewers who have already approved are never named. Neither is the author when
 the block is missing approvals — they cannot approve their own pull request.
 
+A reviewer who was **requested but is not required** still counts as waiting on
+review. GitHub reports no review decision at all when branch protection does not
+demand an approval, so an unprotected repository reads as "ready to merge" while
+somebody plainly waits on a review they asked for — and chasing the author there
+names the one person who is not holding it up.
+
+That applies only where GitHub has no opinion. Once a pull request is approved
+the requirement is met, and a second reviewer who was also asked is not blocking
+anything; chasing them would nag somebody whose review is not needed.
+
 A `COMMENTED` review is not a verdict. Treating "looks good!" as one would
 silence a pull request that is genuinely still waiting.
 

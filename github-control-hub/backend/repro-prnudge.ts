@@ -144,8 +144,47 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       blockReason(pr({ reviewDecision: "APPROVED", checksState: "FAILURE" })) === "checks-failing");
     check("  approved and green is ready",
       blockReason(pr({ reviewDecision: "APPROVED", checksState: "SUCCESS" })) === "ready");
-    check("  and a repository requiring no review at all is also ready",
+    check("  and a repository requiring no review at all, with nobody asked, is ready",
       blockReason(pr({ reviewDecision: null, checksState: "SUCCESS" })) === "ready");
+
+    // The live case that prompted this. A repository with no protection rule
+    // reports reviewDecision: null even with a reviewer sitting on the request,
+    // so it read as "ready to merge" and would have chased the author — the one
+    // person not holding it up.
+    check("  but a requested reviewer who has not reviewed is still waiting on review",
+      blockReason(pr({
+        reviewDecision: null, checksState: "SUCCESS",
+        requestedReviewers: ["bob"],
+      })) === "needs-approval",
+      "an unprotected repository reads as ready while somebody waits on a review");
+
+    check("  and once they review, it is ready again",
+      blockReason(pr({
+        reviewDecision: null, checksState: "SUCCESS",
+        requestedReviewers: ["bob"], reviews: [{ login: "bob", state: "APPROVED" }],
+      })) === "ready");
+
+    // APPROVED means the requirement is met. Somebody else who was also asked
+    // is not blocking anything, and chasing them nags a person whose review is
+    // not needed.
+    check("  an extra reviewer on an approved pull request is not blocking it",
+      blockReason(pr({
+        reviewDecision: "APPROVED", checksState: "SUCCESS",
+        requestedReviewers: ["bob", "carol"], reviews: [{ login: "carol", state: "APPROVED" }],
+      })) === "ready",
+      "chasing bob would nag somebody whose review is not required");
+
+    check("  a conflict still outranks a pending reviewer",
+      blockReason(pr({
+        reviewDecision: null, mergeable: "CONFLICTING", requestedReviewers: ["bob"],
+      })) === "conflict");
+
+    const t = nudgeTargets(pr({
+      author: "alice", reviewDecision: null, checksState: "SUCCESS",
+      requestedReviewers: ["bob"],
+    }));
+    check("  and it chases the reviewer, not the author",
+      t.targets.join() === "bob", t);
   }
 
   // ── who gets chased ─────────────────────────────────────────────────
