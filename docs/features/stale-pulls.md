@@ -113,13 +113,25 @@ explained rather than looking like the feature failing.
 
 ## Cost
 
-One GraphQL query for the whole organization, including reviews, commits,
-mergeability and check state. The REST equivalent is a list call plus three
-requests per pull request: at fifty open, over a hundred and fifty requests for
-one screen.
+Measured against the live organization, not estimated.
 
-The pass runs on the alarm evaluator's existing five-minute tick and is gated by
-its own seven-day interval, so one clock exists rather than two.
+**GitHub API.** One GraphQL sweep costs **2 points**, and the allowance is
+**12,500 points an hour**. At a five-minute tick that is 24 points an hour —
+**0.19%** of the budget. The REST allowance (15,000/hour) is touched only when a
+reminder is actually posted: one list, one delete, one create.
+
+The REST equivalent of that sweep would be a list call plus three requests per
+pull request — reviews, commits and mergeability are separate endpoints — so
+fifty open pull requests would cost over a hundred and fifty requests per tick
+rather than one query worth two points.
+
+**No Actions minutes are used at all.** This makes API calls; it never runs a
+workflow, so nothing is billed against the Actions allowance.
+
+**AWS.** The evaluator averages **2.7 seconds** at 512 MB, using 150 MB. At a
+five-minute tick that is 8,640 invocations a month, roughly **$0.20**. The pass
+shares an existing Lambda and schedule, so it adds no new AWS resource — the
+only marginal cost is the extra seconds those invocations run for.
 
 ## Testing it
 

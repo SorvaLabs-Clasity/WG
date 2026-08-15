@@ -204,9 +204,7 @@ export function step(runtime: AlarmRuntime, breaching: boolean): { runtime: Alar
  * fifteen produces a fifteen-minute alarm that reads as ten everywhere in the
  * app. cdk-stack.ts owns the rule and must match; repro-alarms.ts asserts both.
  */
-// TESTING: 1 minute, which is EventBridge's floor — rate(10 seconds) is
-// rejected outright as an invalid expression. Set back to 5 with STALE_SECONDS.
-export const TICK_MINUTES = 1;
+export const TICK_MINUTES = 5;
 
 /**
  * Minutes between evaluations, by what the widget actually reads.
@@ -243,9 +241,7 @@ export function intervalFor(widget: { type: string; presetId?: string }): number
  * the drift compounds. Two minutes is longer than the jitter and far shorter
  * than the shortest interval, so it can only ever pull a check slightly early.
  */
-// Necessarily shorter than one tick, so a check cannot come due before its
-// interval has elapsed. Turned down alongside the tick.
-export const DUE_TOLERANCE_MS = 30 * 1000;
+export const DUE_TOLERANCE_MS = 2 * 60 * 1000;
 
 export function isDue(lastCheckedAt: string | undefined, intervalMinutes: number, now: number): boolean {
   if (!lastCheckedAt) return true;

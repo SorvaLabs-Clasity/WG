@@ -526,7 +526,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     new events.Rule(this, "AlarmSchedule", {
       ruleName: `${stackPrefix}-alarm-schedule`,
       description: "Evaluates widget alarms that are due",
-      schedule: events.Schedule.rate(cdk.Duration.minutes(1)),
+      schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
       targets: [new targets.LambdaFunction(alarmFn)],
     });
 

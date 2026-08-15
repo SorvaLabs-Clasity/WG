@@ -14,19 +14,20 @@
  * How long a pull request must sit without a commit before it is chased, and
  * how long between one reminder and the next.
  *
- * ───────────────────────────────────────────────────────────────────────
- *  TESTING: currently 10 seconds. Set back to SEVEN_DAYS when finished.
- * ───────────────────────────────────────────────────────────────────────
- *
  * One constant, in the code, governing the scheduled pass and the manual one
  * alike. It was briefly an environment variable, which was wrong twice over:
  * the scheduled pass runs in a Lambda that never saw a value set locally, so
- * changing it moved the button and nothing else — and how often people are
- * chased is a product decision, not a deployment detail.
+ * changing it moved the manual button and nothing else — and how often people
+ * are chased is a product decision, not a deployment detail.
+ *
+ * To exercise the behaviour in seconds rather than fortnights, set
+ * STALE_SECONDS to 10 and deploy. The page shows a banner and the test suite
+ * prints a note while it is anything other than seven days, so it cannot be
+ * left turned down unnoticed.
  */
 export const SEVEN_DAYS = 7 * 86_400;
 
-export const STALE_SECONDS = 10;
+export const STALE_SECONDS = SEVEN_DAYS;
 
 /** The same threshold in days, for code and copy that still talk in days. */
 export const STALE_DAYS = STALE_SECONDS / 86_400;
