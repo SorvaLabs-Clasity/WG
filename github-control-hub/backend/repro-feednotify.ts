@@ -16,6 +16,7 @@ import {
   notifyRenovatePr, notifyDependabotAlert, isConfiguredBot, buildDigest, flushPending,
   type FeedNotifyDeps, type PendingRow,
 } from "./src/alarms/feedNotify";
+import { SUBJECT_MAX } from "./src/alarms/message";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -355,6 +356,61 @@ function deps(over: Partial<{
       d.body.includes("the single-item body"), d.body);
     check("  and still sorts critical above low",
       d.body.indexOf("qqq-crit-pkg") < d.body.indexOf("zzz-low-pkg"), d.body);
+  }
+
+  // ── what SNS will actually accept ──────────────────────────────────
+  {
+    // The digest builds its own subject instead of rendering a template, so it
+    // bypassed the sanitiser every other subject goes through. SNS rejects a
+    // subject over 99 characters outright, and a rejected publish leaves the
+    // rows pending by design — so the effect is a digest retried every tick
+    // forever and never delivered. Silent, and permanent.
+    const label = { singular: "alert", plural: "alerts" };
+    const rendered = { subject: "s", body: "b" };
+    const items = Array.from({ length: 14 }, (_, i) => ({
+      item: { package: `pkg-${i}`, severity: "high", url: "https://x" }, occurredAt: `t${i}`,
+    }));
+
+    // Long enough that the unsanitised subject is over the limit rather than
+    // merely near it. The first version of this used a 79-character name and a
+    // six-character label, which totalled 95 — under the cap, so it passed with
+    // the sanitiser removed and proved nothing.
+    const longRepo =
+      "a-fairly-long-organization-name/an-unusually-long-repository-name-for-one-small-service";
+    const rawLength = `[14] ${longRepo}: 14 ${label.plural}`.length;
+    check("the fixture is actually over the limit before sanitising",
+      rawLength > SUBJECT_MAX, { rawLength, max: SUBJECT_MAX });
+
+    const d = buildDigest(items, rendered, label, longRepo);
+    check("a long repository name cannot produce a subject SNS will refuse",
+      d.subject.length <= SUBJECT_MAX,
+      { length: d.subject.length, max: SUBJECT_MAX, subject: d.subject });
+    check("  and the subject is still ASCII with no newlines",
+      /^[\x20-\x7E]+$/.test(d.subject), d.subject);
+
+    const weird = buildDigest(items, rendered, label, "org/repo\u2014name\nsecond line");
+    check("  a repository name carrying newlines or non-ASCII is cleaned",
+      /^[\x20-\x7E]+$/.test(weird.subject) && !weird.subject.includes("\n"),
+      weird.subject);
+
+    // A monorepo being switched on can raise hundreds at once. SNS refuses a
+    // message over 256 KB, which is the same permanent failure by another route.
+    const huge = Array.from({ length: 4000 }, (_, i) => ({
+      item: {
+        package: `some-fairly-long-package-name-${i}`,
+        severity: "high",
+        url: `https://github.com/org/repo/security/dependabot/${i}`,
+      },
+      occurredAt: `t${i}`,
+    }));
+    const big = buildDigest(huge, rendered, label, "org/repo");
+    check("a very large digest stays inside the SNS message limit",
+      Buffer.byteLength(big.body, "utf8") < 256_000,
+      Buffer.byteLength(big.body, "utf8"));
+    check("  and says how many it left out rather than silently dropping them",
+      /and \d+ more/.test(big.body), big.body.slice(-200));
+    check("  while still naming the true total at the top",
+      big.body.startsWith("4000 alerts in org/repo"), big.body.slice(0, 40));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

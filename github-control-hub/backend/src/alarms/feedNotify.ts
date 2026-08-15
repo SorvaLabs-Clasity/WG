@@ -1,4 +1,4 @@
-import { buildMessage, formatTimestamp } from "./message";
+import { buildMessage, formatTimestamp, sanitizeSubject } from "./message";
 import { meetsMinimumSeverity } from "./evaluate";
 
 /**
@@ -156,7 +156,16 @@ export function buildDigest(
   });
 
   const n = items.length;
-  const subject = `[${n}] ${repo}: ${n} ${n === 1 ? label.singular : label.plural}`;
+  // Through the same sanitiser every other subject goes through. This one is
+  // built here rather than rendered from a template, so it missed it: an
+  // organization and repository name together can exceed SNS's 99-character
+  // limit, and SNS rejects the publish outright. That failure leaves the rows
+  // pending by design, so the effect would be a digest retried every tick
+  // forever and never delivered.
+  const subject = sanitizeSubject(
+    `[${n}] ${repo}: ${n} ${n === 1 ? label.singular : label.plural}`,
+    `${n} new ${n === 1 ? label.singular : label.plural}`,
+  );
 
   const lines = sorted.map(({ item }) => {
     const sev = item.severity ? `[${item.severity}] ` : "";
@@ -164,10 +173,22 @@ export function buildDigest(
     return `  ${sev}${what}${item.url ? `\n    ${item.url}` : ""}`;
   });
 
+  // SNS refuses a message over 256 KB. Enabling Dependabot on a monorepo can
+  // raise hundreds of alerts at once, and a truncated list that says so is far
+  // better than a publish that fails and retries forever.
+  const BODY_MAX = 200_000;
+  let shown = lines;
+  let omitted = 0;
+  while (shown.join("\n").length > BODY_MAX && shown.length > 1) {
+    shown = shown.slice(0, Math.floor(shown.length / 2));
+    omitted = lines.length - shown.length;
+  }
+
   const body =
     `${n} ${n === 1 ? label.singular : label.plural} in ${repo}:\n\n` +
-    `${lines.join("\n")}\n\n` +
-    `— — —\n\n${rendered.body}`;
+    `${shown.join("\n")}\n` +
+    (omitted ? `\n  …and ${omitted} more, not listed to keep this email deliverable.\n` : "") +
+    `\n— — —\n\n${rendered.body}`;
 
   return { subject, body };
 }
