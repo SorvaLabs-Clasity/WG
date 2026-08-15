@@ -83,7 +83,7 @@ export interface SecurityNotifySettings {
   updatedAt?: string;
 }
 
-type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification;
+type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState;
 
 const TABLE = () => tableName("ALARMS_TABLE");
 
@@ -563,6 +563,97 @@ export async function markPendingSent(ids: string[]): Promise<void> {
     if (!row || row.kind !== "pending" || row.sentAt) continue;
     await put({ ...row, sentAt: now });
   }
+}
+
+// ── stale pull requests: nudge history and pauses ─────────────────────
+//
+// One row per pull request, holding both what we have sent and what an admin
+// has silenced. They are read and written together on every pass, so splitting
+// them would buy a second round trip and a chance to disagree.
+//
+// The TTL is refreshed on every write. A pull request being nudged keeps its
+// row alive indefinitely; once it merges nothing writes again and the row ages
+// out. Long enough that a pause set today survives six months of silence,
+// because a pause quietly expiring is the failure people would never forgive.
+
+export interface PrState {
+  id: string;
+  kind: "pr-state";
+  repo: string;
+  number: number;
+  /** When the last nudge was posted. Null until the first one. */
+  lastNudgedAt?: string;
+  /** The sticky comment, so the next nudge can remove it before posting. */
+  lastCommentId?: number;
+  /** How many have been sent, purely so the comment can say so. */
+  nudgeCount?: number;
+  /** Admin has silenced this pull request entirely. */
+  paused?: boolean;
+  /** Admin has silenced these specific people on this pull request. */
+  pausedLogins?: string[];
+  pausedBy?: string;
+  pausedAt?: string;
+  ttl: number;
+}
+
+const PR_STATE_TTL_DAYS = 180;
+
+export function prStateId(repo: string, number: number): string {
+  return `pr-state#${repo}#${number}`;
+}
+
+export async function getPrState(repo: string, number: number): Promise<PrState | undefined> {
+  const found = await getById<PrState>(prStateId(repo, number));
+  return found?.kind === "pr-state" ? found : undefined;
+}
+
+export async function listPrStates(): Promise<PrState[]> {
+  return (await allRecords()).filter(r => r.kind === "pr-state") as PrState[];
+}
+
+async function savePrState(row: PrState): Promise<void> {
+  await put({ ...row, ttl: Math.floor(Date.now() / 1000) + PR_STATE_TTL_DAYS * 86_400 });
+}
+
+export async function recordNudge(
+  repo: string, number: number, commentId: number | undefined,
+): Promise<void> {
+  const existing = await getPrState(repo, number);
+  await savePrState({
+    ...(existing ?? { id: prStateId(repo, number), kind: "pr-state", repo, number, ttl: 0 }),
+    lastNudgedAt: new Date().toISOString(),
+    lastCommentId: commentId,
+    nudgeCount: (existing?.nudgeCount ?? 0) + 1,
+  });
+}
+
+export async function setPrPause(
+  repo: string, number: number,
+  data: { paused?: boolean; pausedLogins?: string[] },
+  actor: string,
+): Promise<PrState> {
+  const existing = await getPrState(repo, number)
+    ?? { id: prStateId(repo, number), kind: "pr-state" as const, repo, number, ttl: 0 };
+  const updated: PrState = {
+    ...existing,
+    ...(data.paused !== undefined ? { paused: data.paused } : {}),
+    ...(data.pausedLogins !== undefined ? { pausedLogins: data.pausedLogins } : {}),
+    pausedBy: actor,
+    pausedAt: new Date().toISOString(),
+  };
+  await savePrState(updated);
+
+  const what = updated.paused
+    ? "all reminders paused"
+    : (updated.pausedLogins?.length
+        ? `reminders paused for ${updated.pausedLogins.join(", ")}`
+        : "reminders resumed");
+  await logActivity(
+    "config.updated" as any, actor, repo, `pr#${number}`,
+    `${repo}#${number}: ${what}`,
+    { repo, number, paused: updated.paused, pausedLogins: updated.pausedLogins }, "app",
+  );
+  return updated;
 }
 
 // ── test seam ──

@@ -266,3 +266,94 @@ export async function fetchOpenPrs(
 
   return { prs, truncated };
 }
+
+// ── the nudge itself ──────────────────────────────────────────────────
+//
+// One sticky comment per pull request: the previous one is deleted and a fresh
+// one posted, so the conversation carries exactly one reminder however many
+// cycles have passed. A year of weekly nudges is one comment, not fifty-two.
+//
+// Deleted and reposted rather than edited, because editing a comment notifies
+// nobody. The notification is the entire point, and GitHub only sends one for a
+// new comment — so an edit would leave a tidy thread that reaches no one.
+
+const MARKER = "<!-- github-control-hub:stale-pr -->";
+
+const REASON_TEXT: Record<BlockReason, string> = {
+  "ready": "This is approved and green — it just needs merging.",
+  "needs-approval": "This is waiting on review.",
+  "changes-requested": "Changes were requested and have not been addressed.",
+  "draft": "This is still a draft.",
+  "conflict": "This has conflicts with its base branch.",
+  "checks-failing": "Checks are failing.",
+  "blocked": "This is blocked from merging.",
+};
+
+export function buildNudgeComment(
+  pr: PullRequest,
+  reason: BlockReason,
+  targets: string[],
+  idleDays: number,
+  nudgeNumber: number,
+): string {
+  const mentions = targets.map(t => `@${t}`).join(" ");
+  const days = Math.floor(idleDays);
+  const nth = nudgeNumber > 1 ? ` This is reminder ${nudgeNumber}.` : "";
+
+  return [
+    MARKER,
+    `**No commits for ${days} days.**${nth}`,
+    "",
+    `${REASON_TEXT[reason]} ${mentions}`,
+    "",
+    `<sub>Posted by GitHub Control Hub. This reminder replaces itself rather than `
+      + `adding a new comment each time. An organization admin can pause it.</sub>`,
+  ].join("\n");
+}
+
+export interface NudgeDeps {
+  listComments: (repo: string, number: number) => Promise<Array<{ id: number; body: string; authorIsApp: boolean }>>;
+  deleteComment: (repo: string, id: number) => Promise<void>;
+  postComment: (repo: string, number: number, body: string) => Promise<number | undefined>;
+}
+
+/**
+ * Replace this pull request's reminder with a fresh one.
+ *
+ * The old comment is found by marker rather than only by stored id: a stored id
+ * is lost if the row expires or somebody deletes the comment by hand, and
+ * without the marker the next nudge would add a second comment rather than
+ * replacing the first — which is exactly the pile-up this design exists to
+ * avoid.
+ *
+ * Deleting first, then posting. The other order leaves two comments visible if
+ * the delete fails, and a duplicate reminder is worse than a brief gap.
+ */
+export async function postStickyNudge(
+  deps: NudgeDeps,
+  pr: PullRequest,
+  body: string,
+  knownCommentId?: number,
+): Promise<{ commentId?: number; removed: number }> {
+  let removed = 0;
+
+  let stale: number[] = [];
+  try {
+    const comments = await deps.listComments(pr.repo, pr.number);
+    stale = comments.filter(c => c.authorIsApp && c.body.includes(MARKER)).map(c => c.id);
+  } catch {
+    // Could not read the thread. Fall back to the stored id so a failure here
+    // does not turn into a duplicate comment.
+    if (knownCommentId) stale = [knownCommentId];
+  }
+
+  for (const id of stale) {
+    try { await deps.deleteComment(pr.repo, id); removed++; }
+    catch { /* already gone, or not ours to delete */ }
+  }
+
+  const commentId = await deps.postComment(pr.repo, pr.number, body);
+  return { commentId, removed };
+}
+
+export { MARKER as NUDGE_MARKER };

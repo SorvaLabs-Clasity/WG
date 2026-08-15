@@ -20,7 +20,8 @@ import path from "path";
 import {
   daysSinceLastCommit, isStale, hasReviewed, pendingReviewers, blockReason,
   nudgeTargets, isNudgeDue, sortByStaleness, fetchOpenPrs, STALE_DAYS,
-  type PullRequest,
+  buildNudgeComment, postStickyNudge, NUDGE_MARKER,
+  type PullRequest, type NudgeDeps,
 } from "./src/services/prNudgeService";
 
 let failures = 0;
@@ -269,6 +270,134 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     check("the only search this issues is restricted to open",
       /is:pr is:open/.test(code) && !/is:closed|state:all/.test(code),
       "a closed pull request must never appear");
+  }
+
+  // ── one comment, not fifty-two ──────────────────────────────────────
+  {
+    // The failure this design exists to prevent: a year of weekly reminders
+    // leaving fifty-two comments, each mentioning nine people, burying the
+    // actual conversation under a wall of bot noise.
+    const posted: string[] = [];
+    const deleted: number[] = [];
+    let nextId = 100;
+    let thread: Array<{ id: number; body: string; authorIsApp: boolean }> = [];
+
+    const deps: NudgeDeps = {
+      listComments: async () => thread,
+      deleteComment: async (_r, id) => {
+        deleted.push(id);
+        thread = thread.filter(c => c.id !== id);
+      },
+      postComment: async (_r, _n, body) => {
+        posted.push(body);
+        const id = nextId++;
+        thread.push({ id, body, authorIsApp: true });
+        return id;
+      },
+    };
+
+    const p = pr({ reviewDecision: "REVIEW_REQUIRED", requestedReviewers: ["bob", "carol"] });
+
+    // A human comment that must survive every cycle.
+    thread.push({ id: 1, body: "I will look at this tomorrow", authorIsApp: false });
+
+    let lastId: number | undefined;
+    for (let cycle = 1; cycle <= 52; cycle++) {
+      const body = buildNudgeComment(p, "needs-approval", ["bob", "carol"], 7 * cycle, cycle);
+      const res = await postStickyNudge(deps, p, body, lastId);
+      lastId = res.commentId;
+    }
+
+    const ours = thread.filter(c => c.authorIsApp);
+    check("fifty-two weekly reminders leave exactly one comment",
+      ours.length === 1, `${ours.length} bot comments remain`);
+    check("  and fifty-one were removed", deleted.length === 51, deleted.length);
+    check("  while the human comment is untouched",
+      thread.some(c => !c.authorIsApp && c.body.startsWith("I will look")),
+      thread.map(c => c.body.slice(0, 20)));
+    check("  the surviving one is the newest",
+      ours[0].body.includes("reminder 52"), ours[0].body.slice(0, 60));
+  }
+
+  // ── the comment itself ──────────────────────────────────────────────
+  {
+    const p = pr();
+    const body = buildNudgeComment(p, "needs-approval", ["bob", "carol"], 9.7, 1);
+    check("the comment mentions everyone being chased",
+      body.includes("@bob") && body.includes("@carol"), body);
+    check("  says how long it has been idle, in whole days",
+      body.includes("9 days") && !body.includes("9.7"), body);
+    check("  says what is blocking it", /waiting on review/i.test(body), body);
+    check("  and carries the marker that lets the next one find it",
+      body.includes(NUDGE_MARKER), body);
+
+    check("  the first reminder does not call itself the first",
+      !/reminder 1\b/.test(body), body);
+    check("  but later ones say which they are",
+      buildNudgeComment(p, "ready", ["alice"], 30, 5).includes("reminder 5"));
+
+    const ready = buildNudgeComment(p, "ready", ["alice"], 8, 1);
+    check("  a ready pull request is told it just needs merging",
+      /needs merging/i.test(ready) && ready.includes("@alice"), ready);
+  }
+
+  // ── the old comment is found even without a stored id ───────────────
+  {
+    // A stored id is lost when the state row expires or somebody deletes the
+    // comment by hand. Without finding it by marker the next nudge would add a
+    // second comment rather than replacing the first.
+    const deleted: number[] = [];
+    const thread = [
+      { id: 7, body: `${NUDGE_MARKER}\nan older reminder`, authorIsApp: true },
+      { id: 8, body: "unrelated bot comment with no marker", authorIsApp: true },
+      { id: 9, body: "a person talking", authorIsApp: false },
+      // GitHub's quote-reply copies the whole body, marker included. Matching
+      // on the marker alone would delete somebody's comment because they
+      // replied to the reminder.
+      { id: 10, body: `> ${NUDGE_MARKER}\n> old reminder\n\nI am on it`, authorIsApp: false },
+    ];
+    const deps: NudgeDeps = {
+      listComments: async () => thread,
+      deleteComment: async (_r, id) => { deleted.push(id); },
+      postComment: async () => 10,
+    };
+    await postStickyNudge(deps, pr(), "new body", undefined);
+    check("the previous reminder is found by marker with no stored id",
+      deleted.join() === "7", deleted);
+    check("  and another bot's comment is left alone",
+      !deleted.includes(8), deleted);
+    check("  as is a person's", !deleted.includes(9), deleted);
+    check("  even when they quoted the reminder, marker and all",
+      !deleted.includes(10), deleted);
+  }
+
+  // ── a failure to read the thread must not duplicate ─────────────────
+  {
+    const deleted: number[] = [];
+    const deps: NudgeDeps = {
+      listComments: async () => { throw new Error("500"); },
+      deleteComment: async (_r, id) => { deleted.push(id); },
+      postComment: async () => 11,
+    };
+    await postStickyNudge(deps, pr(), "body", 42);
+    check("if the thread cannot be read, the stored id is still removed",
+      deleted.join() === "42", deleted);
+
+    // And a delete that fails must not stop the reminder being posted.
+    let postedAnyway = false;
+    let threw = false;
+    try {
+      await postStickyNudge({
+        listComments: async () => [{ id: 5, body: NUDGE_MARKER, authorIsApp: true }],
+        deleteComment: async () => { throw new Error("404"); },
+        postComment: async () => { postedAnyway = true; return 12; },
+      }, pr(), "body");
+    } catch { threw = true; }
+    // Caught here on purpose. An uncaught throw ends the process, which prints
+    // no failures at all and reads as a pass — a mutation removing the internal
+    // try/catch scored zero until this was wrapped.
+    check("  and a delete that fails does not stop the new one posting",
+      postedAnyway && !threw, { postedAnyway, threw });
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
