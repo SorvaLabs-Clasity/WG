@@ -268,9 +268,8 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   check("  and a group without one does not",
     !needsAdminTeam([at({ id: "a", undoPayload: { action: "delete_branch", params: {} } })]));
 
-  // The point the user raised: admin-team membership says nothing about
-  // whether you can touch a given repo, so repos are grouped and asked about
-  // individually.
+  // Admin-team membership says nothing about whether you can touch a given
+  // repo, so repos are grouped and asked about individually.
   const grouped = reposByLevel([
     at({ id: "1", repo: "acme-api", undoPayload: { action: "delete_protection", params: {} } }),
     at({ id: "2", repo: "acme-web", undoPayload: { action: "recreate_branch", params: {} } }),

@@ -141,6 +141,21 @@ Lambda, so a bug in the one component that must touch unauthenticated bytes
 cannot reach the GitHub App private key. See
 [environment.md](../docs/operations/environment.md).
 
+### Build time
+
+Two variables are read when packaging the desktop app, not at runtime. They name
+the repository the auto-updater checks for new releases:
+
+| Variable | Description |
+|---|---|
+| `UPDATE_REPO_OWNER` | GitHub owner hosting the release artifacts |
+| `UPDATE_REPO_NAME` | Repository under that owner |
+
+Set both before `npm run dist`. Leaving them unset produces an installer whose
+updater points nowhere — it will build and run, and only fail when it looks for
+an update. They are not committed, so a fork or an internal copy publishes to its
+own releases rather than to whichever repository the source was taken from.
+
 ## DynamoDB Tables
 
 All tables are prefixed with the stack name (default: `github-control-hub`):

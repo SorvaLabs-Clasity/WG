@@ -140,9 +140,9 @@ function check(name: string, ok: boolean, got?: unknown) {
   // is not in `repo` at all, and the application's name was being dropped, so
   // two events describing different apps read identically.
   //
-  // The shape is what found those. The values are made up, and must stay made
-  // up — this repository is copied and run against other organizations, and a
-  // captured payload carries usernames, ids and an organization with it.
+  // The shape is what found those. The values are made up and must stay made
+  // up: a payload pasted from a live stream carries usernames, ids and an
+  // organization with it, none of which belong in a repository.
   const real = {
     "@timestamp": 1786693698311,
     action: "integration_installation.repositories_removed",

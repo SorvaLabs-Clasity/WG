@@ -18,8 +18,8 @@ import { awsRegion } from "../utils/region";
  *
  * Fetched once per container rather than per delivery. A fetch per invocation
  * would add latency against GitHub's ten-second budget, cost a call per
- * delivery, and make every webhook depend on an API the work account
- * restricts by SCP.
+ * delivery, and make every webhook depend on an API that an organization's
+ * service control policies may restrict.
  */
 const CACHE_TTL_MS = 15 * 60 * 1000;
 

@@ -1,0 +1,15 @@
+# Deployment-specific names that must never appear in shipped source.
+#
+# Copy to .appsec-forbidden (gitignored) and fill in the identifiers belonging
+# to this deployment: the GitHub org and enterprise slug, the Renovate bot's
+# login, admin usernames, the AWS account alias. One per line, matched
+# case-insensitively as a regular expression against every .ts/.tsx file.
+#
+# This file stays empty of real values so it can be committed. The list itself
+# is deliberately kept out of git: writing the names down in the repository is
+# the thing the check exists to prevent. APPSEC_FORBIDDEN, a comma-separated
+# environment variable, does the same job in CI without a file on disk.
+#
+# Identifiers with a recognizable shape — AWS account ids, GitHub App client
+# ids, tokens, private keys — are matched without configuration and need no
+# entry here.

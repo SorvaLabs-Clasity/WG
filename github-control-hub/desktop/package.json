@@ -79,8 +79,8 @@
     "publish": {
       "provider": "github",
       "private": true,
-      "owner": "SorvaLabs-Clasity",
-      "repo": "WG"
+      "owner": "${env.UPDATE_REPO_OWNER}",
+      "repo": "${env.UPDATE_REPO_NAME}"
     },
     "linux": {
       "target": [

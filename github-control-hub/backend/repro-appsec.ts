@@ -365,16 +365,27 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     files.forEach(walk);
     check("no credential is committed in source", bad.length === 0, bad);
 
-    // Nor the name of one organization.
+    // Nor any deployment-specific identifier.
     //
-    // This repository is copied and run against a different organization, so a
-    // name typed into shipped source travels with the copy. It has happened
-    // twice: the work bot's login reached a UI placeholder, and an org name
-    // reached test fixtures along with two usernames and somebody's email.
-    //
-    // Everything org-specific arrives at runtime — GITHUB_ORG from Secrets
+    // Everything org-specific arrives at runtime: GITHUB_ORG from Secrets
     // Manager, the enterprise slug read back from a trust policy, the Renovate
-    // bot from org-config, the account id from STS.
+    // bot from org-config, the account id from STS. A literal in shipped source
+    // is therefore always a mistake, and it is one that survives a clone.
+    //
+    // Identifiers with a recognizable shape are matched directly below. Names
+    // have no shape, so they come from outside the repo — APPSEC_FORBIDDEN, or
+    // a gitignored .appsec-forbidden, one term per line. Listing them here
+    // would put the very strings this is meant to keep out into the repo.
+    const forbiddenFile = path.join(__dirname, ".appsec-forbidden");
+    const forbidden = [
+      ...(process.env.APPSEC_FORBIDDEN ?? "").split(","),
+      ...(fs.existsSync(forbiddenFile) ? fs.readFileSync(forbiddenFile, "utf8").split("\n") : []),
+    ]
+      .map(t => t.trim())
+      .filter(t => t.length > 0 && !t.startsWith("#"))
+      .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    const nameRe = forbidden.length ? new RegExp(forbidden.join("|"), "i") : null;
+
     const named: string[] = [];
     const scanNames = (p: string) => {
       const full = path.join(ROOT, p);
@@ -384,22 +395,20 @@ const electron = read("github-control-hub/desktop/src/main.ts");
         return;
       }
       if (!/\.(ts|tsx)$/.test(p)) return;
-      // A 12-digit AWS account id, and the specific names that leaked before.
-      // 123456789012 is excluded: it is the account id AWS uses throughout its
-      // own documentation, and it is the right thing to put in a placeholder.
-      // repro-appsec.ts names these patterns in order to look for them.
-      if (/repro-appsec\.ts$/.test(p)) return;
       const src2 = fs.readFileSync(full, "utf8")
-        // Placeholders: AWS's documented example, and any all-one-digit id,
-        // which is what a fixture uses when the value must not look real.
+        // Placeholders first, so they are not reported as real. 123456789012 is
+        // the account id AWS uses throughout its own documentation; an
+        // all-one-digit id is what a fixture uses when the value must not look
+        // real. Both are the right thing to write, so neither should fail this.
         .replace(/\b123456789012\b/g, "")
         .replace(/\b(\d)\1{11}\b/g, "");
-      // GitHub App client ids too: Iv1.xxxxxxxxxxxxxxxx and the newer Iv23...
-      // form. Not secrets, but they name one installation, and one was sitting
-      // in a captured payload in a test fixture.
-      if (/\b\d{12}\b|Sorva|sorva|trx-renovate|RDaou05|Iv1\.(?!0{16})[A-Za-z0-9]{16}|Iv23[A-Za-z0-9]{14,}/.test(src2)) {
-        named.push(p);
-      }
+      // A 12-digit AWS account id, and GitHub App client ids in both the older
+      // dotted form and the newer undotted one. Client ids are not secrets, but
+      // each one names a single installation. An all-zero client id is exempt,
+      // being the obvious placeholder. Note that the description here has to
+      // avoid spelling a matching literal: this check reads its own source.
+      const shaped = /\b\d{12}\b|Iv1\.(?!0{16})[A-Za-z0-9]{16}|Iv23[A-Za-z0-9]{14,}/;
+      if (shaped.test(src2) || nameRe?.test(src2)) named.push(p);
     };
     files.forEach(scanNames);
     for (const dir of alsoScan) {
