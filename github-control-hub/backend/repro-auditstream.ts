@@ -38,7 +38,10 @@ function harness(over: Partial<AuditStreamDeps> = {}) {
     createRole: async (n, t) => { calls.push(`createRole:${n}`); trust = t; return "arn:role"; },
     putRolePolicy: async (n, p) => { calls.push(`putPolicy:${p}`); },
     updateTrustPolicy: async (n, t) => { calls.push(`updateTrust`); trust = t; },
+    listRolePolicies: async () => ["github-control-hub-audit-log-write"],
     deleteRolePolicy: async (n, p) => { calls.push(`deletePolicy:${p}`); },
+    listAttachedRolePolicies: async () => [],
+    detachRolePolicy: async (n, a) => { calls.push(`detach:${a}`); },
     deleteRole: async (n) => { calls.push(`deleteRole:${n}`); trust = null; },
     countBucketObjects: async () => 0,
     ...over,
@@ -230,15 +233,53 @@ function harness(over: Partial<AuditStreamDeps> = {}) {
   }
 
   {
-    // Somebody may have removed the inline policy by hand. Failing there would
-    // leave the role behind and the stream still live.
+    // The bug this replaced: a role created by the old CDK path carries a
+    // CloudFormation-generated policy name. Deleting the name this code would
+    // have guessed removed nothing, and the role deletion then failed with
+    // "must delete policies first" — a message about a different step.
     const { deps, calls, setTrust } = harness({
-      deleteRolePolicy: async () => { throw new Error("NoSuchEntity"); },
+      listRolePolicies: async () => ["AuditLogStreamRoleDefaultPolicy7A1B2C3D"],
     });
     setTrust(trustPolicyFor(ACCOUNT, "acme-ent"));
     const res = await disconnectStream(deps);
-    check("a missing inline policy does not block removing the role",
-      res.removedRole === true, { res, calls });
+    check("policies are found by asking, not by guessing the name",
+      calls.includes("deletePolicy:AuditLogStreamRoleDefaultPolicy7A1B2C3D") && res.removedRole,
+      calls);
+  }
+
+  {
+    // A role can also carry managed policies, which have to be detached rather
+    // than deleted, and block the role deletion just the same.
+    const { deps, calls, setTrust } = harness({
+      listRolePolicies: async () => [],
+      listAttachedRolePolicies: async () => ["arn:aws:iam::aws:policy/ReadOnlyAccess"],
+    });
+    setTrust(trustPolicyFor(ACCOUNT, "acme-ent"));
+    const res = await disconnectStream(deps);
+    check("attached managed policies are detached first",
+      calls.includes("detach:arn:aws:iam::aws:policy/ReadOnlyAccess") && res.removedRole, calls);
+  }
+
+  {
+    // A role with nothing on it still deletes.
+    const { deps, calls, setTrust } = harness({ listRolePolicies: async () => [] });
+    setTrust(trustPolicyFor(ACCOUNT, "acme-ent"));
+    const res = await disconnectStream(deps);
+    check("a role with no policies deletes without a fuss",
+      res.removedRole && !calls.some(c => c.startsWith("deletePolicy")), calls);
+  }
+
+  {
+    // And a genuine failure now surfaces instead of being swallowed and
+    // reappearing later as an unrelated DeleteConflict.
+    const { deps, setTrust } = harness({
+      deleteRolePolicy: async () => { throw new Error("AccessDenied on DeleteRolePolicy"); },
+    });
+    setTrust(trustPolicyFor(ACCOUNT, "acme-ent"));
+    let msg = "";
+    try { await disconnectStream(deps); } catch (e: any) { msg = e.message; }
+    check("a policy delete that genuinely fails reports itself",
+      /DeleteRolePolicy/.test(msg), msg || "the error was swallowed");
   }
 
   {

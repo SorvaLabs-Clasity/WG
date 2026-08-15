@@ -46,7 +46,12 @@ export interface AuditStreamDeps {
   putRolePolicy: (roleName: string, policyName: string, policy: any) => Promise<void>;
   /** Repoints an existing role at a different enterprise. */
   updateTrustPolicy: (roleName: string, trustPolicy: any) => Promise<void>;
+  /** Inline policy names on the role, whoever created them. */
+  listRolePolicies: (roleName: string) => Promise<string[]>;
   deleteRolePolicy: (roleName: string, policyName: string) => Promise<void>;
+  /** ARNs of managed policies attached to the role. */
+  listAttachedRolePolicies: (roleName: string) => Promise<string[]>;
+  detachRolePolicy: (roleName: string, policyArn: string) => Promise<void>;
   deleteRole: (roleName: string) => Promise<void>;
   countBucketObjects: (bucket: string) => Promise<number>;
 }
@@ -224,10 +229,21 @@ export async function disconnectStream(deps: AuditStreamDeps): Promise<Disconnec
     return { removedRole: false, bucket, objectsKept: await deps.countBucketObjects(bucket).catch(() => 0) };
   }
 
-  // AWS refuses to delete a role that still has an inline policy attached, so
-  // the policy goes first. A missing one is not an error — somebody may have
-  // removed it by hand, and failing here would leave the role in place.
-  await deps.deleteRolePolicy(role, `${deps.prefix}-audit-log-write`).catch(() => {});
+  // AWS refuses to delete a role that still carries policies, so everything on
+  // it goes first — found by asking, not by assuming a name.
+  //
+  // Assuming was the bug. A role created by the old CDK path carries a
+  // CloudFormation-generated policy name, so deleting the name this code would
+  // have chosen removed nothing, and the role deletion then failed with
+  // "Cannot delete entity, must delete policies first" — a message about the
+  // wrong step entirely. Swallowing that first failure is what let it surface
+  // three lines later as something unrelated.
+  for (const policyName of await deps.listRolePolicies(role)) {
+    await deps.deleteRolePolicy(role, policyName);
+  }
+  for (const policyArn of await deps.listAttachedRolePolicies(role)) {
+    await deps.detachRolePolicy(role, policyArn);
+  }
   await deps.deleteRole(role);
 
   return { removedRole: true, bucket, objectsKept: await deps.countBucketObjects(bucket).catch(() => 0) };
@@ -241,6 +257,7 @@ export async function liveDeps(accountId: string, prefix: string): Promise<Audit
     ListOpenIDConnectProvidersCommand, CreateOpenIDConnectProviderCommand,
     GetOpenIDConnectProviderCommand, UpdateAssumeRolePolicyCommand,
     DeleteRolePolicyCommand, DeleteRoleCommand,
+    ListRolePoliciesCommand, ListAttachedRolePoliciesCommand, DetachRolePolicyCommand,
   } = await import("@aws-sdk/client-iam");
   const { S3Client, ListObjectsV2Command } = await import("@aws-sdk/client-s3");
 
@@ -288,6 +305,17 @@ export async function liveDeps(accountId: string, prefix: string): Promise<Audit
       await iam.send(new PutRolePolicyCommand({
         RoleName: name, PolicyName: policyName, PolicyDocument: JSON.stringify(policy),
       }));
+    },
+    async listRolePolicies(name) {
+      const r = await iam.send(new ListRolePoliciesCommand({ RoleName: name }));
+      return r.PolicyNames ?? [];
+    },
+    async listAttachedRolePolicies(name) {
+      const r = await iam.send(new ListAttachedRolePoliciesCommand({ RoleName: name }));
+      return (r.AttachedPolicies ?? []).map(p => p.PolicyArn!).filter(Boolean);
+    },
+    async detachRolePolicy(name, policyArn) {
+      await iam.send(new DetachRolePolicyCommand({ RoleName: name, PolicyArn: policyArn }));
     },
     async deleteRolePolicy(name, policyName) {
       await iam.send(new DeleteRolePolicyCommand({ RoleName: name, PolicyName: policyName }));

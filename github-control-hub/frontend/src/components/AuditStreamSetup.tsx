@@ -86,33 +86,55 @@ export default function AuditStreamSetup() {
 
   if (isLoading) return <p className="text-sm">Checking…</p>;
 
-  const OffSwitch = () => confirmOff ? (
-    <div className="mt-4 rounded-md bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
-      <p>
-        This deletes the role GitHub assumes, so no new batches arrive. <strong>The archive is
-        kept</strong> — the bucket and everything already collected stay exactly as they are, and
-        objects still expire on their own after 400 days.
-      </p>
-      <p className="mt-1 text-xs">
-        GitHub's own streaming switch is left alone; it will simply fail to deliver. Turning this
-        back on later restores it.
-      </p>
-      <div className="flex gap-2 mt-3">
-        <button onClick={() => disconnect.mutate()} disabled={disconnect.isPending}
-          className="px-3 py-1.5 text-xs font-semibold rounded-md bg-red-600 text-white hover:opacity-90 disabled:opacity-50">
-          {disconnect.isPending ? "Turning off…" : "Turn off streaming"}
-        </button>
-        <button onClick={() => setConfirmOff(false)}
-          className="px-3 py-1.5 text-xs font-semibold rounded-md border border-gh-border dark:border-slate-600">
-          Cancel
-        </button>
-      </div>
-    </div>
-  ) : (
+  /**
+   * A quiet link, not a red panel wedged into the page.
+   *
+   * The inline version pushed the layout around every time it opened and put a
+   * warning colour on a screen where nothing was wrong yet. Turning a stream
+   * off is a deliberate act, so it asks in a dialog and gets out of the way.
+   */
+  const OffSwitch = () => (
     <button onClick={() => setConfirmOff(true)}
-      className="mt-4 text-xs font-semibold text-red-600 dark:text-red-400 hover:underline">
+      className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:underline">
       Turn off streaming
     </button>
+  );
+
+  const OffDialog = () => !confirmOff ? null : (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-[3px] animate-fade-in"
+        onClick={() => setConfirmOff(false)} />
+      <div className="bg-white dark:bg-slate-900 rounded-[12px] shadow-modal border border-black/10 dark:border-slate-700 w-full max-w-md relative z-10 animate-slide-up text-left">
+        <div className="px-6 py-4 border-b border-gh-border dark:border-slate-700">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">
+            Turn off audit-log streaming?
+          </h3>
+        </div>
+        <div className="px-6 py-5 space-y-3 text-sm text-gh-textBase dark:text-slate-300">
+          <p>
+            This deletes the role GitHub assumes, so no new batches arrive.
+          </p>
+          <p className="rounded-md bg-slate-50 dark:bg-white/[0.04] px-3 py-2">
+            <strong>Everything already collected is kept.</strong> The bucket and its contents stay
+            exactly as they are, and objects still expire on their own after 400 days.
+          </p>
+          <p className="text-xs text-gray-500 dark:text-slate-400">
+            GitHub's own streaming switch is left alone — it will simply fail to deliver. Setting
+            this up again later restores it.
+          </p>
+        </div>
+        <div className="px-6 py-4 border-t border-gh-border dark:border-slate-700 flex justify-end gap-2">
+          <button onClick={() => setConfirmOff(false)}
+            className="px-4 py-2 text-sm font-semibold rounded-md text-gh-textBase dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5">
+            Cancel
+          </button>
+          <button onClick={() => disconnect.mutate()} disabled={disconnect.isPending}
+            className="px-4 py-2 text-sm font-semibold rounded-md bg-red-600 text-white hover:opacity-90 disabled:opacity-50">
+            {disconnect.isPending ? "Turning off…" : "Turn it off"}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 
   // Set up in AWS, and objects are arriving. Nothing left to do.
@@ -124,7 +146,8 @@ export default function AuditStreamSetup() {
           Streaming from <strong>{status.enterprise}</strong>. {status.objectCount}+ batches
           delivered. Rows appear here as GitHub writes them — expect minutes, not seconds.
         </p>
-        <OffSwitch />
+        <div className="mt-3"><OffSwitch /></div>
+        <OffDialog />
       </>
     );
   }
@@ -162,7 +185,8 @@ export default function AuditStreamSetup() {
             </button>
           </div>
         </details>
-        <OffSwitch />
+        <div className="mt-4"><OffSwitch /></div>
+        <OffDialog />
         {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       </div>
     );
