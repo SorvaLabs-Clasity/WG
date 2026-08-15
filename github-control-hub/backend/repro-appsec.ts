@@ -345,6 +345,9 @@ const electron = read("github-control-hub/desktop/src/main.ts");
   {
     const files = ["github-control-hub/backend/src", "github-control-hub/frontend/src",
                    "github-control-hub/desktop/src", "github-control-hub/infra/cdk-stack.ts"];
+    // Test fixtures ship in the repository like everything else, and are where
+    // captured payloads land. They are scanned by the name check below.
+    const alsoScan = ["github-control-hub/backend", "github-control-hub/frontend"];
     const bad: string[] = [];
     const walk = (p: string) => {
       const full = path.join(ROOT, p);
@@ -384,12 +387,26 @@ const electron = read("github-control-hub/desktop/src/main.ts");
       // A 12-digit AWS account id, and the specific names that leaked before.
       // 123456789012 is excluded: it is the account id AWS uses throughout its
       // own documentation, and it is the right thing to put in a placeholder.
-      const src2 = fs.readFileSync(full, "utf8").replace(/\b123456789012\b/g, "");
-      if (/\b\d{12}\b|Sorva|sorva|trx-renovate|RDaou05/.test(src2)) {
+      // repro-appsec.ts names these patterns in order to look for them.
+      if (/repro-appsec\.ts$/.test(p)) return;
+      const src2 = fs.readFileSync(full, "utf8")
+        // Placeholders: AWS's documented example, and any all-one-digit id,
+        // which is what a fixture uses when the value must not look real.
+        .replace(/\b123456789012\b/g, "")
+        .replace(/\b(\d)\1{11}\b/g, "");
+      // GitHub App client ids too: Iv1.xxxxxxxxxxxxxxxx and the newer Iv23...
+      // form. Not secrets, but they name one installation, and one was sitting
+      // in a captured payload in a test fixture.
+      if (/\b\d{12}\b|Sorva|sorva|trx-renovate|RDaou05|Iv1\.(?!0{16})[A-Za-z0-9]{16}|Iv23[A-Za-z0-9]{14,}/.test(src2)) {
         named.push(p);
       }
     };
     files.forEach(scanNames);
+    for (const dir of alsoScan) {
+      for (const e of fs.readdirSync(path.join(ROOT, dir))) {
+        if (/^repro-.*\.ts$/.test(e)) scanNames(path.join(dir, e));
+      }
+    }
     check("  and no shipped source names one organization, bot or account",
       named.length === 0, named);
   }

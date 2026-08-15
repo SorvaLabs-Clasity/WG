@@ -28,11 +28,11 @@ const NOW = new Date("2026-08-14T12:00:00Z");
 
 // ── the two queries ───────────────────────────────────────────────────
 {
-  const q = buildQueries("Acme-Org", "trx-renovate", NOW);
+  const q = buildQueries("Acme-Org", "acme-renovate", NOW);
 
   check("both queries scope to the org and the bot",
-    q.open.includes("org:Acme-Org") && q.open.includes("author:trx-renovate")
-      && q.closed.includes("org:Acme-Org") && q.closed.includes("author:trx-renovate"), q);
+    q.open.includes("org:Acme-Org") && q.open.includes("author:acme-renovate")
+      && q.closed.includes("org:Acme-Org") && q.closed.includes("author:acme-renovate"), q);
 
   check("  open asks only for open", q.open.includes("is:open") && !q.open.includes("is:closed"), q.open);
   check("  and restricts nothing else — an old open PR still counts",
@@ -177,13 +177,13 @@ const NOW = new Date("2026-08-14T12:00:00Z");
     // shows the App's display name with a separate "Bot" label — so the
     // obvious thing to type is the thing search rejects.
     check("the App form is tried first",
-      botCandidates("trx-renovate")[0] === "trx-renovate[bot]", botCandidates("trx-renovate"));
+      botCandidates("acme-renovate")[0] === "acme-renovate[bot]", botCandidates("acme-renovate"));
     check("  and the plain form is still tried",
-      botCandidates("trx-renovate").includes("trx-renovate"), botCandidates("trx-renovate"));
+      botCandidates("acme-renovate").includes("acme-renovate"), botCandidates("acme-renovate"));
     check("  a name already carrying the suffix is not doubled",
-      botCandidates("trx-renovate[bot]")[0] === "trx-renovate[bot]"
-        && !botCandidates("trx-renovate[bot]").some(c => c.includes("[bot][bot]")),
-      botCandidates("trx-renovate[bot]"));
+      botCandidates("acme-renovate[bot]")[0] === "acme-renovate[bot]"
+        && !botCandidates("acme-renovate[bot]").some(c => c.includes("[bot][bot]")),
+      botCandidates("acme-renovate[bot]"));
 
     // Typing the display name must find the App.
     // Matched on the whole token, not a substring: "author:some-user[bot]"
@@ -203,11 +203,11 @@ const NOW = new Date("2026-08-14T12:00:00Z");
       }] : [] };
     };
 
-    const typedPlain = await fetchRenovatePrs(only("trx-renovate[bot]"), "Org", "trx-renovate", NOW);
+    const typedPlain = await fetchRenovatePrs(only("acme-renovate[bot]"), "Org", "acme-renovate", NOW);
     check("typing the display name finds the App behind it",
       !typedPlain.unknownBot && typedPlain.prs.length === 1, typedPlain);
     check("  and reports which login actually matched",
-      typedPlain.resolvedBot === "trx-renovate[bot]", typedPlain.resolvedBot);
+      typedPlain.resolvedBot === "acme-renovate[bot]", typedPlain.resolvedBot);
 
     // And a genuine user account still works.
     const typedUser = await fetchRenovatePrs(only("some-user"), "Org", "some-user", NOW);

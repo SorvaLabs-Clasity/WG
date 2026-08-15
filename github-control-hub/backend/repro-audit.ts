@@ -132,32 +132,36 @@ function check(name: string, ok: boolean, got?: unknown) {
     describe({ action: "repo.access", actor: "carol", repo: "api" }));
 }
 
-// ── a real event, captured from the live stream ───────────────────────
+// ── the shape GitHub actually sends, with invented values ─────────────
 {
-  // Copied verbatim from an object GitHub delivered when a repository was
-  // deleted. Every invented fixture above passed while this one exposed two
-  // gaps: the repository is not in `repo`, and the application's name was
-  // being dropped entirely — so two events describing different apps read
-  // identically.
+  // The field set here is modelled on an object GitHub delivered when a
+  // repository was deleted, because every fixture invented from the
+  // documentation passed while the real shape exposed two gaps: the repository
+  // is not in `repo` at all, and the application's name was being dropped, so
+  // two events describing different apps read identically.
+  //
+  // The shape is what found those. The values are made up, and must stay made
+  // up — this repository is copied and run against other organizations, and a
+  // captured payload carries usernames, ids and an organization with it.
   const real = {
     "@timestamp": 1786693698311,
     action: "integration_installation.repositories_removed",
     actor: "alice",
-    actor_id: 83796134,
-    application_client_id: "Iv23lihcaOcBUj3kaytI",
+    actor_id: 1000001,
+    application_client_id: "Iv1.0000000000000000",
     business: "acme-ent",
     created_at: 1786693698311,
     integration: "Acme Deploy Pipeline",
     name: "Acme Deploy Pipeline",
     operation_type: "remove",
     org: "Acme-Org",
-    repositories_removed: [1333268087],
+    repositories_removed: [2000002],
     repositories_removed_names: ["Acme-Org/testing"],
     repository_selection: "all",
     topic: "github.repositories.v1.Deleted",
   };
 
-  check("a real event is indexed", isConsequential(String(real.action)));
+  check("an integration event is indexed", isConsequential(String(real.action)));
 
   const n = normalize(real);
   check("the repository is found outside the `repo` field",
@@ -177,9 +181,9 @@ function check(name: string, ok: boolean, got?: unknown) {
     [n.details, normalize(other).details]);
 }
 
-// ── real member and team payloads, captured from the live log ─────────
+// ── member and team payloads, in the shape GitHub sends them ──────────
 {
-  // Every one of these is copied from an actual event. Reading only the first
+  // Field sets taken from real events, values invented. Reading only the first
   // of repo/team/user dropped the person whenever a repository or team was
   // present, which is most member events — a line saying somebody was added to
   // a repository without saying who.
