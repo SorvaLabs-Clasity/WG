@@ -24,8 +24,12 @@ const REPOS_PER_PAGE = 15;
 const COLLAPSED = 4;
 
 import RenovatePanel from "../components/RenovatePanel";
+import VulnNotifyPanel from "../components/VulnNotifyPanel";
+import { usePermissions } from "../hooks/usePermissions";
 
 export default function DependencyDashboardPage() {
+  const { data: permissions } = usePermissions();
+  const isAdmin = permissions?.isAwsAdmin ?? false;
   const { user } = useAuth();
   const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj,
           isFetching: depsFetching, refetch: refetchDeps } = useDependencies();
@@ -302,10 +306,21 @@ export default function DependencyDashboardPage() {
         </div>
       )}
 
+      {/* Placed under the table it describes rather than above it. Somebody
+          opening this tab came to see what is vulnerable; the question of who
+          gets told about it is the one they ask second. */}
+      <div className="mt-8">
+        <VulnNotifyPanel feed="dependabot-alert" isAdmin={isAdmin} />
+      </div>
+
       {/* Renovate covers the other half of the same question: Dependabot says
           what is vulnerable, Renovate says what has been raised to fix it. */}
       <div className="mt-12">
         <RenovatePanel />
+      </div>
+
+      <div className="mt-8">
+        <VulnNotifyPanel feed="renovate-pr" isAdmin={isAdmin} />
       </div>
 
     </Page>

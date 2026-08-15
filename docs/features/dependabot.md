@@ -67,3 +67,24 @@ roughly 355 before.
 If the query fails, repositories are listed **without** the on/off marker
 rather than falling back to hundreds of calls. A page missing one column beats
 a slow page, and the fallback is the thing being removed.
+
+## Email on every new alert
+
+A toggle under the alert list, with a severity floor. On, it sends one email per
+new alert at or above the severity chosen; the default floor is high, because
+every new moderate alert on a large dependency tree is a lot of mail and a feed
+people filter is a feed that is off.
+
+Driven by the `dependabot_alert` webhook, so it arrives within seconds and costs
+no GitHub requests. Only alerts raised from that point on — switching it on does
+not send the backlog already in the table.
+
+**It needs one setup step this app cannot do.** The GitHub App has to be
+subscribed to the Dependabot alert event, under Permissions & events in the
+App's settings. Until it is, the toggle can be switched on and nothing will ever
+arrive: GitHub never sends the event, so there is no error to report. The panel
+says so, and [setup.md](../operations/setup.md) lists the event.
+
+GitHub calls the middle severity "moderate" and this app calls it "medium". The
+translation happens once, where the webhook is read, so a floor of medium
+catches GitHub's moderate alerts rather than silently dropping them.

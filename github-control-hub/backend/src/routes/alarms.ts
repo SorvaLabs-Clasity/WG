@@ -6,6 +6,7 @@ import {
   listAlarms, getAlarm, createAlarm, updateAlarm, deleteAlarm,
   listGroups, getGroup, createGroupRecord, deleteGroupRecord, alarmsUsingGroup,
   getSecuritySettings, saveSecuritySettings,
+  getFeedSettings, saveFeedSettings, type NotifyFeed,
 } from "../services/alarmService";
 import {
   createTopic, deleteTopic, listMembers, addMember, removeMember, publish, isValidEmail,
@@ -278,11 +279,72 @@ router.put("/security", async (req: Request, res: Response) => {
   }
 });
 
+// ── the Vulnerabilities-tab toggles ───────────────────────────────────
+//
+// One pair of routes for both feeds rather than two pairs. They differ only in
+// whether a severity floor applies, and that difference is enforced in the
+// service, so a second handler would duplicate the validation with it.
+
+const FEEDS = ["renovate-pr", "dependabot-alert"] as const;
+
+router.get("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response) => {
+  const feed = String(req.params.feed);
+  if (!(FEEDS as readonly string[]).includes(feed)) {
+    return res.status(404).json({ error: "Unknown notification feed" });
+  }
+  try {
+    res.json(await getFeedSettings(feed as NotifyFeed));
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "notification settings") });
+  }
+});
+
+router.put("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response) => {
+  const feed = String(req.params.feed);
+  if (!(FEEDS as readonly string[]).includes(feed)) {
+    return res.status(404).json({ error: "Unknown notification feed" });
+  }
+  try {
+    const { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate } = req.body ?? {};
+
+    if (enabled && !groupId) {
+      return res.status(400).json({ error: "Choose an email group before turning this on" });
+    }
+    if (groupId && !(await getGroup(groupId))) {
+      return res.status(400).json({ error: "That email group no longer exists" });
+    }
+    if (minSeverity !== undefined) {
+      // Refused rather than ignored on the Renovate feed. Accepting it would
+      // show a floor that filters nothing, which is worse than an error: the
+      // mail keeps arriving while the setting says it should not.
+      if (feed !== "dependabot-alert") {
+        return res.status(400).json({ error: "Renovate pull requests carry no severity" });
+      }
+      if (!["critical", "high", "medium", "low"].includes(minSeverity)) {
+        return res.status(400).json({ error: "Unknown severity" });
+      }
+    }
+
+    const problem = templateProblem(subjectTemplate, bodyTemplate);
+    if (problem) return res.status(400).json({ error: problem });
+
+    res.json(await saveFeedSettings(
+      feed as NotifyFeed,
+      { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate },
+      req.user!.login,
+    ));
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "notification settings") });
+  }
+});
+
 // ── parameterised routes last ────────────────────────────────────────
 //
 // Express matches in registration order, so `/:id` registered above would
 // swallow `/security` — a PUT to the security toggle would arrive here as an
 // alarm with id "security" and 404, which reads as the toggle being broken.
+// `/feeds/:feed` is two segments and cannot collide, but it is registered above
+// anyway: the rule that keeps this working is position, not path shape.
 
 router.put("/:id", async (req: Request, res: Response) => {
   try {

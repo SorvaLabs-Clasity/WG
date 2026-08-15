@@ -338,7 +338,13 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 
 `push` · `repository` · `create` · `delete` · `member` · `team` ·
 `organization` · `pull_request` · `branch_protection_rule` ·
-`repository_ruleset`
+`repository_ruleset` · `dependabot_alert`
+
+`dependabot_alert` is only needed for the "email me when Dependabot finds a
+vulnerability" toggle on the Vulnerabilities tab. Without it that toggle can be
+switched on and will never send anything: GitHub simply never delivers the
+event, so nothing errors and nothing arrives. The tab itself does not depend on
+it — it reads alerts from the API.
 
 Reading the secret back if needed:
 

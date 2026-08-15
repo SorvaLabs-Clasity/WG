@@ -34,6 +34,18 @@ A notification failure never fails the alert. The alert is already written by
 then, and letting SNS take the delivery down with it would make the worker
 retry and duplicate every activity row and alert it had just created.
 
+## Per-event emails elsewhere
+
+The Vulnerabilities tab carries two more toggles of the same shape: one per new
+Renovate pull request, one per new Dependabot alert. They are documented with
+the features they belong to — [renovate.md](renovate.md) and
+[dependabot.md](dependabot.md).
+
+They are not alarms and deliberately do not appear on this page. An alarm
+watches a number, fires when it crosses a line and resolves when it comes back.
+Those fire once per event and never resolve, so giving them a threshold and a
+recovery would mean inventing both. They share the email groups below.
+
 ## Widget alarms
 
 Each widget offers only the conditions it can actually answer:

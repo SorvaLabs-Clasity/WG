@@ -67,3 +67,23 @@ clean checks before an all-clear, and the fifteen-minute cadence.
 
 An unreachable bot account reads as **no value**, not zero. An alarm watching
 for a pile-up must not resolve itself because the account name is wrong.
+
+## Email on every new pull request
+
+A toggle under the Renovate table, beside the same kind of control the Security
+tab uses. On, it sends one email per pull request the configured bot opens.
+
+Driven by the `pull_request` webhook rather than by the search above, so it
+arrives within seconds and costs no GitHub requests. It fires only on `opened`.
+Renovate rebases its branches constantly and each rebase is a `synchronize`
+delivery, so reacting to those would send another email for the same pull
+request every time it updated.
+
+Only the bot's pull requests are emailed. The comparison tolerates the `[bot]`
+suffix in either direction, because GitHub's deliveries carry the login as
+`name[bot]` while the name shown on the pull request usually has no suffix — so
+either form can be typed into the settings box.
+
+An unconfigured bot name matches nothing at all rather than matching everything.
+The alternative would email on every pull request anyone in the organization
+opened.

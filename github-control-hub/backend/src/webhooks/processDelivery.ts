@@ -175,6 +175,82 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   // current state at the moment it runs, so it still sees commits, merges,
   // squashes and rebases that were never written here.
 
+  // ── the two Vulnerabilities-tab feeds ────────────────────────────────
+  //
+  // Outside the repository-scoped block above, which is for events producing
+  // activity rows and alerts. These produce neither — they email and nothing
+  // else — so they do not depend on the repository being one this app tracks.
+  //
+  // Both are wrapped and swallowed for the reason the security notify is: a
+  // throw here fails the whole delivery, the worker releases its claim, and
+  // every other effect of that delivery runs again so SNS can be retried.
+  if (event === "pull_request" && payload.action === "opened" && payload.pull_request) {
+    try {
+      const { notifyRenovatePr } = await import("../alarms/feedNotify");
+      const { getFeedSettings, getGroup, getSecuritySettings } = await import("../services/alarmService");
+      const { getOrgConfig } = await import("../services/orgConfigService");
+      const { publish } = await import("../services/notifyService");
+      const outcome = await notifyRenovatePr(
+        {
+          repo: sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
+          number: Number(payload.pull_request.number) || 0,
+          title: sanitizeField(payload.pull_request.title, 200),
+          url: sanitizeField(payload.pull_request.html_url, 300),
+          author: sanitizeField(payload.pull_request.user?.login, 64),
+          openedAt: sanitizeField(payload.pull_request.created_at, 40) || occurredAt,
+        },
+        (await getOrgConfig()).renovateBot,
+        {
+          settings: () => getFeedSettings("renovate-pr"),
+          topicArnFor: async (id: string) => (await getGroup(id))?.topicArn,
+          publish,
+          timezone: async () => (await getSecuritySettings()).timezone,
+          org: process.env.GITHUB_ORG || "",
+        },
+      );
+      if (outcome === "sent") console.log(`[Notify] Renovate PR emailed: ${payload.repository?.name}#${payload.pull_request.number}`);
+      else if (outcome === "no-group") console.error("[Notify] Renovate emails are on but no email group is set");
+      else if (outcome === "publish-failed") console.error("[Notify] Renovate PR email failed");
+    } catch (err) {
+      console.error("[Notify] Renovate PR notification failed:", (err as Error).message);
+    }
+  }
+
+  if (event === "dependabot_alert" && payload.action === "created" && payload.alert) {
+    try {
+      const { notifyDependabotAlert } = await import("../alarms/feedNotify");
+      const { getFeedSettings, getGroup, getSecuritySettings } = await import("../services/alarmService");
+      const { publish } = await import("../services/notifyService");
+      const a = payload.alert;
+      const outcome = await notifyDependabotAlert(
+        {
+          repo: sanitizeField(payload.repository?.full_name || payload.repository?.name, 140),
+          package: sanitizeField(a.dependency?.package?.name, 140) || "unknown package",
+          summary: sanitizeField(a.security_advisory?.summary, 300) || "No summary provided",
+          // GitHub says "moderate"; every threshold in this app is expressed in
+          // the app's own vocabulary, so it is translated once here rather than
+          // at each comparison.
+          severity: (a.security_advisory?.severity === "moderate" ? "medium"
+            : sanitizeField(a.security_advisory?.severity, 20)) || "low",
+          url: sanitizeField(a.html_url, 300),
+          createdAt: sanitizeField(a.created_at, 40) || occurredAt,
+        },
+        {
+          settings: () => getFeedSettings("dependabot-alert"),
+          topicArnFor: async (id: string) => (await getGroup(id))?.topicArn,
+          publish,
+          timezone: async () => (await getSecuritySettings()).timezone,
+          org: process.env.GITHUB_ORG || "",
+        },
+      );
+      if (outcome === "sent") console.log(`[Notify] Dependabot alert emailed: ${payload.repository?.name}`);
+      else if (outcome === "no-group") console.error("[Notify] Dependabot emails are on but no email group is set");
+      else if (outcome === "publish-failed") console.error("[Notify] Dependabot alert email failed");
+    } catch (err) {
+      console.error("[Notify] Dependabot alert notification failed:", (err as Error).message);
+    }
+  }
+
   if (event === "delete" && payload.ref_type === "branch" && payload.repository?.name) {
     // Sanitized like every other field taken from a payload. A branch name is
     // the one string here that can legally hold < > " ' & — Git's ref rules

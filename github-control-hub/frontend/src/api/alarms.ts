@@ -97,6 +97,32 @@ export const fetchSecuritySettings = () => apiGet<SecurityNotifySettings>("/alar
 export const saveSecuritySettingsApi = (data: Partial<SecurityNotifySettings>) =>
   apiPut<SecurityNotifySettings>("/alarms/security", data);
 
+/**
+ * The two per-event feeds on the Vulnerabilities tab.
+ *
+ * minSeverity is optional because Renovate pull requests do not carry one; the
+ * backend refuses it on that feed rather than storing a filter it never reads.
+ */
+export type NotifyFeed = "renovate-pr" | "dependabot-alert";
+
+export interface FeedNotifySettings {
+  id: string;
+  kind: "feed";
+  feed: NotifyFeed;
+  enabled: boolean;
+  groupId?: string;
+  minSeverity?: Severity;
+  subjectTemplate: string;
+  bodyTemplate: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+export const fetchFeedSettings = (feed: NotifyFeed) =>
+  apiGet<FeedNotifySettings>(`/alarms/feeds/${feed}`);
+export const saveFeedSettingsApi = (feed: NotifyFeed, data: Partial<FeedNotifySettings>) =>
+  apiPut<FeedNotifySettings>(`/alarms/feeds/${feed}`, data);
+
 /** "every 15 minutes" / "every hour", for telling the user how fast it reacts. */
 export function describeInterval(minutes: number): string {
   if (minutes >= 60 && minutes % 60 === 0) {

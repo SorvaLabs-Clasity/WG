@@ -5,7 +5,9 @@ import {
   fetchGroups, createGroupApi, deleteGroupApi,
   addGroupMemberApi, removeGroupMemberApi, testGroupApi,
   fetchSecuritySettings, saveSecuritySettingsApi,
+  fetchFeedSettings, saveFeedSettingsApi,
   type WidgetAlarm, type SecurityNotifySettings,
+  type FeedNotifySettings, type NotifyFeed,
 } from "../api/alarms";
 
 /**
@@ -91,3 +93,19 @@ export const useTestGroup = () =>
 export const useSaveSecuritySettings = () =>
   useAlarmMutation((data: Partial<SecurityNotifySettings>) => saveSecuritySettingsApi(data),
     ["alarms", "security"]);
+
+export function useFeedSettings(feed: NotifyFeed, enabled = true) {
+  return useQuery({
+    queryKey: ["alarms", "feeds", feed],
+    queryFn: () => fetchFeedSettings(feed),
+    enabled,
+  });
+}
+
+/**
+ * Keyed by feed, so saving the Renovate toggle does not refetch the Dependabot
+ * one and blank a half-typed template beside it.
+ */
+export const useSaveFeedSettings = (feed: NotifyFeed) =>
+  useAlarmMutation((data: Partial<FeedNotifySettings>) => saveFeedSettingsApi(feed, data),
+    ["alarms", "feeds", feed]);

@@ -12,11 +12,16 @@ export const TEMPLATE_VARIABLES: { name: string; description: string }[] = [
   { name: "value", description: "The reading that fired this" },
   { name: "threshold", description: "The limit you set" },
   { name: "state", description: "ALARM or OK" },
-  { name: "severity", description: "For security alerts: critical, high, medium, low" },
-  { name: "repo", description: "For security alerts: the repository involved" },
+  { name: "severity", description: "For security and Dependabot alerts: critical, high, medium, low" },
+  { name: "repo", description: "For security, Dependabot and Renovate: the repository involved" },
   { name: "message", description: "For security alerts: what happened" },
   { name: "org", description: "The GitHub organization" },
   { name: "time", description: "When the value was observed (UTC)" },
+  { name: "title", description: "For Renovate: the pull request title" },
+  { name: "url", description: "For Renovate and Dependabot: a link to it on GitHub" },
+  { name: "number", description: "For Renovate: the pull request number" },
+  { name: "package", description: "For Dependabot: the vulnerable package" },
+  { name: "advisory", description: "For Dependabot: the advisory summary" },
 ];
 
 const VARIABLE_NAMES = new Set(TEMPLATE_VARIABLES.map(v => v.name));
@@ -86,6 +91,21 @@ export const DEFAULT_SECURITY_SUBJECT = "[{{severity}}] {{repo}}: {{message}}";
 export const DEFAULT_SECURITY_BODY =
   `{{message}}\n\nRepository: {{repo}}\nSeverity: {{severity}}\n` +
   `Organization: {{org}}\nDetected at: {{time}}\n\n` +
+  `This is an automated message from GitHub Control Hub.`;
+
+// Both of these lead with the link. These emails exist to get somebody to the
+// pull request or the advisory, and a reader on a phone should not have to
+// scroll past a summary to find the one thing they came for.
+export const DEFAULT_RENOVATE_SUBJECT = "{{repo}}: {{title}}";
+export const DEFAULT_RENOVATE_BODY =
+  `{{url}}\n\nRenovate opened pull request #{{number}} in {{repo}}.\n\n` +
+  `{{title}}\n\nOrganization: {{org}}\nOpened at: {{time}}\n\n` +
+  `This is an automated message from GitHub Control Hub.`;
+
+export const DEFAULT_DEPENDABOT_SUBJECT = "[{{severity}}] {{repo}}: {{package}}";
+export const DEFAULT_DEPENDABOT_BODY =
+  `{{url}}\n\n{{advisory}}\n\nRepository: {{repo}}\nPackage: {{package}}\n` +
+  `Severity: {{severity}}\nOrganization: {{org}}\nDetected at: {{time}}\n\n` +
   `This is an automated message from GitHub Control Hub.`;
 
 /**

@@ -6,6 +6,8 @@ import type { AlarmCondition, AlarmState, Severity } from "../alarms/conditions"
 import {
   DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY,
   DEFAULT_SECURITY_SUBJECT, DEFAULT_SECURITY_BODY,
+  DEFAULT_RENOVATE_SUBJECT, DEFAULT_RENOVATE_BODY,
+  DEFAULT_DEPENDABOT_SUBJECT, DEFAULT_DEPENDABOT_BODY,
 } from "../alarms/message";
 
 /**
@@ -81,7 +83,7 @@ export interface SecurityNotifySettings {
   updatedAt?: string;
 }
 
-type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings;
+type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings;
 
 const TABLE = () => tableName("ALARMS_TABLE");
 
@@ -318,6 +320,104 @@ export async function saveSecuritySettings(
     updated.enabled
       ? `Security alert emails enabled (${updated.minSeverity} and above)`
       : "Security alert emails disabled",
+    { enabled: updated.enabled, minSeverity: updated.minSeverity }, "app",
+  );
+  return updated;
+}
+
+// ── per-event notifications for the Vulnerabilities tab ───────────────
+//
+// The security toggle emails when an alert is *recorded*; these two email when
+// GitHub tells us something happened, which is the same shape and deliberately
+// the same code. One row per feed, like the security one, because there is one
+// setting per organization rather than one per repository.
+//
+// Kept separate from alarms on purpose. An alarm watches a number and fires
+// when it crosses a line; these fire once per event and never resolve. Reusing
+// the alarm machinery would mean inventing a threshold and a recovery for
+// something that has neither.
+
+export type NotifyFeed = "renovate-pr" | "dependabot-alert";
+
+export const FEED_SETTINGS_ID: Record<NotifyFeed, string> = {
+  "renovate-pr": "renovate-pr-settings",
+  "dependabot-alert": "dependabot-alert-settings",
+};
+
+export interface FeedNotifySettings {
+  id: string;
+  kind: "feed";
+  feed: NotifyFeed;
+  enabled: boolean;
+  groupId?: string;
+  /**
+   * Dependabot only. Renovate pull requests carry no severity, so the field is
+   * absent there rather than set to a value that quietly filters nothing.
+   */
+  minSeverity?: Severity;
+  subjectTemplate: string;
+  bodyTemplate: string;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+const FEED_DEFAULTS: Record<NotifyFeed, FeedNotifySettings> = {
+  "renovate-pr": {
+    id: FEED_SETTINGS_ID["renovate-pr"],
+    kind: "feed",
+    feed: "renovate-pr",
+    // Off until somebody turns it on, for the same reason the security toggle
+    // is: enabling by default emails whoever is in a group the moment one exists.
+    enabled: false,
+    subjectTemplate: DEFAULT_RENOVATE_SUBJECT,
+    bodyTemplate: DEFAULT_RENOVATE_BODY,
+  },
+  "dependabot-alert": {
+    id: FEED_SETTINGS_ID["dependabot-alert"],
+    kind: "feed",
+    feed: "dependabot-alert",
+    enabled: false,
+    // Every new Dependabot alert on a busy organization is a lot of mail. High
+    // and above is the floor that keeps the first week from training people to
+    // filter it, and it is adjustable.
+    minSeverity: "high",
+    subjectTemplate: DEFAULT_DEPENDABOT_SUBJECT,
+    bodyTemplate: DEFAULT_DEPENDABOT_BODY,
+  },
+};
+
+export async function getFeedSettings(feed: NotifyFeed): Promise<FeedNotifySettings> {
+  const found = await getById<FeedNotifySettings>(FEED_SETTINGS_ID[feed]);
+  if (found?.kind === "feed" && found.feed === feed) return { ...FEED_DEFAULTS[feed], ...found };
+  return { ...FEED_DEFAULTS[feed] };
+}
+
+export async function saveFeedSettings(
+  feed: NotifyFeed,
+  data: Partial<Pick<FeedNotifySettings, "enabled" | "groupId" | "minSeverity"
+    | "subjectTemplate" | "bodyTemplate">>,
+  actor: string,
+): Promise<FeedNotifySettings> {
+  const current = await getFeedSettings(feed);
+  const updated: FeedNotifySettings = {
+    ...current,
+    ...Object.fromEntries(Object.entries(data).filter(([, v]) => v !== undefined)),
+    id: FEED_SETTINGS_ID[feed],
+    kind: "feed",
+    feed,
+    updatedBy: actor,
+    updatedAt: new Date().toISOString(),
+  };
+  // Renovate has no severity. Accepting one would store a field the notifier
+  // never reads, which reads back as a filter that is silently doing nothing.
+  if (feed !== "dependabot-alert") delete updated.minSeverity;
+  await put(updated);
+  const label = feed === "renovate-pr" ? "Renovate pull request" : "Dependabot alert";
+  await logActivity(
+    "config.updated" as any, actor, "", `notify_${feed}`,
+    updated.enabled
+      ? `${label} emails enabled${updated.minSeverity ? ` (${updated.minSeverity} and above)` : ""}`
+      : `${label} emails disabled`,
     { enabled: updated.enabled, minSeverity: updated.minSeverity }, "app",
   );
   return updated;
