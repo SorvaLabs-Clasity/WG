@@ -118,6 +118,23 @@ function createWindow(): void {
     await clearGitHubCookies();
   });
 
+  /**
+   * Open an outbound link in the user's browser.
+   *
+   * Scheme-checked before it reaches the shell. `shell.openExternal` will hand
+   * anything to the operating system, including `file:` and custom schemes, so
+   * a renderer that ever rendered a hostile URL could ask this to launch it.
+   * Only http and https, which is all any link in this app is.
+   */
+  ipcMain.handle("open-external", async (_e, url: unknown) => {
+    if (typeof url !== "string") return false;
+    let parsed: URL;
+    try { parsed = new URL(url); } catch { return false; }
+    if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
+    await shell.openExternal(url);
+    return true;
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = null;
   });

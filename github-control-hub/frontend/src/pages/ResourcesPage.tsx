@@ -4,6 +4,7 @@ import { Page, Empty, Spinner, SearchInput, SURFACE } from "../design";
 import { useInventory, useBlastRadius, useCost } from "../hooks/useResources";
 import type { AwsResource, RiskLevel, SourceRef } from "../api/resources";
 import UserAvatar from "../components/UserAvatar";
+import ExternalLink from "../components/ExternalLink";
 
 /**
  * Looking up any AWS resource, and what depends on it.
@@ -423,10 +424,10 @@ function BlastHeader({ data }: { data: NonNullable<ReturnType<typeof useBlastRad
               {tone.label}
             </span>
             {data.targetUrl && (
-              <a href={data.targetUrl} target="_blank" rel="noopener noreferrer"
+              <ExternalLink href={data.targetUrl}
                 className="text-[12px] font-bold text-gh-blue hover:underline inline-flex items-center gap-1">
                 Open in AWS <i className="ph-bold ph-arrow-square-out text-[11px]"></i>
-              </a>
+              </ExternalLink>
             )}
           </div>
         </div>
@@ -510,12 +511,17 @@ function BlastBody({ data }: { data: NonNullable<ReturnType<typeof useBlastRadiu
                         for a name they were just shown is the difference
                         between a report and a tool. */}
                     {r.fromUrl ? (
-                      <a href={r.fromUrl} target="_blank" rel="noopener noreferrer"
+                      <ExternalLink href={r.fromUrl}
                         className="font-mono text-[13px] font-semibold text-slate-900 dark:text-white hover:text-gh-blue underline decoration-dotted underline-offset-2">
                         {r.from.name}
-                      </a>
+                        <i className="ph-bold ph-arrow-square-out ml-1 text-[10px] align-baseline"></i>
+                      </ExternalLink>
                     ) : (
-                      <span className="font-mono text-[13px] font-semibold text-slate-900 dark:text-white">
+                      // Deliberately styled unlike the linked case. A name that
+                      // looks identical to a link and does nothing when clicked
+                      // reads as the app being broken.
+                      <span className="font-mono text-[13px] font-semibold text-slate-500 dark:text-slate-400"
+                        title="No console link could be built for this resource">
                         {r.from.name}
                       </span>
                     )}
@@ -530,12 +536,16 @@ function BlastBody({ data }: { data: NonNullable<ReturnType<typeof useBlastRadiu
                   </div>
                   {/* Exactly how it depends — the variable's name and value, the
                       mapping's state — not "references it by env var". */}
+                  {/* The label and the detail are the same sentence for some
+                      kinds — "runs as this role · runs as this role" — so the
+                      detail is only shown when it adds something. */}
                   <p className="mt-1 ml-6 text-[12px] text-slate-600 dark:text-slate-300">
                     <span className="text-slate-400 dark:text-slate-500">
                       {KIND_LABEL[r.kind] ?? r.kind}
                     </span>
-                    {" · "}
-                    <code className="font-mono">{r.detail}</code>
+                    {r.detail && r.detail !== KIND_LABEL[r.kind] && (
+                      <>{" · "}<code className="font-mono">{r.detail}</code></>
+                    )}
                   </p>
                 </li>
               );
@@ -561,13 +571,13 @@ function BlastBody({ data }: { data: NonNullable<ReturnType<typeof useBlastRadiu
                 <ul className="space-y-0.5">
                   {refs.map((r, i) => (
                     <li key={i}>
-                      <a href={r.url} target="_blank" rel="noopener noreferrer"
+                      <ExternalLink href={r.url}
                         className="group flex items-baseline gap-2 text-[12.5px] hover:bg-slate-50 dark:hover:bg-white/[0.04] rounded px-1 -mx-1 py-0.5">
                         <span className="font-mono text-slate-500 dark:text-slate-400 shrink-0">{r.repo}</span>
                         <span className="font-mono text-slate-800 dark:text-slate-200 truncate group-hover:text-gh-blue">
                           {r.path}
                         </span>
-                      </a>
+                      </ExternalLink>
                     </li>
                   ))}
                 </ul>
@@ -656,10 +666,10 @@ function BlastBody({ data }: { data: NonNullable<ReturnType<typeof useBlastRadiu
               <li key={e.login} className="flex items-start gap-3">
                 <UserAvatar login={e.login} size={26} />
                 <div className="min-w-0 flex-1">
-                  <a href={`https://github.com/${e.login}`} target="_blank" rel="noopener noreferrer"
+                  <ExternalLink href={`https://github.com/${e.login}`}
                     className="text-[13px] font-bold text-slate-800 dark:text-slate-100 hover:text-gh-blue">
                     {e.login}
-                  </a>
+                  </ExternalLink>
                   <span className="ml-2 text-[12px] text-slate-500 dark:text-slate-400">
                     {e.commits} commit{e.commits === 1 ? "" : "s"}
                     {e.daysSinceActive !== null && ` · last ${ago(e.daysSinceActive)}`}

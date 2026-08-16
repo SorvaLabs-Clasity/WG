@@ -2,7 +2,7 @@ import {
   readProvider, consoleUrl, type Provider, type Resource, type Relationship,
   type ResourceId, type Inventory, type ProviderResult,
 } from "./awsInventoryService";
-import { awsRegion } from "../utils/region";
+import { awsRegion, resolveAwsRegion } from "../utils/region";
 
 /**
  * One provider per AWS service: what exists, and what points at what.
@@ -16,17 +16,45 @@ import { awsRegion } from "../utils/region";
  */
 
 /**
- * Handed to every client, and deliberately allowed to be undefined.
+ * Handed to every client, and deliberately allowed to be undefined *there*.
  *
- * The first version of this ended `|| "us-east-1"`, which is worse than passing
- * nothing: the SDK resolves a region on its own — environment, then the
- * signed-in profile — and a hardcoded fallback *overrides* that chain. An
- * operator whose profile lives in eu-west-1 would have been shown an inventory
- * of an empty us-east-1, with nothing failing and nothing missing, and
- * concluded their account was empty. `repro-appsec` refuses the fallback for
- * exactly that reason and caught this one.
+ * Passing nothing lets the SDK resolve the region itself — environment, then
+ * the signed-in profile — and a hardcoded fallback would override that chain.
+ * An operator whose profile lives in eu-west-1 would otherwise be shown an
+ * inventory of an empty us-east-1 with nothing failing.
+ *
+ * But **naming** a region and **calling with** one are different jobs, and this
+ * conflated them. A console URL has to contain a region, and `awsRegion()`
+ * returns undefined whenever the region comes from the profile rather than the
+ * environment — which is exactly how the desktop app runs. Every console link
+ * was therefore null, and every dependency rendered as plain text that looked
+ * like a link and did nothing.
+ *
+ * It survived testing because the test scripts exported `AWS_REGION` and the
+ * app does not. So the resolved value is fetched once, from the SDK, and used
+ * for the naming half only.
  */
-const REGION = () => awsRegion();
+let namedRegion: string | undefined;
+
+/**
+ * Ask the SDK what region it is actually using, once per process.
+ *
+ * Called before an inventory is built. Cheap — the SDK answers from its own
+ * resolved config without a network call — and cached, because the answer
+ * cannot change without the app restarting.
+ */
+export async function resolveProviderRegion(): Promise<string | undefined> {
+  if (namedRegion) return namedRegion;
+  namedRegion = await resolveAwsRegion();
+  return namedRegion;
+}
+
+/** Test seam. */
+export function __setProviderRegionForTests(region: string | undefined): void {
+  namedRegion = region;
+}
+
+const REGION = () => namedRegion ?? awsRegion();
 
 /** Paginates a List call that returns a token, with a ceiling. */
 async function pageAll<T>(

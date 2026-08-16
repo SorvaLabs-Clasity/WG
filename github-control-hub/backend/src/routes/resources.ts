@@ -6,7 +6,7 @@ import { sendIfRateLimited } from "../utils/rateLimit";
 import {
   buildInventory, matchResources, consoleUrl, type Inventory, type Resource,
 } from "../services/awsInventoryService";
-import { defaultProviders, relationshipsTo } from "../services/awsProviders";
+import { defaultProviders, relationshipsTo, resolveProviderRegion } from "../services/awsProviders";
 import { assessBlastRadius } from "../services/blastRadiusService";
 import { findSourceRefs, searcherFor, clearSourceSearchCache } from "../services/sourceSearchService";
 import { expertsForResource } from "../services/resourceExpertsService";
@@ -48,6 +48,10 @@ async function inventory(force = false): Promise<Inventory> {
   if (!force && inFlight) return inFlight;
 
   inFlight = (async () => {
+    // Before anything is listed: console links have to name a region, and the
+    // region only comes from the SDK when it lives in a profile rather than the
+    // environment.
+    await resolveProviderRegion();
     const built = await buildInventory(defaultProviders());
     cached = { at: Date.now(), inventory: built };
     return built;

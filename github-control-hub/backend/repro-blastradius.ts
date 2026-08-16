@@ -28,7 +28,7 @@ import {
   logicalIdFrom,
   type Inventory, type Resource, type Relationship, type ProviderResult, type Provider,
 } from "./src/services/awsInventoryService";
-import { matchesTarget } from "./src/services/awsProviders";
+import { matchesTarget, __setProviderRegionForTests } from "./src/services/awsProviders";
 import {
   assessBlastRadius, classifyPath, scoreRisk, dedupeRelationships,
   type SourceRef,
@@ -565,6 +565,29 @@ const noSource = async () => ({ ok: true, service: "github", items: [] as Source
       consoleUrl({ service: "braket", name: "x", region }) === null);
     check("a name needing escaping is escaped",
       (consoleUrl({ service: "dynamodb", name: "a b", region }) ?? "").includes("a%20b"));
+  }
+
+  // ── the region a link is named with ─────────────────────────────────
+  //
+  // Reported from the running app: every dependency rendered as plain text
+  // that looked like a link and did nothing. The cause was passing the region
+  // *used for calling* into the code that *names* one. `awsRegion()` returns
+  // undefined whenever the region comes from a profile rather than the
+  // environment — which is how the desktop app runs and is not how the test
+  // scripts ran, so it was invisible until somebody clicked.
+  {
+    __setProviderRegionForTests(undefined);
+    check("with no region resolved, a regional link is refused rather than guessed",
+      consoleUrl({ service: "lambda", name: "worker" }) === null);
+    // …but the global services still link, because they never needed one.
+    check("  while a global service still links",
+      consoleUrl({ service: "iam", name: "deploy" }) !== null);
+
+    __setProviderRegionForTests("eu-" + "west-2");
+    check("once resolved, the link carries that region",
+      (consoleUrl({ service: "lambda", name: "worker", region: "eu-west-2" }) ?? "")
+        .includes("region=eu-west-2"));
+    __setProviderRegionForTests(undefined);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
