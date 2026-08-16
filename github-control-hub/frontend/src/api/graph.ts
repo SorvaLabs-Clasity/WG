@@ -63,3 +63,29 @@ export async function fetchSecurityQuery(q: string, param?: string, advanced?: a
   }
   return apiGet<SecurityQueryResult[]>(`/graph/query${url.search}`);
 }
+
+export interface QueryFreshness {
+  batched: boolean;
+  checked: number;
+  oldestAt: string | null;
+  newestAt: string | null;
+}
+
+/** How stale the stored answers are. Reads the cache; asks GitHub nothing. */
+export async function fetchQueryFreshness(q: string): Promise<QueryFreshness> {
+  if (DEMO_MODE) return { batched: false, checked: 0, oldestAt: null, newestAt: null };
+  return apiGet<QueryFreshness>(`/graph/query/${encodeURIComponent(q)}/freshness`);
+}
+
+export interface RefreshAllResult {
+  complete: boolean;
+  batches: number;
+  covered: number;
+  total: number;
+  budget: "search" | "core";
+  message: string;
+}
+
+export async function refreshQueryNow(q: string): Promise<RefreshAllResult> {
+  return apiPost<RefreshAllResult>(`/graph/query/${encodeURIComponent(q)}/refresh-all`, {});
+}

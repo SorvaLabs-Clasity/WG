@@ -6,6 +6,7 @@ import { evaluateSecurityQuery } from "../services/graphService";
 import { getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
+import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
 
 const router = Router();
 
@@ -194,7 +195,18 @@ router.get("/query", async (req: Request, res: Response) => {
   } catch (error: any) {
     // Not a server fault and not worth a stack trace: the widget names a check
     // that no longer exists, and only editing the widget will fix it.
-    const { UnknownQueryError, MissingGraphDataError } = await import("../services/graphService");
+    const { UnknownQueryError, MissingGraphDataError, PartialQueryError } =
+      await import("../services/graphService");
+    // 503, not 500: the check works and the data is fine, we simply could not
+    // read all of it right now. Saying "try again shortly" is the whole
+    // difference between a transient limit and a broken check.
+    if (error instanceof PartialQueryError) {
+      res.status(503).json({
+        error: error.message, code: "QUERY_INCOMPLETE",
+        covered: error.covered, total: error.total,
+      });
+      return;
+    }
     if (error instanceof MissingGraphDataError) {
       res.status(409).json({ error: error.message, code: "GRAPH_DATA_MISSING", edgeType: error.edgeType });
       return;
@@ -203,6 +215,104 @@ router.get("/query", async (req: Request, res: Response) => {
       res.status(400).json({ error: error.message, code: "UNKNOWN_QUERY", queryId: error.queryId });
       return;
     }
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "graph") });
+  }
+});
+
+/**
+ * How fresh the stored answers are, without asking GitHub anything.
+ *
+ * Reads only what is already cached, so a card can say "oldest check three
+ * hours ago" on every render without that costing a request. A cached finding
+ * with no date on it is a claim nobody can weigh.
+ */
+router.get("/query/:q/freshness", async (req: Request<{ q: string }>, res: Response) => {
+  try {
+    const { listVerdicts, freshnessOf, isBatched } = await import("../services/queryCacheService");
+    if (!isBatched(req.params.q)) {
+      // Everything else is derived from the graph on the spot, so "when was
+      // this checked" is "now" and there is nothing to report.
+      return res.json({ batched: false, checked: 0, oldestAt: null, newestAt: null });
+    }
+    res.json({ batched: true, ...freshnessOf(await listVerdicts(req.params.q)) });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "graph") });
+  }
+});
+
+/**
+ * Check everything now, rather than waiting for the ordinary passes.
+ *
+ * Batches back to back with a gap sized to the budget the check draws on, until
+ * it is complete or the time budget runs out. Whatever is left is picked up by
+ * the scheduled passes, so pressing it twice finishes a very large
+ * organization — and the response says which happened rather than leaving the
+ * caller to guess.
+ *
+ * It cannot outrun GitHub and does not try. For a search-backed check that
+ * means one batch a minute however hard the button is pressed; the reply says
+ * so, because a button that appears to do nothing is worse than one that
+ * explains why.
+ */
+router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Response) => {
+  const login = req.user!.login;
+  if (!(await isAwsAdmin(login).catch(() => false))) {
+    return res.status(403).json({
+      code: "CONTROL_HUB_ADMIN_REQUIRED",
+      error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can force a `
+        + `full re-check. It spends the organization's GitHub budget, not yours.`,
+    });
+  }
+
+  const q = req.params.q;
+  const {
+    isBatched, clearThrottle, SUBJECT_COST, MANUAL_REFRESH_BUDGET_MS,
+  } = await import("../services/queryCacheService");
+  const { PartialQueryError } = await import("../services/graphService");
+
+  if (!isBatched(q)) {
+    return res.status(400).json({
+      error: "This check reads the graph directly and is always current — there is nothing to "
+        + "re-check.",
+    });
+  }
+
+  const token = getSystemToken() || req.user?.accessToken;
+  const started = Date.now();
+  const gap = SUBJECT_COST[q].gapMs;
+  let batches = 0, covered = 0, total = 0, complete = false;
+
+  try {
+    while (Date.now() - started < MANUAL_REFRESH_BUDGET_MS) {
+      clearThrottle(q);
+      try {
+        await evaluateSecurityQuery(q, undefined, {}, token);
+        complete = true;
+        break;
+      } catch (err: any) {
+        if (!(err instanceof PartialQueryError)) throw err;
+        covered = err.covered; total = err.total;
+      }
+      batches++;
+      // Sleeping only if there is time left to use afterwards. Waiting sixty
+      // seconds to then return is a minute of nothing.
+      if (Date.now() - started + gap >= MANUAL_REFRESH_BUDGET_MS) break;
+      await new Promise(r => setTimeout(r, gap));
+    }
+
+    res.json({
+      complete, batches, covered, total,
+      budget: SUBJECT_COST[q].budget,
+      message: complete
+        ? `Every subject re-checked.`
+        : SUBJECT_COST[q].budget === "search"
+          ? `Checked ${covered} of ${total}. This check costs one GitHub commit search per `
+            + `account and that allowance is thirty a minute, so the rest cannot be hurried — `
+            + `they will be covered by the scheduled passes, or press again in a minute.`
+          : `Checked ${covered} of ${total} in ${batches} batches. Press again to continue.`,
+    });
+  } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "graph") });
   }

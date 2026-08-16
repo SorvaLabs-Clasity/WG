@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchGraphNode, fetchUserImpact, fetchSecurityQuery, fetchGraphMeta, triggerGraphAggregation } from "../api/graph";
+import { IncompleteQueryError } from "../api/client";
+import { fetchQueryFreshness, refreshQueryNow } from "../api/graph";
 
 export function useGraphMeta() {
   return useQuery({
@@ -46,5 +48,43 @@ export function useSecurityQuery(q: string | null, param?: string, advanced?: an
     // graph only changes when aggregation runs, which is a button.
     staleTime: 5 * 60_000,
     retry: false,
+    // Polled only while a check is still building its coverage, and slowly.
+    //
+    // The three subject-by-subject checks answer nothing until every account or
+    // repository has been read, which takes a few passes on a large
+    // organization. Without this the card would sit at "checked 25 of 250"
+    // until somebody reloaded — technically correct and indistinguishable from
+    // stuck. Every other state keeps the old behaviour of not polling at all,
+    // because each of those calls is a scan of the graph table.
+    refetchInterval: (q) => (q.state.error instanceof IncompleteQueryError ? 60_000 : false),
+  });
+}
+
+/**
+ * How stale a batched check's stored answers are.
+ *
+ * Its own query rather than part of the result, because it is cheap — the cache
+ * only — and the result it annotates is not. Held briefly so several cards
+ * asking at once cost one call each rather than one per render.
+ */
+export function useQueryFreshness(q: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ["graph", "query-freshness", q],
+    queryFn: () => fetchQueryFreshness(q!),
+    enabled: !!q && enabled,
+    staleTime: 60_000,
+  });
+}
+
+export function useRefreshQueryNow() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (q: string) => refreshQueryNow(q),
+    onSuccess: (_r, q) => {
+      // Both, and in this order: the answer may now exist, and its freshness
+      // certainly changed.
+      qc.invalidateQueries({ queryKey: ["graph", "security-query", q] });
+      qc.invalidateQueries({ queryKey: ["graph", "query-freshness", q] });
+    },
   });
 }

@@ -12,7 +12,7 @@ import { getOrgConfig } from "../services/orgConfigService";
 import {
   listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings,
   getFeedSettings, listPending, markPendingSent,
-  getPrState, recordNudge, getPrSettings,
+  getPrState, recordNudge, getPrSettings, getPrMutes,
 } from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
@@ -121,11 +121,34 @@ export async function handler(): Promise<void> {
     return renovatePromise;
   };
 
+  /**
+   * One evaluation per distinct query per pass, however many alarms want it.
+   *
+   * The Dependabot sweep and the Renovate search are already memoised above for
+   * exactly this reason and this was not, so three alarms on one query widget
+   * re-ran it three times. That is wasted for most checks and expensive for one:
+   * `dormant-privileged-users` costs a commit search per privileged account, and
+   * commit search allows thirty requests a *minute*, so the duplication is drawn
+   * against the smallest budget in the app.
+   *
+   * The promise is cached, not the result, so concurrent callers wait on the
+   * same request rather than starting a second one. Rejections are cached too —
+   * deliberately: a failed read should be reported once per pass, not retried
+   * once per alarm watching it.
+   */
+  const queryRuns = new Map<string, Promise<any[]>>();
   const sources = {
     dependencyAlerts,
     renovateOpenPrs,
-    runQuery: (queryId: string, param?: string, advanced?: any) =>
-      evaluateSecurityQuery(queryId, param, advanced, token) as Promise<any[]>,
+    runQuery: (queryId: string, param?: string, advanced?: any) => {
+      const key = JSON.stringify([queryId, param ?? null, advanced ?? null]);
+      let run = queryRuns.get(key);
+      if (!run) {
+        run = evaluateSecurityQuery(queryId, param, advanced, token) as Promise<any[]>;
+        queryRuns.set(key, run);
+      }
+      return run;
+    },
   };
 
   const summary = await evaluateAlarms({
@@ -199,7 +222,12 @@ export async function handler(): Promise<void> {
     const graphql = (query: string, variables: Record<string, unknown>) =>
       (octokit as any).graphql(query, variables);
 
+    // Read once for the pass, not per pull request: the same set applies to
+    // every one of them.
+    const mutes = await getPrMutes();
+
     const summary = await runNudgePass({
+      mutes: { global: mutes.global, byRepo: mutes.byRepo },
       listPrs: () => fetchOpenPrs(graphql, org),
       getState: (repo, number) => getPrState(repo, number),
       recordNudge,

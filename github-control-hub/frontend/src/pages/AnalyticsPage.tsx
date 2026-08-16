@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import AlarmModal from "../components/AlarmModal";
 import { useAlarms } from "../hooks/useAlarms";
 import { useAuth } from "../App";
-import { useSecurityQuery, useGraphMeta, useTriggerAggregation } from "../hooks/useGraph";
+import { useSecurityQuery, useGraphMeta, useTriggerAggregation , useQueryFreshness, useRefreshQueryNow } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS } from "../utils/queryOptions";
@@ -17,6 +17,37 @@ import { usePermissions } from "../hooks/usePermissions";
 import { useOrgConfig } from "../hooks/useOrgConfig";
 import type { WidgetConfig } from "../api/widgets";
 import { TagInput } from "../components/TagInput";
+import { IncompleteQueryError } from "../api/client";
+
+/**
+ * The checks that read GitHub once per subject and therefore keep dated,
+ * per-subject answers. Kept in one place because three separate lists of the
+ * same three names is three chances for one of them to fall behind.
+ */
+const BATCHED_CHECKS = new Set([
+  "dormant-privileged-users",
+  "stale-branch-protections",
+  "protection-bypasses-ranking",
+]);
+
+/**
+ * How long ago, in the shortest form that is still honest.
+ *
+ * Rounded down deliberately: a check taken fifty-nine minutes ago reads as
+ * "59m", never "1h". Rounding up would make a stored answer look fresher than
+ * it is, which is the one direction this must not be wrong in.
+ */
+function since(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+}
 
 type WidgetType = "preset" | "query";
 type DisplayType = "metric" | "table";
@@ -573,6 +604,14 @@ function CheckCard({
   graphEmpty?: boolean;
 }) {
   const { items, isLoading, total, entity, error } = useWidgetData(config);
+  const refreshNow = useRefreshQueryNow();
+
+  // Only for the checks that keep per-subject answers. Everything else is
+  // derived from the graph on the spot, so "when was this last checked" has no
+  // meaning and asking would be a request that answers nothing.
+  const batchedQuery = config.type === "query" && BATCHED_CHECKS.has(config.queryId ?? "");
+  const { data: freshness } = useQueryFreshness(batchedQuery ? config.queryId! : null);
+
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const n = useCountUp(verdict.value);
   const tone = TONE[verdict.level];
@@ -591,6 +630,61 @@ function CheckCard({
   const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
   const preview = items.filter((i: any) => !i.status || i.status === "fail").slice(0, 3);
   const hidden = Math.max(0, verdict.value - preview.length);
+
+  // Working, not broken.
+  //
+  // The three subject-by-subject checks read a batch per pass and answer
+  // nothing until every subject is covered, which takes a few passes on a large
+  // organization. Rendering that as the amber "Not running" warning below — with
+  // a Remove button — tells somebody their check is broken at the one moment it
+  // is doing exactly what it should, and invites them to delete it.
+  if (error instanceof IncompleteQueryError) {
+    const pctDone = error.total > 0 ? Math.round((error.covered / error.total) * 100) : 0;
+    return (
+      <article style={enter(index)}
+        className="group rounded-2xl border border-slate-200/80 dark:border-white/[0.09] bg-white dark:bg-[#151a23] overflow-hidden">
+        <div className="px-5 pt-5 pb-4 flex items-start gap-4">
+          <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-gh-blue/10 border border-gh-blue/20">
+            <i className="ph ph-circle-notch text-[26px] text-gh-blue animate-spin"></i>
+          </div>
+          <div className="flex-1 min-w-0 pt-1">
+            <p className={`${TYPE.label} text-gh-blue mb-1.5`}>Building coverage</p>
+            <h3 className="text-[15px] font-black text-slate-900 dark:text-white leading-tight line-clamp-2">
+              {config.title}
+            </h3>
+            <p className="text-[13px] tabular-nums text-slate-500 dark:text-slate-400 mt-1">
+              {error.covered} of {error.total} checked
+            </p>
+          </div>
+        </div>
+        {/* A bar, because "75 of 250" and "230 of 250" are the same sentence at
+            a glance and completely different amounts of waiting. */}
+        <div className="px-5">
+          <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.07] overflow-hidden">
+            <div className="h-full rounded-full bg-gh-blue transition-[width] duration-700"
+              style={{ width: `${Math.max(2, pctDone)}%` }} />
+          </div>
+        </div>
+        <div className="px-5 py-4">
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">
+            This check reads one account or repository at a time against a GitHub limit measured
+            per minute, so it covers them in batches. It updates on its own.
+          </p>
+          {canEdit && (
+            <button
+              onClick={e => { e.stopPropagation(); refreshNow.mutate(config.queryId!); }}
+              disabled={refreshNow.isPending}
+              className="mt-3 text-[12.5px] font-bold text-gh-blue hover:underline disabled:opacity-50">
+              {refreshNow.isPending ? "Checking…" : "Check the rest now"}
+            </button>
+          )}
+          {refreshNow.data && (
+            <p className="mt-2 text-[12px] text-slate-500 dark:text-slate-400">{refreshNow.data.message}</p>
+          )}
+        </div>
+      </article>
+    );
+  }
 
   if (error) {
     return (
@@ -725,7 +819,16 @@ function CheckCard({
             {preview.map((item: any, k: number) => (
               <li key={k} className="flex items-center justify-between gap-3 text-[13px]">
                 <span className="font-mono text-slate-700 dark:text-slate-200 truncate">{nameOf(item)}</span>
-                <span className="text-slate-400 dark:text-slate-500 shrink-0 truncate max-w-[45%]">{detailOf(item, config)}</span>
+                <span className="text-slate-400 dark:text-slate-500 shrink-0 truncate max-w-[45%]"
+                  title={item.checkedAt ? `Checked ${since(item.checkedAt)}` : undefined}>
+                  {detailOf(item, config)}
+                  {/* Per row, because subjects are checked at different times —
+                      one may be twenty hours old while its neighbour is fresh,
+                      and a single date on the card would hide that. */}
+                  {item.checkedAt && (
+                    <span className="ml-1.5 opacity-60">· {since(item.checkedAt)}</span>
+                  )}
+                </span>
               </li>
             ))}
           </ul>
@@ -738,6 +841,32 @@ function CheckCard({
           <span>{hidden > 0 ? `${hidden} more` : "Open"}</span>
           <i className="ph-bold ph-arrow-right text-[11px]"></i>
         </button>
+
+        {/* When this was established, for the checks whose answers are stored
+            rather than derived on the spot. A finding with no date on it is a
+            claim the reader cannot weigh — "this repository bypasses its rules"
+            means something different four minutes old than twenty hours old.
+            The oldest is shown, not the newest, because the oldest is the one
+            that decides how much the whole card can be trusted. */}
+        {batchedQuery && freshness?.batched && freshness.oldestAt && (
+          <div className="mt-3 pt-3 border-t border-slate-100 dark:border-white/[0.06] flex items-center justify-between gap-2">
+            <span className="text-[12px] text-slate-400 dark:text-slate-500">
+              Oldest check {since(freshness.oldestAt)}
+              {freshness.checked > 0 && ` · ${freshness.checked} stored`}
+            </span>
+            {canEdit && (
+              <button
+                onClick={e => { e.stopPropagation(); refreshNow.mutate(config.queryId!); }}
+                disabled={refreshNow.isPending}
+                className="text-[12px] font-bold text-gh-blue hover:underline disabled:opacity-50 shrink-0">
+                {refreshNow.isPending ? "Re-checking…" : "Re-check all"}
+              </button>
+            )}
+          </div>
+        )}
+        {batchedQuery && refreshNow.data && (
+          <p className="mt-2 text-[12px] text-slate-500 dark:text-slate-400">{refreshNow.data.message}</p>
+        )}
       </div>
 
     </article>

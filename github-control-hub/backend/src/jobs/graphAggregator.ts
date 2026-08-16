@@ -1,8 +1,9 @@
 import { Octokit } from "octokit";
 import { getOrg, getSystemTokenAsync } from "../github/client";
-import { docClient, usesDynamo, tableName, PutCommand, BatchWriteCommand, ScanCommand, DeleteCommand } from "../utils/dynamo";
+import { docClient, usesDynamo, tableName, PutCommand, BatchWriteCommand, ScanCommand, DeleteCommand, scanAll } from "../utils/dynamo";
 import { refreshAll } from "../services/complianceCacheService";
 import { invalidateAccessMap } from "../services/accessMapService";
+import { invalidateEdgeCache } from "../services/graphService";
 
 interface GraphEdge {
   pk: string;
@@ -361,8 +362,14 @@ export async function aggregateGraphData(fallbackToken?: string) {
       // Since this runs every 6 hours, we'll scan and delete old edges first to avoid orphans.
       console.log(`[GraphAggregator] Clearing old graph edges...`);
       try {
-        const scanRes = await docClient.send(new ScanCommand({ TableName: edgesTable, ProjectionExpression: "pk, sk" }));
-        const oldItems = scanRes.Items || [];
+        // Paged. This clear-before-rewrite is what stops orphans, and a single
+        // scan stops at 1MB — so past roughly twenty thousand edges it was
+        // clearing the first page and leaving the rest behind. Orphaned edges
+        // are worse than stale ones: the security checks read them as current,
+        // and report findings about repositories and people that no longer
+        // exist. Only rows this job wrote are deleted, exactly as before.
+        const oldItems = await scanAll<{ pk: string; sk: string }>(
+          edgesTable, { project: "pk, sk" });
         
         // Delete in batches of 25
         for (let i = 0; i < oldItems.length; i += 25) {
@@ -428,6 +435,9 @@ export async function aggregateGraphData(fallbackToken?: string) {
   // The access map is derived from these edges and cached. Without this, a
   // sync a user just asked for would appear to have changed nothing.
   invalidateAccessMap();
+  // Same reason, one layer down: the raw edges are held for a few seconds, and
+  // a sync is exactly the moment that held copy is wrong.
+  invalidateEdgeCache();
 
   try {
     console.log(`[GraphAggregator] Refreshing compliance cache for all repos...`);

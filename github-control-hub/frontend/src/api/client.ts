@@ -40,6 +40,20 @@ export function isAuthenticated(): boolean {
  * app being unable to read GitHub for a while. Carrying the reset time on the
  * error lets the banner count down instead of just saying "try again".
  */
+/**
+ * A check that has read part of what it needs and will finish on its own.
+ *
+ * Separate from Error so a card can tell "working, not finished" from "broken".
+ * The two look identical in a message and want opposite treatments: one waits,
+ * the other asks somebody to intervene.
+ */
+export class IncompleteQueryError extends Error {
+  constructor(message: string, readonly covered: number, readonly total: number) {
+    super(message);
+    this.name = "IncompleteQueryError";
+  }
+}
+
 export class RateLimitError extends Error {
   constructor(
     message: string,
@@ -71,11 +85,21 @@ async function handleResponse<T>(res: Response): Promise<T> {
     throw new Error(body.error ?? `Request failed: ${res.status}`);
   }
   if (res.status === 503) {
-    const body = await res.json().catch(() => ({})) as { error?: string; code?: string };
+    const body = await res.json().catch(() => ({})) as {
+      error?: string; code?: string; covered?: number; total?: number;
+    };
     if (body.code === "AWS_SESSION_EXPIRED") {
       clearToken();
       window.location.href = "/login";
       throw new Error("AWS session expired");
+    }
+    // A check still building its coverage is not a failure, and the card that
+    // renders it needs to know the difference — an amber "not running" warning
+    // with a Remove button is the wrong thing to show somebody whose check is
+    // working exactly as intended and will have an answer shortly.
+    if (body.code === "QUERY_INCOMPLETE") {
+      throw new IncompleteQueryError(
+        body.error ?? "Still building coverage", body.covered ?? 0, body.total ?? 0);
     }
     throw new Error(body.error ?? "Service temporarily unavailable");
   }

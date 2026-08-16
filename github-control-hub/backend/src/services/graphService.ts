@@ -2,6 +2,10 @@ import { docClient, usesDynamo, tableName, ScanCommand } from "../utils/dynamo";
 import { getSystemToken } from "../github/client";
 import fs from "fs";
 import path from "path";
+import {
+  listVerdicts, putVerdict, planRefresh, coverageOf, findingsFrom, describeProgress,
+  mayRefresh, markRefreshed, budgetFor,
+} from "./queryCacheService";
 
 // Fallback for local development
 let localEdges: any[] = [];
@@ -19,22 +23,68 @@ function loadLocalEdges() {
   return localEdges;
 }
 
-/** Every edge in the graph. Exported so the access map can derive its own view. */
+/**
+ * How long a read of the whole graph is reused.
+ *
+ * The graph is rebuilt on a six-hour job, so within any few seconds every reader
+ * is looking at identical bytes. Six seconds is long enough to cover one
+ * evaluation pass and one page load — the two places several checks run
+ * back-to-back — and short enough that a rebuild is picked up almost at once.
+ */
+const EDGE_CACHE_MS = 6_000;
+let edgeCache: { at: number; edges: any[] } | null = null;
+let edgeCacheInFlight: Promise<any[]> | null = null;
+
+/**
+ * Every edge in the graph. Exported so the access map can derive its own view.
+ *
+ * Held for a moment rather than re-read per caller. Each security check starts
+ * by reading the whole graph, so a pass evaluating six query widgets scanned the
+ * same table six times for the same bytes — and at a hundred members across a
+ * few hundred repositories that scan is about a megabyte. It was the single
+ * largest line in the DynamoDB bill, and none of the six reads could differ.
+ *
+ * The in-flight promise is shared as well as the result: without it, six checks
+ * starting together all miss the cache and all scan, which is the case the cache
+ * exists for.
+ */
 export async function scanGraphEdges(): Promise<any[]> {
   if (!usesDynamo()) return loadLocalEdges();
-  const items: any[] = [];
-  let lastKey: any = undefined;
-  do {
-    const result: any = await docClient.send(
-      new ScanCommand({
-        TableName: tableName("GRAPH_EDGES_TABLE"),
-        ExclusiveStartKey: lastKey,
-      })
-    );
-    items.push(...(result.Items || []));
-    lastKey = result.LastEvaluatedKey;
-  } while (lastKey);
-  return items;
+
+  if (edgeCache && Date.now() - edgeCache.at < EDGE_CACHE_MS) return edgeCache.edges;
+  if (edgeCacheInFlight) return edgeCacheInFlight;
+
+  edgeCacheInFlight = (async () => {
+    const items: any[] = [];
+    let lastKey: any = undefined;
+    do {
+      const result: any = await docClient.send(
+        new ScanCommand({
+          TableName: tableName("GRAPH_EDGES_TABLE"),
+          ExclusiveStartKey: lastKey,
+        })
+      );
+      items.push(...(result.Items || []));
+      lastKey = result.LastEvaluatedKey;
+    } while (lastKey);
+    edgeCache = { at: Date.now(), edges: items };
+    return items;
+  })();
+
+  try {
+    return await edgeCacheInFlight;
+  } finally {
+    // Cleared whether it resolved or threw. A rejected promise left here would
+    // be handed to every later caller, so one failed scan would keep failing
+    // for as long as the process lived.
+    edgeCacheInFlight = null;
+  }
+}
+
+/** Test seam, and what the aggregator calls after a rebuild. */
+export function invalidateEdgeCache(): void {
+  edgeCache = null;
+  edgeCacheInFlight = null;
 }
 
 /**
@@ -83,6 +133,37 @@ export class UnknownQueryError extends Error {
     super(`No check named "${queryId}" — it may have been removed.`);
     this.name = "UnknownQueryError";
   }
+}
+
+/**
+ * The check ran but could not read everything it needed.
+ *
+ * Distinct from a failure: some of the answer was obtained. It is still refused,
+ * because a security check that returns part of its findings returns a number
+ * smaller than the truth, and a number smaller than the truth is indistinguishable
+ * from an improvement.
+ */
+export class PartialQueryError extends Error {
+  constructor(message: string, readonly covered = 0, readonly total = 0) {
+    super(message);
+    this.name = "PartialQueryError";
+  }
+}
+
+/**
+ * Whether an error means "there is none" rather than "we could not look".
+ *
+ * Asking for branch protection on a branch that has none answers 404, and that
+ * is a real answer — the branch is unprotected. A 403 or a 502 is not: it means
+ * the question went unanswered, and treating it as "unprotected" invents a
+ * finding, while treating it as "protected" hides one.
+ *
+ * Every check below reads protection twice, classic and rulesets, and both
+ * legitimately 404. Only the difference between these two cases makes it
+ * possible to swallow the harmless one without swallowing the other.
+ */
+export function isAbsence(err: any): boolean {
+  return err?.status === 404;
 }
 
 export async function evaluateSecurityQuery(q: string, param?: string, advanced?: any, userToken?: string) {
@@ -524,7 +605,21 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         }
       }
 
-      const reposToCheckSBP = Array.from(protectedRepos).slice(0, 20);
+      // Every protected repository, not the first 20.
+      //
+      // This used to be `.slice(0, 20)`, which kept the cost down by looking at
+      // 20 repositories and saying nothing about the rest — so on an organization
+      // with three hundred protected repositories the check was a sample
+      // presented as a survey. The cost is now spread instead: each pass reads a
+      // batch, the verdicts are kept per repository, and the answer is withheld
+      // until every one of them has been covered.
+      const sbpSubjects = Array.from(protectedRepos).sort();
+      const sbpCached = await listVerdicts("stale-branch-protections");
+      const sbpMay = mayRefresh("stale-branch-protections");
+      const { refresh: reposToCheckSBP, known: sbpKnown } =
+        planRefresh(sbpSubjects, sbpCached, sbpMay ? budgetFor("stale-branch-protections") : 0);
+      if (sbpMay) markRefreshed("stale-branch-protections");
+      const unreadable: string[] = [];
 
       for (const repo of reposToCheckSBP) {
         let requiredReviews = 0;
@@ -533,12 +628,20 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         const sbpRepoBranches = allEdges.filter(e => e.pk === `REPO#${repo}` && e.type === "has_branch");
         const sbpDefaultBranch = sbpRepoBranches.find(e => e.metadata?.default)?.sk.replace("BRANCH#", "") || "main";
 
+        let readable = true;
+
         try {
           const { data: prot } = await sbpOctokit.rest.repos.getBranchProtection({ owner: sbpOrg, repo, branch: sbpDefaultBranch });
           if (prot.required_pull_request_reviews?.required_approving_review_count) {
             requiredReviews = Math.max(requiredReviews, prot.required_pull_request_reviews.required_approving_review_count);
           }
-        } catch(e) {}
+        } catch (e) {
+          // 404 is the branch simply having no classic protection, which is an
+          // answer. Anything else left requiredReviews at zero for a reason we
+          // never saw — and zero means "no requirement to bypass", so the
+          // repository drops out of the findings looking compliant.
+          if (!isAbsence(e)) readable = false;
+        }
         
         try {
           const { data: rulesets } = await sbpOctokit.request("GET /repos/{owner}/{repo}/rulesets", { owner: sbpOrg, repo });
@@ -552,7 +655,20 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
               }
             }
           }
-        } catch(e) {}
+        } catch (e) {
+          if (!isAbsence(e)) readable = false;
+        }
+
+        if (!readable) {
+          unreadable.push(repo);
+          continue;
+        }
+
+        if (requiredReviews === 0) {
+          // Nothing required means nothing to bypass. A verdict, so the
+          // repository counts as covered.
+          sbpKnown.set(repo, await putVerdict("stale-branch-protections", repo, null));
+        }
 
         if (requiredReviews > 0) {
           try {
@@ -575,17 +691,37 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
               const totalApprovals = prs.reduce((sum: number, pr: any) => sum + (pr.reviews?.totalCount || 0), 0);
               const avgReviews = totalApprovals / prs.length;
 
-              if (avgReviews < requiredReviews) {
-                results.push({
-                  repo,
-                  reason: `Requires ${requiredReviews} reviewers, but recent PRs average ${avgReviews.toFixed(1)} approving reviews`,
-                  details: "Protections are likely being bypassed (e.g., by admins)"
-                });
-              }
+              sbpKnown.set(repo, await putVerdict("stale-branch-protections", repo,
+                avgReviews < requiredReviews
+                  ? {
+                      repo,
+                      reason: `Requires ${requiredReviews} reviewers, but recent PRs average ${avgReviews.toFixed(1)} approving reviews`,
+                      details: "Protections are likely being bypassed (e.g., by admins)",
+                    }
+                  : null));
+            } else {
+              // No merged pull requests to judge by is a clean verdict, not a
+              // gap. Leaving it unstored would keep the repository permanently
+              // uncovered and the answer permanently withheld.
+              sbpKnown.set(repo, await putVerdict("stale-branch-protections", repo, null));
             }
-          } catch(e) {}
+          } catch (e) {
+            // The repository requires reviews and we could not read whether they
+            // happened. Silence here reports it as compliant.
+            unreadable.push(repo);
+          }
         }
       }
+
+      const sbpCoverage = coverageOf(sbpSubjects, sbpKnown);
+      if (!sbpCoverage.complete) {
+        throw new PartialQueryError(
+          describeProgress("Stale Branch Protection", sbpCoverage)
+          + (unreadable.length ? ` Could not read: ${unreadable.slice(0, 3).join(", ")}.` : ""),
+          sbpCoverage.covered, sbpCoverage.total,
+        );
+      }
+      results.push(...findingsFrom(sbpSubjects, sbpKnown));
       break;
     }
 
@@ -605,7 +741,21 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       }
 
       // In real scenario we might do all, but limit to 30 to avoid rate limits
-      const reposToCheckPBR = Array.from(protectedRepos).slice(0, 30);
+      // Every protected repository, not the first 30.
+      //
+      // This used to be `.slice(0, 30)`, which kept the cost down by looking at
+      // 30 repositories and saying nothing about the rest — so on an organization
+      // with three hundred protected repositories the check was a sample
+      // presented as a survey. The cost is now spread instead: each pass reads a
+      // batch, the verdicts are kept per repository, and the answer is withheld
+      // until every one of them has been covered.
+      const pbrSubjects = Array.from(protectedRepos).sort();
+      const pbrCached = await listVerdicts("protection-bypasses-ranking");
+      const pbrMay = mayRefresh("protection-bypasses-ranking");
+      const { refresh: reposToCheckPBR, known: pbrKnown } =
+        planRefresh(pbrSubjects, pbrCached, pbrMay ? budgetFor("protection-bypasses-ranking") : 0);
+      if (pbrMay) markRefreshed("protection-bypasses-ranking");
+      const unreadable: string[] = [];
 
       for (const repo of reposToCheckPBR) {
         let requiredReviews = 0;
@@ -614,12 +764,20 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         const pbrRepoBranches = allEdges.filter(e => e.pk === `REPO#${repo}` && e.type === "has_branch");
         const pbrDefaultBranch = pbrRepoBranches.find(e => e.metadata?.default)?.sk.replace("BRANCH#", "") || "main";
 
+        let readable = true;
+
         try {
           const { data: prot } = await pbrOctokit.rest.repos.getBranchProtection({ owner: pbrOrg, repo, branch: pbrDefaultBranch });
           if (prot.required_pull_request_reviews?.required_approving_review_count) {
             requiredReviews = Math.max(requiredReviews, prot.required_pull_request_reviews.required_approving_review_count);
           }
-        } catch(e) {}
+        } catch (e) {
+          // 404 is the branch simply having no classic protection, which is an
+          // answer. Anything else left requiredReviews at zero for a reason we
+          // never saw — and zero means "no requirement to bypass", so the
+          // repository drops out of the findings looking compliant.
+          if (!isAbsence(e)) readable = false;
+        }
         
         try {
           const { data: rulesets } = await pbrOctokit.request("GET /repos/{owner}/{repo}/rulesets", { owner: pbrOrg, repo });
@@ -633,7 +791,18 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
               }
             }
           }
-        } catch(e) {}
+        } catch (e) {
+          if (!isAbsence(e)) readable = false;
+        }
+
+        if (!readable) {
+          unreadable.push(repo);
+          continue;
+        }
+
+        if (requiredReviews === 0) {
+          pbrKnown.set(repo, await putVerdict("protection-bypasses-ranking", repo, null));
+        }
 
         if (requiredReviews > 0) {
           try {
@@ -660,18 +829,31 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
               }
             }
 
-            if (bypassCount > 0) {
-              results.push({
-                repo,
-                bypasses: bypassCount,
-                reason: `${bypassCount} out of last ${prs.length} PRs bypassed the ${requiredReviews} reviewers requirement`,
-                score: bypassCount // we will use this to sort later
-              });
-            }
-          } catch(e) {}
+            pbrKnown.set(repo, await putVerdict("protection-bypasses-ranking", repo,
+              bypassCount > 0
+                ? {
+                    repo,
+                    bypasses: bypassCount,
+                    reason: `${bypassCount} out of last ${prs.length} PRs bypassed the ${requiredReviews} reviewers requirement`,
+                    score: bypassCount, // we will use this to sort later
+                  }
+                : null));
+          } catch (e) {
+            unreadable.push(repo);
+          }
         }
       }
-      
+
+      const pbrCoverage = coverageOf(pbrSubjects, pbrKnown);
+      if (!pbrCoverage.complete) {
+        throw new PartialQueryError(
+          describeProgress("Protection Rule Bypasses", pbrCoverage)
+          + (unreadable.length ? ` Could not read: ${unreadable.slice(0, 3).join(", ")}.` : ""),
+          pbrCoverage.covered, pbrCoverage.total,
+        );
+      }
+      results.push(...findingsFrom(pbrSubjects, pbrKnown) as any[]);
+
       // Sort by bypass count descending
       results.sort((a, b) => b.score - a.score);
       break;
@@ -825,27 +1007,80 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         }
       }
 
-      for (const [u, repos] of userAccessMap.entries()) {
-        if (repos.length >= 2) {
-          try {
-            const sixMonthsAgo = new Date();
-            sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-            
-            const { data: searchData } = await dormOctokit.rest.search.commits({
-              q: `author:${u} org:${dormOrg} committer-date:>=${sixMonthsAgo.toISOString().split('T')[0]}`
-            });
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const since = sixMonthsAgo.toISOString().split("T")[0];
 
-            if (searchData.total_count === 0) {
-              results.push({
+      const candidates = [...userAccessMap.entries()].filter(([, repos]) => repos.length >= 2);
+      const dormSubjects = candidates.map(([u]) => u);
+
+      // Cached per account rather than re-read every pass. One commit search
+      // each, against a limit of thirty a minute, for a question whose answer
+      // moves on the scale of months — so a few hundred accounts are covered a
+      // batch at a time instead of needing a budget nobody has.
+      const dormCached = await listVerdicts("dormant-privileged-users");
+      // Zero budget when another caller refreshed moments ago: read what is
+      // stored rather than spending a second batch inside the same minute.
+      const dormMay = mayRefresh("dormant-privileged-users");
+      const { refresh: dormRefresh, known: dormKnown } =
+        planRefresh(dormSubjects, dormCached, dormMay ? budgetFor("dormant-privileged-users") : 0);
+      if (dormMay) markRefreshed("dormant-privileged-users");
+      const dormRepos = new Map(candidates);
+
+      // One search per candidate, and search is the small budget — 30 requests
+      // a *minute*, not the 15,000 an hour the rest of the app draws on. An
+      // organization with more privileged users than that cannot be checked in
+      // one pass, and finding that out request by request means finding it out
+      // halfway through.
+      const unchecked: string[] = [];
+
+      for (const u of dormRefresh) {
+        const repos = dormRepos.get(u)!;
+        try {
+          const { data: searchData } = await dormOctokit.rest.search.commits({
+            q: `author:${u} org:${dormOrg} committer-date:>=${since}`,
+          });
+
+          // Stored either way. "Checked and active" is an answer worth keeping;
+          // storing only findings would make a clean account indistinguishable
+          // from one never reached, and coverage could never complete.
+          const finding = searchData.total_count === 0
+            ? {
                 user: u,
                 reason: `Dormant high-privilege account`,
                 details: `Admin of ${repos.length} repos, but 0 commits in the org in the last 6 months`,
-                adminRepos: repos.length
-              });
-            }
-          } catch(e) {}
+                adminRepos: repos.length,
+              }
+            : null;
+          dormKnown.set(u, await putVerdict("dormant-privileged-users", u, finding));
+        } catch (err) {
+          // Not swallowed.
+          //
+          // A result is only recorded when the search comes back with zero
+          // commits, so an error that is caught and dropped removes that person
+          // from the answer entirely — and the widget reports *fewer* dormant
+          // admins than exist. No error, no warning, just a smaller number: the
+          // one failure mode a security check must never have. It was written
+          // as `catch(e) {}` and would have started under-reporting silently the
+          // moment the organization outgrew the search budget.
+          unchecked.push(u);
         }
       }
+
+      // Refused rather than returned partial. "Twenty of forty-five admins are
+      // dormant" is not a smaller finding, it is an unreliable one, and the
+      // alarm evaluator already knows what to do with no reading: leave the
+      // state alone rather than resolve it. A partial list would instead look
+      // like an improvement.
+      const dormCoverage = coverageOf(dormSubjects, dormKnown);
+      if (!dormCoverage.complete) {
+        throw new PartialQueryError(
+          describeProgress("Dormant Privileged Access", dormCoverage)
+          + (unchecked.length ? ` Could not read: ${unchecked.slice(0, 3).join(", ")}.` : ""),
+          dormCoverage.covered, dormCoverage.total,
+        );
+      }
+      results.push(...findingsFrom(dormSubjects, dormKnown));
       break;
     }
 
