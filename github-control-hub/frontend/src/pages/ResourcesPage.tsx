@@ -13,6 +13,17 @@ import ExternalLink from "../components/ExternalLink";
  * they can already see. Nothing here writes.
  */
 
+/** How long ago an ISO timestamp was, in words. */
+function since(iso: string): string {
+  const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60_000);
+  if (!Number.isFinite(mins) || mins < 0) return "at an unknown time";
+  if (mins < 1) return "moments ago";
+  if (mins < 60) return `${mins} minutes ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hours ago`;
+  return `${Math.floor(hours / 24)} days ago`;
+}
+
 function ago(days: number): string {
   if (days === 0) return "today";
   if (days === 1) return "yesterday";
@@ -420,6 +431,57 @@ function BlastBody({ data }: { data: NonNullable<ReturnType<typeof useBlastRadiu
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* Changed since we last looked.
+          A different question from drift, and the one somebody asks straight
+          after editing a rule. Shown above drift because it is the more
+          immediate answer. */}
+      {data.change && !data.change.first &&
+        (data.change.added.length > 0 || data.change.removed.length > 0) && (
+        <div className={`${SURFACE.sheet} border-l-4 border-amber-300 dark:border-amber-500/40`}>
+          <div className="px-5 pt-4 pb-2">
+            <h3 className="text-[13px] font-bold text-slate-900 dark:text-white">
+              Changed since this app last looked
+            </h3>
+            {/* Carefully worded. The gap between two reads is all this knows;
+                when inside that gap it happened, and who did it, come from
+                CloudTrail and are not available. */}
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Last read {data.change.lastSeenAt ? since(data.change.lastSeenAt) : "at an unknown time"}.
+              The change happened at some point since then — this app cannot say when, or by whom.
+            </p>
+          </div>
+          <ul className="px-5 pb-4 space-y-1.5">
+            {data.change.added.map((r, i) => (
+              <li key={`a${i}`} className="flex items-start gap-2.5">
+                <span className="mt-0.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 shrink-0">
+                  added
+                </span>
+                <code className="text-[13px] font-mono text-slate-800 dark:text-slate-100">{r}</code>
+              </li>
+            ))}
+            {data.change.removed.map((r, i) => (
+              <li key={`r${i}`} className="flex items-start gap-2.5">
+                <span className="mt-0.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 shrink-0">
+                  removed
+                </span>
+                <code className="text-[13px] font-mono text-slate-800 dark:text-slate-100 line-through opacity-70">{r}</code>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {data.change?.first && (
+        // Said rather than left blank, so an empty panel is not read as "no
+        // changes" on the one occasion it means "nothing to compare yet".
+        <div className={`${SURFACE.sheet} px-5 py-3`}>
+          <p className="text-[12px] text-slate-500 dark:text-slate-400">
+            First time this app has read this resource, so there is nothing to compare it against.
+            Changes from here on will be listed.
+          </p>
         </div>
       )}
 

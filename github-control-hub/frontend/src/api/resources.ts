@@ -74,6 +74,14 @@ export interface BlastRadius {
   /** Only for resource kinds whose declared shape can be compared. */
   drift: DriftReport | null;
   targetUrl?: string | null;
+  /** What is different since this app last read the resource. */
+  change?: {
+    first: boolean;
+    added: string[];
+    removed: string[];
+    lastSeenAt: string | null;
+    changedAt: string | null;
+  } | null;
 }
 
 export function fetchInventory(q: string, refresh = false): Promise<InventoryAnswer> {

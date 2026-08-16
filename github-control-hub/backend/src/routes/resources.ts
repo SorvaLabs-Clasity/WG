@@ -10,7 +10,8 @@ import { defaultProviders, relationshipsTo, resolveProviderRegion } from "../ser
 import { assessBlastRadius } from "../services/blastRadiusService";
 import { findSourceRefs, searcherFor, clearSourceSearchCache } from "../services/sourceSearchService";
 import { expertsForResource } from "../services/resourceExpertsService";
-import { parseSecurityGroups, driftForSecurityGroup } from "../services/iacParseService";
+import { parseSecurityGroups, driftForSecurityGroup, ruleKey } from "../services/iacParseService";
+import { trackChange } from "../services/resourceSnapshotService";
 import { ssmReader } from "../services/parameterStoreService";
 import type { SourceRef } from "../services/blastRadiusService";
 
@@ -175,8 +176,22 @@ router.get("/blast", async (req: Request, res: Response) => {
       ? await driftFor(target, blast.sourceRefs, octokit)
       : null;
 
+    // Has it changed since we last looked?
+    //
+    // A different question from drift, and the one somebody asks after editing
+    // a rule. Only for resources whose comparable state is small and stable —
+    // a security group's ingress. Fingerprinting a Lambda would report a change
+    // every deploy, which is true and useless.
+    const change = target.service === "ec2-sg"
+      ? await trackChange("ec2-sg", target.name,
+          ((target.detail?.ingress ?? []) as any[]).flatMap(r =>
+            (r.cidrs?.length ? r.cidrs : ["(another security group)"]).map((c: string) =>
+              ruleKey(String(r.protocol), r.from ?? null, r.to ?? null, c))))
+      : null;
+
     res.json({
       ...blast,
+      change,
       // The target's own console link, so the header can offer it.
       targetUrl: consoleUrl(target, target.detail),
       experts, drift,

@@ -250,6 +250,39 @@ Three things are refused rather than guessed:
 
 Each of those leaves the rule unresolved, which is where it was before.
 
+### "Has this changed?" is a different question
+
+Drift compares AWS against source. It has **no memory**, so a security group
+that no code declares compares identically before and after somebody edits a
+rule's address — undeclared either way. That is why editing an inbound rule
+appeared to change nothing.
+
+So each read of a security group's ingress is fingerprinted, and the next read
+says what is different:
+
+```
+  Changed since this app last looked
+  Last read 2 days ago. The change happened at some point since then —
+  this app cannot say when, or by whom.
+
+  added     tcp 22 from 198.51.100.7/32
+  removed   tcp 22 from 203.0.113.1/32
+```
+
+An edited address shows as one rule added and one removed, because that is what
+it is.
+
+**Only the gap between two reads is knowable.** Not the moment inside it, and
+not who made the change — both come from CloudTrail, which this app does not
+use. The wording says so rather than implying a precision it lacks.
+
+The **first** read of a resource is a baseline and reports nothing. Inventing a
+change on first sight would make every new resource look like an incident, and
+the panel says that is what happened rather than showing an empty box.
+
+A reordering is not a change: AWS returns rules in whatever order it likes, and
+comparing raw lists would report a change on every read.
+
 ### What it cannot tell you
 
 **Who changed it, and when.** That comes from CloudTrail and nowhere else, and
