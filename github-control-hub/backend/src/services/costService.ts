@@ -81,9 +81,41 @@ export interface CostAnswer {
 export const COST_CACHE_MS = 24 * 60 * 60_000;
 
 let cache: { at: number; key: string; answer: CostAnswer } | null = null;
+let lastForcedAt = 0;
 
-export function clearCostCache(): void {
+/**
+ * The shortest gap between two forced refreshes.
+ *
+ * Everything else in this app can be refreshed as often as somebody likes,
+ * because everything else is free. This one is a cent a request, and a refresh
+ * button that bypasses the cache is a button somebody can hold down — at which
+ * point the app is spending real money on an answer that changes once a day.
+ *
+ * Five minutes is far longer than an impatient double-click and far shorter
+ * than the daily cadence the data actually moves at, so it costs a deliberate
+ * refresh nothing and caps the damage at about three dollars a month in the
+ * worst case rather than the tens of dollars an unthrottled button allows.
+ */
+export const MIN_FORCED_REFRESH_MS = 5 * 60_000;
+
+/**
+ * Drop the cached answer, if enough time has passed.
+ *
+ * Returns whether it actually cleared, so the caller can say "already refreshed
+ * a moment ago" rather than silently returning a cached answer to somebody who
+ * just asked for a fresh one.
+ */
+export function clearCostCache(now = Date.now()): boolean {
+  if (now - lastForcedAt < MIN_FORCED_REFRESH_MS) return false;
+  lastForcedAt = now;
   cache = null;
+  return true;
+}
+
+/** Test seam: forget both the answer and the throttle. */
+export function __resetCostForTests(): void {
+  cache = null;
+  lastForcedAt = 0;
 }
 
 /** The calendar month containing `now`, which is what a bill is measured in. */

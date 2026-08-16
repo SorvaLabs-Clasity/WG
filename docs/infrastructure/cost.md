@@ -50,6 +50,31 @@ DynamoDB is pennies on a small organization and the **largest variable line** on
 a busy one — the opposite of the usual expectation, and worth understanding
 before it surprises anyone.
 
+## The AWS resource features
+
+The Resources tab — blast radius, drift, who has worked on it — adds **nothing**
+to the bill. Every AWS call it makes is a `List` or `Describe`, which AWS does
+not charge for, and it persists nothing: no DynamoDB rows, no Lambda
+invocations, no schedule. It runs on demand with the operator's own credentials
+and holds its caches in memory.
+
+The one exception is the **cost panel**, which uses Cost Explorer at **$0.01 per
+request**. Held for 24 hours, and the manual refresh is throttled to once every
+five minutes.
+
+| | Monthly |
+|---|---|
+| Normal use — the panel opened once a day | **~$0.30** |
+| Somebody refreshing it as often as allowed, all day | **~$2.90** |
+
+**This does not scale with organization size or AWS spend.** Cost Explorer bills
+per question asked, so a hundred-person organization with a $20,000 bill pays
+the same as a two-person one.
+
+The real constraint on these features is GitHub quota rather than money: code
+search allows ten requests a minute, and one blast-radius lookup costs one to
+three of them.
+
 ## What scales
 
 Two things, and only two.

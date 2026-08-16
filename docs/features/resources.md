@@ -189,6 +189,13 @@ month for one tab refreshing every thirty seconds. So it is fetched when
 somebody asks, held for a day on both sides, and never on a render, a timer or a
 window focus.
 
+**The refresh button is throttled to once every five minutes.** Everything else
+in this app can be refreshed as often as anybody likes, because everything else
+is free; a button that bypasses a cache costing a cent a time is a button
+somebody can hold down. A refresh asked for too soon returns the held answer and
+says so, rather than either spending or pretending. The worst anybody can spend
+by holding it all day is about **$2.90**.
+
 ### Three precisions, and which one you get is on the number
 
 | Mode | Precision | Needs |

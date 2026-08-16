@@ -250,7 +250,11 @@ async function driftFor(target: Resource, refs: SourceRef[], octokit: any) {
  */
 router.get("/cost", async (req: Request, res: Response) => {
   try {
-    if (req.query.refresh === "true") clearCostCache();
+    // Throttled, because this is the one read that costs money. A refresh that
+    // arrives too soon returns the held answer and says so, rather than either
+    // spending a cent or pretending it refreshed.
+    const askedFresh = req.query.refresh === "true";
+    const refreshed = askedFresh ? clearCostCache() : false;
     const answer = await readCost(
       costDepsFromAws(), currentMonth(), req.query.tag ? String(req.query.tag) : undefined);
 
@@ -291,6 +295,7 @@ router.get("/cost", async (req: Request, res: Response) => {
 
     res.json({
       ...answer,
+      refreshDeclined: askedFresh && !refreshed,
       // Per project only where per-resource money exists. Everywhere else the
       // honest answer is which repositories touch a service, with no dollar
       // split — see the note on `ownershipByService`.

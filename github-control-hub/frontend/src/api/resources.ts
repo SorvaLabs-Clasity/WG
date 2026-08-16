@@ -117,6 +117,8 @@ export interface CostAnswer {
     unreferenced: string[];
   }> | null;
   unreadableServices: Array<{ service: string; error: string }>;
+  /** A refresh was asked for too soon after the last one. */
+  refreshDeclined?: boolean;
 }
 
 /**

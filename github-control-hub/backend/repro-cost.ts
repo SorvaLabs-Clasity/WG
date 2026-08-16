@@ -25,7 +25,7 @@
 import {
   readCost, clearCostCache, currentMonth, ownershipByService, providerFor,
   SERVICE_ALIASES, COST_CACHE_MS, withinResourceWindow, RESOURCE_WINDOW_DAYS,
-  projectSpend, resourceKeyFor,
+  projectSpend, resourceKeyFor, __resetCostForTests, MIN_FORCED_REFRESH_MS,
   type CostDeps, type SpendRow,
 } from "./src/services/costService";
 import { defaultProviders } from "./src/services/awsProviders";
@@ -56,7 +56,7 @@ function deps(over: Partial<CostDeps> = {}) {
 (async () => {
   // ── falling back honestly ────────────────────────────────────────────
   {
-    clearCostCache();
+    __resetCostForTests();
     const { deps: d } = deps();
     const a = await readCost(d, PERIOD);
     check("with no tags and no resource data, the answer is per service",
@@ -67,7 +67,7 @@ function deps(over: Partial<CostDeps> = {}) {
       a.notes.some(n => /Activate one in Billing/.test(n)), a.notes);
   }
   {
-    clearCostCache();
+    __resetCostForTests();
     const { deps: d } = deps({ activeCostTags: async () => ["Project"] });
     const a = await readCost(d, PERIOD);
     check("an active cost allocation tag is used", a.mode === "tag", a.mode);
@@ -75,7 +75,7 @@ function deps(over: Partial<CostDeps> = {}) {
       a.notes.some(n => /"Project" cost allocation tag/.test(n)), a.notes);
   }
   {
-    clearCostCache();
+    __resetCostForTests();
     const { deps: d } = deps({
       activeCostTags: async () => ["Project", "Team"],
       getCostAndUsage: async () => [row("payments", 40)],
@@ -84,13 +84,13 @@ function deps(over: Partial<CostDeps> = {}) {
     check("a requested tag is honoured when active",
       a.notes.some(n => /"Team"/.test(n)), a.notes);
 
-    clearCostCache();
+    __resetCostForTests();
     const b = await readCost(d, PERIOD, "NotActivated");
     check("  and a requested tag that is not active falls back rather than failing",
       b.mode === "tag" && b.notes.some(n => /"Project"/.test(n)), b.notes);
   }
   {
-    clearCostCache();
+    __resetCostForTests();
     const { deps: d } = deps({
       getCostAndUsageWithResources: async () => [row("arn:aws:sqs:::q", 5)],
     });
@@ -99,7 +99,7 @@ function deps(over: Partial<CostDeps> = {}) {
   }
   {
     // The measured reality: resource-level is an opt-in and was off.
-    clearCostCache();
+    __resetCostForTests();
     const { deps: d } = deps({
       getCostAndUsageWithResources: async () => {
         throw new Error("Resource-level data granularity is an opt-in only feature. "
@@ -114,7 +114,7 @@ function deps(over: Partial<CostDeps> = {}) {
       a.notes.some(n => /14 days/.test(n)), a.notes);
   }
   {
-    clearCostCache();
+    __resetCostForTests();
     const { deps: d } = deps({
       getCostAndUsageWithResources: async () => [],
     });
@@ -130,7 +130,7 @@ function deps(over: Partial<CostDeps> = {}) {
   // is 14 days" — which does not mention resources, is not actionable, and cost
   // a Cost Explorer request to discover.
   {
-    clearCostCache();
+    __resetCostForTests();
     let asked = false;
     const { deps: d } = deps({
       getCostAndUsageWithResources: async () => { asked = true; return [row("x", 1)]; },
@@ -142,7 +142,7 @@ function deps(over: Partial<CostDeps> = {}) {
     check("  and says what the window is",
       a.notes.some(n => /last 14 days/.test(n)), a.notes);
 
-    clearCostCache();
+    __resetCostForTests();
     const recent = await readCost(
       d, { start: "2026-08-28", end: "2026-08-31" }, undefined, now);
     check("a recent period is asked for", asked && recent.mode === "resource", recent.mode);
@@ -156,7 +156,7 @@ function deps(over: Partial<CostDeps> = {}) {
 
   // ── every request is a cent ──────────────────────────────────────────
   {
-    clearCostCache();
+    __resetCostForTests();
     const { deps: d, calls } = deps();
     await readCost(d, PERIOD);
     await readCost(d, PERIOD);
@@ -171,7 +171,7 @@ function deps(over: Partial<CostDeps> = {}) {
       COST_CACHE_MS >= 12 * 3600_000, COST_CACHE_MS);
   }
   {
-    clearCostCache();
+    __resetCostForTests();
     const { deps: d, calls } = deps();
     await readCost(d, PERIOD);
     await readCost(d, { start: "2026-07-01", end: "2026-08-01" });
@@ -331,6 +331,38 @@ function deps(over: Partial<CostDeps> = {}) {
     const empty = projectSpend([], [], new Map());
     check("no rows is an empty breakdown, not an error",
       empty.projects.length === 0 && empty.unattributed === 0, empty);
+  }
+
+  // ── the refresh button cannot be held down ──────────────────────────
+  //
+  // Everything else in this app refreshes as often as somebody likes, because
+  // everything else is free. This is a cent a request, and a button that
+  // bypasses the cache is a button somebody can hold down.
+  {
+    __resetCostForTests();
+    const t0 = 5_000_000;
+    check("the first forced refresh clears the cache", clearCostCache(t0));
+    check("  a second, moments later, does not", !clearCostCache(t0 + 1_000));
+    check("  nor at the end of the window", !clearCostCache(t0 + MIN_FORCED_REFRESH_MS - 1));
+    check("  and one after the window does", clearCostCache(t0 + MIN_FORCED_REFRESH_MS));
+
+    check("the gap is minutes, not seconds", MIN_FORCED_REFRESH_MS >= 60_000, MIN_FORCED_REFRESH_MS);
+    // The worst case somebody can spend by holding the button: one request per
+    // window, all day.
+    const worstPerDay = Math.floor(86_400_000 / MIN_FORCED_REFRESH_MS);
+    check(`  capping a held button at ${worstPerDay} requests a day`,
+      worstPerDay * 0.01 < 5, worstPerDay * 0.01);
+  }
+  {
+    // A throttled refresh must not silently hand back a cached answer as
+    // though it were fresh — the caller is told, and says so.
+    __resetCostForTests();
+    const { deps: d, calls } = deps();
+    await readCost(d, PERIOD);
+    const cleared = clearCostCache(Date.now());
+    check("clearing reports whether it happened", typeof cleared === "boolean");
+    await readCost(d, PERIOD);
+    check("  and a cleared cache does re-ask", calls.grouped === 2, calls.grouped);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
