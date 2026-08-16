@@ -201,6 +201,29 @@ export default function AuditStreamSetup() {
           Streaming from <strong>{status.enterprise}</strong>. {status.objectCount}+ batches
           delivered. Rows appear here as GitHub writes them — expect minutes, not seconds.
         </p>
+
+        {/* The two values, still here once it is working.
+            They used to disappear at exactly this point: the moment streaming
+            connected, the only place the role ARN was written down was the IAM
+            console. That is the wrong time to lose them — re-entering the
+            stream after somebody deletes it, pointing a second enterprise at
+            the same bucket, or simply checking what GitHub was given all happen
+            long after setup. Folded away, because the answer on this screen is
+            "it works" and the details are for when that stops being enough. */}
+        <details className="mt-4 max-w-xl mx-auto text-left">
+          <summary className="text-xs font-semibold cursor-pointer text-gh-blue">
+            Bucket and role ARN
+          </summary>
+          <p className="text-xs mt-2 text-gray-500 dark:text-slate-400">
+            What an enterprise owner entered in GitHub, at{" "}
+            <strong>Enterprise settings → Audit log → Log streaming → Amazon S3</strong>,
+            authenticating with <strong>OpenID Connect</strong>. Needed again only to
+            re-create the stream if it is removed there.
+          </p>
+          <Copyable label="Bucket" value={status.bucket} />
+          <Copyable label="Role ARN" value={status.roleArn ?? ""} />
+        </details>
+
         <div className="mt-3">{offSwitch()}</div>
         {offDialog()}
       </>

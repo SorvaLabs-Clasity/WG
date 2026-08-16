@@ -65,6 +65,12 @@ An enterprise owner switches streaming on, once, in a browser:
 with **OpenID Connect** rather than access keys. The app shows the bucket name
 and role ARN to paste, with copy buttons.
 
+**Both stay on the page once streaming is working**, folded under *Bucket and
+role ARN*. They used to disappear the moment it connected, which is the wrong
+time to lose them: re-creating the stream after somebody removes it in GitHub,
+or simply checking what GitHub was given, all happen long after setup — and the
+only remaining copy was in the IAM console.
+
 The step-by-step, including the exact ARN shape, the two other places to read it
 from, and what a failed test event usually means, is in
 [setup phase 4](../operations/setup.md#phase-4--enterprise-audit-log-streaming-optional).

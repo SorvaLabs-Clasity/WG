@@ -172,6 +172,18 @@ function harness(over: Partial<AuditStreamDeps> = {}) {
     // still switched off in GitHub, and only the object count shows it.
     check("configured is never inferred from the bucket being empty",
       ready.configured === true, "a correct setup would read as broken");
+
+    // Both values survive into the connected state.
+    //
+    // The screen shows them once streaming is working as well as while it is
+    // being set up, because that is when they are next needed — re-creating the
+    // stream after somebody removes it in GitHub, or checking what GitHub was
+    // given. A null here would render an empty copy box that looks like a value.
+    for (const [label, st] of [["waiting on GitHub", ready], ["connected", flowing]] as const) {
+      check(`${label}: the role ARN is present, not null`,
+        typeof st.roleArn === "string" && st.roleArn.startsWith("arn:aws:iam::"), st.roleArn);
+      check(`  and the bucket with it`, !!st.bucket, st.bucket);
+    }
   }
 
   // ── a bad slug never reaches IAM ────────────────────────────────────
