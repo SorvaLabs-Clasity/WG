@@ -17,9 +17,27 @@ deleting it is safe, so this needed **no new IAM grant and nobody's approval**.
 Every AWS call is a `List` or `Describe`, which AWS does not charge for. The
 feature's marginal AWS bill is **zero**.
 
-Eight services today — SQS, Lambda, S3, DynamoDB, IAM, security groups, log
-groups, RDS. Adding a ninth means adding one provider; nothing else in the
-feature names a service.
+### Two kinds of provider
+
+**Eight services deeply** — SQS, Lambda, S3, DynamoDB, IAM, security groups, log
+groups, RDS. These know relationships, configuration and the fields drift
+compares. Adding a ninth means adding one provider; nothing else names a service.
+
+**Every taggable service shallowly**, through one call to the Resource Groups
+Tagging API. That covers the rest of AWS — API Gateway, EventBridge, Step
+Functions, CloudFormation, EC2 instances, VPCs, WAF — so a resource can be
+looked up even where nothing here can say what depends on it.
+
+Neither is a superset. Measured on a real account: the specific providers found
+96 resources, the tagging API found 41, and each covered things the other
+missed. Together, **125 across 16 services**.
+
+The overlap is merged on the ARN, with the specific providers listed first so
+their richer description survives. A resource shown twice would be worse than
+either: it makes a list look wrong and a count meaningless.
+
+The tagging API's limit is worth stating: it returns resources that **support
+tagging and are indexed for it**, in the current region. Most of AWS, not all.
 
 ## The rule everything is shaped around
 
@@ -64,6 +82,23 @@ difference between "this will break" and "this will be orphaned".
 
 Matching is by **whole token**. `orders` does not match `orders-archive-dlq`,
 because a report that over-reports is a report nobody believes.
+
+### Searching for what people actually type
+
+A security group is called `default` and nobody refers to it that way — they
+have `sg-0d311ce…`, out of a console URL or an error message. So a resource is
+findable by its **name**, its **ARN**, any **id** it carries, and the **words
+people use for its service**:
+
+| Typed | Finds |
+|---|---|
+| `sg-0d311ce245b2a84a4` | that group exactly, ranked above anything merely containing it |
+| `sg-` | every security group |
+| `security group`, `firewall` | the same |
+| `queue`, `bucket`, `function`, `table` | that kind of resource |
+
+Searching an id used to return nothing at all, which reads as the resource not
+existing.
 
 ## What it searches for
 

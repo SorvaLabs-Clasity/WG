@@ -28,7 +28,9 @@ import {
   logicalIdFrom,
   type Inventory, type Resource, type Relationship, type ProviderResult, type Provider,
 } from "./src/services/awsInventoryService";
-import { matchesTarget, __setProviderRegionForTests } from "./src/services/awsProviders";
+import {
+  matchesTarget, __setProviderRegionForTests, parseArn,
+} from "./src/services/awsProviders";
 import {
   assessBlastRadius, classifyPath, scoreRisk, dedupeRelationships,
   type SourceRef,
@@ -588,6 +590,106 @@ const noSource = async () => ({ ok: true, service: "github", items: [] as Source
       (consoleUrl({ service: "lambda", name: "worker", region: "eu-west-2" }) ?? "")
         .includes("region=eu-west-2"));
     __setProviderRegionForTests(undefined);
+  }
+
+  // ── finding a resource by what people actually type ─────────────────
+  //
+  // Reported: searching a security group's id found nothing. Nobody refers to a
+  // group as `default` — they have `sg-0d311ce…`, out of a console URL or an
+  // error message, and a search that fails on it reads as the resource not
+  // existing.
+  {
+    const inv: Inventory = {
+      byService: new Map(),
+      unreadable: [],
+      all: [
+        { service: "ec2-sg", name: "default", ids: ["sg-0d311ce245b2a84a4", "vpc-abc"] },
+        { service: "ec2-sg", name: "web", ids: ["sg-999"] },
+        { service: "lambda", name: "worker", region: "us-east-1" },
+      ],
+    };
+    check("an id finds its resource", matchResources(inv, "sg-0d311ce245b2a84a4")[0].name === "default");
+    check("  and beats a fuzzy name match",
+      matchResources(inv, "sg-0d311ce245b2a84a4").length === 1,
+      matchResources(inv, "sg-0d311ce245b2a84a4").map(r => r.name));
+    check("a partial id finds it too", matchResources(inv, "sg-0d311")[0].name === "default");
+
+    // Exactness has to change the *order*, not just whether something is found
+    // — the partial rule finds it either way. Named so the exact match sorts
+    // last alphabetically, which is where it would land without the rule.
+    const ranked: Inventory = {
+      byService: new Map(), unreadable: [],
+      all: [
+        { service: "ec2-sg", name: "alpha", ids: ["sg-1234"] },
+        { service: "ec2-sg", name: "zeta", ids: ["sg-123"] },
+      ],
+    };
+    check("an exact id outranks one that merely contains it",
+      matchResources(ranked, "sg-123")[0].name === "zeta",
+      matchResources(ranked, "sg-123").map(r => r.name));
+    check("a shared id prefix finds both", matchResources(inv, "sg-").length === 2);
+
+    // What people call the thing, rather than what this codebase calls it.
+    check("\"security group\" lists security groups",
+      matchResources(inv, "security group").length === 2,
+      matchResources(inv, "security group").map(r => r.name));
+    check("\"firewall\" does too", matchResources(inv, "firewall").length === 2);
+    check("\"function\" finds the lambda", matchResources(inv, "function")[0].name === "worker");
+    // …but a name match still outranks a service match.
+    check("a name beats its service",
+      matchResources(inv, "web")[0].name === "web", matchResources(inv, "web").map(r => r.name));
+  }
+
+  // ── every service, not only the ones with a provider ────────────────
+  {
+    // API Gateway's resource part begins with a slash, so there is no type and
+    // the leading slash is not part of the name.
+    const apigw = parseArn("arn:aws:apigateway:us-east-1::/restapis/abc123");
+    check("an ARN yields its service and name",
+      apigw?.service === "apigateway" && apigw?.name === "restapis/abc123", apigw);
+    check("  with no type where the ARN carries none", apigw?.type === "");
+    check("a slash-separated ARN splits on the type",
+      parseArn("arn:aws:ec2:us-east-1:1:security-group/sg-123")?.type === "security-group");
+    check("  and keeps the name",
+      parseArn("arn:aws:ec2:us-east-1:1:security-group/sg-123")?.name === "sg-123");
+    check("a colon-separated ARN splits too",
+      parseArn("arn:aws:lambda:us-east-1:1:function:worker")?.name === "worker");
+    check("an ARN with no region has none",
+      parseArn("arn:aws:s3:::my-bucket")?.region === undefined);
+    check("  and still yields the name", parseArn("arn:aws:s3:::my-bucket")?.name === "my-bucket");
+    check("something that is not an ARN is null", parseArn("just-a-name") === null);
+    check("  and a truncated one too", parseArn("arn:aws:s3") === null);
+  }
+  {
+    // The same resource from two providers is one row, and the richer one wins.
+    const rich: Provider = {
+      service: "sqs",
+      list: async () => ({ ok: true, service: "sqs", items: [
+        { service: "sqs", name: "orders", arn: "arn:aws:sqs:us-east-1:1:orders", detail: { url: "https://x" } },
+      ] }),
+    };
+    const bare: Provider = {
+      service: "tagged",
+      list: async () => ({ ok: true, service: "tagged", items: [
+        { service: "sqs", name: "orders", arn: "arn:aws:sqs:us-east-1:1:orders" },
+        { service: "apigateway", name: "/restapis/abc", arn: "arn:aws:apigateway:us-east-1::/restapis/abc" },
+      ] }),
+    };
+    const inv = await buildInventory([rich, bare]);
+    check("a resource described twice appears once", inv.all.length === 2, inv.all.map(r => r.name));
+    check("  keeping the richer description",
+      inv.all.find(r => r.name === "orders")?.detail?.url === "https://x");
+    check("  while a service with no provider still appears",
+      inv.all.some(r => r.service === "apigateway"));
+
+    // Case differences in an ARN are the same resource.
+    const dupe = await buildInventory([rich, {
+      service: "t2",
+      list: async () => ({ ok: true, service: "t2", items: [
+        { service: "sqs", name: "orders", arn: "ARN:AWS:SQS:US-EAST-1:1:ORDERS" },
+      ] }),
+    }]);
+    check("an ARN differing only in case is the same resource", dupe.all.length === 1, dupe.all.length);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

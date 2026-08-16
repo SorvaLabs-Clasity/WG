@@ -36,6 +36,15 @@ export interface ResourceId {
 export interface Resource extends ResourceId {
   /** Anything worth showing without a second call. */
   detail?: Record<string, unknown>;
+  /**
+   * Other things this resource is known by, and searchable as.
+   *
+   * A security group's name is `default` and nobody ever refers to it that
+   * way — they have `sg-0d311ce245b2a84a4`, out of a console URL or an error
+   * message. Searching only the name meant pasting the id found nothing, which
+   * reads as the resource not existing.
+   */
+  ids?: string[];
 }
 
 /**
@@ -143,13 +152,40 @@ export async function readProvider<T>(
   }
 }
 
-/** Read every provider, in parallel, and keep the failures. */
+/**
+ * Read every provider, in parallel, keeping the failures and merging the
+ * overlap.
+ *
+ * Two kinds of provider feed this: a handful that know one service deeply, and
+ * one that knows every taggable service shallowly. They overlap, so the same
+ * queue can arrive twice — once with its URL, its relationships and its
+ * configuration, once as a bare ARN.
+ *
+ * **First wins**, and the specific providers are listed first, so the richer
+ * description is the one kept. Showing a resource twice would be worse than
+ * either: it makes a list look wrong, and it makes a count meaningless.
+ */
 export async function buildInventory(providers: Provider[]): Promise<Inventory> {
   const results = await Promise.all(providers.map(p => p.list()));
   const byService = new Map(results.map(r => [r.service, r]));
+
+  const seen = new Set<string>();
+  const all: Resource[] = [];
+  for (const r of results) {
+    for (const item of r.items) {
+      // Keyed on the ARN where there is one, since that is the only identifier
+      // two providers are guaranteed to agree on. Otherwise on service and
+      // name, which is unique within a service.
+      const key = (item.arn ?? `${item.service}/${item.name}`).toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      all.push(item);
+    }
+  }
+
   return {
     byService,
-    all: results.flatMap(r => r.items),
+    all,
     unreadable: results
       .filter(r => !r.ok)
       .map(r => ({ service: r.service, error: r.error ?? "unknown error" })),
@@ -164,6 +200,24 @@ export async function buildInventory(providers: Provider[]): Promise<Inventory> 
  * full ARN, or a fragment of either. An exact-match box would fail on the most
  * common input, which is a name pasted with its ARN prefix still attached.
  */
+/**
+ * Words people use for a service that are not its provider name.
+ *
+ * `ec2-sg` is what this codebase calls them; "security group" is what everybody
+ * else calls them, and a search box that does not know the second is a search
+ * box that fails on the obvious query.
+ */
+const SERVICE_WORDS: Record<string, string> = {
+  "ec2-sg": "security group firewall sg",
+  "logs": "cloudwatch log group logging",
+  "sqs": "queue",
+  "s3": "bucket storage",
+  "dynamodb": "table database",
+  "rds": "database db postgres mysql",
+  "iam": "role permission",
+  "lambda": "function",
+};
+
 export function matchResources(inventory: Inventory, query: string): Resource[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
@@ -176,11 +230,22 @@ export function matchResources(inventory: Inventory, query: string): Resource[] 
     .map(r => {
       const name = r.name.toLowerCase();
       const arn = (r.arn ?? "").toLowerCase();
+      const ids = (r.ids ?? []).map(i => i.toLowerCase());
+
       if (arn && arn === q) return { r, score: 0 };
+      // An exact id beats a fuzzy name: somebody who pasted `sg-0d311…` wants
+      // that resource and nothing else.
+      if (ids.includes(q)) return { r, score: 0 };
       if (name === q || name === tail) return { r, score: 1 };
       if (arn.includes(q)) return { r, score: 2 };
+      if (ids.some(i => i.includes(q))) return { r, score: 2 };
       if (name.startsWith(tail)) return { r, score: 3 };
       if (name.includes(tail)) return { r, score: 4 };
+      // The service itself, so "security" or "lambda" lists that kind. A person
+      // who does not remember a name still knows what sort of thing it was.
+      if (r.service.toLowerCase().includes(q) || SERVICE_WORDS[r.service]?.includes(q)) {
+        return { r, score: 5 };
+      }
       return null;
     })
     .filter((x): x is { r: Resource; score: number } => x !== null);

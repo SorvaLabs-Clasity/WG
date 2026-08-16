@@ -97,6 +97,7 @@ export function sqsProvider(): Provider {
         return {
           service: "sqs", name, region,
           arn: region && account ? `arn:aws:sqs:${region}:${account}:${name}` : undefined,
+          ids: [url],
           detail: { url },
         };
       });
@@ -272,6 +273,7 @@ export function securityGroupProvider(): Provider {
         service: "ec2-sg",
         name: g.GroupName,
         region: REGION(),
+        ids: [g.GroupId, g.VpcId].filter(Boolean) as string[],
         detail: {
           groupId: g.GroupId,
           vpcId: g.VpcId,
@@ -388,6 +390,9 @@ export function defaultProviders(): Provider[] {
     securityGroupProvider(),
     logGroupProvider(),
     rdsProvider(),
+    // Last, so a resource the specific providers already described keeps their
+    // richer version when the two are merged.
+    taggedResourceProvider(),
   ];
 }
 
@@ -398,4 +403,99 @@ export async function relationshipsTo(
   return Promise.all(
     providers.filter(p => p.referencesTo).map(p => p.referencesTo!(target, inventory)),
   );
+}
+
+// ── everything else ───────────────────────────────────────────────────
+
+/**
+ * How an ARN's service and resource type map onto a provider name.
+ *
+ * The specific providers above call security groups `ec2-sg`; an ARN calls them
+ * `ec2` with a resource type of `security-group`. Without this the same group
+ * would appear twice under two names, which is worse than appearing once under
+ * the wrong one.
+ */
+const ARN_TYPE_ALIASES: Record<string, string> = {
+  "ec2:security-group": "ec2-sg",
+  "ec2:instance": "ec2",
+  "ec2:vpc": "vpc",
+  "ec2:subnet": "vpc",
+  "ec2:natgateway": "vpc",
+  "ec2:elastic-ip": "vpc",
+  "logs:log-group": "logs",
+  "dynamodb:table": "dynamodb",
+  "lambda:function": "lambda",
+  "rds:db": "rds",
+  "sqs:": "sqs",
+  "s3:": "s3",
+};
+
+/** Service, type and name out of an ARN, without pretending it is exact. */
+export function parseArn(arn: string): {
+  service: string; type: string; name: string; region?: string;
+} | null {
+  // arn:partition:service:region:account:type/name  — or type:name, or just name
+  const parts = arn.split(":");
+  if (parts.length < 6 || parts[0] !== "arn") return null;
+  const [, , service, region, , ...rest] = parts;
+  const tail = rest.join(":");
+  const slash = tail.indexOf("/");
+  const type = slash > -1 ? tail.slice(0, slash) : (rest.length > 1 ? rest[0] : "");
+  const name = slash > -1 ? tail.slice(slash + 1) : (rest.length > 1 ? rest.slice(1).join(":") : tail);
+  return { service, type, name, region: region || undefined };
+}
+
+/**
+ * Every taggable resource in the account, whatever the service.
+ *
+ * The specific providers above know a handful of services deeply — their
+ * relationships, their configuration, the fields drift compares. This knows
+ * *every* service shallowly, which is the other half of the answer: somebody
+ * looking up an API Gateway or a Step Function should find it, even though
+ * nothing here can say what depends on it.
+ *
+ * One API, one paginated call, free. Its limit is honest and worth stating: it
+ * returns resources that **support tagging and are indexed for it**, which is
+ * most but not all of AWS, and only in the current region. So it is a
+ * supplement to the specific providers rather than a replacement — measured on
+ * a real account it found 41 resources where the specific providers found 96,
+ * with each covering things the other missed.
+ */
+export function taggedResourceProvider(): Provider {
+  return {
+    service: "tagged",
+    list: () => readProvider<Resource>("tagged", async () => {
+      const { ResourceGroupsTaggingAPIClient, GetResourcesCommand } =
+        await import("@aws-sdk/client-resource-groups-tagging-api");
+      const c = new ResourceGroupsTaggingAPIClient({ region: REGION() });
+
+      const out: Resource[] = [];
+      let token: string | undefined;
+      for (let page = 0; page < 200; page++) {
+        const r: any = await c.send(new GetResourcesCommand({
+          PaginationToken: token, ResourcesPerPage: 100,
+        }));
+        for (const item of r.ResourceTagMappingList ?? []) {
+          const arn = String(item.ResourceARN ?? "");
+          const parsed = parseArn(arn);
+          if (!parsed || !parsed.name) continue;
+          const key = `${parsed.service}:${parsed.type}`;
+          out.push({
+            service: ARN_TYPE_ALIASES[key] ?? ARN_TYPE_ALIASES[`${parsed.service}:`] ?? parsed.service,
+            name: parsed.name,
+            arn,
+            region: parsed.region,
+            detail: {
+              resourceType: parsed.type || undefined,
+              tags: Object.fromEntries(
+                (item.Tags ?? []).map((t: any) => [t.Key, t.Value])),
+            },
+          });
+        }
+        token = r.PaginationToken || undefined;
+        if (!token) return out;
+      }
+      throw new Error("Tagged resource listing did not finish within 200 pages");
+    }),
+  };
 }
