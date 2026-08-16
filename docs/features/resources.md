@@ -100,6 +100,58 @@ A file whose history cannot be read is reported. A shorter list of people looks
 exactly like a smaller set of people, and here it would send somebody to the
 wrong person.
 
+## Drift — does AWS match the source?
+
+For security groups, the lookup also compares what AWS actually allows against
+what the Terraform declares, and says which side has the extra rule:
+
+| Finding | Meaning | Whose problem |
+|---|---|---|
+| **in AWS only** | Something allows this and no Terraform declares it | A manual change nobody captured |
+| **in code only** | Terraform declares this and AWS does not have it | A pipeline that never ran |
+
+Those are different problems for different people, so they are never merged into
+one "drift" count.
+
+### It reads the declaration, it does not run a plan
+
+The precise answer is `terraform plan`, which needs the state file, the
+providers, credentials for every backend and a working directory — none of which
+a read-only app has or should have. Reading the declaration is enough for the
+question actually being asked: *is the thing in AWS the thing somebody wrote
+down?*
+
+The cost of that choice is stated rather than hidden.
+
+### When it refuses to answer
+
+**Drift detection fails by being noisy, not by crashing.** A report that flags
+twenty rules a human knows are fine is read once, disbelieved, and never opened
+again. So the comparison is abandoned — and says so — whenever it cannot be
+trusted:
+
+| Situation | Why nothing is reported |
+|---|---|
+| A rule uses `var.x`, a `local`, or an interpolation | Resolving it needs Terraform. Comparing the resolved half against complete AWS state marks every unseen rule "added by hand" |
+| A `dynamic "ingress"` block | It generates rules from an expression |
+| The file also declares `aws_security_group_rule` | Rules can be added from another file or module, so the inline ones are not the whole set |
+| Two declarations share the group's name | Picking the first compares against a coin flip |
+| No Terraform names the group at all | There is nothing to compare against |
+| A referencing file could not be read | The declaration is incomplete |
+
+"Cannot be compared" is shown as its own answer and deliberately **not** as a
+clean bill of health.
+
+Commented-out blocks are stripped before anything reads the file. A rule
+somebody deliberately turned off, reported as drift, is exactly backwards.
+
+### What it cannot tell you
+
+**Who changed it, and when.** That comes from CloudTrail and nowhere else, and
+this deliberately does not use it. What it can tell you is the more useful half
+anyway: *this rule exists in AWS, no Terraform declares it, and here is who has
+edited the files that do.*
+
 ## The budget
 
 GitHub's code search allows **ten requests a minute** — the smallest allowance

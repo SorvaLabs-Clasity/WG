@@ -50,6 +50,13 @@ export interface ResourceExperts {
   degraded: Array<{ repo: string; path: string; error: string }>;
 }
 
+export interface DriftReport {
+  findings: Array<{ kind: "extra" | "missing"; rule: string; detail: string }>;
+  comparable: boolean;
+  notes: string[];
+  declaredIn: { repo: string; path: string } | null;
+}
+
 export interface BlastRadius {
   target: AwsResource;
   relationships: Relationship[];
@@ -61,6 +68,8 @@ export interface BlastRadius {
   unread: Array<{ source: string; error: string }>;
   /** Null when nothing in source names it — there is no history to read. */
   experts: ResourceExperts | null;
+  /** Only for resource kinds whose declared shape can be compared. */
+  drift: DriftReport | null;
 }
 
 export function fetchInventory(q: string, refresh = false): Promise<InventoryAnswer> {

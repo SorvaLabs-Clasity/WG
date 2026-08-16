@@ -319,6 +319,67 @@ function BlastBody({ data }: { data: NonNullable<ReturnType<typeof useBlastRadiu
         </div>
       )}
 
+      {data.drift && (
+        <div className={`${SURFACE.sheet} ${
+          data.drift.comparable && data.drift.findings.length > 0
+            ? "border-l-4 border-rose-300 dark:border-rose-500/40" : ""}`}>
+          <div className="px-5 pt-4 pb-2 flex items-baseline justify-between gap-3 flex-wrap">
+            <h3 className="text-[13px] font-bold text-slate-900 dark:text-white">
+              Does AWS match the source?
+            </h3>
+            {data.drift.declaredIn && (
+              <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+                {data.drift.declaredIn.repo}/{data.drift.declaredIn.path}
+              </span>
+            )}
+          </div>
+
+          {/* Not comparable is its own answer, and deliberately not a clean
+              bill of health. A declaration built from variables cannot be
+              resolved without running Terraform, and saying "no drift" on that
+              basis would be a claim nothing supports. */}
+          {!data.drift.comparable ? (
+            <div className="px-5 pb-4">
+              <p className="text-[13px] font-semibold text-slate-600 dark:text-slate-300">
+                Cannot be compared
+              </p>
+              <ul className="mt-1 space-y-1">
+                {data.drift.notes.map((n, i) => (
+                  <li key={i} className="text-[12px] text-slate-500 dark:text-slate-400">{n}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+                Nothing is reported rather than a comparison that would be wrong.
+              </p>
+            </div>
+          ) : data.drift.findings.length === 0 ? (
+            <p className="px-5 pb-4 text-[13px] text-emerald-700 dark:text-emerald-400">
+              AWS matches what the Terraform declares.
+            </p>
+          ) : (
+            <ul className="px-5 pb-4 space-y-2">
+              {data.drift.findings.map((f, i) => (
+                <li key={i} className="flex items-start gap-2.5">
+                  <span className={`mt-0.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                    f.kind === "extra"
+                      ? "bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300"
+                      : "bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300"}`}>
+                    {/* Different problems, different people: one is a manual
+                        change nobody captured, the other a pipeline that never
+                        ran. */}
+                    {f.kind === "extra" ? "in AWS only" : "in code only"}
+                  </span>
+                  <span className="min-w-0">
+                    <code className="text-[13px] font-mono text-slate-800 dark:text-slate-100">{f.rule}</code>
+                    <span className="block text-[11px] text-slate-500 dark:text-slate-400">{f.detail}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {data.experts && data.experts.experts.length > 0 && (
         <div className={SURFACE.sheet}>
           <div className="px-5 pt-4 pb-1">

@@ -10,6 +10,8 @@ import { defaultProviders, relationshipsTo } from "../services/awsProviders";
 import { assessBlastRadius } from "../services/blastRadiusService";
 import { findSourceRefs, searcherFor, clearSourceSearchCache } from "../services/sourceSearchService";
 import { expertsForResource } from "../services/resourceExpertsService";
+import { parseSecurityGroups, driftForSecurityGroup } from "../services/iacParseService";
+import type { SourceRef } from "../services/blastRadiusService";
 
 const router = Router();
 const org = () => process.env.GITHUB_ORG || "";
@@ -159,11 +161,74 @@ router.get("/blast", async (req: Request, res: Response) => {
         })
       : null;
 
-    res.json({ ...blast, experts });
+    // Drift, for the resources whose declared shape can be compared.
+    //
+    // Only reaches for file contents when there is a Terraform reference to
+    // read: no references means nothing to compare, and fetching nothing is
+    // cheaper than fetching and discovering that.
+    const drift = target.service === "ec2-sg"
+      ? await driftFor(target, blast.sourceRefs, octokit)
+      : null;
+
+    res.json({ ...blast, experts, drift });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "AWS resources") });
   }
 });
+
+/**
+ * Read the Terraform that references a group, and compare.
+ *
+ * Capped at six files. Each is a `getContent` call, and a group named in
+ * thirty files is one whose declaration is in the first few — the rest are
+ * usages. Failure to read a file is a note rather than a thrown error, because
+ * a drift report that vanishes because one file is unreadable is a report
+ * nobody gets.
+ */
+async function driftFor(target: Resource, refs: SourceRef[], octokit: any) {
+  const tf = refs.filter(r => r.kind === "terraform").slice(0, 6);
+  if (tf.length === 0) {
+    return {
+      findings: [], comparable: false, declaredIn: null,
+      notes: ["No Terraform file in any repository you can see names this group."],
+    };
+  }
+
+  const declarations: Array<{ repo: string; path: string; groups: ReturnType<typeof parseSecurityGroups> }> = [];
+  const unreadable: string[] = [];
+
+  for (const ref of tf) {
+    try {
+      const [owner, name] = ref.repo.split("/");
+      const { data } = await octokit.rest.repos.getContent({ owner, repo: name, path: ref.path });
+      const content = (data as any).content;
+      if (typeof content !== "string") { unreadable.push(ref.path); continue; }
+      declarations.push({
+        repo: ref.repo, path: ref.path,
+        groups: parseSecurityGroups(Buffer.from(content, "base64").toString("utf8")),
+      });
+    } catch {
+      unreadable.push(`${ref.repo}/${ref.path}`);
+    }
+  }
+
+  const ingress = ((target.detail?.ingress ?? []) as any[]).map(r => ({
+    protocol: String(r.protocol), from: r.from ?? null, to: r.to ?? null,
+    cidrs: (r.cidrs ?? []) as string[],
+  }));
+
+  const report = driftForSecurityGroup({ name: target.name, ingress }, declarations);
+  return {
+    ...report,
+    // An unreadable file makes the declaration incomplete, and an incomplete
+    // declaration cannot be compared — the same rule as everywhere else here.
+    comparable: report.comparable && unreadable.length === 0,
+    findings: unreadable.length > 0 ? [] : report.findings,
+    notes: unreadable.length > 0
+      ? [...report.notes, `Could not read ${unreadable.join(", ")}, so this comparison is incomplete.`]
+      : report.notes,
+  };
+}
 
 export default router;

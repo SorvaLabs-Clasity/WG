@@ -1,7 +1,7 @@
 # Testing
 
-Thirty-eight suites, each a script named `repro-*.ts`, run with `tsx`. No
-framework. Thirty-five live in `backend/`, three in `frontend/`, and each runs
+Thirty-nine suites, each a script named `repro-*.ts`, run with `tsx`. No
+framework. Thirty-six live in `backend/`, three in `frontend/`, and each runs
 from its own directory.
 
 ```bash
@@ -57,6 +57,7 @@ the wrong place.
 | `repro-scanpaging` | **A table scan must read the whole table** |
 | `repro-largeorg` | The whole path at 300 accounts, against a rate-limited GitHub |
 | `repro-blastradius` | **An unread service is never "safe to delete"** |
+| `repro-drift` | Terraform vs AWS — and refusing to compare a partial parse |
 | `repro-loginstates` | What the sign-in page says in each state, and in what order |
 | `repro-webhookdelivery` | Signature verification over raw bytes, and the delivery lock |
 
