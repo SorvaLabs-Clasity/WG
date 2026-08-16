@@ -197,47 +197,92 @@ export function blockedByMoreThanApprovals(pr: PullRequest): boolean {
 }
 
 /**
- * Who to remind.
+ * Every reason a person might not be reminded, in one shape.
  *
- * The author is always included. They can chase people in person, they can
+ * Kept as a scope rather than a boolean so the screen can say which switch is
+ * silencing whom. "Nobody was reminded" with no explanation is the state that
+ * gets reported as the feature being broken.
+ */
+export type MuteScope = "everywhere" | "repository" | "this pull request";
+
+export interface MuteRules {
+  /** The whole pull request is paused. Nobody is reminded. */
+  prPaused?: boolean;
+  /** Muted on this pull request only. */
+  prLogins?: string[];
+  /** Muted across this repository. */
+  repoLogins?: string[];
+  /** Muted everywhere. */
+  globalLogins?: string[];
+}
+
+const has = (list: string[] | undefined, login: string) =>
+  (list ?? []).some(l => l.trim().toLowerCase() === login.trim().toLowerCase());
+
+/** Which rule silences this person, or null if none does. */
+export function mutedBy(login: string, rules: MuteRules): MuteScope | null {
+  if (has(rules.globalLogins, login)) return "everywhere";
+  if (has(rules.repoLogins, login)) return "repository";
+  if (has(rules.prLogins, login)) return "this pull request";
+  return null;
+}
+
+/**
+ * Who to remind, and who was left out and why.
+ *
+ * The author is always a candidate. They can chase people in person, they can
  * merge once it is possible, and they are the one person who always has
  * something they could do about it.
  *
  * Beyond that there is one question: is anything other than approvals stopping
  * this? If so, only the author — reviewers cannot fix a failing check or a
- * conflict, and reminding them wastes the attention this feature is spending.
- * If not, everyone still carrying a review request whose approval does not
- * currently stand, whether or not their approval is one the rule counts.
+ * conflict, and reminding them wastes the attention this feature spends. If
+ * not, everyone still carrying a review request whose approval does not
+ * currently stand.
  *
- * Paused logins are removed here rather than at send time, so a pull request
- * with nobody left to name produces no reminder at all instead of one addressed
- * to nobody.
+ * Mutes are applied last and reported rather than silently dropped, so a pull
+ * request that reminds nobody can say which rule did it.
  */
 export function nudgeTargets(
   pr: PullRequest,
-  paused: { pr?: boolean; logins?: string[] } = {},
-): { reason: BlockReason; targets: string[] } {
+  rules: MuteRules = {},
+): {
+  reason: BlockReason;
+  targets: string[];
+  muted: Array<{ login: string; scope: MuteScope }>;
+} {
   const reason = blockReason(pr);
-  if (paused.pr) return { reason, targets: [] };
 
-  const pausedSet = new Set((paused.logins ?? []).map(l => l.toLowerCase()));
-  const keep = (l: string) => !!l && !pausedSet.has(l.toLowerCase());
-
-  const targets = [pr.author];
-  if (!blockedByMoreThanApprovals(pr)) targets.push(...pendingReviewers(pr));
+  const candidates = [pr.author];
+  if (!blockedByMoreThanApprovals(pr)) candidates.push(...pendingReviewers(pr));
 
   // The author can also be a requested reviewer on their own pull request in
   // some setups; naming them twice reads as a mistake.
   const seen = new Set<string>();
-  return {
-    reason,
-    targets: targets.filter(l => {
-      const k = l.toLowerCase();
-      if (!keep(l) || seen.has(k)) return false;
-      seen.add(k);
-      return true;
-    }),
-  };
+  const unique = candidates.filter(l => {
+    const k = (l ?? "").trim().toLowerCase();
+    if (!k || seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  // A paused pull request silences everyone, and says so for each of them
+  // rather than reporting an empty list with no cause.
+  if (rules.prPaused) {
+    return {
+      reason, targets: [],
+      muted: unique.map(login => ({ login, scope: "this pull request" as const })),
+    };
+  }
+
+  const targets: string[] = [];
+  const muted: Array<{ login: string; scope: MuteScope }> = [];
+  for (const login of unique) {
+    const scope = mutedBy(login, rules);
+    if (scope) muted.push({ login, scope });
+    else targets.push(login);
+  }
+  return { reason, targets, muted };
 }
 
 /**
@@ -529,6 +574,8 @@ export interface NudgeRunDeps extends NudgeDeps {
   now?: number;
   /** Overridable so a test can pin the interval the shipped constant may not be. */
   threshold?: number;
+  /** Organization-wide and per-repository mutes, read once for the whole pass. */
+  mutes?: { global: string[]; byRepo: Record<string, string[]> };
 }
 
 /**
@@ -557,7 +604,10 @@ export async function runNudgePass(deps: NudgeRunDeps): Promise<{
     due++;
 
     const { reason, targets } = nudgeTargets(pr, {
-      pr: state?.paused, logins: state?.pausedLogins,
+      prPaused: state?.paused,
+      prLogins: state?.pausedLogins,
+      repoLogins: deps.mutes?.byRepo?.[pr.repo],
+      globalLogins: deps.mutes?.global,
     });
     // Nobody to name. Deliberately no comment and no recorded nudge: recording
     // one would start the seven-day clock again, so lifting the pause would be

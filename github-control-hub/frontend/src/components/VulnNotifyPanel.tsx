@@ -4,6 +4,7 @@ import {
   useEmailGroups, useTemplateVariables, useFeedSettings, useSaveFeedSettings,
 } from "../hooks/useAlarms";
 import type { Severity, NotifyFeed } from "../api/alarms";
+import VariableChips, { useTemplateInsert } from "./TemplateVariables";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
@@ -78,6 +79,8 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [showTemplates, setShowTemplates] = useState(false);
+
+  const tpl = useTemplateInsert(subject, setSubject, body, setBody);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -255,28 +258,18 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
           <div className="mt-3 space-y-3">
             <div>
               <label className={labelClass}>Subject</label>
-              <input value={subject} onChange={e => setSubject(e.target.value)}
+              <input {...tpl.subjectProps} value={subject} onChange={e => setSubject(e.target.value)}
                 onBlur={() => save({ subjectTemplate: subject })} className={inputClass} />
             </div>
             <div>
               <label className={labelClass}>Body</label>
-              <textarea value={body} rows={6} onChange={e => setBody(e.target.value)}
+              <textarea {...tpl.bodyProps} value={body} rows={6} onChange={e => setBody(e.target.value)}
                 onBlur={() => save({ bodyTemplate: body })}
                 className={inputClass + " font-mono text-xs"} />
             </div>
-            {variables && (
-              <div className="text-xs text-gray-500 dark:text-slate-400">
-                <span className="font-semibold">Variables: </span>
-                {variables.map(v => (
-                  <code key={v.name} title={v.description}
-                    className="mr-2 px-1 py-0.5 rounded bg-black/5 dark:bg-white/10">{`{{${v.name}}}`}</code>
-                ))}
-                <p className="mt-1">
-                  Times use the timezone set on the Security tab, which applies to every email
-                  this app sends.
-                </p>
-              </div>
-            )}
+            <VariableChips variables={variables} target={tpl.target} onInsert={tpl.insert}>
+              Times use the timezone set on the Security tab, which applies to every email this app sends.
+            </VariableChips>
           </div>
         )}
       </div>

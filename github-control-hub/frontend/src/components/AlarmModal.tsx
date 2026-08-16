@@ -4,6 +4,7 @@ import {
   useCreateAlarm, useUpdateAlarm,
 } from "../hooks/useAlarms";
 import { describeInterval, type AlarmCondition, type Severity, type WidgetAlarm } from "../api/alarms";
+import VariableChips, { useTemplateInsert } from "./TemplateVariables";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
@@ -46,6 +47,8 @@ export default function AlarmModal({
   const [notifyOnRecovery, setNotifyOnRecovery] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false);
   const [error, setError] = useState("");
+
+  const tpl = useTemplateInsert(subject, setSubject, body, setBody);
 
   const chosen = useMemo(
     () => spec?.conditions.find(c => c.metric === metric),
@@ -221,27 +224,19 @@ export default function AlarmModal({
                   <div className="mt-3 space-y-3">
                     <div>
                       <label className={labelClass}>Subject</label>
-                      <input value={subject} onChange={e => setSubject(e.target.value)} className={inputClass} />
+                      <input {...tpl.subjectProps} value={subject}
+                        onChange={e => setSubject(e.target.value)} className={inputClass} />
                       <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">
                         Trimmed to 99 characters and to plain ASCII, because that is all AWS will accept.
                       </p>
                     </div>
                     <div>
                       <label className={labelClass}>Body</label>
-                      <textarea value={body} onChange={e => setBody(e.target.value)} rows={7}
+                      <textarea {...tpl.bodyProps} value={body}
+                        onChange={e => setBody(e.target.value)} rows={7}
                         className={inputClass + " font-mono text-xs"} />
                     </div>
-                    {variables && (
-                      <div className="text-xs text-gray-500 dark:text-slate-400">
-                        <span className="font-semibold">Variables: </span>
-                        {variables.map(v => (
-                          <code key={v.name} title={v.description}
-                            className="mr-2 px-1 py-0.5 rounded bg-black/5 dark:bg-white/10">
-                            {`{{${v.name}}}`}
-                          </code>
-                        ))}
-                      </div>
-                    )}
+                    <VariableChips variables={variables} target={tpl.target} onInsert={tpl.insert} />
                   </div>
                 )}
               </div>

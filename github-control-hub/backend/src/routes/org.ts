@@ -22,6 +22,24 @@ router.get("/webhook-health", async (_req: Request, res: Response) => {
   }
 });
 
+/**
+ * Everyone in the organization, so a person can be picked rather than typed.
+ *
+ * Read as the caller. An installation token would list members the person
+ * looking cannot otherwise see, and this exists to fill a name box — not to
+ * widen what somebody knows about the org.
+ */
+router.get("/members", async (req: Request, res: Response) => {
+  try {
+    const { listOrgMembers, depsFromOctokit } = await import("../services/orgMembersService");
+    const octokit = createOctokit(req.user!.accessToken);
+    res.json(await listOrgMembers(depsFromOctokit(octokit), getOrg()));
+  } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "org") });
+  }
+});
+
 router.get("/config", async (req: Request, res: Response) => {
   try {
     const config = await getOrgConfig();

@@ -2,7 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../App";
 import { apiGet } from "../api/client";
-import { Page, Empty, Spinner } from "../design";
+import { Page, Empty, Spinner, SURFACE } from "../design";
+import { useRepos } from "../hooks/useRepos";
 import UserAvatar from "../components/UserAvatar";
 
 type Kind = "repo" | "path" | "library";
@@ -24,12 +25,12 @@ interface Answer {
   degraded: string[];
 }
 
-const labelClass = "block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1";
+const labelClass = "block text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1.5";
 
 const inputClass =
-  "block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue " +
-  "focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset " +
-  "ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200";
+  "w-full px-3.5 py-2.5 text-sm bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/10 " +
+  "rounded-xl text-slate-700 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 " +
+  "focus:outline-none focus:ring-2 focus:ring-gh-blue/40 focus:border-gh-blue transition-shadow";
 
 /**
  * What each mode asks and what it costs, said where it is chosen.
@@ -37,14 +38,16 @@ const inputClass =
  * The cost matters to whoever is typing: a library lookup is a code search,
  * which draws on a much smaller rate budget than everything else in this app.
  */
-const MODES: Record<Kind, { label: string; hint: string; placeholder: string }> = {
+const MODES: Record<Kind, { label: string; icon: string; hint: string; placeholder: string }> = {
   repo: {
     label: "Repository",
+    icon: "ph-git-branch",
     hint: "Commits, review comments and discussion across the whole repository.",
     placeholder: "payments-api",
   },
   path: {
     label: "File or folder",
+    icon: "ph-file-code",
     hint: "Needs both boxes: a path only means something inside one repository, and "
       + "GitHub has no organization-wide search for who touched a file. A folder works "
       + "as well as a file. Commits only — reviews belong to the pull request, not to "
@@ -53,6 +56,7 @@ const MODES: Record<Kind, { label: string; hint: string; placeholder: string }> 
   },
   library: {
     label: "Library",
+    icon: "ph-package",
     hint: "Finds the manifests naming it across the organization and reads their "
       + "history, so it ranks whoever added, bumped or removed the dependency. "
       + "Uses code search, which has its own smaller rate limit.",
@@ -69,12 +73,50 @@ function ago(days: number | null): string {
   return `${(days / 365).toFixed(1)}y ago`;
 }
 
+/**
+ * Recency as a colour as well as a date.
+ *
+ * The ranking already decays with age, so somebody near the top who last
+ * touched this two years ago is the top of a cold list rather than a good
+ * answer. Reading that off the ranking alone takes a second look.
+ */
+function freshness(days: number | null): string {
+  if (days === null) return "bg-slate-300 dark:bg-slate-600";
+  if (days <= 30) return "bg-emerald-500";
+  if (days <= 180) return "bg-amber-500";
+  return "bg-slate-300 dark:bg-slate-600";
+}
+
+function Signals({ e, size = "sm" }: { e: Expert; size?: "sm" | "lg" }) {
+  const items = [
+    { n: e.commits, icon: "ph-git-commit", one: "commit", many: "commits" },
+    { n: e.reviews, icon: "ph-check-square-offset", one: "review", many: "reviews" },
+    { n: e.comments, icon: "ph-chat-circle", one: "comment", many: "comments" },
+  ].filter(i => i.n > 0);
+
+  return (
+    <span className="inline-flex items-center gap-1.5 flex-wrap">
+      {items.map(i => (
+        <span key={i.icon} title={`${i.n} ${i.n === 1 ? i.one : i.many}`}
+          className={`inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-white/[0.07] text-slate-600 dark:text-slate-300 ${
+            size === "lg" ? "px-2 py-1 text-xs" : "px-1.5 py-0.5 text-[11px]"}`}>
+          <i className={`ph ${i.icon}`}></i>
+          <span className="font-bold tabular-nums">{i.n}</span>
+          <span className="font-medium opacity-70">{i.n === 1 ? i.one : i.many}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 export default function ExpertisePage() {
   const { user } = useAuth();
   const [kind, setKind] = useState<Kind>("repo");
   const [repo, setRepo] = useState("");
   const [path, setPath] = useState("");
   const [library, setLibrary] = useState("");
+
+  const { data: allRepos } = useRepos();
 
   // Held separately from the inputs so typing does not re-query on every
   // keystroke. Each lookup is real GitHub requests, and a search-backed one at
@@ -101,6 +143,27 @@ export default function ExpertisePage() {
   });
 
   const canAsk = kind === "library" ? library.trim() : kind === "path" ? repo.trim() && path.trim() : repo.trim();
+  const [top, ...rest] = data?.experts ?? [];
+
+  /**
+   * Built by a plain call, not rendered as a nested component.
+   *
+   * A component declared inside a render is a new type on every render, so React
+   * unmounts and remounts it rather than updating it — which for a controlled
+   * text box means the caret is lost after each character typed.
+   */
+  const repoInput = () => (
+    <div>
+      <label className={labelClass} htmlFor="wk-repo">Repository</label>
+      <input id="wk-repo" value={repo} onChange={e => setRepo(e.target.value)}
+        list="wk-repo-list" placeholder={MODES.repo.placeholder} className={inputClass} />
+      {/* Suggestions, not a closed list: the answer for a repository the app
+          cannot see is a 404 from GitHub, not a box that refuses to accept it. */}
+      <datalist id="wk-repo-list">
+        {(allRepos ?? []).map(r => <option key={r.full_name} value={r.name} />)}
+      </datalist>
+    </div>
+  );
 
   return (
     <Page user={user}>
@@ -113,61 +176,68 @@ export default function ExpertisePage() {
         </p>
       </header>
 
-      <div className="bg-white dark:bg-slate-900 rounded-[12px] border border-gh-border dark:border-slate-700 p-5">
-        <div className="flex gap-1 mb-4">
+      <div className={SURFACE.sheet}>
+        {/* The tabs sit on the card's edge rather than inside it, so the card
+            reads as belonging to the mode rather than the mode being one more
+            field in a form. */}
+        <div className="flex border-b border-slate-200 dark:border-white/[0.09] overflow-x-auto">
           {(Object.keys(MODES) as Kind[]).map(k => (
             <button key={k} onClick={() => setKind(k)}
-              className={`px-3 py-1.5 text-sm font-semibold rounded-md transition-colors ${
+              className={`relative px-5 py-3 text-[13px] font-bold whitespace-nowrap inline-flex items-center gap-2 transition-colors ${
                 kind === k
-                  ? "bg-gh-blue text-white"
-                  : "text-slate-600 dark:text-slate-300 hover:bg-black/5 dark:hover:bg-white/5"}`}>
+                  ? "text-slate-900 dark:text-white"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
+              <i className={`ph-bold ${MODES[k].icon} text-base`}></i>
               {MODES[k].label}
+              {kind === k && (
+                <span className="absolute left-3 right-3 -bottom-px h-0.5 rounded-full bg-gh-blue" />
+              )}
             </button>
           ))}
         </div>
 
-        {/* Labelled, not just placeheld. Two unlabelled boxes side by side is a
-            guess, and the placeholder — the only thing saying which is which —
-            disappears the moment anyone types. */}
-        <form className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
-          onSubmit={e => { e.preventDefault(); if (canAsk) setAsked({ kind, repo, path, library }); }}>
-          <div className={`grid gap-3 ${kind === "path" ? "sm:grid-cols-2" : ""}`}>
-            {kind !== "library" && (
-              <div>
-                <label className={labelClass} htmlFor="wk-repo">Repository</label>
-                <input id="wk-repo" value={repo} onChange={e => setRepo(e.target.value)}
-                  placeholder={MODES.repo.placeholder} className={inputClass} />
-              </div>
-            )}
-            {kind === "path" && (
-              <div>
-                <label className={labelClass} htmlFor="wk-path">File or folder inside it</label>
-                <input id="wk-path" value={path} onChange={e => setPath(e.target.value)}
-                  placeholder={MODES.path.placeholder} className={inputClass} />
-              </div>
-            )}
-            {kind === "library" && (
-              <div>
-                <label className={labelClass} htmlFor="wk-lib">Package name</label>
-                <input id="wk-lib" value={library} onChange={e => setLibrary(e.target.value)}
-                  placeholder={MODES.library.placeholder} className={inputClass} />
-              </div>
-            )}
-          </div>
-          <button type="submit" disabled={!canAsk || isFetching}
-            title={canAsk ? "" : kind === "path"
-              ? "Both a repository and a path are needed — a path only means something inside one repository"
-              : "Fill this in first"}
-            className="px-5 py-2 text-sm font-semibold rounded-md bg-gh-blue text-white hover:opacity-90 disabled:opacity-40 h-fit">
-            {isFetching ? "Looking…" : "Ask"}
-          </button>
-        </form>
+        <div className="p-5">
+          {/* Labelled, not just placeheld. Two unlabelled boxes side by side is
+              a guess, and the placeholder — the only thing saying which is which
+              — disappears the moment anyone types. */}
+          <form className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
+            onSubmit={e => { e.preventDefault(); if (canAsk) setAsked({ kind, repo, path, library }); }}>
+            <div className={`grid gap-3 ${kind === "path" ? "sm:grid-cols-2" : ""}`}>
+              {kind !== "library" && repoInput()}
+              {kind === "path" && (
+                <div>
+                  <label className={labelClass} htmlFor="wk-path">File or folder inside it</label>
+                  <input id="wk-path" value={path} onChange={e => setPath(e.target.value)}
+                    placeholder={MODES.path.placeholder} className={inputClass} />
+                </div>
+              )}
+              {kind === "library" && (
+                <div>
+                  <label className={labelClass} htmlFor="wk-lib">Package name</label>
+                  <input id="wk-lib" value={library} onChange={e => setLibrary(e.target.value)}
+                    placeholder={MODES.library.placeholder} className={inputClass} />
+                </div>
+              )}
+            </div>
+            <button type="submit" disabled={!canAsk || isFetching}
+              title={canAsk ? "" : kind === "path"
+                ? "Both a repository and a path are needed — a path only means something inside one repository"
+                : "Fill this in first"}
+              className="h-fit px-6 py-2.5 text-sm font-bold rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 disabled:opacity-30 transition-opacity inline-flex items-center gap-2">
+              {isFetching
+                ? <><i className="ph ph-circle-notch animate-spin"></i>Looking…</>
+                : <><i className="ph-bold ph-magnifying-glass"></i>Ask</>}
+            </button>
+          </form>
 
-        <p className="mt-2 text-xs text-gray-500 dark:text-slate-400 max-w-3xl">{MODES[kind].hint}</p>
+          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 max-w-3xl leading-relaxed">
+            {MODES[kind].hint}
+          </p>
+        </div>
       </div>
 
       {error && (
-        <div className="mt-5 rounded-md bg-red-50 dark:bg-red-950/40 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+        <div className="mt-5 rounded-xl bg-rose-50 dark:bg-rose-950/40 px-4 py-3 text-sm text-rose-700 dark:text-rose-300">
           {(error as Error).message}
         </div>
       )}
@@ -198,64 +268,115 @@ export default function ExpertisePage() {
                       + "this searches only what your own account can see."} />
           ) : (
             <>
-              <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
-                <h2 className="text-base font-bold text-gray-900 dark:text-white">
+              <div className="flex items-center gap-2.5 flex-wrap mb-4">
+                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/[0.07] text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <i className={`ph-bold ${MODES[data.subject.kind].icon}`}></i>
+                  {MODES[data.subject.kind].label}
+                </span>
+                <h2 className="text-lg font-black tracking-tight text-slate-900 dark:text-white break-all">
                   {data.subject.name}
                 </h2>
                 {data.repos && data.repos.length > 0 && (
-                  <span className="text-xs text-gray-500 dark:text-slate-400">
-                    from {data.repos.length} repositor{data.repos.length === 1 ? "y" : "ies"}: {data.repos.join(", ")}
+                  <span className="text-xs text-slate-400 dark:text-slate-500"
+                    title={data.repos.join(", ")}>
+                    across {data.repos.length} repositor{data.repos.length === 1 ? "y" : "ies"}
                   </span>
                 )}
               </div>
 
               {data.degraded.length > 0 && (
-                <div className="mb-3 rounded-md bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
+                <div className="mb-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 px-4 py-2.5 text-sm text-amber-800 dark:text-amber-300">
                   Partial answer — could not read {data.degraded.join(", ")}. The ranking below is
                   from the signals that did load.
                 </div>
               )}
 
-              <ul className="grid gap-2">
-                {data.experts.map((e, i) => (
-                  <li key={e.login}
-                    className="relative overflow-hidden rounded-xl bg-slate-50 dark:bg-white/[0.05] border border-slate-200/70 dark:border-white/[0.08]">
-                    <span className="absolute left-0 top-0 bottom-0 w-1 bg-gh-blue"
-                      style={{ opacity: Math.max(0.15, e.score / 100) }} />
-                    <div className="pl-4 pr-4 py-3 flex items-center gap-3 flex-wrap">
-                      <span className="text-xs font-black tabular-nums text-slate-400 dark:text-slate-500 w-5">
-                        {i + 1}
-                      </span>
-                      <UserAvatar login={e.login} size={28} />
-                      <a href={`https://github.com/${e.login}`} target="_blank" rel="noopener noreferrer"
-                        className="font-semibold text-gh-textBase dark:text-slate-200 hover:text-gh-blue">
-                        {e.login}
-                      </a>
-                      <span className="text-xs text-gray-500 dark:text-slate-400">
-                        {[
-                          e.commits ? `${e.commits} commit${e.commits === 1 ? "" : "s"}` : null,
-                          e.reviews ? `${e.reviews} review${e.reviews === 1 ? "" : "s"}` : null,
-                          e.comments ? `${e.comments} comment${e.comments === 1 ? "" : "s"}` : null,
-                        ].filter(Boolean).join(" · ")}
-                      </span>
-                      <span className="ml-auto flex items-center gap-3 shrink-0">
-                        <span className="text-xs text-gray-500 dark:text-slate-400">
-                          last {ago(e.daysSinceActive)}
-                        </span>
-                        <span className="text-sm font-black tabular-nums text-gh-textBase dark:text-slate-200 w-9 text-right">
-                          {e.score}
-                        </span>
+              {/* The first name is the answer to the question that was asked, so
+                  it is given the room to be read as one rather than being row
+                  one of a table. */}
+              <div className={`${SURFACE.sheet} relative overflow-hidden mb-3`}>
+                <span className="absolute inset-y-0 left-0 bg-gh-blue/[0.07] dark:bg-gh-blue/[0.12]"
+                  style={{ width: "100%" }} aria-hidden="true" />
+                <div className="relative p-5 flex items-center gap-4 flex-wrap">
+                  <div className="relative shrink-0">
+                    <UserAvatar login={top.login} size={52} />
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-[#151a23] ${freshness(top.daysSinceActive)}`}
+                      title={`Last active ${ago(top.daysSinceActive)}`} />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-gh-blue mb-0.5">
+                      Ask first
+                    </p>
+                    <a href={`https://github.com/${top.login}`} target="_blank" rel="noopener noreferrer"
+                      className="text-xl font-black tracking-tight text-slate-900 dark:text-white hover:text-gh-blue break-all">
+                      {top.login}
+                    </a>
+                    <div className="mt-2 flex items-center gap-2 flex-wrap">
+                      <Signals e={top} size="lg" />
+                      <span className="text-xs text-slate-500 dark:text-slate-400">
+                        last {ago(top.daysSinceActive)}
                       </span>
                     </div>
-                  </li>
-                ))}
-              </ul>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className="text-3xl font-black tabular-nums text-slate-900 dark:text-white leading-none">
+                      {top.score}
+                    </p>
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">score</p>
+                  </div>
+                </div>
+              </div>
 
-              <p className="mt-3 text-xs text-gray-500 dark:text-slate-400 max-w-3xl">
-                Scores are relative to the top person, not absolute. Contributions halve in weight
-                every 90 days, so this ranks who is likely to remember rather than who has done the
-                most over all time. Bot accounts are excluded.
-              </p>
+              {rest.length > 0 && (
+                <ul className="grid gap-1.5">
+                  {rest.map((e, i) => (
+                    <li key={e.login}
+                      className={`${SURFACE.inset} relative overflow-hidden rounded-xl`}>
+                      {/* The bar is the score. A number alone makes 91 and 34
+                          look like neighbours in a list; a width does not. */}
+                      <span className="absolute inset-y-0 left-0 bg-gh-blue/[0.10] dark:bg-gh-blue/[0.16] transition-[width] duration-500"
+                        style={{ width: `${Math.max(2, e.score)}%` }} aria-hidden="true" />
+                      <div className="relative px-4 py-2.5 flex items-center gap-3 flex-wrap">
+                        <span className="text-xs font-black tabular-nums text-slate-400 dark:text-slate-500 w-4 shrink-0">
+                          {i + 2}
+                        </span>
+                        <div className="relative shrink-0">
+                          <UserAvatar login={e.login} size={26} />
+                          <span className={`absolute -bottom-px -right-px w-2.5 h-2.5 rounded-full ring-2 ring-slate-50 dark:ring-[#191e28] ${freshness(e.daysSinceActive)}`}
+                            title={`Last active ${ago(e.daysSinceActive)}`} />
+                        </div>
+                        <a href={`https://github.com/${e.login}`} target="_blank" rel="noopener noreferrer"
+                          className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:text-gh-blue truncate">
+                          {e.login}
+                        </a>
+                        <Signals e={e} />
+                        <span className="ml-auto flex items-center gap-3 shrink-0">
+                          <span className="text-xs text-slate-400 dark:text-slate-500">
+                            {ago(e.daysSinceActive)}
+                          </span>
+                          <span className="text-sm font-black tabular-nums text-slate-700 dark:text-slate-200 w-8 text-right">
+                            {e.score}
+                          </span>
+                        </span>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              <div className="mt-4 flex items-start gap-2 text-xs text-slate-400 dark:text-slate-500 max-w-3xl">
+                <i className="ph ph-info mt-0.5 shrink-0"></i>
+                <p className="leading-relaxed">
+                  Scores are relative to the top person, not absolute. Contributions halve in weight
+                  every 90 days, so this ranks who is likely to remember rather than who has done
+                  the most over all time. The dot is recency —{" "}
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 align-middle" /> within a
+                  month,{" "}
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-500 align-middle" /> within six,{" "}
+                  <span className="inline-block w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 align-middle" /> longer
+                  ago. Bot accounts are excluded.
+                </p>
+              </div>
             </>
           )}
         </div>

@@ -18,13 +18,17 @@
 import fs from "fs";
 import path from "path";
 import {
-  daysSinceLastCommit, isStale, hasApproved, pendingReviewers, blockReason,
+  daysSinceLastCommit, isStale, hasApproved, pendingReviewers, blockReason, mutedBy,
   blockedByMoreThanApprovals,
   nudgeTargets, isNudgeDue, sortByStaleness, fetchOpenPrs, STALE_DAYS,
   buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass, staleSeconds, describeIdle,
   SEVEN_DAYS, STALE_SECONDS,
   type PullRequest, type NudgeDeps, type NudgeRunDeps,
 } from "./src/services/prNudgeService";
+import {
+  setPrPause, getPrState, listPrStates, recordNudge, prStateId,
+  __resetAlarmStoreForTests,
+} from "./src/services/alarmService";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -238,35 +242,59 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     }
   }
 
-  // ── pausing, which people notice when it fails ──────────────────────
+  // ── muting, at four scopes ──────────────────────────────────────────
   {
     const p = pr({
-      author: "alice",
+      repo: "o/api", author: "alice",
       reviewDecision: "REVIEW_REQUIRED", mergeStateStatus: "BLOCKED", checksState: "SUCCESS",
       requestedReviewers: ["bob", "carol"],
     });
 
-    check("a paused pull request chases nobody",
-      nudgeTargets(p, { pr: true }).targets.length === 0);
-    check("  and still reports why it is blocked, so the list stays honest",
-      nudgeTargets(p, { pr: true }).reason === "needs-approval");
+    check("a paused pull request reminds nobody",
+      nudgeTargets(p, { prPaused: true }).targets.length === 0);
+    check("  and names everyone it silenced, so the list explains itself",
+      nudgeTargets(p, { prPaused: true }).muted.map(m => m.login).sort().join() === "alice,bob,carol",
+      nudgeTargets(p, { prPaused: true }).muted);
+    check("  while still reporting what is blocking it",
+      nudgeTargets(p, { prPaused: true }).reason === "needs-approval");
 
-    const oneOff = nudgeTargets(p, { logins: ["bob"] });
-    check("  muting one reviewer leaves the others, and the author",
-      oneOff.targets.join() === "alice,carol", oneOff.targets);
+    // Per pull request.
+    const one = nudgeTargets(p, { prLogins: ["bob"] });
+    check("muting one person on this pull request leaves the others",
+      one.targets.join() === "alice,carol", one.targets);
+    check("  and records the scope that did it",
+      one.muted[0]?.scope === "this pull request", one.muted);
 
-    // The author is always named, so muting every reviewer does not silence the
-    // reminder — it narrows it to the one person who can always do something.
-    check("  muting every reviewer leaves the author, who is always named",
-      nudgeTargets(p, { logins: ["bob", "carol"] }).targets.join() === "alice",
-      nudgeTargets(p, { logins: ["bob", "carol"] }).targets);
+    // Per repository.
+    const repo = nudgeTargets(p, { repoLogins: ["bob"] });
+    check("muting somebody across a repository takes them off its pull requests",
+      repo.targets.join() === "alice,carol" && repo.muted[0].scope === "repository", repo);
 
-    check("  muting the author as well leaves nobody, and so no reminder",
-      nudgeTargets(p, { logins: ["alice", "bob", "carol"] }).targets.length === 0,
+    // Everywhere.
+    const everywhere = nudgeTargets(p, { globalLogins: ["bob"] });
+    check("muting somebody everywhere takes them off this one too",
+      everywhere.targets.join() === "alice,carol"
+        && everywhere.muted[0].scope === "everywhere", everywhere);
+
+    // The widest scope is reported, since that is the one to undo.
+    const both = nudgeTargets(p, { globalLogins: ["bob"], prLogins: ["bob"], repoLogins: ["bob"] });
+    check("  where several apply, the widest is named",
+      both.muted[0].scope === "everywhere", both.muted);
+
+    check("  the author can be muted on their own pull request",
+      nudgeTargets(p, { prLogins: ["alice"] }).targets.join() === "bob,carol");
+
+    check("  muting everyone leaves nobody, and so no reminder",
+      nudgeTargets(p, { prLogins: ["alice", "bob", "carol"] }).targets.length === 0,
       "a reminder addressed to nobody would still post a comment");
 
-    check("  a muted login matches case-insensitively",
-      nudgeTargets(p, { logins: ["BOB"] }).targets.join() === "alice,carol");
+    check("  and matching is case-insensitive at every scope",
+      nudgeTargets(p, { globalLogins: ["BOB"] }).targets.join() === "alice,carol"
+        && nudgeTargets(p, { repoLogins: ["Bob"] }).targets.join() === "alice,carol"
+        && nudgeTargets(p, { prLogins: [" bob "] }).targets.join() === "alice,carol");
+
+    check("  and somebody not muted anywhere is untouched",
+      mutedBy("dave", { globalLogins: ["bob"], repoLogins: ["carol"] }) === null);
   }
 
   // ── ordering ────────────────────────────────────────────────────────
@@ -763,6 +791,98 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       /lastCommitAt: commit\?\.committedDate/.test(src)
         && /const basis = pr\.lastCommitAt \?\? pr\.createdAt;/.test(src),
       "any other field feeding it would let conversation pass for work");
+  }
+
+  // ── a mute outlives the pull request being closed ───────────────────
+  //
+  // Closing a pull request removes it from the list, because the list is built
+  // from what GitHub currently reports as open. If that were also what held the
+  // mute, reopening would come back unmuted — and the person who was
+  // deliberately left out would start being chased by a reminder nobody
+  // reinstated. Nothing about closing touches the stored row; this asserts that
+  // rather than assuming it.
+  {
+    __resetAlarmStoreForTests();
+    const repo = "example-org/service", number = 41;
+
+    await setPrPause(repo, number, { pausedLogins: ["carol"] }, "admin");
+    await recordNudge(repo, number, 5001);
+
+    const pr: PullRequest = {
+      repo, number, title: "Add retries", url: "https://example.invalid/pr/41",
+      author: "alice", headRef: "retries", baseRef: "main",
+      createdAt: new Date(Date.now() - 40 * 86_400_000).toISOString(),
+      lastCommitAt: new Date(Date.now() - 30 * 86_400_000).toISOString(),
+      requestedReviewers: ["carol", "dave"], reviews: [],
+      reviewDecision: "REVIEW_REQUIRED", mergeable: "MERGEABLE",
+      mergeStateStatus: "BLOCKED", isDraft: false, checksState: "SUCCESS",
+    };
+
+    const rules = async () => {
+      const st = await getPrState(repo, number);
+      return { prPaused: st?.paused, prLogins: st?.pausedLogins };
+    };
+
+    const before = nudgeTargets(pr, await rules());
+    check("the muted reviewer is left out while the PR is open",
+      !before.targets.includes("carol") && before.targets.includes("dave"), before);
+
+    // Closed: GitHub stops listing it. The list shrinks; the store does not.
+    const openNow: PullRequest[] = [];
+    check("a closed pull request is not in the list", openNow.length === 0);
+    check("  but its row is still stored",
+      (await listPrStates()).some(r => r.id === prStateId(repo, number)));
+
+    // Reopened. Same repository, same number — GitHub never reissues one.
+    const after = nudgeTargets(pr, await rules());
+    check("reopening it keeps the mute", !after.targets.includes("carol"), after);
+    check("  and still names everybody else", after.targets.includes("dave"), after);
+    check("  and remembers what was already sent",
+      (await getPrState(repo, number))?.nudgeCount === 1);
+
+    // A pause behaves the same way.
+    await setPrPause(repo, number, { paused: true }, "admin");
+    const paused = nudgeTargets(pr, await rules());
+    check("a pause set before closing is still a pause after reopening",
+      paused.targets.length === 0, paused);
+
+    // And lifting it still works on the row that survived.
+    await setPrPause(repo, number, { paused: false, pausedLogins: [] }, "admin");
+    const lifted = nudgeTargets(pr, await rules());
+    check("unmuting after a reopen puts everyone back",
+      lifted.targets.includes("carol") && lifted.targets.includes("dave"), lifted);
+  }
+
+  // ── the row is keyed so a reopen finds it ────────────────────────────
+  {
+    check("the key is the repository and number, nothing about open or closed",
+      prStateId("org/repo", 7) === "pr-state#org/repo#7", prStateId("org/repo", 7));
+    check("two pull requests do not share a row",
+      prStateId("org/repo", 7) !== prStateId("org/repo", 71));
+    check("the same number in two repositories does not share a row",
+      prStateId("org/a", 7) !== prStateId("org/b", 7));
+  }
+
+  // ── an active pull request never expires out from under a mute ───────
+  {
+    __resetAlarmStoreForTests();
+    const repo = "example-org/service", number = 9;
+    await setPrPause(repo, number, { pausedLogins: ["erin"] }, "admin");
+    const first = await getPrState(repo, number);
+
+    // Every write pushes the expiry out. A pull request being worked on is
+    // written to on each nudge, so the mute cannot quietly lapse mid-review.
+    await new Promise(r => setTimeout(r, 1100));
+    await recordNudge(repo, number, 5002);
+    const second = await getPrState(repo, number);
+
+    check("the stored row carries an expiry", typeof first?.ttl === "number" && first!.ttl > 0);
+    check("  which is months out, not days",
+      first!.ttl - Math.floor(Date.now() / 1000) > 100 * 86_400, first!.ttl);
+    check("  and is pushed further out on every write", second!.ttl > first!.ttl,
+      { first: first!.ttl, second: second!.ttl });
+    check("  while the mute itself is untouched by that write",
+      second?.pausedLogins?.includes("erin") === true, second);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

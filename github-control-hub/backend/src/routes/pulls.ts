@@ -5,7 +5,7 @@ import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
 import { sanitizeError } from "../utils/errorSanitizer";
 import {
   getPrState, listPrStates, setPrPause, recordNudge,
-  getPrSettings, savePrSettings,
+  getPrSettings, savePrSettings, getPrMutes, setPrMute,
 } from "../services/alarmService";
 import {
   fetchOpenPrs, sortByStaleness, daysSinceLastCommit, isStale,
@@ -47,16 +47,21 @@ router.get("/", async (req: Request, res: Response) => {
       });
     }
 
-    const [{ prs, truncated }, states] = await Promise.all([
+    const [{ prs, truncated }, states, mutes] = await Promise.all([
       fetchOpenPrs(graphqlFor(token), org()),
       listPrStates(),
+      getPrMutes(),
     ]);
     const byId = new Map(states.map(s => [`${s.repo}#${s.number}`, s]));
 
     const rows = sortByStaleness(prs).map(pr => {
       const state = byId.get(`${pr.repo}#${pr.number}`);
-      const paused = { pr: state?.paused, logins: state?.pausedLogins };
-      const { reason, targets } = nudgeTargets(pr, paused);
+      const { reason, targets, muted } = nudgeTargets(pr, {
+        prPaused: state?.paused,
+        prLogins: state?.pausedLogins,
+        repoLogins: mutes.byRepo[pr.repo],
+        globalLogins: mutes.global,
+      });
       return {
         ...pr,
         idleDays: Math.floor(daysSinceLastCommit(pr)),
@@ -66,6 +71,9 @@ router.get("/", async (req: Request, res: Response) => {
         // Who the next reminder would name. Shown so the effect of a pause is
         // visible before it is tested by a reminder going out.
         wouldNudge: targets,
+        // Named with their reason, so a pull request reminding nobody explains
+        // itself rather than looking like the feature has stopped working.
+        muted,
         paused: !!state?.paused,
         pausedLogins: state?.pausedLogins ?? [],
         lastNudgedAt: state?.lastNudgedAt ?? null,
@@ -81,6 +89,7 @@ router.get("/", async (req: Request, res: Response) => {
       open: rows.length,
       stale: rows.filter(r => r.stale).length,
       pulls: rows,
+      mutes,
     });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "pull requests") });
@@ -199,6 +208,79 @@ router.post("/run", async (req: Request, res: Response) => {
       },
     });
     res.json(summary);
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "pull requests") });
+  }
+});
+
+/**
+ * Mute or unmute one person at one scope.
+ *
+ * Per-pull-request mutes stay on /pause, which owns that pull request's row.
+ * These are the wider two, which live in one shared record.
+ */
+router.put("/mute", async (req: Request, res: Response) => {
+  const login = req.user!.login;
+  if (!(await isAwsAdmin(login).catch(() => false))) {
+    return res.status(403).json({
+      code: "CONTROL_HUB_ADMIN_REQUIRED",
+      error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can mute `
+        + `people from reminders.`,
+    });
+  }
+  const { scope, repo, target, muted } = req.body ?? {};
+  if (scope !== "global" && scope !== "repo") {
+    return res.status(400).json({ error: "scope must be global or repo" });
+  }
+  if (scope === "repo" && (typeof repo !== "string" || !repo.includes("/"))) {
+    return res.status(400).json({ error: "A repository is required, as owner/name" });
+  }
+  if (typeof target !== "string" || !target.trim() || target.length > 100) {
+    return res.status(400).json({ error: "A GitHub login is required" });
+  }
+  if (typeof muted !== "boolean") {
+    return res.status(400).json({ error: "muted must be true or false" });
+  }
+
+  // Checked when adding, never when removing.
+  //
+  // A mute on somebody outside the organization is not dangerous, it is inert —
+  // and inert is the problem: it looks set, so the person actually being chased
+  // goes on being reminded. Removal skips the check because a login that is no
+  // longer a member is exactly the one that most needs clearing out.
+  if (muted) {
+    try {
+      const { listOrgMembers, depsFromOctokit, isOrgMember } =
+        await import("../services/orgMembersService");
+      const members = await listOrgMembers(
+        depsFromOctokit(createOctokit(req.user!.accessToken)), org());
+      if (!isOrgMember(target, members)) {
+        return res.status(400).json({
+          error: `"${target}" is not a member of this organization, so muting them would `
+            + `have no effect. Pick somebody from the list.`,
+        });
+      }
+    } catch (error: any) {
+      // Refused rather than waved through: allowing the write when the check
+      // could not run is the same silent no-op by another route.
+      return res.status(503).json({
+        error: "Could not check organization membership, so the mute was not saved",
+      });
+    }
+  }
+
+  try {
+    res.json(await setPrMute(
+      scope === "global" ? { kind: "global" } : { kind: "repo", repo },
+      target, muted, login));
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "pull requests") });
+  }
+});
+
+router.get("/mutes", async (_req: Request, res: Response) => {
+  try {
+    res.json(await getPrMutes());
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "pull requests") });
   }

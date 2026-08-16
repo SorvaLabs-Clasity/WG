@@ -108,15 +108,19 @@ export default function AuditStreamSetup() {
    * The inline version pushed the layout around every time it opened and put a
    * warning colour on a screen where nothing was wrong yet. Turning a stream
    * off is a deliberate act, so it asks in a dialog and gets out of the way.
+   *
+   * A plain call, not a nested component: declaring one inside a render makes it
+   * a new type each time, so React rebuilds it instead of updating it — which
+   * reset the "copied" tick on the values below whenever a poll landed.
    */
-  const OffSwitch = () => (
+  const offSwitch = () => (
     <button onClick={() => setConfirmOff(true)}
       className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:underline">
       Turn off streaming
     </button>
   );
 
-  const OffDialog = () => !confirmOff ? null : (
+  const offDialog = () => !confirmOff ? null : (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-[3px] animate-fade-in"
         onClick={() => setConfirmOff(false)} />
@@ -153,7 +157,7 @@ export default function AuditStreamSetup() {
     </div>
   );
 
-  const GitHubStep = ({ bucket, roleArn }: { bucket: string; roleArn: string }) => (
+  const gitHubStep = (bucket: string, roleArn: string) => (
     <>
       <p className="text-sm mt-3 font-semibold">
         Enterprise settings → Audit log → Streaming → Amazon S3
@@ -179,7 +183,7 @@ export default function AuditStreamSetup() {
           The role exists and trusts your enterprise. Nothing will arrive until an
           <strong> enterprise owner</strong> switches streaming on in GitHub:
         </p>
-        <GitHubStep bucket={setup.data.bucket} roleArn={setup.data.roleArn} />
+        {gitHubStep(setup.data.bucket, setup.data.roleArn)}
         <button onClick={() => setup.reset()}
           className="mt-4 text-xs font-semibold text-gh-blue hover:underline">
           Done — check status
@@ -197,8 +201,8 @@ export default function AuditStreamSetup() {
           Streaming from <strong>{status.enterprise}</strong>. {status.objectCount}+ batches
           delivered. Rows appear here as GitHub writes them — expect minutes, not seconds.
         </p>
-        <div className="mt-3"><OffSwitch /></div>
-        <OffDialog />
+        <div className="mt-3">{offSwitch()}</div>
+        {offDialog()}
       </>
     );
   }
@@ -214,7 +218,7 @@ export default function AuditStreamSetup() {
           The role exists and trusts <strong>{status.enterprise}</strong>, but nothing has arrived
           yet. An enterprise owner has to switch streaming on, once, in a browser:
         </p>
-        <GitHubStep bucket={status.bucket} roleArn={status.roleArn ?? ""} />
+        {gitHubStep(status.bucket, status.roleArn ?? "")}
         <details className="mt-4">
           <summary className="text-xs font-semibold cursor-pointer text-gh-blue">
             Point it at a different enterprise
@@ -228,8 +232,8 @@ export default function AuditStreamSetup() {
             </button>
           </div>
         </details>
-        <div className="mt-4"><OffSwitch /></div>
-        <OffDialog />
+        <div className="mt-4">{offSwitch()}</div>
+        {offDialog()}
         {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
       </div>
     );
