@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { logActivity } from "./activityService";
-import { docClient, usesDynamo, tableName, PutCommand, ScanCommand, GetCommand } from "../utils/dynamo";
+import { docClient, usesDynamo, tableName, PutCommand, ScanCommand, GetCommand, scanAll } from "../utils/dynamo";
 
 export type AlertSeverity = "critical" | "high" | "medium" | "low";
 export type AlertType =
@@ -37,8 +37,9 @@ let memAlertsStore: SecurityAlert[] = [];
 
 export async function getAlerts(): Promise<SecurityAlert[]> {
   if (usesDynamo()) {
-    const result = await docClient.send(new ScanCommand({ TableName: TABLE() }));
-    return ((result.Items || []) as SecurityAlert[]).sort(
+    // Paged: a bare scan stops at 1MB without saying so, and a list that
+    // silently loses its tail is worse here than an error would be.
+    return (await scanAll<SecurityAlert>(TABLE())).sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   }

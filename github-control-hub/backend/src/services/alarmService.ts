@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { logActivity } from "./activityService";
-import { docClient, usesDynamo, tableName, PutCommand, ScanCommand, GetCommand, DeleteCommand } from "../utils/dynamo";
+import { docClient, usesDynamo, tableName, PutCommand, ScanCommand, GetCommand, DeleteCommand, scanAll } from "../utils/dynamo";
 import type { AlarmCondition, AlarmState, Severity } from "../alarms/conditions";
 import {
   DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY,
@@ -9,6 +9,7 @@ import {
   DEFAULT_RENOVATE_SUBJECT, DEFAULT_RENOVATE_BODY,
   DEFAULT_DEPENDABOT_SUBJECT, DEFAULT_DEPENDABOT_BODY,
 } from "../alarms/message";
+import { sameValue } from "../utils/sameValue";
 
 /**
  * Alarms, the email groups they notify, and the security-alert toggle.
@@ -83,7 +84,7 @@ export interface SecurityNotifySettings {
   updatedAt?: string;
 }
 
-type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState | PrFeatureSettings;
+type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState | PrFeatureSettings | PrMutes;
 
 const TABLE = () => tableName("ALARMS_TABLE");
 
@@ -92,8 +93,22 @@ let memStore: AnyRecord[] = [];
 
 async function allRecords(): Promise<AnyRecord[]> {
   if (usesDynamo()) {
-    const result = await docClient.send(new ScanCommand({ TableName: TABLE() }));
-    return (result.Items || []) as AnyRecord[];
+    // Paged, and filtered server-side.
+    //
+    // Paged because a single scan stops at 1MB without saying so, and every
+    // caller of this reads something that must not silently shrink: the alarms
+    // to evaluate, the email groups to send to, the notifications waiting to go
+    // out, and the pull request rows holding mutes and pauses.
+    //
+    // Filtered because the security checks keep one cached verdict per account
+    // or repository in this same table, which on a large organization is
+    // hundreds of rows none of these callers want. Excluding them server-side
+    // keeps an alarm pass from paging through a cache it never reads.
+    return await scanAll<AnyRecord>(TABLE(), {
+      filter: "attribute_not_exists(#k) OR #k <> :cache",
+      names: { "#k": "kind" },
+      values: { ":cache": "query-subject" },
+    });
   }
   return memStore;
 }
@@ -184,8 +199,16 @@ export async function updateAlarm(
   // alarm firing on "critical >= 1" that becomes "total >= 500" would stay in
   // ALARM and never send the email for the new condition, because the first
   // breach it sees is not a transition.
+  //
+  // Compared structurally, never as JSON text. DynamoDB returns a map's keys in
+  // its own order, so the condition read back was `{kind, threshold, metric,
+  // op}` where the form sends `{kind, metric, op, threshold}` — identical
+  // conditions, different strings. Every save of any field therefore looked
+  // like a condition change, reset a firing alarm to OK, and made the next
+  // evaluation a fresh breach that emailed everybody again. Renaming an alarm
+  // or fixing a typo in its email body was enough to do it.
   const conditionChanged = data.condition !== undefined
-    && JSON.stringify(data.condition) !== JSON.stringify(existing.condition);
+    && !sameValue(data.condition, existing.condition);
   if (conditionChanged) {
     updated.state = "OK";
     updated.cleanStreak = 0;
@@ -325,7 +348,7 @@ function describeChanges(
   const changed: string[] = [];
   for (const [key, label] of fields) {
     if (after[key] === undefined) continue;
-    if (JSON.stringify(before[key]) === JSON.stringify(after[key])) continue;
+    if (sameValue(before[key], after[key])) continue;
     if (key === "subjectTemplate" || key === "bodyTemplate") changed.push(label);
     else if (typeof after[key] === "boolean") changed.push(`${label} ${after[key] ? "on" : "off"}`);
     else changed.push(`${label} → ${after[key]}`);
@@ -629,6 +652,89 @@ export async function savePrSettings(
     "config.updated" as any, actor, "", "pr_monitoring",
     changes.length ? `Pull requests: ${changes.join(", ")}` : "Pull request settings saved with no change",
     { ...updated }, "app",
+  );
+  return updated;
+}
+
+// ── who is muted, and how widely ──────────────────────────────────────
+//
+// Three scopes above the per-pull-request one, because "stop reminding this
+// person" is asked at three different sizes: they are on leave, they do not
+// work on that repository, or this one pull request is not theirs to chase.
+//
+// One row rather than one per mute. The whole set is read on every pass and
+// rendered whole in the UI, so a row per entry would be a scan to answer a
+// question that fits comfortably in a single item.
+
+export const PR_MUTES_ID = "pr-mutes";
+
+export interface PrMutes {
+  id: typeof PR_MUTES_ID;
+  kind: "pr-mutes";
+  /** Never reminded about anything, anywhere. */
+  global: string[];
+  /** Never reminded about pull requests in these repositories. */
+  byRepo: Record<string, string[]>;
+  updatedBy?: string;
+  updatedAt?: string;
+}
+
+const DEFAULT_MUTES: PrMutes = { id: PR_MUTES_ID, kind: "pr-mutes", global: [], byRepo: {} };
+
+export async function getPrMutes(): Promise<PrMutes> {
+  const found = await getById<PrMutes>(PR_MUTES_ID);
+  if (found?.kind === "pr-mutes") {
+    return { ...DEFAULT_MUTES, ...found, global: found.global ?? [], byRepo: found.byRepo ?? {} };
+  }
+  return { ...DEFAULT_MUTES };
+}
+
+/**
+ * Add or remove one person at one scope.
+ *
+ * Deliberately not "save the whole object". Two admins editing at once would
+ * otherwise overwrite each other silently, and the losing edit is a mute that
+ * somebody believes they set.
+ */
+export async function setPrMute(
+  scope: { kind: "global" } | { kind: "repo"; repo: string },
+  login: string,
+  muted: boolean,
+  actor: string,
+): Promise<PrMutes> {
+  const current = await getPrMutes();
+  const key = login.trim();
+  const same = (a: string) => a.toLowerCase() === key.toLowerCase();
+
+  const updated: PrMutes = {
+    ...current,
+    global: [...current.global],
+    byRepo: Object.fromEntries(Object.entries(current.byRepo).map(([k, v]) => [k, [...v]])),
+    updatedBy: actor,
+    updatedAt: new Date().toISOString(),
+  };
+
+  if (scope.kind === "global") {
+    updated.global = muted
+      ? (updated.global.some(same) ? updated.global : [...updated.global, key])
+      : updated.global.filter(l => !same(l));
+  } else {
+    const list = updated.byRepo[scope.repo] ?? [];
+    const next = muted
+      ? (list.some(same) ? list : [...list, key])
+      : list.filter(l => !same(l));
+    // An empty list is removed rather than kept, so the stored shape matches
+    // what it means: no entry is the same as nobody muted there.
+    if (next.length) updated.byRepo[scope.repo] = next;
+    else delete updated.byRepo[scope.repo];
+  }
+
+  await put(updated);
+  const where = scope.kind === "global" ? "everywhere" : `in ${scope.repo}`;
+  await logActivity(
+    "config.updated" as any, actor, scope.kind === "repo" ? scope.repo : "", "pr_mute",
+    `${key} ${muted ? "muted" : "unmuted"} for pull request reminders ${where}`,
+    { login: key, scope: scope.kind, repo: scope.kind === "repo" ? scope.repo : undefined, muted }, "app",
   );
   return updated;
 }

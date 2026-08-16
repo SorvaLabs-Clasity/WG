@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand } from "../utils/dynamo";
+import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand, scanAll } from "../utils/dynamo";
 import { logActivity } from "./activityService";
 
 export interface WidgetConfig {
@@ -22,8 +22,9 @@ const memWidgets: Map<string, WidgetConfig> = new Map();
 
 export async function listWidgets(): Promise<WidgetConfig[]> {
   if (usesDynamo()) {
-    const result = await docClient.send(new ScanCommand({ TableName: TABLE() }));
-    return ((result.Items || []) as WidgetConfig[]).sort(
+    // Paged: a bare scan stops at 1MB without saying so, and a list that
+    // silently loses its tail is worse here than an error would be.
+    return (await scanAll<WidgetConfig>(TABLE())).sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
   }
