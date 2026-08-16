@@ -25,6 +25,7 @@
  */
 import {
   matchResources, searchTermsFor, readProvider, buildInventory, describeAwsError, consoleUrl,
+  logicalIdFrom,
   type Inventory, type Resource, type Relationship, type ProviderResult, type Provider,
 } from "./src/services/awsInventoryService";
 import { matchesTarget } from "./src/services/awsProviders";
@@ -256,6 +257,31 @@ const noSource = async () => ({ ok: true, service: "github", items: [] as Source
       searchTermsFor({ service: "s3", name: `ab-${acct}` }));
     check("a name that merely contains digits is left alone",
       searchTermsFor({ service: "s3", name: "acme-v2-assets" }).length === 1);
+    // A CloudFormation physical name. Source has the logical id and never this,
+    // so without extracting it every CDK-managed resource in an account reports
+    // as referenced by nobody — which is what a real queue with two live
+    // consumers actually did.
+    check("a CloudFormation name yields its logical id",
+      logicalIdFrom("GitHubControlHub-WebhookQueueA9D318EA-xGZdeHQei9vh") === "WebhookQueue",
+      logicalIdFrom("GitHubControlHub-WebhookQueueA9D318EA-xGZdeHQei9vh"));
+    check("  and it is searched for",
+      searchTermsFor({ service: "sqs", name: "GitHubControlHub-WebhookQueueA9D318EA-xGZdeHQei9vh" })
+        .includes("WebhookQueue"));
+    check("  alongside the full name",
+      searchTermsFor({ service: "sqs", name: "GitHubControlHub-WebhookQueueA9D318EA-xGZdeHQei9vh" })[0]
+        === "GitHubControlHub-WebhookQueueA9D318EA-xGZdeHQei9vh");
+
+    // Strictness, because a wrongly shortened term matches the wrong files,
+    // which is worse than matching none.
+    check("an ordinary hyphenated name is not shortened",
+      logicalIdFrom("payments-events-dlq") === null, logicalIdFrom("payments-events-dlq"));
+    check("  nor one with a short suffix",
+      logicalIdFrom("acme-queue-prod") === null);
+    check("  nor a name with no hash section",
+      logicalIdFrom("MyStack-MyQueue-abcdefghijklm") === null);
+    check("  and a logical id too short to search is refused",
+      logicalIdFrom("Stack-AB12345678-xGZdeHQei9vh") === null);
+
     check("very short identifiers are not searched for",
       !searchTermsFor({ service: "s3", name: "ab" }).includes("ab"));
   }
@@ -395,12 +421,12 @@ const noSource = async () => ({ ok: true, service: "github", items: [] as Source
 
   // ── the search must run as the person asking ────────────────────────
   //
-  // Code search does not work with a GitHub App installation token. It returns
-  // **zero hits** rather than an error — measured against this organization,
-  // where a file that plainly exists came back with nothing through the App
-  // token. A blast radius built on that reports "nothing in your source refers
-  // to this" with total confidence, at the exact moment somebody is deciding
-  // whether to delete something.
+  // Not because an App token cannot search — it can, and an earlier version of
+  // this comment said otherwise on the evidence of a search that returned
+  // nothing for a file in a *different organization*. The reason is disclosure:
+  // an installation token can see every private repository in the organization,
+  // so searching with it would show somebody the paths of files in
+  // repositories they cannot open.
   //
   // Read from the route rather than asserted about a value, because the mistake
   // is a one-word edit and produces no error anywhere.

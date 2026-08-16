@@ -197,6 +197,21 @@ export function matchResources(inventory: Inventory, query: string): Resource[] 
  * URL, and in an IAM policy by its ARN — three strings for one resource, and
  * searching only one of them finds a third of the references.
  */
+/**
+ * The logical id inside a CloudFormation physical name, or null.
+ *
+ * Deliberately strict. A loose pattern would shorten ordinary names that happen
+ * to contain hyphens — `payments-events-dlq` is not a stack, a logical id and a
+ * hash — and a wrongly shortened term matches the wrong files, which is worse
+ * than matching none.
+ */
+export function logicalIdFrom(name: string): string | null {
+  // {Stack}-{LogicalId}{8 hex}-{13+ mixed-case random}
+  const m = /^[A-Za-z0-9]+-([A-Za-z0-9]*?)[0-9A-F]{8}-[A-Za-z0-9]{12,}$/.exec(name);
+  const id = m?.[1];
+  return id && id.length >= 3 ? id : null;
+}
+
 export function searchTermsFor(r: Resource): string[] {
   const terms = new Set<string>([r.name]);
   if (r.arn) terms.add(r.arn);
@@ -212,6 +227,21 @@ export function searchTermsFor(r: Resource): string[] {
   // Found by running this against a real account: the app's own audit bucket,
   // which the codebase creates and documents, came back with zero references
   // because its name ends in the account id.
+  // A CloudFormation or CDK physical name, reduced to the logical id.
+  //
+  // CloudFormation names resources `{Stack}-{LogicalId}{8 hex}-{13 random}`, so
+  // the queue this codebase declares as `WebhookQueue` exists in AWS as
+  // `GitHubControlHub-WebhookQueueA9D318EA-xGZdeHQei9vh`. Source contains the
+  // logical id and never the physical name, so searching the physical name
+  // finds nothing — and every CDK-managed resource in an account reports as
+  // referenced by nobody.
+  //
+  // Found by running a blast radius against a real queue that two Lambdas
+  // plainly consume and that the codebase plainly declares, and watching it
+  // report zero source references.
+  const logical = logicalIdFrom(r.name);
+  if (logical) terms.add(logical);
+
   let base = r.name;
   for (const suffix of [
     /[-_]\d{12}$/,                                             // account id

@@ -31,13 +31,16 @@ outage the feature exists to prevent. So a read failure is a first-class
 outcome from provider to verdict, the report says which read failed and why, and
 **nothing is ever called low risk while anything is unread**.
 
-The same rule is why the source search must run as **you**, not as the app.
-GitHub's code search returns **zero hits** for a GitHub App installation token —
-no error, just nothing. Measured: a file that plainly exists in this repository
-came back with nothing through the app token and everything through a user
-token. A blast radius built on that would confidently report no source
-references at the worst possible moment, so a test asserts the route never
-reaches for the system token.
+The source search runs as **you**, not as the app — for disclosure rather than
+capability. An installation token can see every private repository in the
+organization, so searching with it would show somebody the paths of files in
+repositories they cannot open. Your own token returns exactly what you could
+have found on github.com.
+
+A search that finds nothing is still worth reading twice, because the query is
+scoped to the configured `GITHUB_ORG`. A resource named only in a repository
+belonging to a *different* organization is correctly, and unhelpfully, reported
+as unreferenced.
 
 ## What counts as a dependency
 
@@ -75,6 +78,21 @@ literal — so searching the literal finds nothing and reports nothing. Found by
 running this against a real account, where the app's **own** audit bucket came
 back with zero references for exactly that reason. Account ids, regions and
 environment suffixes are all stripped.
+
+**CloudFormation and CDK names are reduced to their logical id.** CloudFormation
+names a resource `{Stack}-{LogicalId}{hash}-{random}`, so a queue declared as
+`WebhookQueue` exists in AWS as
+`GitHubControlHub-WebhookQueueA9D318EA-xGZdeHQei9vh`. Source contains the
+logical id and never the physical name, so without this **every CDK-managed
+resource in an account reports as referenced by nobody**. Found the same way: a
+queue two Lambdas visibly consume, and which this codebase visibly declares,
+returned zero source references. With the logical id searched it returns three
+files including the CDK stack, and the verdict gains the line that matters —
+*deleting it in the console will not stick*.
+
+The pattern is deliberately strict. A loose one would shorten ordinary
+hyphenated names, and a wrongly shortened term matches the wrong files, which is
+worse than matching none.
 
 ## Every finding is a link
 
