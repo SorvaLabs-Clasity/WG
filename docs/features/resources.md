@@ -276,9 +276,12 @@ it is.
 not who made the change — both come from CloudTrail, which this app does not
 use. The wording says so rather than implying a precision it lacks.
 
-The **first** read of a resource is a baseline and reports nothing. Inventing a
-change on first sight would make every new resource look like an incident, and
-the panel says that is what happened rather than showing an empty box.
+The **first** read of a resource is a baseline and shows nothing at all — not
+even a note. Inventing a change on first sight would make every new resource
+look like an incident, and announcing "nothing to compare yet" in its own card
+put a message about *this* panel above the answer to the question actually
+asked, which is the GitHub comparison. It is secondary information and now sits
+below it, headed "Also".
 
 A reordering is not a change: AWS returns rules in whatever order it likes, and
 comparing raw lists would report a change on every read.
