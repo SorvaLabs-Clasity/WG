@@ -58,18 +58,9 @@ not charge for, and it persists nothing: no DynamoDB rows, no Lambda
 invocations, no schedule. It runs on demand with the operator's own credentials
 and holds its caches in memory.
 
-The one exception is the **cost panel**, which uses Cost Explorer at **$0.01 per
-request**. Held for 24 hours, and the manual refresh is throttled to once every
-five minutes.
-
-| | Monthly |
-|---|---|
-| Normal use — the panel opened once a day | **~$0.30** |
-| Somebody refreshing it as often as allowed, all day | **~$2.90** |
-
-**This does not scale with organization size or AWS spend.** Cost Explorer bills
-per question asked, so a hundred-person organization with a $20,000 bill pays
-the same as a two-person one.
+**There is no exception.** A cost panel briefly read Cost Explorer here, which
+charges $0.01 per request; it was removed along with the rest of the billing
+feature, and with it the only metered AWS call anywhere in the app.
 
 The real constraint on these features is GitHub quota rather than money: code
 search allows ten requests a minute, and one blast-radius lookup costs one to

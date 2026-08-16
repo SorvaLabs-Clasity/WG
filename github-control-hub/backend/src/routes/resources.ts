@@ -11,10 +11,6 @@ import { assessBlastRadius } from "../services/blastRadiusService";
 import { findSourceRefs, searcherFor, clearSourceSearchCache } from "../services/sourceSearchService";
 import { expertsForResource } from "../services/resourceExpertsService";
 import { parseSecurityGroups, driftForSecurityGroup } from "../services/iacParseService";
-import {
-  readCost, clearCostCache, currentMonth, costDepsFromAws, ownershipByService, providerFor,
-  projectSpend, resourceKeyFor,
-} from "../services/costService";
 import type { SourceRef } from "../services/blastRadiusService";
 
 const router = Router();
@@ -243,78 +239,5 @@ async function driftFor(target: Resource, refs: SourceRef[], octokit: any) {
       : report.notes,
   };
 }
-
-/**
- * What this account spends.
- *
- * Separate from the inventory route because it is the one thing here that costs
- * money to ask — a cent per Cost Explorer request. It is never called by the
- * page that lists resources, only by somebody opening the cost view, and the
- * answer is held for a day.
- */
-router.get("/cost", async (req: Request, res: Response) => {
-  try {
-    // Throttled, because this is the one read that costs money. A refresh that
-    // arrives too soon returns the held answer and says so, rather than either
-    // spending a cent or pretending it refreshed.
-    const askedFresh = req.query.refresh === "true";
-    const refreshed = askedFresh ? clearCostCache() : false;
-    const answer = await readCost(
-      costDepsFromAws(), currentMonth(), req.query.tag ? String(req.query.tag) : undefined);
-
-    // The link to source, where there is one. Not a dollar split — without
-    // per-resource data nothing supports attributing a share of a service's
-    // bill to one repository, and an invented proportion is the kind of number
-    // that gets quoted and cannot be defended.
-    const inv = await inventory();
-    const reposByResource = new Map<string, string[]>();
-    const token = req.user?.accessToken;
-
-    if (token) {
-      const search = searcherFor(createOctokit(token));
-
-      // Which resources are worth a code search, and it is never all of them:
-      // each is one request against ten a minute.
-      //
-      // In resource mode the rows *are* resources, so the ones carrying real
-      // money are exactly the ones worth attributing — twenty of those answers
-      // the question for nearly the whole bill. In service mode there is no
-      // per-resource money, so the best available proxy is the resources
-      // belonging to the three largest services.
-      const wanted = answer.mode === "resource"
-        ? inv.all.filter(r => answer.rows.slice(0, 20).some(
-            row => resourceKeyFor(row.key, inv.all) === `${r.service}/${r.name}`))
-        : inv.all.filter(r => answer.rows.slice(0, 3).some(row => providerFor(row.key) === r.service));
-
-      for (const resource of wanted) {
-        const refs = await findSourceRefs(resource.name, org(), search);
-        if (refs.ok && refs.items.length > 0) {
-          reposByResource.set(
-            `${resource.service}/${resource.name}`,
-            [...new Set(refs.items.map(i => i.repo))],
-          );
-        }
-      }
-    }
-
-    res.json({
-      ...answer,
-      refreshDeclined: askedFresh && !refreshed,
-      // Per project only where per-resource money exists. Everywhere else the
-      // honest answer is which repositories touch a service, with no dollar
-      // split — see the note on `ownershipByService`.
-      breakdown: answer.mode === "resource"
-        ? projectSpend(answer.rows, inv.all, reposByResource)
-        : null,
-      ownership: answer.mode === "service"
-        ? ownershipByService(answer.rows, inv.all, reposByResource)
-        : null,
-      unreadableServices: inv.unreadable,
-    });
-  } catch (error: any) {
-    if (sendIfRateLimited(res, error)) return;
-    res.status(500).json({ error: sanitizeError(error, "cost") });
-  }
-});
 
 export default router;

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { fetchInventory, fetchBlastRadius, fetchCost } from "../api/resources";
+import { fetchInventory, fetchBlastRadius } from "../api/resources";
 
 /**
  * The account's resources, filtered.
@@ -29,24 +29,6 @@ export function useBlastRadius(service: string | null, name: string | null) {
     queryFn: () => fetchBlastRadius(service!, name!),
     enabled: !!service && !!name,
     staleTime: 5 * 60_000,
-    retry: false,
-  });
-}
-
-/**
- * What the account spends this month.
- *
- * Held for a day in the client too, matching the server. Cost Explorer charges
- * a cent per request and its data settles daily, so refetching on focus or on
- * an interval would spend money to learn nothing.
- */
-export function useCost(enabled: boolean) {
-  return useQuery({
-    queryKey: ["aws-cost"],
-    queryFn: () => fetchCost(),
-    enabled,
-    staleTime: 24 * 60 * 60_000,
-    refetchOnWindowFocus: false,
     retry: false,
   });
 }

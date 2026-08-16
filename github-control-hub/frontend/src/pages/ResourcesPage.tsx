@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useAuth } from "../App";
 import { Page, Empty, Spinner, SearchInput, SURFACE } from "../design";
-import { useInventory, useBlastRadius, useCost } from "../hooks/useResources";
+import { useInventory, useBlastRadius } from "../hooks/useResources";
 import type { AwsResource, RiskLevel, SourceRef } from "../api/resources";
 import UserAvatar from "../components/UserAvatar";
 import ExternalLink from "../components/ExternalLink";
@@ -89,13 +89,9 @@ export default function ResourcesPage() {
   const { user } = useAuth();
   const [q, setQ] = useState("");
   const [picked, setPicked] = useState<AwsResource | null>(null);
-  // Off until asked for. Every load is a Cost Explorer request, which AWS
-  // charges a cent for — so it is a button, not a panel that appears.
-  const [showCost, setShowCost] = useState(false);
 
   const { data: inv, isLoading, error } = useInventory(q);
   const blast = useBlastRadius(picked?.service ?? null, picked?.name ?? null);
-  const cost = useCost(showCost);
 
   const resourceRow = (r: AwsResource) => {
     const on = picked?.service === r.service && picked?.name === r.name;
@@ -142,166 +138,6 @@ export default function ResourcesPage() {
           nothing here changes anything.
         </p>
       </header>
-
-      {/* Cost, behind a button.
-          Every other read in this app is free; this one is a cent a time, so it
-          is never fetched because a page rendered. */}
-      <div className="mb-4">
-        {!showCost ? (
-          <button onClick={() => setShowCost(true)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-[13px] font-semibold rounded-lg ring-1 ring-inset ring-slate-300 dark:ring-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
-            <i className="ph-bold ph-currency-dollar"></i>
-            What is this account spending?
-          </button>
-        ) : cost.isLoading ? (
-          <div className={`${SURFACE.sheet} p-5`}><Spinner /></div>
-        ) : cost.error ? (
-          <div className={`${SURFACE.sheet} p-5`}>
-            <p className="text-[13px] text-rose-700 dark:text-rose-300">
-              {(cost.error as Error).message}
-            </p>
-          </div>
-        ) : cost.data ? (
-          <div className={SURFACE.sheet}>
-            <div className="px-5 pt-4 pb-3 flex items-baseline justify-between gap-4 flex-wrap">
-              <div>
-                <span className="text-2xl font-black tabular-nums text-slate-900 dark:text-white">
-                  ${cost.data.total.toFixed(2)}
-                </span>
-                <span className="ml-2 text-[13px] text-slate-500 dark:text-slate-400">
-                  {cost.data.currency} · {cost.data.period.start} to {cost.data.period.end}
-                </span>
-              </div>
-              {/* The mode is on the number, not buried. A per-service total and
-                  a per-project total answer different questions, and a reader
-                  who cannot tell which they have will assume the better one. */}
-              <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                cost.data.mode === "service"
-                  ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
-                  : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"}`}>
-                grouped by {cost.data.mode}
-              </span>
-            </div>
-
-            {/* The answer the panel is opened for, when AWS can give it. */}
-            {cost.data.breakdown && cost.data.breakdown.projects.length > 0 && (
-              <div className="px-5 pb-3">
-                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
-                  By project
-                </p>
-                <ul className="space-y-2">
-                  {cost.data.breakdown.projects.map(p => (
-                    <li key={p.repo} className={`${SURFACE.inset} rounded-xl px-3.5 py-2.5`}>
-                      <div className="flex items-baseline justify-between gap-3">
-                        <span className="font-mono text-[13px] font-semibold text-slate-900 dark:text-white truncate">
-                          {p.repo}
-                        </span>
-                        <span className="font-black tabular-nums text-slate-900 dark:text-white shrink-0">
-                          ${(p.exclusive + p.shared).toFixed(2)}
-                        </span>
-                      </div>
-                      {p.shared > 0 && (
-                        // Kept apart on purpose: shared spend is counted in full
-                        // under every repository that references the resource,
-                        // so the shared figures do not add up across projects
-                        // and must not look as though they do.
-                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                          ${p.exclusive.toFixed(2)} its own · ${p.shared.toFixed(2)} shared with{" "}
-                          {p.sharedWith.join(", ")}
-                        </p>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-                {cost.data.breakdown.unattributed > 0 && (
-                  <p className="mt-2 text-[12px] text-amber-700 dark:text-amber-400">
-                    ${cost.data.breakdown.unattributed.toFixed(2)} on{" "}
-                    {cost.data.breakdown.unattributedResources.length} resource
-                    {cost.data.breakdown.unattributedResources.length === 1 ? "" : "s"} no repository
-                    references — usually the more interesting number.
-                  </p>
-                )}
-                {cost.data.breakdown.notes.map((n, i) => (
-                  <p key={i} className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{n}</p>
-                ))}
-              </div>
-            )}
-
-            {cost.data.mode === "service" && (
-              // The question this panel is opened to answer is "what is each
-              // project costing", and on most accounts AWS cannot answer it at
-              // all. Saying so at the top is better than a per-service list
-              // that looks like an answer to a different question.
-              <div className="mx-5 mb-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
-                <p className="text-[13px] font-bold text-amber-900 dark:text-amber-200">
-                  Spend cannot be split per project on this account yet
-                </p>
-                <p className="text-[12px] text-amber-800 dark:text-amber-300 mt-1">
-                  AWS only breaks cost down per project if one of two things is switched on. Neither
-                  is, so what follows is per service.
-                </p>
-                <ol className="mt-2 space-y-1 text-[12px] text-amber-800 dark:text-amber-300 list-decimal list-inside">
-                  <li>
-                    <strong>Cost allocation tags</strong> — Billing → Cost allocation tags.
-                    Tag resources with the project, activate the tag. Applies from that day
-                    forward, <em>not</em> retroactively.
-                  </li>
-                  <li>
-                    <strong>Resource-level data</strong> — the payer account's Cost Explorer
-                    settings. Gives exact per-resource spend, which this app can then attribute
-                    through the repositories that reference each resource. Keeps 14 days.
-                  </li>
-                </ol>
-              </div>
-            )}
-
-            <ul className="px-5 pb-2 space-y-1.5">
-              {cost.data.rows.slice(0, 8).map(r => {
-                const own = cost.data!.ownership?.find(o => o.service === r.key);
-                const share = cost.data!.total > 0 ? r.amount / cost.data!.total : 0;
-                return (
-                  <li key={r.key}>
-                    <div className="flex items-baseline justify-between gap-3 text-[13px]">
-                      <span className="text-slate-700 dark:text-slate-200 truncate">{r.key}</span>
-                      <span className="font-bold tabular-nums text-slate-900 dark:text-white shrink-0">
-                        ${r.amount.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 h-1 rounded-full bg-slate-100 dark:bg-white/[0.07] overflow-hidden">
-                      <div className="h-full rounded-full bg-gh-blue"
-                        style={{ width: `${Math.max(1, share * 100)}%` }} />
-                    </div>
-                    {own && (own.repos.length > 0 || own.unreferenced.length > 0) && (
-                      <p className="mt-0.5 text-[11px] text-slate-400 dark:text-slate-500">
-                        {own.repos.length > 0 && <>referenced by {own.repos.join(", ")}</>}
-                        {own.repos.length > 0 && own.unreferenced.length > 0 && " · "}
-                        {own.unreferenced.length > 0 && (
-                          // Usually the most interesting line on the panel:
-                          // resources nothing in any repository names.
-                          <span className="text-amber-600 dark:text-amber-400">
-                            {own.unreferenced.length} unreferenced
-                          </span>
-                        )}
-                      </p>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-
-            {cost.data.notes.length > 0 && (
-              <div className="px-5 pb-4 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
-                {cost.data.notes.map((n, i) => (
-                  <p key={i} className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">{n}</p>
-                ))}
-              </div>
-            )}
-            <p className="px-5 pb-3 text-[10px] text-slate-400 dark:text-slate-500">
-              Cost Explorer charges a cent per request, so this is read once a day.
-            </p>
-          </div>
-        ) : null}
-      </div>
 
       {error ? (
         <Empty title="Could not read this account" body={(error as Error).message} />

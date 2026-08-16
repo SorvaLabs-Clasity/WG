@@ -199,85 +199,6 @@ into a permanently exhausted one.
 The AWS inventory is held for one minute, shared between concurrent requests, so
 search-as-you-type costs one listing rather than one per keystroke.
 
-## Cost
-
-**Behind a button, not on the page.** Every other AWS read in this app is free.
-Cost Explorer charges **$0.01 per request** — nothing once a day, and $26 a
-month for one tab refreshing every thirty seconds. So it is fetched when
-somebody asks, held for a day on both sides, and never on a render, a timer or a
-window focus.
-
-**The refresh button is throttled to once every five minutes.** Everything else
-in this app can be refreshed as often as anybody likes, because everything else
-is free; a button that bypasses a cache costing a cent a time is a button
-somebody can hold down. A refresh asked for too soon returns the held answer and
-says so, rather than either spending or pretending. The worst anybody can spend
-by holding it all day is about **$2.90**.
-
-### Three precisions, and which one you get is on the number
-
-| Mode | Precision | Needs |
-|---|---|---|
-| **resource** | Exact per resource, so spend attributes through the source index with no tagging | Payer account opt-in for resource-level data. Keeps **14 days** |
-| **tag** | Exact for anything tagged | Cost allocation tags activated in Billing. Populates over a day, **not retroactively** |
-| **service** | Always available, **cannot be split between projects** | Nothing |
-
-The mode is shown on the total, because a per-service figure and a per-project
-figure answer different questions and a reader who cannot tell which they have
-will assume the better one. When a more precise mode is unavailable, the panel
-says which setting to change rather than apologising.
-
-The 14-day window is checked *before* asking. Requesting a calendar month
-returns "start date is too old for hourly, the max supported days for hourly
-granularity is 14 days" — a message that does not mention resources, is not
-actionable, and costs a cent to receive.
-
-### Per project, when AWS can supply it
-
-With **resource-level data on**, every cost row is a resource, and the source
-index already knows which repositories reference which resource. That gives an
-exact per-project figure with **no tagging at all**:
-
-```
-  payments-api        $4,812.00
-    $4,204.00 its own · $608.00 shared with ops
-
-  ops                   $608.00
-    $0.00 its own · $608.00 shared with payments-api
-
-  $2,940.00 on 14 resources no repository references
-```
-
-**Shared spend is never divided.** A queue both repositories use costs what it
-costs; halving it is a guess, and reporting it in full under both without
-saying so double-counts. So the two are kept apart — `its own` adds up across
-projects, `shared` deliberately does not, and the panel says so.
-
-Two buckets stop the parts from quietly failing to reach the bill: spend on
-resources **no repository references** (usually the most interesting number —
-those are the ones nobody owns), and spend on resources this app does not
-inventory at all.
-
-Resource ids are matched **exactly**, on the ARN or the bare name. A substring
-match would attribute the `orders` table's bill to `orders-archive`, and money
-attributed to the wrong team is the kind of error that surfaces in a budget
-meeting.
-
-### The link to code, and the line it will not cross
-
-For each service, the panel names the **repositories whose source references
-resources of that service**, and counts the resources **nothing references**.
-That second number is usually the more interesting one: those are the resources
-nobody owns.
-
-It does **not** invent a per-repository dollar figure. Without per-resource data
-nothing supports splitting a service's bill between repositories, and a number
-made up here is exactly the kind that gets quoted in a meeting and then cannot
-be defended.
-
-Only services this app actually inventories are mapped. An unmapped service
-shows its cost with no ownership claim — the honest shape for "we did not look".
-
 ## What it does not do
 
 **It does not delete anything, or offer to.** Every operation is a read. The
@@ -288,3 +209,8 @@ nowhere else, and this deliberately does not use it.
 
 **It reads one account** — the one you are signed into. Cross-account is the
 guardrail mechanism and is not extended here.
+
+**It says nothing about money.** There was a cost panel here, reading Cost
+Explorer and attributing spend to repositories; it was removed. Nothing in this
+app now calls a billing API, which also means nothing in it can be charged for —
+every AWS call the app makes is a `List` or `Describe`, and those are free.
