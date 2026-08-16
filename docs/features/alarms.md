@@ -112,6 +112,30 @@ the widget was deleted, the state machine is left exactly as it was and only
 the error is recorded. Letting it count would mean two consecutive GitHub
 failures sending an all-clear about a value nobody looked at.
 
+**Saving an alarm does not make it fire.** Renaming one, changing its email
+group, or fixing a typo in its template leaves its ALARM/OK state exactly where
+it was, so nothing is sent. Only a change to the *condition* resets it — an
+alarm that starts watching something else has to be able to fire for the new
+thing, and the first breach of a new condition is not a transition unless the
+state is cleared first.
+
+That reset used to trigger on every save. It compared conditions with
+`JSON.stringify`, and DynamoDB returns a map's keys in its own order — the
+stored condition read back as `{kind, threshold, metric, op}` where the form
+sends `{kind, metric, op, threshold}`. Identical conditions, different strings,
+so *any* save looked like a condition change, reset a firing alarm to OK, and
+made the next evaluation a fresh breach that emailed everybody. It was found
+when a one-character typo in a template arrived by email minutes later — in the
+message that should never have been sent. Conditions are now compared
+structurally, and a test walks the exact sequence rather than only the
+comparison.
+
+**Nothing else can cause a resend.** The other three email paths keep no state a
+save could clear: security alerts and the Dependabot and Renovate feeds are
+event-driven, and buffered items are marked sent rather than re-derived. A test
+reads the source and fails if a firing-state reset appears anywhere but the
+condition check.
+
 ## Email groups
 
 Created and managed on the **Alarms** tab, and only there. The Security tab
@@ -133,6 +157,14 @@ silently undelivered alert look delivered.
 relied on.
 
 ## Customising the email
+
+Placeholders are inserted by clicking them, into whichever box was last focused,
+at the cursor. Typing `{{widget}}` by hand is how a `{{widget}]` reached a live
+template — and a template reports its mistakes by arriving in somebody's inbox
+looking wrong, which is after the email has been sent. All three editors — the
+alarm dialog, the security panel and the vulnerability panel — share one
+implementation, because three copies of caret arithmetic is three chances to get
+it subtly different.
 
 Subject and body are templates using `{{widget}} {{metric}} {{value}}
 {{threshold}} {{state}} {{severity}} {{repo}} {{message}} {{org}} {{time}}`.

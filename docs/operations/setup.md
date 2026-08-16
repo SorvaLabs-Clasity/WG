@@ -111,23 +111,42 @@ separate OAuth App handles sign-in, and ticking it confuses the flow.
 
 | Permission | Access | Why |
 |---|---|---|
-| Administration | Read | Branch protection, rulesets, Dependabot |
-| Contents | Read | Compliance checks reading file contents |
+| Administration | **Read & write** | Reading branch protection and rulesets; **writing** them when a guardrail is set to enforce, renaming a default branch, and turning Dependabot alerts on or off |
+| Contents | **Read & write** | Reading file contents for compliance checks and code search; **writing** refs when a branch is created or deleted from the app |
+| Pull requests | **Read & write** | Reading pull requests for the PR tab and activity; **writing** the stale-PR reminder comment, and deleting the previous one |
 | Metadata | Read | Mandatory; listing repositories |
 | Dependabot alerts | Read | Vulnerability reporting |
 | Actions | Read | Listing workflows |
-| Pull requests | Read | Activity history |
+| Issues | Read | Issue comments, for "who knows this" |
 | Environments | Read | Repository detail |
 
 **Organization permissions**
 
 | Permission | Access | Why |
 |---|---|---|
-| Members | Read | Teams and membership, for the access map |
-| Administration | Read | The org's `default_repository_permission` |
+| Members | Read | Teams and membership, for the access map and the reminder-mute picker |
+| Administration | Read | The org's `default_repository_permission`, custom repository roles, installed apps |
 
-Everything else: **No access**. This list is derived from the ~40 Octokit calls
-the codebase actually makes; nothing on it is speculative.
+Everything else: **No access**.
+
+**Three of these are write, and each is a button somebody presses.** Nothing
+writes on a schedule:
+
+| Write | Reached from |
+|---|---|
+| Branch protection, rulesets, branch rename, branch create/delete | Repository and branch screens, and a guardrail rule explicitly set to **enforce** |
+| Dependabot alerts on/off | The Vulnerabilities tab |
+| Pull request comments | The stale-PR reminder, which is **off by default** |
+
+If you want the app read-only to start with, grant the three as **Read** and
+everything still works except those actions — the screens that need them fail
+with GitHub's own permission error rather than silently doing nothing. Raising a
+permission later requires the org owner to approve the change; the app keeps
+running on the old grant until they do.
+
+This list is derived from the Octokit calls the codebase actually makes, which
+`repro-leastprivilege` and the route guards keep honest; nothing on it is
+speculative.
 
 Then, in order:
 
@@ -334,7 +353,7 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 > a new deployment, but it is worth checking on a first setup too, in case a
 > teammate already ran phase 1 twice.
 
-**Events** — choose "Let me select individual events", then tick these eleven.
+**Events** — choose "Let me select individual events", then tick these ten.
 
 The checkboxes are labelled in prose, not by event name, and several do not
 resemble the name at all — `member` is "Collaborator add, remove, or changed"
@@ -342,19 +361,24 @@ and `create`/`delete` are about branches and tags rather than repositories. The
 API name is given only so you can match it against a delivery later; it is not
 what you are looking for on the page.
 
-| Tick this box | API name |
-|---|---|
-| **Branch or tag creation** | `create` |
-| **Branch or tag deletion** | `delete` |
-| **Branch protection rules** | `branch_protection_rule` |
-| **Collaborator add, remove, or changed** | `member` |
-| **Dependabot alerts** | `dependabot_alert` |
-| **Organizations** | `organization` |
-| **Pull requests** | `pull_request` |
-| **Pushes** | `push` |
-| **Repositories** | `repository` |
-| **Repository rulesets** | `repository_ruleset` |
-| **Teams** | `team` |
+| Tick this box | API name | What stops working without it |
+|---|---|---|
+| **Branch or tag creation** | `create` | Branch appearing in activity |
+| **Branch or tag deletion** | `delete` | Branch deletion in activity, and the protection-removed alert |
+| **Branch protection rules** | `branch_protection_rule` | The alert when protection is weakened or removed |
+| **Collaborator add, remove, or changed** | `member` | Access changes in activity and the access map |
+| **Dependabot alerts** | `dependabot_alert` | The Dependabot vulnerability email |
+| **Pull requests** | `pull_request` | The Renovate pull-request email |
+| **Pushes** | `push` | Default-branch pushes triggering a graph refresh |
+| **Repositories** | `repository` | Repository created, deleted, made public or private |
+| **Repository rulesets** | `repository_ruleset` | Ruleset changes, the modern form of branch protection |
+| **Teams** | `team` | Team access changes in the access map |
+
+**`organization` was on this list and should not be.** The app subscribes to
+nothing for it and drops every delivery, so ticking it costs a webhook call per
+membership change and achieves nothing. Untick it if it is already on; the
+counterpart it looks like — a member joining or leaving a *repository* — is
+`member`, which is already above.
 
 Two that are easy to tick by mistake: **Branch protection configurations** is a
 different event from **Branch protection rules**, and **Dependabot alerts** is
@@ -400,6 +424,79 @@ These events record the changes nobody made through the app — someone disablin
 branch protection, a repository going public, a team gaining access. Without
 them the activity log shows only the app's own actions, which is the less useful
 half of an audit trail. See [webhooks](../github-api/webhooks.md).
+
+---
+
+## Phase 4 — Enterprise audit-log streaming (optional)
+
+Only if the organization belongs to a GitHub **Enterprise**. It gives the app
+the events GitHub does not send over a webhook — sign-ins, SSO changes, token
+grants, enterprise-level policy edits — as a gzipped archive nobody can rewrite.
+
+There is **no deploy flag and no CDK context for this.** It used to be
+`-c auditEnterprise=<slug>`, which made the feature reachable only by somebody
+who knew a flag documented in a code comment. It is now set up from inside the
+app, in two halves, and neither half can do the other's job.
+
+### The AWS half — in the app
+
+**Activity → Audit log.** With nothing configured it says so and asks for your
+**enterprise slug** — the name in `github.com/enterprises/<name>`, not the
+organization name.
+
+Setting it up uses **your own AWS credentials**, not the app's, and creates:
+
+- an **OIDC provider** for GitHub's audit-log issuer, shared account-wide
+- a **role** that issuer may assume, pinned to that one enterprise, allowed
+  `s3:PutObject` on the audit bucket and nothing else
+
+Pinned deliberately: a role trusting the issuer without naming a subject would
+accept uploads from *any* GitHub enterprise into the bucket whose whole purpose
+is being the record nobody can rewrite.
+
+The bucket itself already exists — `cdk deploy` created it in phase 2 under
+`RemovalPolicy.RETAIN`, with public access blocked, Infrequent Access after 30
+days and expiry at 400.
+
+### The GitHub half — an enterprise owner, once, in a browser
+
+The app cannot do this one and does not pretend to. After the AWS half it shows
+the bucket name and role ARN with copy buttons, and the enterprise owner enters
+them at:
+
+**Enterprise settings → Audit log → Log streaming → Amazon S3**, choosing
+**OpenID Connect** as the authentication method.
+
+| Field | Where it comes from |
+|---|---|
+| Bucket | shown in the app after the AWS half |
+| Role ARN | shown in the app after the AWS half |
+| Authentication | **OpenID Connect** — not access keys |
+
+GitHub sends a test event on save. If it succeeds, batches start arriving and
+the page fills in.
+
+### Reading the state
+
+| The page says | Meaning |
+|---|---|
+| **Not set up** | Neither half done |
+| **AWS is ready — waiting on GitHub** | Your half is done; the enterprise owner has not switched streaming on |
+| **Connected** | Batches are arriving, with a count |
+
+That middle state is why this lives in the app rather than in a deploy: AWS can
+be perfectly configured while GitHub sends nothing, and a deploy cannot tell you
+that — it only knows what it created.
+
+### Turning it off
+
+**Turn off streaming** on the same page deletes the role GitHub assumes, so the
+next upload has nothing to assume. **Everything already collected is kept** —
+the bucket, its contents and the 400-day expiry are untouched. GitHub's own
+streaming switch is left alone and will simply fail to deliver; setting up again
+restores it.
+
+See [audit log](../features/audit-log.md) for what is captured and what it costs.
 
 ---
 
@@ -475,7 +572,10 @@ Its deploy takes no context by default. Pass any through:
 ./scripts/migrate-to-account.sh
 ```
 
-This stack takes no required context. `-c auditEnterprise=<slug>` is optional, for enterprise audit-log streaming.
+This stack takes **no CDK context at all**. `-c auditEnterprise=<slug>` used to
+enable enterprise audit-log streaming and no longer exists — it is set up in the
+app instead, in [phase 4](#phase-4--enterprise-audit-log-streaming-optional).
+Passing it now is silently ignored.
 
 ## Running more than one environment
 
@@ -534,6 +634,13 @@ environment is the supported shape.
 3. **Set a log group's retention to 1 day** and run a sweep from the AWS tab. It
    should be flagged, and reported as something the app is not permitted to fix
    — correct, since the deployment is read-only.
+4. **Open the PR's tab.** Every open pull request should be listed, oldest idle
+   first. Reminders are off by default; the list works without them.
+5. **Open a security check that reads GitHub per subject** — Dormant Privileged
+   Access, Stale Branch Protection or Protection Rule Bypasses. On a large
+   organization it will say *"building coverage, N of M checked"* for the first
+   few evaluations and fill in on its own. That is correct, not a failure. See
+   [security checks](../features/security-checks.md).
 
 ---
 

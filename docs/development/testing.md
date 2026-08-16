@@ -1,7 +1,8 @@
 # Testing
 
-Twenty-one suites, each a script named `repro-*.ts`, run with `tsx`. No
-framework.
+Thirty-seven suites, each a script named `repro-*.ts`, run with `tsx`. No
+framework. Thirty-four live in `backend/`, three in `frontend/`, and each runs
+from its own directory.
 
 ```bash
 cd github-control-hub/backend
@@ -30,6 +31,8 @@ the wrong place.
 | `repro-leastprivilege` | **What the IAM does not contain** |
 | `repro-accessmap` | Access-path derivation |
 | `repro-activity` | Activity lookups and indexes |
+| `repro-audit` | Audit-log reading and actor attribution |
+| `repro-auditstream` | Audit-log streaming setup, and turning it off |
 | `repro-retention` | TTL stamping |
 | `repro-undo` | Undo gating; every write route names its guard |
 | `repro-authz` | Authorization |
@@ -40,10 +43,29 @@ the wrong place.
 | `repro-prefs` | Remembered AWS profile |
 | `repro-setupauth` | Setup-time auth |
 | `repro-repodetails` | Repository detail assembly |
+| `repro-alarms` | Widget alarm conditions, templates and delivery |
 | `repro-appsec` | Source-level security controls — CSP, no-shell, fail-closed webhooks |
 | `repro-dependencies` | Dependabot alert paging — counts every alert, not the first hundred |
+| `repro-renovate` | Renovate pull request classification |
+| `repro-feednotify` | Per-event email batching — one message per repository, not per finding |
+| `repro-expertise` | Ranking who knows a repository, path or library |
+| `repro-prnudge` | Stale pull requests — who is reminded, who is muted, and the sticky comment |
+| `repro-orgmembers` | Org member paging, and refusing a mute on somebody outside the org |
+| `repro-alarmrefire` | **Saving a setting must never make something send again** |
+| `repro-dormantadmins` | **A security check must never report fewer findings than exist** |
+| `repro-querycache` | Per-subject verdict caching — covering a large org a batch at a time |
+| `repro-scanpaging` | **A table scan must read the whole table** |
+| `repro-largeorg` | The whole path at 300 accounts, against a rate-limited GitHub |
 | `repro-loginstates` | What the sign-in page says in each state, and in what order |
 | `repro-webhookdelivery` | Signature verification over raw bytes, and the delivery lock |
+
+Frontend, run from `github-control-hub/frontend`:
+
+| Suite | Guards |
+|---|---|
+| `repro-tablecontrols` | Search, sort and paging arithmetic at the boundaries |
+| `repro-activitycategories` | Grouping activity into the categories the page shows |
+| `repro-nestedcomponents` | **No component is declared inside another** |
 
 ## Two unusual ones
 
@@ -54,6 +76,13 @@ failure means "someone widened the blast radius".
 
 **`repro-undo`** greps the route files to check every write route names an
 authorization guard. Adding a route without one fails the suite.
+
+**`repro-nestedcomponents`** reads every `.tsx` file for a capitalised
+declaration indented inside another. React reconciles by element type, so a
+component declared inside a render is a new type each time and gets rebuilt
+rather than updated — which drops the caret out of any text box inside it after
+every character. This shipped once, in the "Who knows this?" repository box, and
+the scan then found three more that had been there longer.
 
 ## Running everything
 

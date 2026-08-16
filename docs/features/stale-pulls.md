@@ -114,19 +114,73 @@ authorship. The marker alone is not enough: GitHub's quote-reply copies the
 whole body, so somebody replying to the reminder would have their own comment
 deleted.
 
-## Pausing
+## Pausing and muting
 
-Members of the admin team can pause reminders for a pull request, or mute
-specific people on it — the reviewer who has said they will not be reviewing
-this one, while the others are still chased.
+Admin only, and asked at four sizes because the reasons come at four sizes.
+
+| Scope | Set from | For |
+|---|---|---|
+| **Pause this pull request** | **Manage** on the pull request | Silences everyone on it, the author included |
+| **This PR** | **Manage** on the pull request | The reviewer who has said they are not reviewing this one, while the others are still chased |
+**Manage is on every open pull request, not only the stale ones.** Muting
+somebody is decided when you notice it, which is usually while the pull request
+is still fresh; a panel that appeared only after seven days of silence meant the
+mute could not be set until the first reminder had already gone out. Anything not
+yet stale reads in the future tense — *would remind* — with how long is left.
+
+**A mute outlives the pull request being closed.** The list is built from what
+GitHub reports as open, so closing one removes it from view — but the row is
+keyed by repository and number, which GitHub never reissues, and nothing about
+closing touches it. Reopening comes back with the same mutes, the same pause and
+the same count of reminders already sent. The row expires after 180 days
+untouched, pushed out again on every write, so a pull request being worked on
+cannot lapse mid-review.
+
+| **This repo** | **Manage**, or the **Reminder mutes** window | Somebody asked to review a repository they do not work on |
+| **Everywhere** | **Manage**, or the **Reminder mutes** window | Somebody on leave, or who has left |
+
+The two wide scopes open in a window rather than unfolding on the page, because
+setting one is a detour from reading the queue — the list should still be where
+it was on the way back.
+
+Its repository side lists **every repository in the organization**, not only the
+ones with a pull request open today. Muting somebody on a quiet repository is
+the case worth supporting: it is set once, before the first pull request ever
+lands there. Repositories carrying a mute sort to the top with a count, and one
+that has since been renamed, archived or removed from the installation is still
+listed — otherwise the only way to lift its mute would be to edit the record by
+hand.
+
+The widest scope in effect is the one named, so a person muted both in a
+repository and everywhere reads as muted everywhere — the narrower rule would be
+misleading, since removing it would change nothing.
+
+**People are chosen from the organization, never typed.** A free-text login box
+accepts any string, and a great many strings are real GitHub accounts belonging
+to strangers — so a typo does not fail, it names somebody outside the
+organization, renders their photograph beside it, and stores a mute that can
+never match anybody. Nothing looks wrong, and the person it was meant for keeps
+being reminded. The picker offers only members, and the route refuses a
+non-member on the way in, so the rule holds whether or not the request came from
+this UI. Removal skips that check: a login that has since left is exactly the
+one that most needs clearing out.
+
+Avatars come from the member list rather than being guessed from the login.
+`github.com/<login>.png` resolves for *any* GitHub account, which is how a
+stranger's face appeared next to a name nobody recognised.
+
+Matching ignores case and surrounding spaces. GitHub logins are not
+case-sensitive, and a mute that fails because somebody typed a capital letter is
+a mute that appears to have been set.
 
 A paused pull request is **not** recorded as nudged. Recording one would restart
 the seven-day clock, so lifting the pause would be followed by a week of silence
 instead of the next reminder.
 
 Where every remaining person is muted, nothing is posted at all rather than a
-reminder addressed to nobody — and the list says so, so a silent pull request is
-explained rather than looking like the feature failing.
+reminder addressed to nobody — and the list says so, naming who is muted and at
+which scope, so a silent pull request is explained rather than looking like the
+feature failing.
 
 ## Cost
 
@@ -173,10 +227,11 @@ rather than waiting for the next five-minute tick. It posts as the app, not as
 whoever pressed it — the reminder has to come from the same account every cycle
 or the next one cannot recognise its own comment to replace it.
 
-A full run-through: set `PR_STALE_SECONDS=10`, open a pull request, wait ten
-seconds, press **Send reminders now**, and the reminder appears on the pull
-request. Press it again and the previous comment is replaced rather than
-added to.
+A full run-through: set `STALE_SECONDS` to 10, deploy, open a pull request, wait
+ten seconds, press **Send reminders now**, and the reminder appears on the pull
+request. Press it again and the previous comment is replaced rather than added
+to. Mute yourself on it and press again: nothing is posted, and the row explains
+why.
 
 ## Requirements
 

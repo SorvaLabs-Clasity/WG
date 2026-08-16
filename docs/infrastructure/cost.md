@@ -1,24 +1,41 @@
 # Cost
 
-Figures below assume an example organization of 500 repositories.
+Two columns, because the answer depends almost entirely on how much there is to
+read. **Small** is a live deployment measured over seven days: two privileged
+accounts, 355 repositories, seven of them with a protected branch. **Busy** is
+modelled from those measurements at ten active users, a hundred organization
+members and ten admins, with every feature switched on.
 
-| Item | Monthly |
-|---|---|
-| WAF (web ACL $5 + one rule $1) | **$6.00** |
-| API Gateway (REST), $3.50/M requests | ~$0.35 |
-| Secrets Manager, 2 secrets | ~$0.80 |
-| CloudWatch alarms (2) | $0.20 |
-| Lambda — 5 functions: webhook receiver and worker, guardrail enforcer, alarm evaluator, audit ingest | ~$0.01 |
-| DynamoDB (on-demand, 13 tables) | ~$0.02 |
-| SNS email, $2 per 100,000 | pennies |
-| S3 (audit log archive), SQS, CloudWatch Logs | pennies |
-| **Total** | **≈ $7.50** |
+| Item | Small (measured) | Busy (modelled) |
+|---|---|---|
+| WAF (web ACL $5 + one rule $1) | **$6.00** | **$6.00** |
+| DynamoDB (on-demand, 17 tables) | $0.11 – $0.61 | **$5 – 6** |
+| Secrets Manager, 2 secrets | $0.80 | $0.80 |
+| CloudWatch alarms (2) | $0.20 | $0.20 |
+| API Gateway (REST), $3.50/M requests | $0.01 | $0.05 |
+| Lambda — 5 functions | **$0.00** | **$0.00** |
+| CloudWatch Logs | pennies | $0.10 – 0.50 |
+| S3 (audit log archive) | pennies | $0.15 |
+| SNS email, SQS, EventBridge | $0.00 | $0.00 |
+| **Total** | **≈ $7.20** | **≈ $13** |
 
-The WAF is 80% of that, and it protects a rate limit that cannot bind: its rule
-allows 2,000 requests per five minutes per IP (≈6.6/second) while API Gateway's
-own throttle is 20/second aggregate, which is always the tighter of the two.
-It is kept for the compliance checkbox and the option of adding real rules
-later. Removing it takes the bill to roughly **60 cents**.
+Lambda is zero in both columns, and not by rounding. The perpetual free tier is
+1M requests and 400,000 GB-seconds a month; the busy column uses about 42,500
+invocations and 33,000 GB-seconds — 8% of it. This would need roughly **twelve
+times** the busy load before Lambda costs anything.
+
+Measured over seven days on the live deployment:
+
+| Function | Calls | Average | Memory |
+|---|---|---|---|
+| webhook-receiver | 2,264 | 166 ms | 256 MB |
+| webhook-worker | 2,257 | 137 ms | 512 MB |
+| alarm-evaluator | 448 | 1,290 ms | 512 MB |
+| guardrail-enforcer | 609 | 2,504 ms | 512 MB |
+| audit-ingest | 309 | 183 ms | 512 MB |
+
+The WAF is most of the small bill. It is kept for the compliance checkbox and
+the option of adding real rules later; see [reducing it](#reducing-it-further).
 
 ## Where it went
 
@@ -29,20 +46,39 @@ request instead of per hour, and at this volume — a few thousand webhook
 deliveries a month, at most — that is the difference between roughly $15/month
 and roughly nothing.
 
-DynamoDB — the thing people expect to be expensive because there are a dozen
-tables — is about **two cents**. On-demand billing charges per request, and
-this workload is a few thousand requests a day.
+DynamoDB is pennies on a small organization and the **largest variable line** on
+a busy one — the opposite of the usual expectation, and worth understanding
+before it surprises anyone.
 
 ## What scales
 
-Almost nothing. Doubling the repository count doubles the graph sync's API
-calls and roughly doubles a two-cent DynamoDB bill. Nothing left in this stack
-is a fixed cost the way the instance was — everything remaining is billed by
-use.
+Two things, and only two.
+
+**DynamoDB reads, with the size of the graph.** Every security check begins by
+reading the whole graph table, which at a hundred members across a few hundred
+repositories is about a megabyte. That read is held for six seconds so the
+several checks in one evaluation pass share it rather than each scanning
+separately — before that, six query widgets meant six identical scans and it was
+roughly 60% of the DynamoDB bill on its own.
+
+**S3, with audit-log volume**, if enterprise streaming is on. Capped by the
+400-day lifecycle rule and moved to Infrequent Access after 30 days, so it
+settles rather than growing forever.
+
+Everything else is flat. Doubling the repository count does not double the bill;
+it moves one line in the table above.
 
 ## Reducing it further
 
-One lever, and it is the WAF: dropping it removes roughly $6 of a $7.50 bill.
+**The WAF is the one real lever** — $6 of a $7.20 small bill, and it protects a
+rate limit that cannot bind: its rule allows 2,000 requests per five minutes per
+IP (≈6.6/second) while API Gateway's own throttle is 20/second aggregate, always
+the tighter of the two. Dropping it takes the small deployment to roughly
+**$1.20**.
+
+**Evaluation frequency** is the other. The alarm evaluator runs every five
+minutes; every DynamoDB read above scales linearly with that. Halving it halves
+the largest variable line.
 See above for why that is a real option rather than a saving to regret.
 
 Secrets Manager is the only other fixed cost, at ~40¢ per secret. There are two
