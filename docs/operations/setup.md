@@ -446,9 +446,10 @@ organization name.
 
 Setting it up uses **your own AWS credentials**, not the app's, and creates:
 
-- an **OIDC provider** for GitHub's audit-log issuer, shared account-wide
-- a **role** that issuer may assume, pinned to that one enterprise, allowed
-  `s3:PutObject` on the audit bucket and nothing else
+| Resource | Detail |
+|---|---|
+| **OIDC provider** | Issuer `https://oidc-configuration.audit-log.githubusercontent.com`, audience `sts.amazonaws.com`. Account-wide and shared — a second one for the same issuer is refused by AWS, so it is created only if absent |
+| **Role** `<prefix>-audit-log-stream` | Trusts that issuer **and only your enterprise slug**, allowed `s3:PutObject` on the audit bucket and nothing else |
 
 Pinned deliberately: a role trusting the issuer without naming a subject would
 accept uploads from *any* GitHub enterprise into the bucket whose whole purpose
@@ -460,21 +461,53 @@ days and expiry at 400.
 
 ### The GitHub half — an enterprise owner, once, in a browser
 
-The app cannot do this one and does not pretend to. After the AWS half it shows
-the bucket name and role ARN with copy buttons, and the enterprise owner enters
-them at:
+The app cannot do this one and does not pretend to. It needs an **enterprise
+owner**; an organization owner does not see the page.
 
-**Enterprise settings → Audit log → Log streaming → Amazon S3**, choosing
-**OpenID Connect** as the authentication method.
+`https://github.com/enterprises/<slug>/settings/audit_log/stream` — or navigate:
+avatar → **Your enterprises** → the enterprise → **Settings** → **Audit log** →
+**Log streaming** tab → **Configure stream** → **Amazon S3**.
 
-| Field | Where it comes from |
+Fill in three things:
+
+| Field | Value |
 |---|---|
-| Bucket | shown in the app after the AWS half |
-| Role ARN | shown in the app after the AWS half |
-| Authentication | **OpenID Connect** — not access keys |
+| Authentication | **OpenID Connect** — *not* access keys |
+| Bucket | `<prefix>-audit-log-<aws-account-id>` |
+| ARN role | `arn:aws:iam::<aws-account-id>:role/<prefix>-audit-log-stream` |
 
-GitHub sends a test event on save. If it succeeds, batches start arriving and
-the page fills in.
+`<prefix>` is the stack prefix, `github-control-hub` unless you changed it.
+
+**Three places to get those two values**, in order of least room for error:
+
+1. **The app** — Activity → Audit log, after the AWS half. Both are shown with
+   copy buttons. Use this one.
+2. **The IAM console** — Roles → search `audit-log-stream` → the ARN is at the
+   top of the summary. The bucket is in S3 under the same prefix.
+3. **Build it yourself** from the pattern above, with
+   `aws sts get-caller-identity --query Account --output text` for the account
+   id. Only worth doing to double-check the other two.
+
+The role ARN is deliberately **not** a stack output. The stack does not create
+that role — the app does, with your credentials — so `cdk deploy` has nothing to
+print and printing a name for a role that may not exist would be worse than
+silence.
+
+Press **Check endpoint**, then save. GitHub sends a test event; if it succeeds,
+batches begin arriving and the app's page moves to **Connected** within a few
+minutes.
+
+**If the test fails**, it is almost always one of three things:
+
+| Symptom | Cause |
+|---|---|
+| Access denied | The enterprise slug given to the app does not match this enterprise. The trust policy names it explicitly, so a mismatch is refused by design — re-run the AWS half with the right slug |
+| Role does not exist | The AWS half was not run, or was run against a different AWS account |
+| Bucket not found | The bucket belongs to the account the stack was deployed to; check you are reading the ARN and bucket from the same install |
+
+Nothing arriving is **not** the same as a failed test. GitHub streams on its own
+schedule — minutes, not seconds — and an enterprise with no activity produces no
+batches.
 
 ### Reading the state
 

@@ -61,9 +61,13 @@ same issuer, and with nothing pointing at it, it grants nobody anything.
 
 An enterprise owner switches streaming on, once, in a browser:
 
-**Enterprise settings → Audit log → Streaming → Amazon S3**, authenticating with
-**OpenID Connect**. The page shows the bucket name and role ARN to paste, with
-copy buttons.
+**Enterprise settings → Audit log → Log streaming → Amazon S3**, authenticating
+with **OpenID Connect** rather than access keys. The app shows the bucket name
+and role ARN to paste, with copy buttons.
+
+The step-by-step, including the exact ARN shape, the two other places to read it
+from, and what a failed test event usually means, is in
+[setup phase 4](../operations/setup.md#phase-4--enterprise-audit-log-streaming-optional).
 
 Until they do, the page says **"AWS is ready — waiting on GitHub"**. That state
 is the reason this lives in the app rather than in a deploy: AWS can be
