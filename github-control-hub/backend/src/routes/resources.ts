@@ -9,6 +9,7 @@ import {
 import { defaultProviders, relationshipsTo } from "../services/awsProviders";
 import { assessBlastRadius } from "../services/blastRadiusService";
 import { findSourceRefs, searcherFor, clearSourceSearchCache } from "../services/sourceSearchService";
+import { expertsForResource } from "../services/resourceExpertsService";
 
 const router = Router();
 const org = () => process.env.GITHUB_ORG || "";
@@ -131,11 +132,34 @@ router.get("/blast", async (req: Request, res: Response) => {
     const octokit = createOctokit(token);
     const search = searcherFor(octokit);
 
-    res.json(await assessBlastRadius(target, {
+    const blast = await assessBlastRadius(target, {
       inventory: inv,
       awsRefs,
       searchSource: (term) => findSourceRefs(term, org(), search),
-    }));
+    });
+
+    // Who has actually worked on the files that name it.
+    //
+    // Costs no code search of its own — the blast radius already found the
+    // files, and this reads their commit history. Skipped entirely when there
+    // are none, because there is nothing to read and the answer would be an
+    // empty list dressed up as a result.
+    const experts = blast.sourceRefs.length > 0
+      ? await expertsForResource(blast.sourceRefs, {
+          listCommits: async (repo, path) => {
+            const [owner, name] = repo.split("/");
+            const { data } = await (octokit as any).rest.repos.listCommits({
+              owner, repo: name, path, per_page: 100,
+            });
+            return data.map((c: any) => ({
+              login: c.author?.login ?? c.committer?.login,
+              at: c.commit?.author?.date,
+            }));
+          },
+        })
+      : null;
+
+    res.json({ ...blast, experts });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "AWS resources") });

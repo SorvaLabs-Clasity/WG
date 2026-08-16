@@ -34,6 +34,22 @@ export interface Relationship {
   detail: string;
 }
 
+export interface ResourceExpert {
+  login: string;
+  score: number;
+  commits: number;
+  lastActive: string | null;
+  daysSinceActive: number | null;
+  files: Array<{ repo: string; path: string; kind: SourceRef["kind"] }>;
+}
+
+export interface ResourceExperts {
+  experts: ResourceExpert[];
+  filesRead: Array<{ repo: string; path: string; kind: SourceRef["kind"] }>;
+  filesSkipped: number;
+  degraded: Array<{ repo: string; path: string; error: string }>;
+}
+
 export interface BlastRadius {
   target: AwsResource;
   relationships: Relationship[];
@@ -43,6 +59,8 @@ export interface BlastRadius {
   risk: RiskLevel;
   findings: string[];
   unread: Array<{ source: string; error: string }>;
+  /** Null when nothing in source names it — there is no history to read. */
+  experts: ResourceExperts | null;
 }
 
 export function fetchInventory(q: string, refresh = false): Promise<InventoryAnswer> {

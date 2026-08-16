@@ -34,6 +34,9 @@ import {
 } from "./src/services/blastRadiusService";
 import { readFileSync } from "fs";
 import {
+  expertsForResource, rankFilesToRead, MAX_FILES_READ,
+} from "./src/services/resourceExpertsService";
+import {
   findSourceRefs, isSearchableTerm, clearSourceSearchCache,
 } from "./src/services/sourceSearchService";
 
@@ -412,6 +415,97 @@ const noSource = async () => ({ ok: true, service: "github", items: [] as Source
       route.split("\n").filter(l => /getSystemToken/.test(l)));
     check("  passing that token to the searcher",
       /createOctokit\(token\)[\s\S]{0,120}?searcherFor\(octokit\)/.test(route));
+  }
+
+  // ── who has actually worked on it ───────────────────────────────────
+  //
+  // Not who has permission, and not who is on the owning team — who has edited
+  // the files that declare and use it. Ranked by file rather than repository,
+  // because crediting everybody who ever committed to a monorepo buries the one
+  // person who wrote the Terraform under fifty who did not.
+  {
+    const refs = [
+      ref("infra", "terraform/sqs.tf"),
+      ref("payments-api", "src/queue.ts"),
+      ref("docs-site", "docs/runbook.md"),
+    ];
+    const history: Record<string, Array<{ login: string; at: string }>> = {
+      "infra:terraform/sqs.tf": [
+        { login: "alice", at: new Date().toISOString() },
+        { login: "alice", at: new Date(Date.now() - 86400000).toISOString() },
+      ],
+      "payments-api:src/queue.ts": [{ login: "bob", at: new Date().toISOString() }],
+      "docs-site:docs/runbook.md": [{ login: "carol", at: new Date(Date.now() - 400 * 86400000).toISOString() }],
+    };
+    const r = await expertsForResource(refs, {
+      listCommits: async (repo, path) => history[`${repo}:${path}`] ?? [],
+    });
+
+    check("everybody who touched a referencing file is ranked",
+      r.experts.map(e => e.login).sort().join() === "alice,bob,carol",
+      r.experts.map(e => e.login));
+    check("  the person on the Terraform ranks first",
+      r.experts[0].login === "alice", r.experts.map(e => `${e.login}:${e.score}`));
+    check("  somebody who touched it years ago ranks last",
+      r.experts[r.experts.length - 1].login === "carol", r.experts.map(e => e.login));
+
+    // The evidence, so a name can be checked rather than trusted.
+    check("each person carries the files they touched",
+      r.experts.find(e => e.login === "alice")?.files[0].path === "terraform/sqs.tf",
+      r.experts.find(e => e.login === "alice")?.files);
+    check("  once per file, however many commits",
+      r.experts.find(e => e.login === "alice")?.files.length === 1);
+    check("  and the commit count is still two",
+      r.experts.find(e => e.login === "alice")?.commits === 2);
+    check("which files were read is reported", r.filesRead.length === 3, r.filesRead);
+  }
+  {
+    // A file whose history cannot be read is reported, not dropped. A shorter
+    // list of people looks exactly like a smaller set of people, and here it
+    // sends somebody to the wrong person.
+    const r = await expertsForResource([ref("infra", "terraform/sqs.tf")], {
+      listCommits: async () => { throw new Error("Not Found"); },
+    });
+    check("a history that cannot be read is reported",
+      r.degraded.length === 1 && r.degraded[0].path === "terraform/sqs.tf", r.degraded);
+    check("  rather than reading as nobody having touched it", r.experts.length === 0);
+  }
+  {
+    // Bots are excluded by the shared ranking, which matters more here than
+    // anywhere: infrastructure files are exactly what automation rewrites.
+    const r = await expertsForResource([ref("infra", "terraform/sqs.tf")], {
+      listCommits: async () => [
+        { login: "renovate[bot]", at: new Date().toISOString() },
+        { login: "alice", at: new Date().toISOString() },
+      ],
+    });
+    check("a bot that edits infrastructure is not an expert",
+      r.experts.map(e => e.login).join() === "alice", r.experts.map(e => e.login));
+  }
+  {
+    // The cap, and what it cuts. Infrastructure first, documentation last.
+    const many = [
+      ...Array.from({ length: 10 }, (_, i) => ref("a", `docs/note${i}.md`)),
+      ref("infra", "terraform/sqs.tf"),
+      ref("ops", ".github/workflows/deploy.yml"),
+      ...Array.from({ length: 10 }, (_, i) => ref("b", `src/file${i}.ts`)),
+    ];
+    const chosen = rankFilesToRead(many);
+    check(`at most ${MAX_FILES_READ} files are read`, chosen.length === MAX_FILES_READ, chosen.length);
+    check("  the Terraform is always among them",
+      chosen.some(c => c.path === "terraform/sqs.tf"), chosen.map(c => c.path));
+    check("  and the pipeline too",
+      chosen.some(c => c.path === ".github/workflows/deploy.yml"));
+    check("  while documentation is what gets cut",
+      !chosen.some(c => c.kind === "docs"), chosen.map(c => c.path));
+
+    const r = await expertsForResource(many, { listCommits: async () => [] });
+    check("  and the number skipped is reported",
+      r.filesSkipped === many.length - MAX_FILES_READ, r.filesSkipped);
+  }
+  {
+    check("no referencing files is an empty answer, not an error",
+      (await expertsForResource([], { listCommits: async () => [] })).experts.length === 0);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

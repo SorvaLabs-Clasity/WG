@@ -76,6 +76,30 @@ running this against a real account, where the app's **own** audit bucket came
 back with zero references for exactly that reason. Account ids, regions and
 environment suffixes are all stripped.
 
+## Who has worked on it
+
+The same lookup answers a second question, at no extra search cost: **who has
+actually edited the files that define and use this resource.**
+
+Not who has permission, and not who is on the team that owns the account. Those
+are easy to find and usually the wrong people. This reads the commit history of
+exactly the files the blast radius already located, and ranks with the same
+decay the [Who knows](who-knows.md) tab uses — recent work counts for more, bots
+are excluded.
+
+**Ranked by file, not by repository.** Ranking by repository credits everybody
+who has ever committed to the monorepo, which buries the one person who wrote
+`terraform/sqs.tf` under fifty who changed a stylesheet.
+
+At most **twelve** files are read, ordered by what the file is before the cut
+bites: infrastructure first, then pipelines, then code, and documentation last.
+Each person carries the files they touched, so a name can be checked rather than
+trusted, and the count of files not read is shown rather than hidden.
+
+A file whose history cannot be read is reported. A shorter list of people looks
+exactly like a smaller set of people, and here it would send somebody to the
+wrong person.
+
 ## The budget
 
 GitHub's code search allows **ten requests a minute** — the smallest allowance

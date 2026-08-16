@@ -3,6 +3,7 @@ import { useAuth } from "../App";
 import { Page, Empty, Spinner, SearchInput, SURFACE } from "../design";
 import { useInventory, useBlastRadius } from "../hooks/useResources";
 import type { AwsResource, RiskLevel, SourceRef } from "../api/resources";
+import UserAvatar from "../components/UserAvatar";
 
 /**
  * Looking up any AWS resource, and what depends on it.
@@ -10,6 +11,14 @@ import type { AwsResource, RiskLevel, SourceRef } from "../api/resources";
  * Read with the operator's own credentials, so the answer is scoped to what
  * they can already see. Nothing here writes.
  */
+
+function ago(days: number): string {
+  if (days === 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 30) return `${days}d ago`;
+  if (days < 365) return `${Math.round(days / 30)}mo ago`;
+  return `${(days / 365).toFixed(1)}y ago`;
+}
 
 const RISK: Record<RiskLevel, { label: string; badge: string; bar: string; line: string }> = {
   high: {
@@ -307,6 +316,55 @@ function BlastBody({ data }: { data: NonNullable<ReturnType<typeof useBlastRadiu
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {data.experts && data.experts.experts.length > 0 && (
+        <div className={SURFACE.sheet}>
+          <div className="px-5 pt-4 pb-1">
+            <h3 className="text-[13px] font-bold text-slate-900 dark:text-white">Who has worked on it</h3>
+            {/* Said plainly, because the alternative reading — "these people own
+                this resource" — is wrong and would send somebody to the wrong
+                person. This is who edited the files, nothing more. */}
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Ranked by commits to the {data.experts.filesRead.length} file
+              {data.experts.filesRead.length === 1 ? "" : "s"} that name it, most recent weighted
+              highest. Not who owns it — who has edited it.
+            </p>
+          </div>
+          <ul className="px-5 pb-4 pt-2 space-y-2">
+            {data.experts.experts.map(e => (
+              <li key={e.login} className="flex items-start gap-3">
+                <UserAvatar login={e.login} size={26} />
+                <div className="min-w-0 flex-1">
+                  <a href={`https://github.com/${e.login}`} target="_blank" rel="noopener noreferrer"
+                    className="text-[13px] font-bold text-slate-800 dark:text-slate-100 hover:text-gh-blue">
+                    {e.login}
+                  </a>
+                  <span className="ml-2 text-[12px] text-slate-500 dark:text-slate-400">
+                    {e.commits} commit{e.commits === 1 ? "" : "s"}
+                    {e.daysSinceActive !== null && ` · last ${ago(e.daysSinceActive)}`}
+                  </span>
+                  {/* The evidence. A name with no working shown is a name
+                      nobody acts on. */}
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 font-mono truncate">
+                    {e.files.map(f => f.path).join(", ")}
+                  </p>
+                </div>
+                <span className="text-[13px] font-black tabular-nums text-slate-700 dark:text-slate-200 shrink-0">
+                  {e.score}
+                </span>
+              </li>
+            ))}
+          </ul>
+          {(data.experts.filesSkipped > 0 || data.experts.degraded.length > 0) && (
+            <p className="px-5 pb-4 -mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+              {data.experts.filesSkipped > 0 &&
+                `${data.experts.filesSkipped} further referencing file${data.experts.filesSkipped === 1 ? "" : "s"} not read. `}
+              {data.experts.degraded.length > 0 &&
+                `${data.experts.degraded.length} file${data.experts.degraded.length === 1 ? "" : "s"} had no readable history.`}
+            </p>
+          )}
         </div>
       )}
 
