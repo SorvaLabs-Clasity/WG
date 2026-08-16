@@ -83,3 +83,30 @@ export function fetchBlastRadius(service: string, name: string): Promise<BlastRa
   const p = new URLSearchParams({ service, name });
   return apiGet<BlastRadius>(`/resources/blast?${p}`);
 }
+
+export interface CostAnswer {
+  mode: "resource" | "tag" | "service";
+  period: { start: string; end: string };
+  rows: Array<{ key: string; amount: number; currency: string }>;
+  total: number;
+  currency: string;
+  notes: string[];
+  readAt: string;
+  ownership: Array<{
+    service: string;
+    amount: number;
+    repos: string[];
+    unreferenced: string[];
+  }> | null;
+  unreadableServices: Array<{ service: string; error: string }>;
+}
+
+/**
+ * Spend for the current month.
+ *
+ * Each call is a Cost Explorer request, which AWS charges a cent for — so this
+ * is never called on a render or a timer, only when somebody opens the view.
+ */
+export function fetchCost(refresh = false): Promise<CostAnswer> {
+  return apiGet<CostAnswer>(`/resources/cost${refresh ? "?refresh=true" : ""}`);
+}

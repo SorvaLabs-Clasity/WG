@@ -165,6 +165,47 @@ into a permanently exhausted one.
 The AWS inventory is held for one minute, shared between concurrent requests, so
 search-as-you-type costs one listing rather than one per keystroke.
 
+## Cost
+
+**Behind a button, not on the page.** Every other AWS read in this app is free.
+Cost Explorer charges **$0.01 per request** — nothing once a day, and $26 a
+month for one tab refreshing every thirty seconds. So it is fetched when
+somebody asks, held for a day on both sides, and never on a render, a timer or a
+window focus.
+
+### Three precisions, and which one you get is on the number
+
+| Mode | Precision | Needs |
+|---|---|---|
+| **resource** | Exact per resource, so spend attributes through the source index with no tagging | Payer account opt-in for resource-level data. Keeps **14 days** |
+| **tag** | Exact for anything tagged | Cost allocation tags activated in Billing. Populates over a day, **not retroactively** |
+| **service** | Always available, **cannot be split between projects** | Nothing |
+
+The mode is shown on the total, because a per-service figure and a per-project
+figure answer different questions and a reader who cannot tell which they have
+will assume the better one. When a more precise mode is unavailable, the panel
+says which setting to change rather than apologising.
+
+The 14-day window is checked *before* asking. Requesting a calendar month
+returns "start date is too old for hourly, the max supported days for hourly
+granularity is 14 days" — a message that does not mention resources, is not
+actionable, and costs a cent to receive.
+
+### The link to code, and the line it will not cross
+
+For each service, the panel names the **repositories whose source references
+resources of that service**, and counts the resources **nothing references**.
+That second number is usually the more interesting one: those are the resources
+nobody owns.
+
+It does **not** invent a per-repository dollar figure. Without per-resource data
+nothing supports splitting a service's bill between repositories, and a number
+made up here is exactly the kind that gets quoted in a meeting and then cannot
+be defended.
+
+Only services this app actually inventories are mapped. An unmapped service
+shows its cost with no ownership claim — the honest shape for "we did not look".
+
 ## What it does not do
 
 **It does not delete anything, or offer to.** Every operation is a read. The
