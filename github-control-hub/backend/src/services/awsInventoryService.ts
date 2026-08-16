@@ -49,6 +49,8 @@ export interface Resource extends ResourceId {
 export interface Relationship {
   /** The thing that would break. */
   from: ResourceId;
+  /** Where to go and look at it. Null when it cannot be built truthfully. */
+  fromUrl?: string | null;
   /** The thing being asked about. */
   to: ResourceId;
   /** `event-source`, `iam-policy`, `env-var`, `subscription`, … */
@@ -223,4 +225,59 @@ export function searchTermsFor(r: Resource): string[] {
     }
   }
   return [...terms].filter(t => t.length >= 3);
+}
+
+/**
+ * A link to the resource in the AWS console.
+ *
+ * Built rather than fetched — AWS returns no console URL for anything, and the
+ * shapes are stable and documented. The point is that "1 Lambda consumes this"
+ * is a fact somebody then has to go and act on, and making them search the
+ * console for a name they were just shown is the difference between a report
+ * and a tool.
+ *
+ * Returns null rather than guessing when the region is unknown or the service
+ * has no obvious console page. A link to the wrong region shows an empty page
+ * and reads as "this no longer exists", which is worse than no link.
+ */
+export function consoleUrl(r: ResourceId, detail?: Record<string, unknown>): string | null {
+  const region = r.region;
+  const base = (path: string) => `https://${region}.console.aws.amazon.com${path}`;
+
+  switch (r.service) {
+    case "lambda":
+      return region ? base(`/lambda/home?region=${region}#/functions/${encodeURIComponent(r.name)}`) : null;
+    case "sqs": {
+      const url = detail?.url;
+      return region && typeof url === "string"
+        ? base(`/sqs/v3/home?region=${region}#/queues/${encodeURIComponent(url)}`)
+        : null;
+    }
+    case "dynamodb":
+      return region
+        ? base(`/dynamodbv2/home?region=${region}#table?name=${encodeURIComponent(r.name)}`)
+        : null;
+    case "s3":
+      // S3's console is global and does not take a region in the path.
+      return `https://s3.console.aws.amazon.com/s3/buckets/${encodeURIComponent(r.name)}`;
+    case "iam":
+      // IAM is global too.
+      return `https://console.aws.amazon.com/iam/home#/roles/${encodeURIComponent(r.name)}`;
+    case "ec2-sg": {
+      const id = detail?.groupId;
+      return region && typeof id === "string"
+        ? base(`/ec2/home?region=${region}#SecurityGroup:groupId=${id}`)
+        : null;
+    }
+    case "logs":
+      return region
+        ? base(`/cloudwatch/home?region=${region}#logsV2:log-groups/log-group/${encodeURIComponent(r.name).replace(/%2F/g, "$252F")}`)
+        : null;
+    case "rds":
+      return region
+        ? base(`/rds/home?region=${region}#database:id=${encodeURIComponent(r.name)}`)
+        : null;
+    default:
+      return null;
+  }
 }

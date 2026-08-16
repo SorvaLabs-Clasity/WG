@@ -23,6 +23,8 @@ interface Answer {
   experts: Expert[];
   repos?: string[];
   degraded: string[];
+  /** A page limit was hit, so every count below is a floor. */
+  sampled?: boolean;
 }
 
 const labelClass = "block text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1.5";
@@ -87,7 +89,7 @@ function freshness(days: number | null): string {
   return "bg-slate-300 dark:bg-slate-600";
 }
 
-function Signals({ e, size = "sm" }: { e: Expert; size?: "sm" | "lg" }) {
+function Signals({ e, size = "sm", sampled }: { e: Expert; size?: "sm" | "lg"; sampled?: boolean }) {
   const items = [
     { n: e.commits, icon: "ph-git-commit", one: "commit", many: "commits" },
     { n: e.reviews, icon: "ph-check-square-offset", one: "review", many: "reviews" },
@@ -101,7 +103,11 @@ function Signals({ e, size = "sm" }: { e: Expert; size?: "sm" | "lg" }) {
           className={`inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-white/[0.07] text-slate-600 dark:text-slate-300 ${
             size === "lg" ? "px-2 py-1 text-xs" : "px-1.5 py-0.5 text-[11px]"}`}>
           <i className={`ph ${i.icon}`}></i>
-          <span className="font-bold tabular-nums">{i.n}</span>
+          {/* A floor, not a total. GitHub returns one page of a hundred, so
+              a repository with four thousand commits and one with a hundred and
+              one both came back as "100" — a number wrong in a way nobody could
+              see. */}
+          <span className="font-bold tabular-nums">{i.n}{sampled && i.n >= 100 ? "+" : ""}</span>
           <span className="font-medium opacity-70">{i.n === 1 ? i.one : i.many}</span>
         </span>
       ))}
@@ -312,7 +318,7 @@ export default function ExpertisePage() {
                       {top.login}
                     </a>
                     <div className="mt-2 flex items-center gap-2 flex-wrap">
-                      <Signals e={top} size="lg" />
+                      <Signals e={top} size="lg" sampled={data.sampled} />
                       <span className="text-xs text-slate-500 dark:text-slate-400">
                         last {ago(top.daysSinceActive)}
                       </span>
@@ -349,7 +355,7 @@ export default function ExpertisePage() {
                           className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:text-gh-blue truncate">
                           {e.login}
                         </a>
-                        <Signals e={e} />
+                        <Signals e={e} sampled={data.sampled} />
                         <span className="ml-auto flex items-center gap-3 shrink-0">
                           <span className="text-xs text-slate-400 dark:text-slate-500">
                             {ago(e.daysSinceActive)}
@@ -367,6 +373,11 @@ export default function ExpertisePage() {
               <div className="mt-4 flex items-start gap-2 text-xs text-slate-400 dark:text-slate-500 max-w-3xl">
                 <i className="ph ph-info mt-0.5 shrink-0"></i>
                 <p className="leading-relaxed">
+                  {data.sampled && (
+                    <><strong className="font-semibold text-slate-500 dark:text-slate-400">
+                      Ranked from the most recent 100 commits</strong> — GitHub returns one page,
+                    so the counts above are floors rather than totals.{" "}</>
+                  )}
                   Scores are relative to the top person, not absolute. Contributions halve in weight
                   every 90 days, so this ranks who is likely to remember rather than who has done
                   the most over all time. The dot is recency —{" "}

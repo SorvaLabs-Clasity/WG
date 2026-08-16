@@ -76,6 +76,22 @@ running this against a real account, where the app's **own** audit bucket came
 back with zero references for exactly that reason. Account ids, regions and
 environment suffixes are all stripped.
 
+## Every finding is a link
+
+A blast radius is read by somebody who then has to go and act on it, so each
+dependency names the exact thing and links straight to it in the AWS console:
+
+- **which** Lambda, by name, linked to its function page
+- **which** environment variable, by key *and* value — `QUEUE_URL = https://…`,
+  not "references it by env var"
+- whether an event-source mapping is **enabled**, marked `consuming now`
+- the resource itself, with **Open in AWS** on the header
+
+Links are built rather than fetched, because AWS returns none. Where one cannot
+be built truthfully — an unknown region, a security group with no id — there is
+no link rather than a guessed one: a link to the wrong region shows an empty
+page, which reads as "this no longer exists".
+
 ## Who has worked on it
 
 The same lookup answers a second question, at no extra search cost: **who has

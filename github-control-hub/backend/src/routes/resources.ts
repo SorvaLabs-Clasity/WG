@@ -4,7 +4,7 @@ import { createOctokit } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
 import {
-  buildInventory, matchResources, type Inventory, type Resource,
+  buildInventory, matchResources, consoleUrl, type Inventory, type Resource,
 } from "../services/awsInventoryService";
 import { defaultProviders, relationshipsTo } from "../services/awsProviders";
 import { assessBlastRadius } from "../services/blastRadiusService";
@@ -88,7 +88,7 @@ router.get("/", async (req: Request, res: Response) => {
       matched: matches.length,
       // Capped: a search box does not need four thousand rows, and the count
       // above says how many there were.
-      resources: matches.slice(0, 200),
+      resources: matches.slice(0, 200).map(r => ({ ...r, url: consoleUrl(r, r.detail) })),
       services: [...inv.byService.entries()].map(([service, r]) => ({
         service, ok: r.ok, count: r.items.length, error: r.error ?? null,
       })),
@@ -173,7 +173,12 @@ router.get("/blast", async (req: Request, res: Response) => {
       ? await driftFor(target, blast.sourceRefs, octokit)
       : null;
 
-    res.json({ ...blast, experts, drift });
+    res.json({
+      ...blast,
+      // The target's own console link, so the header can offer it.
+      targetUrl: consoleUrl(target, target.detail),
+      experts, drift,
+    });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "AWS resources") });

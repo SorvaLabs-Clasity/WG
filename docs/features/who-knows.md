@@ -3,6 +3,21 @@
 Ranks people by what they have actually touched, for the moment something is
 broken and the question is who to ask first.
 
+## Counts are floors, not totals
+
+GitHub returns commits **one page at a time**, a hundred per page, with a link
+to the next. Asking for a hundred and getting a hundred means *at least* a
+hundred — so a repository with four thousand commits and one with a hundred and
+one both read as exactly `100`.
+
+Where a page limit was hit, counts are shown as `100+` and the footnote says the
+ranking is from the most recent hundred commits. Paging to the end would be
+forty requests for a busy repository, for a number that changes nothing about
+the ranking — recent work is what the decay weights anyway.
+
+This was reported from a real repository showing "100 commits" where the true
+number was higher.
+
 ## Three subjects
 
 | Subject | Reads | Requests |

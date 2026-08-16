@@ -1,5 +1,5 @@
 import {
-  readProvider, type Provider, type Resource, type Relationship,
+  readProvider, consoleUrl, type Provider, type Resource, type Relationship,
   type ResourceId, type Inventory, type ProviderResult,
 } from "./awsInventoryService";
 import { awsRegion } from "../utils/region";
@@ -121,6 +121,7 @@ export function lambdaProvider(): Provider {
       const out: Relationship[] = [];
       const id = (f: Resource): ResourceId =>
         ({ service: "lambda", name: f.name, arn: f.arn, region: f.region });
+      const link = (f: Resource) => consoleUrl(id(f), f.detail);
 
       // Environment variables and role, from what was already listed.
       for (const f of fns.items) {
@@ -129,14 +130,20 @@ export function lambdaProvider(): Provider {
           if (typeof v !== "string") continue;
           if (matchesTarget(v, target)) {
             out.push({
-              from: id(f), to: target, kind: "env-var",
-              detail: `environment variable ${k}`,
+              from: id(f), fromUrl: link(f), to: target, kind: "env-var",
+              // The variable's name *and* what it is set to, trimmed. "an
+              // environment variable references this" sends somebody to read
+              // the function's configuration; naming it does not.
+              detail: `${k} = ${v.length > 60 ? v.slice(0, 57) + "…" : v}`,
             });
           }
         }
         const role = String(f.detail?.role ?? "");
         if (role && matchesTarget(role, target)) {
-          out.push({ from: id(f), to: target, kind: "execution-role", detail: "runs as this role" });
+          out.push({
+            from: id(f), fromUrl: link(f), to: target,
+            kind: "execution-role", detail: "runs as this role",
+          });
         }
       }
 
@@ -151,8 +158,10 @@ export function lambdaProvider(): Provider {
       for (const m of mappings) {
         if (!m.EventSourceArn || !matchesTarget(m.EventSourceArn, target)) continue;
         const fnName = m.FunctionArn ? arnName(m.FunctionArn) : "unknown";
+        const consumer = { service: "lambda", name: fnName, arn: m.FunctionArn, region: REGION() };
         out.push({
-          from: { service: "lambda", name: fnName, arn: m.FunctionArn, region: REGION() },
+          from: consumer,
+          fromUrl: consoleUrl(consumer),
           to: target,
           kind: "event-source",
           detail: m.State === "Enabled"
@@ -307,6 +316,7 @@ export function rdsProvider(): Provider {
         .filter(d => ((d.detail?.securityGroups ?? []) as string[]).includes(groupId))
         .map(d => ({
           from: { service: "rds", name: d.name, arn: d.arn, region: d.region },
+          fromUrl: consoleUrl({ service: "rds", name: d.name, region: d.region }),
           to: target,
           kind: "security-group",
           detail: "network access is governed by this group",

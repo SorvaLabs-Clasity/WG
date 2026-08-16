@@ -6,6 +6,8 @@ export interface AwsResource {
   arn?: string;
   region?: string;
   detail?: Record<string, unknown>;
+  /** AWS console link. Null when it cannot be built truthfully. */
+  url?: string | null;
 }
 
 export interface InventoryAnswer {
@@ -28,7 +30,8 @@ export interface SourceRef {
 }
 
 export interface Relationship {
-  from: { service: string; name: string; arn?: string };
+  from: { service: string; name: string; arn?: string; region?: string };
+  fromUrl?: string | null;
   to: { service: string; name: string };
   kind: string;
   detail: string;
@@ -70,6 +73,7 @@ export interface BlastRadius {
   experts: ResourceExperts | null;
   /** Only for resource kinds whose declared shape can be compared. */
   drift: DriftReport | null;
+  targetUrl?: string | null;
 }
 
 export function fetchInventory(q: string, refresh = false): Promise<InventoryAnswer> {

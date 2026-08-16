@@ -187,6 +187,24 @@ export interface GithubReader {
   searchCode: (query: string) => Promise<Array<{ repo: string; path: string }>>;
 }
 
+/**
+ * Whether a commit listing hit its page limit.
+ *
+ * GitHub returns one page and a `next` link; asking for a hundred and getting a
+ * hundred means "at least a hundred", not "a hundred". Reporting the page size
+ * as a count is a number that is wrong in a way nobody can see — a repository
+ * with four thousand commits and one with a hundred and one both read as 100.
+ *
+ * Rather than paging to the end — forty requests for a busy repository, for a
+ * number that changes nothing about the ranking — the count is reported as a
+ * floor and the answer says so.
+ */
+export const COMMIT_PAGE = 100;
+
+export function wasTruncated(rows: unknown[]): boolean {
+  return rows.length >= COMMIT_PAGE;
+}
+
 const toContributions = (
   rows: Array<{ login?: string; at?: string }>,
   signal: Signal,
@@ -199,7 +217,7 @@ export async function expertsForRepo(
   gh: GithubReader,
   repo: string,
   now = Date.now(),
-): Promise<{ experts: ExpertRow[]; degraded: string[] }> {
+): Promise<{ experts: ExpertRow[]; degraded: string[]; sampled: boolean }> {
   const degraded: string[] = [];
   const safe = async <T>(what: string, fn: () => Promise<T[]>): Promise<T[]> => {
     try { return await fn(); } catch { degraded.push(what); return []; }
@@ -221,6 +239,8 @@ export async function expertsForRepo(
       ...toContributions(comments, "comment"),
     ], now),
     degraded,
+    // Any of the three hitting its page limit makes every count a floor.
+    sampled: wasTruncated(commits) || wasTruncated(reviews) || wasTruncated(comments),
   };
 }
 
@@ -229,15 +249,19 @@ export async function expertsForPath(
   repo: string,
   path: string,
   now = Date.now(),
-): Promise<{ experts: ExpertRow[]; degraded: string[] }> {
+): Promise<{ experts: ExpertRow[]; degraded: string[]; sampled: boolean }> {
   // Commits only. Review and comment endpoints cannot be filtered by path, and
   // attributing every review in the repository to one file would rank people
   // who never looked at it.
   try {
     const commits = await gh.listCommits(repo, path);
-    return { experts: rankExperts(toContributions(commits, "commit"), now), degraded: [] };
+    return {
+      experts: rankExperts(toContributions(commits, "commit"), now),
+      degraded: [],
+      sampled: wasTruncated(commits),
+    };
   } catch {
-    return { experts: [], degraded: ["commits"] };
+    return { experts: [], degraded: ["commits"], sampled: false };
   }
 }
 
@@ -255,7 +279,7 @@ export async function expertsForLibrary(
   library: string,
   now = Date.now(),
   maxRepos = 12,
-): Promise<{ experts: ExpertRow[]; repos: string[]; degraded: string[] }> {
+): Promise<{ experts: ExpertRow[]; repos: string[]; degraded: string[]; sampled: boolean }> {
   const degraded: string[] = [];
 
   // Scoped by filename, not `in:file`.
@@ -296,11 +320,11 @@ export async function expertsForLibrary(
   }
 
   if (searched > 0 && degraded.length === searched) {
-    return { experts: [], repos: [], degraded: ["search"] };
+    return { experts: [], repos: [], degraded: ["search"], sampled: false };
   }
 
   if (targets.length === 0) {
-    return { experts: [], repos: [], degraded };
+    return { experts: [], repos: [], degraded, sampled: false };
   }
 
   const perRepo = await Promise.all(targets.map(async t => {
@@ -312,5 +336,6 @@ export async function expertsForLibrary(
     experts: rankExperts(perRepo.flat(), now),
     repos: targets.map(t => t.repo),
     degraded,
+    sampled: perRepo.some(wasTruncated),
   };
 }

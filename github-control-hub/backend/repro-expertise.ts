@@ -17,6 +17,7 @@ import fs from "fs";
 import path from "path";
 import {
   rankExperts, decay, isBot, isManifest, expertsForRepo, expertsForPath,
+  wasTruncated, COMMIT_PAGE,
   expertsForLibrary, SIGNAL_WEIGHT, HALF_LIFE_DAYS, MAX_LIBRARY_SEARCHES,
   type Contribution, type GithubReader,
 } from "./src/services/expertiseService";
@@ -280,6 +281,49 @@ const c = (login: string, signal: Contribution["signal"], days: number): Contrib
       /cannot contain quotes/.test(src));
   }
 
-  console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
+  // ── a page size is not a count ────────────────────────────────────────
+//
+// Reported from a real repository: "100 commits". GitHub returns one page and a
+// `next` link, so asking for a hundred and getting a hundred means "at least a
+// hundred". A repository with four thousand commits and one with a hundred and
+// one both came back as exactly 100 — a number wrong in a way nobody looking at
+// it could possibly see, on the panel whose entire job is to be trusted.
+//
+// Paging to the end would be forty requests for a busy repository, for a number
+// that changes nothing about the ranking. So the count stays a floor and the
+// answer says so.
+{
+  const full = Array.from({ length: COMMIT_PAGE }, () => ({ login: "alice", at: daysAgo(1) }));
+  const reader = (commits: Array<{ login: string; at: string }>): GithubReader => ({
+    listCommits: async () => commits,
+    listReviewComments: async () => [],
+    listIssueComments: async () => [],
+    searchCode: async () => [],
+  });
+
+  {
+    const capped = await expertsForRepo(reader(full), "api", NOW);
+    check("a full page marks the answer as a sample", capped.sampled === true, capped.sampled);
+
+    const short = await expertsForRepo(reader(full.slice(0, 12)), "api", NOW);
+    check("  a short page does not", short.sampled === false, short.sampled);
+
+    // The boundary. Ninety-nine is the whole history; a hundred is a page.
+    check("ninety-nine commits is a complete answer", !wasTruncated(full.slice(0, 99)));
+    check("  and one hundred is not", wasTruncated(full));
+    check("  nor is anything above it", wasTruncated([...full, { login: "x", at: daysAgo(1) }]));
+    check("nothing at all is a complete answer", !wasTruncated([]));
+
+    const path = await expertsForPath(reader(full), "api", "src/x.ts", NOW);
+    check("a path lookup is marked the same way", path.sampled === true, path.sampled);
+
+    // The count itself is still the page size, and is meant to be — it is a
+    // floor, and the flag is what makes it readable as one.
+    check("  and the count is the floor, not a guess at the total",
+      capped.experts[0].commits === COMMIT_PAGE, capped.experts[0].commits);
+  }
+}
+
+console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

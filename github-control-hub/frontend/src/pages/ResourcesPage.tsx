@@ -20,21 +20,29 @@ function ago(days: number): string {
   return `${(days / 365).toFixed(1)}y ago`;
 }
 
-const RISK: Record<RiskLevel, { label: string; badge: string; bar: string; line: string }> = {
+const RISK: Record<RiskLevel, {
+  label: string; badge: string; bar: string; line: string; wash: string; chip: string;
+}> = {
   high: {
     label: "High risk",
     badge: "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-400/20",
     bar: "bg-rose-500", line: "border-rose-200 dark:border-rose-500/30",
+    wash: "bg-gradient-to-br from-rose-500/[0.10] to-transparent dark:from-rose-500/[0.16]",
+    chip: "bg-rose-100 text-rose-700 dark:bg-rose-500/20 dark:text-rose-300",
   },
   medium: {
     label: "Some risk",
     badge: "bg-amber-50 text-amber-800 ring-amber-600/20 dark:bg-amber-950/50 dark:text-amber-300 dark:ring-amber-400/20",
     bar: "bg-amber-500", line: "border-amber-200 dark:border-amber-500/30",
+    wash: "bg-gradient-to-br from-amber-500/[0.10] to-transparent dark:from-amber-500/[0.16]",
+    chip: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
   },
   low: {
     label: "Nothing found",
     badge: "bg-emerald-50 text-emerald-700 ring-emerald-600/20 dark:bg-emerald-950/50 dark:text-emerald-300 dark:ring-emerald-400/20",
     bar: "bg-emerald-500", line: "border-emerald-200 dark:border-emerald-500/30",
+    wash: "bg-gradient-to-br from-emerald-500/[0.10] to-transparent dark:from-emerald-500/[0.16]",
+    chip: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
   },
   // Deliberately not green and deliberately not calm. An incomplete answer to
   // "is this safe to delete" is the one that gets somebody hurt, so it reads as
@@ -43,7 +51,17 @@ const RISK: Record<RiskLevel, { label: string; badge: string; bar: string; line:
     label: "Incomplete — do not rely on this",
     badge: "bg-slate-100 text-slate-700 ring-slate-500/30 dark:bg-slate-800 dark:text-slate-200 dark:ring-slate-400/30",
     bar: "bg-slate-400", line: "border-slate-300 dark:border-slate-600",
+    wash: "bg-gradient-to-br from-slate-500/[0.08] to-transparent dark:from-slate-400/[0.12]",
+    chip: "bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
   },
+};
+
+/** What a dependency actually is, in words somebody can act on. */
+const KIND_LABEL: Record<string, string> = {
+  "event-source": "triggered by this",
+  "env-var": "environment variable",
+  "execution-role": "runs as this role",
+  "security-group": "network access",
 };
 
 const SERVICE_ICON: Record<string, string> = {
@@ -82,18 +100,35 @@ export default function ResourcesPage() {
     const on = picked?.service === r.service && picked?.name === r.name;
     return (
       <button key={`${r.service}/${r.name}`} onClick={() => setPicked(r)}
-        className={`w-full text-left px-3 py-2 rounded-lg flex items-center gap-2.5 transition-colors ${
-          on ? "bg-gh-blue text-white" : "hover:bg-slate-100 dark:hover:bg-white/[0.06]"}`}>
-        <i className={`ph ${SERVICE_ICON[r.service] ?? "ph-cube"} text-base shrink-0 ${
-          on ? "" : "text-slate-400 dark:text-slate-500"}`}></i>
-        <span className="min-w-0 flex-1">
-          <span className="block text-[13px] font-medium truncate">{r.name}</span>
-          <span className={`block text-[11px] truncate ${on ? "opacity-70" : "text-slate-400 dark:text-slate-500"}`}>
-            {r.service}{r.region ? ` · ${r.region}` : ""}
+        className={`w-full text-left pl-3 pr-2 py-1.5 rounded-lg flex items-center gap-2 transition-all ${
+          on
+            ? "bg-gh-blue text-white shadow-sm"
+            : "hover:bg-slate-100 dark:hover:bg-white/[0.06] text-slate-700 dark:text-slate-200"}`}>
+        <span className={`text-[13px] font-medium truncate flex-1 ${on ? "" : ""}`}>{r.name}</span>
+        {r.region && (
+          <span className={`text-[10px] shrink-0 ${on ? "opacity-70" : "text-slate-400 dark:text-slate-500"}`}>
+            {r.region}
           </span>
-        </span>
+        )}
       </button>
     );
+  };
+
+  /**
+   * Grouped by service, with a count on each.
+   *
+   * A flat list of ninety-six names in no order is a list nobody scans. The
+   * service is the first thing anybody knows about a resource they are looking
+   * for, so it is the axis.
+   */
+  const grouped = () => {
+    const by = new Map<string, AwsResource[]>();
+    for (const r of inv?.resources ?? []) {
+      const list = by.get(r.service) ?? [];
+      list.push(r);
+      by.set(r.service, list);
+    }
+    return [...by.entries()].sort((a, b) => b[1].length - a[1].length || a[0].localeCompare(b[0]));
   };
 
   return (
@@ -139,10 +174,41 @@ export default function ResourcesPage() {
               {/* The mode is on the number, not buried. A per-service total and
                   a per-project total answer different questions, and a reader
                   who cannot tell which they have will assume the better one. */}
-              <span className="text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
-                by {cost.data.mode}
+              <span className={`text-[11px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
+                cost.data.mode === "service"
+                  ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
+                  : "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300"}`}>
+                grouped by {cost.data.mode}
               </span>
             </div>
+
+            {cost.data.mode === "service" && (
+              // The question this panel is opened to answer is "what is each
+              // project costing", and on most accounts AWS cannot answer it at
+              // all. Saying so at the top is better than a per-service list
+              // that looks like an answer to a different question.
+              <div className="mx-5 mb-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 px-4 py-3">
+                <p className="text-[13px] font-bold text-amber-900 dark:text-amber-200">
+                  Spend cannot be split per project on this account yet
+                </p>
+                <p className="text-[12px] text-amber-800 dark:text-amber-300 mt-1">
+                  AWS only breaks cost down per project if one of two things is switched on. Neither
+                  is, so what follows is per service.
+                </p>
+                <ol className="mt-2 space-y-1 text-[12px] text-amber-800 dark:text-amber-300 list-decimal list-inside">
+                  <li>
+                    <strong>Cost allocation tags</strong> — Billing → Cost allocation tags.
+                    Tag resources with the project, activate the tag. Applies from that day
+                    forward, <em>not</em> retroactively.
+                  </li>
+                  <li>
+                    <strong>Resource-level data</strong> — the payer account's Cost Explorer
+                    settings. Gives exact per-resource spend, which this app can then attribute
+                    through the repositories that reference each resource. Keeps 14 days.
+                  </li>
+                </ol>
+              </div>
+            )}
 
             <ul className="px-5 pb-2 space-y-1.5">
               {cost.data.rows.slice(0, 8).map(r => {
@@ -230,7 +296,18 @@ export default function ResourcesPage() {
                 <p className="px-3 py-4 text-[13px] text-slate-400 dark:text-slate-500">
                   {q ? "Nothing matches." : "No resources readable in this account."}
                 </p>
-              ) : inv?.resources.map(resourceRow)}
+              ) : grouped().map(([service, rows]) => (
+                <div key={service} className="mb-2">
+                  <p className="flex items-center gap-2 px-2 py-1">
+                    <i className={`ph-fill ${SERVICE_ICON[service] ?? "ph-cube"} text-[13px] text-slate-400 dark:text-slate-500`}></i>
+                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      {service}
+                    </span>
+                    <span className="text-[11px] tabular-nums text-slate-400 dark:text-slate-600">{rows.length}</span>
+                  </p>
+                  <div className="space-y-0.5">{rows.map(resourceRow)}</div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -272,14 +349,22 @@ export default function ResourcesPage() {
 function BlastHeader({ data }: { data: NonNullable<ReturnType<typeof useBlastRadius>["data"]> }) {
   const tone = RISK[data.risk];
   return (
-    <div className={`${SURFACE.sheet} border-l-4 ${tone.line} overflow-hidden`}>
-      <div className="p-5">
+    <div className={`${SURFACE.sheet} overflow-hidden`}>
+      {/* A wash rather than a border stripe: at a glance the whole card carries
+          the verdict, which is the only thing being asked. */}
+      <div className={`px-6 pt-5 pb-5 ${tone.wash}`}>
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-              {data.target.service}
-            </p>
-            <h2 className="text-xl font-black tracking-tight text-slate-900 dark:text-white break-all">
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className={`w-8 h-8 rounded-xl flex items-center justify-center ${tone.chip}`}>
+                <i className={`ph-fill ${SERVICE_ICON[data.target.service] ?? "ph-cube"} text-base`}></i>
+              </span>
+              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                {data.target.service}
+                {data.target.region ? ` · ${data.target.region}` : ""}
+              </span>
+            </div>
+            <h2 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white break-all leading-tight">
               {data.target.name}
             </h2>
             {data.target.arn && (
@@ -288,16 +373,23 @@ function BlastHeader({ data }: { data: NonNullable<ReturnType<typeof useBlastRad
               </code>
             )}
           </div>
-          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ring-inset shrink-0 ${tone.badge}`}>
-            {tone.label}
-          </span>
+
+          <div className="flex flex-col items-end gap-2 shrink-0">
+            <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full ring-1 ring-inset ${tone.badge}`}>
+              {tone.label}
+            </span>
+            {data.targetUrl && (
+              <a href={data.targetUrl} target="_blank" rel="noopener noreferrer"
+                className="text-[12px] font-bold text-gh-blue hover:underline inline-flex items-center gap-1">
+                Open in AWS <i className="ph-bold ph-arrow-square-out text-[11px]"></i>
+              </a>
+            )}
+          </div>
         </div>
 
-        {/* The sentences, in the order somebody about to delete it would want
-            them. The counts below are the evidence; this is the answer. */}
         <ul className="mt-4 space-y-1.5">
           {data.findings.map((f, i) => (
-            <li key={i} className="flex gap-2 text-[13px] text-slate-700 dark:text-slate-200">
+            <li key={i} className="flex gap-2.5 text-[13px] text-slate-700 dark:text-slate-200">
               <span className={`mt-1.5 h-1.5 w-1.5 rounded-full shrink-0 ${tone.bar}`} />
               <span>{f}</span>
             </li>
@@ -305,11 +397,11 @@ function BlastHeader({ data }: { data: NonNullable<ReturnType<typeof useBlastRad
         </ul>
       </div>
 
-      <div className="px-5 py-3 border-t border-slate-100 dark:border-white/[0.06] flex gap-6 flex-wrap">
+      <div className="px-6 py-3.5 border-t border-slate-100 dark:border-white/[0.06] flex gap-6 flex-wrap">
         <Stat n={data.relationships.length} label="AWS dependents" />
         <Stat n={data.sourceRefs.length} label="files reference it" />
         <Stat n={data.repos.length} label="repositories" />
-        <Stat n={data.managedBy.length} label="declare it as infrastructure" />
+        <Stat n={data.managedBy.length} label="declare it" />
       </div>
     </div>
   );
@@ -352,25 +444,58 @@ function BlastBody({ data }: { data: NonNullable<ReturnType<typeof useBlastRadiu
 
       {data.relationships.length > 0 && (
         <div className={SURFACE.sheet}>
-          <h3 className="px-5 pt-4 pb-2 text-[13px] font-bold text-slate-900 dark:text-white">
-            Inside AWS
-          </h3>
-          <ul className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-            {data.relationships.map((r, i) => (
-              <li key={i} className="px-5 py-2.5 flex items-center gap-3 flex-wrap">
-                <i className={`ph ${SERVICE_ICON[r.from.service] ?? "ph-cube"} text-slate-400`}></i>
-                <span className="font-mono text-[13px] text-slate-800 dark:text-slate-100">{r.from.name}</span>
-                <span className="text-[12px] text-slate-500 dark:text-slate-400">{r.detail}</span>
-                {r.kind === "event-source" && (
-                  // The one relationship that breaks in seconds rather than on
-                  // the next deploy, so it is marked rather than left to read
-                  // as one row among many.
-                  <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300">
+          <div className="px-5 pt-4 pb-1">
+            <h3 className="text-[13px] font-bold text-slate-900 dark:text-white">Inside AWS</h3>
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+              Each of these breaks if the resource goes. Click through to it in the console.
+            </p>
+          </div>
+          <ul className="px-3 pb-3 pt-2 space-y-1.5">
+            {data.relationships.map((r, i) => {
+              const live = r.kind === "event-source";
+              return (
+                <li key={i}
+                  className={`rounded-xl border px-3.5 py-2.5 ${
                     live
-                  </span>
-                )}
-              </li>
-            ))}
+                      ? "border-rose-200 dark:border-rose-500/30 bg-rose-50/50 dark:bg-rose-950/20"
+                      : "border-slate-200 dark:border-white/[0.08] bg-slate-50/60 dark:bg-white/[0.03]"}`}>
+                  <div className="flex items-center gap-2.5 flex-wrap">
+                    <i className={`ph-fill ${SERVICE_ICON[r.from.service] ?? "ph-cube"} ${
+                      live ? "text-rose-500" : "text-slate-400 dark:text-slate-500"}`}></i>
+                    {/* The name is the link. Making somebody search the console
+                        for a name they were just shown is the difference
+                        between a report and a tool. */}
+                    {r.fromUrl ? (
+                      <a href={r.fromUrl} target="_blank" rel="noopener noreferrer"
+                        className="font-mono text-[13px] font-semibold text-slate-900 dark:text-white hover:text-gh-blue underline decoration-dotted underline-offset-2">
+                        {r.from.name}
+                      </a>
+                    ) : (
+                      <span className="font-mono text-[13px] font-semibold text-slate-900 dark:text-white">
+                        {r.from.name}
+                      </span>
+                    )}
+                    <span className="text-[11px] uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                      {r.from.service}
+                    </span>
+                    {live && (
+                      <span className="ml-auto text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-500 text-white">
+                        consuming now
+                      </span>
+                    )}
+                  </div>
+                  {/* Exactly how it depends — the variable's name and value, the
+                      mapping's state — not "references it by env var". */}
+                  <p className="mt-1 ml-6 text-[12px] text-slate-600 dark:text-slate-300">
+                    <span className="text-slate-400 dark:text-slate-500">
+                      {KIND_LABEL[r.kind] ?? r.kind}
+                    </span>
+                    {" · "}
+                    <code className="font-mono">{r.detail}</code>
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

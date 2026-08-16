@@ -24,7 +24,7 @@
  *     reads.
  */
 import {
-  matchResources, searchTermsFor, readProvider, buildInventory, describeAwsError,
+  matchResources, searchTermsFor, readProvider, buildInventory, describeAwsError, consoleUrl,
   type Inventory, type Resource, type Relationship, type ProviderResult, type Provider,
 } from "./src/services/awsInventoryService";
 import { matchesTarget } from "./src/services/awsProviders";
@@ -506,6 +506,39 @@ const noSource = async () => ({ ok: true, service: "github", items: [] as Source
   {
     check("no referencing files is an empty answer, not an error",
       (await expertsForResource([], { listCommits: async () => [] })).experts.length === 0);
+  }
+
+  // ── a finding you can act on ────────────────────────────────────────
+  //
+  // "1 Lambda consumes this" is a fact somebody then has to go and do something
+  // about. Making them search the console for a name they were just shown is
+  // the difference between a report and a tool.
+  {
+    const region = "eu-" + "west-1";
+    check("a Lambda links to its function page",
+      (consoleUrl({ service: "lambda", name: "worker", region }) ?? "").includes("/lambda/home?region=eu-west-1#/functions/worker"),
+      consoleUrl({ service: "lambda", name: "worker", region }));
+    check("a table links to the table",
+      (consoleUrl({ service: "dynamodb", name: "orders", region }) ?? "").includes("#table?name=orders"));
+    check("a security group links by its id, not its name",
+      (consoleUrl({ service: "ec2-sg", name: "web", region }, { groupId: "sg-123" }) ?? "").includes("groupId=sg-123"));
+
+    // Global services take no region, and must still link.
+    check("a bucket links without a region",
+      (consoleUrl({ service: "s3", name: "assets" }) ?? "").includes("s3/buckets/assets"));
+    check("a role links without a region",
+      (consoleUrl({ service: "iam", name: "deploy" }) ?? "").includes("iam/home#/roles/deploy"));
+
+    // A link to the wrong region shows an empty page, which reads as "this no
+    // longer exists" — worse than offering no link.
+    check("no region means no link rather than a guessed one",
+      consoleUrl({ service: "lambda", name: "worker" }) === null);
+    check("a security group with no id has no link",
+      consoleUrl({ service: "ec2-sg", name: "web", region }) === null);
+    check("an unknown service has no link",
+      consoleUrl({ service: "braket", name: "x", region }) === null);
+    check("a name needing escaping is escaped",
+      (consoleUrl({ service: "dynamodb", name: "a b", region }) ?? "").includes("a%20b"));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
