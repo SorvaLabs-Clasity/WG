@@ -1,7 +1,7 @@
 # Testing
 
-Thirty-seven suites, each a script named `repro-*.ts`, run with `tsx`. No
-framework. Thirty-four live in `backend/`, three in `frontend/`, and each runs
+Thirty-eight suites, each a script named `repro-*.ts`, run with `tsx`. No
+framework. Thirty-five live in `backend/`, three in `frontend/`, and each runs
 from its own directory.
 
 ```bash
@@ -56,6 +56,7 @@ the wrong place.
 | `repro-querycache` | Per-subject verdict caching — covering a large org a batch at a time |
 | `repro-scanpaging` | **A table scan must read the whole table** |
 | `repro-largeorg` | The whole path at 300 accounts, against a rate-limited GitHub |
+| `repro-blastradius` | **An unread service is never "safe to delete"** |
 | `repro-loginstates` | What the sign-in page says in each state, and in what order |
 | `repro-webhookdelivery` | Signature verification over raw bytes, and the delivery lock |
 

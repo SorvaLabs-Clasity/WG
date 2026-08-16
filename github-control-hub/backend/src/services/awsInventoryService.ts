@@ -198,9 +198,29 @@ export function matchResources(inventory: Inventory, query: string): Resource[] 
 export function searchTermsFor(r: Resource): string[] {
   const terms = new Set<string>([r.name]);
   if (r.arn) terms.add(r.arn);
-  // The bare name without a common environment suffix, so `payments-events-prod`
-  // also finds the module that builds it as `payments-events-${var.env}`.
-  const stripped = r.name.replace(/[-_](prod|production|staging|stage|dev|test)$/i, "");
-  if (stripped !== r.name) terms.add(stripped);
+
+  // The name with a generated suffix removed.
+  //
+  // Source almost never contains the full name of a resource whose name is
+  // built at deploy time. A bucket called `acme-audit-log-123456789012` appears
+  // in Terraform as `"acme-audit-log-${data.aws_caller_identity.current.id}"`
+  // and in CDK as a template literal — so searching the literal finds nothing
+  // and the report says, with confidence, that no source refers to it.
+  //
+  // Found by running this against a real account: the app's own audit bucket,
+  // which the codebase creates and documents, came back with zero references
+  // because its name ends in the account id.
+  let base = r.name;
+  for (const suffix of [
+    /[-_]\d{12}$/,                                             // account id
+    /[-_](us|eu|ap|sa|ca|me|af)-[a-z]+-\d$/i,                  // region
+    /[-_](prod|production|staging|stage|dev|test|qa)$/i,        // environment
+  ]) {
+    const next = base.replace(suffix, "");
+    if (next !== base && next.length >= 3) {
+      terms.add(next);
+      base = next;
+    }
+  }
   return [...terms].filter(t => t.length >= 3);
 }

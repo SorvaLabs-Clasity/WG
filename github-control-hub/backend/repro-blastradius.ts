@@ -32,6 +32,10 @@ import {
   assessBlastRadius, classifyPath, scoreRisk, dedupeRelationships,
   type SourceRef,
 } from "./src/services/blastRadiusService";
+import { readFileSync } from "fs";
+import {
+  findSourceRefs, isSearchableTerm, clearSourceSearchCache,
+} from "./src/services/sourceSearchService";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -227,6 +231,28 @@ const noSource = async () => ({ ok: true, service: "github", items: [] as Source
     // a variable is still found.
     check("  and the name without its environment suffix",
       terms.includes("payments-events"), terms);
+
+    // Names built at deploy time. Source contains the template, never the
+    // result, so searching only the literal finds nothing and reports it as
+    // nothing — which is how the app's own audit bucket came back unreferenced
+    // on a real account.
+    const acct = ["1234", "5678", "9012"].join("");
+    check("an account-id suffix is stripped",
+      searchTermsFor({ service: "s3", name: `acme-audit-log-${acct}` }).includes("acme-audit-log"),
+      searchTermsFor({ service: "s3", name: `acme-audit-log-${acct}` }));
+    check("a region suffix is stripped",
+      searchTermsFor({ service: "s3", name: "acme-assets-us-east-1" }).includes("acme-assets"),
+      searchTermsFor({ service: "s3", name: "acme-assets-us-east-1" }));
+    check("both together are stripped",
+      searchTermsFor({ service: "s3", name: `acme-logs-us-east-1-${acct}` }).includes("acme-logs"),
+      searchTermsFor({ service: "s3", name: `acme-logs-us-east-1-${acct}` }));
+    check("  and the full name is still searched first",
+      searchTermsFor({ service: "s3", name: `acme-logs-${acct}` })[0] === `acme-logs-${acct}`);
+    check("stripping never produces something too short to search",
+      !searchTermsFor({ service: "s3", name: `ab-${acct}` }).includes("ab"),
+      searchTermsFor({ service: "s3", name: `ab-${acct}` }));
+    check("a name that merely contains digits is left alone",
+      searchTermsFor({ service: "s3", name: "acme-v2-assets" }).length === 1);
     check("very short identifiers are not searched for",
       !searchTermsFor({ service: "s3", name: "ab" }).includes("ab"));
   }
@@ -298,6 +324,94 @@ const noSource = async () => ({ ok: true, service: "github", items: [] as Source
     check("  and unreadable ones are recorded",
       inv.unreadable.length === 1 && inv.unreadable[0].service === "lambda", inv.unreadable);
     check("  rather than silently contributing nothing", inv.byService.get("lambda")?.ok === false);
+  }
+
+  // ── the source search, and the budget it spends ─────────────────────
+  //
+  // GitHub's code search allows ten requests a *minute*, the smallest allowance
+  // it gives. A lookup costs one per identifier, so an uncached search box is
+  // rate limited by its second click.
+  {
+    clearSourceSearchCache();
+    let calls = 0;
+    const search = async (q: string) => {
+      calls++;
+      return [{ repo: "infra", path: "terraform/sqs.tf" }, { repo: "docs-site", path: "README.md" }]
+        .filter(() => q.includes("payments-events"));
+    };
+
+    const first = await findSourceRefs("payments-events", "example-org", search);
+    check("a search returns its hits", first.ok && first.items.length === 2, first);
+    check("  classified by what the file is",
+      first.items.map(i => i.kind).sort().join() === "docs,terraform",
+      first.items.map(i => i.kind));
+    check("  with a link to each", first.items.every(i => i.url.includes("infra") || i.url.includes("docs-site")));
+
+    await findSourceRefs("payments-events", "example-org", search);
+    await findSourceRefs("payments-events", "example-org", search);
+    check("the same term again costs no further requests", calls === 1, calls);
+
+    // …and expires, or a reference added this morning is never found.
+    const later = await findSourceRefs(
+      "payments-events", "example-org", search, Date.now() + 11 * 60_000);
+    check("after the cache window it searches again", calls === 2, calls);
+    check("  and still answers", later.ok && later.items.length === 2);
+  }
+  {
+    clearSourceSearchCache();
+    // A rate limit is a failure, cached briefly so that re-rendering does not
+    // turn one exhausted budget into a permanently exhausted one.
+    let calls = 0;
+    const limited = async () => {
+      calls++;
+      const e: any = new Error("API rate limit exceeded"); e.status = 403; throw e;
+    };
+    const r = await findSourceRefs("payments-events", "example-org", limited);
+    check("a rate limit is a failure, not an empty result", !r.ok && r.items.length === 0, r);
+    check("  and says to wait rather than showing a stack trace",
+      /ten requests a minute/.test(r.error ?? ""), r.error);
+    await findSourceRefs("payments-events", "example-org", limited);
+    check("  and is not retried on the next render", calls === 1, calls);
+  }
+  {
+    // A quote would close the quoted term and turn the rest into query syntax.
+    check("a term with a quote is refused", !isSearchableTerm('pay"ments'));
+    check("  and a newline", !isSearchableTerm("pay\nments"));
+    check("  and a backslash", !isSearchableTerm("pay\\ments"));
+    check("a normal name is searchable", isSearchableTerm("payments-events"));
+    check("something too short to mean anything is not", !isSearchableTerm("ab"));
+
+    clearSourceSearchCache();
+    let called = false;
+    const r = await findSourceRefs("ab", "example-org", async () => { called = true; return []; });
+    check("an unsearchable term spends no request", !called);
+    // Not a failure: reporting it as unread would make every such lookup
+    // permanently "incomplete" for a reason nothing can fix.
+    check("  and is not reported as an unread source", r.ok, r);
+  }
+
+  // ── the search must run as the person asking ────────────────────────
+  //
+  // Code search does not work with a GitHub App installation token. It returns
+  // **zero hits** rather than an error — measured against this organization,
+  // where a file that plainly exists came back with nothing through the App
+  // token. A blast radius built on that reports "nothing in your source refers
+  // to this" with total confidence, at the exact moment somebody is deciding
+  // whether to delete something.
+  //
+  // Read from the route rather than asserted about a value, because the mistake
+  // is a one-word edit and produces no error anywhere.
+  {
+    const route = readFileSync("src/routes/resources.ts", "utf8");
+    check("the blast route takes the caller's own token",
+      /const token = req\.user\?\.accessToken;/.test(route));
+    check("  and refuses without one",
+      /if \(!token\) return res\.status\(401\)/.test(route));
+    check("  and never reaches for the app's token",
+      !/getSystemToken/.test(route),
+      route.split("\n").filter(l => /getSystemToken/.test(l)));
+    check("  passing that token to the searcher",
+      /createOctokit\(token\)[\s\S]{0,120}?searcherFor\(octokit\)/.test(route));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
