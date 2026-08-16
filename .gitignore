@@ -21,3 +21,8 @@ github-control-hub/frontend/.env
 
 # Local Claude Code permissions — contains machine paths
 .claude/settings.local.json
+
+# TypeScript incremental build state. A build artifact, regenerated on every
+# `tsc`, and it was tracked — so it churned into every commit it touched and
+# carried nothing a reader could use.
+*.tsbuildinfo
