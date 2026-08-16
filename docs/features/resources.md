@@ -207,6 +207,37 @@ returns "start date is too old for hourly, the max supported days for hourly
 granularity is 14 days" — a message that does not mention resources, is not
 actionable, and costs a cent to receive.
 
+### Per project, when AWS can supply it
+
+With **resource-level data on**, every cost row is a resource, and the source
+index already knows which repositories reference which resource. That gives an
+exact per-project figure with **no tagging at all**:
+
+```
+  payments-api        $4,812.00
+    $4,204.00 its own · $608.00 shared with ops
+
+  ops                   $608.00
+    $0.00 its own · $608.00 shared with payments-api
+
+  $2,940.00 on 14 resources no repository references
+```
+
+**Shared spend is never divided.** A queue both repositories use costs what it
+costs; halving it is a guess, and reporting it in full under both without
+saying so double-counts. So the two are kept apart — `its own` adds up across
+projects, `shared` deliberately does not, and the panel says so.
+
+Two buckets stop the parts from quietly failing to reach the bill: spend on
+resources **no repository references** (usually the most interesting number —
+those are the ones nobody owns), and spend on resources this app does not
+inventory at all.
+
+Resource ids are matched **exactly**, on the ARN or the bare name. A substring
+match would attribute the `orders` table's bill to `orders-archive`, and money
+attributed to the wrong team is the kind of error that surfaces in a budget
+meeting.
+
 ### The link to code, and the line it will not cross
 
 For each service, the panel names the **repositories whose source references

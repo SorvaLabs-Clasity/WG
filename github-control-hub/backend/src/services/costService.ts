@@ -371,3 +371,131 @@ export function costDepsFromAws(): CostDeps {
     },
   };
 }
+
+// ── spend per project, where the data allows it ───────────────────────
+
+export interface ProjectSpend {
+  repo: string;
+  /** Spend on resources only this repository references. Unambiguous. */
+  exclusive: number;
+  /** Spend on resources this repository shares with others. Not divided. */
+  shared: number;
+  /** Who it is shared with, so "shared" is not a mystery. */
+  sharedWith: string[];
+  resources: Array<{ id: string; amount: number; shared: boolean }>;
+}
+
+export interface ProjectBreakdown {
+  projects: ProjectSpend[];
+  /** Spend on resources no repository references. Usually the real finding. */
+  unattributed: number;
+  unattributedResources: Array<{ id: string; amount: number }>;
+  /** Spend on rows that matched no inventoried resource at all. */
+  unmatched: number;
+  notes: string[];
+}
+
+/**
+ * Which resource a Cost Explorer row is about.
+ *
+ * Cost Explorer keys resource rows by ARN for some services and by bare name
+ * for others, so both are tried. Matching is exact on either — a substring
+ * match here would attribute one table's bill to another table whose name
+ * contains it, and money attributed to the wrong team is the kind of error that
+ * gets discovered in a budget meeting.
+ */
+export function resourceKeyFor(
+  costRowKey: string, resources: Array<{ service: string; name: string; arn?: string }>,
+): string | null {
+  const k = costRowKey.trim().toLowerCase();
+  if (!k) return null;
+  const hit = resources.find(r =>
+    (r.arn && r.arn.toLowerCase() === k) || r.name.toLowerCase() === k);
+  return hit ? `${hit.service}/${hit.name}` : null;
+}
+
+/**
+ * Spend per repository, from per-resource costs and the source index.
+ *
+ * **Shared resources are not divided.** A table referenced by two repositories
+ * costs what it costs; splitting it in half is a guess, and reporting it in
+ * full under both double-counts. So the two are kept apart: `exclusive` is
+ * money only that repository's resources incurred, and `shared` is money it is
+ * jointly responsible for, listed with who else. Both are true statements,
+ * which a single blended number would not be.
+ *
+ * This is the mode the whole feature is for, and it only runs when the payer
+ * account has opted in to resource-level data — without it, nothing in AWS
+ * knows which resource cost what, and no amount of source analysis can supply
+ * that.
+ */
+export function projectSpend(
+  rows: SpendRow[],
+  resources: Array<{ service: string; name: string; arn?: string }>,
+  reposByResource: Map<string, string[]>,
+): ProjectBreakdown {
+  const byRepo = new Map<string, ProjectSpend>();
+  const unattributedResources: Array<{ id: string; amount: number }> = [];
+  let unattributed = 0;
+  let unmatched = 0;
+
+  for (const row of rows) {
+    const key = resourceKeyFor(row.key, resources);
+    if (!key) {
+      // A cost row for something this app does not inventory. Counted and
+      // reported rather than dropped: a breakdown whose parts do not add up to
+      // the bill is one nobody trusts twice.
+      unmatched += row.amount;
+      continue;
+    }
+
+    const repos = reposByResource.get(key) ?? [];
+    if (repos.length === 0) {
+      unattributed += row.amount;
+      unattributedResources.push({ id: row.key, amount: row.amount });
+      continue;
+    }
+
+    const isShared = repos.length > 1;
+    for (const repo of repos) {
+      const entry = byRepo.get(repo) ?? {
+        repo, exclusive: 0, shared: 0, sharedWith: [], resources: [],
+      };
+      if (isShared) {
+        entry.shared += row.amount;
+        for (const other of repos) {
+          if (other !== repo && !entry.sharedWith.includes(other)) entry.sharedWith.push(other);
+        }
+      } else {
+        entry.exclusive += row.amount;
+      }
+      entry.resources.push({ id: row.key, amount: row.amount, shared: isShared });
+      byRepo.set(repo, entry);
+    }
+  }
+
+  const projects = [...byRepo.values()]
+    .map(p => ({
+      ...p,
+      sharedWith: p.sharedWith.sort(),
+      resources: p.resources.sort((a, b) => b.amount - a.amount),
+    }))
+    .sort((a, b) => (b.exclusive + b.shared) - (a.exclusive + a.shared));
+
+  const notes: string[] = [];
+  if (projects.some(p => p.shared > 0)) {
+    notes.push(
+      "Shared spend is counted in full under every repository that references the resource, and "
+      + "kept separate from exclusive spend for that reason — the shared column does not add up "
+      + "across projects, and is not meant to.",
+    );
+  }
+  if (unmatched > 0) {
+    notes.push(
+      `$${unmatched.toFixed(2)} is on resources this app does not inventory, so it belongs to no `
+      + `project here.`,
+    );
+  }
+
+  return { projects, unattributed, unattributedResources, unmatched, notes };
+}

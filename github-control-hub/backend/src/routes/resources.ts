@@ -13,6 +13,7 @@ import { expertsForResource } from "../services/resourceExpertsService";
 import { parseSecurityGroups, driftForSecurityGroup } from "../services/iacParseService";
 import {
   readCost, clearCostCache, currentMonth, costDepsFromAws, ownershipByService, providerFor,
+  projectSpend, resourceKeyFor,
 } from "../services/costService";
 import type { SourceRef } from "../services/blastRadiusService";
 
@@ -260,13 +261,24 @@ router.get("/cost", async (req: Request, res: Response) => {
     const inv = await inventory();
     const reposByResource = new Map<string, string[]>();
     const token = req.user?.accessToken;
-    if (token && answer.mode === "service") {
+
+    if (token) {
       const search = searcherFor(createOctokit(token));
-      // Only the services with a bill worth explaining, biggest first. Each
-      // resource costs a code search, against ten a minute.
-      const worth = answer.rows.slice(0, 3).map(r => r.key);
-      for (const resource of inv.all) {
-        if (!worth.some(w => providerFor(w) === resource.service)) continue;
+
+      // Which resources are worth a code search, and it is never all of them:
+      // each is one request against ten a minute.
+      //
+      // In resource mode the rows *are* resources, so the ones carrying real
+      // money are exactly the ones worth attributing — twenty of those answers
+      // the question for nearly the whole bill. In service mode there is no
+      // per-resource money, so the best available proxy is the resources
+      // belonging to the three largest services.
+      const wanted = answer.mode === "resource"
+        ? inv.all.filter(r => answer.rows.slice(0, 20).some(
+            row => resourceKeyFor(row.key, inv.all) === `${r.service}/${r.name}`))
+        : inv.all.filter(r => answer.rows.slice(0, 3).some(row => providerFor(row.key) === r.service));
+
+      for (const resource of wanted) {
         const refs = await findSourceRefs(resource.name, org(), search);
         if (refs.ok && refs.items.length > 0) {
           reposByResource.set(
@@ -279,6 +291,12 @@ router.get("/cost", async (req: Request, res: Response) => {
 
     res.json({
       ...answer,
+      // Per project only where per-resource money exists. Everywhere else the
+      // honest answer is which repositories touch a service, with no dollar
+      // split — see the note on `ownershipByService`.
+      breakdown: answer.mode === "resource"
+        ? projectSpend(answer.rows, inv.all, reposByResource)
+        : null,
       ownership: answer.mode === "service"
         ? ownershipByService(answer.rows, inv.all, reposByResource)
         : null,

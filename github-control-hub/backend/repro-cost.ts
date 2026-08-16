@@ -25,6 +25,7 @@
 import {
   readCost, clearCostCache, currentMonth, ownershipByService, providerFor,
   SERVICE_ALIASES, COST_CACHE_MS, withinResourceWindow, RESOURCE_WINDOW_DAYS,
+  projectSpend, resourceKeyFor,
   type CostDeps, type SpendRow,
 } from "./src/services/costService";
 import { defaultProviders } from "./src/services/awsProviders";
@@ -237,6 +238,99 @@ function deps(over: Partial<CostDeps> = {}) {
     const own = ownershipByService([row("Amazon Braket", 9)], [], new Map());
     check("a service with no mapping still shows its cost",
       own[0].amount === 9 && own[0].repos.length === 0, own[0]);
+  }
+
+  // ── spend per project, the mode the whole feature is for ────────────
+  //
+  // Only possible with per-resource costs. Nothing in AWS knows which resource
+  // cost what unless the payer account opts in, and no amount of source
+  // analysis can supply that — which is why the answer on most accounts is a
+  // per-service total and an instruction, not a project breakdown.
+  {
+    const resources = [
+      { service: "dynamodb", name: "orders", arn: "arn:aws:dynamodb:::table/orders" },
+      { service: "dynamodb", name: "sessions" },
+      { service: "sqs", name: "shared-events" },
+      { service: "s3", name: "nobody-owns-this" },
+    ];
+    const refs = new Map([
+      ["dynamodb/orders", ["payments-api"]],
+      ["dynamodb/sessions", ["payments-api"]],
+      ["sqs/shared-events", ["payments-api", "ops"]],
+    ]);
+    const b = projectSpend([
+      row("arn:aws:dynamodb:::table/orders", 30),
+      row("sessions", 12),
+      row("shared-events", 8),
+      row("nobody-owns-this", 5),
+      row("some-ec2-instance", 24),
+    ], resources, refs);
+
+    const payments = b.projects.find(p => p.repo === "payments-api")!;
+    check("a repository's own resources are exclusive spend",
+      payments.exclusive === 42, payments.exclusive);
+    // Not divided, and not blended into one number. Halving it is a guess;
+    // reporting it in full under both without saying so double-counts.
+    check("  a shared resource is kept separate, not split",
+      payments.shared === 8, payments.shared);
+    check("  naming who it is shared with", payments.sharedWith.join() === "ops", payments.sharedWith);
+    check("  and the other side sees the same shared amount",
+      b.projects.find(p => p.repo === "ops")!.shared === 8);
+    check("  with nothing exclusive of its own",
+      b.projects.find(p => p.repo === "ops")!.exclusive === 0);
+    check("  and the double-count is called out in words",
+      b.notes.some(n => /does not add up across projects/.test(n)), b.notes);
+
+    check("biggest project first", b.projects[0].repo === "payments-api", b.projects.map(p => p.repo));
+
+    // The two buckets that stop the parts from silently not adding up.
+    check("a resource no repository references is unattributed",
+      b.unattributed === 5, b.unattributed);
+    check("  and named, because those are the ones nobody owns",
+      b.unattributedResources[0].id === "nobody-owns-this", b.unattributedResources);
+    check("a cost row for something not inventoried is counted as unmatched",
+      b.unmatched === 24, b.unmatched);
+    check("  and explained rather than dropped",
+      b.notes.some(n => /does not inventory/.test(n)), b.notes);
+
+    // Every dollar lands somewhere. A breakdown whose parts do not reach the
+    // bill is one nobody trusts twice.
+    const accounted = payments.exclusive + b.projects.find(p => p.repo === "ops")!.exclusive
+      + 8 + b.unattributed + b.unmatched;
+    check("every dollar is accounted for exactly once", accounted === 79, accounted);
+  }
+  {
+    const resources = [
+      { service: "dynamodb", name: "orders", arn: "arn:aws:dynamodb:::table/orders" },
+      { service: "dynamodb", name: "orders-archive" },
+    ];
+    check("a row keyed by ARN finds its resource",
+      resourceKeyFor("arn:aws:dynamodb:::table/orders", resources) === "dynamodb/orders");
+    check("a row keyed by bare name finds it too",
+      resourceKeyFor("orders", resources) === "dynamodb/orders");
+    // Money attributed to the wrong team is discovered in a budget meeting.
+    check("a longer name is not the same resource",
+      resourceKeyFor("orders-archive", resources) === "dynamodb/orders-archive");
+
+    // Ordering-sensitive, and deliberately so. With the longer name listed
+    // first, a substring match returns *it* for the shorter key — attributing
+    // the orders table's bill to the archive. Listing the exact match first,
+    // as the previous fixture happened to, hides that entirely.
+    const reversed = [
+      { service: "dynamodb", name: "orders-archive" },
+      { service: "dynamodb", name: "orders" },
+    ];
+    check("  and is not matched even when it is listed first",
+      resourceKeyFor("orders", reversed) === "dynamodb/orders",
+      resourceKeyFor("orders", reversed));
+    check("something not inventoried matches nothing",
+      resourceKeyFor("i-0abc123", resources) === null);
+    check("an empty key matches nothing", resourceKeyFor("   ", resources) === null);
+  }
+  {
+    const empty = projectSpend([], [], new Map());
+    check("no rows is an empty breakdown, not an error",
+      empty.projects.length === 0 && empty.unattributed === 0, empty);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

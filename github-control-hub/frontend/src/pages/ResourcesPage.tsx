@@ -182,6 +182,50 @@ export default function ResourcesPage() {
               </span>
             </div>
 
+            {/* The answer the panel is opened for, when AWS can give it. */}
+            {cost.data.breakdown && cost.data.breakdown.projects.length > 0 && (
+              <div className="px-5 pb-3">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-2">
+                  By project
+                </p>
+                <ul className="space-y-2">
+                  {cost.data.breakdown.projects.map(p => (
+                    <li key={p.repo} className={`${SURFACE.inset} rounded-xl px-3.5 py-2.5`}>
+                      <div className="flex items-baseline justify-between gap-3">
+                        <span className="font-mono text-[13px] font-semibold text-slate-900 dark:text-white truncate">
+                          {p.repo}
+                        </span>
+                        <span className="font-black tabular-nums text-slate-900 dark:text-white shrink-0">
+                          ${(p.exclusive + p.shared).toFixed(2)}
+                        </span>
+                      </div>
+                      {p.shared > 0 && (
+                        // Kept apart on purpose: shared spend is counted in full
+                        // under every repository that references the resource,
+                        // so the shared figures do not add up across projects
+                        // and must not look as though they do.
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                          ${p.exclusive.toFixed(2)} its own · ${p.shared.toFixed(2)} shared with{" "}
+                          {p.sharedWith.join(", ")}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {cost.data.breakdown.unattributed > 0 && (
+                  <p className="mt-2 text-[12px] text-amber-700 dark:text-amber-400">
+                    ${cost.data.breakdown.unattributed.toFixed(2)} on{" "}
+                    {cost.data.breakdown.unattributedResources.length} resource
+                    {cost.data.breakdown.unattributedResources.length === 1 ? "" : "s"} no repository
+                    references — usually the more interesting number.
+                  </p>
+                )}
+                {cost.data.breakdown.notes.map((n, i) => (
+                  <p key={i} className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">{n}</p>
+                ))}
+              </div>
+            )}
+
             {cost.data.mode === "service" && (
               // The question this panel is opened to answer is "what is each
               // project costing", and on most accounts AWS cannot answer it at

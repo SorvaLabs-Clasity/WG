@@ -96,6 +96,20 @@ export interface CostAnswer {
   currency: string;
   notes: string[];
   readAt: string;
+  /** Per-repository spend. Only when per-resource cost data is available. */
+  breakdown: {
+    projects: Array<{
+      repo: string;
+      exclusive: number;
+      shared: number;
+      sharedWith: string[];
+      resources: Array<{ id: string; amount: number; shared: boolean }>;
+    }>;
+    unattributed: number;
+    unattributedResources: Array<{ id: string; amount: number }>;
+    unmatched: number;
+    notes: string[];
+  } | null;
   ownership: Array<{
     service: string;
     amount: number;
