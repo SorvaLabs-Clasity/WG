@@ -11,6 +11,7 @@ import { assessBlastRadius } from "../services/blastRadiusService";
 import { findSourceRefs, searcherFor, clearSourceSearchCache } from "../services/sourceSearchService";
 import { expertsForResource } from "../services/resourceExpertsService";
 import { parseSecurityGroups, driftForSecurityGroup } from "../services/iacParseService";
+import { ssmReader } from "../services/parameterStoreService";
 import type { SourceRef } from "../services/blastRadiusService";
 
 const router = Router();
@@ -204,7 +205,9 @@ async function driftFor(target: Resource, refs: SourceRef[], octokit: any) {
     };
   }
 
-  const declarations: Array<{ repo: string; path: string; groups: ReturnType<typeof parseSecurityGroups> }> = [];
+  const declarations: Array<{
+    repo: string; path: string; groups: Awaited<ReturnType<typeof parseSecurityGroups>>;
+  }> = [];
   const unreadable: string[] = [];
 
   for (const ref of tf) {
@@ -215,7 +218,11 @@ async function driftFor(target: Resource, refs: SourceRef[], octokit: any) {
       if (typeof content !== "string") { unreadable.push(ref.path); continue; }
       declarations.push({
         repo: ref.repo, path: ref.path,
-        groups: parseSecurityGroups(Buffer.from(content, "base64").toString("utf8")),
+        // The reader is passed so a rule whose CIDR lives in Parameter Store
+        // can be compared rather than reported unresolved. It refuses secrets
+        // and unreadable parameters, so an unresolved rule stays unresolved.
+        groups: await parseSecurityGroups(
+          Buffer.from(content, "base64").toString("utf8"), ssmReader()),
       });
     } catch {
       unreadable.push(`${ref.repo}/${ref.path}`);

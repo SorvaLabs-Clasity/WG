@@ -40,6 +40,53 @@ export interface ParsedSecurityGroup {
   notes: string[];
 }
 
+/**
+ * Resolving a declared value out of SSM Parameter Store.
+ *
+ * The commonest reason a rule cannot be compared is that its value is not
+ * written in the file — an office CIDR lives in Parameter Store and the
+ * Terraform says `data.aws_ssm_parameter.office_cidr.value`. Marking that
+ * unresolved is honest but useless: the value exists, it is readable, and
+ * fetching it turns "cannot compare" into a real comparison.
+ *
+ * Three limits, each of which reports unresolved rather than guessing:
+ *
+ *   - the parameter's **name** must itself be a literal. A data block whose
+ *     `name` is built from a variable moves the problem rather than solving it.
+ *   - a **SecureString** is never read. Decrypting a secret to render it in a
+ *     drift panel would put it on screen and in a response body, and no
+ *     comparison is worth that. Its rule stays unresolved.
+ *   - a parameter that cannot be read — gone, denied, another account — is
+ *     unresolved. A missing parameter is not an empty CIDR.
+ *
+ * What is read is the value *now*, which is the current declared intent rather
+ * than the value at deploy time. That is the right one for this question: the
+ * comparison being made is "does AWS match what the code says today".
+ */
+export interface ParameterReader {
+  /** The parameter's value, or null when it must not or cannot be read. */
+  (name: string): Promise<string | null>;
+}
+
+/** `data "aws_ssm_parameter" "label" { name = "/literal" }` → label → path. */
+export function ssmParameterPaths(hcl: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const b of findBlocks(stripComments(hcl), "data")) {
+    if (b.labels[0] !== "aws_ssm_parameter" || !b.labels[1]) continue;
+    const raw = attribute(b.body, "name");
+    if (!raw || isExpression(raw)) continue;
+    out.set(b.labels[1], raw.replace(/^"|"$/g, ""));
+  }
+  return out;
+}
+
+/** Which parameter, if any, an expression reads. */
+export function ssmReferenceIn(value: string, paths: Map<string, string>): string | null {
+  const m = /\bdata\.aws_ssm_parameter\.([A-Za-z0-9_-]+)\.value/.exec(value);
+  const label = m?.[1];
+  return label ? paths.get(label) ?? null : null;
+}
+
 /** A value that is not a literal — a variable, a local, an interpolation. */
 const isExpression = (v: string) =>
   /\$\{|\bvar\.|\blocal\.|\bdata\.|\bmodule\.|\beach\.|\bcount\./.test(v);
@@ -143,13 +190,37 @@ function numberValue(raw: string | null): { value: number | null; unresolved: bo
  * every rule declared the other way. Where one is seen, the group is marked
  * unresolved and reports nothing.
  */
-export function parseSecurityGroups(hcl: string): ParsedSecurityGroup[] {
+export async function parseSecurityGroups(
+  hcl: string, readParameter?: ParameterReader,
+): Promise<ParsedSecurityGroup[]> {
   const text = stripComments(hcl);
   const separateRules = /resource\s+"aws_security_group_rule"/.test(text);
+  const ssmPaths = ssmParameterPaths(hcl);
 
-  return findBlocks(text, "resource")
-    .filter(b => b.labels[0] === "aws_security_group")
-    .map(b => {
+  /**
+   * A CIDR list that may live in Parameter Store.
+   *
+   * Only reached for values the literal parser could not read, so a file with
+   * no parameter references costs no calls at all.
+   */
+  const resolveCidrs = async (raw: string | null) => {
+    const literal = listValues(raw);
+    if (!literal.unresolved || !raw || !readParameter) return literal;
+    const path = ssmReferenceIn(raw, ssmPaths);
+    if (!path) return literal;
+    const value = await readParameter(path);
+    if (value === null) return literal;   // unreadable, or a SecureString
+    return {
+      values: value.split(",").map(v => v.trim()).filter(Boolean),
+      unresolved: false,
+      from: path,
+    };
+  };
+
+  const groups = findBlocks(text, "resource")
+    .filter(b => b.labels[0] === "aws_security_group");
+
+  return Promise.all(groups.map(async b => {
       const notes: string[] = [];
       const nameRaw = attribute(b.body, "name") ?? attribute(b.body, "name_prefix");
       const name = nameRaw && !isExpression(nameRaw)
@@ -164,7 +235,10 @@ export function parseSecurityGroups(hcl: string): ParsedSecurityGroup[] {
         for (const block of findBlocks(b.body, direction)) {
           const from = numberValue(attribute(block.body, "from_port"));
           const to = numberValue(attribute(block.body, "to_port"));
-          const cidrs = listValues(attribute(block.body, "cidr_blocks"));
+          const cidrs = await resolveCidrs(attribute(block.body, "cidr_blocks"));
+          if ((cidrs as any).from) {
+            notes.push(`Read from Parameter Store: ${(cidrs as any).from}`);
+          }
           const protoRaw = attribute(block.body, "protocol");
           const protoUnresolved = !!protoRaw && isExpression(protoRaw);
 
@@ -191,11 +265,17 @@ export function parseSecurityGroups(hcl: string): ParsedSecurityGroup[] {
         );
       }
       return { label: b.labels[1] ?? "", name, rules, notes };
-    });
+  }));
 }
 
 export interface DriftFinding {
-  kind: "extra" | "missing";
+  /**
+   * `extra` — AWS has it, code does not. A change nobody captured.
+   * `missing` — code has it, AWS does not. A pipeline that never ran.
+   * `undeclared` — nothing declares the resource at all, so every rule on it
+   *   was made by hand. Not a comparison; a statement about the absence of one.
+   */
+  kind: "extra" | "missing" | "undeclared";
   /** Rendered for a person: "tcp 22 from 0.0.0.0/0". */
   rule: string;
   detail: string;
@@ -315,9 +395,29 @@ export function driftForSecurityGroup(
 
   if (!matched) {
     return {
-      findings: [], comparable: false, declaredIn: null,
+      findings: candidates.length === 0
+        // Not declaring a security group is itself the finding.
+        //
+        // Silence was the first behaviour, and on an account whose
+        // infrastructure is managed as code it is exactly backwards: a group
+        // nothing declares is a group somebody made by hand, and the rules on
+        // it were never reviewed. Reported as one finding per ingress rule, so
+        // "allows 22 from anywhere and nothing declares it" is visible rather
+        // than inferable.
+        ? live.ingress.flatMap(r =>
+            (r.cidrs.length ? r.cidrs : ["(another security group)"]).map(cidr => ({
+              kind: "undeclared" as const,
+              rule: ruleKey(r.protocol, r.from, r.to, cidr),
+              detail: "This group is not declared as code anywhere, so this rule was never reviewed",
+            })))
+        : [],
+      comparable: false, declaredIn: null,
       notes: candidates.length === 0
-        ? ["No Terraform declaration for this group was found in any repository you can see."]
+        ? [
+            "No infrastructure code in any repository you can see declares this group, so its "
+            + "rules exist only in the account. Nothing was compared — every rule below is "
+            + "reported because it is undeclared, not because it differs from something.",
+          ]
         : [
             `${candidates.length} security groups are declared in the referencing files and none `
             + `could be matched to this one by name. Comparing against the wrong declaration would `

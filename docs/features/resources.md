@@ -170,7 +170,6 @@ trusted:
 | A `dynamic "ingress"` block | It generates rules from an expression |
 | The file also declares `aws_security_group_rule` | Rules can be added from another file or module, so the inline ones are not the whole set |
 | Two declarations share the group's name | Picking the first compares against a coin flip |
-| No Terraform names the group at all | There is nothing to compare against |
 | A referencing file could not be read | The declaration is incomplete |
 
 "Cannot be compared" is shown as its own answer and deliberately **not** as a
@@ -178,6 +177,43 @@ clean bill of health.
 
 Commented-out blocks are stripped before anything reads the file. A rule
 somebody deliberately turned off, reported as drift, is exactly backwards.
+
+### A group nothing declares is itself the finding
+
+Silence used to be the answer when no infrastructure code declared a group. On
+an account managed as code that is backwards: a security group **no repository
+declares** is one somebody made by hand, and its rules were never reviewed by
+anybody. That is more worth surfacing than a diff, not less.
+
+Each ingress rule on such a group is reported as **undeclared** — neither
+`extra` nor `missing`, because nothing was compared:
+
+```
+  Not declared anywhere
+  undeclared   tcp 22 from 0.0.0.0/0
+  undeclared   tcp 443 from 0.0.0.0/0
+```
+
+A rule that allows another security group rather than a CIDR is still reported;
+it is a rule nobody wrote down either.
+
+### Values that live in Parameter Store
+
+The commonest reason a rule cannot be compared is that its value is not in the
+file: an office CIDR lives in SSM and the Terraform says
+`data.aws_ssm_parameter.office_cidr.value`. The value exists and is readable, so
+it is fetched and the comparison proceeds, with the parameter's path recorded on
+the report.
+
+Three things are refused rather than guessed:
+
+| | |
+|---|---|
+| A parameter whose **name** is itself a variable | Resolving it moves the problem rather than solving it |
+| A **SecureString** | Decrypting a secret to print it in a drift panel would put it on screen and in a response body. `WithDecryption` is never asked for, so even an operator who *could* decrypt it does not through this path |
+| A parameter that cannot be read | Gone, denied, wrong account. A missing parameter is not an empty CIDR |
+
+Each of those leaves the rule unresolved, which is where it was before.
 
 ### What it cannot tell you
 

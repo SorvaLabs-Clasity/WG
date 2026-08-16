@@ -54,7 +54,7 @@ export interface ResourceExperts {
 }
 
 export interface DriftReport {
-  findings: Array<{ kind: "extra" | "missing"; rule: string; detail: string }>;
+  findings: Array<{ kind: "extra" | "missing" | "undeclared"; rule: string; detail: string }>;
   comparable: boolean;
   notes: string[];
   declaredIn: { repo: string; path: string } | null;

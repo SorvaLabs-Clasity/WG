@@ -442,7 +442,32 @@ function BlastBody({ data }: { data: NonNullable<ReturnType<typeof useBlastRadiu
               bill of health. A declaration built from variables cannot be
               resolved without running Terraform, and saying "no drift" on that
               basis would be a claim nothing supports. */}
-          {!data.drift.comparable ? (
+          {!data.drift.comparable && data.drift.findings.length > 0 ? (
+            // An undeclared group. Not a comparison — a statement that no
+            // comparison is possible because nothing declares it, which is the
+            // more serious thing to know on an account managed as code.
+            <div className="px-5 pb-4">
+              <p className="text-[13px] font-bold text-rose-700 dark:text-rose-300">
+                Not declared anywhere
+              </p>
+              {data.drift.notes.map((n, i) => (
+                <p key={i} className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">{n}</p>
+              ))}
+              <ul className="mt-2 space-y-1.5">
+                {data.drift.findings.map((f, i) => (
+                  <li key={i} className="flex items-start gap-2.5">
+                    <span className="mt-0.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300 shrink-0">
+                      undeclared
+                    </span>
+                    <span className="min-w-0">
+                      <code className="text-[13px] font-mono text-slate-800 dark:text-slate-100">{f.rule}</code>
+                      <span className="block text-[11px] text-slate-500 dark:text-slate-400">{f.detail}</span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : !data.drift.comparable ? (
             <div className="px-5 pb-4">
               <p className="text-[13px] font-semibold text-slate-600 dark:text-slate-300">
                 Cannot be compared
