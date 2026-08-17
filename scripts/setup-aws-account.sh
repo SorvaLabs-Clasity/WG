@@ -60,22 +60,29 @@ ask() {
   printf -v "$__var" '%s' "$__reply" 2>/dev/null || eval "$__var=\$__reply"
 }
 
-# Credentials first: an expired session makes every question below pointless.
-if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+# Credentials, whichever way they arrived.
+#
+# Three cases, and the middle one is the one that used to stop the script dead:
+# exports in the shell that have since expired. It took the environment branch,
+# failed, and told the person to go and find fresh exports — while they were
+# already signed in with a perfectly good SSO profile.
+#
+# The env vars have to be *unset* to fall back, not merely ignored: AWS's
+# credential chain puts AWS_ACCESS_KEY_ID ahead of AWS_PROFILE, so a stale key
+# left in the environment silently overrides the profile that would have worked.
+if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && aws sts get-caller-identity >/dev/null 2>&1; then
+  echo "  using credentials from the environment" >&2
+else
+  if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
+    echo "  the credentials exported in this shell are expired — ignoring them" >&2
+    unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+  fi
   ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-}"
   export AWS_PROFILE="$AWS_PROFILE_IN"
   if ! aws sts get-caller-identity >/dev/null 2>&1; then
     echo "  no valid session for $AWS_PROFILE — signing in" >&2
     aws sso login --profile "$AWS_PROFILE" || {
-      echo "Could not sign in to '$AWS_PROFILE'." >&2; exit 1; }
-  fi
-else
-  echo "  using credentials from the environment" >&2
-  if ! aws sts get-caller-identity >/dev/null 2>&1; then
-    echo "Those environment credentials are expired. Copy a fresh set of exports" >&2
-    echo "from the AWS access portal, or unset AWS_ACCESS_KEY_ID," >&2
-    echo "AWS_SECRET_ACCESS_KEY and AWS_SESSION_TOKEN to be asked for a profile." >&2
-    exit 1
+      echo "Could not sign in to '$AWS_PROFILE'. Check the name in ~/.aws/config." >&2; exit 1; }
   fi
 fi
 
