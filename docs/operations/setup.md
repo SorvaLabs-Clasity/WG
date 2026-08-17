@@ -167,7 +167,7 @@ Then, in order:
 | Team slug | Controls |
 |---|---|
 | `control-hub-admins` | Scanners, widgets, alerts, config import, and undoing changes to any of them |
-| `aws-guardrail-admins` | AWS rules, accounts, sweeps, enforce mode |
+| `aws-guardrail-admins` | AWS rules, sweeps, enforce mode |
 
 The slugs must be exactly these — membership is checked by slug, and both are
 overridable only by environment variable. Anyone outside them gets a read-only
@@ -645,9 +645,9 @@ every environment, so it is not a switch.
 Three environments with notifications on means three emails per event and no
 way to tell which one shouted.
 
-**Keep production AWS accounts out of a non-production guardrail's
-monitored-account list.** Nothing else in another environment can reach
-production, but that list is an explicit invitation to.
+**A guardrail engine watches only the account it is deployed in.** There is no
+monitored-account list and no way to point one environment's engine at another's
+resources, so this needs no discipline — it is a property of the IAM.
 
 ### What is not supported yet
 
@@ -665,8 +665,8 @@ environment is the supported shape.
    people. This also populates Overview, Security and the rest — before the
    first sync they say they are stale rather than showing an empty organization.
 3. **Set a log group's retention to 1 day** and run a sweep from the AWS tab. It
-   should be flagged, and reported as something the app is not permitted to fix
-   — correct, since the deployment is read-only.
+   should be flagged. The rule starts in report mode, so it records the fix it
+   would have made and changes nothing until you switch that rule to enforce.
 4. **Open the PR's tab.** Every open pull request should be listed, oldest idle
    first. Reminders are off by default; the list works without them.
 5. **Open a security check that reads GitHub per subject** — Dormant Privileged
@@ -683,14 +683,17 @@ environment is the supported shape.
 main. The workflow builds for macOS and Windows and publishes one release;
 installed copies update on next launch. See [updates](../desktop/updates.md).
 
-**More AWS accounts.** In the app: AWS → Accounts → *How do I add an account?*
-It generates the CloudFormation template, every parameter, a fresh external ID
-and the console links, and offers all accounts, chosen accounts, or one. See
-[accounts](../aws-guardrails/accounts.md).
+**More AWS accounts.** Deploy the app again in that account. There is
+deliberately no registry: the engine reads the account it runs in, with the
+credentials it already has, and holds no `sts:AssumeRole` to reach anywhere else.
+That is more work than adding a row, and it means a compromise of the engine
+reaches exactly one account. See
+[permissions](../aws-guardrails/permissions.md).
 
 **Letting it change things.** Every rule starts in report mode; switch the ones
-you want to enforce, in the AWS tab. To act on another account, that account's
-role also needs `ReadOnly=false`. See
+you want to enforce, in the AWS tab. The engine holds exactly three write
+actions — `s3:PutBucketPolicy`, `logs:PutRetentionPolicy`,
+`logs:DeleteRetentionPolicy` — and nothing else. See
 [permissions](../aws-guardrails/permissions.md).
 
 **Gatekeeper.** macOS builds are ad-hoc signed, so the first open needs

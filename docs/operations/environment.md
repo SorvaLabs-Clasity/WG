@@ -46,7 +46,6 @@ the edge before anything reaches the queue.
 | `AWS_ADMIN_TEAM` | `aws-guardrail-admins` | Team gating AWS rules and accounts |
 | `ACTIVITY_RETENTION_MONTHS` | `13` | Activity TTL |
 | `GUARDRAIL_FUNCTION_NAME` | `<prefix>-guardrail-enforcer` | |
-| `GUARDRAIL_ROLE_NAME` | `<prefix>-guardrail-access` | The one role the app may assume |
 | `WEBHOOK_QUEUE_URL` | set by CDK | Read by the receiver; where a verified delivery is sent |
 | `WEBHOOK_DELIVERIES_TABLE` | set by CDK | Read by the worker; the dedup lock table |
 

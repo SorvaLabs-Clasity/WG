@@ -69,16 +69,6 @@ export class GitHubControlHubStack extends cdk.Stack {
     const webhookSecretName = props.webhookSecretName ?? "github-control-hub/webhook-secret";
     const stackPrefix = props.stackPrefix ?? "github-control-hub";
 
-    // The only role this app may ever assume, anywhere.
-    //
-    // Named exactly, and the grants below are scoped to this name alone. The
-    // roles AWS creates by default in organization member accounts —
-    // OrganizationAccountAccessRole, AWSControlTowerExecution — carry
-    // AdministratorAccess, and this app is deliberately unable to assume them.
-    // Convenience is not worth an application in a production account holding
-    // administrator anywhere.
-    const guardrailRoleName = `${stackPrefix}-guardrail-access`;
-
     // ── AWS guardrails ──
     // Enforcement runs here, in Lambda, rather than on a server: it needs no
     // inbound connectivity at all, so there is nothing for anyone to reach.
@@ -114,7 +104,6 @@ export class GitHubControlHubStack extends cdk.Stack {
         GUARDRAIL_EXCLUSIONS_TABLE: `${stackPrefix}-aws-exclusions`,
         GUARDRAIL_FINDINGS_TABLE: `${stackPrefix}-aws-findings`,
         ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
-        GUARDRAIL_ROLE_NAME: guardrailRoleName,
         ACTIVITY_TABLE: `${stackPrefix}-activity`,
       },
       deadLetterQueue: guardrailDlq,
@@ -176,24 +165,13 @@ export class GitHubControlHubStack extends cdk.Stack {
       }));
     }
 
-    // Reaching other accounts. The role name is fixed rather than "*" so this
-    // grant cannot be pointed at an arbitrary role someone happens to name in
-    // the accounts table — the target account still has to trust us back, but
-    // there is no reason for this side to be wider than it needs to be.
-    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "AssumeGuardrailRoleInOtherAccounts",
-      actions: ["sts:AssumeRole"],
-      // Exactly one role name. Deploy it across the organization with
-      // scripts/deploy-guardrail-role-org-wide.sh, which uses a StackSet — one
-      // command, every account, including accounts created later.
-      resources: [`arn:aws:iam::*:role/${guardrailRoleName}`],
-    }));
-
-    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "ReadAccountKeys",
-      actions: ["secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${stackPrefix}/aws-account/*`],
-    }));
+    // No sts:AssumeRole, and no read of stored credentials.
+    //
+    // Both existed for the accounts registry: the engine could assume a fixed
+    // role name in any account, and read access keys for accounts that were not
+    // in an organization. That registry is gone, and so is the standing
+    // capability it required — the engine now reads the account it runs in,
+    // with the credentials it already has, and can reach nothing else.
 
     // Which account we are in. Findings are stamped with it, so without this
     // every finding in the home account is labelled "unknown".
@@ -816,16 +794,6 @@ export class GitHubControlHubStack extends cdk.Stack {
     new cdk.CfnOutput(this, "CanChangeAnything", {
       value: "three write actions granted; each rule still chooses report or enforce",
       description: "Whether this deployment's IAM lets the app modify AWS at all",
-    });
-
-    new cdk.CfnOutput(this, "GuardrailRoleName", {
-      value: guardrailRoleName,
-      description: "Role name each additional AWS account must create for guardrails to reach it",
-    });
-
-    new cdk.CfnOutput(this, "GuardrailLambdaRoleArn", {
-      value: guardrailFn.role!.roleArn,
-      description: "Principal to trust in each additional account's guardrail role",
     });
 
     new cdk.CfnOutput(this, "GuardrailDlqUrl", {

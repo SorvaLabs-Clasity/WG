@@ -38,8 +38,6 @@ export interface Guardrail {
   applyOnCreate: boolean;
   params: Record<string, any>;
   exclusionLists: string[];
-  /** Accounts this rule runs in. Empty means all of them, now and later. */
-  accounts?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -123,51 +121,8 @@ export const runGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[]
 export const previewGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[]; accountIds?: string[] }) =>
   apiPost<RunResult>("/aws/preview", body);
 
-export interface DiscoveredAccount {
-  accountId: string;
-  name: string;
-  email?: string;
-  status?: string;
-  isHome: boolean;
-  registered: boolean;
-  /** Whether the guardrail role is already deployed there and trusts this app. */
-  reachable: boolean;
-  reason?: string;
-}
-
-export interface AccountSetup {
-  roleName: string;
-  homeAccountId: string;
-  region: string;
-  principals: { app: string; engine: string | null; engineError?: string };
-  externalId: string;
-  reusedExternalId: boolean;
-  template: string;
-  templateFileName: string;
-  stackSetName: string;
-  organization: {
-    available: boolean;
-    error?: string;
-    rootId: string | null;
-    accounts: { accountId: string; name: string; email?: string; status?: string }[];
-  };
-  consoleUrls: { stackSets: string; singleStack: string; organizations: string };
-  parameters: Record<string, string>;
-}
-
-export const fetchAccountSetup = (externalId?: string) =>
-  apiGet<AccountSetup>(`/aws/accounts/setup${externalId ? `?externalId=${encodeURIComponent(externalId)}` : ""}`);
 
 export const fetchAwsAccounts = () => apiGet<AwsAccount[]>("/aws/accounts");
-export const discoverAwsAccounts = (externalId?: string) =>
-  apiGet<{ available: boolean; error?: string; roleName?: string; rootId?: string | null; accounts: DiscoveredAccount[] }>(
-    `/aws/accounts/discover${externalId ? `?externalId=${encodeURIComponent(externalId)}` : ""}`);
-export const saveAwsAccount = (body: Partial<AwsAccount>) => apiPost<AwsAccount>("/aws/accounts", body);
-export const removeAwsAccount = (accountId: string) =>
-  apiDelete<{ removed: string }>(`/aws/accounts/${accountId}`);
-export const verifyAwsAccount = (accountId: string) =>
-  apiPost<{ ok: boolean; error?: string; via?: string; access?: AwsAccessMethod }>(
-    `/aws/accounts/${accountId}/verify`, {});
 
 export const fetchAwsExclusions = () => apiGet<AwsExclusionList[]>("/aws/exclusions");
 export const createAwsExclusion = (body: Partial<AwsExclusionList>) => apiPost<AwsExclusionList>("/aws/exclusions", body);

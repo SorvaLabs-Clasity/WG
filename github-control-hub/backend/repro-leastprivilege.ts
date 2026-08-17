@@ -22,7 +22,6 @@ function check(name: string, ok: boolean, got?: unknown) {
 
 const ROOT = path.join(__dirname, "../..");
 const cdk = fs.readFileSync(path.join(ROOT, "github-control-hub/infra/cdk-stack.ts"), "utf8");
-const template = fs.readFileSync(path.join(ROOT, "scripts/guardrail-account-role.yaml"), "utf8");
 const accountsTs = fs.readFileSync(path.join(__dirname, "src/aws-guardrails/accounts.ts"), "utf8");
 
 /** Strip comments, so prose about a role is not mistaken for a grant of it. */
@@ -33,7 +32,6 @@ const code = (src: string) => src
   .join("\n");
 
 const cdkCode = code(cdk);
-const templateCode = code(template);
 const accountsCode = code(accountsTs);
 
 (async () => {
@@ -49,23 +47,33 @@ const accountsCode = code(accountsTs);
 
   // ── sts:AssumeRole is scoped to one role name ──────────────────────
   //
-  // Two of these grants used to exist: the instance role's, so the app could
-  // verify an account before storing it, and the guardrail engine's, so it
-  // could sweep one. The instance role is gone with the webhook-on-Lambda
-  // migration, so only the engine's grant remains.
+  // ── the engine cannot leave the account it runs in ─────────────────
+  //
+  // There used to be two sts:AssumeRole grants: the instance role's, so the app
+  // could verify an account before storing it, and the engine's, so it could
+  // sweep one. Both are gone — the accounts registry was removed, and with it
+  // the standing ability to become a role in *any* account and to read stored
+  // credentials for accounts outside an organization.
+  //
+  // Asserted as an absence, because that is the property: an engine that can
+  // only read the account it already runs in cannot be pointed at somebody
+  // else's estate by a row in a table.
   {
-    const assumeBlocks = [...cdkCode.matchAll(/sts:AssumeRole[\s\S]{0,400}?resources:\s*\[([\s\S]*?)\]/g)]
-      .map(m => m[1]);
-    check("every sts:AssumeRole grant names resources",
-      assumeBlocks.length >= 1, assumeBlocks.length);
-    for (const block of assumeBlocks) {
-      check("  and none of them is a wildcard role",
-        !/["'`]\*["'`]/.test(block) && !/role\/\*/.test(block), block.trim());
-      check("  each names exactly one role",
-        block.split(",").filter(x => x.trim()).length === 1, block.trim());
-      check("  which is the guardrail role",
-        block.includes("guardrailRoleName"), block.trim());
-    }
+    check("nothing in the stack grants sts:AssumeRole",
+      !/sts:AssumeRole/.test(cdkCode),
+      "the engine could assume a role in another account again");
+
+    check("  and nothing reads credentials stored for another account",
+      !/aws-account\//.test(cdkCode),
+      "a secret holding another account's access keys is readable again");
+
+    check("  the app names no role to assume",
+      !/GUARDRAIL_ROLE_NAME|guardrailRoleArn/.test(accountsCode),
+      "the accounts module still knows how to reach another account");
+
+    check("  and organizations is not read",
+      !/organizations:/.test(cdkCode),
+      "the app can enumerate the organization's accounts again");
   }
 
   // ── no IAM, ever ───────────────────────────────────────────────────
@@ -98,7 +106,7 @@ const accountsCode = code(accountsTs);
         !enginePolicy.includes(`"${action}"`), action);
       check(`  nor is the role deployed into other accounts`,
         !new RegExp(`-\\s*${action.replace(/\*/g, "\\*")}\\s*$`, "m").test(
-          templateCode.split("Effect: Deny")[0]), action);
+          cdkCode), action);
     }
 
     // GetObject used to appear once, on the instance role: the deploy script
@@ -113,22 +121,6 @@ const accountsCode = code(accountsTs);
   }
 
   // ── writing is narrow, not optional ────────────────────────────────
-  {
-    // This used to assert the opposite: that the three write actions sat
-    // behind `-c enforce=true`. They no longer do, because a deploy that
-    // forgot the flag produced rules that reported violations and never fixed
-    // them — the feature half-working, invisibly. Whether a rule acts is
-    // decided per rule in the app, where it can be seen.
-    //
-    // What still has to hold is that the grant is three named actions and not
-    // a wildcard, which the block below checks.
-    check("the remediation grant is not gated on a deploy-time flag",
-      !/allowRemediation/.test(cdkCode) && !/tryGetContext\("enforce"\)/.test(cdkCode),
-      "a forgotten flag would silently disable remediation");
-    check("the account role template defaults to read-only",
-      /ReadOnly:[\s\S]{0,120}?Default:\s*"true"/.test(template), "ReadOnly does not default to true");
-  }
-
   // ── the internet-facing function is the smallest thing here ────────
   //
   // The receiver is the only component reachable from the internet. The
@@ -249,19 +241,6 @@ const accountsCode = code(accountsTs);
   }
 
   // ── the deployed role denies the dangerous things outright ─────────
-  {
-    const denySection = templateCode.slice(templateCode.indexOf("NeverPolicy"));
-    for (const action of ["s3:GetObject", "s3:DeleteBucket", "iam:*", "sts:AssumeRole",
-                          "s3:PutBucketAcl", "logs:DeleteLogGroup"]) {
-      check(`the account role explicitly denies ${action}`,
-        denySection.includes(action), action);
-    }
-    check("  and the denies live under Resources, not Outputs",
-      template.indexOf("NeverPolicy") > template.indexOf("\nResources:")
-      && template.indexOf("NeverPolicy") < template.indexOf("\nOutputs:"),
-      "NeverPolicy is in the wrong section");
-  }
-
   // ── secrets and tables stay inside this app's own prefix ───────────
   {
     const secretGrants = [...cdkCode.matchAll(/secretsmanager:[\s\S]{0,300}?resources:\s*\[([^\]]*)\]/g)]
@@ -276,17 +255,6 @@ const accountsCode = code(accountsTs);
   }
 
   // ── the embedded template is the same as the repo's ────────────────
-  {
-    const { ACCOUNT_ROLE_TEMPLATE } = await import("./src/aws-guardrails/accountRoleTemplate");
-    check("the template the app hands out is byte-identical to the repo's",
-      ACCOUNT_ROLE_TEMPLATE === template,
-      ACCOUNT_ROLE_TEMPLATE === template ? "" : "run: npx tsx sync-account-role-template.ts");
-    check("  so neither copy can quietly become the lenient one",
-      ACCOUNT_ROLE_TEMPLATE.includes("NeverPolicy")
-      && /ReadOnly:[\s\S]{0,120}?Default:\s*"true"/.test(ACCOUNT_ROLE_TEMPLATE),
-      "the embedded template lost its denies or its read-only default");
-  }
-
   // ── the app cannot create roles anywhere ───────────────────────────
   {
     // Creating an IAM role across an organization needs
@@ -353,15 +321,6 @@ const accountsCode = code(accountsTs);
       check("  and the copy on disk is actually patched",
         maj > 5 || (maj === 5 && (min > 0 || pat >= 9)), v);
     }
-  }
-
-  // ── one role name, agreed by all three files ───────────────────────
-  {
-    const suffix = "-guardrail-access";
-    check("the stack, the app and the template use the same role name",
-      cdkCode.includes(suffix) && accountsCode.includes(suffix)
-      && template.includes(`github-control-hub${suffix}`),
-      suffix);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

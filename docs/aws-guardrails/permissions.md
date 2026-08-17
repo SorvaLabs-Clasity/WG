@@ -38,21 +38,12 @@ it from the worker.
 
 ### Your own credentials, on the desktop
 
-`organizations:ListAccounts`, the `sts:AssumeRole` that verifies a new account
-is reachable before it is stored, and reading or invoking the guardrail
-function from the Accounts screen — none of these are granted by this stack to
-any role. They run under whichever AWS credentials you signed in with on the
-desktop app (see [AWS credentials](../auth/aws-credentials.md)), the same as
-every other AWS read the desktop makes. There is no shared "app" identity for
-them the way there was when the instance ran this same Express app; the
-instance and its role are gone along with it, and nothing replaced them,
-because nothing needed to — a browser has never been able to reach that part
-of the app anywhere but the desktop.
-
-Creating the AWS-account secret (`secretsmanager:CreateSecret`,
-`PutSecretValue` on `github-control-hub/aws-account/*`, for access keys to
-accounts outside your organization) is the same story: it runs under your own
-credentials when you add such an account from the desktop.
+Invoking the guardrail function for a manual run happens under whichever AWS
+credentials you signed in with on the desktop app (see
+[AWS credentials](../auth/aws-credentials.md)), the same as every other AWS read
+the desktop makes. There is no shared "app" identity for it the way there was
+when an instance ran this same Express app; that instance and its role are gone
+and nothing replaced them, because nothing needed to.
 
 ### The guardrail engine (Lambda role)
 
@@ -71,9 +62,9 @@ per rule, in the app:
 s3:PutBucketPolicy   logs:PutRetentionPolicy   logs:DeleteRetentionPolicy
 ```
 
-Plus `sts:AssumeRole` on the one role name, `sts:GetCallerIdentity`,
-`secretsmanager:GetSecretValue` on `github-control-hub/aws-account/*`, and
-DynamoDB on `github-control-hub-*`.
+Plus `sts:GetCallerIdentity` — so a finding can say which account it came from
+— and DynamoDB on `github-control-hub-*`. No `sts:AssumeRole`, and no read of
+credentials for any other account.
 
 `"*"` appears as a resource only where IAM offers no alternative:
 `ListAllMyBuckets` and `DescribeLogGroups` are account-wide operations, and the
@@ -81,91 +72,41 @@ DynamoDB on `github-control-hub-*`.
 
 ---
 
-## 2. Other accounts
+## 2. One account, and no way to reach another
 
-Reached by assuming a role that account grants — never a stored key, unless you
-choose that option for an account outside your organization.
+The engine reads the account it runs in, with the credentials it already has.
 
-**The role is `github-control-hub-guardrail-access`, and it is the only role
-this app is permitted to assume anywhere.** Its policy is the six reads above,
-with the same three writes available only if that account's stack sets
-`ReadOnly=false`.
+It used to do more. An organisation could register other accounts — reached by a
+role each one deployed, or by an access key pair kept in Secrets Manager — and
+the sweep ran across all of them. That worked, and it cost a permission the app
+had to hold permanently: `sts:AssumeRole` on a fixed role name in **any**
+account, plus `secretsmanager:CreateSecret`/`PutSecretValue`/`GetSecretValue` on
+a prefix holding other accounts' credentials, plus `organizations:ListAccounts`
+to discover them.
 
-It also carries explicit `Deny` statements, which no `Allow` from any policy
-can override:
+That is a large standing capability for a tool whose job is to report. The
+registry has been removed and those grants with it, so:
 
-- **Never read data** — `s3:GetObject`, `s3:GetObjectVersion`, `s3:GetObjectAcl`,
-  `logs:GetLogEvents`, `logs:FilterLogEvents`, `logs:StartQuery`
-- **Never destroy** — `s3:DeleteBucket`, `s3:DeleteBucketPolicy`,
-  `s3:DeleteObject`, `s3:DeleteObjectVersion`, `logs:DeleteLogGroup`,
-  `logs:DeleteLogStream`
-- **Never widen access** — `iam:*`, `sts:AssumeRole` (blocks role chaining),
-  `s3:PutBucketAcl`, `s3:PutObjectAcl`, `s3:PutBucketPublicAccessBlock`,
-  `s3:DeletePublicAccessBlock`, `s3:PutAccountPublicAccessBlock`,
-  `s3:PutBucketWebsite`
+- there is **no `sts:AssumeRole`** anywhere in the stack
+- there is **no read of stored credentials** for any other account
+- **`organizations:` is not read at all**
+- there is no role for another account to create, and no template to deploy
 
-Those denies are redundant against today's allow-list. They exist so that a
-broader policy attached to this role later — by anyone, for any reason — still
-cannot be used to expose your data.
+`repro-leastprivilege` asserts each of those as an absence, so re-introducing
+one fails a test rather than passing quietly.
 
-Its trust policy names **two** principals: the app and the guardrail engine.
-The app assumes the role to verify an account before storing it; the engine
-assumes it to sweep. Both ARNs are shown in the Accounts screen.
-
-### Deploying it
-
-**From the app.** AWS → Accounts → *How do I add an account?* gives you the
-template, every parameter filled in, a generated external ID, and a link to the
-right console page. Nothing to run.
-
-**From a checkout.** `scripts/deploy-guardrail-role-org-wide.sh` does the same
-thing from the command line.
-
-### Choosing which accounts
-
-Three shapes, and none of them is the default:
-
-| | Reaches | Accounts created later |
-|---|---|---|
-| **Accounts I choose** | only the ids you list | not included |
-| **Every account** | the whole organization | included automatically |
-| **Just one** | one account | n/a — repeat per account |
-
-"Accounts I choose" uses a StackSet aimed at your organization root with
-`AccountFilterType=INTERSECTION`, which narrows it to exactly the ids given.
-The filter matters: naming accounts *without* it deploys to the whole
-organizational unit as well. Auto-deployment is off for this shape, because the
-point of choosing accounts is that a new one does not join by itself.
-
-There is no configuration that reaches an account you did not name. The role
-has to exist in an account before this app can see it at all, and creating it
-is an action taken in that account.
-
-### Why the app does not create the role itself
-
-Creating an IAM role across an organization requires
-`cloudformation:CreateStackSet` with `CAPABILITY_NAMED_IAM`. Anything holding
-that permission can deploy an **administrator** role into every account in the
-organization — strictly worse than the administrator access this app was built
-without. It would trade a bounded permission for an unbounded one to save a few
-clicks.
-
-So the app does every part that costs nothing: it works out the ARNs, generates
-the external ID, carries the template, and builds the commands and links. A
-human presses Create, signed in as themselves. `repro-leastprivilege.ts` asserts
-that no `cloudformation:Create*`, no `iam:CreateRole`, and no `iam:PassRole`
-appears anywhere in the stack.
-
----
+An organisation that wants several accounts watched deploys the app once per
+account. That is more work than a registry, and it buys a property the registry
+could not: a compromise of the engine reaches exactly the account it already
+runs in.
 
 ## 3. What it deliberately cannot do
 
-**It cannot become an administrator.** AWS puts
-`OrganizationAccountAccessRole` — which carries `AdministratorAccess` — in every
-account opened through Organizations, and using it would mean no setup work at
-all. This app's IAM does not permit assuming it, or
-`AWSControlTowerExecution`, or any role but the one named above. That is the
-reason there is a setup script; the convenience was not worth the permission.
+**It cannot become anything.** There is no `sts:AssumeRole` in the stack at
+all, so the roles AWS puts in every organisation member account —
+`OrganizationAccountAccessRole` and `AWSControlTowerExecution`, both carrying
+`AdministratorAccess` — are unreachable, along with every other role. The engine
+runs as itself and nothing else.
 
 **It cannot read your data.** No `s3:GetObject` anywhere in the engine, no
 `logs:GetLogEvents`. It can see that a bucket has a policy and how long a log
@@ -177,8 +118,7 @@ any role, in any account.
 **It cannot delete anything.** Not a bucket, not an object, not a log group.
 
 **It changes nothing until a rule says so.** Every rule starts in report mode
-and is switched to enforce individually, in the AWS tab. For another account it
-also needs `ReadOnly=false` on that account's role. A rule left in report mode
+and is switched to enforce individually, in the AWS tab. A rule left in report mode
 still finds every violation and still records the exact fix it would have made;
 nothing is written
 the write and the finding says so in those words.
@@ -187,10 +127,10 @@ the write and the finding says so in those words.
 
 ## 4. What it can see about you
 
-Everything it reads is a setting, and every call it makes into another account
-appears in **that account's own CloudTrail**, under the session name
-`control-hub-guardrails`. The account being watched can audit exactly what was
-looked at, and revoke it by deleting one stack.
+Everything it reads is a setting, and every call it makes appears in this
+account's own CloudTrail under the guardrail function's role. There is no other
+account involved and no cross-account session to audit — the engine reads where
+it runs.
 
 ---
 

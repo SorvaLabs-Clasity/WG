@@ -38,7 +38,6 @@ finding says so in those words rather than surfacing a raw `AccessDenied`.
 ## Pages
 
 - [Rules](rules.md) — the catalog, and what each one checks
-- [Accounts](accounts.md) — running across dev / uat / prod
 - [Exclusions](exclusions.md) — skipping resources deliberately left alone
 - [Permissions](permissions.md) — the complete IAM inventory
 

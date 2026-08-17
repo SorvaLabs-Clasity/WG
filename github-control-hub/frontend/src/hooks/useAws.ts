@@ -3,8 +3,7 @@ import {
   fetchCatalog, fetchGuardrails, createGuardrail, updateGuardrail, deleteGuardrail,
   fetchFindings, runGuardrails, fetchAwsExclusions, createAwsExclusion,
   updateAwsExclusion, deleteAwsExclusion,
-  fetchAwsAccounts, saveAwsAccount, removeAwsAccount, verifyAwsAccount, discoverAwsAccounts,
-  fetchAccountSetup,
+  fetchAwsAccounts,
 } from "../api/aws";
 import type { Guardrail, AwsExclusionList, AwsAccount } from "../api/aws";
 
@@ -29,49 +28,6 @@ export function useAwsAccounts() {
   // Changes only when someone edits them, and every findings row is read
   // against this list, so it is worth not refetching constantly.
   return useQuery({ queryKey: ["aws", "accounts"], queryFn: fetchAwsAccounts, staleTime: 60_000 });
-}
-
-/**
- * Only fetched when the accounts screen asks for it: it calls out to AWS
- * Organizations, which is not something to do on every page load.
- */
-export function useDiscoverAwsAccounts(enabled: boolean, externalId?: string) {
-  return useQuery({
-    queryKey: ["aws", "accounts", "discover", externalId ?? ""],
-    queryFn: () => discoverAwsAccounts(externalId),
-    enabled,
-    staleTime: 5 * 60_000,
-  });
-}
-
-/** Only fetched when the setup panel is opened: it calls STS and Lambda. */
-export function useAccountSetup(enabled: boolean) {
-  return useQuery({
-    queryKey: ["aws", "accounts", "setup"],
-    queryFn: () => fetchAccountSetup(),
-    enabled,
-    staleTime: Infinity,
-  });
-}
-
-export function useSaveAwsAccount() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (body: Partial<AwsAccount>) => saveAwsAccount(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["aws"] }),
-  });
-}
-
-export function useRemoveAwsAccount() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (accountId: string) => removeAwsAccount(accountId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["aws"] }),
-  });
-}
-
-export function useVerifyAwsAccount() {
-  return useMutation({ mutationFn: (accountId: string) => verifyAwsAccount(accountId) });
 }
 
 export function useCreateGuardrail() {

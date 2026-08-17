@@ -40,8 +40,8 @@ has no fallback to an administrator role, by design.
 ## A guardrail finds a violation but will not fix it
 
 The rule is in report mode, which is where every rule starts. Switch it to
-enforce in the AWS tab. For a finding in another account, that account's role
-also needs `ReadOnly=false`.
+enforce in the AWS tab. A rule in report mode still finds every violation and
+records the exact fix it would have made — it just does not make it.
 
 ## Activity stopped recording changes made in GitHub
 
