@@ -52,19 +52,9 @@ before it surprises anyone.
 
 ## The AWS resource features
 
-The Resources tab — blast radius, drift, who has worked on it — adds **nothing**
-to the bill. Every AWS call it makes is a `List` or `Describe`, which AWS does
-not charge for, and it persists nothing: no DynamoDB rows, no Lambda
-invocations, no schedule. It runs on demand with the operator's own credentials
-and holds its caches in memory.
+The AWS features here read only configuration — every call is a `List` or a
+`Describe`, and those are free.
 
-**There is no exception.** A cost panel briefly read Cost Explorer here, which
-charges $0.01 per request; it was removed along with the rest of the billing
-feature, and with it the only metered AWS call anywhere in the app.
-
-The real constraint on these features is GitHub quota rather than money: code
-search allows ten requests a minute, and one blast-radius lookup costs one to
-three of them.
 
 ## What scales
 

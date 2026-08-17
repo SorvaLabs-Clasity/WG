@@ -14,7 +14,6 @@ In the order the tabs appear:
 | Access | [access-map.md](access-map.md) | Who can reach what, and how |
 | Vulnerabilities | [dependabot.md](dependabot.md) · [renovate.md](renovate.md) | What is vulnerable, and what has been raised to fix it |
 | Repos | [repos.md](repos.md) | Everything about one repository |
-| Resources | [resources.md](resources.md) | What breaks if I delete this AWS resource |
 | PR's | [stale-pulls.md](stale-pulls.md) | What is open, what has gone quiet, and who to chase |
 | Who knows | [who-knows.md](who-knows.md) | Who has actually touched this, for incidents |
 | Activity | [activity-and-undo.md](activity-and-undo.md) | What changed, who did it, undo |

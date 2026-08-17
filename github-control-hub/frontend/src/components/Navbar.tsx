@@ -30,7 +30,6 @@ const ITEMS = [
   { label: "Vulnerabilities", short: "Vulns", icon: "ph-bug-beetle", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies") },
   { label: "Repos", short: "Repos", icon: "ph-books", path: "/graph", match: (p: string) => p.startsWith("/graph") },
   { label: "PR's", short: "PR's", icon: "ph-git-pull-request", path: "/pulls", match: (p: string) => p.startsWith("/pulls") },
-  { label: "Resources", short: "Res", icon: "ph-crosshair", path: "/resources", match: (p: string) => p.startsWith("/resources") },
   { label: "Who knows", short: "Who", icon: "ph-users-three", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows") },
   { label: "Activity", short: "Activity", icon: "ph-pulse", path: "/activity", match: (p: string) => p.startsWith("/activity") },
 ];
