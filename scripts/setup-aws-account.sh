@@ -118,7 +118,8 @@ if [ "${SKIP_CONFIRM:-}" = "1" ] || [ ! -t 0 ]; then
   echo "  (proceeding without prompting: not an interactive terminal)"
 else
   read -r -p "Create resources in this account? [y/N] " confirm
-  [[ "$confirm" == [yY] ]] || { echo "Aborted."; exit 1; }
+  # "yes" used to abort, because this matched a single character.
+  [[ "$confirm" =~ ^([yY]|[yY][eE][sS])$ ]] || { echo "Aborted."; exit 1; }
 fi
 
 # ── 1. DynamoDB tables ──

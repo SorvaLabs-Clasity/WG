@@ -212,6 +212,32 @@ git pull
 Safe to re-run: every step checks for what it is about to create. Ctrl-C is safe
 at any prompt — nothing is written until the step it is in completes.
 
+A re-run against an account that is already set up offers what is already stored
+as the default for every credential, so one field can be corrected without
+retyping the rest. Two things follow from that, and both matter if you are
+running it a second time:
+
+- **The webhook secret is kept, not re-rolled.** Only a missing one is generated.
+  A re-run therefore does not break the org webhook, and the script says which
+  of the two happened.
+- **Fields the script does not know about survive.** The credential secret is
+  merged, not replaced, so anything added to it by hand stays.
+
+Before writing anything, it asks GitHub whether the credentials actually work,
+then prints the account, region, org, App ID, installation ID and GitHub's answer
+together and asks to confirm. A private key belonging to a *different* App is
+accepted by AWS without complaint and only rejected by GitHub later, as
+`A JSON web token could not be decoded` at some subsequent startup — an error
+that names no field and points at no account.
+
+The order matters for the second run in particular. An account already holding
+another install's credentials offers those credentials back as the defaults, so
+pressing enter through the prompts re-confirms the values that were wrong. The
+check runs first so that run stops with the old secret still in place instead of
+rewriting it and reporting the problem afterwards. If GitHub rejects them you are
+still asked, in those words, whether to write them anyway — useful when you are
+setting up an App that has not been installed yet.
+
 ### What it asks first
 
 | Prompt | Notes |

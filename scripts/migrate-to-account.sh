@@ -45,8 +45,24 @@ ask_secret() {  # never echoed, never logged
   read -r -s -p "  $__prompt: " __reply; echo
   printf -v "$__var" '%s' "$__reply"
 }
+# A secret that already exists, kept on enter. The value is never shown, so the
+# prompt says it is there rather than what it is. With nothing stored it loops,
+# because an empty client secret produces an install that cannot sign anyone in.
+ask_secret_keep() {  # ask_secret_keep <var> <prompt> <current>
+  local __var="$1" __prompt="$2" __current="$3" __reply
+  if [ -n "$__current" ]; then
+    read -r -s -p "  $__prompt [enter to keep the stored one]: " __reply; echo
+    __reply="${__reply:-$__current}"
+  else
+    while [ -z "${__reply:-}" ]; do read -r -s -p "  $__prompt: " __reply; echo; done
+  fi
+  printf -v "$__var" '%s' "$__reply"
+}
 
-confirm() { local r; read -r -p "  $1 [y/N] " r; [[ "$r" == [yY] ]]; }
+# Anything that reads as yes counts. This matched a single `y` and nothing else,
+# so typing the whole word answered no — and the one place that mattered most
+# treated no as "keep whatever is already stored", silently.
+confirm() { local r; read -r -p "  $1 [y/N] " r; [[ "$r" =~ ^([yY]|[yY][eE][sS])$ ]]; }
 
 command -v aws >/dev/null || die "aws CLI not found."
 command -v node >/dev/null || die "node not found."
@@ -163,14 +179,46 @@ echo "  These live in Secrets Manager and are never written to disk by this"
 echo "  script. Secret values are read without echoing."
 echo
 
+# What is stored now, so a re-run can correct one field without retyping the
+# rest — and so keys this script does not know about survive the write.
+#
+# This used to ask "replace its contents?" and, on anything but a bare `y`, skip
+# the entire step in silence. Two installs sharing a GitHub org therefore ended
+# up with one AWS account holding the other's App credentials, and the run that
+# did it printed nothing to say so. The symptom arrived days later as GitHub
+# refusing a JWT it could not verify, which names no field at all.
+#
+# There is no all-or-nothing question any more. Every field offers what is
+# already there as its default.
+EXISTING=""
 if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1; then
-  skip "Secret $SECRET_NAME already exists"
-  if ! confirm "Replace its contents?"; then
-    SKIP_SECRET_WRITE=1
+  EXISTING=$(aws secretsmanager get-secret-value --secret-id "$SECRET_NAME" \
+    --query SecretString --output text 2>/dev/null || echo "")
+  if [ -n "$EXISTING" ]; then
+    ok "Secret $SECRET_NAME exists — enter keeps what it already holds"
+  else
+    warn "Secret $SECRET_NAME exists but its value could not be read"
+    warn "Every field below has to be entered."
   fi
 fi
 
-if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
+# One field out of the stored JSON; empty if absent, or if the value is not JSON
+# at all. Never fails the run — a secret written by hand is still something to
+# offer defaults from where it can.
+cur() {
+  [ -n "$EXISTING" ] || return 0
+  CUR="$EXISTING" node -e '
+    try {
+      const v = JSON.parse(process.env.CUR)[process.argv[1]];
+      if (v !== undefined && v !== null) process.stdout.write(String(v));
+    } catch {}' "$1" 2>/dev/null
+}
+
+# The webhook HMAC lives in its own secret, so it is read from there.
+EXISTING_WEBHOOK=$(aws secretsmanager get-secret-value --secret-id "$WEBHOOK_SECRET_NAME" \
+  --query SecretString --output text 2>/dev/null || echo "")
+
+if [ -z "$EXISTING" ]; then
   echo
   echo "  ${bold}Create these in GitHub first${off} (open in a browser):"
   echo "    OAuth App   https://github.com/organizations/$GH_ORG/settings/applications"
@@ -181,13 +229,40 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
   echo "                Then install it on the org and note the installation id"
   echo "                (it is the number at the end of the install URL)."
   echo
+  echo "  The client id and secret come from the ${bold}OAuth App${off} page. The GitHub"
+  echo "  App page has fields with those names too, and they are not the ones"
+  echo "  wanted here — the App authenticates with its private key instead."
+  echo
   read -r -p "  Press enter once both exist… " _
+fi
 
-  ask        GH_CLIENT_ID    "OAuth App client ID"
-  ask_secret GH_CLIENT_SECRET "OAuth App client secret"
-  ask        GH_APP_ID       "GitHub App ID"
-  ask        GH_INSTALL_ID   "GitHub App installation ID"
-  ask        GH_PEM_PATH     "Path to the GitHub App private key (.pem), or drag the file here"
+echo
+ask             GH_CLIENT_ID     "OAuth App client ID"        "$(cur GITHUB_CLIENT_ID)"
+ask_secret_keep GH_CLIENT_SECRET "OAuth App client secret"    "$(cur GITHUB_CLIENT_SECRET)"
+ask             GH_APP_ID        "GitHub App ID"              "$(cur GITHUB_APP_ID)"
+ask             GH_INSTALL_ID    "GitHub App installation ID" "$(cur GITHUB_APP_INSTALLATION_ID)"
+
+# The App ID must be the short number from the App's General page. The Client ID
+# beside it looks like a credential and is the wrong one; stored here it yields
+# a JWT with an `iss` GitHub cannot resolve, and the error names neither field.
+case "$GH_APP_ID" in
+  ''|*[!0-9]*) die "'$GH_APP_ID' is not a GitHub App ID. That is the short numeric id on the App's General page — not the Client ID, which starts with Iv or Ov." ;;
+esac
+case "$GH_INSTALL_ID" in
+  ''|*[!0-9]*) die "'$GH_INSTALL_ID' is not an installation ID. It is the number at the end of the install URL." ;;
+esac
+
+STORED_PEM="$(cur GITHUB_APP_PRIVATE_KEY)"
+# Initialised, because `read` leaves it unset on EOF and `set -u` is on — the
+# next test would then abort the run instead of the prompt simply being empty.
+GH_PEM_PATH=""
+if [ -n "$STORED_PEM" ]; then
+  read -r -p "  Path to the .pem, or enter to keep the stored key: " GH_PEM_PATH || true
+else
+  ask GH_PEM_PATH "Path to the GitHub App private key (.pem), or drag the file here"
+fi
+
+if [ -n "$GH_PEM_PATH" ]; then
   # A tilde typed at a prompt arrives as a literal character — the shell expands
   # ~ before a variable ever holds it, so `[ -f "~/key.pem" ]` looks for a
   # directory actually named "~". Expanding it here is the difference between
@@ -211,67 +286,204 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
   # file someone chose an hour earlier.
   grep -q -- "-----BEGIN" "$GH_PEM_PATH" && grep -q -- "PRIVATE KEY-----" "$GH_PEM_PATH" \
     || die "$GH_PEM_PATH is not a PEM private key. GitHub's file is named <app>.<date>.private-key.pem and starts with -----BEGIN."
-  echo
+  PEM_DESC="$GH_PEM_PATH"
+else
+  PEM_DESC="keeping the key already stored"
+fi
+echo
 
-  # Generated, not asked for — no reason for a human to invent these.
+# Kept, not re-rolled.
+#
+# These were regenerated on every write. Correcting an App ID therefore rotated
+# the webhook HMAC as a side effect: the org webhook in GitHub kept the old one,
+# every delivery began failing signature verification, and nothing said so. A
+# secret that already exists is reused; only a missing one is generated.
+WEBHOOK_SECRET="$EXISTING_WEBHOOK"
+JWT_SECRET="$(cur JWT_SECRET)"
+WEBHOOK_IS_NEW=""
+if [ -z "$WEBHOOK_SECRET" ]; then
   WEBHOOK_SECRET=$(openssl rand -hex 32)
-  JWT_SECRET=$(openssl rand -hex 48)
-  ok "Generated a webhook secret and JWT secret"
+  WEBHOOK_IS_NEW=1
+  WEBHOOK_DESC="generating a new one — the org webhook must be updated to match"
+else
+  WEBHOOK_DESC="keeping the existing one — the org webhook stays as it is"
+fi
+# Rotating this signs everyone out, so it is preserved on the same terms.
+[ -n "$JWT_SECRET" ] || JWT_SECRET=$(openssl rand -hex 48)
 
-  # Built with node so the private key's newlines survive JSON encoding, and
-  # so no secret ever appears in an argument list or the shell history.
-  SECRET_JSON=$(GH_PEM_PATH="$GH_PEM_PATH" \
-    GH_CLIENT_ID="$GH_CLIENT_ID" GH_CLIENT_SECRET="$GH_CLIENT_SECRET" \
-    GH_APP_ID="$GH_APP_ID" GH_INSTALL_ID="$GH_INSTALL_ID" GH_ORG="$GH_ORG" WEBHOOK_SECRET="$WEBHOOK_SECRET" JWT_SECRET="$JWT_SECRET" \
-    node -e '
+
+# Merged onto what is already there, so a key this script does not know about is
+# not deleted by a run that only meant to correct one field — the previous write
+# replaced the whole document with the seven fields below and dropped the rest.
+# Built with node so the private key's newlines survive JSON encoding, and so no
+# secret ever appears in an argument list or the shell history.
+SECRET_JSON=$(EXISTING="$EXISTING" GH_PEM_PATH="$GH_PEM_PATH" \
+  GH_CLIENT_ID="$GH_CLIENT_ID" GH_CLIENT_SECRET="$GH_CLIENT_SECRET" \
+  GH_APP_ID="$GH_APP_ID" GH_INSTALL_ID="$GH_INSTALL_ID" GH_ORG="$GH_ORG" JWT_SECRET="$JWT_SECRET" \
+  node -e '
       const fs = require("fs");
-      process.stdout.write(JSON.stringify({
+      let base = {};
+      try { base = JSON.parse(process.env.EXISTING || "{}") || {}; } catch {}
+      const key = process.env.GH_PEM_PATH
+        ? fs.readFileSync(process.env.GH_PEM_PATH, "utf8")
+        : base.GITHUB_APP_PRIVATE_KEY;
+      if (!key) throw new Error("no private key to store");
+      process.stdout.write(JSON.stringify(Object.assign(base, {
         GITHUB_CLIENT_ID:            process.env.GH_CLIENT_ID,
         GITHUB_CLIENT_SECRET:        process.env.GH_CLIENT_SECRET,
         GITHUB_APP_ID:               process.env.GH_APP_ID,
         GITHUB_APP_INSTALLATION_ID:  process.env.GH_INSTALL_ID,
-        GITHUB_APP_PRIVATE_KEY:      fs.readFileSync(process.env.GH_PEM_PATH, "utf8"),
+        GITHUB_APP_PRIVATE_KEY:      key,
         GITHUB_ORG:                  process.env.GH_ORG,
         JWT_SECRET:                  process.env.JWT_SECRET,
-      }));')
-  # GITHUB_WEBHOOK_SECRET is not in here. It goes to its own secret below, so
-  # the internet-facing receiver never holds a key to GITHUB_APP_PRIVATE_KEY.
+      })));')
+# GITHUB_WEBHOOK_SECRET is not in here. It goes to its own secret below, so
+# the internet-facing receiver never holds a key to GITHUB_APP_PRIVATE_KEY.
 
-  # This script runs without `set -e`, so a node that threw would leave
-  # SECRET_JSON empty and the upload would carry on and store nothing —
-  # producing an install that looks configured and has no credentials in it.
-  case "$SECRET_JSON" in
-    *GITHUB_APP_PRIVATE_KEY*) ;;
-    *) die "Could not assemble the secret, so nothing was written. Check that $GH_PEM_PATH is readable." ;;
-  esac
+# This script runs without `set -e`, so a node that threw would leave
+# SECRET_JSON empty and the upload would carry on and store nothing —
+# producing an install that looks configured and has no credentials in it.
+case "$SECRET_JSON" in
+  *GITHUB_APP_PRIVATE_KEY*) ;;
+  *) die "Could not assemble the secret, so nothing was written." ;;
+esac
 
-  if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1; then
-    aws secretsmanager put-secret-value --secret-id "$SECRET_NAME" \
-      --secret-string "$SECRET_JSON" >/dev/null
+# ── ask GitHub before writing, not after ──
+#
+# This ran after the write, which was the wrong way round for the case it exists
+# to catch. An account seeded with another install's credentials offers those
+# credentials back as the defaults for a re-run, so pressing enter through the
+# prompts re-confirms exactly the values that were already wrong. Checking first
+# means that run stops with the old secret still in place, rather than rewriting
+# it and reporting the problem afterwards.
+#
+# Signed with node's own crypto, so this needs nothing installed.
+check_github() {
+  SECRET_JSON="$SECRET_JSON" node -e '
+    const crypto = require("crypto");
+    const j = JSON.parse(process.env.SECRET_JSON);
+    if (typeof fetch !== "function") { console.log("SKIP this node has no fetch"); return; }
+    const seg = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+    const now = Math.floor(Date.now() / 1000);
+    const signed = seg({ alg: "RS256", typ: "JWT" }) + "." +
+                   seg({ iat: now - 60, exp: now + 540, iss: j.GITHUB_APP_ID });
+    let jwt;
+    try {
+      jwt = signed + "." + crypto.sign("RSA-SHA256", Buffer.from(signed),
+        crypto.createPrivateKey(j.GITHUB_APP_PRIVATE_KEY)).toString("base64url");
+    } catch (e) { console.log("BADKEY " + e.message); return; }
+    const headers = { authorization: "Bearer " + jwt, accept: "application/vnd.github+json" };
+    (async () => {
+      let r, b;
+      try {
+        r = await fetch("https://api.github.com/app", { headers });
+        b = await r.json();
+      } catch (e) { console.log("SKIP could not reach github.com: " + e.message); return; }
+      if (r.status !== 200) { console.log("MISMATCH " + b.message); return; }
+      try {
+        const i = await fetch("https://api.github.com/app/installations", { headers });
+        const list = await i.json();
+        const ids = Array.isArray(list) ? list.map(x => String(x.id)) : [];
+        if (!ids.includes(String(j.GITHUB_APP_INSTALLATION_ID))) {
+          console.log("BADINSTALL " + b.slug + " | this app is installed as: " + (ids.join(", ") || "nowhere"));
+          return;
+        }
+        console.log("OK " + b.slug);
+      } catch (e) { console.log("SKIP " + e.message); }
+    })();' 2>&1
+}
+
+echo "  Checking these credentials with GitHub…"
+VERDICT="$(check_github)" || VERDICT="SKIP the check could not run"
+case "$VERDICT" in
+  OK*)         GH_DESC="accepted — App is \"${VERDICT#OK }\"" ;;
+  MISMATCH*)   GH_DESC="${bold}REJECTED${off} — ${VERDICT#MISMATCH }" ;;
+  BADINSTALL*) GH_DESC="${bold}wrong installation id${off} — ${VERDICT#BADINSTALL }" ;;
+  BADKEY*)     GH_DESC="${bold}unusable key${off} — ${VERDICT#BADKEY }" ;;
+  *)           GH_DESC="not checked (${VERDICT#SKIP })" ;;
+esac
+
+# Nothing about which account this is going to was on screen at this point. The
+# account was printed once, before the tables, and never again — so a run that
+# put one environment's App credentials into another environment's account had
+# no moment where that was visible.
+echo
+echo "    account      : $ACCOUNT"
+echo "    region       : $REGION"
+echo "    secret       : $SECRET_NAME"
+echo "    org          : $GH_ORG"
+echo "    app id       : $GH_APP_ID"
+echo "    installation : $GH_INSTALL_ID"
+echo "    private key  : $PEM_DESC"
+echo "    webhook HMAC : $WEBHOOK_DESC"
+echo "    github says  : $GH_DESC"
+echo
+
+case "$VERDICT" in
+  MISMATCH*)
+    warn "The private key does not belong to App ID $GH_APP_ID."
+    warn "That happens when two Apps' .pem downloads sit in the same folder, or"
+    warn "when this account was set up with another install's credentials and the"
+    warn "defaults above came from that. Check the App ID on the App's General"
+    warn "page, and use a key generated on that same App."
+    echo ;;
+  BADINSTALL*)
+    warn "The key and App ID are a pair, but installation $GH_INSTALL_ID is not"
+    warn "one of this App's installations. The ids it does have are listed above."
+    echo ;;
+  BADKEY*)
+    warn "The key assembled here is not a usable private key."
+    echo ;;
+esac
+
+# Three outcomes, not two. "Could not reach GitHub" is not the same claim as
+# "GitHub rejected this", and a prompt that conflates them teaches people to
+# click through the one that matters.
+case "$VERDICT" in
+  OK*)
+    confirm "Write these to $SECRET_NAME in account $ACCOUNT?" \
+      || die "Aborted. The secret was not changed." ;;
+  MISMATCH*|BADINSTALL*|BADKEY*)
+    confirm "GitHub rejected these. Write them anyway?" \
+      || die "Aborted. The secret was not changed — nothing is worse than before." ;;
+  *)
+    confirm "Credentials could not be checked. Write them unverified?" \
+      || die "Aborted. The secret was not changed." ;;
+esac
+
+if [ -n "$EXISTING" ] || aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1; then
+  aws secretsmanager put-secret-value --secret-id "$SECRET_NAME" \
+    --secret-string "$SECRET_JSON" >/dev/null || die "Could not write $SECRET_NAME."
+else
+  aws secretsmanager create-secret --name "$SECRET_NAME" \
+    --description "GitHub Control Hub — GitHub credentials" \
+    --secret-string "$SECRET_JSON" >/dev/null || die "Could not create $SECRET_NAME."
+fi
+ok "Stored $SECRET_NAME"
+
+# Stored as the bare value, not JSON: the receiver reads this secret and
+# nothing else, so there is nothing to wrap it in.
+#
+# Only written when it was generated. An unconditional write here published a new
+# version of a secret whose value had not changed, and worse, made every re-run
+# look like a rotation whether or not one happened.
+if [ -n "$WEBHOOK_IS_NEW" ]; then
+  if aws secretsmanager describe-secret --secret-id "$WEBHOOK_SECRET_NAME" >/dev/null 2>&1; then
+    aws secretsmanager put-secret-value --secret-id "$WEBHOOK_SECRET_NAME" \
+      --secret-string "$WEBHOOK_SECRET" >/dev/null || die "Could not write $WEBHOOK_SECRET_NAME."
   else
-    aws secretsmanager create-secret --name "$SECRET_NAME" \
-      --description "GitHub Control Hub — GitHub credentials" \
-      --secret-string "$SECRET_JSON" >/dev/null
+    aws secretsmanager create-secret --name "$WEBHOOK_SECRET_NAME" \
+      --description "GitHub webhook HMAC secret. Read only by the internet-facing receiver Lambda." \
+      --secret-string "$WEBHOOK_SECRET" >/dev/null || die "Could not create $WEBHOOK_SECRET_NAME."
   fi
-  # Stored as the bare value, not JSON: the receiver reads this secret and
-  # nothing else, so there is nothing to wrap it in.
-  if [ -n "$WEBHOOK_SECRET" ]; then
-    if aws secretsmanager describe-secret --secret-id "$WEBHOOK_SECRET_NAME" >/dev/null 2>&1; then
-      aws secretsmanager put-secret-value --secret-id "$WEBHOOK_SECRET_NAME" \
-        --secret-string "$WEBHOOK_SECRET" >/dev/null
-    else
-      aws secretsmanager create-secret --name "$WEBHOOK_SECRET_NAME" \
-        --description "GitHub webhook HMAC secret. Read only by the internet-facing receiver Lambda." \
-        --secret-string "$WEBHOOK_SECRET" >/dev/null
-    fi
-    ok "Stored $WEBHOOK_SECRET_NAME"
-  else
-    warn "No webhook secret given — deliveries will be rejected until $WEBHOOK_SECRET_NAME is set"
-  fi
+  ok "Stored $WEBHOOK_SECRET_NAME (new — update the org webhook in step 5)"
+else
+  skip "$WEBHOOK_SECRET_NAME unchanged — the org webhook keeps working"
+fi
 
-  unset SECRET_JSON GH_CLIENT_SECRET WEBHOOK_SECRET
-  ok "Stored $SECRET_NAME"
+unset SECRET_JSON GH_CLIENT_SECRET WEBHOOK_SECRET EXISTING EXISTING_WEBHOOK STORED_PEM
 
+if [ -n "$GH_PEM_PATH" ]; then
   echo
   warn "Delete the private key now — the app reads it from Secrets Manager:"
   echo "      rm '$GH_PEM_PATH'"
@@ -345,9 +557,16 @@ echo "    Payload URL : ${bold}$WEBHOOK_URL${off}"
 echo "    Content type: application/json"
 echo "    Secret      : the webhook secret generated in step 2"
 echo "                  (read it back with the command below if needed)"
-echo "    Events      : push, repository, create, delete, member, team,"
-echo "                  organization, pull_request, issues,"
-echo "                  branch_protection_rule, repository_ruleset"
+# The ten the code actually handles, by the labels GitHub puts on the checkboxes
+# — the API names are not what the page shows. `organization` and `issues` were
+# on this list and are handled by nothing: every delivery for them is fetched,
+# queued and dropped. See docs/operations/setup.md for the full table.
+echo "    Events      : \"Let me select individual events\", then tick ten —"
+echo "                  Branch or tag creation, Branch or tag deletion,"
+echo "                  Branch protection rules, Collaborator add remove or changed,"
+echo "                  Dependabot alerts, Pull requests, Pushes, Repositories,"
+echo "                  Repository rulesets, Teams"
+echo "                  (leave Organization unticked — nothing reads it)"
 echo "    SSL         : leave verification enabled — API Gateway serves a valid"
 echo "                  ACM certificate, so there is nothing to disable it for"
 echo

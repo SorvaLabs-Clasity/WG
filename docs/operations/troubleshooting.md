@@ -16,6 +16,33 @@ It says which of four things is wrong, and they need different answers:
 There is also *could not be read*, which means the secret exists but this
 account cannot read it — an IAM problem rather than a setup one.
 
+## "A JSON web token could not be decoded" at startup
+
+The full line is `Could not initialize GitHub App token manager: A JSON web token
+could not be decoded`, followed by `No system token available; denying admin
+check` on every request that needs GitHub. Pages that read from GitHub return
+502, and the PR tab is usually the first one noticed.
+
+The message is misleading. Nothing is corrupt: a malformed key fails locally,
+inside Node, and never reaches GitHub. Getting this back *from GitHub* means a
+well-formed JWT was signed and sent, and GitHub could not verify it against the
+public key it holds for that App ID. Almost always the private key and the App ID
+are from **two different Apps**.
+
+That happens easily where an org runs more than one install — dev and UAT, say.
+Both `.pem` downloads are named `<app>.<date>.private-key.pem` and land in the
+same folder, and Secrets Manager accepts either one without complaint.
+
+What it is not: the PEM format (`-----BEGIN RSA PRIVATE KEY-----` is correct, and
+the library converts it), stripped newlines (`normalizePemKey` rebuilds those),
+or the clock (skew produces an error that names the `iat` claim).
+
+Re-run `./scripts/migrate-to-account.sh` and correct the App ID, or supply the
+key generated on the App whose ID is stored. Step 2 checks the result against
+GitHub before it finishes, so a mismatch is reported there rather than at the
+next startup. Restart the app afterwards — the token manager initializes once,
+at boot.
+
 ## The sign-in page asks which AWS profile every launch
 
 Fixed — the profile is remembered in `~/.github-control-hub/desktop.json`. If it
