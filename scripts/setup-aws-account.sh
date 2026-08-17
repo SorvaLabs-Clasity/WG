@@ -355,7 +355,7 @@ ask_secret() {   # ask_secret VAR_NAME "prompt" existing
 ask_visible GITHUB_ORG        "GITHUB_ORG (as in github.com/orgs/<name>)" "$(existing_val GITHUB_ORG)"
 ask_visible GITHUB_CLIENT_ID  "GITHUB_CLIENT_ID (OAuth app)"   "$(existing_val GITHUB_CLIENT_ID)"
 ask_secret  GITHUB_CLIENT_SECRET "GITHUB_CLIENT_SECRET"        "$(existing_val GITHUB_CLIENT_SECRET)"
-ask_secret  SYSTEM_GITHUB_TOKEN  "SYSTEM_GITHUB_TOKEN (PAT)"   "$(existing_val SYSTEM_GITHUB_TOKEN)"
+ask_secret  SYSTEM_GITHUB_TOKEN  "SYSTEM_GITHUB_TOKEN (PAT, blank to skip)" "$(existing_val SYSTEM_GITHUB_TOKEN)"
 
 # The webhook secret moved out of the bundle into its own secret. On an account
 # set up before that, the bundle still holds it — offered here so the move needs
@@ -367,7 +367,17 @@ ask_secret GITHUB_WEBHOOK_SECRET "GITHUB_WEBHOOK_SECRET (blank to skip)" "$WEBHO
 : "${GITHUB_ORG:?GITHUB_ORG is required}"
 : "${GITHUB_CLIENT_ID:?GITHUB_CLIENT_ID is required}"
 : "${GITHUB_CLIENT_SECRET:?GITHUB_CLIENT_SECRET is required}"
-: "${SYSTEM_GITHUB_TOKEN:?SYSTEM_GITHUB_TOKEN is required}"
+# Deliberately not required.
+#
+# getSystemToken() prefers the GitHub App's installation token and falls back to
+# this only when there is none, so an install with the App configured has
+# nothing for a PAT to do. migrate-to-account.sh has always said so and offered
+# to skip it; this script demanded it, which meant the same value was mandatory
+# in one script and optional in the other.
+#
+# Skipping is also the better answer: the prompt asks for a classic PAT with
+# admin:org, which is broader than the App beside it, belongs to one person, and
+# usually never expires.
 
 SECRET_JSON=$(GITHUB_ORG="$GITHUB_ORG" \
   GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID" \
