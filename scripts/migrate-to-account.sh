@@ -70,7 +70,13 @@ step "Target account"
 #
 # `ask` with no default loops until something is typed, so there is no enter to
 # press by mistake.
+# Which way credentials arrived, remembered so the failure below can give advice
+# that matches. Without it the error names $AWS_PROFILE, which is never set on
+# this branch — so the script died on an unbound variable while trying to print
+# why it was dying, and the person running it saw neither reason.
+USING_ENV_CREDENTIALS=no
 if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
+  USING_ENV_CREDENTIALS=yes
   echo "  using credentials from the environment"
 else
   ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-}"
@@ -88,7 +94,10 @@ fi
 
 if ! CALLER=$(aws sts get-caller-identity --output json 2>&1); then
   printf "  %s\n" "$CALLER"
-  die "Those credentials are not usable. Run 'aws sso login --profile $AWS_PROFILE' first."
+  if [ "$USING_ENV_CREDENTIALS" = yes ]; then
+    die "Those environment credentials are expired. Copy a fresh set of exports from the AWS access portal, or unset AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY/AWS_SESSION_TOKEN and run this again to be asked for a profile."
+  fi
+  die "Those credentials are not usable. Run 'aws sso login --profile ${AWS_PROFILE:-<profile>}' first."
 fi
 ACCOUNT=$(node -e "process.stdout.write(JSON.parse(process.argv[1]).Account)" "$CALLER")
 ARN=$(node -e "process.stdout.write(JSON.parse(process.argv[1]).Arn)" "$CALLER")

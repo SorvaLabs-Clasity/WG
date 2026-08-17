@@ -19,32 +19,72 @@ set -euo pipefail
 #     aws configure --profile <profile>     # access keys
 #
 # Usage:
-#   AWS_PROFILE=<profile> ./scripts/setup-aws-account.sh
+#   ./scripts/setup-aws-account.sh
 #
 #   # skip the secret (create it yourself later):
-#   AWS_PROFILE=<profile> SKIP_SECRET=1 ./scripts/setup-aws-account.sh
+#   SKIP_SECRET=1 ./scripts/setup-aws-account.sh
 #
-# Environment:
-#   AWS_PROFILE    profile to use            (default: default)
-#   AWS_REGION     region                    (default: us-east-1)
+# It asks for the profile and the region. Anything already set in the
+# environment becomes the default, so nothing has to be exported.
+#
+# Environment (all optional):
+#   AWS_PROFILE    default for the profile question
+#   AWS_REGION     default for the region question
 #   STACK_NAME     table name prefix         (default: github-control-hub)
 #   SECRET_NAME    secret name               (default: <STACK_NAME>/secrets)
 #   SKIP_SECRET    set to 1 to skip step 3
 # ─────────────────────────────────────────────────────────
 
-# No default. A script that invents a region creates tables, buckets and
-# instances somewhere nobody named, and the only symptom is an account that
-# looks empty.
-region_or_die() {
-  local r="${AWS_REGION:-${AWS_DEFAULT_REGION:-}}"
-  [ -n "$r" ] || r="$(aws configure get region 2>/dev/null || true)"
-  if [ -z "$r" ]; then
-    echo "No AWS region set. Export AWS_REGION, or give your AWS profile one." >&2
+# Asked for, not exported.
+#
+# This script began as a subroutine of migrate-to-account.sh, which resolves the
+# profile and region itself and passes them in — so run directly it demanded
+# exports, and told you to set an environment variable rather than asking. That
+# is the opposite of how the other script behaves, and the reason it asks is
+# that a script inventing a region creates tables somewhere nobody named, whose
+# only symptom is an account that looks empty.
+#
+# Anything already provided is used as the default, so being called from
+# migrate-to-account.sh still asks nothing.
+ask() {
+  local __var="$1" __prompt="$2" __default="${3:-}" __reply=""
+  while [ -z "$__reply" ]; do
+    if [ -n "$__default" ]; then
+      printf "  %s [%s]: " "$__prompt" "$__default" >&2
+    else
+      printf "  %s: " "$__prompt" >&2
+    fi
+    read -r __reply || true
+    [ -n "$__reply" ] || __reply="$__default"
+  done
+  printf -v "$__var" '%s' "$__reply" 2>/dev/null || eval "$__var=\$__reply"
+}
+
+# Credentials first: an expired session makes every question below pointless.
+if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+  ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-}"
+  export AWS_PROFILE="$AWS_PROFILE_IN"
+  if ! aws sts get-caller-identity >/dev/null 2>&1; then
+    echo "  no valid session for $AWS_PROFILE — signing in" >&2
+    aws sso login --profile "$AWS_PROFILE" || {
+      echo "Could not sign in to '$AWS_PROFILE'." >&2; exit 1; }
+  fi
+else
+  echo "  using credentials from the environment" >&2
+  if ! aws sts get-caller-identity >/dev/null 2>&1; then
+    echo "Those environment credentials are expired. Copy a fresh set of exports" >&2
+    echo "from the AWS access portal, or unset AWS_ACCESS_KEY_ID," >&2
+    echo "AWS_SECRET_ACCESS_KEY and AWS_SESSION_TOKEN to be asked for a profile." >&2
     exit 1
   fi
-  printf '%s' "$r"
-}
-REGION="$(region_or_die)"
+fi
+
+DEFAULT_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-$(aws configure get region 2>/dev/null || true)}}"
+ask REGION "AWS region" "$DEFAULT_REGION"
+export AWS_REGION="$REGION"
+
+aws ec2 describe-regions --region-names "$REGION" >/dev/null 2>&1 \
+  || { echo "'$REGION' is not a region this account can see." >&2; exit 1; }
 PREFIX="${STACK_NAME:-github-control-hub}"
 SECRET_NAME="${SECRET_NAME:-${PREFIX}/secrets}"
 # The webhook secret lives on its own, because the receiver Lambda is the only
