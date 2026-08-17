@@ -340,7 +340,7 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
     if (result.SecretString) {
       const secrets = JSON.parse(result.SecretString) as Record<string, string>;
       for (const key of [
-        "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN",
+        "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET",
         "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET",
         "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID",
       ]) {

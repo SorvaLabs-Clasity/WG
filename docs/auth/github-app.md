@@ -19,6 +19,16 @@ The App's installation token has **12,500/hour shared across the whole
 installation**, which is the right budget for bulk reads. See
 [rate limits](../github-api/rate-limits.md).
 
+## No fallback
+
+The installation token is the only GitHub credential the app holds. A
+`SYSTEM_GITHUB_TOKEN` personal access token used to stand behind it and has been
+removed — it was broader than the App, belonged to a person rather than the
+installation, and made an App outage survivable enough that nobody noticed one.
+
+If the App stops working, GitHub answers 401 and the app says so. That is the
+intended behaviour: it is a thing to fix, not to route around.
+
 ## Token lifecycle
 
 Installation tokens last an hour. `GitHubTokenManager` refreshes them five

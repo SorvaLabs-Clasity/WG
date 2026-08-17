@@ -212,10 +212,6 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
   grep -q -- "-----BEGIN" "$GH_PEM_PATH" && grep -q -- "PRIVATE KEY-----" "$GH_PEM_PATH" \
     || die "$GH_PEM_PATH is not a PEM private key. GitHub's file is named <app>.<date>.private-key.pem and starts with -----BEGIN."
   echo
-  echo "  ${dim}The next one is optional. getSystemToken() prefers the GitHub App${off}"
-  echo "  ${dim}token you just configured and only falls back to a PAT, so with the${off}"
-  echo "  ${dim}App installed there is nothing left for it to do. Press enter to skip.${off}"
-  ask_secret GH_PAT          "Personal access token, or enter to skip (repo, admin:org, admin:repo_hook)"
 
   # Generated, not asked for — no reason for a human to invent these.
   WEBHOOK_SECRET=$(openssl rand -hex 32)
@@ -226,8 +222,7 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
   # so no secret ever appears in an argument list or the shell history.
   SECRET_JSON=$(GH_PEM_PATH="$GH_PEM_PATH" \
     GH_CLIENT_ID="$GH_CLIENT_ID" GH_CLIENT_SECRET="$GH_CLIENT_SECRET" \
-    GH_APP_ID="$GH_APP_ID" GH_INSTALL_ID="$GH_INSTALL_ID" GH_PAT="$GH_PAT" \
-    GH_ORG="$GH_ORG" WEBHOOK_SECRET="$WEBHOOK_SECRET" JWT_SECRET="$JWT_SECRET" \
+    GH_APP_ID="$GH_APP_ID" GH_INSTALL_ID="$GH_INSTALL_ID" GH_ORG="$GH_ORG" WEBHOOK_SECRET="$WEBHOOK_SECRET" JWT_SECRET="$JWT_SECRET" \
     node -e '
       const fs = require("fs");
       process.stdout.write(JSON.stringify({
@@ -236,7 +231,6 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
         GITHUB_APP_ID:               process.env.GH_APP_ID,
         GITHUB_APP_INSTALLATION_ID:  process.env.GH_INSTALL_ID,
         GITHUB_APP_PRIVATE_KEY:      fs.readFileSync(process.env.GH_PEM_PATH, "utf8"),
-        SYSTEM_GITHUB_TOKEN:         process.env.GH_PAT,
         GITHUB_ORG:                  process.env.GH_ORG,
         JWT_SECRET:                  process.env.JWT_SECRET,
       }));')
@@ -275,7 +269,7 @@ if [ -z "${SKIP_SECRET_WRITE:-}" ]; then
     warn "No webhook secret given — deliveries will be rejected until $WEBHOOK_SECRET_NAME is set"
   fi
 
-  unset SECRET_JSON GH_CLIENT_SECRET GH_PAT WEBHOOK_SECRET
+  unset SECRET_JSON GH_CLIENT_SECRET WEBHOOK_SECRET
   ok "Stored $SECRET_NAME"
 
   echo

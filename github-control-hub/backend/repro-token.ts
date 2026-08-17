@@ -1,17 +1,24 @@
 /**
- * Regression test: the synchronous getSystemToken() must never return an expired
- * GitHub App installation token.
+ * The GitHub App's installation token, and the fact that it is the only one.
  *
- * Installation tokens live one hour. Before the fix, getToken() returned
- * `this.cachedToken` with no expiry check, so ~25 synchronous call sites
- * (webhooks auto-apply, templates, compliance, alerts) kept using a dead token
- * and every GitHub call failed with 401 Bad credentials until a restart.
+ * Installation tokens live one hour, and getToken() once returned
+ * `this.cachedToken` with no expiry check — so ~25 synchronous call sites kept
+ * using a dead token and every GitHub call failed with 401 until a restart. That
+ * was fixed by falling back to a `SYSTEM_GITHUB_TOKEN` personal access token.
+ *
+ * That fallback has since been removed. It was a second, broader credential held
+ * permanently for a case that should be rare, and because it *worked*, a broken
+ * App could go unnoticed for weeks. The App is now the only credential.
+ *
+ * So the assertion has inverted: nothing must reach for a PAT, and the env var
+ * is set here to a value that would be obvious if anything did.
  *
  * Two separate stub files are used because client.ts loads @octokit/auth-app via
  * dynamic ESM import(), whose module cache cannot be invalidated per-run.
  */
 process.env.GITHUB_ORG = "test-org";
-process.env.SYSTEM_GITHUB_TOKEN = "ghp_fallback";
+// Deliberately set. If any code path still consults it, a check below fails.
+process.env.SYSTEM_GITHUB_TOKEN = "ghp_should_never_be_used";
 
 import fs from "fs";
 import path from "path";
@@ -42,12 +49,21 @@ Module._resolveFilename = function (req: string, ...rest: any[]) {
   target = expiredStub;
   await initTokenManager("1", "key", "1");
   const stale = getSystemToken();
-  const staleOk = stale === "ghp_fallback";
+  // The expired App token, not a PAT. GitHub answers 401 and the App looks
+  // broken — which it is. Quietly succeeding on a personal access token is the
+  // outcome this removal exists to prevent.
+  const staleOk = stale === "ghs_app_expired";
   console.log("expired App token -> getSystemToken():", stale);
   console.log(staleOk
-    ? "  PASS: fell back to the PAT instead of handing out a dead token"
-    : "  FAIL: returned an expired App token (every call would 401)");
+    ? "  PASS: returns the App's own token, with no PAT fallback"
+    : "  FAIL: reached for something other than the App token");
   if (!staleOk) failures++;
+
+  const noPat = stale !== "ghp_should_never_be_used";
+  console.log(noPat
+    ? "  PASS: SYSTEM_GITHUB_TOKEN is not consulted"
+    : "  FAIL: a personal access token is still being used as a fallback");
+  if (!noPat) failures++;
 
   target = freshStub;
   await initTokenManager("1", "key", "1");

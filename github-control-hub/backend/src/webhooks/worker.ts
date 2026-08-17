@@ -70,20 +70,28 @@ export async function handler(event: SQSEvent): Promise<void> {
   // awaiting its own init(), so a container whose GitHub App init failed is
   // left with a non-null manager whose internal auth() is never set. Every
   // invocation on that container would then have getTokenAsync() throw here,
-  // outside processDelivery's try/catch, failing the whole batch to the DLQ
-  // for as long as the container stays warm. The Express route this replaced
-  // called the synchronous getSystemToken(), which degrades to
-  // SYSTEM_GITHUB_TOKEN and never throws; this restores that fallback.
-  // Downstream code already treats an empty token as "skip GitHub work".
-  let token: string;
+  // outside processDelivery's try/catch, failing the whole batch to the DLQ for
+  // as long as the container stays warm.
+  //
+  // So the throw is still caught — but there is nothing to fall back *to*. This
+  // used to reach for a SYSTEM_GITHUB_TOKEN personal access token, a second and
+  // broader credential kept permanently against this case; it is gone, because
+  // an App failure that keeps working on someone's PAT is an App failure nobody
+  // notices.
+  //
+  // An empty token is already understood downstream as "skip GitHub work", so
+  // the delivery still records its activity and alerts — which are DynamoDB
+  // writes and need no GitHub — and only the parts that call GitHub are missed.
+  // Logged loudly, because that is the signal something needs fixing.
+  let token = "";
   try {
     token = await getSystemTokenAsync();
   } catch (err) {
     console.error(
-      "[Webhook] Token resolution failed — degrading to SYSTEM_GITHUB_TOKEN for this invocation:",
+      "[Webhook] No GitHub App token for this invocation — anything needing GitHub " +
+      "will be skipped for these deliveries. Check the App credentials in Secrets Manager:",
       (err as Error).message,
     );
-    token = process.env.SYSTEM_GITHUB_TOKEN || "";
   }
 
   for (const record of event.Records) {

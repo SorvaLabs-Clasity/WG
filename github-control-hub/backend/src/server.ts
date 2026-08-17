@@ -147,7 +147,7 @@ app.use("/api/alarms", authMiddleware, alarmRoutes);
         // secret, read only by the receiver Lambda, and nothing in this
         // process verifies signatures — webhooks are authenticated at the edge.
         for (const key of [
-          "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN",
+          "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET",
           "GITHUB_ORG", "JWT_SECRET",
           "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID",
         ]) {

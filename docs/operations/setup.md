@@ -191,10 +191,14 @@ Otherwise the app runs read-only and cannot be configured at all.
 Five values: **client ID**, **client secret**, **App ID**, **installation ID**,
 and the **`.pem` file**.
 
-No personal access token is needed. `getSystemToken()` prefers the GitHub App's
-installation token and only falls back to a PAT, so with the App installed there
-is nothing left for one to do — and a classic PAT with `admin:org` is a much
-broader credential than the scoped App beside it.
+No personal access token, anywhere. The GitHub App's installation token is the
+only credential this app has.
+
+There used to be a `SYSTEM_GITHUB_TOKEN` fallback for when the App's token could
+not be obtained. It is gone: a classic PAT with `admin:org` is broader than the
+App it was backing up, belongs to one person rather than the installation,
+usually never expires — and because it *worked*, a broken App could go unnoticed
+for weeks. A failing App now looks like a failing App.
 
 ---
 

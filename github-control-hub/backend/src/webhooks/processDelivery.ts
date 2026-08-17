@@ -18,7 +18,7 @@ export interface Delivery {
    * module singleton. Lambda freezes containers between invocations, so the
    * refresh timer behind the synchronous getSystemToken() does not fire on
    * schedule — a warm container would serve a cached token until it expired
-   * and then fall back to SYSTEM_GITHUB_TOKEN, stopping auto-apply with
+   * and then have no token at all, stopping GitHub work with
    * "No GitHub token available" on some containers and not others.
    */
   token: string;

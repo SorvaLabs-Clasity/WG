@@ -13,9 +13,23 @@
  * the HTTP layer also exercises real Octokit error shapes.
  */
 process.env.GITHUB_ORG = "test-org";
-process.env.SYSTEM_GITHUB_TOKEN = "ghp_system";
 
 import { isControlHubAdmin, isAwsAdmin, invalidateAdminCache, CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "./src/services/authorizationService";
+import { initTokenManager } from "./src/github/client";
+
+/**
+ * A GitHub App token, because that is now the only credential there is.
+ *
+ * This used to set SYSTEM_GITHUB_TOKEN and rely on getSystemToken() falling back
+ * to it — convenient, and it quietly meant these tests never exercised the path
+ * the app actually takes. That fallback has been removed, so the token manager
+ * is stubbed instead, which is both closer to production and the only thing that
+ * works now.
+ */
+const stubAppAuth = () => async () => ({
+  token: "ghs_app_token",
+  expiresAt: new Date(Date.now() + 3600e3).toISOString(),
+});
 
 type Scenario = {
   orgRole?: "admin" | "member";
@@ -51,6 +65,8 @@ globalThis.fetch = (async (input: any) => {
 }) as any;
 
 (async () => {
+  await initTokenManager("1", "key", "1", stubAppAuth as any);
+
   let failures = 0;
   const check = async (name: string, s: Scenario, expected: boolean) => {
     scenario = s;

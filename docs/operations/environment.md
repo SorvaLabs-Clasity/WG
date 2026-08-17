@@ -15,7 +15,6 @@ Stored as one JSON document at `<STACK_NAME>/secrets`, loaded at startup.
 | `GITHUB_APP_ID` | yes | GitHub App ID |
 | `GITHUB_APP_PRIVATE_KEY` | yes | The `.pem`, newlines or literal `\n` both accepted |
 | `GITHUB_APP_INSTALLATION_ID` | yes | From the install URL |
-| `SYSTEM_GITHUB_TOKEN` | fallback | Used only where no App token is available |
 | `JWT_SECRET` | no | Generated per start if absent |
 
 ## The webhook secret, on its own

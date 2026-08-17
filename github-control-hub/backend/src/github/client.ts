@@ -68,11 +68,22 @@ class GitHubTokenManager {
   }
 
   getToken(): string {
-    // Most call sites are synchronous and cannot await a refresh, so returning an
-    // expired token here surfaces as 401 Bad credentials across the whole app.
-    // scheduleRefresh() normally keeps the cache warm; this is the safety net.
     if (this.isFresh()) return this.cachedToken;
-    return process.env.SYSTEM_GITHUB_TOKEN || "";
+
+    // Stale is not the same as expired, and this used to hand back a personal
+    // access token instead — a second, broader credential kept permanently for
+    // a case that should be rare.
+    //
+    // isFresh() goes false for the last five minutes of a token's hour, and a
+    // token inside that window still works. Returning it is better than
+    // returning anything else: scheduleRefresh() is already fetching the
+    // replacement, and this call succeeds meanwhile.
+    //
+    // Past real expiry it returns the expired token, GitHub answers 401, and
+    // that is the honest outcome — the App is the only credential, so a
+    // broken App should look broken rather than quietly running on a fallback
+    // nobody remembers configuring.
+    return this.cachedToken;
   }
 
   async getTokenAsync(): Promise<string> {
@@ -122,9 +133,9 @@ class GitHubTokenManager {
  * import; omitted, the manager resolves it from disk itself.
  *
  * The manager is published only once it works. Assigning it first left a
- * half-built object behind on failure — `auth` undefined — and every later
- * getTokenAsync() threw "this.auth is not a function" rather than falling back
- * to SYSTEM_GITHUB_TOKEN, turning a missing App into a total outage.
+ * half-built object behind on failure — `auth` undefined — so every later
+ * getTokenAsync() threw "this.auth is not a function" instead of the clear
+ * error the caller could act on.
  */
 export async function initTokenManager(
   appId: string,
@@ -137,15 +148,31 @@ export async function initTokenManager(
   tokenManager = manager;
 }
 
-/** Sync getter — returns cached App token or falls back to SYSTEM_GITHUB_TOKEN env var. */
+/**
+ * The GitHub App's installation token. The only credential this app has.
+ *
+ * There used to be a fallback to a `SYSTEM_GITHUB_TOKEN` personal access token,
+ * held permanently against the chance that the App failed. It has been removed:
+ * a classic PAT with `admin:org` is broader than the App it was backing up,
+ * belongs to one person, usually never expires, and — because it worked — meant
+ * a broken App could go unnoticed for weeks.
+ *
+ * Empty means the App is not configured or not working, which is a thing to fix
+ * rather than paper over.
+ */
 export function getSystemToken(): string {
-  return tokenManager?.getToken() || process.env.SYSTEM_GITHUB_TOKEN || "";
+  return tokenManager?.getToken() ?? "";
 }
 
-/** Async getter — refreshes App token if expired, falls back to SYSTEM_GITHUB_TOKEN env var. */
+/** Async getter — refreshes the App token if it has expired. */
 export async function getSystemTokenAsync(): Promise<string> {
-  if (tokenManager) return tokenManager.getTokenAsync();
-  return process.env.SYSTEM_GITHUB_TOKEN || "";
+  if (!tokenManager) {
+    throw new Error(
+      "The GitHub App token manager is not initialized. Check that GITHUB_APP_ID, " +
+      "GITHUB_APP_PRIVATE_KEY and GITHUB_APP_INSTALLATION_ID are present in Secrets Manager."
+    );
+  }
+  return tokenManager.getTokenAsync();
 }
 
 // ── Octokit Factory ──

@@ -355,7 +355,6 @@ ask_secret() {   # ask_secret VAR_NAME "prompt" existing
 ask_visible GITHUB_ORG        "GITHUB_ORG (as in github.com/orgs/<name>)" "$(existing_val GITHUB_ORG)"
 ask_visible GITHUB_CLIENT_ID  "GITHUB_CLIENT_ID (OAuth app)"   "$(existing_val GITHUB_CLIENT_ID)"
 ask_secret  GITHUB_CLIENT_SECRET "GITHUB_CLIENT_SECRET"        "$(existing_val GITHUB_CLIENT_SECRET)"
-ask_secret  SYSTEM_GITHUB_TOKEN  "SYSTEM_GITHUB_TOKEN (PAT, blank to skip)" "$(existing_val SYSTEM_GITHUB_TOKEN)"
 
 # The webhook secret moved out of the bundle into its own secret. On an account
 # set up before that, the bundle still holds it — offered here so the move needs
@@ -382,13 +381,11 @@ ask_secret GITHUB_WEBHOOK_SECRET "GITHUB_WEBHOOK_SECRET (blank to skip)" "$WEBHO
 SECRET_JSON=$(GITHUB_ORG="$GITHUB_ORG" \
   GITHUB_CLIENT_ID="$GITHUB_CLIENT_ID" \
   GITHUB_CLIENT_SECRET="$GITHUB_CLIENT_SECRET" \
-  SYSTEM_GITHUB_TOKEN="$SYSTEM_GITHUB_TOKEN" \
   node -e '
     const out = {
       GITHUB_ORG: process.env.GITHUB_ORG,
       GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID,
       GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET,
-      SYSTEM_GITHUB_TOKEN: process.env.SYSTEM_GITHUB_TOKEN,
     };
     process.stdout.write(JSON.stringify(out));
   ')

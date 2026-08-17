@@ -63,16 +63,14 @@ function bootstrapOnce(): Promise<void> {
 export async function handler(): Promise<void> {
   await bootstrapOnce();
 
-  let token: string;
-  try {
-    token = await getSystemTokenAsync();
-  } catch (err) {
-    console.error(
-      "[Alarm] Token resolution failed — degrading to SYSTEM_GITHUB_TOKEN for this run:",
-      (err as Error).message,
-    );
-    token = process.env.SYSTEM_GITHUB_TOKEN || "";
-  }
+  // No fallback. This used to degrade to a SYSTEM_GITHUB_TOKEN personal access
+  // token, which meant a broken App produced alarm runs that quietly worked —
+  // on a credential nobody remembered configuring — until that expired too.
+  //
+  // The App is the only credential now, so a run that cannot get a token fails
+  // and says why. A failed scheduled run is visible in the function's logs and
+  // its DLQ; a run that silently used a different identity is not.
+  const token = await getSystemTokenAsync();
 
   const org = process.env.GITHUB_ORG!;
   const octokit = createOctokit(token);

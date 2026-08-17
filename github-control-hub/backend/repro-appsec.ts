@@ -332,8 +332,15 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     const scripts = ["scripts/setup-aws-account.sh", "scripts/setup-cloudtrail.sh"];
     for (const sc of scripts) {
       const src = fs.readFileSync(path.join(ROOT, sc), "utf8");
-      check(`  ${sc.split("/")[1]} requires a region rather than assuming one`,
-        /region_or_die/.test(src) && !/AWS_REGION:-us-east-1/.test(src), sc);
+      // Either shape is fine, and both must refuse to invent one:
+      // setup-cloudtrail.sh dies without a region; setup-aws-account.sh asks.
+      // What must never appear is a literal default, which creates tables
+      // somewhere nobody named whose only symptom is an account that looks
+      // empty.
+      const refuses = /region_or_die/.test(src)
+        || /ask REGION "AWS region"/.test(src);
+      check(`  ${sc.split("/")[1]} never assumes a region`,
+        refuses && !/AWS_REGION:-us-east-1/.test(src), sc);
     }
 
     const cdkApp = fs.readFileSync(path.join(ROOT, "github-control-hub/infra/cdk-app.ts"), "utf8");
