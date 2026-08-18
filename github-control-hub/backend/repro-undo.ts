@@ -309,12 +309,12 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // audit-stream setup creates IAM in the account and asks whether they are
     // an org admin at all. Either is a real gate; a route naming neither is
     // what this catches.
-    ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted|isAwsAdmin/],
+    ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted|isAwsAdmin|isControlHubAdmin/],
     ["alarms.ts",        /router\.(post|put|delete)\(/g, /requireAdmin/],
     // Pausing a stale-pull-request reminder silences it for everyone on that
     // pull request, not just for the person clicking, so it is an org-wide act
     // and gated the same way.
-    ["pulls.ts",         /router\.(post|put|delete)\(/g, /isAwsAdmin/],
+    ["pulls.ts",         /router\.(post|put|delete)\(/g, /isControlHubAdmin/],
   ];
 
   for (const [file, routeRe, guardRe] of GUARDED) {

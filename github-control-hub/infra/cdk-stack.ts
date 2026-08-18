@@ -508,6 +508,76 @@ export class GitHubControlHubStack extends cdk.Stack {
       targets: [new targets.LambdaFunction(alarmFn)],
     });
 
+    // ── access graph rebuild ────────────────────────────────────────────
+    //
+    // Every screen showing who can reach what reads a stored snapshot: teams,
+    // members, collaborators, repository permissions. Nothing rebuilt it on a
+    // schedule — it happened only when somebody pressed a button — so a graph
+    // built before a person joined, left, or was made an owner was
+    // indistinguishable from a current one.
+    const graphFn = new NodejsFunction(this, "GraphAggregator", {
+      functionName: `${stackPrefix}-graph-aggregator`,
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, "..", "backend", "src", "jobs", "aggregateHandler.ts"),
+      handler: "handler",
+      projectRoot: path.join(__dirname, ".."),
+      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+      // The walk is one pass over every repository, team and member, then a
+      // clear-and-rewrite of the edge table. On a large organization that is
+      // minutes, and there is nobody waiting on the answer.
+      timeout: cdk.Duration.minutes(15),
+      memorySize: 1024,
+      environment: {
+        STACK_NAME: stackPrefix,
+        SECRET_NAME: secretName,
+        ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
+        GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+        COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
+      },
+      bundling: webhookBundling,
+    });
+
+    graphFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "ReadAppSecrets",
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+    }));
+
+    // Writes are confined to the three tables it owns.
+    //
+    // This job clears and rewrites the edge table wholesale, which is exactly
+    // the capability that must not extend to the activity log — the record used
+    // to reconstruct what happened, including to itself.
+    graphFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "AppTablesRead",
+      actions: ["dynamodb:GetItem", "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem"],
+      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+    }));
+
+    graphFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "GraphTablesWrite",
+      actions: [
+        "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem",
+      ],
+      resources: [
+        `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-graph-edges`,
+        `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-compliance-cache`,
+        `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-org-config`,
+      ],
+    }));
+
+    // Six hours, not minutes. The walk is expensive in GitHub's rate limit and
+    // what it records — who is in which team, who can reach which repository —
+    // changes on the scale of days. The manual refresh in the app covers the
+    // case six hours is too long for, which is someone wanting to see an access
+    // change they just made.
+    new events.Rule(this, "GraphAggregationSchedule", {
+      ruleName: `${stackPrefix}-graph-aggregation`,
+      description: "Rebuilds the access graph from GitHub",
+      schedule: events.Schedule.rate(cdk.Duration.hours(6)),
+      targets: [new targets.LambdaFunction(graphFn)],
+    });
+
     const apiLogGroup = new logs.LogGroup(this, "WebhookApiAccessLogs", {
       retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,

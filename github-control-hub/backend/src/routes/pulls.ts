@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 
 import { createOctokit, getSystemToken } from "../github/client";
-import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
+import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { sanitizeError } from "../utils/errorSanitizer";
 import {
   getPrState, listPrStates, setPrPause, recordNudge,
@@ -105,10 +105,10 @@ router.get("/", async (req: Request, res: Response) => {
  */
 router.put("/pause", async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isAwsAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can pause `
+      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can pause `
         + `reminders. Pausing silences a reminder for everyone, so it is not scoped to what you `
         + `personally can reach.`,
     });
@@ -158,10 +158,10 @@ router.put("/pause", async (req: Request, res: Response) => {
  */
 router.post("/run", async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isAwsAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can send `
+      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can send `
         + `reminders.`,
     });
   }
@@ -221,10 +221,10 @@ router.post("/run", async (req: Request, res: Response) => {
  */
 router.put("/mute", async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isAwsAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can mute `
+      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can mute `
         + `people from reminders.`,
     });
   }
@@ -296,10 +296,10 @@ router.get("/settings", async (_req: Request, res: Response) => {
 
 router.put("/settings", async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isAwsAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can switch `
+      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can switch `
         + `pull request monitoring or reminders on and off.`,
     });
   }

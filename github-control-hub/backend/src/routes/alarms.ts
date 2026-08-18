@@ -1,6 +1,6 @@
 import { Router, Request, Response, RequestHandler } from "express";
 
-import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
+import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { getWidget } from "../services/widgetService";
 import {
   listAlarms, getAlarm, createAlarm, updateAlarm, deleteAlarm,
@@ -24,19 +24,24 @@ const router = Router();
  * Everything here is admin-only, reads included.
  *
  * Unlike a repository action — authorized by GitHub itself, because the call
- * carries the user's own token — these calls run with the app's AWS
- * credentials. Subscribing an address to a topic means this app can send email
- * to anyone, which is a capability worth restricting to the same team that can
- * change guardrails. Reads are gated too because a group's member list is a
+ * carries the user's own token — these calls are not scoped to what the caller
+ * can personally reach. Subscribing an address to a topic means this app can
+ * send email to anyone. Reads are gated too because a group's member list is a
  * list of people's email addresses.
+ *
+ * Gated on the Control Hub team, not the AWS one. Alarms watch GitHub activity
+ * and mail people about it; that they happen to be delivered by SNS is an
+ * implementation detail, and gating on it meant someone trusted with every
+ * GitHub setting in this app could not create an alarm unless they were also
+ * trusted with the AWS account.
  */
 const requireAdmin: RequestHandler = (req, res, next) => {
-  isAwsAdmin(req.user!.login)
+  isControlHubAdmin(req.user!.login)
     .then(allowed => {
       if (allowed) return next();
       res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can manage ` +
+        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can manage ` +
           `alarms and email groups. They send mail on behalf of the whole organization, so they ` +
           `are not scoped to what you personally can reach.`,
       });

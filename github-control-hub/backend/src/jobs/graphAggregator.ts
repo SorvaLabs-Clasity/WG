@@ -4,6 +4,7 @@ import { docClient, usesDynamo, tableName, PutCommand, BatchWriteCommand, ScanCo
 import { refreshAll } from "../services/complianceCacheService";
 import { invalidateAccessMap } from "../services/accessMapService";
 import { invalidateEdgeCache } from "../services/graphService";
+import { recordGraphAggregation } from "../services/orgConfigService";
 
 interface GraphEdge {
   pk: string;
@@ -13,6 +14,11 @@ interface GraphEdge {
 }
 
 export async function aggregateGraphData(fallbackToken?: string) {
+  // Stamped before the walk, so a run that dies mid-way still leaves evidence
+  // it was tried. The success timestamp is written only once edges are on disk.
+  await recordGraphAggregation({ lastAttemptAt: new Date().toISOString() })
+    .catch(err => console.warn("[GraphAggregator] Could not record the attempt:", err?.message ?? err));
+
   const token = await getSystemTokenAsync() || fallbackToken;
   if (!token) {
     console.warn("No GitHub token available, skipping graph aggregation.");
@@ -428,8 +434,19 @@ export async function aggregateGraphData(fallbackToken?: string) {
       console.log(`[GraphAggregator] Wrote edges to local JSON file.`);
     }
 
+    // Only here. Reaching this line means edges were written, so this is the
+    // one point at which the snapshot on screen is genuinely this fresh —
+    // stamping it earlier would date a graph that was never replaced.
+    await recordGraphAggregation({
+      lastSuccessAt: new Date().toISOString(),
+      edgeCount: edges.length,
+      lastError: undefined,
+    }).catch(err => console.warn("[GraphAggregator] Could not record success:", err?.message ?? err));
+
   } catch (error) {
     console.error(`[GraphAggregator] Fatal error during aggregation:`, error);
+    await recordGraphAggregation({ lastError: (error as Error)?.message ?? String(error) })
+      .catch(() => { /* the console line above is the record of last resort */ });
   }
 
   // The access map is derived from these edges and cached. Without this, a

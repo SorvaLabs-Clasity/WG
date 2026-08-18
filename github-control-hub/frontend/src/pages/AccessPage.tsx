@@ -2,10 +2,72 @@ import { useState, useMemo } from "react";
 import { useAuth } from "../App";
 import {
   Page, Back, Note, Pill, Empty, Spinner, RailCard, Sheet, SheetHeader, Block,
-  InsetRow, SearchInput, Segmented, RefreshButton, enter, type Intent,
+  InsetRow, SearchInput, Segmented, RefreshButton, Button, enter, type Intent,
 } from "../design";
 import { useAccessSummary, useUserAccess, useRepoAccess, useAccessRepos, useAccessTeams, useTeamAccess } from "../hooks/useAccess";
+import { useGraphAggregation, useTriggerAggregation } from "../hooks/useGraph";
+import { usePermissions } from "../hooks/usePermissions";
 import type { AccessPath, Person, OrgRole } from "../api/access";
+
+/** "4 hours ago", down to a minute — below that, "just now". */
+function ago(iso?: string): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return null;
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  return `${days} day${days === 1 ? "" : "s"} ago`;
+}
+
+/**
+ * How old this page's answer is, and how to make it newer.
+ *
+ * Everything below is a snapshot of the organization taken when the graph was
+ * last rebuilt. Without this line a graph built before somebody joined, left or
+ * was made an owner looked exactly like a current one — and the Refresh button
+ * beside it re-reads the same snapshot, so pressing it looked like it should
+ * have helped and could not.
+ */
+function GraphFreshness() {
+  const { data } = useGraphAggregation();
+  const { data: permissions } = usePermissions();
+  const trigger = useTriggerAggregation();
+  const canRebuild = permissions?.isControlHubAdmin ?? false;
+
+  const a = data?.aggregation;
+  const built = ago(a?.lastSuccessAt);
+  // Only worth mentioning when it is the *later* of the two. An attempt that
+  // preceded the last success is just how a successful run looks.
+  const failedAfterSuccess = !!a?.lastError && !!a?.lastAttemptAt
+    && (!a.lastSuccessAt || Date.parse(a.lastAttemptAt) > Date.parse(a.lastSuccessAt));
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 dark:text-slate-400">
+      <span>
+        {built ? <>Rebuilt {built}</> : <>Never rebuilt</>}
+        {a?.edgeCount ? <> · {a.edgeCount.toLocaleString()} connections</> : null}
+      </span>
+
+      {failedAfterSuccess && (
+        <Pill intent="warn">Last rebuild failed</Pill>
+      )}
+
+      {canRebuild && (
+        <Button
+          variant="secondary"
+          disabled={trigger.isPending}
+          onClick={() => trigger.mutate()}
+        >
+          {trigger.isPending ? "Rebuilding…" : "Rebuild now"}
+        </Button>
+      )}
+    </div>
+  );
+}
 
 /**
  * Who can reach what.
@@ -145,6 +207,9 @@ export default function AccessPage() {
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Every person, everything they can reach, and how they came by it.
           </p>
+          <div className="mt-2">
+            <GraphFreshness />
+          </div>
         </div>
         <RefreshButton busy={isFetching} onRefresh={() => refetch()} />
       </div>

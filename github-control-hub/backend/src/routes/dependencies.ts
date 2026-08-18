@@ -7,7 +7,7 @@ import { sendIfPermissionDenied } from "../utils/permissionError";
 import { fetchAllCursorPages } from "../utils/cursorPages";
 import { fetchRenovatePrs } from "../services/renovateService";
 import { getOrgConfig, updateRenovateBot } from "../services/orgConfigService";
-import { isAwsAdmin } from "../services/authorizationService";
+import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { mapAlert, fetchOrgDependencyAlerts, fetchRepoAlertStatus } from "../services/dependencyService";
 
 const router = Router();
@@ -294,10 +294,11 @@ router.get("/renovate", async (req: Request, res: Response) => {
 /** Naming the bot account is org-wide configuration, so it is admin-gated. */
 router.put("/renovate/bot", async (req: Request, res: Response) => {
   try {
-    if (!(await isAwsAdmin(req.user!.login))) {
+    if (!(await isControlHubAdmin(req.user!.login))) {
       return res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: "Only organization admins can change which account Renovate raises PRs as.",
+        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ` +
+          `change which account Renovate raises PRs as.`,
       });
     }
     const bot = String(req.body?.bot ?? "").trim();

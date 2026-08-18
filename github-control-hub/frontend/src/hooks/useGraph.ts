@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchGraphNode, fetchUserImpact, fetchSecurityQuery, fetchGraphMeta, triggerGraphAggregation } from "../api/graph";
+import { fetchGraphNode, fetchUserImpact, fetchSecurityQuery, fetchGraphMeta, triggerGraphAggregation, fetchGraphAggregation } from "../api/graph";
 import { IncompleteQueryError } from "../api/client";
 import { fetchQueryFreshness, refreshQueryNow } from "../api/graph";
 
@@ -11,12 +11,32 @@ export function useGraphMeta() {
   });
 }
 
+/**
+ * How old the access graph is.
+ *
+ * Polled slowly rather than never: the scheduled rebuild lands every six hours
+ * without anyone here doing anything, and a page left open would otherwise go on
+ * claiming the age it had when it loaded.
+ */
+export function useGraphAggregation() {
+  return useQuery({
+    queryKey: ["graph", "aggregation"],
+    queryFn: fetchGraphAggregation,
+    staleTime: 60_000,
+    refetchInterval: 5 * 60_000,
+  });
+}
+
 export function useTriggerAggregation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: triggerGraphAggregation,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["graph"] });
+      // The access map is derived from the graph and cached separately, so
+      // without this the timestamp would update while the table below it went
+      // on showing what the previous walk found.
+      qc.invalidateQueries({ queryKey: ["access"] });
     },
   });
 }

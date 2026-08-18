@@ -117,6 +117,8 @@ separate OAuth App handles sign-in, and ticking it confuses the flow.
 | Metadata | Read | Mandatory; listing repositories |
 | Dependabot alerts | Read | Vulnerability reporting |
 | Actions | Read | Listing workflows |
+| Checks | Read | `statusCheckRollup` on the pull request list — GitHub Actions results |
+| Commit statuses | Read | The same field, for CI that reports through the statuses API |
 | Issues | Read | Issue comments, for "who knows this" |
 | Environments | Read | Repository detail |
 
@@ -148,6 +150,14 @@ This list is derived from the Octokit calls the codebase actually makes, which
 `repro-leastprivilege` and the route guards keep honest; nothing on it is
 speculative.
 
+**Checks and Commit statuses are the exception to how that list was built.**
+They are needed by a GraphQL *field*, `statusCheckRollup`, not by any REST call,
+so reading the Octokit calls does not reveal them. Without both, GitHub answers
+that one field with `Resource not accessible by integration` while returning
+everything else normally — check status shows as unknown on the pull request
+list and nothing else changes. Granting them later is enough; the app tolerates
+their absence rather than failing.
+
 Then, in order:
 
 1. **Create GitHub App**
@@ -166,8 +176,19 @@ Then, in order:
 
 | Team slug | Controls |
 |---|---|
-| `control-hub-admins` | Scanners, widgets, alerts, config import, and undoing changes to any of them |
-| `aws-guardrail-admins` | AWS rules, sweeps, enforce mode |
+| `control-hub-admins` | Everything GitHub-side: scanners, widgets, alerts, alarms and email groups, pull request reminders, the Renovate bot name, rebuilding the access graph, config import, and undoing changes to any of them |
+| `aws-guardrail-admins` | AWS rules, sweeps, enforce mode, and audit-log streaming — the things that write to the AWS account |
+
+The dividing line is which account an action touches, not which screen it is on.
+Alarms are delivered by SNS, for instance, and are still a `control-hub-admins`
+matter, because what they watch and who they mail is a GitHub decision — being
+trusted with GitHub settings should not require being trusted with the AWS
+account. `repro-authz` asserts that split against the routes as shipped, so a
+new admin gate copied from the wrong neighbour fails a test.
+
+**Neither team requires org ownership.** Owners qualify automatically, as a
+safety net so a deleted or empty team cannot lock everyone out, but membership
+of the team is the intended path and is sufficient on its own.
 
 The slugs must be exactly these — membership is checked by slug, and both are
 overridable only by environment variable. Anyone outside them gets a read-only

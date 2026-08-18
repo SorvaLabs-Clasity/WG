@@ -25,9 +25,28 @@ export async function fetchGraphMeta(): Promise<{ edgeCount: number }> {
   return apiGet<{ edgeCount: number }>("/graph/meta");
 }
 
-export async function triggerGraphAggregation(): Promise<{ message: string }> {
-  if (DEMO_MODE) return { message: "Demo mode" };
-  return apiPost<{ message: string }>("/graph/aggregate", {});
+/**
+ * When the access graph was last rebuilt, and whether the last try worked.
+ *
+ * Both timestamps matter and neither implies the other: a successful build four
+ * hours ago with a failed attempt ten minutes ago is a real state, and showing
+ * only one of them hides half of it.
+ */
+export interface GraphAggregation {
+  lastSuccessAt?: string;
+  lastAttemptAt?: string;
+  lastError?: string;
+  edgeCount?: number;
+}
+
+export async function fetchGraphAggregation(): Promise<{ aggregation: GraphAggregation | null }> {
+  if (DEMO_MODE) return { aggregation: { lastSuccessAt: new Date().toISOString(), edgeCount: 100 } };
+  return apiGet<{ aggregation: GraphAggregation | null }>("/graph/aggregate/status");
+}
+
+export async function triggerGraphAggregation(): Promise<{ aggregation: GraphAggregation | null }> {
+  if (DEMO_MODE) return { aggregation: { lastSuccessAt: new Date().toISOString(), edgeCount: 100 } };
+  return apiPost<{ aggregation: GraphAggregation | null }>("/graph/aggregate", {});
 }
 
 export async function fetchGraphNode(id: string): Promise<GraphNodeResponse> {

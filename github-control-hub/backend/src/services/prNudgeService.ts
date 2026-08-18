@@ -333,8 +333,8 @@ export function sortByStaleness(prs: PullRequest[], now = Date.now()): PullReque
 // fifty requests to answer one screen; this is one.
 
 export const OPEN_PRS_QUERY = `
-query($q: String!, $cursor: String) {
-  search(query: $q, type: ISSUE, first: 50, after: $cursor) {
+query($q: String!, $cursor: String, $first: Int!) {
+  search(query: $q, type: ISSUE, first: $first, after: $cursor) {
     pageInfo { hasNextPage endCursor }
     nodes {
       ... on PullRequest {
@@ -361,8 +361,79 @@ query($q: String!, $cursor: String) {
 
 type GraphQlFn = (query: string, variables: Record<string, unknown>) => Promise<any>;
 
+/**
+ * Page sizes, largest first, stepped down when GitHub gives up on one.
+ *
+ * The cost of this query is in its nested connections — the last commit, the
+ * requested reviewers and the latest reviews are resolved per pull request, and
+ * fifty of them at once exceeded GitHub's own execution budget on a real org.
+ * That arrives as an HTML 502 or 504 from the edge rather than a GraphQL error,
+ * with nothing said about why.
+ *
+ * A fixed smaller number would have been tuned to one organization on one day.
+ * Backing off on failure fits whatever the org actually is, and costs a wasted
+ * request only on the orgs that need it.
+ */
+const PAGE_SIZES = [30, 15, 5];
+
+/** Total pull requests read before reporting the list as truncated. */
+const MAX_PRS = 500;
+
 /** Guards against an endless walk if a cursor stops advancing. */
-const MAX_PAGES = 10;
+const MAX_REQUESTS = 120;
+
+/**
+ * A gateway failure, meaning the query was too expensive rather than wrong.
+ *
+ * GitHub answers these with an HTML error page, so there is no GraphQL error to
+ * read and the status is all there is to go on.
+ */
+function isTooExpensive(err: any): boolean {
+  return err?.status === 502 || err?.status === 504 || err?.status === 503;
+}
+
+/** Refused field paths already reported, so one missing permission logs once. */
+const reportedRefusals = new Set<string>();
+
+/**
+ * A GraphQL response can carry data *and* errors at the same time.
+ *
+ * When the App lacks the permission for one field, GitHub returns every other
+ * field normally and adds an error naming the refused path. Octokit treats any
+ * `errors` array as a thrown request, which discards a response that was almost
+ * entirely usable — so one unavailable field took out the whole pull request
+ * tab rather than blanking one column of it.
+ *
+ * The partial data is on the thrown error. Anything without data — a network
+ * failure, a 502, a malformed query — still throws, because there is nothing to
+ * carry on with.
+ */
+async function graphqlAllowingPartial(
+  graphql: GraphQlFn,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<any> {
+  try {
+    return await graphql(query, variables);
+  } catch (err: any) {
+    const data = err?.data;
+    if (!data) throw err;
+
+    for (const e of err.errors ?? []) {
+      const path = (e?.path ?? []).filter((p: unknown) => typeof p === "string").join(".");
+      const key = `${path}|${e?.message}`;
+      if (reportedRefusals.has(key)) continue;
+      reportedRefusals.add(key);
+      console.warn(
+        `[pull requests] GitHub refused "${path || "a field"}": ${e?.message}. ` +
+        "The rest of the response is being used. If this is statusCheckRollup, " +
+        "the GitHub App needs Checks (read) and Commit statuses (read) — until " +
+        "then, check status shows as unknown.",
+      );
+    }
+    return data;
+  }
+}
 
 export async function fetchOpenPrs(
   graphql: GraphQlFn,
@@ -370,16 +441,35 @@ export async function fetchOpenPrs(
 ): Promise<{ prs: PullRequest[]; truncated: boolean }> {
   const prs: PullRequest[] = [];
   let cursor: string | null = null;
-  let truncated = false;
+  const truncated = false;
+  let size = 0;
 
-  for (let page = 0; page < MAX_PAGES; page++) {
-    const res: any = await graphql(OPEN_PRS_QUERY, {
-      // `is:open` is load-bearing and asserted in the tests: without it this
-      // returns every pull request ever opened, and the whole point is that a
-      // closed one never appears.
-      q: `is:pr is:open org:${org} archived:false`,
-      cursor,
-    });
+  for (let request = 0; request < MAX_REQUESTS; request++) {
+    if (prs.length >= MAX_PRS) return { prs, truncated: true };
+
+    let res: any;
+    try {
+      res = await graphqlAllowingPartial(graphql, OPEN_PRS_QUERY, {
+        // `is:open` is load-bearing and asserted in the tests: without it this
+        // returns every pull request ever opened, and the whole point is that a
+        // closed one never appears.
+        q: `is:pr is:open org:${org} archived:false`,
+        cursor,
+        first: PAGE_SIZES[size],
+      });
+    } catch (err: any) {
+      // Retried from the same cursor, so nothing is skipped by stepping down.
+      if (isTooExpensive(err) && size < PAGE_SIZES.length - 1) {
+        size++;
+        console.warn(
+          `[pull requests] GitHub returned ${err.status} for ${PAGE_SIZES[size - 1]} ` +
+          `pull requests per page — retrying at ${PAGE_SIZES[size]}.`,
+        );
+        continue;
+      }
+      throw err;
+    }
+
     const search = res?.search;
     if (!search) break;
 
@@ -417,10 +507,13 @@ export async function fetchOpenPrs(
     if (!search.pageInfo?.hasNextPage) return { prs, truncated };
     cursor = search.pageInfo.endCursor ?? null;
     if (!cursor) return { prs, truncated };
-    if (page === MAX_PAGES - 1) truncated = true;
   }
 
-  return { prs, truncated };
+  // Every exit above is a complete walk. Falling out of the loop means the
+  // request budget ran out with pages still to read, which is the one case the
+  // caller has to be told about — a short list that looks complete is worse
+  // than a short list that says it is short.
+  return { prs, truncated: true };
 }
 
 // ── the nudge itself ──────────────────────────────────────────────────

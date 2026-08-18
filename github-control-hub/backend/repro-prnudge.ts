@@ -357,6 +357,99 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       p.checksState === "SUCCESS", p.checksState);
   }
 
+  // ── one refused field does not lose the response ────────────────────
+  //
+  // GraphQL answers with data *and* errors when the App lacks the permission
+  // for a single field: every other field arrives normally, and an error names
+  // the refused path. Octokit raises that as a thrown request, so the partial
+  // data is on the error rather than returned — and treating it as a failure
+  // emptied the whole pull request tab because check status was unavailable.
+  {
+    const refusal: any = new Error("Resource not accessible by integration");
+    refusal.errors = [{
+      message: "Resource not accessible by integration",
+      path: ["search", "nodes", 0, "commits", "nodes", 0, "commit", "statusCheckRollup"],
+    }];
+    refusal.data = { search: { pageInfo: { hasNextPage: false }, nodes: [{
+      number: 9, title: "Still here", url: "u", createdAt: daysAgo(2), isDraft: false,
+      mergeable: "MERGEABLE", reviewDecision: "REVIEW_REQUIRED",
+      headRefName: "feat", baseRefName: "main",
+      author: { login: "alice" }, repository: { nameWithOwner: "o/api" },
+      // The refused field comes back null beside its error.
+      commits: { nodes: [{ commit: { committedDate: daysAgo(2), statusCheckRollup: null } }] },
+      reviewRequests: { nodes: [] }, latestReviews: { nodes: [] },
+    }] } };
+
+    const { prs } = await fetchOpenPrs(async () => { throw refusal; }, "Acme-Org");
+    check("a refused field still yields the pull requests around it",
+      prs.length === 1 && prs[0].number === 9, prs);
+    check("  with the unavailable field reported as unknown, not invented",
+      prs[0].checksState === null, prs[0].checksState);
+    check("  and everything the refusal did not touch is intact",
+      prs[0].author === "alice" && prs[0].repo === "o/api", prs[0]);
+  }
+
+  // ── an over-expensive page is retried smaller, not abandoned ────────
+  //
+  // The nested connections make this query's cost scale with the page size, and
+  // past some number of pull requests GitHub gives up and returns an HTML 502
+  // from its edge. There is no GraphQL error to read: the status is the whole
+  // message. Stepping down and retrying the same cursor is what makes the tab
+  // work on a large org without hiding pull requests on a small one.
+  {
+    const sizes: number[] = [];
+    const graphql = async (_q: string, v: any) => {
+      sizes.push(v.first);
+      if (v.first > 15) { const e: any = new Error("502 Bad Gateway"); e.status = 502; throw e; }
+      return { search: { pageInfo: { hasNextPage: false }, nodes: [{
+        number: 1, title: "T", url: "u", createdAt: daysAgo(1), isDraft: false,
+        author: { login: "alice" }, repository: { nameWithOwner: "o/api" },
+        commits: { nodes: [{ commit: { committedDate: daysAgo(1) } }] },
+        reviewRequests: { nodes: [] }, latestReviews: { nodes: [] },
+      }] } };
+    };
+
+    const { prs } = await fetchOpenPrs(graphql, "Acme-Org");
+    check("a page GitHub refuses to compute is retried at a smaller size",
+      sizes.length > 1 && sizes[1] < sizes[0], sizes);
+    check("  and the pull requests arrive rather than the tab failing",
+      prs.length === 1 && prs[0].number === 1, prs);
+    check("  the retry asks from the same point, so nothing is skipped",
+      sizes[0] > 15 && sizes[sizes.length - 1] <= 15, sizes);
+  }
+
+  // ── backing off has a floor ─────────────────────────────────────────
+  //
+  // An org where even the smallest page fails is broken in some other way, and
+  // retrying forever would hang the request instead of reporting it.
+  {
+    let calls = 0;
+    const graphql = async () => {
+      calls++;
+      const e: any = new Error("502 Bad Gateway"); e.status = 502; throw e;
+    };
+    let threw = false;
+    try { await fetchOpenPrs(graphql, "Acme-Org"); } catch { threw = true; }
+    check("a query that fails at every size gives up rather than looping", threw);
+    check("  after a bounded number of attempts", calls <= 4, calls);
+  }
+
+  // ── a failure carrying no data is still a failure ───────────────────
+  //
+  // The 502 that GitHub returns when a query is too expensive has no data on
+  // it. Swallowing that would report an empty org as though it were an org
+  // with no open pull requests.
+  {
+    const dead: any = new Error("502 Bad Gateway");
+    dead.status = 502;
+    let threw = false;
+    try {
+      await fetchOpenPrs(async () => { throw dead; }, "Acme-Org");
+    } catch { threw = true; }
+    check("a response with no data at all still throws", threw,
+      "an empty result here would read as 'no open pull requests'");
+  }
+
   // ── nothing may list a closed pull request ──────────────────────────
   {
     const src = fs.readFileSync(path.join(__dirname, "src/services/prNudgeService.ts"), "utf8");
@@ -742,7 +835,7 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
     // Only admins may flip them.
     const settingsBody = src.slice(src.indexOf('router.put("/settings"'));
     check("  and only an admin may change them",
-      /isAwsAdmin/.test(settingsBody.slice(0, 400)));
+      /isControlHubAdmin/.test(settingsBody.slice(0, 400)));
   }
 
   // ── only a commit resets the clock ──────────────────────────────────

@@ -164,6 +164,16 @@ export function getSystemToken(): string {
   return tokenManager?.getToken() ?? "";
 }
 
+/**
+ * Drops the token manager, so `getSystemToken()` reads empty again.
+ *
+ * Exists for the tests that cover what the app does with no App credentials —
+ * a state that is otherwise only reachable by breaking the real ones.
+ */
+export function __resetTokenManagerForTests(): void {
+  tokenManager = null;
+}
+
 /** Async getter — refreshes the App token if it has expired. */
 export async function getSystemTokenAsync(): Promise<string> {
   if (!tokenManager) {

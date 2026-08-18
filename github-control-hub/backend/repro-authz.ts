@@ -15,7 +15,7 @@
 process.env.GITHUB_ORG = "test-org";
 
 import { isControlHubAdmin, isAwsAdmin, invalidateAdminCache, CONTROL_HUB_ADMIN_TEAM, AWS_ADMIN_TEAM } from "./src/services/authorizationService";
-import { initTokenManager } from "./src/github/client";
+import { initTokenManager, __resetTokenManagerForTests } from "./src/github/client";
 
 /**
  * A GitHub App token, because that is now the only credential there is.
@@ -143,6 +143,75 @@ globalThis.fetch = (async (input: any) => {
     const ghAfter = await isControlHubAdmin("cache-person");
     assert("cache does not leak one team's answer to the other", awsFirst === true && ghAfter === false,
       { awsFirst, ghAfter });
+  }
+
+  // ── the AWS team gates AWS, and nothing else ────────────────────────
+  //
+  // The two teams exist so that trusting somebody with GitHub settings is not
+  // the same act as trusting them with an AWS account. That separation only
+  // holds if the AWS check is used for AWS work — and it had spread to pull
+  // request reminders, alarms, the dependency graph and the Renovate bot name,
+  // so a member of the GitHub admin team could not change any of them without
+  // also being an AWS admin. Nothing announced that; the buttons simply failed.
+  //
+  // Asserted against the routes as shipped, because the next person to need an
+  // admin gate will copy whichever line they happen to read first.
+  {
+    const assert = (name: string, ok: boolean, got?: unknown) => {
+      console.log((ok ? "  PASS  " : "  FAIL  ") + name + (ok ? "" : ` -> got: ${JSON.stringify(got)}`));
+      if (!ok) failures++;
+    };
+    const fs = await import("node:fs");
+    const path = await import("node:path");
+    const dir = path.join(__dirname, "src", "routes");
+
+    // Both write AWS: guardrails, and audit-log streaming, which creates IAM in
+    // the account with the operator's own credentials.
+    const MAY_USE_AWS_CHECK = new Set(["awsGuardrails.ts", "activity.ts", "auth.ts"]);
+
+    const offenders: string[] = [];
+    for (const file of fs.readdirSync(dir)) {
+      if (!file.endsWith(".ts") || MAY_USE_AWS_CHECK.has(file)) continue;
+      const src = fs.readFileSync(path.join(dir, file), "utf8");
+      if (/\bisAwsAdmin\b/.test(src)) offenders.push(file);
+    }
+    assert("only AWS routes gate on the AWS admin team", offenders.length === 0,
+      offenders.length ? `${offenders.join(", ")} gate GitHub work on aws-guardrail-admins` : "");
+
+    // auth.ts reports both flags to the client and gates nothing, so it is
+    // allowed the import — but it must not be quietly gating a route either.
+    const authSrc = fs.readFileSync(path.join(dir, "auth.ts"), "utf8");
+    assert("  and auth.ts only reports the AWS flag rather than gating on it",
+      !/if\s*\(\s*!\s*\(?\s*await\s+isAwsAdmin/.test(authSrc));
+  }
+
+  // ── a broken App token is not an answer about the user ──────────────
+  //
+  // Membership is read with the App's own token, so no token means no answer.
+  // That used to be cached as a plain `false` for the full TTL: a credential
+  // problem lasting a moment kept every admin screen shut for a minute after it
+  // healed, and told the person they were not an admin — which is a claim about
+  // them rather than about the app.
+  {
+    const assert = (name: string, ok: boolean, got?: unknown) => {
+      console.log((ok ? "  PASS  " : "  FAIL  ") + name + (ok ? "" : ` -> got: ${JSON.stringify(got)}`));
+      if (!ok) failures++;
+    };
+
+    invalidateAdminCache();
+    scenario = { orgRole: "admin", memberOf: [] };
+
+    __resetTokenManagerForTests();
+    const duringOutage = await isControlHubAdmin("owner-person");
+    assert("with no App token the check denies rather than throwing", duringOutage === false);
+
+    // The token comes back. Without a cached denial in the way, the very next
+    // call is correct — no waiting out a TTL.
+    await initTokenManager("1", "key", "1", stubAppAuth as any);
+    const afterRecovery = await isControlHubAdmin("owner-person");
+    assert("  and the denial is not remembered once the token works",
+      afterRecovery === true,
+      "a cached no would have outlived the outage that caused it");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

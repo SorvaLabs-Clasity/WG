@@ -55,12 +55,28 @@ export async function isAwsAdmin(login: string): Promise<boolean> {
   return isTeamMember(login, AWS_ADMIN_TEAM);
 }
 
+/** Thrown when the answer is unknown, as opposed to "no". */
+class Unanswerable extends Error {}
+
 async function isTeamMember(login: string, team: string): Promise<boolean> {
   const key = `${team}:${login.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expires) return hit.value;
 
-  const value = await resolve(login, team);
+  let value: boolean;
+  try {
+    value = await resolve(login, team);
+  } catch (err) {
+    // Not cached, and not an answer about this person.
+    //
+    // A denial from a broken App token used to be stored for the full TTL, so a
+    // credential problem lasting a second locked the caller out of every admin
+    // screen for a minute after it healed — and gave them a plain "you are not
+    // an admin", which is a claim about them rather than about the app.
+    if (err instanceof Unanswerable) return false;
+    throw err;
+  }
+
   cache.set(key, { value, expires: Date.now() + CACHE_TTL_MS });
   return value;
 }
@@ -69,8 +85,12 @@ async function resolve(login: string, team: string): Promise<boolean> {
   const org = getOrg();
   const token = getSystemToken();
   if (!token) {
-    console.warn("[authorization] No system token available; denying admin check");
-    return false;
+    console.warn(
+      "[authorization] No GitHub App token, so team membership cannot be read — " +
+      "denying this check without caching it. Everyone will look like a non-admin " +
+      "until the App credentials work.",
+    );
+    throw new Unanswerable("no system token");
   }
   const octokit: Octokit = createOctokit(token);
 

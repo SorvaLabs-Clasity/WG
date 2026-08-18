@@ -6,7 +6,8 @@ import { evaluateSecurityQuery } from "../services/graphService";
 import { getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
-import { isAwsAdmin, AWS_ADMIN_TEAM } from "../services/authorizationService";
+import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import { getOrgConfig } from "../services/orgConfigService";
 
 const router = Router();
 
@@ -257,10 +258,10 @@ router.get("/query/:q/freshness", async (req: Request<{ q: string }>, res: Respo
  */
 router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Response) => {
   const login = req.user!.login;
-  if (!(await isAwsAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
-      error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can force a `
+      error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can force a `
         + `full re-check. It spends the organization's GitHub budget, not yours.`,
     });
   }
@@ -319,11 +320,44 @@ router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Re
 });
 
 // Admin tool: trigger aggregation manually (falls back to user's token if system token unavailable)
+//
+// Gated for the same reason /query/:q/refresh-all is: a full aggregation walks
+// every repository, team and member in the organization and spends the org's
+// GitHub budget rather than the caller's. It said "admin tool" in this comment
+// and checked nothing, so any signed-in user could start one, repeatedly.
 router.post("/aggregate", async (req: Request, res: Response) => {
   try {
+    if (!(await isControlHubAdmin(req.user!.login).catch(() => false))) {
+      return res.status(403).json({
+        code: "CONTROL_HUB_ADMIN_REQUIRED",
+        error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can `
+          + `rebuild the access graph. It spends the organization's GitHub budget, not yours.`,
+      });
+    }
     const { aggregateGraphData } = await import("../jobs/graphAggregator");
     await aggregateGraphData(req.user?.accessToken);
-    res.json({ message: "Aggregation triggered successfully." });
+
+    // The stored record, not a claim of success. aggregateGraphData catches its
+    // own fatal errors, so returning "triggered successfully" from here said
+    // nothing about whether anything was actually rebuilt — a failed run and a
+    // good one produced the same reply.
+    const { graphAggregation } = await getOrgConfig();
+    res.json({ aggregation: graphAggregation ?? null });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "graph") });
+  }
+});
+
+/**
+ * When the graph was last rebuilt.
+ *
+ * Ungated: every screen reading the graph should be able to say how old it is,
+ * and the answer is two timestamps, not data about anybody.
+ */
+router.get("/aggregate/status", async (_req: Request, res: Response) => {
+  try {
+    const { graphAggregation } = await getOrgConfig();
+    res.json({ aggregation: graphAggregation ?? null });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "graph") });
   }

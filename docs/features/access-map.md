@@ -44,7 +44,29 @@ There is no remove button. Removing someone's access is a decision with
 consequences and belongs where those consequences are visible, not behind a
 button on a map.
 
-## Requires a sync
+## It is a snapshot, and it says how old it is
 
 The person, team and org edges are collected by graph aggregation. Before the
 first sync the page says it is stale rather than showing an empty organization.
+
+Everything on this page is that snapshot rather than a live read of GitHub, so
+the header carries the age — *Rebuilt 4 hours ago · 1,200 connections* — and a
+**Rebuild now** button for members of `control-hub-admins`. A rebuild that
+failed is called out beside the age, because "last built four hours ago, failing
+since" is a different situation from "last built four hours ago", and the age
+alone cannot tell them apart.
+
+**The Refresh button beside it does something else.** It re-reads the derived map
+from the stored edges, which is cheap and picks up nothing new from GitHub.
+Rebuild is the one that goes back to GitHub.
+
+A rule rebuilds it every six hours (`GraphAggregationSchedule` in the CDK stack).
+Six rather than minutes because the walk covers every repository, team and member
+in the organization — expensive in GitHub's rate limit, and describing something
+that changes on the scale of days. The manual rebuild covers the case six hours
+is too long for, which is almost always somebody wanting to see an access change
+they just made.
+
+Until this existed the snapshot was only rebuilt when someone pressed a button,
+and nothing on screen said when that last happened — so a graph assembled before
+a person joined, left, or was made an owner looked exactly like a current one.
