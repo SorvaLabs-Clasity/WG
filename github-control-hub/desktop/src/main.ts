@@ -269,15 +269,34 @@ function setupAutoUpdater(): void {
     setTimeout(() => autoUpdater.quitAndInstall(), 2000);
   });
 
-  autoUpdater.on("error", () => {
-    sendUpdateStatus("error");
+  // The error is reported, not swallowed.
+  //
+  // This discarded its argument, so every failure — a 404 from the wrong
+  // repository, a 401 from a token without access, a network refusal, a
+  // malformed latest.yml — arrived on screen as the single word "error" and in
+  // the log as nothing at all. There was no way to tell "there is no update"
+  // from "the check could not run", which is the difference that matters.
+  autoUpdater.on("error", (err) => {
+    console.error("[updater] FAILED:", err?.message ?? err);
+    if ((err as any)?.stack) console.error((err as any).stack);
+    sendUpdateStatus("error", err?.message ?? String(err));
   });
+
+  // electron-updater's own diagnostics, which say which URL it fetched and what
+  // came back. Without them the only evidence of a check is whether something
+  // happened afterwards.
+  (autoUpdater as any).logger = {
+    info: (m: any) => console.log("[updater]", m),
+    warn: (m: any) => console.warn("[updater]", m),
+    error: (m: any) => console.error("[updater]", m),
+    debug: (m: any) => console.log("[updater:debug]", m),
+  };
 
   ipcMain.on("install-update", () => {
     autoUpdater.quitAndInstall();
   });
 
-  waitForAwsAuthThenCheckUpdates();
+  scheduleUpdateChecks();
 }
 
 function httpGetJson(url: string): Promise<any> {
@@ -314,37 +333,78 @@ function readSystemToken(): string {
   }
 }
 
-function waitForAwsAuthThenCheckUpdates(): void {
-  let checked = false;
-  console.log("[updater] Waiting for AWS auth before checking updates...");
-  const interval = setInterval(async () => {
-    if (checked) { clearInterval(interval); return; }
-    try {
-      const status = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/status`);
-      if (status.aws?.dynamoReachable) {
-        checked = true;
-        clearInterval(interval);
-        console.log("[updater] AWS authenticated, reading system token...");
+/** How often to look, once the first check has run. */
+const UPDATE_INTERVAL_MS = 30 * 60_000;
+
+/** How long to keep waiting for AWS before saying so and trying again later. */
+const AUTH_WAIT_MS = 5 * 60_000;
+
+/**
+ * Check for an update, once the credentials to do it exist.
+ *
+ * The token comes from Secrets Manager, so AWS has to be reachable before
+ * GitHub can be asked anything — that coupling is structural and cannot be
+ * removed here. What can be removed is the part that made it permanent: this
+ * polled for five minutes and then cleared its interval for the lifetime of the
+ * process. Signing in to AWS after that window meant no update check until the
+ * app was restarted, and nothing on screen said so. An app people leave open
+ * for days would never look again.
+ *
+ * So it keeps its own clock: give up on *this* attempt after five minutes, then
+ * try the whole thing again on the ordinary interval.
+ */
+function scheduleUpdateChecks(): void {
+  const attempt = async (): Promise<void> => {
+    const deadline = Date.now() + AUTH_WAIT_MS;
+
+    while (Date.now() < deadline) {
+      let reachable = false;
+      try {
+        const status = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/status`);
+        reachable = !!status.aws?.dynamoReachable;
+      } catch (err: any) {
+        console.log("[updater] backend not answering yet:", err?.message || "");
+      }
+
+      if (reachable) {
         const token = readSystemToken();
-        console.log("[updater] Token:", token ? "got token" : "no token");
         if (!token) {
-          sendUpdateStatus("error");
+          // Distinct from a failed check: the App credentials are missing or
+          // broken, and no amount of retrying this minute will help.
+          console.error(
+            "[updater] AWS is reachable but there is no GitHub App token, so the update " +
+            "check cannot run. Check the App credentials in Secrets Manager.",
+          );
+          sendUpdateStatus("error", "No GitHub App token — cannot check for updates");
           return;
         }
         process.env.GH_TOKEN = token;
         sendUpdateStatus("checking");
-        console.log("[updater] Checking for updates...");
-        autoUpdater.checkForUpdates().catch((err) => {
-          console.error("[updater] Update check failed:", err.message);
-          sendUpdateStatus("error");
-        });
+        console.log("[updater] checking for updates…");
+        try {
+          const result = await autoUpdater.checkForUpdates();
+          console.log("[updater] check returned:",
+            result?.updateInfo?.version ?? "no version in response");
+        } catch (err: any) {
+          // The "error" handler above has already reported it; this stops the
+          // rejection becoming an unhandled one.
+          console.error("[updater] check threw:", err?.message ?? err);
+        }
+        return;
       }
-    } catch (err: any) {
-      console.log("[updater] Waiting...", err?.message || "");
-    }
-  }, 5000);
 
-  setTimeout(() => { clearInterval(interval); }, 300_000);
+      await new Promise(r => setTimeout(r, 5000));
+    }
+
+    console.warn(
+      "[updater] AWS was not reachable within five minutes, so no update check ran. " +
+      `Trying again in ${UPDATE_INTERVAL_MS / 60_000} minutes — signing in to AWS will ` +
+      "make the next attempt work without restarting.",
+    );
+  };
+
+  void attempt();
+  setInterval(() => { void attempt(); }, UPDATE_INTERVAL_MS);
 }
 
 app.whenReady().then(main);

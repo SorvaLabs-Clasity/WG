@@ -348,10 +348,12 @@ query($q: String!, $cursor: String, $first: Int!) {
             statusCheckRollup { state }
           } }
         }
-        reviewRequests(first: 25) {
+        reviewRequests(first: 10) {
+          totalCount
           nodes { requestedReviewer { __typename ... on User { login } ... on Team { slug } } }
         }
-        latestReviews(first: 25) {
+        latestReviews(first: 10) {
+          totalCount
           nodes { author { login } state }
         }
       }
@@ -374,7 +376,52 @@ type GraphQlFn = (query: string, variables: Record<string, unknown>) => Promise<
  * Backing off on failure fits whatever the org actually is, and costs a wasted
  * request only on the orgs that need it.
  */
-const PAGE_SIZES = [30, 15, 5];
+/**
+ * Page sizes, largest first, stepped down when GitHub gives up on one.
+ *
+ * Finer steps than [30, 15, 5], because a page that is smaller than it needs to
+ * be is not free: the walk pays a fixed ~1.4s per request, so halving the page
+ * doubles the requests and makes the whole thing slower. On an organization
+ * where 25 works and 50 does not, dropping straight from 30 to 15 skipped the
+ * only sizes worth using.
+ */
+const PAGE_SIZES = [30, 24, 18, 12, 6];
+
+/** Reviewers read per pull request. See the warning where it is compared. */
+const REVIEW_PAGE = 10;
+
+/**
+ * The page size that last worked, remembered across calls.
+ *
+ * Backing off costs a timeout per step — GitHub takes about eleven seconds to
+ * give up on a page it cannot compute — and rediscovering the same answer on
+ * every request meant every load of the pull request tab paid that tax again.
+ * On an organization that needs the smallest page, opening the tab cost two
+ * dead requests before the first useful one, which is most of the twenty
+ * seconds people were waiting.
+ *
+ * Starting from the last size that worked makes the cost one-off. It is only
+ * ever an optimisation: a remembered size that has since become too expensive
+ * backs off exactly as it did before, and one that is now too cautious is
+ * retried upward below.
+ */
+let lastGoodSize = 0;
+
+/** Reset between tests, which need a predictable starting point. */
+export function __resetPageSizeForTests(): void {
+  lastGoodSize = 0;
+  sinceStepUp = 0;
+}
+
+/**
+ * Calls since the page size last stepped down, so it can be tried larger again.
+ *
+ * Without this a single bad afternoon would pin the smallest page forever, and
+ * the smallest page means the most requests — the opposite of what backing off
+ * was for.
+ */
+let sinceStepUp = 0;
+const STEP_UP_AFTER = 20;
 
 /** Total pull requests read before reporting the list as truncated. */
 const MAX_PRS = 500;
@@ -442,7 +489,13 @@ export async function fetchOpenPrs(
   const prs: PullRequest[] = [];
   let cursor: string | null = null;
   const truncated = false;
-  let size = 0;
+
+  // Start where the last call ended up, not at the top.
+  let size = lastGoodSize;
+  if (size > 0 && ++sinceStepUp >= STEP_UP_AFTER) {
+    size--;
+    sinceStepUp = 0;
+  }
 
   for (let request = 0; request < MAX_REQUESTS; request++) {
     if (prs.length >= MAX_PRS) return { prs, truncated: true };
@@ -461,14 +514,19 @@ export async function fetchOpenPrs(
       // Retried from the same cursor, so nothing is skipped by stepping down.
       if (isTooExpensive(err) && size < PAGE_SIZES.length - 1) {
         size++;
+        lastGoodSize = size;
+        sinceStepUp = 0;
         console.warn(
           `[pull requests] GitHub returned ${err.status} for ${PAGE_SIZES[size - 1]} ` +
-          `pull requests per page — retrying at ${PAGE_SIZES[size]}.`,
+          `pull requests per page — retrying at ${PAGE_SIZES[size]}, and starting there next time.`,
         );
         continue;
       }
       throw err;
     }
+
+    // This size answered, so it is where the next call should begin.
+    lastGoodSize = size;
 
     const search = res?.search;
     if (!search) break;
@@ -476,6 +534,22 @@ export async function fetchOpenPrs(
     for (const n of search.nodes ?? []) {
       if (!n || typeof n.number !== "number") continue;
       const commit = n.commits?.nodes?.[0]?.commit;
+
+      // Ten reviewers is generous and still a limit. Asking for 25 of each was
+      // half this query's node count and most of its cost; asking for 10 makes
+      // a much larger page viable, which is a bigger win than the two extra
+      // reviewers it might drop. The count says when that happened, so a
+      // pull request with a crowd on it is reported rather than quietly
+      // half-read.
+      const asked = n.reviewRequests?.totalCount ?? 0;
+      const reviewed = n.latestReviews?.totalCount ?? 0;
+      if (asked > REVIEW_PAGE || reviewed > REVIEW_PAGE) {
+        console.warn(
+          `[pull requests] ${n.repository?.nameWithOwner}#${n.number} has ${asked} requested ` +
+          `reviewers and ${reviewed} reviews; only the first ${REVIEW_PAGE} of each were read, ` +
+          `so someone on it may not be chased.`,
+        );
+      }
       prs.push({
         repo: n.repository?.nameWithOwner ?? "",
         number: n.number,

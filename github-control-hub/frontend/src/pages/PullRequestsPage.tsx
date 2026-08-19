@@ -134,9 +134,30 @@ export default function PullRequestsPage() {
     onError: (e: any) => { setNotice(""); setError(e?.message || "That did not work."); },
   });
 
+  /**
+   * The two switches, applied to the cache the moment the save returns.
+   *
+   * These read their position from the `pulls` query, and the ordinary success
+   * path invalidates it — which refetches the whole pull request list, several
+   * seconds of GitHub work. So the switch sat visibly still until a list nobody
+   * was waiting for came back, and pressing it again in the meantime sent a
+   * second save. The server already returns the saved settings; writing them
+   * into the cache moves the switch at once, and the list still refreshes behind
+   * it because it can also change what is listed.
+   */
   const saveSettings = useMutation({
     mutationFn: (b: { monitoringEnabled?: boolean; remindersEnabled?: boolean }) =>
-      apiPut<unknown>("/pulls/settings", b), ...after(),
+      apiPut<{ monitoringEnabled?: boolean; remindersEnabled?: boolean }>("/pulls/settings", b),
+    onSuccess: (saved) => {
+      setError("");
+      qc.setQueryData<Answer>(["pulls"], (prev) => prev && ({
+        ...prev,
+        ...(saved?.monitoringEnabled !== undefined && { monitoringEnabled: saved.monitoringEnabled }),
+        ...(saved?.remindersEnabled !== undefined && { remindersEnabled: saved.remindersEnabled }),
+      }));
+      qc.invalidateQueries({ queryKey: ["pulls"] });
+    },
+    onError: (e: any) => { setNotice(""); setError(e?.message || "That did not work."); },
   });
   const pause = useMutation({
     mutationFn: (b: { repo: string; number: number; paused?: boolean; pausedLogins?: string[] }) =>

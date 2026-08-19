@@ -21,6 +21,7 @@ import {
   daysSinceLastCommit, isStale, hasApproved, pendingReviewers, blockReason, mutedBy,
   blockedByMoreThanApprovals,
   nudgeTargets, isNudgeDue, sortByStaleness, fetchOpenPrs, STALE_DAYS,
+  __resetPageSizeForTests,
   buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass, staleSeconds, describeIdle,
   SEVEN_DAYS, STALE_SECONDS,
   type PullRequest, type NudgeDeps, type NudgeRunDeps,
@@ -416,6 +417,62 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       prs.length === 1 && prs[0].number === 1, prs);
     check("  the retry asks from the same point, so nothing is skipped",
       sizes[0] > 15 && sizes[sizes.length - 1] <= 15, sizes);
+  }
+
+  // ── the size that worked is remembered ──────────────────────────────
+  //
+  // Backing off costs a timeout per step, and GitHub takes about eleven seconds
+  // to abandon a page it cannot compute. Rediscovering the same answer on every
+  // request made every load of the tab pay that again — two dead requests before
+  // the first useful one, which is most of the twenty seconds people waited.
+  {
+    __resetPageSizeForTests();
+    const sizes: number[] = [];
+    const graphql = async (_q: string, v: any) => {
+      sizes.push(v.first);
+      if (v.first > 15) { const e: any = new Error("502"); e.status = 502; throw e; }
+      return { search: { pageInfo: { hasNextPage: false }, nodes: [] } };
+    };
+
+    await fetchOpenPrs(graphql, "Acme-Org");
+    const firstCall = [...sizes];
+    sizes.length = 0;
+    await fetchOpenPrs(graphql, "Acme-Org");
+
+    check("the first call discovers the working size by backing off",
+      firstCall.length > 1, firstCall);
+    check("  and the next call starts there instead of paying the timeout again",
+      sizes.length === 1 && sizes[0] === firstCall[firstCall.length - 1], { firstCall, sizes });
+  }
+
+  // ── but it is not pinned there for ever ─────────────────────────────
+  //
+  // A single bad afternoon must not permanently choose the smallest page, since
+  // the smallest page means the most requests — the opposite of what backing off
+  // was for. It is retried larger periodically.
+  {
+    __resetPageSizeForTests();
+    let allow = 15;
+    const graphql = async (_q: string, v: any) => {
+      if (v.first > allow) { const e: any = new Error("502"); e.status = 502; throw e; }
+      return { search: { pageInfo: { hasNextPage: false }, nodes: [] } };
+    };
+
+    await fetchOpenPrs(graphql, "Acme-Org");   // backs off to 15 and remembers
+
+    // GitHub recovers. Nothing tells us, so it has to be retried to be found.
+    allow = 100;
+    const tried = new Set<number>();
+    for (let i = 0; i < 25; i++) {
+      const seen: number[] = [];
+      await fetchOpenPrs(async (_q: string, v: any) => {
+        seen.push(v.first);
+        return { search: { pageInfo: { hasNextPage: false }, nodes: [] } };
+      }, "Acme-Org");
+      seen.forEach(n => tried.add(n));
+    }
+    check("a larger page is tried again eventually, so a bad day is not permanent",
+      [...tried].some(n => n > 15), [...tried]);
   }
 
   // ── backing off has a floor ─────────────────────────────────────────
