@@ -21,7 +21,7 @@ import {
   daysSinceLastCommit, isStale, hasApproved, pendingReviewers, blockReason, mutedBy,
   blockedByMoreThanApprovals,
   nudgeTargets, isNudgeDue, sortByStaleness, fetchOpenPrs, STALE_DAYS,
-  __resetPageSizeForTests,
+  __resetPageSizeForTests, __allowStoredPageSizeReload,
   buildNudgeComment, postStickyNudge, NUDGE_MARKER, runNudgePass, staleSeconds, describeIdle,
   SEVEN_DAYS, STALE_SECONDS,
   type PullRequest, type NudgeDeps, type NudgeRunDeps,
@@ -47,6 +47,12 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
   isDraft: false, reviewDecision: null, mergeable: "MERGEABLE", mergeStateStatus: "CLEAN",
   requestedReviewers: [], reviews: [], checksState: null, ...over,
 });
+
+/** Clears the in-process memory of the page size, leaving storage alone. */
+function lastGoodIsForgotten(): void {
+  __resetPageSizeForTests();
+  __allowStoredPageSizeReload();
+}
 
 (async () => {
   // ── the clock is the last commit, not the opening date ──────────────
@@ -443,6 +449,51 @@ const pr = (over: Partial<PullRequest> = {}): PullRequest => ({
       firstCall.length > 1, firstCall);
     check("  and the next call starts there instead of paying the timeout again",
       sizes.length === 1 && sizes[0] === firstCall[firstCall.length - 1], { firstCall, sizes });
+  }
+
+  // ── and it survives a restart ───────────────────────────────────────
+  //
+  // The discovery costs about eleven seconds per step down, and holding the
+  // answer in memory alone meant paying it again on every launch of the app and
+  // every Lambda cold start. That is the twenty to thirty seconds people saw on
+  // the first load of the tab, every single time they opened it.
+  {
+    const { getOrgConfig, savePrPageSize } = await import("./src/services/orgConfigService");
+
+    __resetPageSizeForTests();
+    const graphql = async (_q: string, v: any) => {
+      if (v.first > 12) { const e: any = new Error("502"); e.status = 502; throw e; }
+      return { search: { pageInfo: { hasNextPage: false }, nodes: [] } };
+    };
+    await fetchOpenPrs(graphql, "Acme-Org");
+    // The write is fire-and-forget so the request is not held up by it.
+    await new Promise(r => setTimeout(r, 20));
+
+    const stored = (await getOrgConfig()).prPageSize;
+    check("the size that worked is written down, not just remembered in memory",
+      stored === 12, stored);
+
+    // A fresh process: module state cleared, storage intact.
+    lastGoodIsForgotten();
+    const seen: number[] = [];
+    await fetchOpenPrs(async (_q: string, v: any) => {
+      seen.push(v.first);
+      return { search: { pageInfo: { hasNextPage: false }, nodes: [] } };
+    }, "Acme-Org");
+    check("  so a restart starts there rather than rediscovering it",
+      seen.length === 1 && seen[0] === 12, seen);
+
+    // A stored value that is no longer one of the sizes must not be trusted
+    // blindly — the ladder can change between releases.
+    await savePrPageSize(999);
+    lastGoodIsForgotten();
+    const seen2: number[] = [];
+    await fetchOpenPrs(async (_q: string, v: any) => {
+      seen2.push(v.first);
+      return { search: { pageInfo: { hasNextPage: false }, nodes: [] } };
+    }, "Acme-Org");
+    check("  a stored size that is no longer offered falls back to the largest",
+      seen2[0] === 30, seen2);
   }
 
   // ── but it is not pinned there for ever ─────────────────────────────

@@ -37,6 +37,22 @@ export interface OrgConfig {
     lastError?: string;
     edgeCount?: number;
   };
+  /**
+   * Pull requests fetched per GraphQL page, learned rather than configured.
+   *
+   * The query's cost scales with the page, and the size an organization can
+   * afford is a property of that organization — how many pull requests, how many
+   * reviewers, how much CI. It is discovered by asking for a large page and
+   * stepping down when GitHub gives up, which costs about eleven seconds per
+   * step because that is how long GitHub takes to abandon a page it cannot
+   * compute.
+   *
+   * Held in memory alone, that discovery ran once per process — so every launch
+   * of the desktop app paid twenty to thirty seconds on the first load of the
+   * pull request tab, and every Lambda cold start paid it again. Stored here, it
+   * is paid once per organization, ever.
+   */
+  prPageSize?: number;
 }
 
 const TABLE = () => tableName("ORG_CONFIG_TABLE");
@@ -101,6 +117,18 @@ export async function recordGraphAggregation(
     memConfig = updated;
   }
   return updated;
+}
+
+/** Remembers the page size that worked, so it is discovered once and not per process. */
+export async function savePrPageSize(size: number): Promise<void> {
+  const current = await getOrgConfig();
+  if (current.prPageSize === size) return;
+  const updated: OrgConfig = { ...current, prPageSize: size };
+  if (usesDynamo()) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+  } else {
+    memConfig = updated;
+  }
 }
 
 export async function updateOrgFeatures(featureUpdates: Partial<OrgFeatures>): Promise<OrgConfig> {

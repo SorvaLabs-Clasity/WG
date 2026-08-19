@@ -407,10 +407,60 @@ const REVIEW_PAGE = 10;
  */
 let lastGoodSize = 0;
 
+/** Whether the stored size has been read yet in this process. */
+let loadedStored = false;
+
 /** Reset between tests, which need a predictable starting point. */
 export function __resetPageSizeForTests(): void {
   lastGoodSize = 0;
   sinceStepUp = 0;
+  loadedStored = true;   // tests supply their own starting point
+}
+
+/**
+ * Lets the stored size be read again, the way a fresh process would.
+ *
+ * `__resetPageSizeForTests` deliberately marks the stored value as already read,
+ * so a test can set its own starting point without storage interfering. Testing
+ * that a restart picks the value up needs the opposite.
+ */
+export function __allowStoredPageSizeReload(): void {
+  loadedStored = false;
+}
+
+/**
+ * The size this organization settled on last time, read once per process.
+ *
+ * Best-effort by design: a failure here costs a slow first load, which is what
+ * the whole thing was already doing, so it must never be allowed to fail the
+ * request it is trying to speed up.
+ */
+async function loadStoredPageSize(): Promise<void> {
+  if (loadedStored) return;
+  loadedStored = true;
+  try {
+    const { getOrgConfig } = await import("./orgConfigService");
+    const stored = (await getOrgConfig()).prPageSize;
+    if (typeof stored !== "number") return;
+    const index = PAGE_SIZES.indexOf(stored);
+    if (index >= 0) lastGoodSize = index;
+  } catch (err) {
+    console.warn("[pull requests] Could not read the stored page size:",
+      (err as Error)?.message ?? err);
+  }
+}
+
+/** Records a change, so the next process starts where this one ended up. */
+function rememberPageSize(index: number): void {
+  void (async () => {
+    try {
+      const { savePrPageSize } = await import("./orgConfigService");
+      await savePrPageSize(PAGE_SIZES[index]);
+    } catch (err) {
+      console.warn("[pull requests] Could not store the page size:",
+        (err as Error)?.message ?? err);
+    }
+  })();
 }
 
 /**
@@ -490,7 +540,9 @@ export async function fetchOpenPrs(
   let cursor: string | null = null;
   const truncated = false;
 
-  // Start where the last call ended up, not at the top.
+  // Start where this organization ended up last time — in this process if it has
+  // run before, otherwise from what the previous one stored.
+  await loadStoredPageSize();
   let size = lastGoodSize;
   if (size > 0 && ++sinceStepUp >= STEP_UP_AFTER) {
     size--;
@@ -516,6 +568,7 @@ export async function fetchOpenPrs(
         size++;
         lastGoodSize = size;
         sinceStepUp = 0;
+        rememberPageSize(size);
         console.warn(
           `[pull requests] GitHub returned ${err.status} for ${PAGE_SIZES[size - 1]} ` +
           `pull requests per page — retrying at ${PAGE_SIZES[size]}, and starting there next time.`,
@@ -525,7 +578,9 @@ export async function fetchOpenPrs(
       throw err;
     }
 
-    // This size answered, so it is where the next call should begin.
+    // This size answered, so it is where the next call should begin — and where
+    // the next launch should begin too.
+    if (size !== lastGoodSize) rememberPageSize(size);
     lastGoodSize = size;
 
     const search = res?.search;
