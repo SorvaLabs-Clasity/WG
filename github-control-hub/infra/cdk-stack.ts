@@ -89,11 +89,26 @@ export class GitHubControlHubStack extends cdk.Stack {
     // is the shape of bill nobody notices. Three months is long enough to debug
     // an incident from and short enough to bound.
     //
-    // Declared explicitly rather than via the `logRetention` prop, which ships a
-    // custom resource and its own Lambda to call the API after deployment.
+    // **Not named `/aws/lambda/<function>`.** That is where Lambda puts a group
+    // it makes itself, on the first invocation, and CloudFormation refuses to
+    // create a resource whose physical name already exists. Any account where
+    // these functions had ever run — which is every account this has been
+    // deployed to — failed the change set with "already exists" and could not
+    // be deployed at all.
+    //
+    // Renaming is the supported way out: CDK's own guidance on moving from the
+    // deprecated `logRetention` prop to `logGroup` says in as many words that
+    // the group's name changes. The alternative, `logRetention`, is deprecated
+    // and ships a custom resource and a second Lambda to call PutRetentionPolicy
+    // after every deploy.
+    //
+    // The old `/aws/lambda/*` groups are left where they are. Nothing writes to
+    // them once this deploys, they still hold whatever history was there, and
+    // they can be deleted whenever convenient — see docs/operations/deploying.md.
     const logGroupFor = (id: string, fnName: string) =>
       new logs.LogGroup(this, `${id}Logs`, {
-        logGroupName: `/aws/lambda/${fnName}`,
+        // e.g. github-control-hub/lambda/alarm-evaluator
+        logGroupName: `${stackPrefix}/lambda/${fnName.replace(`${stackPrefix}-`, "")}`,
         retention: logs.RetentionDays.THREE_MONTHS,
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       });

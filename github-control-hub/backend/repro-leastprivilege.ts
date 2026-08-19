@@ -323,6 +323,25 @@ const accountsCode = code(accountsTs);
     }
   }
 
+  // ── log groups must not claim Lambda's own path ─────────────────────
+  //
+  // `/aws/lambda/<function>` is where Lambda creates a group itself, on the
+  // first invocation. CloudFormation refuses to create a resource whose
+  // physical name already exists, so declaring that name means the stack
+  // deploys cleanly to an account that has never run these functions and fails
+  // the change set on every account that has — which is every account it is
+  // already deployed to. The error arrives at deploy time, from CloudFormation,
+  // long after any test has passed.
+  {
+    const names = [...cdk.matchAll(/logGroupName:\s*`([^`]+)`/g)].map(m => m[1]);
+    const reserved = names.filter(n => n.startsWith("/aws/lambda/"));
+    check("no log group claims Lambda's own /aws/lambda/ path",
+      reserved.length === 0,
+      reserved.length ? `${reserved.join(", ")} — an account where the function has run cannot deploy this` : "");
+    check("  and the ones declared are namespaced under the stack prefix",
+      names.length > 0 && names.every(n => n.includes("${stackPrefix}")), names);
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();
