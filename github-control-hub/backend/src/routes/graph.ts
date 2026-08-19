@@ -8,6 +8,7 @@ import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { getOrgConfig } from "../services/orgConfigService";
+import { logSync } from "../services/activityService";
 
 const router = Router();
 
@@ -302,6 +303,14 @@ router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Re
       await new Promise(r => setTimeout(r, gap));
     }
 
+    await logSync("query", login, {
+      target: q,
+      details: complete
+        ? "Re-checked every subject"
+        : `Re-checked ${covered} of ${total} subjects in ${batches} batches — more remain`,
+      startedAt: started,
+    });
+
     res.json({
       complete, batches, covered, total,
       budget: SUBJECT_COST[q].budget,
@@ -314,6 +323,10 @@ router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Re
           : `Checked ${covered} of ${total} in ${batches} batches. Press again to continue.`,
     });
   } catch (error: any) {
+    await logSync("query", login, {
+      target: q, details: "Re-check failed", failed: true,
+      error: error?.message ?? String(error), startedAt: started,
+    });
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "graph") });
   }
@@ -335,7 +348,24 @@ router.post("/aggregate", async (req: Request, res: Response) => {
       });
     }
     const { aggregateGraphData } = await import("../jobs/graphAggregator");
+    const startedAt = Date.now();
     await aggregateGraphData(req.user?.accessToken);
+
+    // Read back rather than assumed, for the same reason the response is: the
+    // aggregator swallows its own fatal errors, so "it returned" is not "it
+    // worked", and a log row claiming success over a failed walk is worse than
+    // no row at all.
+    const after = (await getOrgConfig()).graphAggregation;
+    const failed = !!after?.lastError && (!after?.lastSuccessAt || !after.lastAttemptAt
+      || Date.parse(after.lastAttemptAt) > Date.parse(after.lastSuccessAt));
+    await logSync("graph", req.user!.login, {
+      details: failed
+        ? "Sync failed"
+        : `Synced from GitHub — ${after?.edgeCount ?? 0} connections`,
+      failed,
+      error: failed ? after?.lastError : undefined,
+      startedAt,
+    });
 
     // The stored record, not a claim of success. aggregateGraphData catches its
     // own fatal errors, so returning "triggered successfully" from here said

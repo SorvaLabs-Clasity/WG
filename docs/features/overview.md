@@ -4,7 +4,7 @@ A grid of cards, each running one check you chose, on data already collected.
 
 ## Where the numbers come from
 
-The **graph** — a table of edges rebuilt when someone presses Sync data. No card
+The **graph** — a table of edges rebuilt every six hours, and on demand. No card
 calls GitHub. That is why the page is fast and why it can be stale; the header
 says when the graph was last built.
 
@@ -35,7 +35,7 @@ distinct from "everything low and above".
 ## What it will not do
 
 **Report zero for data it never collected.** A check reading an edge type the
-graph does not contain refuses and says "press Sync data" instead of showing 0.
+graph does not contain refuses and says so instead of showing 0.
 Reporting zero findings you have not looked for is the worst thing a security
 dashboard can do, and this is guarded explicitly.
 

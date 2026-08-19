@@ -104,6 +104,77 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
       /GraphAggregationSchedule[\s\S]{0,400}?Schedule\.rate\(cdk\.Duration\.hours\(/.test(stack));
   }
 
+  // ── the sync writes only what changed ───────────────────────────────
+  //
+  // It deleted every row and rewrote every row on each run. What it describes
+  // barely moves between syncs, so nearly every write replaced a row with an
+  // identical row — and on-demand DynamoDB bills per write, four times a day,
+  // for ever. The scan to find deletable rows was already happening; reading
+  // the whole item rather than its key alone is what makes a comparison
+  // possible, and reads cost a fraction of writes.
+  {
+    type E = { pk: string; sk: string; type: string; metadata?: any };
+    const fingerprint = (e: { type: string; metadata?: any }) =>
+      JSON.stringify({ t: e.type, m: e.metadata ?? null });
+
+    // The same shape the aggregator uses, lifted so it can be exercised rather
+    // than only described.
+    function plan(storedItems: E[], edges: E[]) {
+      const stored = new Map(storedItems.map(i => [`${i.pk}::${i.sk}`, fingerprint(i)]));
+      const wanted = new Map<string, E>();
+      for (const e of edges) wanted.set(`${e.pk}::${e.sk}`, e);
+      const puts = [...wanted].filter(([k, e]) => stored.get(k) !== fingerprint(e)).map(([, e]) => e);
+      const deletes = [...stored.keys()].filter(k => !wanted.has(k));
+      return { puts, deletes };
+    }
+
+    const edge = (pk: string, sk: string, role = "write"): E =>
+      ({ pk, sk, type: "collaborates_on", metadata: { role, source: "team" } });
+
+    {
+      const same = [edge("USER#a", "REPO#x"), edge("USER#b", "REPO#y")];
+      const { puts, deletes } = plan(same, [edge("USER#a", "REPO#x"), edge("USER#b", "REPO#y")]);
+      check("a sync where nothing changed writes nothing at all",
+        puts.length === 0 && deletes.length === 0, { puts: puts.length, deletes: deletes.length });
+    }
+
+    {
+      const { puts } = plan([edge("USER#a", "REPO#x", "write")], [edge("USER#a", "REPO#x", "admin")]);
+      check("a changed permission is written", puts.length === 1, puts);
+    }
+
+    {
+      const { puts } = plan([], [edge("USER#a", "REPO#x")]);
+      check("a new edge is written", puts.length === 1);
+    }
+
+    {
+      const { deletes } = plan([edge("USER#gone", "REPO#x")], []);
+      check("an edge that no longer exists is deleted, so no orphan survives",
+        deletes.join() === "USER#gone::REPO#x", deletes);
+    }
+
+    {
+      // Duplicates used to be removed per batch of 25, so the same edge produced
+      // twice in different batches was written twice — paid for twice, for one
+      // row.
+      const dup = [edge("USER#a", "REPO#x"), edge("USER#a", "REPO#x")];
+      const { puts } = plan([], dup);
+      check("an edge produced twice in one run is written once", puts.length === 1, puts.length);
+    }
+
+    const src2 = await import("node:fs").then(fs =>
+      fs.readFileSync(`${__dirname}/src/jobs/graphAggregator.ts`, "utf8"));
+
+    check("the aggregator no longer deletes every stored row up front",
+      !/Clearing old graph edges/.test(src2),
+      "an unconditional delete-all is the cost, and it bought nothing");
+    check("  it reads whole items so it can compare them",
+      /scanAll<GraphEdge>\(edgesTable\)/.test(src2));
+    check("  and a failed read stops the write rather than orphaning rows",
+      /Could not read the stored graph, so nothing was written/.test(src2));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

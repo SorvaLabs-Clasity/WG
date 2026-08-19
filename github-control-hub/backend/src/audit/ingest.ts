@@ -1,5 +1,6 @@
 import type { S3Event } from "aws-lambda";
 import { gunzipSync } from "zlib";
+import { createHash } from "crypto";
 import { isConsequential, normalize, parseNdjson } from "./events";
 
 /**
@@ -37,6 +38,43 @@ function expiryFor(timestamp: string): number {
 
 /** DynamoDB rejects a batch larger than 25. */
 const BATCH = 25;
+
+/**
+ * A stable id for one audit event.
+ *
+ * Two properties, and the previous version had only the first:
+ *
+ *   **stable** — replaying an object into the bucket must overwrite the same
+ *   rows rather than duplicate them, so the id is derived from the event's own
+ *   fields and never from the clock or a random value.
+ *
+ *   **distinct** — two different events must never collide, or one silently
+ *   overwrites the other and the audit trail is short by a row that nothing
+ *   reports.
+ *
+ * It used to be `base64url(`${timestamp}|${target}|${actor}|${repo}`)` cut to
+ * 40 characters. Forty base64url characters are thirty bytes of input, and an
+ * ISO timestamp plus its separator is twenty-five of them — so the id was the
+ * timestamp and the first five characters of the action, and the actor and the
+ * repository were truncated away entirely before they could contribute
+ * anything. GitHub stamps a bulk operation's events with the same millisecond,
+ * so adding a team to twenty repositories produced twenty rows with one id and
+ * one surviving row. `sk` is built from the same two values, so the write
+ * overwrote in place: no error, no duplicate, nineteen events gone.
+ *
+ * A digest instead. Every field contributes to every character of the output,
+ * so truncating to 40 costs collision resistance rather than fields, and the
+ * summary is included because it carries the part of an event that the four
+ * key fields do not — which permission changed, to what.
+ */
+export function auditRowId(n: {
+  timestamp: string; target: string; actor: string; repo: string;
+  subject?: string; details?: string;
+}): string {
+  const composite = [n.timestamp, n.target, n.actor, n.repo, n.subject ?? "", n.details ?? ""]
+    .join("\u0000");
+  return `audit-${createHash("sha256").update(composite).digest("base64url").slice(0, 40)}`;
+}
 
 export async function handler(event: S3Event): Promise<void> {
   if (!ACTIVITY_TABLE) throw new Error("[Audit] ACTIVITY_TABLE is not set");
@@ -84,9 +122,7 @@ export async function handler(event: S3Event): Promise<void> {
 
     const rows = kept.map(e => {
       const n = normalize(e);
-      // The id must be stable for the same event, so replaying an object does
-      // not duplicate rows. Same event, same key, same row overwritten.
-      const id = `audit-${Buffer.from(`${n.timestamp}|${n.target}|${n.actor}|${n.repo}`).toString("base64url").slice(0, 40)}`;
+      const id = auditRowId(n);
       return {
         PutRequest: {
           Item: {

@@ -12,7 +12,7 @@ so the page is split by what changed:
 |---|---|
 | **Organization** | Branches, protection, rulesets, repositories, Dependabot — anything that changed GitHub |
 | **AWS** | The guardrail engine's findings and remediations (`aws.guardrail`) |
-| **App settings** | Widgets, scanners, imports, and undo history — housekeeping |
+| **App settings** | Widgets, scanners, imports, undo history, and every sync (`sync.*`) — housekeeping |
 | **Audit log** | The [enterprise audit log](audit-log.md), streamed from GitHub |
 
 A fifth tab, **Everything**, sits first and merges all four. It is for when you
@@ -36,6 +36,58 @@ than a switch, and `repro-activitycategories.ts` asserts every action the
 backend can write lands somewhere deliberate. An unrecognized action falls back
 to Organization on purpose: hiding something new in a tab nobody watches is the
 failure worth avoiding.
+
+`ActivityAction` is declared twice — once in the backend service that writes the
+rows, once in the frontend types that render them — with nothing linking them.
+The same suite compares the two lists, because an action added to one side alone
+produces rows the feed cannot label, and the frontend's label map is a total
+record over its own union, so the gap shows as an unlabelled badge rather than a
+build error.
+
+## Syncs and refreshes
+
+The feed answered *what changed* and could not answer *when did we last look*.
+Those are different questions, and the second one is behind most reports of a
+page showing zero or stale data: nothing recorded that a collection run had
+happened, so "the graph is empty" and "nobody has synced since Tuesday" were the
+same observation.
+
+Every refresh now writes a row naming who asked, what came back, and how long it
+took:
+
+| Action | Written by |
+|---|---|
+| `sync.graph` | The access graph walk — six-hourly, and **Sync from GitHub** |
+| `sync.compliance` | Compliance scores, all repositories or one |
+| `sync.query` | A security check's coverage being re-run |
+| `sync.access` | The access map recomputed from stored edges |
+| `sync.scanner` | A scanner run |
+| `sync.reminders` | A stale-pull-request reminder pass |
+| `sync.alarms` | An alarm evaluation that fired, recovered or failed |
+
+A failed run is marked failed and keeps its reason, because a row that reads like
+success over a failed sync is worse than no row. Logging never throws: a run that
+collected everything and then failed to write its log line has still collected
+everything, and losing the result to report the bookkeeping would be the wrong
+trade.
+
+**The frequent jobs are logged only when they did something.** The alarm
+evaluator runs every five minutes and the great majority of ticks evaluate
+nothing, because each alarm carries its own interval — recording those would add
+a hundred thousand rows a year saying "nothing was due", and an audit trail
+nobody can read is not one. The reminder pass is gated the same way. Full
+per-tick detail still goes to CloudWatch, where volume is free and nobody is
+reading a history.
+
+The six-hourly graph sync is **not** gated: four rows a day is history rather
+than noise, and it is the run people ask about. The guardrail sweep keeps its own
+arrangement, writing a row per finding rather than per sweep, which is the same
+principle — outcomes, not ticks.
+
+The `sync.access` row is worth reading carefully if you are chasing a change that
+is not showing. It says *no GitHub read* because that refresh recomputes from
+already-collected data and cannot pick up anything new; `sync.graph` is the one
+that goes to GitHub.
 
 ## Two sources
 

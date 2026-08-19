@@ -9,6 +9,7 @@ import { fetchRenovatePrs } from "../services/renovateService";
 import { getOrgConfig, updateRenovateBot } from "../services/orgConfigService";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { mapAlert, fetchOrgDependencyAlerts, fetchRepoAlertStatus } from "../services/dependencyService";
+import { isValidRepoName } from "../utils/validation";
 
 const router = Router();
 
@@ -24,6 +25,12 @@ router.get("/dependencies", async (req: Request, res: Response) => {
 
     const repoFilter = req.query.repo as string | undefined;
     const severityFilter = req.query.severity as string | undefined;
+
+    // The one query parameter that becomes a path segment. Every other route
+    // taking a repository name validates it; this one did not.
+    if (repoFilter !== undefined && !isValidRepoName(repoFilter)) {
+      return res.status(400).json({ error: "Invalid repository name" });
+    }
 
     let allAlerts: any[] = [];
 
@@ -122,7 +129,7 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
       throw err;
     }
 
-    await logActivity("dependabot.enable" as any, req.user?.login || "system", repo, "Dependabot",
+    await logActivity("dependabot.enable", req.user?.login || "system", repo, "Dependabot",
       `Enabled Dependabot vulnerability alerts for "${repo}"`,
       undefined, "app", undefined, undefined,
       { undoPayload: { action: "disable_dependabot", params: { repo } } }
@@ -159,7 +166,7 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
       throw err;
     }
 
-    await logActivity("dependabot.disable" as any, req.user?.login || "system", repo, "Dependabot",
+    await logActivity("dependabot.disable", req.user?.login || "system", repo, "Dependabot",
       `Disabled Dependabot vulnerability alerts for "${repo}"`,
       undefined, "app", undefined, undefined,
       { undoPayload: { action: "enable_dependabot", params: { repo } } }
@@ -308,7 +315,7 @@ router.put("/renovate/bot", async (req: Request, res: Response) => {
       return res.status(400).json({ error: `"${bot}" is not a valid GitHub username` });
     }
     const updated = await updateRenovateBot(bot);
-    await logActivity("config.updated" as any, req.user!.login, "", "renovate_bot",
+    await logActivity("config.updated", req.user!.login, "", "renovate_bot",
       bot ? `Renovate bot set to ${bot}` : "Renovate bot cleared", undefined, "app");
     res.json({ renovateBot: updated.renovateBot ?? null });
   } catch (error: any) {

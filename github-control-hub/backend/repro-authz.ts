@@ -165,9 +165,16 @@ globalThis.fetch = (async (input: any) => {
     const path = await import("node:path");
     const dir = path.join(__dirname, "src", "routes");
 
-    // Both write AWS: guardrails, and audit-log streaming, which creates IAM in
-    // the account with the operator's own credentials.
-    const MAY_USE_AWS_CHECK = new Set(["awsGuardrails.ts", "activity.ts", "auth.ts"]);
+    // All of these write AWS: guardrails; audit-log streaming, which creates
+    // IAM in the account with the operator's own credentials; and the config
+    // import, whose bundle carries an `awsGuardrails` section that goes to the
+    // same store the /api/aws routes own. That last one is the reason this set
+    // is a set rather than one name — an import was a way to create an
+    // enforcing guardrail while only ever proving membership of the *GitHub*
+    // admin team, which is precisely the separation this block exists to keep.
+    const MAY_USE_AWS_CHECK = new Set([
+      "awsGuardrails.ts", "activity.ts", "auth.ts", "config.ts",
+    ]);
 
     const offenders: string[] = [];
     for (const file of fs.readdirSync(dir)) {

@@ -44,7 +44,27 @@ export type ActivityAction =
   | "github.branch_protection_edited"
   | "github.ruleset_edited"
   | "config.import"
-  | "audit.event";
+  | "config.updated"
+  | "audit.event"
+  // The AWS guardrail screens. `aws.guardrail` itself is absent on purpose —
+  // the Lambda writes that string directly, from a bundle that does not import
+  // this file.
+  | "aws.guardrail.create"
+  | "aws.guardrail.update"
+  | "aws.guardrail.delete"
+  | "aws.guardrail.run"
+  | "aws.guardrail.preview"
+  // Collection runs. Not changes to anything in GitHub or AWS — a record that
+  // the app went and looked, who asked it to, and what came back. Without them
+  // "the page says 0" and "nothing has been collected since Tuesday" were the
+  // same observation.
+  | "sync.graph"
+  | "sync.compliance"
+  | "sync.query"
+  | "sync.access"
+  | "sync.scanner"
+  | "sync.reminders"
+  | "sync.alarms";
 
 export interface UndoPayload {
   action: string;
@@ -121,6 +141,78 @@ export function activityExpiry(iso: string): number {
   // person reading the retention policy thinks it means.
   d.setUTCMonth(d.getUTCMonth() + ACTIVITY_RETENTION_MONTHS);
   return Math.floor(d.getTime() / 1000);
+}
+
+/** Which collection run. One action per kind, so the feed can be filtered. */
+export type SyncKind =
+  | "graph" | "compliance" | "query" | "access" | "scanner" | "reminders" | "alarms";
+
+const SYNC_ACTION: Record<SyncKind, ActivityAction> = {
+  graph: "sync.graph",
+  compliance: "sync.compliance",
+  query: "sync.query",
+  access: "sync.access",
+  scanner: "sync.scanner",
+  reminders: "sync.reminders",
+  alarms: "sync.alarms",
+};
+
+/**
+ * The actor for a run nobody pressed a button for.
+ *
+ * Spelled out rather than left blank: an empty actor reads as missing data, and
+ * "who ran this" is the first question asked of any row in this feed.
+ */
+export const SCHEDULE_ACTOR = "system (schedule)";
+
+/**
+ * Records a refresh, sweep or sync.
+ *
+ * Separate from logActivity because these rows answer a different question. The
+ * rest of the feed is "what changed"; these are "when did we last look, and did
+ * it work" — the question behind every report of a page showing zero, and one
+ * the feed could not answer at all because no collection run wrote anything.
+ *
+ * Never throws. A run that did its work and then failed to write a log line has
+ * still done its work, and turning that into an error would lose the result to
+ * report the bookkeeping.
+ */
+export async function logSync(
+  kind: SyncKind,
+  actor: string,
+  opts: {
+    /** What was synced: a repository, a check name, or "*" for everything. */
+    target?: string;
+    /** What came back. Numbers, not adjectives — this is read to compare runs. */
+    details: string;
+    failed?: boolean;
+    error?: string;
+    /** `Date.now()` from before the run, to report how long it took. */
+    startedAt?: number;
+  },
+): Promise<void> {
+  try {
+    const took = opts.startedAt
+      ? ` (${((Date.now() - opts.startedAt) / 1000).toFixed(1)}s)`
+      : "";
+    await logActivity(
+      SYNC_ACTION[kind],
+      actor,
+      "",
+      opts.target ?? "*",
+      opts.details + took,
+      undefined,
+      "app",
+      undefined,
+      undefined,
+      {
+        ...(opts.failed && { failed: true }),
+        ...(opts.error && { errorMessage: opts.error }),
+      },
+    );
+  } catch (err) {
+    console.warn(`[activity] Could not log the ${kind} sync:`, (err as Error)?.message ?? err);
+  }
 }
 
 export async function logActivity(
@@ -235,19 +327,67 @@ export async function lastGitHubEvent(): Promise<{ at: string | null; action: st
   return { at: fromGitHub?.timestamp ?? null, action: fromGitHub?.action ?? null };
 }
 
+/**
+ * How many rows a per-repository lookup may read before giving up.
+ *
+ * The bound exists because the filter is not a key condition: every row shares
+ * one partition key, so DynamoDB reads rows and then discards the ones for
+ * other repositories. A quiet repository would otherwise walk thirteen months
+ * of the whole organization's history to return nothing.
+ *
+ * Three thousand rows is far enough back to be a real answer on any
+ * organization this app is used on, and small enough that opening the panel on
+ * a repository with no activity costs a bounded read rather than a full table.
+ */
+const REPO_ACTIVITY_MAX_EXAMINED = 3000;
+
+/**
+ * One repository's activity.
+ *
+ * `Limit` on a Query applies to rows **read**, not to rows that survive the
+ * filter — the same trap that getActivityById and getChildActivities were
+ * moved off indexes to escape, still sitting here. With `Limit: 200` this
+ * asked "is this repository among the newest 200 rows in the organization?",
+ * which is a different question from the one it appears to answer and gets
+ * steadily wronger as the log grows: on a busy org the newest 200 rows are
+ * often a single afternoon, so every repository except the two or three
+ * touched that afternoon returned an empty history. Empty reads as "nothing
+ * ever happened here", which is exactly the wrong conclusion.
+ *
+ * Paged until enough matches are found, or until the read budget above runs
+ * out. No index is added for this: `repo` is empty on a large share of rows
+ * (org-wide settings, sync runs, audit events), and a sparse index would be
+ * one more thing to provision on an existing table for a panel nobody opens
+ * in a loop.
+ */
 export async function getActivityForRepo(repo: string, limit = 50): Promise<ActivityEntry[]> {
   if (usesDynamo()) {
-    const result = await docClient.send(
-      new QueryCommand({
-        TableName: TABLE(),
-        KeyConditionExpression: "pk = :pk",
-        FilterExpression: "repo = :repo",
-        ExpressionAttributeValues: { ":pk": "ACTIVITY", ":repo": repo },
-        ScanIndexForward: false,
-        Limit: 200,
-      })
-    );
-    return ((result.Items || []) as ActivityEntry[]).slice(0, limit);
+    const items: ActivityEntry[] = [];
+    let lastKey: Record<string, unknown> | undefined;
+    let examined = 0;
+
+    while (items.length < limit && examined < REPO_ACTIVITY_MAX_EXAMINED) {
+      const result: any = await docClient.send(
+        new QueryCommand({
+          TableName: TABLE(),
+          KeyConditionExpression: "pk = :pk",
+          FilterExpression: "repo = :repo",
+          ExpressionAttributeValues: { ":pk": "ACTIVITY", ":repo": repo },
+          ScanIndexForward: false,
+          Limit: 300,
+          ...(lastKey ? { ExclusiveStartKey: lastKey } : {}),
+        })
+      );
+      items.push(...((result.Items || []) as ActivityEntry[]));
+      // ScannedCount, not Count: the budget is about how much was read, and
+      // Count is only what survived the filter — spending it would make a
+      // repository with no rows cost the most.
+      examined += result.ScannedCount ?? 0;
+      lastKey = result.LastEvaluatedKey;
+      if (!lastKey) break;
+    }
+
+    return items.slice(0, limit);
   }
   return memoryLog.filter((e) => e.repo === repo).slice(0, limit);
 }

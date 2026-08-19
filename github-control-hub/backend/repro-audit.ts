@@ -277,5 +277,48 @@ function check(name: string, ok: boolean, got?: unknown) {
     "an endpoint check would be counted as corruption");
 }
 
+
+// ── one row per event, not one row per millisecond ────────────────────
+//
+// The id was base64url of "<timestamp>|<action>|<actor>|<repo>" cut to 40
+// characters. Forty base64url characters carry thirty bytes, and an ISO
+// timestamp plus a separator is twenty-five of them — so the actor and the
+// repository never reached the id at all, and two events GitHub stamped with
+// the same millisecond collapsed onto one row. `sk` is built from the same
+// pair, so the second write overwrote the first in place: no error, no
+// duplicate, one event silently gone from the audit trail.
+{
+  const { auditRowId } = require("./src/audit/ingest");
+  const { normalize } = require("./src/audit/events");
+
+  // A bulk team-to-repository grant. GitHub stamps these with one timestamp.
+  const at = 1_760_000_000_000;
+  const rows = ["payments-api", "web-platform", "design-system"].map(repo =>
+    normalize({ action: "team.add_repository", actor: "alice", created_at: at, repo, team: "platform" }));
+
+  const ids = new Set(rows.map(auditRowId));
+  check("three repositories in one millisecond are three rows", ids.size === 3, [...ids]);
+
+  const differentActors = new Set([
+    auditRowId(normalize({ action: "repo.access", actor: "alice", created_at: at, repo: "x" })),
+    auditRowId(normalize({ action: "repo.access", actor: "mallory", created_at: at, repo: "x" })),
+  ]);
+  check("  and the actor is part of the identity", differentActors.size === 2, [...differentActors]);
+
+  // Same event twice is still one row: that is what makes replaying an object
+  // into the bucket safe.
+  const once = auditRowId(normalize({ action: "org.add_member", actor: "alice", created_at: at, user: "bob" }));
+  const again = auditRowId(normalize({ action: "org.add_member", actor: "alice", created_at: at, user: "bob" }));
+  check("  while the same event replayed keeps one id", once === again, [once, again]);
+
+  // Two actions sharing their first five characters, which is all the old id
+  // could see once the timestamp had used its budget.
+  const sharedPrefix = new Set([
+    auditRowId(normalize({ action: "repo.create", actor: "alice", created_at: at, repo: "x" })),
+    auditRowId(normalize({ action: "repo.destroy", actor: "alice", created_at: at, repo: "x" })),
+  ]);
+  check("  and actions sharing a prefix stay distinct", sharedPrefix.size === 2, [...sharedPrefix]);
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);

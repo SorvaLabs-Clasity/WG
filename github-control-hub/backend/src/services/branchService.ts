@@ -258,6 +258,73 @@ export function buildPushRulesetRules(push: PushProtection): any[] {
   return rules;
 }
 
+/**
+ * Does a ruleset's ref condition cover this branch?
+ *
+ * Both callers used to answer this with
+ *
+ *     refs.includes(`refs/heads/${branch}`) ||
+ *     refs.some(r => r.includes(branch)) ||
+ *     (refs.includes("~DEFAULT_BRANCH") && branch === "main")
+ *
+ * and the middle clause is a substring test, which is not what a ref condition
+ * means. A ruleset scoped to `refs/heads/maintenance` "covers" `main`, because
+ * "maintenance" contains "main". So the check that asks whether the default
+ * branch is protected reads a rule about a different branch entirely and says
+ * yes — a security check reporting protection that is not there, which is the
+ * one direction it must never be wrong in.
+ *
+ * The third clause has its own version of the same fault: `~DEFAULT_BRANCH`
+ * was compared against the literal "main", so a repository whose default is
+ * `master` or `develop` had its default-branch ruleset ignored, and a
+ * repository with a branch actually named `main` had somebody else's applied
+ * to it.
+ *
+ * GitHub's own semantics instead. `~ALL` and `~DEFAULT_BRANCH` are the two
+ * special values; everything else is a full ref with fnmatch wildcards, where
+ * `*` stops at a path separator and `**` crosses it — so `refs/heads/release/*`
+ * covers `release/1.0` and not `release/1.0/hotfix`.
+ */
+export function refMatchesBranch(
+  pattern: string, branch: string, defaultBranch?: string | null,
+): boolean {
+  if (pattern === "~ALL") return true;
+  if (pattern === "~DEFAULT_BRANCH") return !!defaultBranch && branch === defaultBranch;
+
+  const ref = `refs/heads/${branch}`;
+  if (pattern === ref) return true;
+  if (!pattern.includes("*") && !pattern.includes("?")) return false;
+
+  // fnmatch to a regex, anchored. Everything outside the three wildcards is
+  // escaped, so a dot in a branch name is a dot.
+  let re = "";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i];
+    if (c === "*") {
+      if (pattern[i + 1] === "*") { re += ".*"; i++; }
+      else re += "[^/]*";
+    } else if (c === "?") {
+      re += "[^/]";
+    } else {
+      re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    }
+  }
+  try {
+    return new RegExp(`^${re}$`).test(ref);
+  } catch {
+    // A pattern that will not compile matches nothing rather than everything.
+    return false;
+  }
+}
+
+/** True when any of a ruleset's include patterns covers this branch. */
+export function rulesetCoversBranch(
+  includes: unknown, branch: string, defaultBranch?: string | null,
+): boolean {
+  if (!Array.isArray(includes)) return false;
+  return includes.some(r => typeof r === "string" && refMatchesBranch(r, branch, defaultBranch));
+}
+
 export interface BranchSummary {
   name: string;
   protected: boolean;

@@ -1,5 +1,6 @@
 import { docClient, usesDynamo, tableName, ScanCommand } from "../utils/dynamo";
 import { getSystemToken } from "../github/client";
+import { rulesetCoversBranch } from "./branchService";
 import fs from "fs";
 import path from "path";
 import {
@@ -404,7 +405,14 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
       const allRepoNames = new Set<string>();
       const repoHasBranch = new Map<string, Set<string>>();
+      // Which branch each repository calls its default, so a ruleset scoped to
+      // ~DEFAULT_BRANCH is read against the repository it belongs to rather
+      // than against the literal "main".
+      const defaultBranchOf = new Map<string, string>();
       for (const edge of allEdges) {
+        if (edge.type === "repo_meta" && edge.metadata?.defaultBranch) {
+          defaultBranchOf.set(edge.pk.replace("REPO#", ""), String(edge.metadata.defaultBranch));
+        }
         if (edge.pk.startsWith("REPO#")) {
           allRepoNames.add(edge.pk.replace("REPO#", ""));
           if (edge.type === "has_branch") {
@@ -495,10 +503,12 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
               }
             }
             for (const rsDetails of repoRulesetsCache) {
-              const refs = rsDetails.conditions?.ref_name?.include || [];
-              const applies = refs.includes(`refs/heads/${branch}`) ||
-                refs.some((r: string) => r.includes(branch)) ||
-                (refs.includes("~DEFAULT_BRANCH") && branch === "main");
+              // GitHub's own ref semantics. `refs.some(r => r.includes(branch))`
+              // is a substring test, so a ruleset on refs/heads/maintenance
+              // "covered" main — this check reported protection that was not
+              // there, on the branch it most matters for.
+              const applies = rulesetCoversBranch(
+                rsDetails.conditions?.ref_name?.include, branch, defaultBranchOf.get(repo));
 
               if (applies) {
                 hasRuleset = true;
@@ -887,23 +897,37 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         if (edge.type === "repo_meta" && edge.metadata?.archived) archived.add(edge.pk);
       }
 
-      const holders = new Map<string, Set<string>>();
+      const holders = new Map<string, Map<string, string>>();
       for (const edge of allEdges) {
         if (edge.type !== "has_collaborator" || !archived.has(edge.pk)) continue;
         // Access the org role confers is not something anyone granted to this
         // repository, and would name the owner on every archived one.
         if (edge.metadata?.source === "org_owner") continue;
-        if (!holders.has(edge.pk)) holders.set(edge.pk, new Set());
-        holders.get(edge.pk)!.add(edge.sk.replace("USER#", ""));
+        if (!holders.has(edge.pk)) holders.set(edge.pk, new Map());
+        holders.get(edge.pk)!.set(edge.sk.replace("USER#", ""), edge.metadata?.role ?? "read");
       }
 
       for (const [repoId, users] of holders) {
         if (users.size === 0) continue;
-        const names = [...users];
+        const names = [...users.keys()];
+        // The strongest grant anyone still holds, rather than the words "write
+        // or admin".
+        //
+        // That phrase was accurate when the graph only recorded write and
+        // above. It records triage, custom roles and an outside collaborator's
+        // read now, so the sentence became a claim about the data rather than a
+        // reading of it — and "still has write or admin" over a row that is
+        // actually a read grant is the kind of wrong that gets acted on.
+        const RANK: Record<string, number> = {
+          admin: 5, maintain: 4, write: 3, push: 3, triage: 2, read: 1, pull: 1,
+        };
+        const strongest = [...users.values()]
+          .sort((a, b) => (RANK[b] ?? 0) - (RANK[a] ?? 0))[0] ?? "read";
         results.push({
           repo: repoId.replace("REPO#", ""),
-          reason: `Archived, but ${names.length} ${names.length === 1 ? "account still has" : "accounts still have"} write or admin`,
-          details: names.slice(0, 6).join(", ") + (names.length > 6 ? "…" : ""),
+          reason: `Archived, but ${names.length} ${names.length === 1 ? "account still has" : "accounts still have"} access (up to ${strongest})`,
+          details: [...users].slice(0, 6).map(([u, r]) => `${u} (${r})`).join(", ")
+            + (names.length > 6 ? "…" : ""),
         });
       }
       break;

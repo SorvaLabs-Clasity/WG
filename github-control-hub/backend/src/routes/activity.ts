@@ -1004,7 +1004,7 @@ router.post("/audit-stream", async (req: Request, res: Response) => {
     }
     const { accountId, prefix } = await auditStreamContext();
     const result = await setupStream(enterprise, await liveDeps(accountId, prefix));
-    await logActivity("config.updated" as any, req.user!.login, "", "audit_stream",
+    await logActivity("config.updated", req.user!.login, "", "audit_stream",
       `Audit-log streaming set up for enterprise ${enterprise}`, result, "app");
     res.json(result);
   } catch (error: any) {
@@ -1021,7 +1021,7 @@ router.delete("/audit-stream", async (req: Request, res: Response) => {
     const { disconnectStream, liveDeps } = await import("../services/auditStreamService");
     const { accountId, prefix } = await auditStreamContext();
     const result = await disconnectStream(await liveDeps(accountId, prefix));
-    await logActivity("config.updated" as any, req.user!.login, "", "audit_stream",
+    await logActivity("config.updated", req.user!.login, "", "audit_stream",
       "Audit-log streaming disconnected; the archive was kept", result, "app");
     res.json(result);
   } catch (error: any) {

@@ -789,6 +789,53 @@ function check(name: string, ok: boolean, got?: unknown) {
       rows.map(r => r.details).slice(0, 4));
   }
 
+  // ── a request body cannot reach past the alarm it edits ───────────────
+  //
+  // Alarms, email groups, the security toggle, the feed settings and the pull
+  // request state share one table keyed on `id`. PUT /api/alarms/:id handed
+  // req.body straight to updateAlarm, which copied every key it found — so a
+  // body carrying its own `id` wrote the edited alarm over whatever else held
+  // that id. `{"id": "security-settings"}` replaces the organization's
+  // security-alert configuration; an email group's id replaces the group and
+  // with it the topicArn every alarm publishes to.
+  {
+    const { pickAlarmEdits } = require("./src/services/alarmService");
+
+    const hostile = pickAlarmEdits({
+      name: "renamed",
+      id: "security-settings",
+      kind: "group",
+      topicArn: "arn:aws:sns:eu-west-1:000000000000:somebody-elses-topic",
+      state: "ALARM",
+      createdBy: "mallory",
+      widgetId: "another-widget",
+    });
+
+    check("an edit keeps only the fields a person may change",
+      Object.keys(hostile).join(",") === "name", Object.keys(hostile));
+
+    for (const forbidden of ["id", "kind", "topicArn", "state", "createdBy", "widgetId"]) {
+      check(`  and "${forbidden}" cannot ride in on the body`,
+        !(forbidden in hostile), forbidden);
+    }
+
+    const legitimate = pickAlarmEdits({
+      name: "n", condition: { kind: "count", metric: "total", op: ">=", threshold: 1 },
+      groupId: "g", subjectTemplate: "s", bodyTemplate: "b",
+      notifyOnRecovery: false, enabled: false,
+    });
+    check("  while every field the form sends still gets through",
+      Object.keys(legitimate).sort().join(",")
+        === "bodyTemplate,condition,enabled,groupId,name,notifyOnRecovery,subjectTemplate",
+      Object.keys(legitimate).sort());
+
+    // `enabled: false` and `notifyOnRecovery: false` must survive. Filtering on
+    // truthiness rather than on `undefined` is the obvious way to write this and
+    // would make an alarm impossible to switch off.
+    check("  including the ones whose value is false",
+      legitimate.enabled === false && legitimate.notifyOnRecovery === false, legitimate);
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

@@ -315,6 +315,13 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // pull request, not just for the person clicking, so it is an org-wide act
     // and gated the same way.
     ["pulls.ts",         /router\.(post|put|delete)\(/g, /isControlHubAdmin/],
+    // Exempted as "read models over the graph" until it was read carefully.
+    // PUT /config replaces the rule set the entire organization is scored
+    // against, and `{"rules": []}` scores everything 100 — an org-wide
+    // configuration write sitting in a router nobody was checking, which is
+    // exactly the failure the completeness assertion below exists to catch and
+    // did not, because an inaccurate exemption reads the same as a correct one.
+    ["compliance.ts",    /router\.(post|put|delete)\(/g, /refuseUnlessAdmin/],
   ];
 
   for (const [file, routeRe, guardRe] of GUARDED) {
@@ -364,7 +371,6 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     "webhooks.ts": "not a user route — HMAC-verified GitHub deliveries",
     "graph.ts": "derived cache rebuilt from GitHub; holds no authority of its own",
     "access.ts": "read models over the graph",
-    "compliance.ts": "read models over the graph",
     "dependencies.ts": "reads advisories; its two writes enable and disable Dependabot on one repo with the caller's own token",
     "org.ts": "org read-through",
   };

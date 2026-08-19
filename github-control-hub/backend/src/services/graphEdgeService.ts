@@ -1,5 +1,5 @@
 import { Octokit } from "octokit";
-import { docClient, usesDynamo, tableName, PutCommand, DeleteCommand, BatchWriteCommand } from "../utils/dynamo";
+import { docClient, usesDynamo, tableName, PutCommand, DeleteCommand, batchWrite } from "../utils/dynamo";
 
 const TABLE = () => tableName("GRAPH_EDGES_TABLE");
 
@@ -15,17 +15,17 @@ async function deleteEdge(pk: string, sk: string) {
 
 async function putEdgesBatch(edges: Array<{ pk: string; sk: string; type: string; metadata?: Record<string, any> }>) {
   if (!usesDynamo() || edges.length === 0) return;
-  const table = TABLE();
-  for (let i = 0; i < edges.length; i += 25) {
-    const batch = edges.slice(i, i + 25);
-    const uniqueMap = new Map<string, (typeof edges)[0]>();
-    for (const e of batch) uniqueMap.set(`${e.pk}::${e.sk}`, e);
-    await docClient.send(new BatchWriteCommand({
-      RequestItems: {
-        [table]: Array.from(uniqueMap.values()).map(item => ({ PutRequest: { Item: item } })),
-      },
-    }));
-  }
+  // Deduplicated across the whole set rather than inside each batch of 25.
+  // The same edge produced twice in different batches was written twice, and
+  // DynamoDB rejects a batch containing two writes to one key outright — so a
+  // duplicate straddling a boundary was a silent double write, and one landing
+  // inside a batch was a hard failure.
+  const unique = new Map<string, (typeof edges)[0]>();
+  for (const e of edges) unique.set(`${e.pk}\u0000${e.sk}`, e);
+  // batchWrite retries what DynamoDB declines. The loop this replaces read the
+  // response and threw it away, so a throttled write was an edge that never
+  // existed and a repository that looked like it had no branches.
+  await batchWrite(TABLE(), [...unique.values()].map(item => ({ PutRequest: { Item: item } })));
 }
 
 export async function addBranchEdge(repo: string, branch: string, isProtected: boolean) {

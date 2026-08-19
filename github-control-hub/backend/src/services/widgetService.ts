@@ -59,7 +59,7 @@ export async function createWidget(
     memWidgets.set(widget.id, widget);
   }
 
-  await logActivity("widget.create" as any, actor, "*", widget.title, `Created analytics widget "${widget.title}"`,
+  await logActivity("widget.create", actor, "*", widget.title, `Created analytics widget "${widget.title}"`,
     undefined, "app", undefined, undefined,
     { undoPayload: { action: "delete_widget", params: { widgetId: widget.id, widgetData: widget } } }
   );
@@ -88,7 +88,7 @@ export async function updateWidget(
     memWidgets.set(id, updated);
   }
 
-  await logActivity("widget.update" as any, actor, "*", updated.title, `Updated analytics widget "${updated.title}"`,
+  await logActivity("widget.update", actor, "*", updated.title, `Updated analytics widget "${updated.title}"`,
     undefined, "app", undefined, undefined,
     { undoPayload: { action: "revert_widget", params: { widgetId: id, previousState: existing, currentState: updated } } }
   );
@@ -105,7 +105,7 @@ export async function deleteWidget(id: string, actor: string): Promise<boolean> 
     memWidgets.delete(id);
   }
 
-  await logActivity("widget.delete" as any, actor, "*", existing.title, `Deleted analytics widget "${existing.title}"`,
+  await logActivity("widget.delete", actor, "*", existing.title, `Deleted analytics widget "${existing.title}"`,
     undefined, "app", undefined, undefined,
     { undoPayload: { action: "restore_widget", params: { widgetData: existing } } }
   );

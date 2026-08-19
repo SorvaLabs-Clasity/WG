@@ -712,7 +712,8 @@ environment is the supported shape.
 
 1. **Create a repository in the org.** It should appear in Activity within
    seconds. If not, the webhook secret or the event list is wrong.
-2. **Press Sync data on the Repos page**, then open Access. It should list
+2. **Press Sync from GitHub on the Access tab** (or wait up to six hours for the
+   scheduled sync), then open Access. It should list
    people. This also populates Overview, Security and the rest — before the
    first sync they say they are stale rather than showing an empty organization.
 3. **Set a log group's retention to 1 day** and run a sweep from the AWS tab. It

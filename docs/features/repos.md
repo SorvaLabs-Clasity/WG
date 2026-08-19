@@ -8,16 +8,20 @@ Every repository, with its compliance score, visibility, owning team and
 protection state. Opening one shows branches, workflows, collaborators,
 rulesets and dependency alerts.
 
-## Sync data
+## Syncing the graph
 
-The button that rebuilds the graph. It walks the organization through the
-GitHub App token and writes edges to DynamoDB:
+The graph rebuilds itself every six hours. **Sync from GitHub**, on the Access
+tab, does it on demand for members of `control-hub-admins`, for when six hours is
+too long to wait — usually right after somebody's access has changed.
+
+Either way it walks the organization through the GitHub App token and writes
+edges to DynamoDB:
 
 | Edge | Records |
 |---|---|
 | `repo_meta` | visibility, archived, pushedAt, default branch, secret scanning |
 | `has_branch` | branches and whether each is protected |
-| `has_collaborator` / `collaborates_on` | who can write, and how they got it |
+| `has_collaborator` / `collaborates_on` | who can reach it, at what level, and how they got it |
 | `member_of` / `has_member` | team membership |
 | `owns_repo` / `owned_by_team` | team → repository |
 | `uses_workflow` | Actions workflows |

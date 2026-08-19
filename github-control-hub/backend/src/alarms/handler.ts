@@ -9,6 +9,7 @@ import { fetchRenovatePrs, openPrs } from "../services/renovateService";
 import { flushPending } from "./feedNotify";
 import { runNudgePass } from "../services/prNudgeService";
 import { getOrgConfig } from "../services/orgConfigService";
+import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
 import {
   listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings,
   getFeedSettings, listPending, markPendingSent,
@@ -61,6 +62,7 @@ function bootstrapOnce(): Promise<void> {
 }
 
 export async function handler(): Promise<void> {
+  const startedAt = Date.now();
   await bootstrapOnce();
 
   // No fallback. This used to degrade to a SYSTEM_GITHUB_TOKEN personal access
@@ -168,6 +170,31 @@ export async function handler(): Promise<void> {
     `${summary.publishFailures} publish failures`,
   );
 
+  // Written only when the pass did something.
+  //
+  // This runs every five minutes — 288 times a day — and the overwhelming
+  // majority of ticks evaluate nothing, because each alarm carries its own
+  // interval. Recording those would add a hundred thousand rows a year saying
+  // "nothing was due", and an audit trail nobody can read is not one.
+  //
+  // The console line above keeps the full per-tick detail in CloudWatch, where
+  // volume is free and nobody is trying to read a history.
+  const didSomething = summary.fired > 0 || summary.recovered > 0
+    || summary.publishFailures > 0 || summary.unreadable > 0;
+  if (didSomething) {
+    await logSync("alarms", SCHEDULE_ACTOR, {
+      details: `${summary.evaluated} alarms evaluated — ${summary.fired} fired, `
+        + `${summary.recovered} recovered`
+        + (summary.unreadable ? `, ${summary.unreadable} unreadable` : "")
+        + (summary.publishFailures ? `, ${summary.publishFailures} could not be sent` : ""),
+      // Unreadable is not a failure of the pass: a widget whose data could not
+      // be read is reported and deliberately not resolved, which is the safe
+      // reading. Only a send that did not arrive is a failure of this run.
+      failed: summary.publishFailures > 0,
+      startedAt,
+    });
+  }
+
   // Deliberately not thrown. A publish failure is already logged and counted,
   // and failing the invocation would only make EventBridge retry the whole
   // pass — re-reading every widget and re-sending whatever did succeed.
@@ -259,6 +286,20 @@ export async function handler(): Promise<void> {
         `[PR] ${summary.considered} open, ${summary.due} due, ${summary.posted} reminded, ` +
         `${summary.skippedPaused} paused, ${summary.failed} failed`,
       );
+    }
+
+    // Same rule as the alarms above: a pass that reminded nobody is not history.
+    // A reminder is a message sent to a real person, so the ones that happened
+    // are worth a row naming how many and when.
+    if (summary.posted > 0 || summary.failed > 0) {
+      await logSync("reminders", SCHEDULE_ACTOR, {
+        details: `${summary.considered} open pull requests, ${summary.due} due, `
+          + `${summary.posted} reminded`
+          + (summary.skippedPaused ? `, ${summary.skippedPaused} paused` : "")
+          + (summary.failed ? `, ${summary.failed} failed` : ""),
+        failed: summary.failed > 0 && summary.posted === 0,
+        startedAt,
+      });
     }
   } catch (err) {
     // The switch is not a failure, so it is not logged as one.

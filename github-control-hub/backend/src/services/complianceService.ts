@@ -1,6 +1,6 @@
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
-import { getAllProtections, listRulesets } from "./branchService";
+import { getAllProtections, listRulesets, rulesetCoversBranch } from "./branchService";
 import { getComplianceConfig, ComplianceRule } from "./complianceConfigService";
 import { evaluateSecurityQuery } from "./graphService";
 
@@ -42,9 +42,12 @@ export async function calculateRepoCompliance(
   let outsideCollaborators = 0;
 
   let defaultBranch: string | null = null;
-  const needsDefault = enabledRules.some(
-    (r) => r.type === "branch_protection" && (r.branchName || "").includes("__default__")
-  );
+  // Needed by every branch_protection rule, not only the ones naming
+  // __default__: a ruleset scoped to ~DEFAULT_BRANCH can only be matched
+  // against a branch if we know which branch that is. Leaving it null for a
+  // rule that named an explicit branch meant such a ruleset was skipped, and
+  // the repository reported as unprotected when it was not.
+  const needsDefault = enabledRules.some((r) => r.type === "branch_protection");
   if (needsDefault) {
     try {
       const { data: repoData } = await octokit.rest.repos.get({ owner: org, repo: repoName });
@@ -219,11 +222,9 @@ async function evaluateBranchProtection(
           const { data: details } = await octokit.request("GET /repos/{owner}/{repo}/rulesets/{ruleset_id}", {
             owner: org, repo, ruleset_id: rs.id,
           });
-          const refs = details.conditions?.ref_name?.include || [];
-          const applies = refs.includes(`refs/heads/${branch}`) ||
-            refs.some((r: string) => r.includes(branch)) ||
-            (refs.includes("~DEFAULT_BRANCH") && branch === defaultBranch);
-          if (applies) {
+          // The substring clause this replaces made a ruleset on
+          // refs/heads/maintenance count as covering main.
+          if (rulesetCoversBranch(details.conditions?.ref_name?.include, branch, defaultBranch)) {
             hasRuleset = true;
             rulesetRules = rulesetRules.concat(details.rules || []);
           }
@@ -333,17 +334,26 @@ async function evaluateRequiredFiles(
 ): Promise<RuleEvalResult> {
   const files = rule.requiredFiles || ["README.md"];
   const missing: string[] = [];
+  const unreadable: string[] = [];
 
   for (const file of files) {
     try {
       await octokit.rest.repos.getContent({ owner: org, repo, path: file });
     } catch (e: any) {
-      if (e.status === 404) missing.push(file);
+      // 404 is the answer: the file is not there. Anything else — a 403, a
+      // 502, a rate limit — is the question going unanswered, and this used to
+      // treat it as "present". A rule that passes because GitHub was briefly
+      // unreachable is a rule that reports compliance it never established.
+      if (e?.status === 404) missing.push(file);
+      else unreadable.push(`${file} (${e?.status ?? "error"})`);
     }
   }
 
-  if (missing.length > 0) {
-    return { passed: false, detail: `Missing files: ${missing.join(", ")}` };
+  if (missing.length > 0 || unreadable.length > 0) {
+    const parts: string[] = [];
+    if (missing.length) parts.push(`missing: ${missing.join(", ")}`);
+    if (unreadable.length) parts.push(`could not be read: ${unreadable.join(", ")}`);
+    return { passed: false, detail: `Required files — ${parts.join("; ")}` };
   }
   return { passed: true };
 }
@@ -371,8 +381,16 @@ async function evaluateOutsideCollaborators(
       };
     }
     return { passed: true, collabCount: count };
-  } catch {
-    return { passed: true, collabCount: 0 };
+  } catch (e: any) {
+    // Not "zero outside collaborators". This returned `passed: true,
+    // collabCount: 0` on any failure, so a repository the app could not read
+    // scored as having none — the most reassuring possible answer to a
+    // question nobody managed to ask.
+    return {
+      passed: false,
+      detail: `Could not read the outside collaborators for this repository (${e?.status ?? "error"}), ` +
+        `so the limit could not be checked`,
+    };
   }
 }
 
@@ -395,8 +413,21 @@ async function evaluateQueryRule(
       passed: !repoMatched,
       detail: repoMatched ? `Matched query: ${rule.name}` : undefined,
     };
-  } catch {
-    return { passed: true, detail: "Could not evaluate query" };
+  } catch (e: any) {
+    // A check that could not run has not passed.
+    //
+    // This returned `passed: true`, so a query needing graph data that has not
+    // been collected, or one still building its per-subject coverage, scored
+    // every repository as clean against it. The rule contributes its full
+    // weight to a score that was never earned, and nothing on the page says
+    // the check did not run — which is the failure the query layer itself goes
+    // to some trouble to avoid, undone here at the last step.
+    const why = e?.name === "MissingGraphDataError"
+      ? "the graph has not collected the data this check reads — press Sync data"
+      : e?.name === "PartialQueryError"
+        ? "the check is still building coverage and has no complete answer yet"
+        : (e?.message ?? "unknown error");
+    return { passed: false, detail: `Could not evaluate "${rule.name}": ${why}` };
   }
 }
 

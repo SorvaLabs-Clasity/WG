@@ -1,7 +1,7 @@
 # The graph
 
 One table, `graph-edges`, holding the organization as a set of edges. Rebuilt
-whole when someone presses Sync data.
+whole every six hours, and on demand.
 
 ## Shape
 

@@ -2,6 +2,8 @@ import { createAppAuth } from "@octokit/auth-app";
 import { initTokenManager } from "../github/client";
 import { loadSecretsIntoEnv } from "../webhooks/secret";
 import { aggregateGraphData } from "./graphAggregator";
+import { getOrgConfig } from "../services/orgConfigService";
+import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
 
 /**
  * The scheduled rebuild of the access graph.
@@ -56,9 +58,33 @@ function bootstrapOnce(): Promise<void> {
 export async function handler(): Promise<{ ok: boolean }> {
   await bootstrapOnce();
 
+  const startedAt = Date.now();
+
   // aggregateGraphData catches its own fatal errors and records them, so this
   // resolving is not a claim that the rebuild succeeded — the stored record is
   // where that is written, and the UI reads it from there.
   await aggregateGraphData();
+
+  // Logged every run, unlike the five-minute jobs.
+  //
+  // Four rows a day is a legible history rather than noise, and this is the run
+  // people ask about: every access and security screen reads what it collected,
+  // so "when did this last happen and did it work" is the question behind almost
+  // every report of a page showing stale or zero.
+  //
+  // Read back rather than assumed, because the walk swallows its own errors —
+  // a row claiming success over a failed sync is worse than no row.
+  const after = (await getOrgConfig()).graphAggregation;
+  const failed = !!after?.lastError && (!after?.lastSuccessAt || !after.lastAttemptAt
+    || Date.parse(after.lastAttemptAt) > Date.parse(after.lastSuccessAt));
+  await logSync("graph", SCHEDULE_ACTOR, {
+    details: failed
+      ? "Scheduled sync failed"
+      : `Scheduled sync from GitHub — ${after?.edgeCount ?? 0} connections`,
+    failed,
+    error: failed ? after?.lastError : undefined,
+    startedAt,
+  });
+
   return { ok: true };
 }

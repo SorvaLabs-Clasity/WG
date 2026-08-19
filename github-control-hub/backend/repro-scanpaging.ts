@@ -167,6 +167,149 @@ function fakeTable(total: number, pageSize: number) {
       /query-subject/.test(alarms) && /scanAll<AnyRecord>/.test(alarms));
   }
 
+  // ── a Limit is not a filter, and a filter is not a key ───────────────
+  //
+  // Every activity row shares one partition key, so "this repository's
+  // history" cannot be a key condition — it is a FilterExpression, and
+  // DynamoDB applies `Limit` to rows **read**, before the filter runs. With
+  // `Limit: 200` the query therefore asked "is this repository among the
+  // newest two hundred rows in the whole organization?". On a busy org those
+  // two hundred rows are often a single afternoon, so every repository except
+  // the two or three touched that afternoon returned an empty history — which
+  // reads as "nothing has ever happened here".
+  {
+    process.env.ACTIVITY_TABLE = "test-activity";
+    const { getActivityForRepo } = await import("./src/services/activityService");
+
+    /** A log where the repository we want was last touched 900 rows ago. */
+    function activityTable(total: number, matchesAt: number[]) {
+      const calls: any[] = [];
+      const send = async (cmd: any) => {
+        const input = cmd.input ?? cmd;
+        calls.push(input);
+        const start = input.ExclusiveStartKey ? Number(input.ExclusiveStartKey.n) : 0;
+        const limit = input.Limit ?? total;
+        const end = Math.min(total, start + limit);
+        const wanted = input.ExpressionAttributeValues?.[":repo"];
+        // Scanned first, filtered second — the order that makes Limit a trap.
+        const scanned = [];
+        for (let i = start; i < end; i++) {
+          scanned.push({ id: `row-${i}`, repo: matchesAt.includes(i) ? wanted : "somewhere-else" });
+        }
+        const items = scanned.filter(r => r.repo === wanted);
+        return {
+          Items: items,
+          Count: items.length,
+          ScannedCount: scanned.length,
+          ...(end < total ? { LastEvaluatedKey: { n: String(end) } } : {}),
+        };
+      };
+      return { send, calls };
+    }
+
+    const t = activityTable(1_000, [900, 901, 902, 903]);
+    swap(t.send);
+    const rows = await getActivityForRepo("payments-api", 50);
+    restore();
+
+    check("a repository's older history is still found", rows.length === 4, rows.length);
+    check("  which took more than one request", t.calls.length > 1, t.calls.length);
+    check("  and every request carried on from the last",
+      t.calls.slice(1).every((c: any) => c.ExclusiveStartKey !== undefined),
+      t.calls.map((c: any) => c.ExclusiveStartKey?.n ?? "start"));
+
+    // The read is bounded. A repository with nothing in it must not walk
+    // thirteen months of the organization's history to say so.
+    const quiet = activityTable(1_000_000, []);
+    swap(quiet.send);
+    const none = await getActivityForRepo("never-touched", 50);
+    restore();
+    check("a repository with no rows returns nothing", none.length === 0, none.length);
+    check("  without reading the whole table to find that out",
+      quiet.calls.length <= 12, quiet.calls.length);
+
+    // And it stops as soon as it has enough, rather than always spending the
+    // whole budget.
+    const busy = activityTable(1_000_000, Array.from({ length: 200 }, (_, i) => i));
+    swap(busy.send);
+    const some = await getActivityForRepo("payments-api", 50);
+    restore();
+    check("a busy repository stops at the first page that satisfies it",
+      some.length === 50 && busy.calls.length === 1, { rows: some.length, calls: busy.calls.length });
+
+    delete process.env.ACTIVITY_TABLE;
+  }
+
+  // ── a batch write must write the whole batch ─────────────────────────
+  //
+  // The mirror image of the reads above. `BatchWriteItem` does not throw when
+  // it cannot keep up: it succeeds and hands back whatever it declined in
+  // `UnprocessedItems`. Four call sites read that response and discarded it —
+  // the graph aggregator's puts and deletes, the incremental edge writer, and
+  // the guardrail findings store — so a throttled batch was edges that never
+  // appeared and violations that were found, logged, and never stored.
+  {
+    const { batchWrite } = await import("./src/utils/dynamo");
+
+    /** Declines the first `declineFor` attempts, exactly as DynamoDB does. */
+    function grudgingTable(declineFor: number) {
+      const written: any[] = [];
+      let attempts = 0;
+      const send = async (cmd: any) => {
+        const input = cmd.input ?? cmd;
+        const table = Object.keys(input.RequestItems)[0];
+        const items = input.RequestItems[table];
+        attempts++;
+        if (attempts <= declineFor) {
+          // Half through, half back — the ordinary partial-success shape.
+          const keep = items.slice(0, Math.floor(items.length / 2));
+          written.push(...keep);
+          return { UnprocessedItems: { [table]: items.slice(keep.length) } };
+        }
+        written.push(...items);
+        return { UnprocessedItems: {} };
+      };
+      return { send, written, attempts: () => attempts };
+    }
+
+    const rows = Array.from({ length: 60 }, (_, i) => ({ PutRequest: { Item: { id: String(i) } } }));
+
+    const t = grudgingTable(3);
+    swap(t.send);
+    await batchWrite("edges", rows, { delay: async () => {} });
+    restore();
+    check("everything declined is retried until it lands",
+      t.written.length === 60, t.written.length);
+    check("  and every row is written exactly once",
+      new Set(t.written.map((r: any) => r.PutRequest.Item.id)).size === 60,
+      t.written.length);
+
+    // Chunked to DynamoDB's limit of 25 by the helper, not by each caller.
+    const chunks = grudgingTable(0);
+    swap(chunks.send);
+    await batchWrite("edges", rows, { delay: async () => {} });
+    restore();
+    check("  in batches of no more than 25", chunks.attempts() === 3, chunks.attempts());
+
+    // And a table that never accepts them throws rather than returning quietly.
+    let threw: Error | null = null;
+    const stubborn = grudgingTable(Number.MAX_SAFE_INTEGER);
+    swap(stubborn.send);
+    try {
+      await batchWrite("edges", rows.slice(0, 25), { retries: 2, delay: async () => {} });
+    } catch (e) { threw = e as Error; }
+    restore();
+    check("a batch that never lands is an error, not a silent loss",
+      threw !== null && /unprocessed/i.test(threw.message), threw?.message);
+
+    // Nothing to write is not an error, and costs no request.
+    const idle = grudgingTable(0);
+    swap(idle.send);
+    await batchWrite("edges", [], { delay: async () => {} });
+    restore();
+    check("  while an empty write makes no request at all", idle.attempts() === 0, idle.attempts());
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

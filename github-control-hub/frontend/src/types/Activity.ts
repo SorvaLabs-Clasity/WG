@@ -39,7 +39,23 @@ export type ActivityAction =
   | "github.branch_protection_edited"
   | "github.ruleset_edited"
   | "config.import"
-  | "audit.event";
+  | "config.updated"
+  | "audit.event"
+  | "aws.guardrail.create"
+  | "aws.guardrail.update"
+  | "aws.guardrail.delete"
+  | "aws.guardrail.run"
+  | "aws.guardrail.preview"
+  // Collection runs. Kept in step with the backend union in
+  // services/activityService.ts; ACTION_CONFIG in ActivityPage is a total
+  // Record over this type, so adding one here forces a label to be written.
+  | "sync.graph"
+  | "sync.compliance"
+  | "sync.query"
+  | "sync.access"
+  | "sync.scanner"
+  | "sync.reminders"
+  | "sync.alarms";
 
 export interface UndoPayload {
   action: string;

@@ -1,7 +1,7 @@
 # Where code runs
 
 The same backend is compiled once and started two ways: as the desktop app,
-and as Lambda functions. Within Lambda there are three separate entry points,
+and as Lambda functions. Within Lambda there are five separate entry points,
 each with its own trigger and its own IAM role. What differs across all of
 them is who the code authenticates as and what triggers it.
 
@@ -75,8 +75,25 @@ the rule fires. See [alarms](../features/alarms.md).
 GitHub writes a batch into the audit-log bucket, so it runs only when there is
 something to read.
 
+## Graph aggregator
+
+`github-control-hub-graph-aggregator`, on an EventBridge schedule every **six
+hours**. It walks the organization — repositories, teams, members, collaborators,
+branches, workflows — and stores the edges every access and security screen reads.
+
+Six hours rather than minutes because the walk is the most GitHub-expensive thing
+this app does: roughly four requests per repository for the walk itself and about
+six more per repository for the compliance scores, so a few hundred repositories
+is a few thousand requests, a meaningful slice of one hour's rate limit. What it
+records changes on the scale of days.
+
+It writes only the edges that differ from what is stored, so a sync where nothing
+changed writes nothing. Anyone in `control-hub-admins` can trigger one from the
+Access tab when six hours is too long to wait. See
+[access map](../features/access-map.md).
+
 ## What runs nowhere on a schedule
 
-Graph aggregation. It rebuilds only when someone presses **Sync data**, on
-whichever backend they are using. This is why a fresh feature that adds new
-edge types shows nothing until you sync.
+Nothing, now. Graph aggregation was the last of it — it rebuilt only when someone
+pressed a button, which is why a fresh feature adding new edge types showed
+nothing until somebody happened to sync.

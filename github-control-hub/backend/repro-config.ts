@@ -183,6 +183,33 @@ const HOUR = 3_600_000;
       !/listFindings|getActivity\(/.test(src), "config.ts exports observations as if they were config");
   }
 
+  // ── the two admin teams stay two ──────────────────────────────────────
+  //
+  // Every route under /api/aws is gated on AWS_ADMIN_TEAM because a guardrail
+  // runs as the Lambda's role and can rewrite a bucket policy. Import writes the
+  // same records through putGuardrail and asked only for CONTROL_HUB_ADMIN_TEAM,
+  // so a bundle was a way for the GitHub admin to create an enforcing AWS rule
+  // without ever passing the route that exists to refuse them.
+  {
+    const src = require("fs").readFileSync(
+      require("path").join(__dirname, "src/routes/config.ts"), "utf8");
+
+    check("the import route asks the AWS team about AWS sections",
+      /isAwsAdmin/.test(src) && /refuseAwsSections/.test(src),
+      "a Control Hub admin can write AWS guardrails through an import");
+
+    const importBody = src.slice(src.indexOf('router.post("/import"'));
+    const gate = importBody.indexOf("refuseAwsSections");
+    const apply = importBody.indexOf("applyBundle(");
+    check("  and does so before anything is written",
+      gate !== -1 && apply !== -1 && gate < apply, { gate, apply });
+
+    // The two checks POST /api/aws/guardrails makes, which the import skipped.
+    check("  and validates the rule kind the way the route that owns it does",
+      /CATALOG\.some\(/.test(src) && /canRemediate\(/.test(src),
+      "an import could store an unknown kind, or enforce on a report-only one");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

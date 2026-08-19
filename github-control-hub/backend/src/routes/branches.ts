@@ -4,7 +4,7 @@ import { createOctokit, getOrg } from "../github/client";
 import { listBranches, createBranch, deleteBranch, renameBranch } from "../services/branchService";
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
-import { validateParams } from "../utils/validation";
+import { validateParams, isValidBranchName } from "../utils/validation";
 
 const router = Router();
 
@@ -28,6 +28,18 @@ router.post("/:repo/branches", validateParams("repo"), async (req: Request<{ rep
   if (!branchName || !baseBranch) {
     res.status(400).json({ error: "branchName and baseBranch are required" });
     return;
+  }
+
+  // Validated like the ones in the path are. `validateParams("repo")` covers
+  // the URL and nothing covered the body, so the two names that decide which
+  // ref is read and which is created went to GitHub unchecked — and a name git
+  // will not accept comes back as an opaque 422 that the activity log then
+  // records as a failed branch creation with no cause.
+  for (const [field, value] of [["branchName", branchName], ["baseBranch", baseBranch]] as const) {
+    if (!isValidBranchName(value)) {
+      res.status(400).json({ error: `"${value}" is not a valid branch name (${field})` });
+      return;
+    }
   }
 
   try {
@@ -77,6 +89,10 @@ router.patch(
     const { newName } = req.body as { newName?: string };
     if (!newName) {
       res.status(400).json({ error: "newName is required" });
+      return;
+    }
+    if (!isValidBranchName(newName)) {
+      res.status(400).json({ error: `"${newName}" is not a valid branch name` });
       return;
     }
     try {

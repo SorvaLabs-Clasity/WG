@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
 import {
   accessSummary, accessForUser, accessForRepo, knownRepos, invalidateAccessMap,
 } from "../services/accessMapService";
@@ -70,8 +71,22 @@ router.get("/repos", async (_req: Request, res: Response) => {
 });
 
 /** Drop the derived view so a fresh graph sync shows up without waiting a minute. */
-router.post("/refresh", async (_req: Request, res: Response) => {
+/**
+ * Drops the derived map so the next read recomputes it from the stored edges.
+ *
+ * Not a sync: it goes nowhere near GitHub, and it cannot pick up an access
+ * change that has not been collected yet. Logged all the same, and worded so the
+ * distinction is legible — somebody reading the feed to work out why a change is
+ * not showing needs to see that this ran and that it was not the thing that
+ * would have helped.
+ */
+router.post("/refresh", async (req: Request, res: Response) => {
+  const startedAt = Date.now();
   invalidateAccessMap();
+  await logSync("access", req.user?.login ?? SCHEDULE_ACTOR, {
+    details: "Recomputed the access map from stored data — no GitHub read",
+    startedAt,
+  });
   res.json({ refreshed: true });
 });
 

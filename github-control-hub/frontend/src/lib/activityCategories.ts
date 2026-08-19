@@ -15,7 +15,9 @@
  *           rows. Note that action is not in the ActivityAction union — the
  *           Lambda writes the string directly.
  *   app     this application's own configuration: widgets, scanners, imports.
- *           Housekeeping. Real, and not why anyone opens an audit trail.
+ *           Housekeeping. Real, and not why anyone opens an audit trail. Also
+ *           the `sync.*` collection runs — when the app last went and looked,
+ *           who asked it to, and what came back.
  *   audit   the enterprise audit log. `audit.event` is already in the union,
  *           reserved before anything wrote it.
  *
@@ -67,6 +69,13 @@ export const CATEGORY_SOURCES: Record<ActivityCategory, Array<"app" | "github" |
 const PREFIXES: Array<[string, ActivityCategory]> = [
   ["aws.", "aws"],
   ["audit.", "audit"],
+
+  // Collection runs: a sync, a sweep, a re-check. Housekeeping in the same sense
+  // the rest of this bucket is — the app going and looking, rather than anything
+  // in GitHub or AWS changing. Without a prefix here they would fall through to
+  // the organization stream, where a six-hourly sync would sit between two
+  // protection changes and push real events off the first page.
+  ["sync.", "app"],
 
   // App configuration.
   ["widget.", "app"],

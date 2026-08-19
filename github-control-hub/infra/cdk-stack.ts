@@ -82,8 +82,25 @@ export class GitHubControlHubStack extends cdk.Stack {
       enforceSSL: true,
     });
 
+    // Lambda log groups, created here rather than left to Lambda.
+    //
+    // A function that creates its own log group creates one that never expires,
+    // and nothing in the console says so — the cost simply grows for ever, which
+    // is the shape of bill nobody notices. Three months is long enough to debug
+    // an incident from and short enough to bound.
+    //
+    // Declared explicitly rather than via the `logRetention` prop, which ships a
+    // custom resource and its own Lambda to call the API after deployment.
+    const logGroupFor = (id: string, fnName: string) =>
+      new logs.LogGroup(this, `${id}Logs`, {
+        logGroupName: `/aws/lambda/${fnName}`,
+        retention: logs.RetentionDays.THREE_MONTHS,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+
     const guardrailFn = new NodejsFunction(this, "GuardrailEnforcer", {
       functionName: `${stackPrefix}-guardrail-enforcer`,
+      logGroup: logGroupFor("GuardrailEnforcer", `${stackPrefix}-guardrail-enforcer`),
       runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, "..", "backend", "src", "aws-guardrails", "handler.ts"),
       handler: "handler",
@@ -290,6 +307,7 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     const receiverFn = new NodejsFunction(this, "WebhookReceiver", {
       functionName: `${stackPrefix}-webhook-receiver`,
+      logGroup: logGroupFor("WebhookReceiver", `${stackPrefix}-webhook-receiver`),
       runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, "..", "backend", "src", "webhooks", "receiver.ts"),
       handler: "handler",
@@ -332,6 +350,7 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     const workerFn = new NodejsFunction(this, "WebhookWorker", {
       functionName: `${stackPrefix}-webhook-worker`,
+      logGroup: logGroupFor("WebhookWorker", `${stackPrefix}-webhook-worker`),
       runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, "..", "backend", "src", "webhooks", "worker.ts"),
       handler: "handler",
@@ -429,6 +448,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // to that alarm's topic when the state changes.
     const alarmFn = new NodejsFunction(this, "AlarmEvaluator", {
       functionName: `${stackPrefix}-alarm-evaluator`,
+      logGroup: logGroupFor("AlarmEvaluator", `${stackPrefix}-alarm-evaluator`),
       runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, "..", "backend", "src", "alarms", "handler.ts"),
       handler: "handler",
@@ -517,6 +537,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // indistinguishable from a current one.
     const graphFn = new NodejsFunction(this, "GraphAggregator", {
       functionName: `${stackPrefix}-graph-aggregator`,
+      logGroup: logGroupFor("GraphAggregator", `${stackPrefix}-graph-aggregator`),
       runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, "..", "backend", "src", "jobs", "aggregateHandler.ts"),
       handler: "handler",
@@ -801,6 +822,7 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     const auditIngestFn = new NodejsFunction(this, "AuditLogIngest", {
       functionName: `${stackPrefix}-audit-ingest`,
+      logGroup: logGroupFor("AuditLogIngest", `${stackPrefix}-audit-ingest`),
       runtime: lambda.Runtime.NODEJS_24_X,
       entry: path.join(__dirname, "..", "backend", "src", "audit", "ingest.ts"),
       handler: "handler",

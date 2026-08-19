@@ -125,6 +125,22 @@ async function consumeOAuthState(state: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Is this stored session still usable?
+ *
+ * The signature was the whole of the answer, and it is only half of it. A JWT
+ * lasts eight hours; the GitHub token it stands for lives in a Map in this
+ * process, and is dropped when the backend restarts, when the user signs out,
+ * and when authMiddleware finds they have left the organization. In every one
+ * of those cases the signature still verifies, so this said "valid" — the
+ * login page kept the session, sent the user into the app, and the first API
+ * call 401'd them straight back to the login page it had just let them leave.
+ *
+ * Both halves now. Deliberately no GitHub call: authMiddleware already
+ * re-checks org membership on every request with its own cache, and this
+ * endpoint is exempt from the auth rate limiter precisely because it is meant
+ * to be cheap.
+ */
 router.get("/verify", (req: Request, res: Response) => {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
@@ -133,6 +149,10 @@ router.get("/verify", (req: Request, res: Response) => {
   }
   try {
     const payload = verifyToken(header.slice(7));
+    if (!getToken(payload.githubId)) {
+      res.json({ valid: false, reason: "session_expired" });
+      return;
+    }
     res.json({ valid: true, login: payload.login, avatarUrl: payload.avatarUrl });
   } catch {
     res.json({ valid: false });

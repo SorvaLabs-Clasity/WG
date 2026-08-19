@@ -26,20 +26,25 @@ function ago(iso?: string): string | null {
 /**
  * How old this page's answer is, and how to make it newer.
  *
- * Everything below is a snapshot of the organization taken when the graph was
- * last rebuilt. Without this line a graph built before somebody joined, left or
- * was made an owner looked exactly like a current one — and the Refresh button
- * beside it re-reads the same snapshot, so pressing it looked like it should
- * have helped and could not.
+ * Everything below is a snapshot of the organization taken when it was last
+ * synced. Without this line a snapshot taken before somebody joined, left or was
+ * made an owner looked exactly like a current one.
+ *
+ * One button, not two. There were briefly two — a "Refresh" that re-read the
+ * derived map from the stored snapshot, and a "Sync" that went back to GitHub —
+ * and the difference between them is invisible from the outside: the cheap one
+ * looks like it should have picked up a change and never could. So whoever can
+ * sync gets the button that actually goes to GitHub, and whoever cannot gets
+ * the one that re-reads, which is all it could ever have done for them.
  */
-function GraphFreshness() {
+function GraphFreshness({ busy, onReread }: { busy: boolean; onReread: () => void }) {
   const { data } = useGraphAggregation();
   const { data: permissions } = usePermissions();
-  const trigger = useTriggerAggregation();
-  const canRebuild = permissions?.isControlHubAdmin ?? false;
+  const sync = useTriggerAggregation();
+  const canSync = permissions?.isControlHubAdmin ?? false;
 
   const a = data?.aggregation;
-  const built = ago(a?.lastSuccessAt);
+  const synced = ago(a?.lastSuccessAt);
   // Only worth mentioning when it is the *later* of the two. An attempt that
   // preceded the last success is just how a successful run looks.
   const failedAfterSuccess = !!a?.lastError && !!a?.lastAttemptAt
@@ -48,22 +53,25 @@ function GraphFreshness() {
   return (
     <div className="flex items-center gap-3 flex-wrap text-xs text-slate-500 dark:text-slate-400">
       <span>
-        {built ? <>Rebuilt {built}</> : <>Never rebuilt</>}
+        {synced ? <>Synced {synced}</> : <>Never synced</>}
         {a?.edgeCount ? <> · {a.edgeCount.toLocaleString()} connections</> : null}
+        {" · updates itself every 6 hours"}
       </span>
 
-      {failedAfterSuccess && (
-        <Pill intent="warn">Last rebuild failed</Pill>
-      )}
+      {failedAfterSuccess && <Pill intent="warn">Last sync failed</Pill>}
 
-      {canRebuild && (
+      {canSync ? (
         <Button
           variant="secondary"
-          disabled={trigger.isPending}
-          onClick={() => trigger.mutate()}
+          disabled={sync.isPending}
+          onClick={() => sync.mutate()}
         >
-          {trigger.isPending ? "Rebuilding…" : "Rebuild now"}
+          {/* Named for how long it takes, because it is not instant: one pass
+              over every repository, team and member in the organization. */}
+          {sync.isPending ? "Syncing, this takes a few minutes…" : "Sync from GitHub"}
         </Button>
+      ) : (
+        <RefreshButton busy={busy} onRefresh={onReread} />
       )}
     </div>
   );
@@ -208,17 +216,16 @@ export default function AccessPage() {
             Every person, everything they can reach, and how they came by it.
           </p>
           <div className="mt-2">
-            <GraphFreshness />
+            <GraphFreshness busy={isFetching} onReread={() => refetch()} />
           </div>
         </div>
-        <RefreshButton busy={isFetching} onRefresh={() => refetch()} />
       </div>
 
       {data?.stale && (
         <Note intent="warn">
-          The graph has not been rebuilt since this view existed, so there is nobody in it yet.
-          Press Sync data on the Repos page — an empty map here means nothing has been collected,
-          not that nobody has access.
+          Nothing has been collected from GitHub yet, so there is nobody in this map.
+          Press Sync from GitHub above, or wait for the next scheduled sync — an empty map
+          here means nothing has been read, not that nobody has access.
         </Note>
       )}
 
@@ -236,7 +243,8 @@ export default function AccessPage() {
                 : <>
                     Every member of this organization already has <strong>{roleName(data.org.defaultRepositoryPermission)}</strong> on
                     every repository — that is the organization default, and it is not repeated below.
-                    This map shows write access and above.
+                    Everything above that default is listed, along with outside collaborators,
+                    who are not covered by it.
                   </>}
           </Note>
 

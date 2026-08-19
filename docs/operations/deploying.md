@@ -38,5 +38,6 @@ The stack prints `CanChangeAnything` so the deployment states which it is.
 
 ## After deploying a feature that adds graph edges
 
-Press **Sync data** on the Repos page. New edge types do not exist in an old
+Wait for the next six-hourly sync, or press **Sync from GitHub** on the Access
+tab to have them now. New edge types do not exist in an old
 graph, and the pages that need them will say they are stale.

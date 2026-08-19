@@ -1,6 +1,6 @@
 import { Octokit } from "octokit";
 import { getOrg, getSystemTokenAsync } from "../github/client";
-import { docClient, usesDynamo, tableName, PutCommand, BatchWriteCommand, ScanCommand, DeleteCommand, scanAll } from "../utils/dynamo";
+import { usesDynamo, tableName, scanAll, batchWrite } from "../utils/dynamo";
 import { refreshAll } from "../services/complianceCacheService";
 import { invalidateAccessMap } from "../services/accessMapService";
 import { invalidateEdgeCache } from "../services/graphService";
@@ -129,14 +129,19 @@ export async function aggregateGraphData(fallbackToken?: string) {
     // is only true when the organization's default says so. Asserting it
     // without checking would be the map's biggest statement resting on an
     // assumption.
+    // Held beyond the block below: whether a plain read is worth recording
+    // depends on it, and that decision is made once per collaborator further
+    // down.
+    let orgDefault = "unknown";
     try {
       const { data: orgInfo } = await octokit.rest.orgs.get({ org });
+      orgDefault = (orgInfo as any).default_repository_permission ?? "unknown";
       edges.push({
         pk: `ORG#${org}`,
         sk: "META#org",
         type: "org_meta",
         metadata: {
-          defaultRepositoryPermission: (orgInfo as any).default_repository_permission ?? "unknown",
+          defaultRepositoryPermission: orgDefault,
           membersCanCreateRepositories: (orgInfo as any).members_can_create_repositories ?? null,
           twoFactorRequirementEnabled: (orgInfo as any).two_factor_requirement_enabled ?? null,
           memberCount: people.size,
@@ -268,19 +273,48 @@ export async function aggregateGraphData(fallbackToken?: string) {
       // one collaborator across the whole organization and every question
       // about people returned nothing.
       //
-      // Two deliberate narrowings keep that from turning into noise:
+      // One deliberate narrowing keeps that from turning into noise: each edge
+      // carries how the access was obtained. Without it an org owner is admin
+      // on every repository and floods every result; with it a query can ask
+      // the useful question, which is who has admin that ownership and team
+      // membership do not already explain.
       //
-      //   Only admin, write and maintain are recorded. Read is what the org
-      //   default grants everyone on everything, so recording it would add one
-      //   edge per member per repository — hundreds of thousands at a real
-      //   company — and no query asks about read.
-      //
-      //   Each edge carries how the access was obtained. Without it an org
-      //   owner is admin on every repository and floods every result; with it
-      //   a query can ask the useful question, which is who has admin that
-      //   ownership and team membership do not already explain.
+      // Which roles are recorded is decided just below, and is no longer a
+      // fixed list.
       try {
-        const PRIVILEGED = ["admin", "write", "maintain"];
+        // Which roles are worth an edge.
+        //
+        // This was a fixed list of admin, write and maintain, which dropped
+        // three things people expect to see:
+        //
+        //   triage — never an organization default, so it is always an explicit
+        //   grant, and an access review wants explicit grants above all.
+        //
+        //   custom repository roles — the name is whatever the organization
+        //   called it, so it matched nothing in the list and anybody holding one
+        //   vanished from the map entirely.
+        //
+        //   read held by an outside collaborator — the person who is not in the
+        //   organization and can nevertheless see the code, which is the row an
+        //   access review exists to find.
+        //
+        // The one exclusion that survives is the one the volume argument was
+        // really about: a *member's* plain read, where the organization already
+        // grants read or better to everyone. listCollaborators reports those,
+        // so recording them would add an edge per member per repository —
+        // hundreds of thousands at a real company — to say something the
+        // organization default already says once, on screen, at the top of the
+        // page. When the default is `none`, that same read is an explicit grant
+        // and is recorded like any other.
+        const DEFAULT_COVERS_READ = orgDefault === "read" || orgDefault === "write" || orgDefault === "admin";
+        const worthRecording = (role: string, login: string): boolean => {
+          const isRead = role === "read" || role === "pull";
+          if (!isRead) return true;
+          const isOutside = people.get(login)?.orgRole === "outside_collaborator";
+          if (isOutside) return true;
+          return !DEFAULT_COVERS_READ;
+        };
+
         const teamMembersHere = viaTeam.get(repo.name);
         let colPage = 1;
         while (true) {
@@ -289,7 +323,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
           for (const collab of collaborators) {
             if (!collab?.login) continue;
             const role = collab.role_name ?? "read";
-            if (!PRIVILEGED.includes(role)) continue;
+            if (!worthRecording(role, collab.login)) continue;
 
             const source = orgOwners.has(collab.login) ? "org_owner"
               : teamMembersHere?.has(collab.login) ? "team"
@@ -364,61 +398,109 @@ export async function aggregateGraphData(fallbackToken?: string) {
 
     // Write edges to database
     if (usesDynamo()) {
-      // For a full refresh, it's often easiest to truncate and rewrite, or use TTL.
-      // Since this runs every 6 hours, we'll scan and delete old edges first to avoid orphans.
-      console.log(`[GraphAggregator] Clearing old graph edges...`);
+      // Only what changed.
+      //
+      // This deleted every row and rewrote every row on every run. The data it
+      // describes — who is in which team, who can reach which repository —
+      // barely moves between one sync and the next, so almost all of those
+      // writes replaced a row with an identical row. On-demand DynamoDB bills
+      // per write, and a graph of thirty thousand edges rewritten four times a
+      // day is 7.2 million write units a month to record almost nothing.
+      //
+      // The scan was already happening, to find rows to delete. Reading the
+      // whole item instead of just its key makes the comparison possible, and
+      // reads are an order of magnitude cheaper than writes: a steady-state
+      // sync now writes nothing at all.
+      console.log(`[GraphAggregator] Comparing against stored edges...`);
+
+      const fingerprint = (e: { type: string; metadata?: any }) =>
+        JSON.stringify({ t: e.type, m: e.metadata ?? null });
+
+      /**
+       * A key that cannot be confused with the data in it.
+       *
+       * This used to join pk and sk with "::" and split the pair back out of
+       * the string when deciding what to delete. A workflow named "Build ::
+       * Test" — or a Dependabot advisory summary, which is free text and ends
+       * up in a DEPENDENCY# key — split into three parts, so the delete was
+       * issued against a truncated sort key that matches nothing. The row it
+       * meant to remove stayed: an edge for a workflow or a package that no
+       * longer exists, which every security check reads as current.
+       *
+       * NUL cannot appear in a DynamoDB string attribute, so it cannot appear
+       * in a pk or an sk either — and the pair is kept alongside the key now
+       * rather than reconstructed from it, so nothing depends on that.
+       */
+      const keyOf = (e: { pk: string; sk: string }) => `${e.pk}\u0000${e.sk}`;
+
+      let stored: Map<string, { fingerprint: string; pk: string; sk: string }>;
       try {
-        // Paged. This clear-before-rewrite is what stops orphans, and a single
-        // scan stops at 1MB — so past roughly twenty thousand edges it was
-        // clearing the first page and leaving the rest behind. Orphaned edges
-        // are worse than stale ones: the security checks read them as current,
-        // and report findings about repositories and people that no longer
-        // exist. Only rows this job wrote are deleted, exactly as before.
-        const oldItems = await scanAll<{ pk: string; sk: string }>(
-          edgesTable, { project: "pk, sk" });
-        
-        // Delete in batches of 25
-        for (let i = 0; i < oldItems.length; i += 25) {
-          const batch = oldItems.slice(i, i + 25);
-          await docClient.send(new BatchWriteCommand({
-            RequestItems: {
-              [edgesTable]: batch.map(item => ({
-                DeleteRequest: {
-                  Key: { pk: item.pk, sk: item.sk }
-                }
-              }))
-            }
-          }));
-        }
+        const oldItems = await scanAll<GraphEdge>(edgesTable);
+        stored = new Map(oldItems.map(i =>
+          [keyOf(i), { fingerprint: fingerprint(i), pk: i.pk, sk: i.sk }]));
       } catch (e) {
-        console.error(`[GraphAggregator] Error clearing old edges:`, e);
+        // Not survivable, and not something to write through.
+        //
+        // Without the stored set there is no way to know which rows have gone,
+        // and writing anyway would leave orphans — rows for repositories and
+        // people that no longer exist, which the security checks read as
+        // current. Failing leaves the previous sync's data in place, which is
+        // merely old.
+        throw new Error(`Could not read the stored graph, so nothing was written: ${(e as Error).message}`);
       }
 
-      // Write new edges in batches of 25
-      console.log(`[GraphAggregator] Writing new edges...`);
-      for (let i = 0; i < edges.length; i += 25) {
-        const batch = edges.slice(i, i + 25);
-        
-        // Remove duplicates within the batch just in case
-        const uniqueBatchMap = new Map();
-        for (const item of batch) {
-          uniqueBatchMap.set(`${item.pk}::${item.sk}`, item);
-        }
-        const uniqueBatch = Array.from(uniqueBatchMap.values());
+      // Deduplicated across the whole run, not per batch. The previous code
+      // removed duplicates inside each batch of 25, so the same edge produced
+      // twice in different batches was written twice.
+      const wanted = new Map<string, GraphEdge>();
+      for (const e of edges) wanted.set(keyOf(e), e);
 
-        try {
-          await docClient.send(new BatchWriteCommand({
-            RequestItems: {
-              [edgesTable]: uniqueBatch.map(item => ({
-                PutRequest: {
-                  Item: item
-                }
-              }))
-            }
-          }));
-        } catch (e) {
-           console.error(`[GraphAggregator] Error writing batch:`, e);
-        }
+      const puts: GraphEdge[] = [];
+      for (const [key, e] of wanted) {
+        if (stored.get(key)?.fingerprint !== fingerprint(e)) puts.push(e);
+      }
+      const deletes: { pk: string; sk: string }[] = [];
+      for (const [key, row] of stored) {
+        if (!wanted.has(key)) deletes.push({ pk: row.pk, sk: row.sk });
+      }
+
+      console.log(
+        `[GraphAggregator] ${wanted.size} edges: ${puts.length} new or changed, ` +
+        `${deletes.length} gone, ${wanted.size - puts.length} unchanged and left alone.`,
+      );
+
+      // Writes first, deletions after.
+      //
+      // Both orders leave a window, and this is the one whose window is
+      // harmless: a moment where a renamed edge exists under both keys reads
+      // as one stale row, while deleting first leaves a moment where the edge
+      // exists under neither and a check running in it reports access nobody
+      // has. Between "briefly duplicated" and "briefly missing", a security
+      // report should never be the second.
+      //
+      // batchWrite retries whatever DynamoDB declines. The loops this replaces
+      // read the response and discarded it, so a throttled batch — ordinary on
+      // a table this size the moment on-demand capacity has to ramp — was
+      // thirty thousand edges of which an unknown number were never written,
+      // reported as a successful sync.
+      try {
+        await batchWrite(edgesTable, puts.map(item => ({ PutRequest: { Item: item } })));
+      } catch (e) {
+        // Rethrown rather than logged. A partial write is a graph that
+        // disagrees with GitHub, and the success stamp below must not be
+        // reached — a snapshot dated now is worse than one dated six hours ago,
+        // because only one of them looks wrong.
+        throw new Error(`Writing graph edges failed: ${(e as Error).message}`);
+      }
+
+      try {
+        await batchWrite(edgesTable,
+          deletes.map(k => ({ DeleteRequest: { Key: { pk: k.pk, sk: k.sk } } })));
+      } catch (e) {
+        // Not fatal, and deliberately not. Everything current is on disk by
+        // here; what is left is rows for things that no longer exist, which the
+        // next sync will try again. Over-reporting is the safe direction.
+        console.error(`[GraphAggregator] Some stale edges could not be removed:`, (e as Error).message);
       }
       console.log(`[GraphAggregator] DynamoDB sync complete.`);
     } else {

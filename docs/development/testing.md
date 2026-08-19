@@ -1,7 +1,7 @@
 # Testing
 
-Thirty-seven suites, each a script named `repro-*.ts`, run with `tsx`. No
-framework. Thirty-four live in `backend/`, three in `frontend/`, and each runs
+Forty-two suites, each a script named `repro-*.ts`, run with `tsx`. No
+framework. Thirty-nine live in `backend/`, three in `frontend/`, and each runs
 from its own directory.
 
 ```bash
@@ -30,6 +30,9 @@ the wrong place.
 | `repro-accounts` | Multi-account sweeps, credential chain, deploy scoping |
 | `repro-leastprivilege` | **What the IAM does not contain** |
 | `repro-accessmap` | Access-path derivation |
+| `repro-accessroles` | Which repository roles reach the access map, and the one that does not |
+| `repro-synclog` | Every refresh writes a row; the frequent ones only when they did something |
+| `repro-graphfreshness` | How old the graph is, and that a sync writes only what changed |
 | `repro-activity` | Activity lookups and indexes |
 | `repro-audit` | Audit-log reading and actor attribution |
 | `repro-auditstream` | Audit-log streaming setup, and turning it off |
@@ -58,6 +61,8 @@ the wrong place.
 | `repro-largeorg` | The whole path at 300 accounts, against a rate-limited GitHub |
 | `repro-loginstates` | What the sign-in page says in each state, and in what order |
 | `repro-webhookdelivery` | Signature verification over raw bytes, and the delivery lock |
+| `repro-refmatch` | Which branches a ruleset covers, and **a compliance rule that could not run has not passed** |
+| `repro-scanmerge` | **A one-repository re-scan must not erase the org-wide result** |
 
 Frontend, run from `github-control-hub/frontend`:
 
@@ -67,7 +72,7 @@ Frontend, run from `github-control-hub/frontend`:
 | `repro-activitycategories` | Grouping activity into the categories the page shows |
 | `repro-nestedcomponents` | **No component is declared inside another** |
 
-## Two unusual ones
+## Four unusual ones
 
 **`repro-leastprivilege`** reads the shipped CDK and CloudFormation and asserts
 what they do *not* contain — no `iam:` action, no wildcard `AssumeRole`, no
@@ -76,6 +81,12 @@ failure means "someone widened the blast radius".
 
 **`repro-undo`** greps the route files to check every write route names an
 authorization guard. Adding a route without one fails the suite.
+
+**`repro-scanpaging`** covers both halves of "a read must read enough": a `Scan`
+that stops at 1MB, and a `Query` whose `Limit` is applied *before* its filter.
+The second is the subtler one — `getActivityForRepo` filtered on `repo` with
+`Limit: 200`, which asks "is this repository among the newest two hundred rows
+in the organization?" rather than "what is this repository's history?".
 
 **`repro-nestedcomponents`** reads every `.tsx` file for a capitalised
 declaration indented inside another. React reconciles by element type, so a
@@ -123,6 +134,30 @@ the summary is silence rather than a failure. Where behaviour *under* failure is
 what is being asserted — a delete that 404s, a repository that cannot be
 commented on — catch it explicitly and assert on the outcome, so a throw becomes
 a readable failure instead of a silent exit.
+
+## A source-scanning guard can be blinded by its own tidying
+
+repro-appsec reads the shipped source and asserts things about it, so it first
+strips comments — otherwise prose explaining why something is absent contains
+the thing, and the check fails on its own documentation.
+
+The stripper was `line.replace(/\s*\/\/.*$/, "")`, and the `//` in a URL is
+not a comment. Every line holding `http://` was cut at the scheme, so
+
+    if (url.startsWith("http://localhost")) return { action: "allow" };
+
+reached the assertions as
+
+    if (url.startsWith("http:
+
+and any check looking for something past that point could not see it. Nothing
+failed. The guard simply stopped looking, which is the worst way for a guard to
+break: a mutation planted beyond the scheme survives while the suite reports ALL
+PASS, and the only symptom is a test that has always been green.
+
+It is quote-aware now — only a `//` outside a string starts a comment. The
+general lesson is that a mutation test proves the assertion *and* the machinery
+underneath it, and the machinery is the part nobody thinks to break.
 
 ## A guard cannot prove itself on clean input
 

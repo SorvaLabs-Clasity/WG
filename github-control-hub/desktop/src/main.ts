@@ -33,6 +33,44 @@ function getBackendNodeModules(): string {
   return path.join(process.resourcesPath, "backend", "node_modules");
 }
 
+/**
+ * Is this URL the app's own backend?
+ *
+ * Every one of these checks used to be `url.startsWith("http://localhost")`,
+ * and a prefix is not an origin. `http://localhost.example.com/` starts with
+ * that string, and so does `http://localhost:4321@example.com/` — the part
+ * before the `@` is userinfo, not a host, so a link can name this app's exact
+ * origin and still resolve somewhere else entirely. Either one satisfied the
+ * window-open handler, which then loaded the page *inside* this window rather
+ * than handing it to the browser: a remote origin running in the same
+ * BrowserWindow as the signed-in session, with the preload bridge attached.
+ *
+ * Parsed and compared instead. `URL` puts the host in `hostname` and refuses
+ * to let userinfo or a path masquerade as one, so there is nothing left to
+ * spoof. The port is checked too — nothing but this backend is the app.
+ */
+function isAppUrl(url: string): boolean {
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return false; }
+  if (parsed.protocol !== "http:") return false;
+  // Userinfo in a URL aimed at our own origin has no legitimate use and is the
+  // shape the prefix check fell for, so it is refused rather than ignored.
+  if (parsed.username || parsed.password) return false;
+  if (parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") return false;
+  return parsed.port === String(BACKEND_PORT);
+}
+
+/** The start of a sign-in, judged on the path rather than on the whole string. */
+function startsSignIn(url: string): boolean {
+  try { return new URL(url).pathname.startsWith("/auth/github"); } catch { return false; }
+}
+
+/** The sign-in page this window falls back to when a navigation fails. */
+function isLoginUrl(url: string): boolean {
+  if (!isAppUrl(url)) return false;
+  try { return new URL(url).pathname === "/login"; } catch { return false; }
+}
+
 function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1440,
@@ -53,7 +91,7 @@ function createWindow(): void {
   mainWindow.loadURL(`http://localhost:${BACKEND_PORT}${DEMO_MODE ? "/" : "/login"}`);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("http://localhost")) return { action: "allow" };
+    if (isAppUrl(url)) return { action: "allow" };
     // Some identity providers open a popup for the account chooser or for MFA.
     // Sending that to the system browser strands the flow the same way sending
     // a redirect there did.
@@ -75,11 +113,11 @@ function createWindow(): void {
   // one we recognize". The flow is bounded: it starts at /auth/github and ends
   // when GitHub sends us back to /login.
   mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (url.startsWith("http://localhost")) {
-      // Self-clearing: any localhost navigation that is not the start of a
+    if (isAppUrl(url)) {
+      // Self-clearing: any navigation to this app that is not the start of a
       // sign-in ends the flow, so an abandoned attempt cannot leave the window
       // permanently willing to load anything.
-      oauthInFlight = url.includes("/auth/github");
+      oauthInFlight = startsSignIn(url);
       return;
     }
     // github.com is not allowed outright. During sign-in oauthInFlight covers
@@ -99,8 +137,8 @@ function createWindow(): void {
   // did-navigate fires once a navigation has actually completed, whatever
   // caused it.
   mainWindow.webContents.on("did-navigate", (_e, url) => {
-    if (url.startsWith(`http://localhost:${BACKEND_PORT}`)) {
-      oauthInFlight = url.includes("/auth/github");
+    if (isAppUrl(url)) {
+      oauthInFlight = startsSignIn(url);
     }
   });
 
@@ -108,7 +146,7 @@ function createWindow(): void {
   // the only way out of the broken flow "quit the app".
   mainWindow.webContents.on("did-fail-load", (_e, code, _desc, failedUrl, isMainFrame) => {
     if (!isMainFrame || code === -3 /* aborted, normal during redirects */) return;
-    if (failedUrl.startsWith(`http://localhost:${BACKEND_PORT}/login`)) return;
+    if (isLoginUrl(failedUrl)) return;
     oauthInFlight = false;
     mainWindow?.loadURL(`http://localhost:${BACKEND_PORT}/login`);
   });

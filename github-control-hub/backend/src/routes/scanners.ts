@@ -11,6 +11,7 @@ import {
 } from "../services/scannerService";
 import { createOctokit, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { logSync } from "../services/activityService";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 
 const router = Router();
@@ -88,7 +89,23 @@ router.post("/:id/run", async (req: Request<{id: string}>, res: Response) => {
       return;
     }
     const octokit = createOctokit(token);
-    const result = await runScan(octokit, req.params.id, undefined, token);
+    const startedAt = Date.now();
+    let result;
+    try {
+      result = await runScan(octokit, req.params.id, undefined, token);
+    } catch (err: any) {
+      await logSync("scanner", req.user!.login, {
+        target: req.params.id, details: "Scan failed", failed: true,
+        error: err?.message ?? String(err), startedAt,
+      });
+      throw err;
+    }
+    await logSync("scanner", req.user!.login, {
+      target: req.params.id,
+      details: `Scanned ${result.totalScanned} repositories — `
+        + `${result.nonCompliantCount} in violation, ${result.compliantCount} compliant`,
+      startedAt,
+    });
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: sanitizeError(err, "scanners") });

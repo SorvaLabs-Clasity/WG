@@ -181,19 +181,60 @@ export async function createAlarm(
   return alarm;
 }
 
+/**
+ * The fields a person may change on an alarm.
+ *
+ * Enforced at run time, not only in the type. The route hands `req.body`
+ * straight to this function, and the loop below copied every key it found —
+ * so the type said "these seven fields" and the code said "anything you send".
+ *
+ * That is not only untidy. Alarms, email groups, the security toggle, the feed
+ * settings, the buffered notifications and the pull request state all live in
+ * one table keyed on `id`, told apart by `kind`. A body carrying its own `id`
+ * therefore wrote the *edited alarm* over whatever else held that id: sending
+ * `{"id": "security-settings"}` replaces the organization's security-alert
+ * configuration, and sending an email group's id replaces the group — including
+ * its `topicArn`, which is the address every alarm publishes to.
+ *
+ * `saveSecuritySettings` and `saveFeedSettings` in this same file already got
+ * this right by pinning `id` and `kind` after the spread. This is the same
+ * rule, expressed as an allow-list because an alarm has more mutable fields
+ * than they do.
+ */
+const EDITABLE_ALARM_FIELDS = [
+  "name", "condition", "groupId", "subjectTemplate",
+  "bodyTemplate", "notifyOnRecovery", "enabled",
+] as const;
+
+type EditableAlarm = Partial<Pick<WidgetAlarm, typeof EDITABLE_ALARM_FIELDS[number]>>;
+
+/** Only the fields above, so nothing else can ride in on a request body. */
+export function pickAlarmEdits(data: Record<string, unknown>): EditableAlarm {
+  const out: Record<string, unknown> = {};
+  for (const key of EDITABLE_ALARM_FIELDS) {
+    if (data?.[key] !== undefined) out[key] = data[key];
+  }
+  return out as EditableAlarm;
+}
+
 export async function updateAlarm(
   id: string,
-  data: Partial<Pick<WidgetAlarm, "name" | "condition" | "groupId" | "subjectTemplate"
-    | "bodyTemplate" | "notifyOnRecovery" | "enabled">>,
+  raw: Record<string, unknown>,
   actor: string,
 ): Promise<WidgetAlarm | null> {
   const existing = await getAlarm(id);
   if (!existing) return null;
 
+  const data = pickAlarmEdits(raw);
+
   const updated: WidgetAlarm = { ...existing, updatedAt: new Date().toISOString() };
   for (const [k, v] of Object.entries(data)) {
     if (v !== undefined) (updated as any)[k] = v;
   }
+  // Belt as well as braces: whatever the allow-list let through, this row is
+  // still this alarm.
+  updated.id = existing.id;
+  updated.kind = "alarm";
 
   // Changing what an alarm watches makes its stored state meaningless: an
   // alarm firing on "critical >= 1" that becomes "total >= 500" would stay in

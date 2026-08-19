@@ -50,7 +50,8 @@ still asks, your SSO session has expired; the app cannot renew it.
 
 ## A page shows 0 and you expected hundreds
 
-The graph has not been rebuilt since that check existed. Press **Sync data**.
+The graph has not been rebuilt since that check existed. It rebuilds every six
+hours; **Sync from GitHub** on the Access tab does it now.
 Checks that read an uncollected edge type refuse rather than reporting zero, so
 you should see a message saying exactly this.
 

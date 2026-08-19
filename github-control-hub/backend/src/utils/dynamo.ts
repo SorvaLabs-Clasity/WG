@@ -106,6 +106,64 @@ export async function scanAll<T>(
   throw new Error(`Scan of ${table} did not finish within 10,000 pages`);
 }
 
+/**
+ * A BatchWrite that actually writes everything it was given.
+ *
+ * `BatchWriteItem` does not throw when it cannot keep up. It succeeds, and
+ * returns whatever it declined in `UnprocessedItems` — throttling, a hot
+ * partition, a burst past the on-demand ramp. Ignoring that field loses rows
+ * silently, which for this application means a graph edge that never appears
+ * and a guardrail finding that is never stored: a security report that is
+ * quietly shorter than the truth, which is the one failure mode the rest of
+ * this codebase is built to avoid.
+ *
+ * `audit/ingest.ts` already got this right for the audit log. This is the same
+ * loop, in one place, for everybody else.
+ *
+ * Requests are chunked to DynamoDB's limit of 25 here rather than by each
+ * caller, and the backoff is exponential because the reason for a rejection is
+ * almost always "too fast" — retrying immediately asks the same question again.
+ *
+ * Throws when items remain after the retries. A caller that would rather log
+ * and continue can catch it; one that silently dropped them could not.
+ */
+const BATCH_LIMIT = 25;
+const BATCH_RETRIES = 5;
+
+export async function batchWrite(
+  table: string,
+  requests: Record<string, unknown>[],
+  opts: { retries?: number; delay?: (ms: number) => Promise<void> } = {},
+): Promise<void> {
+  if (requests.length === 0) return;
+  const retries = opts.retries ?? BATCH_RETRIES;
+  const sleep = opts.delay ?? ((ms: number) => new Promise<void>(r => setTimeout(r, ms)));
+
+  for (let i = 0; i < requests.length; i += BATCH_LIMIT) {
+    let chunk = requests.slice(i, i + BATCH_LIMIT);
+
+    for (let attempt = 0; ; attempt++) {
+      const result: any = await docClient.send(new BatchWriteCommand({
+        RequestItems: { [table]: chunk as any },
+      }));
+      const left = (result?.UnprocessedItems?.[table] ?? []) as Record<string, unknown>[];
+      if (left.length === 0) break;
+
+      if (attempt >= retries) {
+        throw new Error(
+          `BatchWrite to ${table}: ${left.length} of ${chunk.length} items were still ` +
+          `unprocessed after ${retries} retries. Nothing here retries them later, so they ` +
+          `would have been lost.`,
+        );
+      }
+      // 100ms, 200, 400, 800, 1600 — long enough to outlast an on-demand ramp,
+      // short enough that a sweep does not stall on a transient dip.
+      await sleep(100 * Math.pow(2, attempt));
+      chunk = left;
+    }
+  }
+}
+
 export {
   GetCommand,
   PutCommand,

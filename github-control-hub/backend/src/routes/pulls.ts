@@ -3,6 +3,7 @@ import { Router, Request, Response } from "express";
 import { createOctokit, getSystemToken } from "../github/client";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { logSync } from "../services/activityService";
 import {
   getPrState, listPrStates, setPrPause, recordNudge,
   getPrSettings, savePrSettings, getPrMutes, setPrMute,
@@ -184,6 +185,7 @@ router.post("/run", async (req: Request, res: Response) => {
   const octokit = createOctokit(appToken);
   const split = (repo: string) => { const [owner, name] = repo.split("/"); return { owner, repo: name }; };
 
+  const startedAt = Date.now();
   try {
     const summary = await runNudgePass({
       listPrs: () => fetchOpenPrs(
@@ -207,8 +209,23 @@ router.post("/run", async (req: Request, res: Response) => {
         return data?.id;
       },
     });
+    await logSync("reminders", login, {
+      details: `${summary.considered} open pull requests, ${summary.due} due, `
+        + `${summary.posted} reminded`
+        + (summary.skippedPaused ? `, ${summary.skippedPaused} paused` : "")
+        + (summary.failed ? `, ${summary.failed} failed` : ""),
+      // Partly failed, not failed: reminders that went out did go out, and
+      // marking the whole row as a failure would hide that from anyone
+      // wondering why people were messaged.
+      failed: summary.failed > 0 && summary.posted === 0,
+      startedAt,
+    });
     res.json(summary);
   } catch (error: any) {
+    await logSync("reminders", login, {
+      details: "Reminder pass failed", failed: true,
+      error: error?.message ?? String(error), startedAt,
+    });
     res.status(500).json({ error: sanitizeError(error, "pull requests") });
   }
 });

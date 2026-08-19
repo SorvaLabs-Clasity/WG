@@ -56,6 +56,17 @@ export interface ScanResult {
   compliantCount: number;
   nonCompliantCount: number;
   violations: ComplianceViolation[];
+  /**
+   * Repositories this result actually covers.
+   *
+   * Needed because a run is not always a full one: the webhook path re-scans
+   * the single repository an event touched, and without knowing what a stored
+   * result covers there is no way to fold that in. Absent on rows written
+   * before this existed, which mergeScanResult handles.
+   */
+  scannedRepos?: string[];
+  /** When a scoped re-scan last updated part of this result. */
+  partialUpdatedAt?: string;
 }
 
 const TABLE = () => tableName("SCANNERS_TABLE");
@@ -113,7 +124,7 @@ export async function createScanner(data: Omit<Scanner, "id" | "createdAt" | "up
   }
 
   if (actor) {
-    await logActivity("scanner.create" as any, actor, "*", scanner.name, `Created scanner "${scanner.name}"`,
+    await logActivity("scanner.create", actor, "*", scanner.name, `Created scanner "${scanner.name}"`,
       undefined, "app", undefined, undefined,
       { undoPayload: { action: "delete_scanner", params: { scannerId: scanner.id, scannerData: scanner } } }
     );
@@ -145,7 +156,7 @@ export async function updateScanner(id: string, data: Partial<Omit<Scanner, "id"
   }
 
   if (actor) {
-    await logActivity("scanner.update" as any, actor, "*", updated.name, `Updated scanner "${updated.name}"`,
+    await logActivity("scanner.update", actor, "*", updated.name, `Updated scanner "${updated.name}"`,
       undefined, "app", undefined, undefined,
       { undoPayload: { action: "revert_scanner", params: { scannerId: id, previousState: existing, currentState: updated } } }
     );
@@ -181,7 +192,7 @@ export async function deleteScanner(id: string, actor?: string): Promise<boolean
   }
 
   if (actor) {
-    await logActivity("scanner.delete" as any, actor, "*", existing.name, `Deleted scanner "${existing.name}"`,
+    await logActivity("scanner.delete", actor, "*", existing.name, `Deleted scanner "${existing.name}"`,
       undefined, "app", undefined, undefined,
       { undoPayload: { action: "restore_scanner", params: { scannerData: existing } } }
     );
@@ -205,6 +216,59 @@ function branchMatches(branch: string, pattern: string) {
     return branch.startsWith(pattern.slice(0, -1));
   }
   return branch === pattern;
+}
+
+/**
+ * A query condition's violation, which is about an entity rather than a branch.
+ *
+ * Queries are evaluated across the whole organization on every run, scoped or
+ * not, so their rows are always replaced wholesale rather than merged.
+ */
+const isQueryRow = (v: ComplianceViolation) => v.branch === "-";
+
+/**
+ * Fold a scoped re-scan into the stored org-wide result.
+ *
+ * The webhook path calls runScan with a single repository — the one an event
+ * touched — and the result used to be written straight over the stored row.
+ * So one push replaced "347 scanned, 42 in violation" with "1 scanned, 0 in
+ * violation", and every finding for the other 346 repositories vanished from
+ * the page until somebody pressed Run again. A compliance screen that reports
+ * fewer violations than exist, and reports them because something *worked*, is
+ * the worst way for this to fail.
+ *
+ * Merging instead: the re-scanned repositories' rows are replaced, everything
+ * else is kept, and the counts are derived from the union.
+ */
+export function mergeScanResult(
+  previous: ScanResult,
+  fresh: ScanResult,
+  scanned: string[],
+): ScanResult {
+  const scannedSet = new Set(scanned);
+
+  const kept = previous.violations.filter(v => !scannedSet.has(v.repo) && !isQueryRow(v));
+  const violations = [...kept, ...fresh.violations];
+
+  // An older row carries no scannedRepos. Its totalScanned is the only record
+  // of how wide it was, so the coverage never shrinks below it.
+  const coverage = new Set([...(previous.scannedRepos ?? []), ...scanned]);
+  const totalScanned = Math.max(previous.totalScanned, coverage.size);
+
+  const nonCompliant = new Set(violations.map(v => v.repo));
+
+  return {
+    scannerId: previous.scannerId,
+    // The full run's time, not this one's: the result still describes what that
+    // run found for everything outside the re-scanned set.
+    runAt: previous.runAt,
+    partialUpdatedAt: fresh.runAt,
+    totalScanned,
+    nonCompliantCount: nonCompliant.size,
+    compliantCount: Math.max(0, totalScanned - nonCompliant.size),
+    violations,
+    scannedRepos: [...coverage],
+  };
 }
 
 export async function runScan(octokit: Octokit, scannerId: string, overrideReposToScan?: string[], token?: string): Promise<ScanResult> {
@@ -616,28 +680,43 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
     compliantCount: compliantRepos.size,
     nonCompliantCount: nonCompliantRepos.size,
     violations,
+    scannedRepos: reposToScan,
   };
+
+  // A scoped run covers whatever the caller named, which is one repository on
+  // the webhook path. Storing it as though it were the whole scan is how the
+  // page came to report a single repository and no violations after a push.
+  const previous = overrideReposToScan ? await getScanResult(scannerId) : undefined;
+  const stored = previous ? mergeScanResult(previous, result, reposToScan) : result;
 
   if (usesDynamo()) {
     await docClient.send(
       new PutCommand({
         TableName: TABLE(),
-        Item: { pk: "RESULT", sk: scannerId, ...result },
+        Item: { pk: "RESULT", sk: scannerId, ...stored },
       })
     );
-    // Update scanner lastRunAt
-    await docClient.send(
-      new PutCommand({
-        TableName: TABLE(),
-        Item: { pk: "SCANNER", sk: scannerId, ...scanner, lastRunAt: result.runAt, updatedAt: new Date().toISOString() },
-      })
-    );
+    // lastRunAt is the last *full* run. A webhook re-scanning one repository is
+    // not "the scanner ran", and showing it as one hides how long it has been
+    // since anything looked at the rest of the organization.
+    if (!overrideReposToScan) {
+      await docClient.send(
+        new PutCommand({
+          TableName: TABLE(),
+          Item: { pk: "SCANNER", sk: scannerId, ...scanner, lastRunAt: result.runAt, updatedAt: new Date().toISOString() },
+        })
+      );
+    }
   } else {
-    memScanResults.set(scannerId, result);
-    scanner.lastRunAt = result.runAt;
-    memScanners.set(scannerId, scanner);
+    memScanResults.set(scannerId, stored);
+    if (!overrideReposToScan) {
+      scanner.lastRunAt = result.runAt;
+      memScanners.set(scannerId, scanner);
+    }
   }
 
+  // The caller is told what this run found, not what is now on file — the
+  // route logs "scanned N repositories" from it, and that has to be this run.
   return result;
 }
 

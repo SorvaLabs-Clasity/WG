@@ -101,7 +101,7 @@ router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => 
       createdBy: req.user!.login, createdAt: now, updatedAt: now,
     };
     await putGuardrail(rule);
-    await logActivity("aws.guardrail.create" as any, req.user!.login, rule.name, kind,
+    await logActivity("aws.guardrail.create", req.user!.login, rule.name, kind,
       `Created AWS guardrail "${rule.name}" in ${rule.mode} mode` +
       (rule.accounts?.length ? `, limited to ${rule.accounts.length} account(s)` : ", across every account"));
     res.status(201).json(rule);
@@ -139,7 +139,7 @@ router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>,
       updatedAt: new Date().toISOString(),
     };
     await putGuardrail(updated);
-    await logActivity("aws.guardrail.update" as any, req.user!.login, updated.name, updated.kind,
+    await logActivity("aws.guardrail.update", req.user!.login, updated.name, updated.kind,
       `Updated AWS guardrail "${updated.name}"${mode && mode !== existing.mode ? ` (${existing.mode} → ${updated.mode})` : ""}`);
     res.json(updated);
   } catch (err) {
@@ -154,7 +154,7 @@ router.delete("/guardrails/:id", requireAdmin, async (req: Request<{ id: string 
     await deleteGuardrail(req.params.id);
     // Otherwise the findings table keeps showing results for a rule that is gone.
     await deleteFindingsForRule(req.params.id);
-    await logActivity("aws.guardrail.delete" as any, req.user!.login, existing.name, existing.kind,
+    await logActivity("aws.guardrail.delete", req.user!.login, existing.name, existing.kind,
       `Deleted AWS guardrail "${existing.name}"`);
     res.json({ message: "Guardrail deleted" });
   } catch (err) {
@@ -193,24 +193,40 @@ async function invokeEngine(payload: Record<string, unknown>): Promise<any> {
 }
 
 router.post("/run", requireAdmin, async (req: Request, res: Response) => {
+  const { ruleIds, resourceIds, accountIds } = req.body ?? {};
+  const scope = ruleIds?.length ? `${ruleIds.length} rule(s)` : "all rules";
   try {
-    const { ruleIds, resourceIds, accountIds } = req.body ?? {};
     const result = await invokeEngine({ ruleIds, resourceIds, accountIds });
-    await logActivity("aws.guardrail.run" as any, req.user!.login, "*",
-      ruleIds?.length ? `${ruleIds.length} rule(s)` : "all rules",
+    await logActivity("aws.guardrail.run", req.user!.login, "*", scope,
       `Ran AWS guardrails: ${result.violations ?? 0} violation(s), ${result.remediated ?? 0} remediated`);
     res.json(result);
   } catch (err) {
+    // Logged on the way out too. Somebody pressed this, so the press is history
+    // whether or not the engine answered — and a sweep that failed is the more
+    // interesting of the two outcomes to be able to find later.
+    await logActivity("aws.guardrail.run", req.user!.login, "*", scope,
+      "AWS guardrail run failed", undefined, "app", undefined, undefined,
+      { failed: true, errorMessage: (err as Error)?.message ?? String(err) });
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }
 });
 
 /** Evaluate without writing, whatever mode the rules are in. */
 router.post("/preview", requireAdmin, async (req: Request, res: Response) => {
+  const { ruleIds, resourceIds, accountIds } = req.body ?? {};
+  const scope = ruleIds?.length ? `${ruleIds.length} rule(s)` : "all rules";
   try {
-    const { ruleIds, resourceIds, accountIds } = req.body ?? {};
-    res.json(await invokeEngine({ ruleIds, resourceIds, accountIds, dryRun: true }));
+    const result = await invokeEngine({ ruleIds, resourceIds, accountIds, dryRun: true });
+    // A preview writes nothing to AWS, which is exactly why it is worth a row:
+    // it reads every resource the real sweep would, so it costs the same and is
+    // indistinguishable from a run in every log but this one.
+    await logActivity("aws.guardrail.preview", req.user!.login, "*", scope,
+      `Previewed AWS guardrails: ${result.violations ?? 0} violation(s) found, nothing written`);
+    res.json(result);
   } catch (err) {
+    await logActivity("aws.guardrail.preview", req.user!.login, "*", scope,
+      "AWS guardrail preview failed", undefined, "app", undefined, undefined,
+      { failed: true, errorMessage: (err as Error)?.message ?? String(err) });
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }
 });

@@ -30,10 +30,38 @@ const read = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf8");
  * thing is absent contains the thing. The first run of this file failed on its
  * own comment saying "with shell:true the argument list is flattened".
  */
+/**
+ * Drop a trailing `//` comment, but only a real one.
+ *
+ * `l.replace(/\s*\/\/.*$/, "")` is the obvious version and it is wrong: the
+ * `//` in a URL is not a comment. Any line holding `http://` was cut at the
+ * scheme, so `if (url.startsWith("http://localhost"))` reached the assertions
+ * as `if (url.startsWith("http:` — and every check looking for something after
+ * that point silently could not see it. That is the worst shape for a guard:
+ * it does not fail, it just stops looking, and a mutation planted past the
+ * scheme survives while the suite reports ALL PASS.
+ *
+ * Quote-aware instead. Only a `//` outside a string starts a comment.
+ */
+function stripTrailingComment(line: string): string {
+  let quote: string | null = null;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (quote) {
+      if (c === "\\") { i++; continue; }
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === "`") { quote = c; continue; }
+    if (c === "/" && line[i + 1] === "/") return line.slice(0, i).trimEnd();
+  }
+  return line;
+}
+
 const code = (src: string) => src
   .split("\n")
   .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
-  .map(l => l.replace(/\s*\/\/.*$/, ""))
+  .map(stripTrailingComment)
   .join("\n");
 
 const html   = read("github-control-hub/frontend/index.html");
@@ -122,6 +150,35 @@ const electron = read("github-control-hub/desktop/src/main.ts");
       check(`  and ${name} refuses plaintext transport`,
         /enforceSSL:\s*true/.test(q));
     }
+  }
+
+  // ── a remote origin cannot be loaded in the app window ─────────────
+  //
+  // The window-open handler, both navigation handlers and the failure
+  // fallback all decided "is this our own backend" with
+  // `url.startsWith("http://localhost")`. A prefix is not an origin:
+  // http://localhost.example.com satisfies it, and so does
+  // http://localhost:4321@example.com, where everything before the "@" is
+  // userinfo rather than a host. Either one was allowed to load *inside* this
+  // BrowserWindow — a remote page sharing the signed-in session, with the
+  // preload bridge attached — instead of being handed to the browser.
+  {
+    check("the app's own origin is parsed, not prefix-matched",
+      !/startsWith\(\s*["'`]http:\/\/localhost/.test(code(electron)),
+      "a URL merely starting with http://localhost is treated as this app");
+
+    check("  and the check compares a parsed hostname",
+      /new URL\(url\)/.test(code(electron)) && /parsed\.hostname/.test(code(electron)),
+      "nothing parses the URL before trusting it");
+
+    check("  and refuses userinfo, which is what spoofs the host",
+      /parsed\.username \|\| parsed\.password/.test(code(electron)),
+      "http://localhost:4321@example.com would pass");
+
+    // The one call that hands a URL to the operating system.
+    check("only http and https reach the shell",
+      /parsed\.protocol !== "https:" && parsed\.protocol !== "http:"/.test(code(electron)),
+      "shell.openExternal would launch file: or a custom scheme");
   }
 
   // ── the renderer cannot reach node ─────────────────────────────────

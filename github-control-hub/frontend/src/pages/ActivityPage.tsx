@@ -62,6 +62,19 @@ const ACTION_CONFIG: Record<
   // (protected_branch.destroy, org.add_member, …) is in `target`, which is what
   // distinguishes them. One label here covers all of them by design.
   "audit.event": { label: "Audit Log", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-clipboard-list text-[10px]" },
+  "sync.graph": { label: "Access Graph Synced", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
+  "sync.compliance": { label: "Scores Recalculated", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
+  "sync.query": { label: "Check Re-run", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
+  "sync.access": { label: "Access Map Refreshed", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
+  "sync.scanner": { label: "Scanner Run", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-magnifying-glass text-[10px]" },
+  "sync.reminders": { label: "Reminders Sent", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-bell text-[10px]" },
+  "sync.alarms": { label: "Alarms Evaluated", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-bell text-[10px]" },
+  "config.updated": { label: "Setting Changed", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-gear text-[10px]" },
+  "aws.guardrail.create": { label: "Guardrail Created", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-plus text-[10px]" },
+  "aws.guardrail.update": { label: "Guardrail Updated", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-pen text-[10px]" },
+  "aws.guardrail.delete": { label: "Guardrail Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
+  "aws.guardrail.run": { label: "Guardrails Run", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-play text-[10px]" },
+  "aws.guardrail.preview": { label: "Guardrails Previewed", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-eye text-[10px]" },
 };
 
 function formatTimestamp(ts: string): string {

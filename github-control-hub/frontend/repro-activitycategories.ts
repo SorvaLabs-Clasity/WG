@@ -12,6 +12,7 @@
  *
  * Run:  npx tsx repro-activitycategories.ts   from github-control-hub/frontend
  */
+import fs from "node:fs";
 import {
   categoryOf, countByCategory, FALLBACK_CATEGORY, inView, sourcesFor,
   CATEGORY_LABELS, CATEGORY_SOURCES, CATEGORY_ORDER, VIEW_ORDER,
@@ -42,14 +43,25 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
 
   // The guardrail Lambda. Written as a raw string, absent from ActivityAction.
   ["aws.guardrail", "aws"],
+  // The guardrail screens, which are in the union.
+  ["aws.guardrail.create", "aws"], ["aws.guardrail.update", "aws"],
+  ["aws.guardrail.delete", "aws"], ["aws.guardrail.run", "aws"],
+  ["aws.guardrail.preview", "aws"],
 
   // This application's own configuration.
   ["widget.create", "app"], ["widget.update", "app"], ["widget.delete", "app"],
   ["scanner.create", "app"], ["scanner.update", "app"], ["scanner.delete", "app"],
-  ["config.import", "app"],
+  ["config.import", "app"], ["config.updated", "app"],
   ["exclusion.create", "app"], ["exclusion.update", "app"], ["exclusion.delete", "app"],
   ["template.create", "app"], ["template.update", "app"], ["template.delete", "app"],
   ["activity.undo", "app"], ["activity.redo", "app"], ["activity.retry", "app"],
+
+  // Collection runs. Not changes to anything — the app going and looking.
+  // Classified as housekeeping so a six-hourly sync cannot push a protection
+  // change off the first page of the organization stream.
+  ["sync.graph", "app"], ["sync.compliance", "app"], ["sync.query", "app"],
+  ["sync.access", "app"], ["sync.scanner", "app"], ["sync.reminders", "app"],
+  ["sync.alarms", "app"],
 
   ["audit.event", "audit"],
 ];
@@ -61,6 +73,45 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
     if (got !== want) wrong.push(`${action}: want ${want}, got ${got}`);
   }
   check(`all ${EXPECTED.length} known actions are classified deliberately`, wrong.length === 0, wrong);
+}
+
+// ── the two unions are one union ────────────────────────────────────
+//
+// ActivityAction is declared twice: once in the backend service that writes the
+// rows, once in the frontend types that render them. Nothing links them, so a
+// new action added on one side alone produces rows the feed cannot label — and
+// because ACTION_CONFIG is a total Record over the frontend union, the failure
+// shows up as an unlabelled badge rather than as a build error.
+{
+  // Paths from the working directory: this suite is run from frontend/, the
+  // same as every other one here.
+  const actionsIn = (file: string): string[] => {
+    // Comments come off first. Both declarations carry explanatory comments, and
+    // one of them mentions a filename ending in ".ts;" — which ended the parse
+    // early and made the two unions look different when they were not. Reading
+    // the quoted members after stripping comments has no such hazard.
+    const src = fs.readFileSync(file, "utf8").replace(/\/\/[^\n]*/g, "");
+    const start = src.indexOf("export type ActivityAction =");
+    const end = src.indexOf(";", start);
+    if (start < 0 || end < 0) throw new Error(`No ActivityAction union found in ${file}`);
+    return [...src.slice(start, end).matchAll(/"([a-z0-9._]+)"/g)].map(m => m[1]).sort();
+  };
+
+  const backend = actionsIn("../backend/src/services/activityService.ts");
+  const frontend = actionsIn("src/types/Activity.ts");
+
+  const onlyBackend = backend.filter(a => !frontend.includes(a));
+  const onlyFrontend = frontend.filter(a => !backend.includes(a));
+
+  check(`both ActivityAction unions list the same ${backend.length} actions`,
+    onlyBackend.length === 0 && onlyFrontend.length === 0,
+    { onlyBackend, onlyFrontend });
+
+  // And every one of them is classified, so the list above cannot fall behind
+  // the union it is meant to cover.
+  const unclassified = backend.filter(a => !EXPECTED.some(([e]) => e === a));
+  check("  and every action in the union is in this file's expectations",
+    unclassified.length === 0, unclassified);
 }
 
 // The two that differ only by suffix are the reason prefixes are longest-match.

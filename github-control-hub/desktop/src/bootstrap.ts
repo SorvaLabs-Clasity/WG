@@ -41,7 +41,15 @@ async function loadSecrets(): Promise<void> {
       const secrets = JSON.parse(result.SecretString) as Record<string, string>;
       // No GITHUB_WEBHOOK_SECRET: it lives in its own secret and only the
       // receiver Lambda reads it. Nothing here verifies signatures.
-      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "SYSTEM_GITHUB_TOKEN", "GITHUB_ORG", "JWT_SECRET", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID"]) {
+      //
+      // No SYSTEM_GITHUB_TOKEN either. That fallback personal access token was
+      // removed from client.ts, from the server's own startup load, from the
+      // webhook worker's bundle and from the alarm handler — this was the last
+      // loader still copying it out of Secrets Manager, into the environment of
+      // a long-lived desktop process, where every child it spawns inherits it.
+      // `aws sso login` is spawned with `...process.env`, so a classic PAT with
+      // admin:org was being handed to the AWS CLI to hold nothing back with.
+      for (const key of ["GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET", "GITHUB_ORG", "JWT_SECRET", "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID"]) {
         if (secrets[key]) process.env[key] = secrets[key];
       }
     }

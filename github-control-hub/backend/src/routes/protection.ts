@@ -133,14 +133,23 @@ router.post("/:repo/rulesets/import", validateParams("repo"), async (req: Reques
 
 router.delete("/:repo/rulesets/:rulesetId", validateParams("repo"), async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
   try {
+    // Checked rather than passed through. `parseInt("abc", 10)` is NaN, which
+    // Octokit puts in the path as the literal string "NaN" — GitHub answers
+    // 404 and the route reports "Failed to delete ruleset", which is a claim
+    // about the ruleset rather than about the request.
+    const rulesetId = Number(req.params.rulesetId);
+    if (!Number.isInteger(rulesetId) || rulesetId <= 0) {
+      res.status(400).json({ error: "Invalid ruleset id" });
+      return;
+    }
     const octokit = createOctokit(req.user!.accessToken);
     const org = getOrg();
     let rulesetConfig: any;
     try {
-      const { data } = await octokit.rest.repos.getRepoRuleset({ owner: org, repo: req.params.repo, ruleset_id: parseInt(req.params.rulesetId, 10) });
+      const { data } = await octokit.rest.repos.getRepoRuleset({ owner: org, repo: req.params.repo, ruleset_id: rulesetId });
       rulesetConfig = data;
     } catch { /* best effort */ }
-    await deleteRuleset(octokit, req.params.repo, parseInt(req.params.rulesetId, 10));
+    await deleteRuleset(octokit, req.params.repo, rulesetId);
     await logActivity("repo.ruleset.delete", req.user!.login, req.params.repo, rulesetConfig?.name || req.params.rulesetId, "Deleted ruleset", undefined, "app", undefined, undefined, {
       undoPayload: { action: "recreate_ruleset", params: { repo: req.params.repo, rulesetConfig } },
     });

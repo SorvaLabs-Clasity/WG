@@ -13,12 +13,19 @@ import { scanGraphEdges } from "./graphService";
  * So every entry here carries every path we can derive, and says plainly when
  * the effective permission is more than the paths explain.
  *
- * One deliberate limit, stated everywhere it matters: read access is not in
- * the graph. Most organizations grant read on everything to every member by
- * default, which would be one edge per member per repository — hundreds of
- * thousands of rows saying the same thing. The map reports write and above,
- * and reports the organization's default separately so the omission is
- * visible rather than silent.
+ * One deliberate limit, stated everywhere it matters: a *member's* plain read
+ * is not in the graph when the organization already grants read or better to
+ * everyone. That would be one edge per member per repository — hundreds of
+ * thousands of rows saying what the organization default says once — so the
+ * default is reported separately and the omission is visible rather than
+ * silent.
+ *
+ * Everything else is here: admin, maintain, write and triage, any custom
+ * repository role by whatever name the organization gave it, and read held by
+ * an outside collaborator — the person who is not in the organization and can
+ * nevertheless see the code, which is the row an access review exists to find.
+ * Where the default is `none`, a member's read is an explicit grant and is
+ * recorded like any other.
  */
 
 export type OrgRole = "owner" | "member" | "outside_collaborator" | "unknown";

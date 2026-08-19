@@ -354,10 +354,16 @@ export default function AnalyticsPage() {
 
           <div className="flex items-center gap-2 shrink-0 pt-1">
             <RefreshButton busy={widgetsFetching} onRefresh={() => refetchWidgets()} />
-            <Button onClick={() => aggregation.mutate()} disabled={aggregation.isPending} className="whitespace-nowrap">
-              <i className={`ph-bold ph-arrows-clockwise mr-2 ${aggregation.isPending ? "animate-spin" : ""}`}></i>
-              {aggregation.isPending ? "Syncing" : "Sync data"}
-            </Button>
+            {/* Gated to match the endpoint. Syncing walks the whole organization
+                and spends its GitHub budget, so it is admin-only on the server —
+                and a button everyone can see, that only some can use, teaches
+                the rest that the app is broken. */}
+            {canEditDashboard && (
+              <Button onClick={() => aggregation.mutate()} disabled={aggregation.isPending} className="whitespace-nowrap">
+                <i className={`ph-bold ph-arrows-clockwise mr-2 ${aggregation.isPending ? "animate-spin" : ""}`}></i>
+                {aggregation.isPending ? "Syncing, this takes a few minutes" : "Sync data"}
+              </Button>
+            )}
             {canEditDashboard && (
               <Button variant="primary" onClick={() => setShowAddModal(true)}>
                 <i className="ph-bold ph-plus mr-2"></i>Add check
@@ -370,7 +376,8 @@ export default function AnalyticsPage() {
       {graphEmpty && (
         <div style={enter(1)} className="mb-5">
           <Note intent="warn">
-            The graph has no data, so anything reading from it comes back empty. Sync data to build it.
+            The graph has no data, so anything reading from it comes back empty. It builds
+            itself every six hours, or an admin can sync it now.
           </Note>
         </div>
       )}

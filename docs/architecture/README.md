@@ -47,7 +47,7 @@ permissions it needs are unrelated to anything GitHub-facing.
   changed through its REST API, live, with the caller's own permissions.
 - **No database** other than DynamoDB.
 - **No scheduled jobs in the backend.** The only schedule is the Lambda's.
-  Graph rebuilds happen when someone presses Sync data.
+  Graph rebuilds happen every six hours, and on demand.
 
 ## Read next
 
