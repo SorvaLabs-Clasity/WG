@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchAwsProfiles, useAwsProfile, triggerAwsSsoLogin, fetchAuthStatus, AwsProfile } from "../api/auth";
+import { useQuery } from "@tanstack/react-query";
+import { fetchAwsProfiles, useAwsProfile, triggerAwsSsoLogin, AwsProfile } from "../api/auth";
 
 /**
  * Moving between AWS accounts without ending the GitHub session.
@@ -28,7 +28,6 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
   /** Called after a switch lands, so the surrounding menu can close. */
   onSwitched?: () => void;
 }) {
-  const qc = useQueryClient();
   const [busy, setBusy] = useState<string | null>(null);
   const [problem, setProblem] = useState<{ profile: string; message: string; sso: boolean } | null>(null);
 
@@ -60,17 +59,22 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
         return;
       }
 
-      // Everything on screen belongs to the account we just left — findings,
-      // activity, guardrails, the lot. Removing the queries rather than
-      // invalidating them means no view can paint the old account's data while
-      // the new account's request is still in the air.
-      qc.removeQueries({
-        // Everything except the profile list, which is read from this machine's
-        // ~/.aws/config and belongs to neither account.
-        predicate: q => !(q.queryKey[0] === "aws" && q.queryKey[1] === "profiles"),
-      });
-      await qc.fetchQuery({ queryKey: ["auth", "status"], queryFn: fetchAuthStatus });
+      // Reload, rather than invalidate.
+      //
+      // Clearing the query cache was the first attempt and it was not enough:
+      // every mounted page also holds state of its own — a selected stream, an
+      // expanded row, a filter, a page number — and all of it describes the
+      // account being left. The Activity tab kept its GitHub stream selected
+      // until it was navigated away from and back, which is the same bug
+      // wearing a different hat.
+      //
+      // A switch is rare, deliberate, and means "show me somewhere else
+      // entirely". Reloading gives exactly the state that signing in to that
+      // account would, and no view can be left holding a stale half of the
+      // other one. The session is in sessionStorage and survives it, which is
+      // what makes this a reload rather than a sign-out.
       onSwitched?.();
+      window.location.reload();
     } catch (err) {
       setProblem({
         profile: profile.name,

@@ -146,6 +146,79 @@ function verifies(token: string): boolean {
     for (const k of Object.keys(github)) delete process.env[k];
   }
 
+  // ── what the account you left must stop answering for ───────────────
+  //
+  // The switch endpoint reloading secrets is not the whole of a switch. Three
+  // things in this process were cached because they "could not change" — a
+  // DynamoDB client of the guardrail store's own, the home account id stamped
+  // on every finding, and the gate's idea of which account this is. Each was
+  // true only of an app that picked an account at launch.
+  //
+  // The bug they produced: the AWS tab showed whichever account was signed into
+  // *first*, in both directions, and refreshing could not fix it because every
+  // refresh asked the same stale client.
+  {
+    const fs = await import("fs");
+    const path = await import("path");
+
+    const { forgetAccountScopedCaches } = await import("./src/utils/awsAccountChange");
+    let threw = false;
+    try { await forgetAccountScopedCaches(); } catch { threw = true; }
+    check("forgetting the account's caches runs without AWS", !threw);
+
+    const resets: Array<[string, string]> = [
+      ["src/aws-guardrails/store.ts", "resetGuardrailStore"],
+      ["src/aws-guardrails/accounts.ts", "resetHomeAccountCache"],
+      ["src/middleware/githubGate.ts", "resetGithubGate"],
+    ];
+    for (const [file, fn] of resets) {
+      const mod = await import("./" + file.replace(/\.ts$/, ""));
+      check(`  ${fn} is exported by ${path.basename(file)}`,
+        typeof (mod as any)[fn] === "function");
+    }
+
+    // The list and the modules must not drift. Anything in the AWS half holding
+    // a module-level cache has to be reset when the account changes, and the
+    // way that gets missed is a new one being added a year from now.
+    const collector = fs.readFileSync("src/utils/awsAccountChange.ts", "utf8");
+    const dirs = ["src/aws-guardrails", "src/middleware"];
+    const uncovered: string[] = [];
+    for (const dir of dirs) {
+      for (const name of fs.readdirSync(dir)) {
+        if (!name.endsWith(".ts")) continue;
+        const file = path.join(dir, name);
+        const body = fs.readFileSync(file, "utf8");
+        // A module-level `let` in this half of the app is account-shaped state:
+        // a client, an account id, a verdict about where we are.
+        if (!/^let /m.test(body)) continue;
+        const stem = name.replace(/\.ts$/, "");
+        if (!collector.includes(`/${stem}"`)) uncovered.push(file);
+      }
+    }
+    check("every module caching account-shaped state is reset on a switch",
+      uncovered.length === 0, uncovered);
+  }
+
+  // ── and the switch has to actually ask for that ─────────────────────
+  {
+    const fs = await import("fs");
+    const auth = fs.readFileSync("src/routes/auth.ts", "utf8");
+
+    const helper = auth.slice(auth.indexOf("async function completeAwsSwitch"));
+    check("the shared switch step forgets them",
+      /forgetAccountScopedCaches\(\)/.test(helper.slice(0, 1200)));
+
+    // Every endpoint that moves credentials must go through that step. Doing it
+    // inline in three places is how two of them end up doing two of the three.
+    for (const route of ["reconnect-aws", "aws-use-profile", "aws-access-keys"]) {
+      const start = auth.indexOf(`"/${route}"`);
+      const body = auth.slice(start, start + 2600);
+      check(`  /${route} goes through it rather than reloading on its own`,
+        /completeAwsSwitch\(carried\)/.test(body) && !/reloadSecretsIfNeeded\(\)/.test(body),
+        route);
+    }
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

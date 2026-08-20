@@ -23,6 +23,21 @@ export function isAwsLocked(): boolean {
   return awsLocked;
 }
 
+/**
+ * Drop the cached health verdict, because it was about a different account.
+ *
+ * `unlockAws()` happens to do this too, and every switch endpoint calls it — so
+ * this is belt and braces today. It is here anyway because the next person to
+ * change either of them should not have to notice that a lock and an account
+ * change are the same thing by coincidence: an account switched into while the
+ * last verdict is still warm would otherwise be reported healthy, or refused,
+ * on the strength of an answer about somewhere else.
+ */
+export function resetAwsHealthCache(): void {
+  lastCheckTime = 0;
+  lastCheckResult = true;
+}
+
 async function isAwsHealthy(): Promise<boolean> {
   if (awsLocked) return false;
 

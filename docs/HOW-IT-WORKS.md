@@ -1704,8 +1704,8 @@ preference.
 
   4. switching AWS accounts (account menu ▸ AWS account) keeps you signed
      in: your session is re-signed with the new account's key on the way
-     through, and the GitHub half appears or disappears according to what
-     that account holds
+     through, the process forgets everything it cached about the account
+     you left, and the window reloads into the new one
 ```
 
 **What each box really is:**
@@ -1736,6 +1736,19 @@ not be a session that never ends. Two consequences worth knowing:
 - **The gate is asked again.** It caches which account it is in, which was safe
   while that could not change mid-run. Switching clears it, or uat would be
   judged on dev's account id and show GitHub tabs it cannot serve.
+- **So is everything else cached per account.** Four things in the process were
+  held on the reasoning that they could not change: the gate's account id, the
+  guardrail store's own DynamoDB client, the home account id stamped on every
+  finding, and the cached AWS health verdict. The client was the one that bit —
+  the AWS tab showed whichever account was signed into *first*, in both
+  directions, and refreshing could not help because every refresh asked the same
+  stale client. `utils/awsAccountChange.ts` is now the one list of them, and a
+  test fails if a module grows another and is not added to it.
+- **The window reloads.** Clearing the query cache is not enough: every mounted
+  page also holds state describing the account being left — a selected activity
+  stream, an expanded row, a filter. A switch is rare and deliberate, so it
+  gives you the state signing in to that account would, rather than a careful
+  reconstruction of it that is wrong in one place nobody checks.
 
 1. **Nothing GitHub-shaped can happen until AWS works**, because the GitHub
    credentials live in Secrets Manager in your account. An account whose secret

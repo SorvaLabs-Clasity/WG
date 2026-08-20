@@ -17,6 +17,23 @@ export const AWS_EXCLUSIONS_TABLE = process.env.GUARDRAIL_EXCLUSIONS_TABLE || `$
 export const FINDINGS_TABLE = process.env.GUARDRAIL_FINDINGS_TABLE || `${PREFIX}-aws-findings`;
 
 let cached: any;
+
+/**
+ * Forget the client, so the next read builds one with the credentials in use now.
+ *
+ * This module keeps its own client rather than sharing utils/dynamo's, which
+ * was harmless while an AWS account was chosen once at launch. Switching
+ * accounts from inside the app made it the reason the AWS tab kept showing the
+ * first account's guardrails for the life of the process: the credentials in
+ * the environment changed, and this client — already constructed, holding
+ * resolved credentials of its own — never heard about it. Neither direction of
+ * the switch worked, and refreshing could not help, because every refresh asked
+ * the same client the same question.
+ */
+export function resetGuardrailStore(): void {
+  cached = undefined;
+}
+
 async function docClient() {
   if (cached) return cached;
   const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");

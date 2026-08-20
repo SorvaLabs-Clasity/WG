@@ -75,10 +75,20 @@ export async function homeAccountId(): Promise<string> {
   return homeIdCache!;
 }
 
-/** Test seam. */
-export function __resetHomeAccountCache(): void {
+/**
+ * Forget which account this is.
+ *
+ * Cached because it is a network call whose answer could not change — which
+ * stopped being true when the app learned to switch accounts. Every finding is
+ * stamped with this, so a stale one files the account you moved to under the
+ * name of the one you left.
+ */
+export function resetHomeAccountCache(): void {
   homeIdCache = undefined;
 }
+
+/** Test seam. The name is kept because the existing suites call it. */
+export const __resetHomeAccountCache = resetHomeAccountCache;
 
 /**
  * The account to run against. Always exactly one.

@@ -390,11 +390,12 @@ async function completeAwsSwitch(
 ): Promise<{ secretsLoaded: boolean; token?: string }> {
   const secretsLoaded = await reloadSecretsIfNeeded();
 
-  // The gate remembers which account it is in, and until now nothing could
-  // change that mid-process. Switching accounts can, and a stale verdict shows
-  // the GitHub tabs in an account with no GitHub credentials to serve them.
-  const { resetGithubGate } = await import("../middleware/githubGate");
-  resetGithubGate();
+  // Everything cached because it "could not change mid-process" — the gate's
+  // account id, the guardrail store's own DynamoDB client, the home account id
+  // stamped on every finding. All of those were true of an app that chose an
+  // account at launch and kept it.
+  const { forgetAccountScopedCaches } = await import("../utils/awsAccountChange");
+  await forgetAccountScopedCaches();
 
   // Re-signed with whatever key is loaded now, keeping the original expiry.
   // Without this the session is checked against the wrong key on the very next
