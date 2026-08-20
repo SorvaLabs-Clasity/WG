@@ -30,6 +30,35 @@ let tokenManager: GitHubTokenManager | null = null;
 /** Refresh this long before expiry, and treat a token inside the window as stale. */
 const TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000;
 
+/** How long to wait before trying again once a background refresh has failed. */
+const REFRESH_RETRY_MS = 60_000;
+
+/**
+ * How many refresh timers are armed across every manager this process has made.
+ *
+ * There should never be more than one. It is counted because the failure it
+ * guards against is invisible: an orphaned manager keeps working perfectly,
+ * against the wrong organization, and nothing on screen says so.
+ */
+let armedTimers = 0;
+
+/** Test seam. The count is the assertion; there is no other way to see it. */
+export function __armedRefreshTimers(): number {
+  return armedTimers;
+}
+
+/**
+ * When the next background refresh should run.
+ *
+ * Normally: shortly before the token expires, never sooner than a minute. After
+ * a failure: soon, and again after that — the alternative is the app deciding,
+ * on one bad network moment, that it will never hold a live token again.
+ */
+export function refreshDelayMs(expiresAt: number, now: number, afterFailure: boolean): number {
+  if (afterFailure) return REFRESH_RETRY_MS;
+  return Math.max(60_000, expiresAt - now - TOKEN_EXPIRY_BUFFER_MS);
+}
+
 class GitHubTokenManager {
   private cachedToken = "";
   private expiresAt = 0;
@@ -83,6 +112,17 @@ class GitHubTokenManager {
     // that is the honest outcome — the App is the only credential, so a
     // broken App should look broken rather than quietly running on a fallback
     // nobody remembers configuring.
+    //
+    // But honest is not the same as stuck. Nothing here can await, so the
+    // refresh is started and this call still returns what it has: the next
+    // caller gets a live token seconds later instead of the app needing a
+    // restart. getTokenAsync() de-duplicates concurrent refreshes, so a page
+    // issuing twenty of these produces one token request.
+    if (Date.now() >= this.expiresAt) {
+      this.getTokenAsync().catch((err) =>
+        console.error("[TokenManager] Refresh after expiry failed:", (err as Error).message)
+      );
+    }
     return this.cachedToken;
   }
 
@@ -105,13 +145,49 @@ class GitHubTokenManager {
    * live token. Without this the cache goes stale after an hour and every sync
    * caller starts getting 401s until the process restarts.
    */
-  private scheduleRefresh(): void {
-    if (this.refreshTimer) clearTimeout(this.refreshTimer);
-    const delay = Math.max(60_000, this.expiresAt - Date.now() - TOKEN_EXPIRY_BUFFER_MS);
+  /** Disarm whatever is pending, keeping the count honest. */
+  private clearTimer(): void {
+    if (!this.refreshTimer) return;
+    clearTimeout(this.refreshTimer);
+    this.refreshTimer = null;
+    armedTimers--;
+  }
+
+  /**
+   * Stop refreshing, for good.
+   *
+   * Called when this manager is replaced — every AWS account switch does that,
+   * either re-initialising for the account moved into or dropping the manager
+   * for one that holds no GitHub App. Reassigning the module-level reference is
+   * not enough on its own: an armed timer holds a reference to the object that
+   * armed it, so the old manager was never collected and went on minting
+   * installation tokens for the organization behind the account just left. One
+   * orphan per switch, none of them visible anywhere.
+   */
+  dispose(): void {
+    this.clearTimer();
+    this.cachedToken = "";
+    this.expiresAt = 0;
+  }
+
+  private scheduleRefresh(afterFailure = false): void {
+    this.clearTimer();
+    const delay = refreshDelayMs(this.expiresAt, Date.now(), afterFailure);
+    armedTimers++;
     this.refreshTimer = setTimeout(() => {
-      this.getTokenAsync().catch((err) =>
-        console.error("[TokenManager] Background refresh failed:", (err as Error).message)
-      );
+      armedTimers--;
+      this.refreshTimer = null;
+      this.getTokenAsync().catch((err) => {
+        console.error("[TokenManager] Background refresh failed:", (err as Error).message);
+        // Re-armed, because this used to be where the app gave up.
+        //
+        // scheduleRefresh() ran only from _refresh()'s success path, so one
+        // failed background refresh left no timer at all: the cached token
+        // expired, every synchronous caller kept handing GitHub a dead token,
+        // and the only cure was restarting the app. A laptop waking with the
+        // network not yet up is exactly one failed refresh.
+        this.scheduleRefresh(true);
+      });
     }, delay);
     this.refreshTimer.unref?.(); // never hold the process open
   }
@@ -145,7 +221,23 @@ export async function initTokenManager(
 ): Promise<void> {
   const manager = new GitHubTokenManager();
   await manager.init(appId, privateKey, installationId, createAppAuthFn);
+  // Only once the new one works: a failed init must not leave the account we
+  // are still in without a token manager.
+  tokenManager?.dispose();
   tokenManager = manager;
+}
+
+/**
+ * Drop the token manager and stop it refreshing.
+ *
+ * Used when the AWS account being switched into holds no GitHub App: its
+ * credentials were minted from the previous account's key, and every call made
+ * with them would be attributed to an organization this account is not supposed
+ * to touch.
+ */
+export function disposeTokenManager(): void {
+  tokenManager?.dispose();
+  tokenManager = null;
 }
 
 /**
@@ -171,7 +263,7 @@ export function getSystemToken(): string {
  * a state that is otherwise only reachable by breaking the real ones.
  */
 export function __resetTokenManagerForTests(): void {
-  tokenManager = null;
+  disposeTokenManager();
 }
 
 /** Async getter — refreshes the App token if it has expired. */

@@ -224,13 +224,26 @@ function verdict(configured: string, actual: string | null) {
       "a stale value is worse than a missing one — missing says so, stale points elsewhere");
 
     check("  and the App token manager is dropped when the new account has no App",
-      /__resetTokenManagerForTests\(\)/.test(src)
+      /disposeTokenManager\(\)/.test(src)
         && /token manager cleared/.test(src),
       "a token minted from the previous account's key would attribute every call "
         + "to an organization this account must not touch");
 
+    // Dropping the reference is not dropping the manager. Its refresh timer
+    // holds a reference back, so a manager whose reference was merely nulled
+    // stayed alive and went on refreshing — invisibly, because nothing could
+    // reach it any more. `dispose` is the part that stops it.
+    const client = fs.readFileSync(`${__dirname}/src/github/client.ts`, "utf8");
+    check("    and dropping it stops its refresh timer, not just the reference",
+      /dispose\(\): void \{[\s\S]{0,120}clearTimer\(\)/.test(client)
+        && /export function disposeTokenManager[\s\S]{0,120}dispose\(\)/.test(client),
+      "an orphaned manager keeps working perfectly against the wrong organization");
+    check("    and re-initialising for another account replaces rather than adds",
+      /tokenManager\?\.dispose\(\);\s*\n\s*tokenManager = manager;/.test(client),
+      "one orphan per account switch, each refreshing hourly for ever");
+
     check("  and the gate re-reads the account after the switch",
-      /__resetGithubGateForTests\(\)/.test(src));
+      /resetGithubGate\(\)/.test(src));
   }
 
   // ── sign-in fails loudly, not silently ──────────────────────────────

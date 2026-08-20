@@ -458,13 +458,17 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
         await initTokenManager(process.env.GITHUB_APP_ID, process.env.GITHUB_APP_PRIVATE_KEY, process.env.GITHUB_APP_INSTALLATION_ID);
         console.log(`[auth] GitHub App token manager initialized for account ${account}`);
       } else {
-        // Dropped, not left running. It holds a token minted from the previous
-        // account's App key, and every call made with it would be attributed to
-        // an organization this account is not supposed to touch.
-        const { __resetTokenManagerForTests } = await import("../github/client");
-        __resetTokenManagerForTests();
-        const { __resetGithubGateForTests } = await import("../middleware/githubGate");
-        __resetGithubGateForTests();
+        // Dropped, and actually stopped. It holds a token minted from the
+        // previous account's App key, and every call made with it would be
+        // attributed to an organization this account is not supposed to touch.
+        //
+        // This used to null the reference and leave the refresh timer armed,
+        // which kept the old manager alive and refreshing — the reference was
+        // gone, so nothing could even see it happening.
+        const { disposeTokenManager } = await import("../github/client");
+        disposeTokenManager();
+        const { resetGithubGate } = await import("../middleware/githubGate");
+        resetGithubGate();
         console.log(`[auth] Account ${account} has no GitHub App — token manager cleared`);
       }
       return true;

@@ -12,12 +12,31 @@ export function useCatalog() {
   return useQuery({ queryKey: ["aws", "catalog"], queryFn: fetchCatalog, staleTime: Infinity });
 }
 
+/**
+ * Refetched when the window regains focus, unlike the rest of the app.
+ *
+ * `refetchOnWindowFocus` is off globally, and for most tabs that is right — the
+ * pull request walk alone is twenty-odd seconds of GitHub's rate limit, and
+ * firing it every time somebody alt-tabs is not a refresh, it is a leak.
+ *
+ * These two are the exception because of what returning to them means. Coming
+ * back to this tab after a while is usually coming back to a laptop that slept,
+ * and what makes that visible is a compliance screen quietly showing what it
+ * last read. Both queries are one small read of DynamoDB, so the cost of asking
+ * again is nothing next to the cost of being wrong.
+ */
 export function useGuardrails() {
-  return useQuery({ queryKey: ["aws", "guardrails"], queryFn: fetchGuardrails, staleTime: 15_000 });
+  return useQuery({
+    queryKey: ["aws", "guardrails"], queryFn: fetchGuardrails,
+    staleTime: 15_000, refetchOnWindowFocus: true,
+  });
 }
 
 export function useFindings() {
-  return useQuery({ queryKey: ["aws", "findings"], queryFn: fetchFindings, staleTime: 15_000 });
+  return useQuery({
+    queryKey: ["aws", "findings"], queryFn: fetchFindings,
+    staleTime: 15_000, refetchOnWindowFocus: true,
+  });
 }
 
 export function useAwsExclusions() {
