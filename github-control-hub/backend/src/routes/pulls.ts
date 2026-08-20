@@ -4,6 +4,7 @@ import { createOctokit, getSystemToken } from "../github/client";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { logSync } from "../services/activityService";
+import { savePrSnapshot, readPrSnapshot } from "../services/alarmService";
 import {
   getPrState, listPrStates, setPrPause, recordNudge,
   getPrSettings, savePrSettings, getPrMutes, setPrMute,
@@ -31,6 +32,40 @@ function graphqlFor(token: string) {
     (octokit as any).graphql(query, variables);
 }
 
+/**
+ * How old a stored list may be before the tab waits for a fresh one.
+ *
+ * Longer than the five-minute pass that keeps it warm, so an ordinary open
+ * always uses the snapshot; short enough that an account whose scheduled pass
+ * has stopped does not sit on yesterday's answer without noticing.
+ */
+const SNAPSHOT_MAX_AGE_MS = 15 * 60_000;
+
+/** At most one background refresh at a time, however many tabs are open. */
+let refreshing = false;
+
+/**
+ * Re-walks GitHub and stores the result, without anybody waiting for it.
+ *
+ * Deliberately unawaited and deliberately silent: this exists so the *next*
+ * open is fresh, and a failure here must not touch the response already being
+ * built from a snapshot that is good enough.
+ */
+function refreshSnapshotInBackground(token: string): void {
+  if (refreshing) return;
+  refreshing = true;
+  void (async () => {
+    try {
+      const fresh = await fetchOpenPrs(graphqlFor(token), org());
+      await savePrSnapshot(fresh);
+    } catch (err) {
+      console.warn("[pull requests] background refresh failed:", (err as Error)?.message ?? err);
+    } finally {
+      refreshing = false;
+    }
+  })();
+}
+
 router.get("/", async (req: Request, res: Response) => {
   const token = req.user?.accessToken;
   if (!token) return res.status(401).json({ error: "No GitHub token provided" });
@@ -48,11 +83,43 @@ router.get("/", async (req: Request, res: Response) => {
       });
     }
 
-    const [{ prs, truncated }, states, mutes] = await Promise.all([
-      fetchOpenPrs(graphqlFor(token), org()),
+    // Served from the stored snapshot when there is one.
+    //
+    // The walk is the slowest read this app makes — GitHub's search API a page
+    // at a time, several seconds a page on a large organization — and it was
+    // being done on every load, in front of somebody waiting. Meanwhile the
+    // scheduled pass fetched the same thing every five minutes and threw it
+    // away.
+    //
+    // So the tab opens on what is stored and says how old it is, and a refresh
+    // runs behind it. The data is no less live: the client polls every thirty
+    // seconds and picks up the new one. What changed is that nobody waits for
+    // the first paint.
+    // `?refresh=1` is somebody pressing the button, and it must actually go and
+    // look. A refresh that re-reads the stored answer is the worst kind: it
+    // spins, it finishes, and it changes nothing, so the button teaches people
+    // that refreshing does not work.
+    const forceLive = req.query.refresh === "1";
+
+    const snapshot = forceLive ? null : await readPrSnapshot().catch(() => null);
+    const snapshotAgeMs = snapshot ? Date.now() - Date.parse(snapshot.cachedAt) : Infinity;
+    const useSnapshot = !!snapshot && snapshotAgeMs < SNAPSHOT_MAX_AGE_MS;
+
+    if (useSnapshot) refreshSnapshotInBackground(token);
+
+    const [walked, states, mutes] = await Promise.all([
+      useSnapshot
+        ? Promise.resolve({ prs: snapshot!.prs, truncated: snapshot!.truncated })
+        : fetchOpenPrs(graphqlFor(token), org()).then(async r => {
+            // Stored on the way past, so the next open is instant even if the
+            // scheduled pass has not run yet — which is every first launch.
+            await savePrSnapshot(r).catch(() => { /* a cache miss is not a failure */ });
+            return r;
+          }),
       listPrStates(),
       getPrMutes(),
     ]);
+    const { prs, truncated } = walked;
     const byId = new Map(states.map(s => [`${s.repo}#${s.number}`, s]));
 
     const rows = sortByStaleness(prs).map(pr => {
@@ -87,6 +154,10 @@ router.get("/", async (req: Request, res: Response) => {
       remindersEnabled: settings.remindersEnabled,
       staleSeconds: staleSeconds(),
       truncated,
+      // Null when this walk was live. The page shows it, so "as of" is visible
+      // rather than implied — a cache nobody can see the age of is the kind
+      // people stop trusting.
+      cachedAt: useSnapshot ? snapshot!.cachedAt : null,
       open: rows.length,
       stale: rows.filter(r => r.stale).length,
       pulls: rows,

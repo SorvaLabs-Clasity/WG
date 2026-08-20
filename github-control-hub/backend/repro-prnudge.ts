@@ -1109,6 +1109,80 @@ function lastGoodIsForgotten(): void {
       second?.pausedLogins?.includes("erin") === true, second);
   }
 
+  // ── the list is stored, so opening the tab does not wait for it ─────
+  //
+  // The walk is the slowest read this app makes, and it was being done in front
+  // of somebody on every load — while the five-minute pass fetched the same
+  // thing and discarded it. The failures worth guarding are the ones that make
+  // a cache dishonest rather than merely absent.
+  {
+    const { savePrSnapshot, readPrSnapshot } = await import("./src/services/alarmService");
+    __resetAlarmStoreForTests();
+
+    const many = Array.from({ length: 40 }, (_, i) => pr({ number: i + 1 }));
+    await savePrSnapshot({ prs: many, truncated: false });
+    const back = await readPrSnapshot();
+
+    check("a stored list reads back with its rows intact",
+      back?.prs.length === 40 && back.prs[0].number === 1, back?.prs.length);
+    check("  carrying when it was taken, so the page can say how old it is",
+      !!back?.cachedAt && !Number.isNaN(Date.parse(back!.cachedAt)), back?.cachedAt);
+    check("  and whether the walk behind it was itself truncated",
+      back?.truncated === false);
+
+    // A DynamoDB item stops at 400KB. Exceeding it is not a graceful failure:
+    // the write is rejected and the snapshot silently stops updating, which
+    // looks exactly like a cache that works and is merely old.
+    __resetAlarmStoreForTests();
+    const huge = Array.from({ length: 4000 }, (_, i) =>
+      pr({ number: i, title: "x".repeat(400) }));
+    await savePrSnapshot({ prs: huge, truncated: false });
+    const trimmed = await readPrSnapshot();
+    check("an oversized list is trimmed rather than refused",
+      !!trimmed && trimmed.prs.length > 0 && trimmed.prs.length < 4000, trimmed?.prs.length);
+    check("  and says so, so a short list is never mistaken for a complete one",
+      trimmed?.truncated === true);
+
+    // Corruption must not take the tab down; the caller falls back to walking.
+    __resetAlarmStoreForTests();
+    check("no snapshot reads as null rather than throwing",
+      (await readPrSnapshot()) === null);
+  }
+
+  // ── the route and the pass both keep it warm ────────────────────────
+  {
+    const route = fs.readFileSync(`${__dirname}/src/routes/pulls.ts`, "utf8");
+    const handler = fs.readFileSync(`${__dirname}/src/alarms/handler.ts`, "utf8");
+
+    check("the tab serves the snapshot when there is a recent one",
+      /readPrSnapshot\(\)/.test(route) && /useSnapshot/.test(route));
+    check("  refreshing behind it, so the next open is fresher",
+      /refreshSnapshotInBackground/.test(route));
+    check("  and storing a live walk on the way past, for the very first launch",
+      /savePrSnapshot\(r\)/.test(route));
+    check("  with an age the response carries, rather than implying freshness",
+      /cachedAt: useSnapshot/.test(route));
+    check("  and a maximum age, so a stopped pass is not served for ever",
+      /SNAPSHOT_MAX_AGE_MS/.test(route));
+
+    // A refresh that re-reads the stored answer is worse than no button: it
+    // spins, finishes, changes nothing, and teaches people that refreshing does
+    // not work.
+    check("the refresh button forces a live read past the snapshot",
+      /const forceLive = req\.query\.refresh === "1"/.test(route)
+        && /forceLive \? null : await readPrSnapshot/.test(route));
+
+    const page = fs.readFileSync(`${__dirname}/../frontend/src/pages/PullRequestsPage.tsx`, "utf8");
+    check("  and the button asks for it, rather than refetching the same query",
+      /\/pulls\?refresh=1/.test(page) && !/onClick=\{\(\) => refetch\(\)\}/.test(page));
+
+    check("the five-minute pass stores what it already walked",
+      /storeSnapshot/.test(handler));
+    check("  and keeps doing so when reminders are off but monitoring is on",
+      /if \(!prSettings\.remindersEnabled\)/.test(handler)
+        && /monitoring without reminders/i.test(handler));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

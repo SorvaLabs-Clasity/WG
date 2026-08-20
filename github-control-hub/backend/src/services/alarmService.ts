@@ -84,7 +84,32 @@ export interface SecurityNotifySettings {
   updatedAt?: string;
 }
 
-type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState | PrFeatureSettings | PrMutes;
+/**
+ * The last pull request list, stored so opening the tab does not wait for it.
+ *
+ * The list is the slowest read this app makes: GitHub's search API is walked a
+ * page at a time and a large organization is several seconds per page. It was
+ * fetched fresh on every load, so every launch had that wait in it — and the
+ * scheduled pass was already fetching the same thing every five minutes and
+ * discarding it.
+ *
+ * Stored as one JSON string rather than as attributes, because the shape is the
+ * route's response and pinning it here would mean two definitions of the same
+ * rows drifting apart.
+ */
+export interface PrSnapshot {
+  id: "pr-snapshot";
+  kind: "pr-snapshot";
+  /** JSON of `{ prs, truncated }`, exactly as fetchOpenPrs returned it. */
+  payload: string;
+  /** When the walk that produced this finished. */
+  cachedAt: string;
+  /** How many pull requests it holds, so the size guard has something to report. */
+  count: number;
+  ttl: number;
+}
+
+type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState | PrFeatureSettings | PrMutes | PrSnapshot;
 
 const TABLE = () => tableName("ALARMS_TABLE");
 
@@ -820,6 +845,59 @@ export function prStateId(repo: string, number: number): string {
 export async function getPrState(repo: string, number: number): Promise<PrState | undefined> {
   const found = await getById<PrState>(prStateId(repo, number));
   return found?.kind === "pr-state" ? found : undefined;
+}
+
+/**
+ * A DynamoDB item stops at 400KB, and the list is unbounded.
+ *
+ * Held well under, because exceeding it is not a graceful failure: the write is
+ * rejected and the snapshot silently stops updating, which looks exactly like a
+ * cache that is working and merely old.
+ */
+const SNAPSHOT_BUDGET_BYTES = 300_000;
+
+/** Kept longer than any refresh interval, short enough not to outlive relevance. */
+const SNAPSHOT_TTL_HOURS = 24;
+
+/**
+ * Stores the pull request list for the tab to open with.
+ *
+ * Trimmed rather than refused when it is too large: half a list now beats no
+ * list, and the count says how much arrived so the caller can say so.
+ */
+export async function savePrSnapshot(
+  data: { prs: unknown[]; truncated: boolean },
+): Promise<void> {
+  let prs = data.prs;
+  let payload = JSON.stringify({ prs, truncated: data.truncated });
+
+  while (Buffer.byteLength(payload) > SNAPSHOT_BUDGET_BYTES && prs.length > 1) {
+    prs = prs.slice(0, Math.floor(prs.length * 0.8));
+    payload = JSON.stringify({ prs, truncated: true });
+  }
+
+  await put({
+    id: "pr-snapshot", kind: "pr-snapshot", payload,
+    cachedAt: new Date().toISOString(),
+    count: prs.length,
+    ttl: Math.floor(Date.now() / 1000) + SNAPSHOT_TTL_HOURS * 3600,
+  });
+}
+
+/** The stored list, or null when there has never been one. */
+export async function readPrSnapshot(): Promise<
+  { prs: any[]; truncated: boolean; cachedAt: string } | null
+> {
+  const row = await getById<PrSnapshot>("pr-snapshot");
+  if (!row?.payload) return null;
+  try {
+    const parsed = JSON.parse(row.payload);
+    return { prs: parsed.prs ?? [], truncated: !!parsed.truncated, cachedAt: row.cachedAt };
+  } catch {
+    // A corrupt snapshot must not take the tab down with it; the caller falls
+    // back to fetching, which is what it did before this existed.
+    return null;
+  }
 }
 
 export async function listPrStates(): Promise<PrState[]> {

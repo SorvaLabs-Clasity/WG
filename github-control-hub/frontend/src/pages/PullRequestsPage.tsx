@@ -34,6 +34,8 @@ interface Answer {
   remindersEnabled: boolean;
   staleSeconds: number;
   truncated: boolean;
+  /** When the stored list was taken. Null when this response was walked live. */
+  cachedAt?: string | null;
   open: number;
   stale: number;
   pulls: Pull[];
@@ -96,6 +98,18 @@ function Stat({ n, label, tone }: { n: number; label: string; tone?: string }) {
   );
 }
 
+/** "4 minutes ago", down to a minute — below that, "just now". */
+function ago(iso: string): string {
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return "unknown";
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  return `${Math.floor(hours / 24)} day${Math.floor(hours / 24) === 1 ? "" : "s"} ago`;
+}
+
 export default function PullRequestsPage() {
   const { user } = useAuth();
   const { data: permissions } = usePermissions();
@@ -145,6 +159,19 @@ export default function PullRequestsPage() {
    * into the cache moves the switch at once, and the list still refreshes behind
    * it because it can also change what is listed.
    */
+  /**
+   * The refresh button: a live read, written straight into the cache.
+   *
+   * A mutation rather than `refetch()`, because the ordinary query is allowed to
+   * serve the stored snapshot and this one must not. The result replaces the
+   * cache directly, so the list updates without a second round trip.
+   */
+  const refreshNow = useMutation({
+    mutationFn: () => apiGet<Answer>("/pulls?refresh=1"),
+    onSuccess: (fresh) => { setError(""); qc.setQueryData<Answer>(["pulls"], fresh); },
+    onError: (e: any) => setError(e?.message || "Could not refresh from GitHub."),
+  });
+
   const saveSettings = useMutation({
     mutationFn: (b: { monitoringEnabled?: boolean; remindersEnabled?: boolean }) =>
       apiPut<{ monitoringEnabled?: boolean; remindersEnabled?: boolean }>("/pulls/settings", b),
@@ -538,12 +565,27 @@ export default function PullRequestsPage() {
                 onChange={(v: string) => { setSearch(v); setStalePage(1); setFreshPage(1); }}
                 placeholder="Search title, repository, author or branch…" />
             </div>
-            <button onClick={() => refetch()} disabled={isFetching}
-              title="Refreshes on its own every 30 seconds"
+            {/* Goes and asks GitHub, rather than re-reading what is stored.
+                Without `refresh=1` this would return the same snapshot: the
+                button would spin, finish, and change nothing, which teaches
+                people that refreshing does not work. */}
+            <button onClick={() => refreshNow.mutate()} disabled={isFetching || refreshNow.isPending}
+              title="Reads GitHub now. The list refreshes on its own every few minutes."
               className="shrink-0 px-3 py-2 text-sm rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40">
-              <i className={`ph ph-arrows-clockwise ${isFetching ? "animate-spin" : ""}`}></i>
+              <i className={`ph ph-arrows-clockwise ${isFetching || refreshNow.isPending ? "animate-spin" : ""}`}></i>
             </button>
           </div>
+
+          {/* How old the list is, when it did not come from a live walk.
+              Shown rather than implied: reading GitHub takes seconds on a large
+              organization, so the tab opens on the last stored answer and
+              refreshes behind it — which is only honest if the age is visible. */}
+          {data?.cachedAt && (
+            <div className="mb-4 text-xs text-slate-500 dark:text-slate-400">
+              As of {ago(data.cachedAt)}
+              {isFetching ? " · refreshing…" : " · refreshes every few minutes"}
+            </div>
+          )}
 
           {data?.truncated && (
             <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">

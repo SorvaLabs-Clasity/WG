@@ -1,6 +1,6 @@
 import { createContext, useContext, useCallback, useEffect, useMemo, useState } from "react";
 import { RouterProvider } from "react-router-dom";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient, QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { router } from "./router";
 import { isAuthenticated, clearToken, getToken, getUserInfo, DEMO_MODE } from "./api/client";
 import { fetchAuthStatus } from "./api/auth";
@@ -9,6 +9,7 @@ import { ThemeContext, getInitialTheme, applyTheme, type Theme } from "./hooks/u
 import UpdateOverlay from "./components/UpdateOverlay";
 import MutationErrors from "./components/MutationErrors";
 import RateLimitBanner from "./components/RateLimitBanner";
+import { apiGet } from "./api/client";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -49,6 +50,36 @@ function parseJwt(token: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Starts the pull request query as soon as somebody is signed in.
+ *
+ * The list is the slowest thing this app fetches: GitHub's search API is walked
+ * a page at a time, and a large organization is several seconds per page. Doing
+ * that when the tab is *clicked* meant every launch had one long wait in it,
+ * always at the moment somebody was waiting.
+ *
+ * Nothing about the data changes — the query, its cache key and its polling are
+ * the same. It simply starts while the app is being read rather than after a
+ * click, so the answer is usually already there. If it is not, the tab shows its
+ * ordinary loading state.
+ *
+ * Once, and only when signed in: prefetch respects the query's staleTime, so
+ * the tab reuses this rather than asking again.
+ */
+function PrefetchPulls() {
+  const qc = useQueryClient();
+  const { user } = useAuth();
+  useEffect(() => {
+    if (!user) return;
+    void qc.prefetchQuery({
+      queryKey: ["pulls"],
+      queryFn: () => apiGet("/pulls"),
+      staleTime: 15_000,
+    });
+  }, [user, qc]);
+  return null;
 }
 
 export default function App() {
@@ -104,6 +135,7 @@ export default function App() {
     <ThemeContext.Provider value={themeValue}>
       <QueryClientProvider client={queryClient}>
         <AuthContext.Provider value={{ user }}>
+          <PrefetchPulls />
           <UpdateOverlay />
           <MutationErrors />
           <RateLimitBanner />

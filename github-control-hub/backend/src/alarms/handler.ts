@@ -251,9 +251,24 @@ export async function handler(): Promise<void> {
     // every one of them.
     const mutes = await getPrMutes();
 
+    // Stored whatever happens next: the walk has already been paid for, and
+    // the tab opening on it is what stops every launch waiting.
+    const storeSnapshot = async (r: { prs: any[]; truncated: boolean }) => {
+      const { savePrSnapshot } = await import("../services/alarmService");
+      await savePrSnapshot(r).catch(err =>
+        console.warn("[PR] could not store the snapshot:", err?.message ?? err));
+      return r;
+    };
+
+    if (!prSettings.remindersEnabled) {
+      // Monitoring without reminders: walk, store, message nobody.
+      await storeSnapshot(await fetchOpenPrs(graphql, org));
+      throw { __skip: true };
+    }
+
     const summary = await runNudgePass({
       mutes: { global: mutes.global, byRepo: mutes.byRepo },
-      listPrs: () => fetchOpenPrs(graphql, org),
+      listPrs: () => fetchOpenPrs(graphql, org).then(storeSnapshot),
       getState: (repo, number) => getPrState(repo, number),
       recordNudge,
       listComments: async (repo, number) => {
