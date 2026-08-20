@@ -54,14 +54,18 @@ const s3HttpsOnly: RuleKind = {
   summary: "Every bucket policy must deny requests that arrive over plain HTTP.",
   resourceType: "s3:bucket",
   defaultMode: "report",
-  defaultParams: { sid: "EnforceHTTPSOnly" },
+  // Named after scripts/enforce_https_buckets.sh, the hand-run version of this
+  // rule that was applied to real buckets before the app existed. Matching it
+  // means one name across the estate rather than two statements that do the
+  // same thing under different Sids.
+  defaultParams: { sid: "DenyNonSSLRequests" },
   paramSchema: [
-    { key: "sid", label: "Statement name", type: "text", default: "EnforceHTTPSOnly",
+    { key: "sid", label: "Statement name", type: "text", default: "DenyNonSSLRequests",
       help: "The Sid written into the bucket policy. Statements with this name are replaced; everything else is left alone." },
   ],
   triggerEvents: ["CreateBucket", "PutBucketPolicy", "DeleteBucketPolicy"],
   evaluate(resource, params) {
-    const sid = params.sid || "EnforceHTTPSOnly";
+    const sid = params.sid || "DenyNonSSLRequests";
     const policy = resource.state.policy as { Statement?: any[] } | null;
     const statements: any[] = policy?.Statement ?? [];
 

@@ -50,6 +50,34 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
   check("longer retention flagged when leaveLongerAlone is off", clamp.verdict === "violation", clamp);
 }
 
+// ── the statement matches enforce_https_buckets.sh, exactly ───────────
+//
+// That script is the hand-run version of this rule and was applied to real
+// buckets before the app existed. The two must write the same statement, or an
+// estate ends up with two subtly different deny rules and no way to tell which
+// tool wrote which. Pinned field by field so a well-meaning edit here has to be
+// a deliberate divergence from the script rather than an accident.
+{
+  const stmt: any = httpsOnlyStatement("my-bucket", "DenyNonSSLRequests");
+  check("the deny statement is the script's, field for field",
+    stmt.Sid === "DenyNonSSLRequests"
+      && stmt.Effect === "Deny"
+      && stmt.Principal === "*"
+      && stmt.Action === "s3:*"
+      && JSON.stringify(stmt.Resource) === JSON.stringify(
+        ["arn:aws:s3:::my-bucket", "arn:aws:s3:::my-bucket/*"])
+      && stmt.Condition?.Bool?.["aws:SecureTransport"] === "false",
+    stmt);
+
+  // The script names it DenyNonSSLRequests, so buckets it has already fixed
+  // carry that Sid. New rules default to the same name; the app recognises the
+  // statement by shape regardless, so a bucket the script fixed is left alone
+  // either way.
+  const kind = CATALOG.find(k => k.kind === "s3_https_only");
+  check("  and a new rule defaults to the script's statement name",
+    kind?.defaultParams?.sid === "DenyNonSSLRequests", kind?.defaultParams);
+}
+
 // ── s3_https_only: must not clobber existing policy ───────────────────
 {
   const sid = "EnforceHTTPSOnly";

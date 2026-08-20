@@ -35,7 +35,7 @@ const remediators: Partial<Record<GuardrailKind, Remediator>> = {
   async s3_https_only(resource, params, scope) {
     const { S3Client, PutBucketPolicyCommand } = await import("@aws-sdk/client-s3");
     const s3 = new S3Client(clientConfig(scope));
-    const sid = params.sid || "EnforceHTTPSOnly";
+    const sid = params.sid || "DenyNonSSLRequests";
 
     const existing = resource.state.policy as { Version?: string; Statement?: any[] } | null;
     const kept = (existing?.Statement ?? []).filter(s => s?.Sid !== sid);
