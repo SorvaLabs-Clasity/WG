@@ -8,8 +8,11 @@
 # tab is refused, by the backend rather than by hiding a button.
 #
 # What lands here:
-#   - four DynamoDB tables: the guardrail rules, their exclusions, their
-#     findings, and the activity feed those findings are written to
+#   - the DynamoDB tables, created by setup-aws-account.sh so their schemas
+#     cannot drift from the ones the app reads. The six only the GitHub half
+#     writes to are created and stay empty; an idle on-demand table costs
+#     nothing, and a second hand-written copy of twelve schemas does not stay
+#     right.
 #   - one Lambda on a fifteen-minute schedule, plus a CloudTrail rule so it also
 #     reacts to resources being created
 #   - a secret holding only what sign-in needs
@@ -128,53 +131,25 @@ confirm "Proceed against account $ACCOUNT?" || die "Aborted. Nothing was created
 # ── 1. tables ─────────────────────────────────────────────────────────
 step "1/4  DynamoDB tables"
 
-TABLES=(
-  aws-guardrails      # the rules themselves
-  aws-exclusions      # resources a rule should ignore
-  aws-findings        # what the last sweep found
-  activity            # what the guardrails did, and the app's own feed
-  org-config          # one row: feature flags for this install
-  auth-codes          # short-lived sign-in codes, expired by TTL
-)
-
-for t in "${TABLES[@]}"; do
-  name="${PREFIX}-${t}"
-  if aws dynamodb describe-table --table-name "$name" >/dev/null 2>&1; then
-    skip "$name exists"
-    continue
-  fi
-  # activity is keyed pk/sk like the full install, so the guardrail Lambda's
-  # rows land in the same shape the app reads. Everything else is keyed on id.
-  if [ "$t" = "activity" ]; then
-    aws dynamodb create-table --table-name "$name" \
-      --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
-      --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE \
-      --billing-mode PAY_PER_REQUEST >/dev/null \
-      || die "Could not create $name."
-  elif [ "$t" = "org-config" ]; then
-    aws dynamodb create-table --table-name "$name" \
-      --attribute-definitions AttributeName=org,AttributeType=S \
-      --key-schema AttributeName=org,KeyType=HASH \
-      --billing-mode PAY_PER_REQUEST >/dev/null \
-      || die "Could not create $name."
-  else
-    aws dynamodb create-table --table-name "$name" \
-      --attribute-definitions AttributeName=id,AttributeType=S \
-      --key-schema AttributeName=id,KeyType=HASH \
-      --billing-mode PAY_PER_REQUEST >/dev/null \
-      || die "Could not create $name."
-  fi
-  ok "created $name"
-done
-
-# Both tables that expire rows say so, or nothing ever removes anything.
-for t in activity auth-codes; do
-  name="${PREFIX}-${t}"
-  field=$([ "$t" = "activity" ] && echo ttl || echo expiresAt)
-  aws dynamodb update-time-to-live --table-name "$name" \
-    --time-to-live-specification "Enabled=true,AttributeName=$field" >/dev/null 2>&1 \
-    && ok "TTL on $name ($field)" || skip "TTL already set on $name"
-done
+# Delegated, not duplicated.
+#
+# These schemas are not uniform — auth-codes is keyed on `code`, findings and
+# activity on pk/sk, and activity carries two secondary indexes without which
+# looking a row up by id degrades into scanning the newest ones. Writing a
+# subset out again here got three of them wrong, and the failures were invisible
+# until something tried to use the table: sign-in died with "Missing the key id
+# in the item", which names neither the table nor the cause.
+#
+# So the same script the full install uses creates them. It also creates the six
+# tables only the GitHub half writes to. They stay empty here — nothing in this
+# account writes to them, and an empty on-demand table costs nothing — and that
+# is a better trade than a second copy of twelve schemas that has to be kept in
+# step by hand.
+AWS_PROFILE="${AWS_PROFILE:-}" AWS_REGION="$REGION" STACK_NAME="$PREFIX" \
+  SKIP_SECRET=1 SKIP_CONFIRM=1 \
+  bash "$HERE/setup-aws-account.sh" </dev/null \
+  || die "Table creation failed. The output above says why."
+ok "tables present (on-demand billing; the unused ones cost nothing)"
 
 # ── 2. the secret ─────────────────────────────────────────────────────
 step "2/4  Sign-in credentials"

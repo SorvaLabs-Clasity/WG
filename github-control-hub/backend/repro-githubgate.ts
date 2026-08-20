@@ -160,12 +160,19 @@ function verdict(configured: string, actual: string | null) {
 
     check("the script deploys with the flag", /-c awsOnly=true/.test(script));
 
-    // Every table the guardrail half and sign-in read must be created, or the
-    // account deploys cleanly and fails at the first request.
-    for (const t of ["aws-guardrails", "aws-exclusions", "aws-findings",
-                     "activity", "org-config", "auth-codes"]) {
-      check(`  it creates ${t}`, new RegExp(`\\b${t}\\b`).test(script));
-    }
+    // Tables are created by the same script the full install uses, never
+    // written out again here.
+    //
+    // The schemas are not uniform — auth-codes is keyed on `code`, findings and
+    // activity on pk/sk, and activity carries two secondary indexes. A
+    // hand-written subset got three of them wrong, and nothing noticed until
+    // sign-in failed with "Missing the key id in the item", which names neither
+    // the table nor the cause. One definition, in one place, is the fix.
+    check("  it delegates table creation rather than duplicating the schemas",
+      /bash "\$HERE\/setup-aws-account\.sh"/.test(script));
+    check("  and defines no table schema of its own",
+      !/create-table/.test(script) && !/--key-schema/.test(script),
+      "a second copy of twelve schemas does not stay right");
 
     // And the one credential that must not be here.
     check("the script never asks for the GitHub App private key",
