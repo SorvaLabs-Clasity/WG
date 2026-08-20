@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import { buildAuthorizationUrl, exchangeCodeForToken } from "../github/oauth";
 import { createOctokit, getOrg, initTokenManager } from "../github/client";
-import { signToken, verifyToken } from "../utils/jwt";
+import { signToken, verifyToken, captureSession, reissueSession, CarriedSession } from "../utils/jwt";
 import { storeToken, getToken, removeToken } from "../utils/tokenStore";
 import { docClient, tableName, usesDynamo, PutCommand, DeleteCommand } from "../utils/dynamo";
 import { authMiddleware } from "../middleware/authMiddleware";
@@ -373,6 +373,38 @@ const SECRET_KEYS = [
 ] as const;
 
 /**
+ * Everything that has to happen once the AWS credentials have changed.
+ *
+ * Three endpoints switch accounts — a profile, an SSO profile, and pasted
+ * access keys — and each of them has to load the new account's secrets, make
+ * the GitHub gate look at the account again, and hand back a session the new
+ * account can verify. Doing that in three places is how two of them end up
+ * doing two of the three.
+ *
+ * `carried` must have been captured *before* the credentials moved: it is
+ * verified against the signing key of the account being left, and that key is
+ * gone by the time this runs.
+ */
+async function completeAwsSwitch(
+  carried: CarriedSession | null,
+): Promise<{ secretsLoaded: boolean; token?: string }> {
+  const secretsLoaded = await reloadSecretsIfNeeded();
+
+  // The gate remembers which account it is in, and until now nothing could
+  // change that mid-process. Switching accounts can, and a stale verdict shows
+  // the GitHub tabs in an account with no GitHub credentials to serve them.
+  const { resetGithubGate } = await import("../middleware/githubGate");
+  resetGithubGate();
+
+  // Re-signed with whatever key is loaded now, keeping the original expiry.
+  // Without this the session is checked against the wrong key on the very next
+  // request and reported as invalid — which is a logout, in the middle of an
+  // action the user thinks of as changing one setting.
+  const token = carried ? reissueSession(carried) ?? undefined : undefined;
+  return { secretsLoaded, ...(token ? { token } : {}) };
+}
+
+/**
  * Load GitHub secrets for the account now in use.
  *
  * This used to begin `if (process.env.GITHUB_CLIENT_ID) return`, which meant
@@ -475,18 +507,21 @@ router.post("/reconnect-aws", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
     process.env.AWS_PROFILE = profile;
   }
 
+  // Read while the key that signed it is still the one loaded.
+  const carried = captureSession(req.headers.authorization);
+
   unlockAws();
   dynamo.resetDynamoClient();
 
   try {
     await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
-    const secretsLoaded = await reloadSecretsIfNeeded();
+    const switched = await completeAwsSwitch(carried);
     // Remembered only now, having actually reached DynamoDB. Storing it on the
     // way in would mean a typo becomes the profile you are offered every
     // launch from then on.
     const { rememberAwsProfile } = await import("../services/desktopPrefs");
     if (process.env.AWS_PROFILE) rememberAwsProfile(process.env.AWS_PROFILE);
-    res.json({ ok: true, reachable: true, secretsLoaded });
+    res.json({ ok: true, reachable: true, ...switched });
   } catch (err: any) {
     res.json({ ok: true, reachable: false, error: err.message });
   }
@@ -659,6 +694,8 @@ router.post("/aws-use-profile", serverModeGuard, sameOriginOnly, setupOrAuthMidd
     return;
   }
 
+  const carried = captureSession(req.headers.authorization);
+
   process.env.AWS_PROFILE = profile;
   delete process.env.AWS_ACCESS_KEY_ID;
   delete process.env.AWS_SECRET_ACCESS_KEY;
@@ -669,10 +706,10 @@ router.post("/aws-use-profile", serverModeGuard, sameOriginOnly, setupOrAuthMidd
 
   try {
     await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
-    const secretsLoaded = await reloadSecretsIfNeeded();
+    const switched = await completeAwsSwitch(carried);
     const { rememberAwsProfile } = await import("../services/desktopPrefs");
     rememberAwsProfile(profile);
-    res.json({ ok: true, reachable: true, secretsLoaded });
+    res.json({ ok: true, reachable: true, ...switched });
   } catch (err: any) {
     res.json({ ok: true, reachable: false, error: err.message });
   }
@@ -690,6 +727,8 @@ router.post("/aws-access-keys", serverModeGuard, sameOriginOnly, setupOrAuthMidd
     return;
   }
 
+  const carried = captureSession(req.headers.authorization);
+
   process.env.AWS_ACCESS_KEY_ID = accessKeyId;
   process.env.AWS_SECRET_ACCESS_KEY = secretAccessKey;
   if (sessionToken) process.env.AWS_SESSION_TOKEN = sessionToken;
@@ -706,8 +745,8 @@ router.post("/aws-access-keys", serverModeGuard, sameOriginOnly, setupOrAuthMidd
 
   try {
     await dynamo.docClient.send(new ScanCommand({ TableName: dynamo.tableName("ACTIVITY_TABLE"), Limit: 1 }));
-    const secretsLoaded = await reloadSecretsIfNeeded();
-    res.json({ ok: true, reachable: true, secretsLoaded });
+    const switched = await completeAwsSwitch(carried);
+    res.json({ ok: true, reachable: true, ...switched });
   } catch (err: any) {
     res.json({ ok: true, reachable: false, error: err.message });
   }

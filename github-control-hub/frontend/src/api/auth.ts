@@ -1,4 +1,4 @@
-import { getToken } from "./client";
+import { getToken, setToken } from "./client";
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
@@ -90,13 +90,13 @@ export async function invalidateAws(): Promise<void> {
   await fetch(`${BACKEND_URL}/auth/invalidate-aws`, { method: "POST", headers: authHeaders() });
 }
 
-export async function reconnectAws(profile?: string): Promise<{ ok: boolean; reachable: boolean }> {
+export async function reconnectAws(profile?: string): Promise<AwsSwitchResult> {
   const res = await fetch(`${BACKEND_URL}/auth/reconnect-aws`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ profile }),
   });
-  return res.json();
+  return adoptSession(await res.json());
 }
 
 export async function triggerAwsSsoLogin(profile?: string): Promise<void> {
@@ -116,13 +116,35 @@ export async function fetchAwsProfiles(): Promise<AwsProfile[]> {
   return (data as { profiles?: AwsProfile[] }).profiles ?? [];
 }
 
-export async function useAwsProfile(profile: string): Promise<{ ok: boolean; reachable: boolean }> {
+/**
+ * What every AWS-switching endpoint returns.
+ *
+ * `token` is present when the caller was signed in: the session is re-signed
+ * with the new account's key, because the old one is not loaded any more. Not
+ * adopting it means the very next request is rejected and the user is bounced
+ * to the login screen for changing an AWS setting.
+ */
+export interface AwsSwitchResult {
+  ok: boolean;
+  reachable: boolean;
+  secretsLoaded?: boolean;
+  token?: string;
+  error?: string;
+}
+
+/** Take the re-signed session, if the switch handed one back. */
+function adoptSession(result: AwsSwitchResult): AwsSwitchResult {
+  if (result?.token) setToken(result.token);
+  return result;
+}
+
+export async function useAwsProfile(profile: string): Promise<AwsSwitchResult> {
   const res = await fetch(`${BACKEND_URL}/auth/aws-use-profile`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ profile }),
   });
-  return res.json();
+  return adoptSession(await res.json());
 }
 
 export async function setAwsAccessKeys(keys: {
@@ -130,13 +152,13 @@ export async function setAwsAccessKeys(keys: {
   secretAccessKey: string;
   sessionToken?: string;
   region?: string;
-}): Promise<{ ok: boolean; reachable: boolean }> {
+}): Promise<AwsSwitchResult> {
   const res = await fetch(`${BACKEND_URL}/auth/aws-access-keys`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(keys),
   });
-  return res.json();
+  return adoptSession(await res.json());
 }
 
 export async function verifyStoredToken(token: string): Promise<{ valid: boolean; login?: string; avatarUrl?: string }> {

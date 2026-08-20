@@ -3,6 +3,28 @@ import { verifyToken, JwtPayload } from "../utils/jwt";
 import { getToken, removeToken } from "../utils/tokenStore";
 import { isStillOrgMember, forgetMembership } from "../services/orgMembership";
 import { getOrg } from "../github/client";
+import { hasGithubCredentials } from "./githubGate";
+
+/**
+ * Is there an organization to ask about at all?
+ *
+ * Every request re-asks GitHub whether the caller is still an org member, which
+ * is the right question in the account where GitHub lives. Switching to an
+ * account whose secret holds nothing GitHub-shaped leaves no organization
+ * configured, and asking anyway throws inside the check — which
+ * `isStillOrgMember` reads as "could not ask" and degrades to *not a member*
+ * once its cached yes ages out. The session then ended about an hour after the
+ * switch, which reads as a random logout rather than as a consequence of it.
+ *
+ * So the check is skipped exactly where it cannot be answered. Nothing is
+ * loosened by that: an account with no GitHub credentials has no GitHub half —
+ * githubGateMiddleware refuses every route that touches it — and what remains
+ * is the AWS tab, whose own permissions are read from GitHub with the caller's
+ * token a moment later.
+ */
+export function membershipCheckable(): boolean {
+  return hasGithubCredentials() && !!process.env.GITHUB_ORG;
+}
 
 declare global {
   namespace Express {
@@ -30,7 +52,8 @@ export async function authMiddleware(req: Request, res: Response, next: NextFunc
     // Membership was verified at login and then trusted for the life of the
     // token. Someone removed from the organization kept working until it
     // expired, which is not what anyone means by removing access.
-    if (!await isStillOrgMember(payload.githubId, payload.login, accessToken)) {
+    if (membershipCheckable()
+        && !await isStillOrgMember(payload.githubId, payload.login, accessToken)) {
       forgetMembership(payload.githubId);
       removeToken(payload.githubId);
       res.status(403).json({

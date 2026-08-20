@@ -238,18 +238,21 @@ export async function handler(): Promise<void> {
   try {
     // Checked before anything is fetched. A feature switched off must cost
     // nothing on the tick, not fetch the world and then decline to act on it.
+    //
+    // Only monitoring is checked here. Reminders being off stops the posting,
+    // not the walk — the branch below still stores the snapshot the tab opens
+    // on. Gating the fetch on reminders as well was the same line for a while,
+    // and it made the common configuration — monitoring on, reminders off —
+    // the one where nothing kept the stored list warm, so every first open of
+    // the day paid for a live walk.
     const prSettings = await getPrSettings();
-    if (!prSettings.monitoringEnabled || !prSettings.remindersEnabled) {
+    if (!prSettings.monitoringEnabled) {
       throw { __skip: true };
     }
 
     const { fetchOpenPrs } = await import("../services/prNudgeService");
     const graphql = (query: string, variables: Record<string, unknown>) =>
       (octokit as any).graphql(query, variables);
-
-    // Read once for the pass, not per pull request: the same set applies to
-    // every one of them.
-    const mutes = await getPrMutes();
 
     // Stored whatever happens next: the walk has already been paid for, and
     // the tab opening on it is what stops every launch waiting.
@@ -265,6 +268,11 @@ export async function handler(): Promise<void> {
       await storeSnapshot(await fetchOpenPrs(graphql, org));
       throw { __skip: true };
     }
+
+    // Read once for the pass, not per pull request: the same set applies to
+    // every one of them. Below the branch above, so the configuration that
+    // never reminds anybody does not read the mute list 288 times a day.
+    const mutes = await getPrMutes();
 
     const summary = await runNudgePass({
       mutes: { global: mutes.global, byRepo: mutes.byRepo },

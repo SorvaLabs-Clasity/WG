@@ -1,5 +1,7 @@
 import AuditStreamSetup from "../components/AuditStreamSetup";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchAuthStatus } from "../api/auth";
 import {
   categoryOf, countByCategory, inView, sourcesFor, CATEGORY_LABELS, VIEW_ORDER,
   type ActivityView,
@@ -262,11 +264,42 @@ export default function ActivityPage() {
   const undoResolutionMutation = useUndoResolution();
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<"all" | "app" | "github" | "audit">("all");
+  /**
+   * Which streams this AWS account can even have rows in.
+   *
+   * An account holding no GitHub credentials has no GitHub half: no webhooks
+   * arrive, no audit log is streamed, and the app's own GitHub-side settings
+   * cannot be reached. Offering those streams there is offering three empty
+   * lists, and defaulting to one of them opens the tab on nothing at all —
+   * which reads as "the activity feed is broken" rather than as "this account
+   * only does AWS".
+   */
+  const { data: authStatus } = useQuery({
+    queryKey: ["auth", "status"],
+    queryFn: fetchAuthStatus,
+    staleTime: 60_000,
+  });
+  const awsOnly = authStatus?.githubAccess?.allowed === false;
+  const views = useMemo(
+    () => (awsOnly ? VIEW_ORDER.filter(v => v === "all" || v === "aws") : VIEW_ORDER),
+    [awsOnly],
+  );
+
   // Defaults to the organization stream rather than to Everything. That is what
   // this app exists to record, and opening on a merged feed puts dashboard
   // housekeeping beside branch protection disappearing — which is the mixing
   // the streams were introduced to undo. Everything is one click away.
   const [category, setCategory] = useState<ActivityView>("github");
+
+  /**
+   * Follow the account, including when it changes underneath the open tab.
+   *
+   * Switching accounts from the navbar does not remount this page, so a stream
+   * that has just stopped existing would stay selected and show nothing.
+   */
+  useEffect(() => {
+    if (awsOnly && !views.includes(category)) setCategory("aws");
+  }, [awsOnly, views, category]);
   const [repoFilter, setRepoFilter] = useState("");
   const [targetFilter, setTargetFilter] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -622,7 +655,7 @@ export default function ActivityPage() {
               enough to raise a vertical scrollbar on a row of buttons. */}
 
           <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto overflow-y-hidden">
-            {VIEW_ORDER.map(c => {
+            {views.map(c => {
               const active = category === c;
               const n = categoryCounts[c];
               return (

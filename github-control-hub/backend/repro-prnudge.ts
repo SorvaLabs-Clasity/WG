@@ -953,6 +953,15 @@ function lastGoodIsForgotten(): void {
       /!prSettings\.remindersEnabled/.test(passBody),
       "the pass would post with reminders switched off");
 
+    // ...but stops the posting only. The walk below it stores the snapshot the
+    // tab opens on, so gating this guard on reminders as well left that branch
+    // unreachable — and unreachable is not something a source match notices:
+    // every check below still passed while the pass fetched nothing at all in
+    // the shipped configuration.
+    const earlyGuard = passBody.slice(passGate, passBody.indexOf("{", passGate));
+    check("  and the walk itself is gated on monitoring alone, not on reminders",
+      !/remindersEnabled/.test(earlyGuard), earlyGuard);
+
     // Turning the feature off must not read as a failure in the logs.
     check("  a switched-off feature is not logged as an error",
       /__skip/.test(handler), "an off switch would fill the log with failures");
@@ -1178,9 +1187,18 @@ function lastGoodIsForgotten(): void {
 
     check("the five-minute pass stores what it already walked",
       /storeSnapshot/.test(handler));
+    // Reachable, not merely present. The branch existed and read correctly for
+    // a while behind a guard above it that had already returned on the same
+    // condition, so the stored list was only ever written by somebody opening
+    // the tab.
+    const walkGuard = handler.slice(
+      handler.indexOf("!prSettings.monitoringEnabled"),
+      handler.indexOf("if (!prSettings.remindersEnabled)"));
     check("  and keeps doing so when reminders are off but monitoring is on",
       /if \(!prSettings\.remindersEnabled\)/.test(handler)
-        && /monitoring without reminders/i.test(handler));
+        && /monitoring without reminders/i.test(handler)
+        && !/remindersEnabled[\s\S]{0,40}throw \{ __skip: true \}/.test(walkGuard),
+      walkGuard.slice(0, 200));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

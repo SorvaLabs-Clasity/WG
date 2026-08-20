@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
+import AwsAccountSwitcher from "./AwsAccountSwitcher";
 import UserAvatar from "./UserAvatar";
 import { useTheme } from "../hooks/useTheme";
 import { revokeGithub } from "../api/auth";
@@ -63,6 +64,20 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   // one-tab bar at every launch and then filling it in.
   const githubBlocked = status?.githubAccess?.allowed === false;
   const items = githubBlocked ? ITEMS.filter(i => ALWAYS_AVAILABLE.has(i.path)) : ITEMS;
+
+  /**
+   * Leave a tab the account you just switched into cannot serve.
+   *
+   * Hiding it from the bar is not enough when you are standing on it: the page
+   * stays mounted, its queries 403, and it reads as the app breaking rather
+   * than as the account not having that half. Only ever moves you off a tab
+   * that has actually gone.
+   */
+  useEffect(() => {
+    if (!githubBlocked) return;
+    const stillOffered = ITEMS.some(i => ALWAYS_AVAILABLE.has(i.path) && i.match(pathname));
+    if (!stillOffered) navigate("/aws", { replace: true });
+  }, [githubBlocked, pathname, navigate]);
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -152,8 +167,11 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
                       <p className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">{login}</p>
                       <p className="text-[11px] text-slate-400 dark:text-white/40 mt-0.5">{COMPANY_NAME}</p>
                     </div>
+                    <AwsAccountSwitcher
+                      current={status?.aws?.profile}
+                      onSwitched={() => setAccountOpen(false)} />
                     <button role="menuitem" onClick={logout}
-                      className="w-full px-4 py-3 flex items-center gap-2.5 text-[13px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors text-left">
+                      className="w-full px-4 py-3 flex items-center gap-2.5 text-[13px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors text-left border-t border-slate-100 dark:border-white/[0.07]">
                       <i className="ph-bold ph-sign-out text-base"></i>
                       Sign out
                     </button>

@@ -23,10 +23,21 @@ export const GITHUB_ACCOUNT_ID = process.env.GITHUB_ACCOUNT_ID || "";
 /** Cached because it is a network call, and the answer cannot change mid-process. */
 let cachedAccount: string | null = null;
 
-/** Test seam, and a way to force a re-read after credentials change. */
-export function __resetGithubGateForTests(): void {
+/**
+ * Forget which account this is, so the next verdict reads it again.
+ *
+ * The comment above says the answer cannot change mid-process, and that was
+ * true while an account was something you chose at launch. Switching accounts
+ * from inside the app makes it false: without this, uat is judged on dev's
+ * account id and the GitHub tabs stay visible in an account that cannot serve
+ * them.
+ */
+export function resetGithubGate(): void {
   cachedAccount = null;
 }
+
+/** Test seam. The name is kept because the existing suites call it. */
+export const __resetGithubGateForTests = resetGithubGate;
 
 export interface GateVerdict {
   /** Whether the GitHub half of the app is available here. */
@@ -51,7 +62,7 @@ export interface GateVerdict {
  * credentials out of it, which is the same sentence twice. Nothing to switch
  * on, and nothing to forget to switch on.
  */
-function hasGithubCredentials(): boolean {
+export function hasGithubCredentials(): boolean {
   return !!process.env.GITHUB_CLIENT_ID
     && !!process.env.GITHUB_CLIENT_SECRET
     && !!process.env.GITHUB_APP_ID;

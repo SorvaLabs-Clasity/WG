@@ -10,6 +10,7 @@ Start here depending on what you need.
 
 | | |
 |---|---|
+| [How it works](HOW-IT-WORKS.md) | **Start here.** Every feature's mechanism — where its data lives, what writes it, how often, and how stale it can get |
 | [Architecture](architecture/) | The processes, and which one does what |
 | [Authentication](auth/) | The two keys: AWS and GitHub, and why both |
 | [Data](data/) | The DynamoDB tables and the graph model |

@@ -12,7 +12,7 @@ a queue.
 | Switch | Default | Off means |
 |---|---|---|
 | **Monitor pull requests** | On | Nothing is fetched, listed or posted, and the scheduled pass does no work on its behalf |
-| **Post reminders** | **Off** | The list works; nothing is posted |
+| **Post reminders** | **Off** | The list works — the scheduled pass still walks and stores it — and nothing is posted |
 
 Admin only, and both stop the work rather than hiding its result. The list route
 refuses before it queries GitHub, the scheduled pass checks before fetching, and
