@@ -31,6 +31,15 @@ function resolveTableNames(): void {
   }
 }
 
+/**
+ * Secrets for the account this process starts against.
+ *
+ * The early return is kept on purpose here: this runs once, before the window
+ * exists, and re-reading on every boot would be the same read. What it must not
+ * do is stand in for the reload that happens when somebody switches accounts —
+ * that lives in routes/auth.ts and is keyed on the account, because the value
+ * already in the environment says nothing about which account it came from.
+ */
 async function loadSecrets(): Promise<void> {
   if (process.env.GITHUB_CLIENT_ID) return;
   try {

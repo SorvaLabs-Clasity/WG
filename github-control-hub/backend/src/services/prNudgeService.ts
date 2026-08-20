@@ -410,10 +410,22 @@ let lastGoodSize = 0;
 /** Whether the stored size has been read yet in this process. */
 let loadedStored = false;
 
+/**
+ * The size we believe is written down, so a save happens exactly when it changes.
+ *
+ * Compared against this rather than against `lastGoodSize`, which the walk
+ * initialises itself from — on a fresh process the two were equal, so a first
+ * attempt that simply *worked* was never recorded. Only an organization that had
+ * to back off ever stored anything, and the ones that did not paid the discovery
+ * again on every launch for a value nobody had saved.
+ */
+let storedSize: number | null = null;
+
 /** Reset between tests, which need a predictable starting point. */
 export function __resetPageSizeForTests(): void {
   lastGoodSize = 0;
   sinceStepUp = 0;
+  storedSize = null;
   loadedStored = true;   // tests supply their own starting point
 }
 
@@ -442,6 +454,7 @@ async function loadStoredPageSize(): Promise<void> {
     const { getOrgConfig } = await import("./orgConfigService");
     const stored = (await getOrgConfig()).prPageSize;
     if (typeof stored !== "number") return;
+    storedSize = stored;
     const index = PAGE_SIZES.indexOf(stored);
     if (index >= 0) lastGoodSize = index;
   } catch (err) {
@@ -450,8 +463,30 @@ async function loadStoredPageSize(): Promise<void> {
   }
 }
 
+/**
+ * How long the walk took, and what it cost.
+ *
+ * Logged because the two reasons this is slow look identical from the outside.
+ * Discovery — backing off from a page GitHub will not compute — costs about
+ * eleven seconds a step and is paid once per organization now that the answer is
+ * stored. The walk itself costs a fixed overhead per request times the number of
+ * pages, and no amount of remembering makes that smaller. This line says which
+ * one you are looking at.
+ */
+function reportWalk(prs: number, requests: number, startedAt: number): void {
+  const ms = Date.now() - startedAt;
+  console.log(
+    `[pull requests] ${prs} open, ${requests} request(s), ${(ms / 1000).toFixed(1)}s` +
+    (ms > 10_000
+      ? ` — that is the walk itself, not discovery: ${requests} pages at this size.`
+      : ""),
+  );
+}
+
 /** Records a change, so the next process starts where this one ended up. */
 function rememberPageSize(index: number): void {
+  if (PAGE_SIZES[index] === storedSize) return;
+  storedSize = PAGE_SIZES[index];
   void (async () => {
     try {
       const { savePrPageSize } = await import("./orgConfigService");
@@ -543,6 +578,7 @@ export async function fetchOpenPrs(
   // Start where this organization ended up last time — in this process if it has
   // run before, otherwise from what the previous one stored.
   await loadStoredPageSize();
+  const startedAt = Date.now();
   let size = lastGoodSize;
   if (size > 0 && ++sinceStepUp >= STEP_UP_AFTER) {
     size--;
@@ -579,8 +615,10 @@ export async function fetchOpenPrs(
     }
 
     // This size answered, so it is where the next call should begin — and where
-    // the next launch should begin too.
-    if (size !== lastGoodSize) rememberPageSize(size);
+    // the next launch should begin too. Compared against what is stored, not
+    // against where this walk started: those are equal on a fresh process, so
+    // the working size was never written down.
+    rememberPageSize(size);
     lastGoodSize = size;
 
     const search = res?.search;
@@ -633,9 +671,9 @@ export async function fetchOpenPrs(
       });
     }
 
-    if (!search.pageInfo?.hasNextPage) return { prs, truncated };
+    if (!search.pageInfo?.hasNextPage) { reportWalk(prs.length, request + 1, startedAt); return { prs, truncated }; }
     cursor = search.pageInfo.endCursor ?? null;
-    if (!cursor) return { prs, truncated };
+    if (!cursor) { reportWalk(prs.length, request + 1, startedAt); return { prs, truncated }; }
   }
 
   // Every exit above is a complete walk. Falling out of the loop means the

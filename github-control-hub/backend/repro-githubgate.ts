@@ -195,6 +195,52 @@ function verdict(configured: string, actual: string | null) {
       /isAwsAdmin\(req\.user!\.login, req\.user!\.accessToken\)/.test(guardrails));
   }
 
+  // ── switching accounts must not carry credentials across ────────────
+  //
+  // The desktop reads its secrets from whichever AWS account the operator is
+  // signed into, and the loader began `if (process.env.GITHUB_CLIENT_ID) return`
+  // — so the first account to load kept the environment for the life of the
+  // process. Switching to another left the previous account's OAuth app, its
+  // organization and its App private key in place, which meant an account
+  // holding no GitHub credentials behaved exactly as though it held someone
+  // else's. That is the failure this whole split exists to prevent, arriving by
+  // the back door.
+  {
+    const src = fs.readFileSync(`${__dirname}/src/routes/auth.ts`, "utf8");
+
+    check("the reload is keyed on the account, not on what is already loaded",
+      /account === secretsLoadedFor/.test(src)
+        && !/async function reloadSecretsIfNeeded[\s\S]{0,200}if \(process\.env\.GITHUB_CLIENT_ID\) return false;/.test(src));
+
+    check("  a key the new account does not set is cleared, not left behind",
+      /else delete process\.env\[key\];/.test(src),
+      "a stale value is worse than a missing one — missing says so, stale points elsewhere");
+
+    check("  and the App token manager is dropped when the new account has no App",
+      /__resetTokenManagerForTests\(\)/.test(src)
+        && /token manager cleared/.test(src),
+      "a token minted from the previous account's key would attribute every call "
+        + "to an organization this account must not touch");
+
+    check("  and the gate re-reads the account after the switch",
+      /__resetGithubGateForTests\(\)/.test(src));
+  }
+
+  // ── sign-in fails loudly, not silently ──────────────────────────────
+  //
+  // The button is a plain link. An async route that throws never answers, so
+  // the browser sat on a request that would never complete — no error, no
+  // spinner, no navigation. Nothing at all is the hardest symptom to diagnose.
+  {
+    const src = fs.readFileSync(`${__dirname}/src/routes/auth.ts`, "utf8");
+    const route = src.slice(src.indexOf('router.get("/github"'));
+    const body = route.slice(0, route.indexOf("\n});"));
+    check("the sign-in route cannot throw without answering",
+      /try \{/.test(body) && /catch/.test(body));
+    check("  and says so when the account simply has no OAuth credentials",
+      /no GitHub OAuth credentials/.test(body));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

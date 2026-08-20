@@ -65,8 +65,12 @@ const CONFIGURED = { clientId: "Iv1.abc", activityTable: "github-control-hub-act
   {
     const src = require("fs").readFileSync(
       require("path").join(__dirname, "src/routes/auth.ts"), "utf8");
-    const body = src.slice(src.indexOf("const sameOriginOnly"),
-                           src.indexOf("/** After AWS credentials change"));
+    // Sliced to the end of the declaration, not to whatever happens to follow
+    // it. This used to end at a doc comment further down the file, so editing
+    // that unrelated comment dragged extra code into the guard being tested and
+    // failed here with a syntax error about a line nobody had touched.
+    const from = src.indexOf("const sameOriginOnly");
+    const body = src.slice(from, src.indexOf("\n};", from) + 3);
     const guard = new Function("process",
       `${body.replace(/: (Request|Response|NextFunction)/g, "")} return sameOriginOnly;`)(process);
 

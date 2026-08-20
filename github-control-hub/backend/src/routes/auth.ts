@@ -357,9 +357,50 @@ const setupOrAuthMiddleware = async (req: Request, res: Response, next: NextFunc
   authMiddleware(req, res, next);
 };
 
-/** After AWS credentials change, try to load GitHub OAuth secrets from Secrets Manager. */
+/**
+ * Which AWS account's secrets are currently in the environment.
+ *
+ * Empty until something loads them. Compared against the account in use, so a
+ * switch reloads rather than keeping what the last one had.
+ */
+let secretsLoadedFor = "";
+
+/** The GitHub keys this app reads out of Secrets Manager. */
+const SECRET_KEYS = [
+  "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET",
+  "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET",
+  "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID",
+] as const;
+
+/**
+ * Load GitHub secrets for the account now in use.
+ *
+ * This used to begin `if (process.env.GITHUB_CLIENT_ID) return`, which meant
+ * the first account to load its secrets kept them for the life of the process.
+ * Switching to another AWS account left the previous one's GitHub credentials
+ * in the environment — its OAuth app, its organization, and its App private
+ * key. An account holding no GitHub credentials at all therefore behaved as
+ * though it held the other account's, which is the exact opposite of what
+ * keeping them apart is for.
+ *
+ * Keyed on the account instead. Same account, nothing to do; different account,
+ * read again — and **clear** every key the new secret does not set, because a
+ * stale value is worse than a missing one: missing is visible and says so,
+ * stale silently belongs to somewhere else.
+ */
 async function reloadSecretsIfNeeded(): Promise<boolean> {
-  if (process.env.GITHUB_CLIENT_ID) return false;
+  let account = "";
+  try {
+    const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");
+    const sts = new STSClient({ region: awsRegion() });
+    account = (await sts.send(new GetCallerIdentityCommand({}))).Account ?? "";
+  } catch {
+    // No usable credentials: nothing to load from, and nothing to invalidate.
+    return false;
+  }
+
+  if (account && account === secretsLoadedFor) return false;
+
   try {
     const { SecretsManagerClient, GetSecretValueCommand } = await import("@aws-sdk/client-secrets-manager");
     const region = awsRegion();
@@ -368,13 +409,13 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
     const result = await client.send(new GetSecretValueCommand({ SecretId: secretName }));
     if (result.SecretString) {
       const secrets = JSON.parse(result.SecretString) as Record<string, string>;
-      for (const key of [
-        "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET",
-        "GITHUB_WEBHOOK_SECRET", "GITHUB_ORG", "JWT_SECRET",
-        "GITHUB_APP_ID", "GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_INSTALLATION_ID",
-      ]) {
+      for (const key of SECRET_KEYS) {
+        // Set or cleared, never left. An account with no GitHub App must not
+        // inherit the last account's.
         if (secrets[key]) process.env[key] = secrets[key];
+        else delete process.env[key];
       }
+      secretsLoadedFor = account;
       if (!process.env.JWT_SECRET) {
         const crypto = await import("crypto");
         process.env.JWT_SECRET = crypto.randomBytes(32).toString("hex");
@@ -382,7 +423,16 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
       // Initialize GitHub App token manager if credentials were loaded
       if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
         await initTokenManager(process.env.GITHUB_APP_ID, process.env.GITHUB_APP_PRIVATE_KEY, process.env.GITHUB_APP_INSTALLATION_ID);
-        console.log("[auth] GitHub App token manager initialized after secrets reload");
+        console.log(`[auth] GitHub App token manager initialized for account ${account}`);
+      } else {
+        // Dropped, not left running. It holds a token minted from the previous
+        // account's App key, and every call made with it would be attributed to
+        // an organization this account is not supposed to touch.
+        const { __resetTokenManagerForTests } = await import("../github/client");
+        __resetTokenManagerForTests();
+        const { __resetGithubGateForTests } = await import("../middleware/githubGate");
+        __resetGithubGateForTests();
+        console.log(`[auth] Account ${account} has no GitHub App — token manager cleared`);
       }
       return true;
     }
@@ -712,13 +762,37 @@ router.get("/debug", authMiddleware, (_req: Request, res: Response) => {
   });
 });
 
+/**
+ * Start of the OAuth flow.
+ *
+ * Wrapped, because this had no error handling and the sign-in button is a plain
+ * link. `buildAuthorizationUrl` throws when GITHUB_CLIENT_ID is unset, and an
+ * async route that throws in Express never answers — so the browser sat on a
+ * request that would never complete. On screen that is *nothing at all*: no
+ * error, no spinner, no navigation. The most common cause is the most invisible
+ * one, which is an account whose secret has no OAuth credentials in it.
+ */
 router.get("/github", async (req: Request, res: Response) => {
-  const state = crypto.randomBytes(16).toString("hex");
-  await storeOAuthState(state);
-  // The login page passes the account it offered to continue with, so GitHub
-  // signs in as that one rather than whichever session it happens to hold.
-  const login = typeof req.query.login === "string" ? req.query.login : undefined;
-  res.redirect(buildAuthorizationUrl(state, login));
+  try {
+    const state = crypto.randomBytes(16).toString("hex");
+    await storeOAuthState(state);
+    // The login page passes the account it offered to continue with, so GitHub
+    // signs in as that one rather than whichever session it happens to hold.
+    const login = typeof req.query.login === "string" ? req.query.login : undefined;
+    res.redirect(buildAuthorizationUrl(state, login));
+  } catch (err: any) {
+    const missingClientId = !process.env.GITHUB_CLIENT_ID;
+    console.error("[auth] Could not start GitHub sign-in:", err?.message ?? err);
+    res.status(500).type("html").send(`
+      <h2>Could not start GitHub sign-in</h2>
+      <p>${missingClientId
+        ? "This AWS account's secret has no GitHub OAuth credentials in it, so there is "
+          + "nothing to sign in with. If this account is meant to run the AWS guardrails "
+          + "only, that is expected — use the AWS tab."
+        : String(err?.message ?? err)}</p>
+      <p><a href="/login">Back</a></p>
+    `);
+  }
 });
 
 router.get("/token", async (req: Request, res: Response) => {

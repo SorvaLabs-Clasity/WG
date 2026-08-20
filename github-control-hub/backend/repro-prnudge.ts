@@ -451,6 +451,29 @@ function lastGoodIsForgotten(): void {
       sizes.length === 1 && sizes[0] === firstCall[firstCall.length - 1], { firstCall, sizes });
   }
 
+  // ── a size that worked first time is still written down ─────────────
+  //
+  // The save used to fire only when the size differed from where the walk
+  // started — and the walk starts *from* the last good size, so on a fresh
+  // process the two were equal and a first attempt that simply worked was
+  // never recorded. Only organizations that had to back off stored anything;
+  // everyone else rediscovered from scratch on every launch, for a value that
+  // was never saved because nothing went wrong.
+  {
+    const { getOrgConfig } = await import("./src/services/orgConfigService");
+    __resetPageSizeForTests();
+
+    // Succeeds immediately, at the largest size. Nothing to back off from.
+    await fetchOpenPrs(async () => (
+      { search: { pageInfo: { hasNextPage: false }, nodes: [] } }
+    ), "Acme-Org");
+    await new Promise(r => setTimeout(r, 20));
+
+    const stored = (await getOrgConfig()).prPageSize;
+    check("a size that worked on the first try is stored too",
+      stored === 30, stored);
+  }
+
   // ── and it survives a restart ───────────────────────────────────────
   //
   // The discovery costs about eleven seconds per step down, and holding the
