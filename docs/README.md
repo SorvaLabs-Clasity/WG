@@ -39,6 +39,13 @@ widgets and security alerts by email — and the
 [permissions](aws-guardrails/permissions.md) — the full inventory, written to be
 handed to whoever approves the deployment.
 
+## I want the guardrails without any of the GitHub half
+
+[The AWS-only setup](aws-only-setup.md) — exactly what lands in an account that
+runs the guardrails and holds nothing about your GitHub organization: one
+Lambda, two triggers, twelve tables of which six stay empty, and a secret with
+four keys in it.
+
 ---
 
 ## The one-paragraph version

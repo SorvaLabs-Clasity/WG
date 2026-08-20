@@ -44,13 +44,70 @@ async function docClient() {
   return cached;
 }
 
+/**
+ * The errors that mean "this client's credentials are no longer any good",
+ * rather than "DynamoDB said no".
+ *
+ * Matched by name where the SDK gives a useful one, and by message where it
+ * does not — the SSO and credential-chain failures are the ones that arrive as
+ * a generic Error with the reason only in the text.
+ */
+const STALE_CREDENTIALS = new Set([
+  "ExpiredToken", "ExpiredTokenException", "InvalidClientTokenId",
+  "UnrecognizedClientException", "CredentialsProviderError",
+  "TokenRefreshRequired", "SSOTokenProviderFailure", "InvalidIdentityTokenException",
+]);
+
+function credentialsWentStale(err: any): boolean {
+  if (STALE_CREDENTIALS.has(err?.name ?? "")) return true;
+  const message = String(err?.message ?? "").toLowerCase();
+  return message.includes("security token") && message.includes("expired")
+    || message.includes("token has expired")
+    || message.includes("could not load credentials");
+}
+
+/**
+ * One send, with a second attempt on fresh credentials.
+ *
+ * This module's client is built once and then held, which is ordinary — except
+ * that it is used only when somebody opens the AWS tab. The rest of the app's
+ * DynamoDB traffic keeps its own client warm every thirty seconds through the
+ * health check, so its credentials are refreshed continuously and never sit
+ * expired. This one can go an hour untouched, and a laptop that slept through
+ * that hour wakes with a client holding credentials that are long gone.
+ *
+ * The symptom was specific and misleading: every other tab worked, the AWS tab
+ * showed no rules — not an error, because a failed load and an account with no
+ * rules render the same — and switching tabs could not help, because every
+ * attempt asked the same client. Restarting the app fixed it, which is what
+ * building a new client does.
+ *
+ * Retrying is safe for every command here: a read repeated is a read, and the
+ * writes are `Put` and `Delete` by key, which land in the same place twice. The
+ * retry only happens when the first attempt never reached DynamoDB at all.
+ */
+async function send<T = any>(command: any): Promise<T> {
+  try {
+    return await send(command);
+  } catch (err: any) {
+    if (!credentialsWentStale(err)) throw err;
+    // Logged, because this is the evidence that the theory above is right. A
+    // silent recovery would leave the next person guessing at the same symptom.
+    console.warn(
+      `[guardrails] credentials had gone stale (${err?.name || "no name"}: ${err?.message}) — ` +
+      `rebuilding the client and trying once more`);
+    resetGuardrailStore();
+    const fresh = await docClient();
+    return await fresh.send(command);
+  }
+}
+
 async function scanAll<T>(table: string): Promise<T[]> {
   const { ScanCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
   const items: T[] = [];
   let key: any;
   do {
-    const page: any = await client.send(new ScanCommand({ TableName: table, ExclusiveStartKey: key }));
+    const page: any = await send<any>(new ScanCommand({ TableName: table, ExclusiveStartKey: key }));
     items.push(...((page.Items ?? []) as T[]));
     key = page.LastEvaluatedKey;
   } while (key);
@@ -78,12 +135,11 @@ const BATCH_RETRIES = 5;
 async function batchWriteAll(table: string, requests: any[]): Promise<void> {
   if (requests.length === 0) return;
   const { BatchWriteCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
 
   for (let i = 0; i < requests.length; i += BATCH_LIMIT) {
     let chunk = requests.slice(i, i + BATCH_LIMIT);
     for (let attempt = 0; ; attempt++) {
-      const result: any = await client.send(new BatchWriteCommand({
+      const result: any = await send<any>(new BatchWriteCommand({
         RequestItems: { [table]: chunk },
       }));
       const left = (result?.UnprocessedItems?.[table] ?? []) as any[];
@@ -109,21 +165,18 @@ export async function listGuardrails(): Promise<Guardrail[]> {
 
 export async function getGuardrail(id: string): Promise<Guardrail | undefined> {
   const { GetCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
-  const { Item } = await client.send(new GetCommand({ TableName: GUARDRAILS_TABLE, Key: { id } }));
+  const { Item } = await send(new GetCommand({ TableName: GUARDRAILS_TABLE, Key: { id } }));
   return Item as Guardrail | undefined;
 }
 
 export async function putGuardrail(rule: Guardrail): Promise<void> {
   const { PutCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
-  await client.send(new PutCommand({ TableName: GUARDRAILS_TABLE, Item: rule }));
+  await send(new PutCommand({ TableName: GUARDRAILS_TABLE, Item: rule }));
 }
 
 export async function deleteGuardrail(id: string): Promise<void> {
   const { DeleteCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
-  await client.send(new DeleteCommand({ TableName: GUARDRAILS_TABLE, Key: { id } }));
+  await send(new DeleteCommand({ TableName: GUARDRAILS_TABLE, Key: { id } }));
 }
 
 export async function listAwsExclusions(): Promise<AwsExclusionList[]> {
@@ -133,14 +186,12 @@ export async function listAwsExclusions(): Promise<AwsExclusionList[]> {
 
 export async function putAwsExclusion(list: AwsExclusionList): Promise<void> {
   const { PutCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
-  await client.send(new PutCommand({ TableName: AWS_EXCLUSIONS_TABLE, Item: list }));
+  await send(new PutCommand({ TableName: AWS_EXCLUSIONS_TABLE, Item: list }));
 }
 
 export async function deleteAwsExclusion(id: string): Promise<void> {
   const { DeleteCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
-  await client.send(new DeleteCommand({ TableName: AWS_EXCLUSIONS_TABLE, Key: { id } }));
+  await send(new DeleteCommand({ TableName: AWS_EXCLUSIONS_TABLE, Key: { id } }));
 }
 
 /**
@@ -208,11 +259,10 @@ export async function dropLegacyFindings(): Promise<number> {
 
 export async function listFindings(): Promise<Finding[]> {
   const { QueryCommand } = await import("@aws-sdk/lib-dynamodb");
-  const client = await docClient();
   const items: Finding[] = [];
   let key: any;
   do {
-    const page: any = await client.send(new QueryCommand({
+    const page: any = await send<any>(new QueryCommand({
       TableName: FINDINGS_TABLE,
       KeyConditionExpression: "pk = :p",
       ExpressionAttributeValues: { ":p": "FINDING" },

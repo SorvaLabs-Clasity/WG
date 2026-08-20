@@ -28,10 +28,16 @@ has its own script:
 ./scripts/setup-aws-only.sh
 ```
 
-It creates six tables, a secret holding only what sign-in needs, and one Lambda
-on a schedule. It deploys with `-c awsOnly=true`, so the webhook endpoint, the
-alarm evaluator, the access graph and the audit-log pipeline are never created —
-seven Lambda functions become one.
+It creates the DynamoDB tables, a secret holding only what sign-in needs, and
+one Lambda on a schedule. It deploys with `-c awsOnly=true`, so the webhook
+endpoint, the alarm evaluator, the access graph and the audit-log pipeline are
+never created — six Lambda functions become one.
+
+Twelve tables are created, not six: the same script the full install uses makes
+them, so their schemas cannot drift from the ones the app reads. The six that
+only the GitHub half writes to stay empty here, and an idle on-demand table
+costs nothing. [The AWS-only setup](../aws-only-setup.md) has the full
+inventory of what lands in such an account.
 
 **It never asks for the GitHub App private key.** That key reads your entire
 organization, and keeping it out of the account is the whole exercise. Without

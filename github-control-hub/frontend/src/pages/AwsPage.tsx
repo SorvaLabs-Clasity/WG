@@ -30,7 +30,8 @@ export default function AwsPage() {
   const isAdmin = permissions?.isAwsAdmin ?? false;
 
   const { data: catalog } = useCatalog();
-  const { data: rules, isLoading, isFetching: rulesFetching, refetch: refetchRules } = useGuardrails();
+  const { data: rules, isLoading, isError: rulesFailed, error: rulesError,
+          isFetching: rulesFetching, refetch: refetchRules } = useGuardrails();
   const { data: findings, isFetching: findingsFetching, refetch: refetchFindings } = useFindings();
   const { data: exclusions, refetch: refetchExclusions } = useAwsExclusions();
   const { data: accounts, refetch: refetchAccounts } = useAwsAccounts();
@@ -160,7 +161,9 @@ export default function AwsPage() {
           />
         ) : (
           <RulesTab
-            rules={rules} catalog={catalog} findings={findings} isLoading={isLoading} isAdmin={isAdmin}
+            rules={rules} catalog={catalog} findings={findings} isLoading={isLoading}
+            failed={rulesFailed} failure={(rulesError as Error | null)?.message}
+            onRetry={() => { void refetchRules(); void refetchFindings(); }} isAdmin={isAdmin}
             adminTeam={permissions?.awsAdminTeam ?? "aws-guardrail-admins"}
             onOpen={(id) => setView({ k: "rule", id })}
             onNew={() => setEditing("new")}
@@ -183,8 +186,13 @@ export default function AwsPage() {
 
 // ── Rules ─────────────────────────────────────────────────────────────
 
-function RulesTab({ rules, catalog, findings, isLoading, isAdmin, adminTeam, onOpen, onNew }: {
+function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetry,
+                   isAdmin, adminTeam, onOpen, onNew }: {
   rules?: Guardrail[]; catalog?: CatalogEntry[]; findings?: Finding[]; isLoading: boolean;
+  /** The rules could not be read. Distinct from there being none. */
+  failed?: boolean;
+  failure?: string;
+  onRetry?: () => void;
   isAdmin: boolean; adminTeam: string;
   onOpen: (id: string) => void; onNew: () => void;
 }) {
@@ -193,6 +201,27 @@ function RulesTab({ rules, catalog, findings, isLoading, isAdmin, adminTeam, onO
   (findings ?? []).forEach(f => byRule.set(f.ruleId, [...(byRule.get(f.ruleId) ?? []), f]));
 
   if (isLoading) return <Spinner />;
+
+  /**
+   * A failed read is not an empty account.
+   *
+   * These rendered the same, and the empty one is reassuring — "No guardrails
+   * yet", with a button to add the first. Somebody whose laptop had slept long
+   * enough for the credentials behind this tab to go stale was told, in a calm
+   * voice, that they had no rules. That is the worst available answer for a
+   * compliance screen: it under-reports, and it looks deliberate.
+   */
+  if (failed) {
+    return (
+      <Empty
+        title="Could not read your guardrails"
+        body={failure
+          ? `${failure} Your rules are unaffected — this is a failure to read them, not a change to them.`
+          : "Your rules are unaffected — this is a failure to read them, not a change to them."}
+        action={onRetry ? <Button variant="primary" onClick={onRetry}>Try again</Button> : undefined}
+      />
+    );
+  }
 
   if (!rules?.length) {
     return (
