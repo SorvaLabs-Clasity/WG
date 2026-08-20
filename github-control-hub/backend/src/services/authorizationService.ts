@@ -46,26 +46,26 @@ export function invalidateAdminCache(login?: string): void {
  * cannot necessarily see a team they do not belong to, and "cannot see it"
  * would otherwise be indistinguishable from "is not in it".
  */
-export async function isControlHubAdmin(login: string): Promise<boolean> {
-  return isTeamMember(login, CONTROL_HUB_ADMIN_TEAM);
+export async function isControlHubAdmin(login: string, userToken?: string): Promise<boolean> {
+  return isTeamMember(login, CONTROL_HUB_ADMIN_TEAM, userToken);
 }
 
 /** Who may create, edit, run or delete AWS guardrails. */
-export async function isAwsAdmin(login: string): Promise<boolean> {
-  return isTeamMember(login, AWS_ADMIN_TEAM);
+export async function isAwsAdmin(login: string, userToken?: string): Promise<boolean> {
+  return isTeamMember(login, AWS_ADMIN_TEAM, userToken);
 }
 
 /** Thrown when the answer is unknown, as opposed to "no". */
 class Unanswerable extends Error {}
 
-async function isTeamMember(login: string, team: string): Promise<boolean> {
+async function isTeamMember(login: string, team: string, userToken?: string): Promise<boolean> {
   const key = `${team}:${login.toLowerCase()}`;
   const hit = cache.get(key);
   if (hit && Date.now() < hit.expires) return hit.value;
 
   let value: boolean;
   try {
-    value = await resolve(login, team);
+    value = await resolve(login, team, userToken);
   } catch (err) {
     // Not cached, and not an answer about this person.
     //
@@ -81,16 +81,32 @@ async function isTeamMember(login: string, team: string): Promise<boolean> {
   return value;
 }
 
-async function resolve(login: string, team: string): Promise<boolean> {
+async function resolve(login: string, team: string, userToken?: string): Promise<boolean> {
   const org = getOrg();
-  const token = getSystemToken();
+
+  /**
+   * The App's token if there is one, otherwise the caller's own.
+   *
+   * The App's is preferred because it can see a team the caller is not in, and
+   * "cannot see it" would otherwise be indistinguishable from "is not in it".
+   *
+   * But an account can legitimately have no App at all: an installation that
+   * runs the AWS guardrails and deliberately holds no GitHub App key, so that
+   * nothing about the GitHub organization lives there. Sign-in still happens
+   * through the OAuth App, and its token carries `read:org` — enough to answer
+   * this one question, because every caller here is asking about *themselves*.
+   *
+   * That narrowing is what makes the fallback safe: with the caller's token the
+   * only membership readable is the caller's own, which is the only one being
+   * asked about.
+   */
+  const token = getSystemToken() || userToken;
   if (!token) {
     console.warn(
-      "[authorization] No GitHub App token, so team membership cannot be read — " +
-      "denying this check without caching it. Everyone will look like a non-admin " +
-      "until the App credentials work.",
+      "[authorization] Neither a GitHub App token nor a caller token, so team " +
+      "membership cannot be read — denying this check without caching it.",
     );
-    throw new Unanswerable("no system token");
+    throw new Unanswerable("no token of any kind");
   }
   const octokit: Octokit = createOctokit(token);
 

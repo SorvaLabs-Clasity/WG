@@ -5,6 +5,8 @@ import { useTheme } from "../hooks/useTheme";
 import { revokeGithub } from "../api/auth";
 import { clearToken, getToken } from "../api/client";
 import { COMPANY_NAME } from "../design";
+import { useQuery } from "@tanstack/react-query";
+import { fetchAuthStatus } from "../api/auth";
 
 interface NavbarProps {
   login?: string;
@@ -21,6 +23,20 @@ interface NavbarProps {
  * The active item is a solid pill rather than an underline, so the current
  * location is obvious at a glance instead of needing to be hunted for.
  */
+/**
+ * Which tabs survive when GitHub is confined to another AWS account.
+ *
+ * The backend refuses every GitHub route in that case, so a tab left in the bar
+ * is a button that leads to a 403 — and the 403 explains itself, but only after
+ * a page has half-loaded. Hiding them is presentation; the refusal is the
+ * restriction, and it holds whether or not this list is right.
+ *
+ * Activity stays, and shows only the AWS rows. It is the one feed carrying both
+ * halves, and an account running guardrails needs the record of what they did —
+ * which is most of the reason to run them. The server does that filtering.
+ */
+const ALWAYS_AVAILABLE = new Set(["/aws", "/activity"]);
+
 const ITEMS = [
   { label: "Overview", short: "Overview", icon: "ph-chart-line-up", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics") },
   { label: "AWS", short: "AWS", icon: "ph-cloud", path: "/aws", match: (p: string) => p.startsWith("/aws") },
@@ -37,6 +53,16 @@ const ITEMS = [
 export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
+  const { data: status } = useQuery({
+    queryKey: ["auth", "status"],
+    queryFn: fetchAuthStatus,
+    staleTime: 60_000,
+  });
+
+  // Undefined while the status loads: show everything rather than flashing a
+  // one-tab bar at every launch and then filling it in.
+  const githubBlocked = status?.githubAccess?.allowed === false;
+  const items = githubBlocked ? ITEMS.filter(i => ALWAYS_AVAILABLE.has(i.path)) : ITEMS;
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -84,7 +110,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
           </button>
 
           <div className="hidden xl:flex items-center gap-0.5">
-            {ITEMS.map(item => {
+            {items.map(item => {
               const on = item.match(pathname);
               return (
                 <button key={item.path} onClick={() => navigate(item.path)}
@@ -142,7 +168,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
       {menuOpen && (
         <div className="fixed inset-0 top-16 z-30 bg-white dark:bg-[#11141c] xl:hidden overflow-y-auto animate-fade-in">
           <div className="p-4 grid gap-1">
-            {ITEMS.map(item => {
+            {items.map(item => {
               const on = item.match(pathname);
               return (
                 <button key={item.path}

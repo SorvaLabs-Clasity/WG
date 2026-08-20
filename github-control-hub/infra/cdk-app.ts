@@ -40,4 +40,12 @@ new GitHubControlHubStack(app, "GitHubControlHub", {
     account: getAccount(),
     region: getRegion(),
   },
+  // `-c awsOnly=true` deploys the guardrail half alone: no webhook, no alarm
+  // evaluator, no access graph, no audit-log pipeline. For an account that runs
+  // the guardrails and holds nothing about the GitHub organization.
+  //
+  // Compared against the string, because context arrives as one — `-c
+  // awsOnly=false` is a non-empty string and would otherwise read as true,
+  // which is the reverse of what anyone typing it means.
+  awsOnly: String(app.node.tryGetContext("awsOnly") ?? "") === "true",
 });

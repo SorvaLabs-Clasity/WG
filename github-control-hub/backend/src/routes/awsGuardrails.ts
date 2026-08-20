@@ -29,7 +29,7 @@ const FUNCTION_NAME = process.env.GUARDRAIL_FUNCTION_NAME
  * Reading is deliberately open: anyone signed in can see rules and findings.
  */
 const requireAdmin: RequestHandler = (req, res, next) => {
-  isAwsAdmin(req.user!.login)
+  isAwsAdmin(req.user!.login, req.user!.accessToken)
     .then(allowed => {
       if (allowed) return next();
       res.status(403).json({

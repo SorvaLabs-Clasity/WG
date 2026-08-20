@@ -106,7 +106,7 @@ router.get("/", async (req: Request, res: Response) => {
  */
 router.put("/pause", async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can pause `
@@ -159,7 +159,7 @@ router.put("/pause", async (req: Request, res: Response) => {
  */
 router.post("/run", async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can send `
@@ -238,7 +238,7 @@ router.post("/run", async (req: Request, res: Response) => {
  */
 router.put("/mute", async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can mute `
@@ -313,7 +313,7 @@ router.get("/settings", async (_req: Request, res: Response) => {
 
 router.put("/settings", async (req: Request, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can switch `

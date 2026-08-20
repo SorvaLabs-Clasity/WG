@@ -301,7 +301,7 @@ router.get("/renovate", async (req: Request, res: Response) => {
 /** Naming the bot account is org-wide configuration, so it is admin-gated. */
 router.put("/renovate/bot", async (req: Request, res: Response) => {
   try {
-    if (!(await isControlHubAdmin(req.user!.login))) {
+    if (!(await isControlHubAdmin(req.user!.login, req.user!.accessToken))) {
       return res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ` +

@@ -47,8 +47,8 @@ export interface ConfigBundle {
   awsExclusions: any[];
 }
 
-async function refuseUnlessAdmin(res: Response, login: string, verb: string): Promise<boolean> {
-  if (await isControlHubAdmin(login)) return false;
+async function refuseUnlessAdmin(res: Response, login: string, verb: string, userToken?: string): Promise<boolean> {
+  if (await isControlHubAdmin(login, userToken)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
       `configuration — it is every scanner, widget and guardrail the organization runs on.`,
@@ -81,7 +81,7 @@ const AWS_SECTIONS = ["awsGuardrails", "awsExclusions"] as const;
  * unaffected, which is the ordinary case.
  */
 async function refuseAwsSections(
-  res: Response, login: string, bundle: Partial<ConfigBundle>,
+  res: Response, login: string, bundle: Partial<ConfigBundle>, userToken?: string,
 ): Promise<boolean> {
   const present = AWS_SECTIONS.filter(name => {
     const items = (bundle as any)[name];
@@ -89,7 +89,7 @@ async function refuseAwsSections(
   });
   if (present.length === 0) return false;
 
-  if (!(await isAwsAdmin(login))) {
+  if (!(await isAwsAdmin(login, userToken))) {
     res.status(403).json({
       error: `This export contains AWS guardrail configuration (${present.join(", ")}), and only ` +
         `members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can change that. ` +
@@ -124,7 +124,7 @@ async function refuseAwsSections(
 }
 
 router.get("/export", async (req: Request, res: Response) => {
-  if (await refuseUnlessAdmin(res, req.user!.login, "export")) return;
+  if (await refuseUnlessAdmin(res, req.user!.login, "export", req.user!.accessToken)) return;
   try {
     const [scanners, widgets, awsGuardrails, awsExclusions] =
       await Promise.all([
@@ -208,7 +208,7 @@ export async function applyBundle(
  * to "what will this do to my production account" is a list, not a promise.
  */
 router.post("/import", async (req: Request, res: Response) => {
-  if (await refuseUnlessAdmin(res, req.user!.login, "import")) return;
+  if (await refuseUnlessAdmin(res, req.user!.login, "import", req.user!.accessToken)) return;
   try {
     const bundle = req.body as Partial<ConfigBundle>;
     const dryRun = req.query.dryRun === "true" || req.body?.dryRun === true;
@@ -226,7 +226,7 @@ router.post("/import", async (req: Request, res: Response) => {
 
     // Checked before the dry run too. A preview that lists AWS guardrails the
     // caller may not write would be telling them the import will work.
-    if (await refuseAwsSections(res, req.user!.login, bundle)) return;
+    if (await refuseAwsSections(res, req.user!.login, bundle, req.user!.accessToken)) return;
 
     const { applied, errors } = await applyBundle(bundle, dryRun, DEFAULT_WRITERS);
 

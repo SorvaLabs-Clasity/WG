@@ -16,8 +16,8 @@ const router = Router();
  *
  * /simulate creates alerts outright, so it is gated for the same reason.
  */
-async function refusedAlertChange(res: Response, login: string, verb: string): Promise<boolean> {
-  if (await isControlHubAdmin(login)) return false;
+async function refusedAlertChange(res: Response, login: string, verb: string, userToken?: string): Promise<boolean> {
+  if (await isControlHubAdmin(login, userToken)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
       `security alerts — the record of what was dealt with is the point of them.`,
@@ -39,7 +39,7 @@ router.get("/", async (req: Request, res: Response) => {
 
 router.post("/:id/resolve", async (req: Request, res: Response) => {
   try {
-    if (await refusedAlertChange(res, req.user!.login, "resolve")) return;
+    if (await refusedAlertChange(res, req.user!.login, "resolve", req.user!.accessToken)) return;
     const user = req.user?.login || "system";
     const alertId = req.params.id as string;
     const alert = await resolveAlert(alertId, user);
@@ -56,7 +56,7 @@ router.post("/:id/resolve", async (req: Request, res: Response) => {
 
 router.post("/:id/unresolve", async (req: Request, res: Response) => {
   try {
-    if (await refusedAlertChange(res, req.user!.login, "reopen")) return;
+    if (await refusedAlertChange(res, req.user!.login, "reopen", req.user!.accessToken)) return;
     const alertId = req.params.id as string;
     const alert = await unresolveAlert(alertId);
     if (!alert) {
@@ -72,7 +72,7 @@ router.post("/:id/unresolve", async (req: Request, res: Response) => {
 
 router.post("/simulate", async (req: Request, res: Response) => {
   try {
-    if (await refusedAlertChange(res, req.user!.login, "create")) return;
+    if (await refusedAlertChange(res, req.user!.login, "create", req.user!.accessToken)) return;
     const { scenario } = req.body;
     
     switch (scenario) {

@@ -7,6 +7,7 @@ import { storeToken, getToken, removeToken } from "../utils/tokenStore";
 import { docClient, tableName, usesDynamo, PutCommand, DeleteCommand } from "../utils/dynamo";
 import { authMiddleware } from "../middleware/authMiddleware";
 import { awsRegion } from "../utils/region";
+import { githubGate } from "../middleware/githubGate";
 
 const router = Router();
 
@@ -171,8 +172,8 @@ router.get("/permissions", authMiddleware, async (req: Request, res: Response) =
     await import("../services/authorizationService");
   try {
     const [github, aws] = await Promise.all([
-      isControlHubAdmin(req.user!.login),
-      isAwsAdmin(req.user!.login),
+      isControlHubAdmin(req.user!.login, req.user!.accessToken),
+      isAwsAdmin(req.user!.login, req.user!.accessToken),
     ]);
     res.json({
       login: req.user!.login,
@@ -243,8 +244,16 @@ router.get("/status", async (_req: Request, res: Response) => {
       connected: awsConnected,
       dynamoReachable,
       region: awsRegion(),
+
       profile: process.env.AWS_PROFILE || "default",
     },
+    // Whether the GitHub half of the app may be used against the account this
+
+    // app is signed into. Distinct from `github.configured`, which is about
+
+    // whether credentials exist at all.
+
+    githubAccess: await githubGate(),
     github: { configured: githubConfigured, org, reason: githubReason },
   });
 });

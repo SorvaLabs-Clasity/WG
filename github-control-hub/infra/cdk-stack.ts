@@ -59,6 +59,14 @@ interface GitHubControlHubProps extends cdk.StackProps {
   webhookSecretName?: string;
   /** DynamoDB table prefix. Defaults to "github-control-hub" */
   stackPrefix?: string;
+  /**
+   * Deploy only the AWS guardrail half: no webhook, no alarm evaluator, no
+   * access graph, no audit-log pipeline.
+   *
+   * For an account that should run the guardrails and hold nothing about the
+   * GitHub organization. Set through `-c awsOnly=true`.
+   */
+  awsOnly?: boolean;
 }
 
 export class GitHubControlHubStack extends cdk.Stack {
@@ -68,6 +76,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     const secretName = props.secretName ?? "github-control-hub/secrets";
     const webhookSecretName = props.webhookSecretName ?? "github-control-hub/webhook-secret";
     const stackPrefix = props.stackPrefix ?? "github-control-hub";
+    const awsOnly = props.awsOnly ?? false;
 
     // ── AWS guardrails ──
     // Enforcement runs here, in Lambda, rather than on a server: it needs no
@@ -253,640 +262,674 @@ export class GitHubControlHubStack extends cdk.Stack {
       targets: [new targets.LambdaFunction(guardrailFn, { deadLetterQueue: guardrailDlq })],
     });
 
-    // ── Webhooks ──
+    // ── The GitHub half ─────────────────────────────────────────────────
     //
-    // The instance this replaces cannot be reached in a VPC with no internet
-    // gateway: inbound from the internet is impossible however the security
-    // group is written. API Gateway needs no VPC ingress.
-
-    // The only table CDK owns. The other eleven are created by
-    // scripts/setup-aws-account.sh and deliberately stay outside
-    // CloudFormation, so `cdk destroy` cannot take the activity log with it.
-    // This one holds five-minute deduplication state and nothing else.
-    const deliveriesTable = new dynamodb.Table(this, "WebhookDeliveries", {
-      tableName: `${stackPrefix}-webhook-deliveries`,
-      partitionKey: { name: "deliveryId", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      timeToLiveAttribute: "ttl",
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    const webhookDlq = new sqs.Queue(this, "WebhookDlq", {
-      retentionPeriod: cdk.Duration.days(14),
-      encryption: sqs.QueueEncryption.SQS_MANAGED,
-      enforceSSL: true,
-    });
-
-    const webhookQueue = new sqs.Queue(this, "WebhookQueue", {
-      // Must exceed the worker's own timeout.
-      visibilityTimeout: cdk.Duration.minutes(11),
-      encryption: sqs.QueueEncryption.SQS_MANAGED,
-      enforceSSL: true,
-      deadLetterQueue: {
-        queue: webhookDlq,
-        // Sized for throttling, not for processing failures: a throttled
-        // invocation still increments a message's receive count, so a burst
-        // could otherwise send messages to the DLQ that no worker ever saw.
-        // AWS's own guidance is a minimum of five. Do not tidy this down.
-        maxReceiveCount: 5,
-      },
-    });
-
-    const webhookBundling = {
-      externalModules: [],
-      minify: false,
-      sourceMap: true,
-      // @octokit/auth-app is installed into the asset rather than bundled.
+    // Everything from here to the outputs exists to serve GitHub: the webhook
+    // endpoint and its queue, the alarm evaluator, the access graph rebuild, and
+    // the enterprise audit-log pipeline.
+    //
+    // An organization can reasonably want the guardrails watching a production
+    // account while nothing about its GitHub organization lives there — no App
+    // key, no access graph, no webhook. Deploy with `-c awsOnly=true` and none of
+    // this is created, leaving the guardrail function, its schedule and its
+    // tables. See scripts/setup-aws-only.sh.
+    if (!awsOnly) {
+      // ── Webhooks ──
       //
-      // github/client.ts loads it through require.resolve() plus a dynamic
-      // import built with `new Function`, which is how it dodges tsc rewriting
-      // the import into a require for an ESM-only package. esbuild cannot see
-      // through that either, so it bundles nothing — and require.resolve then
-      // fails at runtime with "Cannot find module '@octokit/auth-app'". The
-      // symptom is quiet: the App token manager fails to initialise, every
-      // invocation degrades to SYSTEM_GITHUB_TOKEN, and the app runs on a PAT's
-      // 5,000 requests an hour instead of the App's 12,500.
+      // The instance this replaces cannot be reached in a VPC with no internet
+      // gateway: inbound from the internet is impossible however the security
+      // group is written. API Gateway needs no VPC ingress.
+
+      // The only table CDK owns. The other eleven are created by
+      // scripts/setup-aws-account.sh and deliberately stay outside
+      // CloudFormation, so `cdk destroy` cannot take the activity log with it.
+      // This one holds five-minute deduplication state and nothing else.
+      const deliveriesTable = new dynamodb.Table(this, "WebhookDeliveries", {
+        tableName: `${stackPrefix}-webhook-deliveries`,
+        partitionKey: { name: "deliveryId", type: dynamodb.AttributeType.STRING },
+        billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+        timeToLiveAttribute: "ttl",
+        encryption: dynamodb.TableEncryption.AWS_MANAGED,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+
+      const webhookDlq = new sqs.Queue(this, "WebhookDlq", {
+        retentionPeriod: cdk.Duration.days(14),
+        encryption: sqs.QueueEncryption.SQS_MANAGED,
+        enforceSSL: true,
+      });
+
+      const webhookQueue = new sqs.Queue(this, "WebhookQueue", {
+        // Must exceed the worker's own timeout.
+        visibilityTimeout: cdk.Duration.minutes(11),
+        encryption: sqs.QueueEncryption.SQS_MANAGED,
+        enforceSSL: true,
+        deadLetterQueue: {
+          queue: webhookDlq,
+          // Sized for throttling, not for processing failures: a throttled
+          // invocation still increments a message's receive count, so a burst
+          // could otherwise send messages to the DLQ that no worker ever saw.
+          // AWS's own guidance is a minimum of five. Do not tidy this down.
+          maxReceiveCount: 5,
+        },
+      });
+
+      const webhookBundling = {
+        externalModules: [],
+        minify: false,
+        sourceMap: true,
+        // @octokit/auth-app is installed into the asset rather than bundled.
+        //
+        // github/client.ts loads it through require.resolve() plus a dynamic
+        // import built with `new Function`, which is how it dodges tsc rewriting
+        // the import into a require for an ESM-only package. esbuild cannot see
+        // through that either, so it bundles nothing — and require.resolve then
+        // fails at runtime with "Cannot find module '@octokit/auth-app'". The
+        // symptom is quiet: the App token manager fails to initialise, every
+        // invocation degrades to SYSTEM_GITHUB_TOKEN, and the app runs on a PAT's
+        // 5,000 requests an hour instead of the App's 12,500.
+        //
+        // esbuild warns about exactly this ("should be marked as external for use
+        // with require.resolve") during synth.
+        //
+        // Marking it external is NOT the fix, and was tried: `octokit` itself
+        // requires @octokit/auth-app internally, so leaving it external puts a
+        // bare require() of an ESM-only package in the bundle and the whole
+        // function dies at init with ERR_REQUIRE_ESM. Bundling it — the setting
+        // below — at least keeps octokit working; only client.ts's
+        // require.resolve path fails, and getSystemTokenAsync degrades to
+        // SYSTEM_GITHUB_TOKEN. The real fix belongs in client.ts, not here.
+      };
+
+      const receiverFn = new NodejsFunction(this, "WebhookReceiver", {
+        functionName: `${stackPrefix}-webhook-receiver`,
+        logGroup: logGroupFor("WebhookReceiver", `${stackPrefix}-webhook-receiver`),
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: path.join(__dirname, "..", "backend", "src", "webhooks", "receiver.ts"),
+        handler: "handler",
+        projectRoot: path.join(__dirname, ".."),
+        depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+        // Below GitHub's ten-second timeout on purpose: past that nobody is
+        // listening for the response, so there is no value in still working.
+        timeout: cdk.Duration.seconds(8),
+        memorySize: 256,
+        environment: {
+          STACK_NAME: stackPrefix,
+          // Not SECRET_NAME. This function has no business knowing where the
+          // application bundle lives, and cannot read it if it did.
+          WEBHOOK_SECRET_NAME: webhookSecretName,
+          WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
+        },
+        bundling: webhookBundling,
+      });
+
+      // Two grants, and that is the whole of it. This function is the only thing
+      // here reachable from the internet.
       //
-      // esbuild warns about exactly this ("should be marked as external for use
-      // with require.resolve") during synth.
+      // The grant is the webhook secret alone, not the application bundle. The
+      // receiver must touch unverified bytes to verify them — it base64-decodes
+      // and HMACs a body no one has authenticated yet — and no review proves
+      // that path free of bugs forever. So the question that matters is not
+      // whether it can be broken but what breaking it yields. Against the
+      // bundle it yielded GITHUB_APP_PRIVATE_KEY and the whole organization
+      // with it; against this secret it yields the ability to check signatures.
       //
-      // Marking it external is NOT the fix, and was tried: `octokit` itself
-      // requires @octokit/auth-app internally, so leaving it external puts a
-      // bare require() of an ESM-only package in the bundle and the whole
-      // function dies at init with ERR_REQUIRE_ESM. Bundling it — the setting
-      // below — at least keeps octokit working; only client.ts's
-      // require.resolve path fails, and getSystemTokenAsync degrades to
-      // SYSTEM_GITHUB_TOKEN. The real fix belongs in client.ts, not here.
-    };
+      // The two wildcards must stay disjoint: "…/secrets*" cannot match
+      // "…/webhook-secret*" and vice versa, which is why the latter is not
+      // named something like "secrets-webhook".
+      receiverFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "ReadWebhookSecret",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${webhookSecretName}*`],
+      }));
+      webhookQueue.grantSendMessages(receiverFn);
 
-    const receiverFn = new NodejsFunction(this, "WebhookReceiver", {
-      functionName: `${stackPrefix}-webhook-receiver`,
-      logGroup: logGroupFor("WebhookReceiver", `${stackPrefix}-webhook-receiver`),
-      runtime: lambda.Runtime.NODEJS_24_X,
-      entry: path.join(__dirname, "..", "backend", "src", "webhooks", "receiver.ts"),
-      handler: "handler",
-      projectRoot: path.join(__dirname, ".."),
-      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-      // Below GitHub's ten-second timeout on purpose: past that nobody is
-      // listening for the response, so there is no value in still working.
-      timeout: cdk.Duration.seconds(8),
-      memorySize: 256,
-      environment: {
-        STACK_NAME: stackPrefix,
-        // Not SECRET_NAME. This function has no business knowing where the
-        // application bundle lives, and cannot read it if it did.
-        WEBHOOK_SECRET_NAME: webhookSecretName,
-        WEBHOOK_QUEUE_URL: webhookQueue.queueUrl,
-      },
-      bundling: webhookBundling,
-    });
+      const workerFn = new NodejsFunction(this, "WebhookWorker", {
+        functionName: `${stackPrefix}-webhook-worker`,
+        logGroup: logGroupFor("WebhookWorker", `${stackPrefix}-webhook-worker`),
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: path.join(__dirname, "..", "backend", "src", "webhooks", "worker.ts"),
+        handler: "handler",
+        projectRoot: path.join(__dirname, ".."),
+        depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+        // A single invocation can chain a compliance refresh, graph edge
+        // updates and scanner runs — background work that used to be unbounded
+        // on a long-lived server and now happens inside the invocation. Lambda
+        // bills by duration actually used, so a high ceiling here costs nothing
+        // when the work finishes early and only matters on the rare delivery
+        // that needs it.
+        timeout: cdk.Duration.minutes(10),
+        memorySize: 512,
+        // No reserved concurrency, deliberately.
+        //
+        // Reserving would be the belt to the event source's braces, and AWS asks
+        // that a reservation be at least the event source's maximum concurrency.
+        // But a reservation is carved out of the account's pool, and Lambda
+        // refuses to leave fewer than 10 unreserved executions behind. An account
+        // on the default quota of 10 therefore cannot reserve anything at all —
+        // the deploy fails with "decreases account's UnreservedConcurrentExecution
+        // below its minimum value of [10]".
+        //
+        // Nothing is lost. The cap that matters is maxConcurrency on the event
+        // source below: it limits the poller, so surplus messages wait in the
+        // queue with their receive count untouched, which is the property that
+        // keeps a burst out of the dead-letter queue. A reservation would only
+        // have guaranteed this function a share of the pool.
+        environment: {
+          STACK_NAME: stackPrefix,
+          SECRET_NAME: secretName,
+          ACTIVITY_TABLE: `${stackPrefix}-activity`,
+          SCANNERS_TABLE: `${stackPrefix}-scanners`,
+          ALERTS_TABLE: `${stackPrefix}-alerts`,
+          ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
+          GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+          COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
+          WEBHOOK_DELIVERIES_TABLE: deliveriesTable.tableName,
+          // The worker emails security alerts as it records them, so it reads
+          // the toggle and the group from here.
+          ALARMS_TABLE: `${stackPrefix}-alarms`,
+        },
+        bundling: webhookBundling,
+      });
 
-    // Two grants, and that is the whole of it. This function is the only thing
-    // here reachable from the internet.
-    //
-    // The grant is the webhook secret alone, not the application bundle. The
-    // receiver must touch unverified bytes to verify them — it base64-decodes
-    // and HMACs a body no one has authenticated yet — and no review proves
-    // that path free of bugs forever. So the question that matters is not
-    // whether it can be broken but what breaking it yields. Against the
-    // bundle it yielded GITHUB_APP_PRIVATE_KEY and the whole organization
-    // with it; against this secret it yields the ability to check signatures.
-    //
-    // The two wildcards must stay disjoint: "…/secrets*" cannot match
-    // "…/webhook-secret*" and vice versa, which is why the latter is not
-    // named something like "secrets-webhook".
-    receiverFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "ReadWebhookSecret",
-      actions: ["secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${webhookSecretName}*`],
-    }));
-    webhookQueue.grantSendMessages(receiverFn);
+      workerFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "ReadAppSecrets",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+      }));
 
-    const workerFn = new NodejsFunction(this, "WebhookWorker", {
-      functionName: `${stackPrefix}-webhook-worker`,
-      logGroup: logGroupFor("WebhookWorker", `${stackPrefix}-webhook-worker`),
-      runtime: lambda.Runtime.NODEJS_24_X,
-      entry: path.join(__dirname, "..", "backend", "src", "webhooks", "worker.ts"),
-      handler: "handler",
-      projectRoot: path.join(__dirname, ".."),
-      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-      // A single invocation can chain a compliance refresh, graph edge
-      // updates and scanner runs — background work that used to be unbounded
-      // on a long-lived server and now happens inside the invocation. Lambda
-      // bills by duration actually used, so a high ceiling here costs nothing
-      // when the work finishes early and only matters on the rare delivery
-      // that needs it.
-      timeout: cdk.Duration.minutes(10),
-      memorySize: 512,
-      // No reserved concurrency, deliberately.
+      // Publish only, and only to this app's own topics.
       //
-      // Reserving would be the belt to the event source's braces, and AWS asks
-      // that a reservation be at least the event source's maximum concurrency.
-      // But a reservation is carved out of the account's pool, and Lambda
-      // refuses to leave fewer than 10 unreserved executions behind. An account
-      // on the default quota of 10 therefore cannot reserve anything at all —
-      // the deploy fails with "decreases account's UnreservedConcurrentExecution
-      // below its minimum value of [10]".
-      //
-      // Nothing is lost. The cap that matters is maxConcurrency on the event
-      // source below: it limits the poller, so surplus messages wait in the
-      // queue with their receive count untouched, which is the property that
-      // keeps a burst out of the dead-letter queue. A reservation would only
-      // have guaranteed this function a share of the pool.
-      environment: {
-        STACK_NAME: stackPrefix,
-        SECRET_NAME: secretName,
-        ACTIVITY_TABLE: `${stackPrefix}-activity`,
-        SCANNERS_TABLE: `${stackPrefix}-scanners`,
-        ALERTS_TABLE: `${stackPrefix}-alerts`,
-        ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
-        GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
-        COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
-        WEBHOOK_DELIVERIES_TABLE: deliveriesTable.tableName,
-        // The worker emails security alerts as it records them, so it reads
-        // the toggle and the group from here.
-        ALARMS_TABLE: `${stackPrefix}-alarms`,
-      },
-      bundling: webhookBundling,
-    });
+      // The name prefix is the boundary: topics are created as
+      // `${stackPrefix}-notify-<slug>`, so this grant cannot reach a topic
+      // belonging to anything else in the account, and cannot subscribe anyone
+      // to anything. Adding recipients happens in the desktop app, under the
+      // operator's own credentials.
+      const notifyTopics = `arn:aws:sns:${this.region}:${this.account}:${stackPrefix}-notify-*`;
+      workerFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "PublishAlarmEmails",
+        actions: ["sns:Publish"],
+        resources: [notifyTopics],
+      }));
 
-    workerFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "ReadAppSecrets",
-      actions: ["secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
-    }));
-
-    // Publish only, and only to this app's own topics.
-    //
-    // The name prefix is the boundary: topics are created as
-    // `${stackPrefix}-notify-<slug>`, so this grant cannot reach a topic
-    // belonging to anything else in the account, and cannot subscribe anyone
-    // to anything. Adding recipients happens in the desktop app, under the
-    // operator's own credentials.
-    const notifyTopics = `arn:aws:sns:${this.region}:${this.account}:${stackPrefix}-notify-*`;
-    workerFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "PublishAlarmEmails",
-      actions: ["sns:Publish"],
-      resources: [notifyTopics],
-    }));
-
-    workerFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "AppTables",
-      actions: [
-        "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:Query",
-        "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem",
-      ],
-      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
-    }));
-
-    // Limited at the poller rather than at the function. Reserved concurrency
-    // alone would let the event source keep scaling its polling and have the
-    // surplus invocations throttled — and a throttled invocation still
-    // increments the message's receive count, so the setting meant to protect
-    // GitHub's rate limit would instead fill the dead-letter queue with
-    // messages no worker ever saw.
-    //
-    // The rate limit is the reason any cap exists: createOctokit sets
-    // onRateLimit to false, so a throttled GitHub call fails rather than
-    // retrying.
-    workerFn.addEventSource(new SqsEventSource(webhookQueue, {
-      batchSize: 1,
-      maxConcurrency: 5,
-    }));
-
-    // ── widget alarms ───────────────────────────────────────────────────
-    //
-    // Reachable only from EventBridge. It reads whichever widgets have a due
-    // alarm, compares the value against the alarm's condition, and publishes
-    // to that alarm's topic when the state changes.
-    const alarmFn = new NodejsFunction(this, "AlarmEvaluator", {
-      functionName: `${stackPrefix}-alarm-evaluator`,
-      logGroup: logGroupFor("AlarmEvaluator", `${stackPrefix}-alarm-evaluator`),
-      runtime: lambda.Runtime.NODEJS_24_X,
-      entry: path.join(__dirname, "..", "backend", "src", "alarms", "handler.ts"),
-      handler: "handler",
-      projectRoot: path.join(__dirname, ".."),
-      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-      // A pass walks the org's Dependabot alerts once and runs a graph query
-      // per non-Dependabot alarm. Nothing is waiting on the answer, and Lambda
-      // bills for time actually used, so the ceiling is set for the slow case
-      // rather than the usual one.
-      timeout: cdk.Duration.minutes(5),
-      memorySize: 512,
-      environment: {
-        STACK_NAME: stackPrefix,
-        SECRET_NAME: secretName,
-        ALARMS_TABLE: `${stackPrefix}-alarms`,
-        WIDGETS_TABLE: `${stackPrefix}-widgets`,
-        ACTIVITY_TABLE: `${stackPrefix}-activity`,
-        ALERTS_TABLE: `${stackPrefix}-alerts`,
-        SCANNERS_TABLE: `${stackPrefix}-scanners`,
-        ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
-        GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
-        COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
-      },
-      bundling: webhookBundling,
-    });
-
-    alarmFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "ReadAppSecrets",
-      actions: ["secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
-    }));
-
-    // Reads widely, writes to one table.
-    //
-    // Evaluating an alarm means reading widgets, graph edges and the
-    // compliance cache; the only thing it ever writes is the alarm's own
-    // runtime state. Granting writes across the prefix would have let a
-    // scheduled job with no user in front of it modify the activity log — the
-    // record used to reconstruct what happened, including to itself.
-    alarmFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "AppTablesRead",
-      actions: [
-        "dynamodb:GetItem", "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem",
-      ],
-      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
-    }));
-
-    alarmFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "AlarmStateWrite",
-      actions: ["dynamodb:PutItem", "dynamodb:UpdateItem"],
-      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-alarms`],
-    }));
-
-    alarmFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "PublishAlarmEmails",
-      actions: ["sns:Publish"],
-      resources: [notifyTopics],
-    }));
-
-    // Five minutes, and the only schedule in the feature.
-    //
-    // This is the tick, not the interval. Each alarm carries its own interval
-    // and the evaluator decides per alarm which are due, so one rule serves
-    // every tiering and changing that tiering stays a constant in the code
-    // rather than a deploy. Ticks with nothing due read the alarms table and
-    // return.
-    //
-    // It has to divide every interval in INTERVAL_MINUTES, because an alarm can
-    // only be evaluated on a tick — a ten-minute interval under a fifteen-minute
-    // rule is a fifteen-minute alarm that reads as ten everywhere else.
-    // backend/src/alarms/conditions.ts declares TICK_MINUTES, which this must
-    // match, and repro-alarms.ts fails if the two disagree.
-    new events.Rule(this, "AlarmSchedule", {
-      ruleName: `${stackPrefix}-alarm-schedule`,
-      description: "Evaluates widget alarms that are due",
-      schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
-      targets: [new targets.LambdaFunction(alarmFn)],
-    });
-
-    // ── access graph rebuild ────────────────────────────────────────────
-    //
-    // Every screen showing who can reach what reads a stored snapshot: teams,
-    // members, collaborators, repository permissions. Nothing rebuilt it on a
-    // schedule — it happened only when somebody pressed a button — so a graph
-    // built before a person joined, left, or was made an owner was
-    // indistinguishable from a current one.
-    const graphFn = new NodejsFunction(this, "GraphAggregator", {
-      functionName: `${stackPrefix}-graph-aggregator`,
-      logGroup: logGroupFor("GraphAggregator", `${stackPrefix}-graph-aggregator`),
-      runtime: lambda.Runtime.NODEJS_24_X,
-      entry: path.join(__dirname, "..", "backend", "src", "jobs", "aggregateHandler.ts"),
-      handler: "handler",
-      projectRoot: path.join(__dirname, ".."),
-      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-      // The walk is one pass over every repository, team and member, then a
-      // clear-and-rewrite of the edge table. On a large organization that is
-      // minutes, and there is nobody waiting on the answer.
-      timeout: cdk.Duration.minutes(15),
-      memorySize: 1024,
-      environment: {
-        STACK_NAME: stackPrefix,
-        SECRET_NAME: secretName,
-        ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
-        GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
-        COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
-      },
-      bundling: webhookBundling,
-    });
-
-    graphFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "ReadAppSecrets",
-      actions: ["secretsmanager:GetSecretValue"],
-      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
-    }));
-
-    // Writes are confined to the three tables it owns.
-    //
-    // This job clears and rewrites the edge table wholesale, which is exactly
-    // the capability that must not extend to the activity log — the record used
-    // to reconstruct what happened, including to itself.
-    graphFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "AppTablesRead",
-      actions: ["dynamodb:GetItem", "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem"],
-      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
-    }));
-
-    graphFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "GraphTablesWrite",
-      actions: [
-        "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem",
-      ],
-      resources: [
-        `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-graph-edges`,
-        `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-compliance-cache`,
-        `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-org-config`,
-      ],
-    }));
-
-    // Six hours, not minutes. The walk is expensive in GitHub's rate limit and
-    // what it records — who is in which team, who can reach which repository —
-    // changes on the scale of days. The manual refresh in the app covers the
-    // case six hours is too long for, which is someone wanting to see an access
-    // change they just made.
-    new events.Rule(this, "GraphAggregationSchedule", {
-      ruleName: `${stackPrefix}-graph-aggregation`,
-      description: "Rebuilds the access graph from GitHub",
-      schedule: events.Schedule.rate(cdk.Duration.hours(6)),
-      targets: [new targets.LambdaFunction(graphFn)],
-    });
-
-    const apiLogGroup = new logs.LogGroup(this, "WebhookApiAccessLogs", {
-      retention: logs.RetentionDays.ONE_MONTH,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    const webhookApi = new apigateway.RestApi(this, "WebhookApi", {
-      restApiName: `${stackPrefix}-webhooks`,
-      description: "GitHub webhook receiver",
-      // REST rather than HTTP API for one reason: HTTP APIs do not support
-      // resource policies, and the IP allow-list is the resource policy.
-      endpointTypes: [apigateway.EndpointType.REGIONAL],
-      deployOptions: {
-        stageName: "prod",
-        throttlingRateLimit: 20,
-        throttlingBurstLimit: 40,
-        accessLogDestination: new apigateway.LogGroupLogDestination(apiLogGroup),
-        // Deliberately no body. Payloads name repositories, people and teams.
-        accessLogFormat: apigateway.AccessLogFormat.custom(JSON.stringify({
-          requestId: apigateway.AccessLogField.contextRequestId(),
-          sourceIp: apigateway.AccessLogField.contextIdentitySourceIp(),
-          status: apigateway.AccessLogField.contextStatus(),
-          latency: apigateway.AccessLogField.contextResponseLatency(),
-        })),
-      },
-      // The allow-list the security group used to hold. Better here: API
-      // Gateway evaluates this before the integration runs, so the code never
-      // executes for a request from anywhere else.
-      policy: new iam.PolicyDocument({
-        statements: [
-          new iam.PolicyStatement({
-            effect: iam.Effect.ALLOW,
-            principals: [new iam.AnyPrincipal()],
-            actions: ["execute-api:Invoke"],
-            resources: ["execute-api:/*"],
-          }),
-          new iam.PolicyStatement({
-            effect: iam.Effect.DENY,
-            principals: [new iam.AnyPrincipal()],
-            actions: ["execute-api:Invoke"],
-            resources: ["execute-api:/*"],
-            // Both families in one list. An IPv6 request compared only against
-            // IPv4 ranges matches nothing, so NotIpAddress evaluates true and
-            // the delivery is denied — a 403 indistinguishable from a stale
-            // allow-list, on an endpoint that had been working until GitHub
-            // resolved AAAA.
-            conditions: {
-              NotIpAddress: { "aws:SourceIp": [...GITHUB_WEBHOOK_CIDRS, ...GITHUB_WEBHOOK_CIDRS_V6] },
-            },
-          }),
+      workerFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "AppTables",
+        actions: [
+          "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+          "dynamodb:DeleteItem", "dynamodb:Scan", "dynamodb:Query",
+          "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem",
         ],
-      }),
-    });
+        resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+      }));
 
-    // ── WAF in front of the webhook API ──
-    //
-    // The resource policy above is the control that matters: only GitHub's
-    // published ranges reach the integration at all, and the receiver verifies
-    // an HMAC before anything is queued. This is defence in depth on top.
-    //
-    // Deliberately NOT the AWS common rule set. Two of its rules would reject
-    // legitimate deliveries: SizeRestrictions_BODY caps bodies at 8 KB, and
-    // GitHub payloads routinely exceed that, while the XSS and SQLi body rules
-    // inspect content that on a webhook is somebody's code, branch name or
-    // commit message. A managed rule group that blocks real traffic is worse
-    // than no rule group, because the failure is silent at the edge and never
-    // reaches a log this app reads.
-    //
-    // What is here instead is a rate limit that cannot false-positive on
-    // payload content: a ceiling per source address, well above anything
-    // GitHub sends, that stops a compromised or misbehaving source from
-    // driving the queue.
-    const webhookWaf = new wafv2.CfnWebACL(this, "WebhookWaf", {
-      name: `${stackPrefix}-webhook`,
-      scope: "REGIONAL",
-      defaultAction: { allow: {} },
-      visibilityConfig: {
-        cloudWatchMetricsEnabled: true,
-        metricName: `${stackPrefix}-webhook-waf`,
-        sampledRequestsEnabled: false,   // samples would retain payload fragments
-      },
-      rules: [{
-        name: "RatePerSourceIp",
-        priority: 0,
-        // 2,000 requests in five minutes from one address. GitHub delivering a
-        // burst for a large organization stays far below this; a source
-        // sustaining more than six a second is not delivering webhooks.
-        statement: { rateBasedStatement: { limit: 2000, aggregateKeyType: "IP" } },
-        action: { block: {} },
+      // Limited at the poller rather than at the function. Reserved concurrency
+      // alone would let the event source keep scaling its polling and have the
+      // surplus invocations throttled — and a throttled invocation still
+      // increments the message's receive count, so the setting meant to protect
+      // GitHub's rate limit would instead fill the dead-letter queue with
+      // messages no worker ever saw.
+      //
+      // The rate limit is the reason any cap exists: createOctokit sets
+      // onRateLimit to false, so a throttled GitHub call fails rather than
+      // retrying.
+      workerFn.addEventSource(new SqsEventSource(webhookQueue, {
+        batchSize: 1,
+        maxConcurrency: 5,
+      }));
+
+      // ── widget alarms ───────────────────────────────────────────────────
+      //
+      // Reachable only from EventBridge. It reads whichever widgets have a due
+      // alarm, compares the value against the alarm's condition, and publishes
+      // to that alarm's topic when the state changes.
+      const alarmFn = new NodejsFunction(this, "AlarmEvaluator", {
+        functionName: `${stackPrefix}-alarm-evaluator`,
+        logGroup: logGroupFor("AlarmEvaluator", `${stackPrefix}-alarm-evaluator`),
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: path.join(__dirname, "..", "backend", "src", "alarms", "handler.ts"),
+        handler: "handler",
+        projectRoot: path.join(__dirname, ".."),
+        depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+        // A pass walks the org's Dependabot alerts once and runs a graph query
+        // per non-Dependabot alarm. Nothing is waiting on the answer, and Lambda
+        // bills for time actually used, so the ceiling is set for the slow case
+        // rather than the usual one.
+        timeout: cdk.Duration.minutes(5),
+        memorySize: 512,
+        environment: {
+          STACK_NAME: stackPrefix,
+          SECRET_NAME: secretName,
+          ALARMS_TABLE: `${stackPrefix}-alarms`,
+          WIDGETS_TABLE: `${stackPrefix}-widgets`,
+          ACTIVITY_TABLE: `${stackPrefix}-activity`,
+          ALERTS_TABLE: `${stackPrefix}-alerts`,
+          SCANNERS_TABLE: `${stackPrefix}-scanners`,
+          ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
+          GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+          COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
+        },
+        bundling: webhookBundling,
+      });
+
+      alarmFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "ReadAppSecrets",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+      }));
+
+      // Reads widely, writes to one table.
+      //
+      // Evaluating an alarm means reading widgets, graph edges and the
+      // compliance cache; the only thing it ever writes is the alarm's own
+      // runtime state. Granting writes across the prefix would have let a
+      // scheduled job with no user in front of it modify the activity log — the
+      // record used to reconstruct what happened, including to itself.
+      alarmFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "AppTablesRead",
+        actions: [
+          "dynamodb:GetItem", "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem",
+        ],
+        resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+      }));
+
+      alarmFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "AlarmStateWrite",
+        actions: ["dynamodb:PutItem", "dynamodb:UpdateItem"],
+        resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-alarms`],
+      }));
+
+      alarmFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "PublishAlarmEmails",
+        actions: ["sns:Publish"],
+        resources: [notifyTopics],
+      }));
+
+      // Five minutes, and the only schedule in the feature.
+      //
+      // This is the tick, not the interval. Each alarm carries its own interval
+      // and the evaluator decides per alarm which are due, so one rule serves
+      // every tiering and changing that tiering stays a constant in the code
+      // rather than a deploy. Ticks with nothing due read the alarms table and
+      // return.
+      //
+      // It has to divide every interval in INTERVAL_MINUTES, because an alarm can
+      // only be evaluated on a tick — a ten-minute interval under a fifteen-minute
+      // rule is a fifteen-minute alarm that reads as ten everywhere else.
+      // backend/src/alarms/conditions.ts declares TICK_MINUTES, which this must
+      // match, and repro-alarms.ts fails if the two disagree.
+      new events.Rule(this, "AlarmSchedule", {
+        ruleName: `${stackPrefix}-alarm-schedule`,
+        description: "Evaluates widget alarms that are due",
+        schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
+        targets: [new targets.LambdaFunction(alarmFn)],
+      });
+
+      // ── access graph rebuild ────────────────────────────────────────────
+      //
+      // Every screen showing who can reach what reads a stored snapshot: teams,
+      // members, collaborators, repository permissions. Nothing rebuilt it on a
+      // schedule — it happened only when somebody pressed a button — so a graph
+      // built before a person joined, left, or was made an owner was
+      // indistinguishable from a current one.
+      const graphFn = new NodejsFunction(this, "GraphAggregator", {
+        functionName: `${stackPrefix}-graph-aggregator`,
+        logGroup: logGroupFor("GraphAggregator", `${stackPrefix}-graph-aggregator`),
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: path.join(__dirname, "..", "backend", "src", "jobs", "aggregateHandler.ts"),
+        handler: "handler",
+        projectRoot: path.join(__dirname, ".."),
+        depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+        // The walk is one pass over every repository, team and member, then a
+        // clear-and-rewrite of the edge table. On a large organization that is
+        // minutes, and there is nobody waiting on the answer.
+        timeout: cdk.Duration.minutes(15),
+        memorySize: 1024,
+        environment: {
+          STACK_NAME: stackPrefix,
+          SECRET_NAME: secretName,
+          ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
+          GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+          COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
+        },
+        bundling: webhookBundling,
+      });
+
+      graphFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "ReadAppSecrets",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+      }));
+
+      // Writes are confined to the three tables it owns.
+      //
+      // This job clears and rewrites the edge table wholesale, which is exactly
+      // the capability that must not extend to the activity log — the record used
+      // to reconstruct what happened, including to itself.
+      graphFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "AppTablesRead",
+        actions: ["dynamodb:GetItem", "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem"],
+        resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+      }));
+
+      graphFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "GraphTablesWrite",
+        actions: [
+          "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem",
+        ],
+        resources: [
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-graph-edges`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-compliance-cache`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-org-config`,
+        ],
+      }));
+
+      // Six hours, not minutes. The walk is expensive in GitHub's rate limit and
+      // what it records — who is in which team, who can reach which repository —
+      // changes on the scale of days. The manual refresh in the app covers the
+      // case six hours is too long for, which is someone wanting to see an access
+      // change they just made.
+      new events.Rule(this, "GraphAggregationSchedule", {
+        ruleName: `${stackPrefix}-graph-aggregation`,
+        description: "Rebuilds the access graph from GitHub",
+        schedule: events.Schedule.rate(cdk.Duration.hours(6)),
+        targets: [new targets.LambdaFunction(graphFn)],
+      });
+
+      const apiLogGroup = new logs.LogGroup(this, "WebhookApiAccessLogs", {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: cdk.RemovalPolicy.DESTROY,
+      });
+
+      const webhookApi = new apigateway.RestApi(this, "WebhookApi", {
+        restApiName: `${stackPrefix}-webhooks`,
+        description: "GitHub webhook receiver",
+        // REST rather than HTTP API for one reason: HTTP APIs do not support
+        // resource policies, and the IP allow-list is the resource policy.
+        endpointTypes: [apigateway.EndpointType.REGIONAL],
+        deployOptions: {
+          stageName: "prod",
+          throttlingRateLimit: 20,
+          throttlingBurstLimit: 40,
+          accessLogDestination: new apigateway.LogGroupLogDestination(apiLogGroup),
+          // Deliberately no body. Payloads name repositories, people and teams.
+          accessLogFormat: apigateway.AccessLogFormat.custom(JSON.stringify({
+            requestId: apigateway.AccessLogField.contextRequestId(),
+            sourceIp: apigateway.AccessLogField.contextIdentitySourceIp(),
+            status: apigateway.AccessLogField.contextStatus(),
+            latency: apigateway.AccessLogField.contextResponseLatency(),
+          })),
+        },
+        // The allow-list the security group used to hold. Better here: API
+        // Gateway evaluates this before the integration runs, so the code never
+        // executes for a request from anywhere else.
+        policy: new iam.PolicyDocument({
+          statements: [
+            new iam.PolicyStatement({
+              effect: iam.Effect.ALLOW,
+              principals: [new iam.AnyPrincipal()],
+              actions: ["execute-api:Invoke"],
+              resources: ["execute-api:/*"],
+            }),
+            new iam.PolicyStatement({
+              effect: iam.Effect.DENY,
+              principals: [new iam.AnyPrincipal()],
+              actions: ["execute-api:Invoke"],
+              resources: ["execute-api:/*"],
+              // Both families in one list. An IPv6 request compared only against
+              // IPv4 ranges matches nothing, so NotIpAddress evaluates true and
+              // the delivery is denied — a 403 indistinguishable from a stale
+              // allow-list, on an endpoint that had been working until GitHub
+              // resolved AAAA.
+              conditions: {
+                NotIpAddress: { "aws:SourceIp": [...GITHUB_WEBHOOK_CIDRS, ...GITHUB_WEBHOOK_CIDRS_V6] },
+              },
+            }),
+          ],
+        }),
+      });
+
+      // ── WAF in front of the webhook API ──
+      //
+      // The resource policy above is the control that matters: only GitHub's
+      // published ranges reach the integration at all, and the receiver verifies
+      // an HMAC before anything is queued. This is defence in depth on top.
+      //
+      // Deliberately NOT the AWS common rule set. Two of its rules would reject
+      // legitimate deliveries: SizeRestrictions_BODY caps bodies at 8 KB, and
+      // GitHub payloads routinely exceed that, while the XSS and SQLi body rules
+      // inspect content that on a webhook is somebody's code, branch name or
+      // commit message. A managed rule group that blocks real traffic is worse
+      // than no rule group, because the failure is silent at the edge and never
+      // reaches a log this app reads.
+      //
+      // What is here instead is a rate limit that cannot false-positive on
+      // payload content: a ceiling per source address, well above anything
+      // GitHub sends, that stops a compromised or misbehaving source from
+      // driving the queue.
+      const webhookWaf = new wafv2.CfnWebACL(this, "WebhookWaf", {
+        name: `${stackPrefix}-webhook`,
+        scope: "REGIONAL",
+        defaultAction: { allow: {} },
         visibilityConfig: {
           cloudWatchMetricsEnabled: true,
-          metricName: `${stackPrefix}-webhook-waf-rate`,
-          sampledRequestsEnabled: false,
+          metricName: `${stackPrefix}-webhook-waf`,
+          sampledRequestsEnabled: false,   // samples would retain payload fragments
         },
-      }],
-    });
-
-    new wafv2.CfnWebACLAssociation(this, "WebhookWafAssociation", {
-      // Built as a string rather than with formatArn. An API Gateway stage ARN
-      // has a leading slash before the resource — arn:…:apigateway:region::/restapis/…
-      // — and formatArn joins account and resource with a single colon, which
-      // produces "::restapis/…" and is rejected as malformed.
-      resourceArn: `arn:${cdk.Aws.PARTITION}:apigateway:${this.region}::/restapis/${webhookApi.restApiId}/stages/${webhookApi.deploymentStage.stageName}`,
-      webAclArn: webhookWaf.attrArn,
-    });
-
-    webhookApi.root
-      .addResource("webhooks")
-      .addResource("github")
-      .addMethod("POST", new apigateway.LambdaIntegration(receiverFn), {
-        // Both headers are required to be *present*, and API Gateway rejects
-        // the request with 400 before the integration runs if either is
-        // missing. GitHub sends both on every delivery.
-        //
-        // This is not authentication and does not pretend to be — presence is
-        // not validity, and the signature is still verified against the body in
-        // the receiver. What it buys is that a request with no signature at all
-        // never becomes a Lambda invocation.
-        requestParameters: {
-          "method.request.header.X-Hub-Signature-256": true,
-          "method.request.header.X-GitHub-Event": true,
-        },
-        requestValidatorOptions: {
-          requestValidatorName: `${stackPrefix}-webhook-headers`,
-          validateRequestParameters: true,
-          // Bodies are not validated. A schema here would have to describe
-          // every event GitHub sends, would reject anything they add, and
-          // would be a second place to keep in step with their API.
-          validateRequestBody: false,
-        },
-      });
-
-    // A queue nobody watches is a queue that quietly fills up. The guardrail
-    // DLQ had this gap too, so it gets one as well.
-    const alarmTopic = this.node.tryGetContext("alertEmail")
-      ? new sns.Topic(this, "AlarmTopic", { displayName: `${stackPrefix} alarms` })
-      : undefined;
-    if (alarmTopic) {
-      alarmTopic.addSubscription(
-        new snsSubscriptions.EmailSubscription(this.node.tryGetContext("alertEmail")),
-      );
-    }
-
-    for (const [id, queue, description] of [
-      ["WebhookDlqAlarm", webhookDlq, "A webhook delivery failed five times and was dead-lettered"],
-      ["GuardrailDlqAlarm", guardrailDlq, "A guardrail invocation failed and was dead-lettered"],
-    ] as Array<[string, sqs.Queue, string]>) {
-      const alarm = new cloudwatch.Alarm(this, id, {
-        metric: queue.metricApproximateNumberOfMessagesVisible({
-          period: cdk.Duration.minutes(5),
-          statistic: "Maximum",
-        }),
-        threshold: 1,
-        evaluationPeriods: 1,
-        comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
-        treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
-        alarmDescription: description,
-      });
-      if (alarmTopic) alarm.addAlarmAction(new cwActions.SnsAction(alarmTopic));
-    }
-
-    // ── Enterprise audit log ──
-    //
-    // GitHub streams the enterprise audit log here as gzipped newline-delimited
-    // JSON. Nothing in this stack can make that happen — an enterprise owner
-    // configures streaming in GitHub's UI and points it at this bucket. Until
-    // they do, everything below sits idle and costs nothing.
-    //
-    // Streaming rather than polling the audit log API: the API is rate limited
-    // to 1,750 requests an hour and its history is capped, while a bucket keeps
-    // everything for as long as the lifecycle rule below says.
-    // Some organizations run a Config rule that applies a TLS-only bucket
-    // policy the moment a bucket appears. That control and enforceSSL want the
-    // same thing and cannot both have it: CloudFormation creates the bucket,
-    // the remediation writes its policy within seconds, and CloudFormation's
-    // own CreateBucketPolicy then fails with "the bucket policy already
-    // exists". The stack rolls back, RETAIN keeps the bucket and the
-    // remediation's policy, and every retry replays the same race — there is
-    // no number of attempts that wins it.
-    //
-    // The guardrail owns bucket policies here; see the audit bucket below.
-    const auditBucket = new s3.Bucket(this, "AuditLogBucket", {
-      bucketName: `${stackPrefix}-audit-log-${this.account}`,
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      // No bucket policy from this stack.
-      //
-      // enforceSSL would have CloudFormation write a deny-non-TLS statement —
-      // the same statement the app's own S3 guardrail writes on every bucket
-      // in the account, this one included. Two mechanisms for one job, and
-      // whichever lost the race to create it failed the deploy.
-      //
-      // So the guardrail owns bucket policies, alone. Add the S3 rule in the
-      // AWS tab and it covers this bucket like any other — and re-adds the
-      // statement on its next sweep if anyone strips it, which CloudFormation
-      // would only do on the next deploy.
-      //
-      // Until that rule exists and is set to enforce, this bucket has no TLS
-      // policy. It blocks all public access and only the audit-log role and
-      // the ingest Lambda can reach it, but that is the trade being made.
-      versioned: false,
-      // The audit log is the record of who did what. Deleting the stack must
-      // not take it with it, and CDK will refuse rather than silently destroy.
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      lifecycleRules: [{
-        // The raw archive is the complete record; DynamoDB only indexes the
-        // consequential part. Thirteen months matches the activity feed's own
-        // retention, so both halves of the trail end at the same moment rather
-        // than one outliving the other by an unexplained margin.
-        id: "match-activity-retention",
-        expiration: cdk.Duration.days(400),
-        // Most of this is never read twice. Infrequent Access after a month
-        // costs less to store and more to retrieve, which is the right way
-        // round for an audit archive.
-        transitions: [{
-          storageClass: s3.StorageClass.INFREQUENT_ACCESS,
-          transitionAfter: cdk.Duration.days(30),
+        rules: [{
+          name: "RatePerSourceIp",
+          priority: 0,
+          // 2,000 requests in five minutes from one address. GitHub delivering a
+          // burst for a large organization stays far below this; a source
+          // sustaining more than six a second is not delivering webhooks.
+          statement: { rateBasedStatement: { limit: 2000, aggregateKeyType: "IP" } },
+          action: { block: {} },
+          visibilityConfig: {
+            cloudWatchMetricsEnabled: true,
+            metricName: `${stackPrefix}-webhook-waf-rate`,
+            sampledRequestsEnabled: false,
+          },
         }],
-        abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),
-      }],
-    });
+      });
 
-    const auditIngestFn = new NodejsFunction(this, "AuditLogIngest", {
-      functionName: `${stackPrefix}-audit-ingest`,
-      logGroup: logGroupFor("AuditLogIngest", `${stackPrefix}-audit-ingest`),
-      runtime: lambda.Runtime.NODEJS_24_X,
-      entry: path.join(__dirname, "..", "backend", "src", "audit", "ingest.ts"),
-      handler: "handler",
-      projectRoot: path.join(__dirname, ".."),
-      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-      // One object holds a batch of events, not one event. Gunzip plus a
-      // BatchWrite loop is quick, but a large object on a busy enterprise
-      // should not be cut off part way — a truncated batch loses audit rows.
-      timeout: cdk.Duration.minutes(5),
-      memorySize: 512,
-      environment: {
-        STACK_NAME: stackPrefix,
-        ACTIVITY_TABLE: `${stackPrefix}-activity`,
-        // Widen this without a code change once real volume is known. Empty or
-        // absent means the built-in list of consequential events.
-        AUDIT_EVENT_ALLOWLIST: "",
-      },
-      bundling: webhookBundling,
-    });
+      new wafv2.CfnWebACLAssociation(this, "WebhookWafAssociation", {
+        // Built as a string rather than with formatArn. An API Gateway stage ARN
+        // has a leading slash before the resource — arn:…:apigateway:region::/restapis/…
+        // — and formatArn joins account and resource with a single colon, which
+        // produces "::restapis/…" and is rejected as malformed.
+        resourceArn: `arn:${cdk.Aws.PARTITION}:apigateway:${this.region}::/restapis/${webhookApi.restApiId}/stages/${webhookApi.deploymentStage.stageName}`,
+        webAclArn: webhookWaf.attrArn,
+      });
 
-    auditBucket.grantRead(auditIngestFn);
-    auditIngestFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: "WriteAuditRowsToActivity",
-      // Write-only, and to one table. This function reads nothing back: it
-      // turns objects into rows and has no reason to query the feed.
-      actions: ["dynamodb:PutItem", "dynamodb:BatchWriteItem"],
-      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-activity`],
-    }));
+      webhookApi.root
+        .addResource("webhooks")
+        .addResource("github")
+        .addMethod("POST", new apigateway.LambdaIntegration(receiverFn), {
+          // Both headers are required to be *present*, and API Gateway rejects
+          // the request with 400 before the integration runs if either is
+          // missing. GitHub sends both on every delivery.
+          //
+          // This is not authentication and does not pretend to be — presence is
+          // not validity, and the signature is still verified against the body in
+          // the receiver. What it buys is that a request with no signature at all
+          // never becomes a Lambda invocation.
+          requestParameters: {
+            "method.request.header.X-Hub-Signature-256": true,
+            "method.request.header.X-GitHub-Event": true,
+          },
+          requestValidatorOptions: {
+            requestValidatorName: `${stackPrefix}-webhook-headers`,
+            validateRequestParameters: true,
+            // Bodies are not validated. A schema here would have to describe
+            // every event GitHub sends, would reject anything they add, and
+            // would be a second place to keep in step with their API.
+            validateRequestBody: false,
+          },
+        });
 
-    auditBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(auditIngestFn));
+      // A queue nobody watches is a queue that quietly fills up. The guardrail
+      // DLQ had this gap too, so it gets one as well.
+      const alarmTopic = this.node.tryGetContext("alertEmail")
+        ? new sns.Topic(this, "AlarmTopic", { displayName: `${stackPrefix} alarms` })
+        : undefined;
+      if (alarmTopic) {
+        alarmTopic.addSubscription(
+          new snsSubscriptions.EmailSubscription(this.node.tryGetContext("alertEmail")),
+        );
+      }
 
-    // ── Audit log streaming: how GitHub authenticates ──
-    //
-    // GitHub offers two ways to write to the bucket: an AWS access key pair,
-    // or OpenID Connect. The key pair means storing long-lived AWS credentials
-    // on GitHub, which is a standing liability for a bucket that holds the
-    // record of who did what. OIDC hands GitHub a temporary credential per
-    // upload and stores nothing.
-    //
-    // The OIDC provider and the role GitHub assumes are NOT created here.
-    //
-    // They were, behind `-c auditEnterprise=<slug>`, which made the feature
-    // reachable only by someone who knew a flag documented in a code comment.
-    // The app creates them now, from the Activity page, where it can also say
-    // whether streaming is actually running — something a deploy cannot know.
-    //
-    // Left out rather than duplicated: two owners racing to create one role is
-    // the failure the audit bucket's policy used to produce, and it is not
-    // worth reproducing for the sake of a second way to do the same thing.
+      for (const [id, queue, description] of [
+        ["WebhookDlqAlarm", webhookDlq, "A webhook delivery failed five times and was dead-lettered"],
+        ["GuardrailDlqAlarm", guardrailDlq, "A guardrail invocation failed and was dead-lettered"],
+      ] as Array<[string, sqs.Queue, string]>) {
+        const alarm = new cloudwatch.Alarm(this, id, {
+          metric: queue.metricApproximateNumberOfMessagesVisible({
+            period: cdk.Duration.minutes(5),
+            statistic: "Maximum",
+          }),
+          threshold: 1,
+          evaluationPeriods: 1,
+          comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+          treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+          alarmDescription: description,
+        });
+        if (alarmTopic) alarm.addAlarmAction(new cwActions.SnsAction(alarmTopic));
+      }
+
+      // ── Enterprise audit log ──
+      //
+      // GitHub streams the enterprise audit log here as gzipped newline-delimited
+      // JSON. Nothing in this stack can make that happen — an enterprise owner
+      // configures streaming in GitHub's UI and points it at this bucket. Until
+      // they do, everything below sits idle and costs nothing.
+      //
+      // Streaming rather than polling the audit log API: the API is rate limited
+      // to 1,750 requests an hour and its history is capped, while a bucket keeps
+      // everything for as long as the lifecycle rule below says.
+      // Some organizations run a Config rule that applies a TLS-only bucket
+      // policy the moment a bucket appears. That control and enforceSSL want the
+      // same thing and cannot both have it: CloudFormation creates the bucket,
+      // the remediation writes its policy within seconds, and CloudFormation's
+      // own CreateBucketPolicy then fails with "the bucket policy already
+      // exists". The stack rolls back, RETAIN keeps the bucket and the
+      // remediation's policy, and every retry replays the same race — there is
+      // no number of attempts that wins it.
+      //
+      // The guardrail owns bucket policies here; see the audit bucket below.
+      const auditBucket = new s3.Bucket(this, "AuditLogBucket", {
+        bucketName: `${stackPrefix}-audit-log-${this.account}`,
+        encryption: s3.BucketEncryption.S3_MANAGED,
+        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+        // No bucket policy from this stack.
+        //
+        // enforceSSL would have CloudFormation write a deny-non-TLS statement —
+        // the same statement the app's own S3 guardrail writes on every bucket
+        // in the account, this one included. Two mechanisms for one job, and
+        // whichever lost the race to create it failed the deploy.
+        //
+        // So the guardrail owns bucket policies, alone. Add the S3 rule in the
+        // AWS tab and it covers this bucket like any other — and re-adds the
+        // statement on its next sweep if anyone strips it, which CloudFormation
+        // would only do on the next deploy.
+        //
+        // Until that rule exists and is set to enforce, this bucket has no TLS
+        // policy. It blocks all public access and only the audit-log role and
+        // the ingest Lambda can reach it, but that is the trade being made.
+        versioned: false,
+        // The audit log is the record of who did what. Deleting the stack must
+        // not take it with it, and CDK will refuse rather than silently destroy.
+        removalPolicy: cdk.RemovalPolicy.RETAIN,
+        lifecycleRules: [{
+          // The raw archive is the complete record; DynamoDB only indexes the
+          // consequential part. Thirteen months matches the activity feed's own
+          // retention, so both halves of the trail end at the same moment rather
+          // than one outliving the other by an unexplained margin.
+          id: "match-activity-retention",
+          expiration: cdk.Duration.days(400),
+          // Most of this is never read twice. Infrequent Access after a month
+          // costs less to store and more to retrieve, which is the right way
+          // round for an audit archive.
+          transitions: [{
+            storageClass: s3.StorageClass.INFREQUENT_ACCESS,
+            transitionAfter: cdk.Duration.days(30),
+          }],
+          abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),
+        }],
+      });
+
+      const auditIngestFn = new NodejsFunction(this, "AuditLogIngest", {
+        functionName: `${stackPrefix}-audit-ingest`,
+        logGroup: logGroupFor("AuditLogIngest", `${stackPrefix}-audit-ingest`),
+        runtime: lambda.Runtime.NODEJS_24_X,
+        entry: path.join(__dirname, "..", "backend", "src", "audit", "ingest.ts"),
+        handler: "handler",
+        projectRoot: path.join(__dirname, ".."),
+        depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+        // One object holds a batch of events, not one event. Gunzip plus a
+        // BatchWrite loop is quick, but a large object on a busy enterprise
+        // should not be cut off part way — a truncated batch loses audit rows.
+        timeout: cdk.Duration.minutes(5),
+        memorySize: 512,
+        environment: {
+          STACK_NAME: stackPrefix,
+          ACTIVITY_TABLE: `${stackPrefix}-activity`,
+          // Widen this without a code change once real volume is known. Empty or
+          // absent means the built-in list of consequential events.
+          AUDIT_EVENT_ALLOWLIST: "",
+        },
+        bundling: webhookBundling,
+      });
+
+      auditBucket.grantRead(auditIngestFn);
+      auditIngestFn.addToRolePolicy(new iam.PolicyStatement({
+        sid: "WriteAuditRowsToActivity",
+        // Write-only, and to one table. This function reads nothing back: it
+        // turns objects into rows and has no reason to query the feed.
+        actions: ["dynamodb:PutItem", "dynamodb:BatchWriteItem"],
+        resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-activity`],
+      }));
+
+      auditBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(auditIngestFn));
+
+      // ── Audit log streaming: how GitHub authenticates ──
+      //
+      // GitHub offers two ways to write to the bucket: an AWS access key pair,
+      // or OpenID Connect. The key pair means storing long-lived AWS credentials
+      // on GitHub, which is a standing liability for a bucket that holds the
+      // record of who did what. OIDC hands GitHub a temporary credential per
+      // upload and stores nothing.
+      //
+      // The OIDC provider and the role GitHub assumes are NOT created here.
+      //
+      // They were, behind `-c auditEnterprise=<slug>`, which made the feature
+      // reachable only by someone who knew a flag documented in a code comment.
+      // The app creates them now, from the Activity page, where it can also say
+      // whether streaming is actually running — something a deploy cannot know.
+      //
+      // Left out rather than duplicated: two owners racing to create one role is
+      // the failure the audit bucket's policy used to produce, and it is not
+      // worth reproducing for the sake of a second way to do the same thing.
+
+
+      new cdk.CfnOutput(this, "AuditLogBucketName", {
+        value: auditBucket.bucketName,
+        description: "Point GitHub's enterprise audit log streaming at this bucket",
+      });
+
+      new cdk.CfnOutput(this, "WebhookUrl", {
+        value: `${webhookApi.url}webhooks/github`,
+        description: "GitHub webhook payload URL — set this in the org's webhook settings",
+      });
+
+      new cdk.CfnOutput(this, "WebhookQueueUrl", {
+        value: webhookQueue.queueUrl,
+        description: "Queue between the receiver and the worker",
+      });
+
+      new cdk.CfnOutput(this, "WebhookDlqUrl", {
+        value: webhookDlq.queueUrl,
+        description: "Dead-letter queue for webhook deliveries that failed five times",
+      });
+    }
 
     // ── Outputs ──
     //
@@ -908,24 +951,5 @@ export class GitHubControlHubStack extends cdk.Stack {
       description: "Dead-letter queue for failed guardrail invocations",
     });
 
-    new cdk.CfnOutput(this, "AuditLogBucketName", {
-      value: auditBucket.bucketName,
-      description: "Point GitHub's enterprise audit log streaming at this bucket",
-    });
-
-    new cdk.CfnOutput(this, "WebhookUrl", {
-      value: `${webhookApi.url}webhooks/github`,
-      description: "GitHub webhook payload URL — set this in the org's webhook settings",
-    });
-
-    new cdk.CfnOutput(this, "WebhookQueueUrl", {
-      value: webhookQueue.queueUrl,
-      description: "Queue between the receiver and the worker",
-    });
-
-    new cdk.CfnOutput(this, "WebhookDlqUrl", {
-      value: webhookDlq.queueUrl,
-      description: "Dead-letter queue for webhook deliveries that failed five times",
-    });
-  }
+                  }
 }

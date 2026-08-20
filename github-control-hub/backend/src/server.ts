@@ -20,6 +20,7 @@ import expertiseRoutes from "./routes/expertise";
 import pullsRoutes from "./routes/pulls";
 import widgetRoutes from "./routes/widgets";
 import configRoutes from "./routes/config";
+import { githubGateMiddleware } from "./middleware/githubGate";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { awsHealthMiddleware } from "./middleware/awsHealthMiddleware";
 import { initTokenManager } from "./github/client";
@@ -103,23 +104,34 @@ app.use("/auth", authLimiter, authRoutes);
 
 app.use("/api", apiLimiter, awsHealthMiddleware);
 
-app.use("/api/repos", authMiddleware, repoRoutes);
-app.use("/api/repos", authMiddleware, branchRoutes);
-app.use("/api/repos", authMiddleware, protectionRoutes);
+// Everything below except /api/aws is the GitHub half of the app, and is
+// refused when signed into an account GitHub does not belong to. See
+// middleware/githubGate.ts — unset means unrestricted, which is every install
+// that has not asked for the split.
+app.use("/api/repos", authMiddleware, githubGateMiddleware, repoRoutes);
+app.use("/api/repos", authMiddleware, githubGateMiddleware, branchRoutes);
+app.use("/api/repos", authMiddleware, githubGateMiddleware, protectionRoutes);
+// Activity is not gated, and filters itself instead.
+//
+// It is the only feed carrying both halves: guardrail findings sit beside
+// branch protection changes. Locking it in an account that runs guardrails
+// would take away the record of what they did, which is most of the reason to
+// run them — so the router stays reachable and drops the GitHub rows itself.
+// See awsOnlyActivityMiddleware.
 app.use("/api/activity", authMiddleware, activityRoutes);
-app.use("/api/scanners", authMiddleware, scannerRoutes);
-app.use("/api/alerts", authMiddleware, alertRoutes);
-app.use("/api/compliance", authMiddleware, complianceRoutes);
-app.use("/api/security", authMiddleware, dependencyRoutes);
-app.use("/api/org", authMiddleware, orgRoutes);
-app.use("/api/graph", authMiddleware, graphRoutes);
-app.use("/api/access", authMiddleware, accessRoutes);
-app.use("/api/expertise", authMiddleware, expertiseRoutes);
-app.use("/api/pulls", authMiddleware, pullsRoutes);
-app.use("/api/widgets", authMiddleware, widgetRoutes);
-app.use("/api/config", authMiddleware, configRoutes);
+app.use("/api/scanners", authMiddleware, githubGateMiddleware, scannerRoutes);
+app.use("/api/alerts", authMiddleware, githubGateMiddleware, alertRoutes);
+app.use("/api/compliance", authMiddleware, githubGateMiddleware, complianceRoutes);
+app.use("/api/security", authMiddleware, githubGateMiddleware, dependencyRoutes);
+app.use("/api/org", authMiddleware, githubGateMiddleware, orgRoutes);
+app.use("/api/graph", authMiddleware, githubGateMiddleware, graphRoutes);
+app.use("/api/access", authMiddleware, githubGateMiddleware, accessRoutes);
+app.use("/api/expertise", authMiddleware, githubGateMiddleware, expertiseRoutes);
+app.use("/api/pulls", authMiddleware, githubGateMiddleware, pullsRoutes);
+app.use("/api/widgets", authMiddleware, githubGateMiddleware, widgetRoutes);
+app.use("/api/config", authMiddleware, githubGateMiddleware, configRoutes);
 app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
-app.use("/api/alarms", authMiddleware, alarmRoutes);
+app.use("/api/alarms", authMiddleware, githubGateMiddleware, alarmRoutes);
 
 // Try to load secrets from Secrets Manager at startup (covers auto-connected AWS)
 // then initialize the GitHub App token manager

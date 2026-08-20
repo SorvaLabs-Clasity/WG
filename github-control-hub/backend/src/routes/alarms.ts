@@ -36,7 +36,7 @@ const router = Router();
  * trusted with the AWS account.
  */
 const requireAdmin: RequestHandler = (req, res, next) => {
-  isControlHubAdmin(req.user!.login)
+  isControlHubAdmin(req.user!.login, req.user!.accessToken)
     .then(allowed => {
       if (allowed) return next();
       res.status(403).json({

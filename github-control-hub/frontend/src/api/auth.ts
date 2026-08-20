@@ -26,6 +26,21 @@ export interface AuthStatus {
     /** Why not, when not: secret_missing | secret_incomplete | secret_unreadable. */
     reason?: string;
   };
+  /**
+   * Whether the GitHub half of the app may be used against the AWS account this
+   * app is signed into.
+   *
+   * Distinct from `github.configured`, which is about whether credentials
+   * exist. This is about whether they are allowed to be used *here* — an
+   * organization can confine everything GitHub to one account and leave the AWS
+   * guardrails running everywhere else.
+   */
+  githubAccess?: {
+    allowed: boolean;
+    account?: string;
+    expected?: string;
+    reason?: "unrestricted" | "match" | "wrong-account" | "unknown-account";
+  };
 }
 
 export interface AwsProfile {

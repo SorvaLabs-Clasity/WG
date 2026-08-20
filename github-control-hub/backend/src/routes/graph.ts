@@ -259,7 +259,7 @@ router.get("/query/:q/freshness", async (req: Request<{ q: string }>, res: Respo
  */
 router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Response) => {
   const login = req.user!.login;
-  if (!(await isControlHubAdmin(login).catch(() => false))) {
+  if (!(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
     return res.status(403).json({
       code: "CONTROL_HUB_ADMIN_REQUIRED",
       error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can force a `
@@ -340,7 +340,7 @@ router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Re
 // and checked nothing, so any signed-in user could start one, repeatedly.
 router.post("/aggregate", async (req: Request, res: Response) => {
   try {
-    if (!(await isControlHubAdmin(req.user!.login).catch(() => false))) {
+    if (!(await isControlHubAdmin(req.user!.login, req.user!.accessToken).catch(() => false))) {
       return res.status(403).json({
         code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can `

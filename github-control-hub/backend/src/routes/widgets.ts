@@ -18,8 +18,8 @@ const router = Router();
  * gated for the same reason the rest is: shared state should not be editable by
  * everyone who can see it.
  */
-async function refusedWidgetChange(res: Response, login: string, verb: string): Promise<boolean> {
-  if (await isControlHubAdmin(login)) return false;
+async function refusedWidgetChange(res: Response, login: string, verb: string, userToken?: string): Promise<boolean> {
+  if (await isControlHubAdmin(login, userToken)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
       `dashboard widgets — there is one dashboard, shared by everyone.`,
@@ -33,7 +33,7 @@ router.get("/", async (_req: Request, res: Response) => {
 });
 
 router.post("/", async (req: Request, res: Response) => {
-  if (await refusedWidgetChange(res, req.user!.login, "create")) return;
+  if (await refusedWidgetChange(res, req.user!.login, "create", req.user!.accessToken)) return;
 
   const { title, type, presetId, queryId, queryParam, queryAdvanced, displayType } = req.body;
   if (!title || !type || !displayType) {
@@ -48,7 +48,7 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
-  if (await refusedWidgetChange(res, req.user!.login, "edit")) return;
+  if (await refusedWidgetChange(res, req.user!.login, "edit", req.user!.accessToken)) return;
 
   const { title, type, presetId, queryId, queryParam, queryAdvanced, displayType } = req.body;
   const updated = await updateWidget(req.params.id, { title, type, presetId, queryId, queryParam, queryAdvanced, displayType }, req.user!.login);
@@ -60,7 +60,7 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
 });
 
 router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
-  if (await refusedWidgetChange(res, req.user!.login, "delete")) return;
+  if (await refusedWidgetChange(res, req.user!.login, "delete", req.user!.accessToken)) return;
 
   const deleted = await deleteWidget(req.params.id, req.user!.login);
   if (!deleted) {

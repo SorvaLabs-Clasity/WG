@@ -24,8 +24,8 @@ const router = Router();
  * organization's GitHub budget rather than the caller's, and they overwrite a
  * cache everyone reads.
  */
-async function refuseUnlessAdmin(res: Response, login: string, verb: string): Promise<boolean> {
-  if (await isControlHubAdmin(login)) return false;
+async function refuseUnlessAdmin(res: Response, login: string, verb: string, userToken?: string): Promise<boolean> {
+  if (await isControlHubAdmin(login, userToken)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb}. ` +
       `Compliance rules are one shared definition of what the whole organization is scored against.`,
@@ -45,7 +45,7 @@ router.get("/config", async (_req: Request, res: Response) => {
 
 router.put("/config", async (req: Request, res: Response) => {
   try {
-    if (await refuseUnlessAdmin(res, req.user!.login, "change the compliance rules")) return;
+    if (await refuseUnlessAdmin(res, req.user!.login, "change the compliance rules", req.user!.accessToken)) return;
     const { rules } = req.body;
     if (!Array.isArray(rules)) {
       return res.status(400).json({ error: "'rules' must be an array" });
@@ -68,7 +68,7 @@ router.get("/dashboard", async (_req: Request, res: Response) => {
 
 router.post("/dashboard/refresh", async (req: Request, res: Response) => {
   try {
-    if (await refuseUnlessAdmin(res, req.user!.login, "re-score every repository")) return;
+    if (await refuseUnlessAdmin(res, req.user!.login, "re-score every repository", req.user!.accessToken)) return;
     const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
@@ -101,7 +101,7 @@ router.post("/dashboard/refresh", async (req: Request, res: Response) => {
 
 router.post("/dashboard/refresh/:repo", async (req: Request, res: Response) => {
   try {
-    if (await refuseUnlessAdmin(res, req.user!.login, "re-score a repository")) return;
+    if (await refuseUnlessAdmin(res, req.user!.login, "re-score a repository", req.user!.accessToken)) return;
     const token = getSystemToken() || req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });

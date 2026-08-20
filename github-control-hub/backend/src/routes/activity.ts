@@ -67,7 +67,7 @@ async function denyIfNotPermitted(
 ): Promise<{ status: number; body: Record<string, unknown> } | null> {
   const { adminTeam, repos } = requirementsFor(entries, pick);
 
-  if (adminTeam && !(await isControlHubAdmin(login))) {
+  if (adminTeam && !(await isControlHubAdmin(login, accessToken))) {
     return {
       status: 403,
       body: {
@@ -121,14 +121,44 @@ function addSignatures(entry: ActivityEntry, sigs: Set<string>) {
   }
 }
 
+/**
+ * In an account with no GitHub half, the feed carries only its AWS half.
+ *
+ * This router is deliberately not behind the GitHub gate: it is the one place
+ * guardrail findings are recorded, and taking the feed away in the accounts that
+ * run guardrails would remove the record of what they did — most of the reason
+ * to run them. So it stays reachable and drops the rows that do not belong here.
+ *
+ * Filtered on the server, not hidden in the page. The rows are the history of a
+ * GitHub organization: who was given access to what, which protections were
+ * removed. An account that is not supposed to hold GitHub data is not supposed
+ * to be able to read it either.
+ */
+async function awsOnly(): Promise<boolean> {
+  const { githubGate } = await import("../middleware/githubGate");
+  return !(await githubGate()).allowed;
+}
+
+/** `aws.guardrail`, and the sync rows for sweeps. Everything else is GitHub. */
+function isAwsRow(action: string): boolean {
+  return action.startsWith("aws.");
+}
+
 router.get("/", async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 50, 200);
   const offset = Number(req.query.offset) || 0;
   const repo = req.query.repo as string | undefined;
 
-  const allEntries = repo
+  let allEntries = repo
     ? await getActivityForRepo(repo, limit + 200)
     : await getActivityMerged(limit + 200, 0);
+
+  // Children are dropped with their parents: an undo of a GitHub change is a
+  // GitHub row whatever its own action says.
+  if (await awsOnly()) {
+    const keep = new Set(allEntries.filter(e => isAwsRow(e.action)).map(e => e.id));
+    allEntries = allEntries.filter(e => keep.has(e.id));
+  }
 
   const topLevel = allEntries.filter(e => !e.parentId);
   const paginated = topLevel.slice(offset, offset + limit);
@@ -168,6 +198,26 @@ router.get("/", async (req: Request, res: Response) => {
   });
 });
 
+/**
+ * Refuses to act on a GitHub row in an account that has no GitHub half.
+ *
+ * The list above merely hides those rows; these routes *do* something with one,
+ * and undoing a branch protection change from an account that is not supposed to
+ * hold GitHub credentials is exactly what the split exists to prevent. AWS rows
+ * are still actionable, because the guardrails they came from are still running
+ * here.
+ */
+async function refuseGithubRow(res: Response, action: string): Promise<boolean> {
+  if (isAwsRow(action)) return false;
+  if (!(await awsOnly())) return false;
+  res.status(403).json({
+    code: "GITHUB_NOT_HERE",
+    error: "This entry is a GitHub change, and the GitHub half of this app is not available " +
+      "in this AWS account. Sign in to the account where GitHub lives to act on it.",
+  });
+  return true;
+}
+
 router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => {
   try {
     const entry = await getActivityById(req.params.id);
@@ -175,6 +225,7 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
       res.status(404).json({ error: "Activity entry not found" });
       return;
     }
+    if (await refuseGithubRow(res, entry.action)) return;
     if (entry.undone) {
       res.status(400).json({ error: "This action has already been undone" });
       return;
@@ -264,6 +315,7 @@ router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => 
       res.status(404).json({ error: "Activity entry not found" });
       return;
     }
+    if (await refuseGithubRow(res, entry.action)) return;
     if (!entry.undone) {
       res.status(400).json({ error: "This action has not been undone" });
       return;
@@ -347,6 +399,7 @@ router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) =>
       res.status(404).json({ error: "Activity entry not found" });
       return;
     }
+    if (await refuseGithubRow(res, entry.action)) return;
 
     const accessToken = req.user!.accessToken;
 
@@ -450,6 +503,7 @@ router.post("/:id/undo-resolution", async (req: Request<{ id: string }>, res: Re
   try {
     const entry = await getActivityById(req.params.id);
     if (!entry) { res.status(404).json({ error: "Activity entry not found" }); return; }
+    if (await refuseGithubRow(res, entry.action)) return;
     if (!entry.conflictResolution) { res.status(400).json({ error: "This entry has no resolution to undo" }); return; }
 
     const deniedUndoRes = await denyIfNotPermitted(
@@ -977,7 +1031,7 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
  */
 router.get("/audit-stream", async (req: Request, res: Response) => {
   try {
-    if (!(await isAwsAdmin(req.user!.login))) {
+    if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: "Only organization admins can see audit-log streaming settings." });
     }
@@ -991,7 +1045,7 @@ router.get("/audit-stream", async (req: Request, res: Response) => {
 
 router.post("/audit-stream", async (req: Request, res: Response) => {
   try {
-    if (!(await isAwsAdmin(req.user!.login))) {
+    if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: "Only organization admins can set up audit-log streaming." });
     }
@@ -1014,7 +1068,7 @@ router.post("/audit-stream", async (req: Request, res: Response) => {
 
 router.delete("/audit-stream", async (req: Request, res: Response) => {
   try {
-    if (!(await isAwsAdmin(req.user!.login))) {
+    if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: "Only organization admins can turn off audit-log streaming." });
     }

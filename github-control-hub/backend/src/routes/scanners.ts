@@ -25,8 +25,8 @@ const router = Router();
  * never have shown them directly. Reading definitions and past results stays
  * open; creating, editing, deleting and running do not.
  */
-async function refusedScannerChange(res: Response, login: string, verb: string): Promise<boolean> {
-  if (await isControlHubAdmin(login)) return false;
+async function refusedScannerChange(res: Response, login: string, verb: string, userToken?: string): Promise<boolean> {
+  if (await isControlHubAdmin(login, userToken)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
       `scanners, because a scan searches every repository using the app's own credentials.`,
@@ -40,7 +40,7 @@ router.get("/", async (req: Request, res: Response) => {
 });
 
 router.post("/", async (req: Request, res: Response) => {
-  if (await refusedScannerChange(res, req.user!.login, "create")) return;
+  if (await refusedScannerChange(res, req.user!.login, "create", req.user!.accessToken)) return;
 
   const { name, description, conditions, targetRepos, includeFutureRepos } = req.body;
   const scanner = await createScanner({ name, description, conditions, targetRepos, includeFutureRepos }, req.user!.login);
@@ -48,7 +48,7 @@ router.post("/", async (req: Request, res: Response) => {
 });
 
 router.put("/:id", async (req: Request<{id: string}>, res: Response) => {
-  if (await refusedScannerChange(res, req.user!.login, "edit")) return;
+  if (await refusedScannerChange(res, req.user!.login, "edit", req.user!.accessToken)) return;
 
   const { name, description, conditions, targetRepos, includeFutureRepos } = req.body;
   const scanner = await updateScanner(req.params.id, { name, description, conditions, targetRepos, includeFutureRepos }, req.user!.login);
@@ -60,7 +60,7 @@ router.put("/:id", async (req: Request<{id: string}>, res: Response) => {
 });
 
 router.delete("/:id", async (req: Request<{id: string}>, res: Response) => {
-  if (await refusedScannerChange(res, req.user!.login, "delete")) return;
+  if (await refusedScannerChange(res, req.user!.login, "delete", req.user!.accessToken)) return;
 
   const success = await deleteScanner(req.params.id, req.user!.login);
   if (!success) {
@@ -80,7 +80,7 @@ router.get("/:id/results", async (req: Request<{id: string}>, res: Response) => 
 });
 
 router.post("/:id/run", async (req: Request<{id: string}>, res: Response) => {
-  if (await refusedScannerChange(res, req.user!.login, "run")) return;
+  if (await refusedScannerChange(res, req.user!.login, "run", req.user!.accessToken)) return;
 
   try {
     const token = getSystemToken() || req.user?.accessToken;

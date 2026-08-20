@@ -18,6 +18,40 @@ is.
 
 ---
 
+## An account that should run the guardrails and nothing else
+
+Some organizations want the AWS guardrails watching production while nothing
+about their GitHub organization lives there. That is a different install, and it
+has its own script:
+
+```bash
+./scripts/setup-aws-only.sh
+```
+
+It creates six tables, a secret holding only what sign-in needs, and one Lambda
+on a schedule. It deploys with `-c awsOnly=true`, so the webhook endpoint, the
+alarm evaluator, the access graph and the audit-log pipeline are never created —
+seven Lambda functions become one.
+
+**It never asks for the GitHub App private key.** That key reads your entire
+organization, and keeping it out of the account is the whole exercise. Without
+it the app's GitHub tabs are refused — by the backend, not by hiding a button —
+and say why.
+
+**Sign-in still uses GitHub**, because that is how this app knows who you are
+and which team you are on. That needs the OAuth App's client id and secret,
+which are an identity check carrying no access beyond what the person signing in
+already has. Team membership is then read with that person's own token rather
+than the App's, which works because the only membership anyone here asks about
+is their own.
+
+**Activity stays available and shows only the AWS rows.** It is the one feed
+carrying both halves, and an account running guardrails needs the record of what
+they did.
+
+Use the same OAuth App as your main install — its callback is `localhost`, so
+one serves every account.
+
 ## Phase 0 — Prerequisites
 
 ### Tools
