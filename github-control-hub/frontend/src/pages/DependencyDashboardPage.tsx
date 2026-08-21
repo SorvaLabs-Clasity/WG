@@ -195,8 +195,11 @@ export default function DependencyDashboardPage() {
           value={view}
           onChange={setView}
           options={[
-            ["alerts", counts.total > 0 ? `Alerts ${counts.total}` : "Alerts"] as [View, string],
-            ["updates", renovateOpen > 0 ? `Updates ${renovateOpen}` : "Updates"] as [View, string],
+            // Named after the tool, not the noun: "Dependabot" and "Renovate"
+            // are what people call these, and the ids stay as they are so any
+            // link already pointing at ?view=updates keeps working.
+            ["alerts", counts.total > 0 ? `Dependabot ${counts.total}` : "Dependabot"] as [View, string],
+            ["updates", renovateOpen > 0 ? `Renovate ${renovateOpen}` : "Renovate"] as [View, string],
             ["notifications", "Notifications"] as [View, string],
           ]}
         />

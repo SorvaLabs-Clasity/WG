@@ -1006,9 +1006,11 @@ between one request and 350. Two details follow from that:
 ### The three views
 
 The tab answers three questions, and they are three views rather than one
-column: **Alerts** (what is vulnerable), **Updates** (what Renovate has raised to
-fix it), and **Notifications** (who gets told). The view is a URL parameter, so
-it survives a refresh and can be linked to.
+column: **Dependabot** (what is vulnerable), **Renovate** (what has been raised
+to fix it), and **Notifications** (who gets told). The view is a URL parameter,
+so it survives a refresh and can be linked to — the ids behind them are still
+`alerts` and `updates`, which is why a link made before the tabs were renamed
+still works.
 
 They were stacked before — every vulnerable repository, then the Dependabot
 email settings, then Renovate, then the Renovate email settings. Reaching
@@ -1020,7 +1022,7 @@ Two consequences worth keeping:
 - **No view waits for another view's data.** The Dependabot fetch used to be an
   early return for the whole page, so opening Renovate waited for an alert list
   it does not use — the same fault as the scroll, wearing a different hat. The
-  spinner belongs to the Alerts view now.
+  spinner belongs to the Dependabot view now.
 - **Refresh refreshes the view you are on.** Refetching all three would spend
   GitHub's rate limit on two views nobody has open.
 

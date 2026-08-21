@@ -74,13 +74,16 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
 
   // ── the tabs say how much is behind them ────────────────────────────
   {
-    check("the alert count is on its tab",
-      /counts\.total > 0 \? `Alerts \$\{counts\.total\}`/.test(page));
-    check("  and the open Renovate count on its own",
-      /renovateOpen > 0 \? `Updates \$\{renovateOpen\}`/.test(page));
+    // Labelled by tool rather than by noun — what people call them.
+    check("the alert count is on the Dependabot tab",
+      /counts\.total > 0 \? `Dependabot \$\{counts\.total\}`/.test(page));
+    check("  and the open pull request count on the Renovate one",
+      /renovateOpen > 0 \? `Renovate \$\{renovateOpen\}`/.test(page));
     check("  with zero shown as no number rather than a zero",
-      /: "Alerts"/.test(page) && /: "Updates"/.test(page),
-      '"Updates 0" reads as a problem; "Updates" reads as a place to look');
+      /: "Dependabot"/.test(page) && /: "Renovate"/.test(page),
+      '"Renovate 0" reads as a problem; "Renovate" reads as a place to look');
+    check("  while the view ids stay put, so existing links still work",
+      /\["alerts", counts/.test(page) && /\["updates", renovateOpen/.test(page));
 
     // The panel fetches this itself; the page asks for the count under the same
     // key so React Query serves both from one request.
