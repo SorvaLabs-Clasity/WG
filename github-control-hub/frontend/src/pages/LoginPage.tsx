@@ -8,6 +8,11 @@ import {
   triggerAwsSsoLogin,
   revokeGithub,
   fetchAwsProfiles,
+  startSsoSetup,
+  pollSsoSetup,
+  createSsoProfile,
+  type SsoAccount,
+  type SsoDeviceAuth,
   useAwsProfile,
   setAwsAccessKeys,
   verifyStoredToken,
@@ -16,7 +21,7 @@ import {
 } from "../api/auth";
 import { clearToken, isAuthenticated, getUserInfo, getToken } from "../api/client";
 import { useTheme } from "../hooks/useTheme";
-import { INTENT, TYPE, SURFACE, EASE, enter, COMPANY_NAME, type Intent, Button, Segmented } from "../design";
+import { INTENT, TYPE, SURFACE, EASE, enter, COMPANY_NAME, type Intent, Button, Segmented, Spinner } from "../design";
 
 /**
  * Sign-in.
@@ -46,7 +51,44 @@ export default function LoginPage() {
   const [signingOut, setSigningOut] = useState(false);
   const [awsProfiles, setAwsProfiles] = useState<AwsProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<string>("");
-  const [awsMethod, setAwsMethod] = useState<"sso" | "profile" | "keys">("sso");
+  const [awsMethod, setAwsMethod] = useState<"sso" | "profile" | "keys" | "new">("sso");
+
+  /**
+   * Creating an SSO profile from here, rather than in a terminal.
+   *
+   * `aws configure sso` already does this and is a terminal wizard. Somebody
+   * handed this app to look after GitHub settings is not necessarily somebody
+   * who edits ~/.aws/config, and one wrong line there fails with an error
+   * naming none of what is wrong.
+   *
+   * Four states, because the middle one is a person in their browser:
+   *   form    → collecting the sign-in URL
+   *   waiting → they are approving it; we poll
+   *   choose  → AWS told us what they can reach; they pick
+   *   done    → written
+   */
+  const [newStep, setNewStep] = useState<"form" | "waiting" | "choose" | "done">("form");
+  const [newStartUrl, setNewStartUrl] = useState("");
+  const [newSsoRegion, setNewSsoRegion] = useState("us-east-1");
+  /**
+   * Where this app's own infrastructure is.
+   *
+   * Not asked for when the build already knows — `VITE_AWS_REGION` is written by
+   * the setup script for exactly this install, so asking is asking somebody to
+   * retype a fact the app is holding. It stays editable for the case where the
+   * build carries nothing.
+   */
+  const [newRegion, setNewRegion] = useState(
+    (import.meta.env.VITE_AWS_REGION as string | undefined) || "");
+  const [newProfileName, setNewProfileName] = useState("");
+  const [newAccounts, setNewAccounts] = useState<SsoAccount[]>([]);
+  const [newAccountId, setNewAccountId] = useState("");
+  const [newRoleName, setNewRoleName] = useState("");
+  const [newAuth, setNewAuth] = useState<SsoDeviceAuth | null>(null);
+  const [newError, setNewError] = useState("");
+  /** Adding a profile while already connected, without disconnecting first. */
+  const [addingProfile, setAddingProfile] = useState(false);
+  const [newBusy, setNewBusy] = useState(false);
   const [profilesError, setProfilesError] = useState<string | null>(null);
   const touchedMethod = useRef(false);
   const [akPasteMode, setAkPasteMode] = useState(true);
@@ -225,16 +267,141 @@ export default function LoginPage() {
     await checkStatus();
   };
 
-  const handleAwsSsoLogin = async () => {
+  /**
+   * Start `aws sso login` for a profile.
+   *
+   * Takes the profile rather than reading `selectedProfile`, because the caller
+   * sometimes knows better than the state does. Straight after creating a
+   * profile the selection has deliberately not moved — `loadProfiles` keeps
+   * whatever was chosen before, so a refresh does not yank people off their
+   * choice — so a button saying "sign in with work" was signing in with the
+   * previous profile, or with none, and AWS answered with a portal error naming
+   * nothing.
+   */
+  const handleAwsSsoLogin = async (profile?: string) => {
+    // Only a string is a profile name. Wired straight to a button's onClick this
+    // would otherwise be handed a click event, and `setSelectedProfile(event)`
+    // puts an object where a name belongs — which does not fail here, it fails
+    // later when something renders it, as a blank screen with a minified error.
+    const named = typeof profile === "string" ? profile : undefined;
+    const target = named || selectedProfile || undefined;
+    if (target) setSelectedProfile(target);
+    setNewError("");
     setAwsSsoStarted(true);
-    await triggerAwsSsoLogin(selectedProfile || undefined);
+    try {
+      await triggerAwsSsoLogin(target);
+    } catch (e: any) {
+      // Back to a state somebody can act from. Leaving `awsSsoStarted` set
+      // shows "reopen browser / verify" for a sign-in that never began, which
+      // is the shape of a button that does nothing.
+      setAwsSsoStarted(false);
+      setNewError(e?.message || "Could not start the AWS sign-in.");
+    }
   };
 
+  /**
+   * "Verify" — I have signed in over there, look again.
+   *
+   * The result used to be thrown away. The backend answers `reachable: false`
+   * with the reason when it still cannot reach DynamoDB, and discarding that
+   * turned every failure into a button that visibly did nothing: not signed in
+   * yet, signed into the wrong account, no network, all identical on screen.
+   */
   const handleReconnectAws = async () => {
     setRefreshing("aws");
-    await reconnectAws(selectedProfile || undefined);
+    setNewError("");
+    try {
+      const result = await reconnectAws(selectedProfile || undefined);
+      if (!result.reachable) {
+        setNewError(result.error
+          ? `Signed in, but AWS is still not reachable: ${result.error}`
+          : "AWS is still not reachable. Finish the sign-in in your browser, then hit Verify again.");
+      } else {
+        // Only on success: leaving it set keeps offering "reopen browser" for a
+        // sign-in that is already done.
+        setAwsSsoStarted(false);
+      }
+    } catch (e: any) {
+      setNewError(e?.message || "Could not check the AWS sign-in.");
+    }
     await checkStatus();
-    setAwsSsoStarted(false);
+  };
+
+  /**
+   * Start the sign-in, open the browser, and poll until they approve.
+   *
+   * Polling at the interval AWS asks for, and stopping when it says the code has
+   * expired — a loop that keeps asking after that is asking about something that
+   * no longer exists.
+   */
+  const handleNewSsoStart = async () => {
+    setNewError(""); setNewBusy(true);
+    try {
+      const auth = await startSsoSetup(newStartUrl.trim(), newSsoRegion.trim());
+      setNewAuth(auth);
+      setNewStep("waiting");
+      // Opened for them. The URL carries the code, so there is nothing to type.
+      window.open(auth.verificationUriComplete, "_blank");
+
+      const poll = async (): Promise<void> => {
+        if (Date.now() > auth.expiresAt) {
+          setNewError("That sign-in request expired. Start again.");
+          setNewStep("form"); setNewBusy(false);
+          return;
+        }
+        const result = await pollSsoSetup({
+          clientId: auth.clientId, clientSecret: auth.clientSecret,
+          deviceCode: auth.deviceCode, ssoRegion: newSsoRegion.trim(),
+        });
+        if (result.status === "pending") {
+          setTimeout(poll, auth.interval * 1000);
+          return;
+        }
+        setNewAccounts(result.accounts);
+        if (result.accounts.length === 1) {
+          setNewAccountId(result.accounts[0].accountId);
+          if (result.accounts[0].roles.length === 1) setNewRoleName(result.accounts[0].roles[0]);
+        }
+        setNewStep("choose"); setNewBusy(false);
+      };
+      // Caught, because this is fire-and-forget.
+      //
+      // Without it, any failure inside the loop became an unhandled rejection:
+      // the recursion stopped, nothing was set, and the screen sat on "approve
+      // it in your browser" for ever — the one outcome that tells the person
+      // nothing at all. A hang is worse than an error, because there is nothing
+      // to act on and no reason to stop waiting.
+      void poll().catch((e: any) => {
+        setNewError(e?.message || "The sign-in could not be completed.");
+        setNewStep("form");
+        setNewBusy(false);
+      });
+    } catch (e: any) {
+      setNewError(e?.message || "Could not start the AWS sign-in");
+      setNewStep("form"); setNewBusy(false);
+    }
+  };
+
+  const handleNewSsoCreate = async () => {
+    setNewError(""); setNewBusy(true);
+    try {
+      await createSsoProfile({
+        profileName: newProfileName.trim(),
+        startUrl: newStartUrl.trim(),
+        ssoRegion: newSsoRegion.trim(),
+        accountId: newAccountId,
+        roleName: newRoleName,
+        region: newRegion.trim(),
+      });
+      setNewStep("done");
+      // The new profile has to appear in the picker, or the obvious next step
+      // is to use something that looks like it does not exist yet.
+      await loadProfiles(false, newProfileName.trim());
+    } catch (e: any) {
+      setNewError(e?.message || "Could not create the profile");
+    } finally {
+      setNewBusy(false);
+    }
   };
 
   const handleUseProfile = async () => {
@@ -390,29 +557,60 @@ export default function LoginPage() {
                 : "Needed to read and write the app's own data"
             }
             action={awsOk && !loading && !error
-              ? <Quiet onClick={handleDisconnectAws} disabled={refreshing === "aws"} icon="ph-bold ph-plugs" label="Disconnect" />
+              ? <div className="flex items-center gap-1">
+                  {/* Reachable while connected, because "add a profile for the
+                      other account" is exactly when somebody wants it — and
+                      before this, the only way to reach it was to disconnect
+                      from the account they were happily using. */}
+                  <Quiet onClick={() => { setAwsMethod("new"); setNewStep("form"); setAddingProfile(true); }}
+                    icon="ph-bold ph-plus" label="Add profile" />
+                  <Quiet onClick={handleDisconnectAws} disabled={refreshing === "aws"} icon="ph-bold ph-plugs" label="Disconnect" />
+                </div>
               : undefined}
           >
-            {!loading && !error && !awsOk && (
+            {!loading && !error && awsOk && addingProfile && (
+              <div className="mb-3 flex items-center justify-between rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2">
+                <span className="text-xs text-slate-600 dark:text-slate-300">
+                  Adding a profile. You stay signed in to <strong>{status?.aws.profile || "this account"}</strong>.
+                </span>
+                <button onClick={() => setAddingProfile(false)}
+                  className="text-xs font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white">
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            {!loading && !error && (!awsOk || addingProfile) && (
               <div className="space-y-3">
                 {profilesError && (
                   <Hint intent="warn">
                     Could not read your AWS profiles — {profilesError}. Access keys still work.
                   </Hint>
                 )}
-                <Segmented
+                {/* Shown above the tabs rather than inside one, because a
+                    sign-in can be started from more than one of them and an
+                    error rendered in the panel you have since left is an error
+                    nobody sees. */}
+                {newError && awsMethod !== "new" && (
+                  <Hint intent="danger">{newError}</Hint>
+                )}
+                {!addingProfile && <Segmented
                   value={awsMethod}
                   onChange={(v) => { touchedMethod.current = true; setAwsMethod(v); setAwsSsoStarted(false); }}
                   options={([
                     ["sso", "SSO"] as [typeof awsMethod, string],
                     ["keys", "Access keys"] as [typeof awsMethod, string],
                     ["profile", "Profile"] as [typeof awsMethod, string],
+                    ["new", "New profile"] as [typeof awsMethod, string],
                   ]).filter(([id]) =>
-                    id === "keys" ||
+                    // Access keys always work. SSO and Profile need a profile to
+                    // exist already — and "New profile" is the way out of having
+                    // none, so it is the one option that must never be hidden.
+                    id === "keys" || id === "new" ||
                     (id === "sso" && awsProfiles.some(p => p.type === "sso")) ||
                     (id === "profile" && awsProfiles.length > 0)
                   )}
-                />
+                />}
 
                 {awsMethod === "sso" && (
                   <div className="space-y-2.5">
@@ -432,13 +630,13 @@ export default function LoginPage() {
                     )}
                     <div className="flex justify-end gap-2">
                       {!awsSsoStarted ? (
-                        <Button variant="primary" onClick={handleAwsSsoLogin} className="w-full sm:w-auto">
+                        <Button variant="primary" onClick={() => handleAwsSsoLogin()} className="w-full sm:w-auto">
                           <i className="ph-bold ph-browser mr-2"></i>
                           Sign in as {selectedProfile || "default"}
                         </Button>
                       ) : (
                         <>
-                          <Button variant="ghost" onClick={handleAwsSsoLogin}>Reopen browser</Button>
+                          <Button variant="ghost" onClick={() => handleAwsSsoLogin()}>Reopen browser</Button>
                           <Button variant="primary" onClick={handleReconnectAws} disabled={refreshing === "aws"}>
                             <i className="ph-bold ph-arrow-clockwise mr-2"></i>Verify
                           </Button>
@@ -462,6 +660,182 @@ export default function LoginPage() {
                         <i className="ph-bold ph-user-switch mr-2"></i>Use {selectedProfile || "profile"}
                       </Button>
                     </div>
+                  </div>
+                )}
+
+                {awsMethod === "new" && (
+                  <div className="space-y-3">
+                    {newError && (
+                      <div className="rounded-lg bg-rose-50 dark:bg-rose-950/40 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">
+                        {newError}
+                      </div>
+                    )}
+
+                    {newStep === "form" && (
+                      <>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Creates an AWS profile on this computer, so you do not have to
+                          edit files or use a terminal. You need the sign-in link your
+                          admin gave you — it usually ends in <code>.awsapps.com/start</code>.
+                        </p>
+                        <div>
+                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
+                            AWS sign-in link
+                          </label>
+                          <input value={newStartUrl} onChange={e => setNewStartUrl(e.target.value)}
+                            placeholder="https://your-company.awsapps.com/start"
+                            className={SURFACE.input} />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
+                            Region of that sign-in link
+                          </label>
+                          <input value={newSsoRegion} onChange={e => setNewSsoRegion(e.target.value)}
+                            placeholder="us-east-1" className={SURFACE.input} />
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            Where your company's AWS login lives — one region for the whole
+                            company, and usually <code>us-east-1</code>. Your admin knows it,
+                            and it is <em>not</em> where this app runs.
+                          </p>
+                        </div>
+
+                        {/* Only asked when the build does not already know. */}
+                        {!import.meta.env.VITE_AWS_REGION && (
+                          <div>
+                            <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
+                              Region this app runs in
+                            </label>
+                            <input value={newRegion} onChange={e => setNewRegion(e.target.value)}
+                              placeholder="us-east-2" className={SURFACE.input} />
+                            <p className="mt-1 text-[11px] text-slate-400">
+                              Where this app's own tables and secrets are. Often a different
+                              region from the sign-in above.
+                            </p>
+                          </div>
+                        )}
+
+                        {import.meta.env.VITE_AWS_REGION && (
+                          <p className="text-[11px] text-slate-400">
+                            This app runs in <code>{import.meta.env.VITE_AWS_REGION as string}</code>,
+                            so the profile will use that. Different from the sign-in region above,
+                            and that is normal.
+                          </p>
+                        )}
+                        <div className="flex justify-end">
+                          <Button variant="primary" onClick={handleNewSsoStart}
+                            disabled={newBusy || !newStartUrl.trim() || !newSsoRegion.trim() || !newRegion.trim()}>
+                            <i className="ph-bold ph-arrow-square-out mr-2"></i>
+                            Continue in browser
+                          </Button>
+                        </div>
+                      </>
+                    )}
+
+                    {newStep === "waiting" && (
+                      <div className="text-center py-4 space-y-2">
+                        <Spinner />
+                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                          Approve the sign-in in your browser
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          A tab should have opened. Confirm the code shown there, then come back —
+                          this page carries on by itself.
+                        </p>
+                        {newAuth && (
+                          <p className="text-xs text-slate-400">
+                            Code: <code className="font-mono">{newAuth.userCode}</code>
+                            {" · "}
+                            <a href={newAuth.verificationUriComplete} target="_blank" rel="noreferrer"
+                              className="underline">open it again</a>
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {newStep === "choose" && (
+                      <>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Signed in. These are the accounts you can reach — pick the one this
+                          app is deployed in.
+                        </p>
+                        <div>
+                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
+                            Account
+                          </label>
+                          <select value={newAccountId} className={SURFACE.input}
+                            onChange={e => {
+                              setNewAccountId(e.target.value);
+                              // The role list belongs to the account, so a stale
+                              // one would offer a role that account does not have.
+                              const acct = newAccounts.find(a => a.accountId === e.target.value);
+                              setNewRoleName(acct?.roles.length === 1 ? acct.roles[0] : "");
+                            }}>
+                            <option value="">Choose an account…</option>
+                            {newAccounts.map(a => (
+                              <option key={a.accountId} value={a.accountId}>
+                                {a.accountName} — {a.accountId}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
+                            Role
+                          </label>
+                          <select value={newRoleName} onChange={e => setNewRoleName(e.target.value)}
+                            className={SURFACE.input} disabled={!newAccountId}>
+                            <option value="">Choose a role…</option>
+                            {(newAccounts.find(a => a.accountId === newAccountId)?.roles ?? []).map(r => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
+                            Name this profile
+                          </label>
+                          <input value={newProfileName} onChange={e => setNewProfileName(e.target.value)}
+                            placeholder="work" className={SURFACE.input} />
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            Letters, numbers, dots, dashes and underscores. What you will pick
+                            from the Profile tab later.
+                          </p>
+                        </div>
+                        <div className="flex justify-end">
+                          <Button variant="primary" onClick={handleNewSsoCreate}
+                            disabled={newBusy || !newAccountId || !newRoleName || !newProfileName.trim()}>
+                            <i className="ph-bold ph-floppy-disk mr-2"></i>
+                            {newBusy ? "Saving…" : "Save profile"}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+
+                    {newStep === "done" && (
+                      <div className="space-y-2.5">
+                        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-300">
+                          Saved <strong>{newProfileName}</strong> to your AWS config.
+                        </div>
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          Now sign in with it. This is the same step you will take each time
+                          the session expires.
+                        </p>
+                        <div className="flex justify-end">
+                          <Button variant="primary" disabled={refreshing === "aws"}
+                            onClick={() => {
+                              // Named explicitly. This is the one place where
+                              // the profile to use is known for certain and the
+                              // selection has not caught up.
+                              const created = newProfileName.trim();
+                              setAwsMethod("sso");
+                              setAddingProfile(false);
+                              void handleAwsSsoLogin(created);
+                            }}>
+                            <i className="ph-bold ph-sign-in mr-2"></i>Sign in with {newProfileName}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 

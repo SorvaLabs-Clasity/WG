@@ -510,6 +510,10 @@ router.post("/reconnect-aws", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
       return;
     }
     process.env.AWS_PROFILE = profile;
+    // The file may have changed since this process parsed it — a profile added
+    // by this app, or one the person added in a terminal while it was running.
+    const { refreshAwsConfigCache } = await import("../services/ssoSetupService");
+    await refreshAwsConfigCache();
   }
 
   // Read while the key that signed it is still the one loaded.
@@ -531,6 +535,150 @@ router.post("/reconnect-aws", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
     res.json({ ok: true, reachable: false, error: err.message });
   }
 });
+
+// ── Creating an SSO profile from the app ──────────────────────────────
+//
+// Three steps, because the middle one is a person going to their browser.
+// Everything here carries the same guards as the rest of the AWS endpoints:
+// desktop only, same origin only. Writing to ~/.aws/config is not something a
+// deployed server should ever be asked to do.
+
+/** Step one: ask AWS to start an authorization and hand back a URL to open. */
+router.post("/aws-sso-start", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware,
+  async (req: Request, res: Response) => {
+    const startUrl = String(req.body?.startUrl ?? "").trim();
+    const ssoRegion = String(req.body?.ssoRegion ?? "").trim();
+
+    const { isValidStartUrl, isValidRegion, startDeviceAuthorization } =
+      await import("../services/ssoSetupService");
+
+    if (!isValidStartUrl(startUrl)) {
+      return res.status(400).json({
+        error: "That does not look like an AWS sign-in URL. It usually ends in "
+          + ".awsapps.com/start and is on your access portal page.",
+      });
+    }
+    if (!isValidRegion(ssoRegion)) {
+      return res.status(400).json({ error: `"${ssoRegion}" is not an AWS region.` });
+    }
+
+    try {
+      const auth = await startDeviceAuthorization(startUrl, ssoRegion);
+      // The secrets in here are throwaway and scoped to this one sign-in, but
+      // they are still credentials: returned for the client to hand straight
+      // back on the next call, never logged.
+      res.json(auth);
+    } catch (err: any) {
+      res.status(502).json({
+        error: `AWS refused to start the sign-in: ${err?.message ?? err}. `
+          + `Check the sign-in URL and its region.`,
+      });
+    }
+  });
+
+/** Step two: has it been approved yet, and if so, what can they reach? */
+router.post("/aws-sso-poll", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware,
+  async (req: Request, res: Response) => {
+    const { clientId, clientSecret, deviceCode, ssoRegion } = req.body ?? {};
+    const { isValidRegion, pollForToken, listAccountsAndRoles } =
+      await import("../services/ssoSetupService");
+
+    if (!clientId || !clientSecret || !deviceCode || !isValidRegion(String(ssoRegion))) {
+      return res.status(400).json({ error: "Incomplete sign-in details" });
+    }
+
+    try {
+      const token = await pollForToken({
+        clientId: String(clientId), clientSecret: String(clientSecret),
+        deviceCode: String(deviceCode), ssoRegion: String(ssoRegion),
+      });
+      // Not an error, and the ordinary answer for the first several calls: the
+      // person is still reading a page in their browser.
+      if (!token) return res.json({ status: "pending" });
+
+      const accounts = await listAccountsAndRoles(token, String(ssoRegion));
+      // The access token is deliberately not returned. It would let the caller
+      // reach every account this person has, and nothing on this screen needs
+      // it — the account and role names are the whole point.
+      res.json({ status: "ready", accounts });
+    } catch (err: any) {
+      res.status(502).json({ status: "failed", error: err?.message ?? String(err) });
+    }
+  });
+
+/** Step three: write it into ~/.aws/config. */
+router.post("/aws-sso-create-profile", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware,
+  async (req: Request, res: Response) => {
+    const profileName = String(req.body?.profileName ?? "").trim();
+    const startUrl = String(req.body?.startUrl ?? "").trim();
+    const ssoRegion = String(req.body?.ssoRegion ?? "").trim();
+    const accountId = String(req.body?.accountId ?? "").trim();
+    const roleName = String(req.body?.roleName ?? "").trim();
+    const region = String(req.body?.region ?? "").trim();
+
+    const {
+      isValidStartUrl, isValidRegion, isValidAccountId, isValidRoleName,
+      renderProfile, alreadyDefined,
+    } = await import("../services/ssoSetupService");
+
+    // Every one of these is about to be written into a config file the AWS CLI
+    // will parse. A value carrying a newline and a `[` would not corrupt the
+    // file — it would quietly define a second profile.
+    const problems: string[] = [];
+    if (!isValidAwsProfile(profileName)) problems.push("the profile name may use letters, numbers, dots, dashes and underscores");
+    if (!isValidStartUrl(startUrl)) problems.push("the sign-in URL is not an AWS one");
+    if (!isValidRegion(ssoRegion)) problems.push(`"${ssoRegion}" is not a region`);
+    if (!isValidAccountId(accountId)) problems.push("the account id must be twelve digits");
+    if (!isValidRoleName(roleName)) problems.push("that is not a valid role name");
+    if (!isValidRegion(region)) problems.push(`"${region}" is not a region`);
+    if (problems.length) return res.status(400).json({ error: problems.join("; ") });
+
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const os = await import("os");
+
+      const dir = path.join(os.homedir(), ".aws");
+      const configPath = path.join(dir, "config");
+      fs.mkdirSync(dir, { recursive: true });
+
+      const existing = fs.existsSync(configPath) ? fs.readFileSync(configPath, "utf-8") : "";
+      if (alreadyDefined(existing, `profile ${profileName}`)) {
+        return res.status(409).json({
+          error: `A profile called "${profileName}" already exists. Pick another name, `
+            + `or use the existing one from the list above.`,
+        });
+      }
+
+      // One session per sign-in URL, shared by every profile using it, so
+      // signing in once authorizes them all.
+      const sessionName = `${profileName}-sso`;
+      let block = renderProfile({
+        profileName, sessionName, startUrl, ssoRegion, accountId, roleName, region,
+      });
+      if (alreadyDefined(existing, `sso-session ${sessionName}`)) {
+        // Re-declaring a session the file already has would give the CLI two
+        // definitions of the same name.
+        block = block.slice(block.indexOf(`[profile ${profileName}]`) - 1);
+      }
+
+      // Appended, never rewritten. This file is the machine's, not ours: it may
+      // hold profiles for work nothing to do with this app, and the only safe
+      // edit is one that adds.
+      fs.appendFileSync(configPath, (existing.endsWith("\n") || !existing ? "" : "\n") + block, {
+        mode: 0o600,
+      });
+
+      // The file has changed under a process that already parsed it. Without
+      // this the profile is real, correct, and invisible until the next launch.
+      const { refreshAwsConfigCache } = await import("../services/ssoSetupService");
+      await refreshAwsConfigCache();
+
+      res.json({ profile: profileName, path: configPath });
+    } catch (err: any) {
+      res.status(500).json({ error: `Could not write ~/.aws/config: ${err?.message ?? err}` });
+    }
+  });
 
 /** List all AWS profiles from ~/.aws/config and ~/.aws/credentials. */
 router.get("/aws-profiles", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (_req: Request, res: Response) => {
@@ -702,6 +850,10 @@ router.post("/aws-use-profile", serverModeGuard, sameOriginOnly, setupOrAuthMidd
   const carried = captureSession(req.headers.authorization);
 
   process.env.AWS_PROFILE = profile;
+  {
+    const { refreshAwsConfigCache } = await import("../services/ssoSetupService");
+    await refreshAwsConfigCache();
+  }
   delete process.env.AWS_ACCESS_KEY_ID;
   delete process.env.AWS_SECRET_ACCESS_KEY;
   delete process.env.AWS_SESSION_TOKEN;

@@ -179,7 +179,17 @@ export function SlabPercent({ value, label }: { value: number; label: string }) 
 
 export function Button({ variant = "secondary", onClick, disabled, children, className = "", type }: {
   variant?: "primary" | "secondary" | "onDark" | "ghost";
-  onClick?: () => void; disabled?: boolean; children: React.ReactNode;
+  /**
+   * Typed with the event it actually receives, even though almost nobody uses it.
+   *
+   * This forwards straight to the DOM, so React calls it with a click event. When
+   * this was declared `() => void` that was a lie the compiler believed: a handler
+   * taking an optional parameter is assignable to a zero-parameter type, so
+   * `onClick={handleThing}` for a `handleThing(id?: string)` compiled clean and
+   * then received a synthetic event as `id` at runtime. Naming the parameter makes
+   * that a type error at the call site instead of a blank screen.
+   */
+  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void; disabled?: boolean; children: React.ReactNode;
   className?: string; type?: "button" | "submit";
 }) {
   const styles = {

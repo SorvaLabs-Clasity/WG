@@ -1,7 +1,7 @@
 # Testing
 
-Forty-two suites, each a script named `repro-*.ts`, run with `tsx`. No
-framework. Thirty-nine live in `backend/`, three in `frontend/`, and each runs
+Forty-six suites, each a script named `repro-*.ts`, run with `tsx`. No
+framework. Forty-three live in `backend/`, three in `frontend/`, and each runs
 from its own directory.
 
 ```bash
@@ -31,6 +31,7 @@ the wrong place.
 | `repro-leastprivilege` | **What the IAM does not contain** |
 | `repro-accessmap` | Access-path derivation |
 | `repro-accessroles` | Which repository roles reach the access map, and the one that does not |
+| `repro-ssosetup` | Creating an AWS SSO profile: what may be written into ~/.aws/config |
 | `repro-synclog` | Every refresh writes a row; the frequent ones only when they did something |
 | `repro-graphfreshness` | How old the graph is, and that a sync writes only what changed |
 | `repro-activity` | Activity lookups and indexes |

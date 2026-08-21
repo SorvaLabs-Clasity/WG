@@ -1814,6 +1814,82 @@ second locked someone out for a minute after it healed.
 | `middleware/authMiddleware.ts` | verifies the session on every `/api` request |
 | `middleware/githubGate.ts` | refuses GitHub routes in an account that should not have them |
 
+### Creating an SSO profile from the app
+
+`aws configure sso` does this already, and it is a wizard in a terminal. The
+**New profile** tab on the login screen does the same thing without one.
+
+The hard part is not writing the file — it is that somebody setting this up knows
+their sign-in link and nothing else. Not the twelve-digit account number, not the
+exact role name. Both are required, and both are what people guess wrong.
+
+So it asks AWS, using the same device-authorization flow the CLI uses:
+
+1. **You give the sign-in link** and the region it lives in.
+2. The backend registers a throwaway client with AWS and starts an
+   authorization. **A browser tab opens** carrying the code, so nothing is typed.
+3. You approve it there. The page polls at the interval AWS asks for, and gives
+   up when the code expires rather than asking about something gone.
+4. Once approved, the backend reads back **every account you can reach and the
+   roles you hold in each**, and you pick from lists.
+5. It appends a profile to `~/.aws/config` and offers to sign in with it.
+
+**No SDK.** The OIDC endpoints are unauthenticated by design — they run before
+anybody has credentials — and the portal endpoints take a bearer token rather
+than a signed request, so `fetch` covers all of it. Two fewer packages in a
+bundle that ships to desktops.
+
+**What is written**, in the modern `sso-session` form so profiles for two
+accounts under one sign-in share a session and `aws sso login` authorizes both:
+
+```ini
+[sso-session work-sso]
+sso_start_url = https://acme.awsapps.com/start
+sso_region = us-east-1
+sso_registration_scopes = sso:account:access
+
+[profile work]
+sso_session = work-sso
+sso_account_id = 123456789012
+sso_role_name = AdministratorAccess
+region = us-east-2
+```
+
+**Appended, never rewritten.** That file is the machine's, not this app's — it
+may hold profiles for work with nothing to do with here, and the only safe edit
+is one that adds. A name that already exists is refused rather than replaced.
+
+**Every value is validated before any of it is written.** A role name carrying a
+newline and a `[` would not corrupt the file; it would quietly define a *second*
+profile pointing wherever the text said. `repro-ssosetup` asserts each field
+refuses that shape.
+
+**The access token never leaves the backend.** It would reach every account you
+have, and the screen needs only the account and role names.
+
+**The config cache is refreshed the moment the file changes.** The AWS SDK parses
+`~/.aws/config` once per process and keeps it in a module-level cache
+(`filePromises` in `@smithy/core/config`) that nothing invalidates — reasonably,
+since a config file is not normally expected to change under a running program.
+This app changes it. Without the refresh a profile was written correctly, signed
+into successfully by the AWS CLI in its own process, and invisible to the app
+that had just created it: `AWS_PROFILE=<new>` resolved to a profile the SDK
+believed did not exist, so Verify reported AWS unreachable and appeared to do
+nothing, and only restarting fixed it. `refreshAwsConfigCache()` in
+`services/ssoSetupService.ts` re-reads with `ignoreCache`, which also replaces
+the cached promise so ordinary lookups afterwards see the new content. It runs
+after writing a profile and before either switch route resolves credentials by
+name — the second covers a profile you added in a terminal while the app was
+open. `repro-ssosetup` asserts the staleness and the fix against the real SDK
+rather than by reading source, because what would break it is the SDK changing;
+that module has already moved once, out of `@smithy/shared-ini-file-loader`.
+
+| File | Role |
+|---|---|
+| `services/ssoSetupService.ts` | the device flow, the validation, and rendering the config block |
+| `routes/auth.ts` | `/aws-sso-start`, `/aws-sso-poll`, `/aws-sso-create-profile` — desktop-only, same-origin |
+| `pages/LoginPage.tsx` | the four-step panel on the **New profile** tab |
+
 ### What you are allowed to change
 
 Team membership decides it:

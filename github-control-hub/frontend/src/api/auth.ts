@@ -99,12 +99,24 @@ export async function reconnectAws(profile?: string): Promise<AwsSwitchResult> {
   return adoptSession(await res.json());
 }
 
+/**
+ * Start `aws sso login` for a profile.
+ *
+ * Throws when it could not be started. This used to discard the response
+ * entirely — so a refused profile name, a missing AWS CLI, or a spawn that
+ * failed all produced a button that did nothing at all, with the reason sitting
+ * unread in a response nobody looked at.
+ */
 export async function triggerAwsSsoLogin(profile?: string): Promise<void> {
-  await fetch(`${BACKEND_URL}/auth/aws-sso-login`, {
+  const res = await fetch(`${BACKEND_URL}/auth/aws-sso-login`, {
     method: "POST",
     headers: authHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ profile }),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({} as { error?: string }));
+    throw new Error(body.error ?? `Could not start the AWS sign-in (${res.status})`);
+  }
 }
 
 export async function fetchAwsProfiles(): Promise<AwsProfile[]> {
@@ -177,4 +189,69 @@ export async function revokeGithub(token: string): Promise<void> {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
   });
+}
+
+// ── Creating an SSO profile, without a terminal ──────────────────────
+
+export interface SsoDeviceAuth {
+  clientId: string;
+  clientSecret: string;
+  deviceCode: string;
+  verificationUriComplete: string;
+  userCode: string;
+  interval: number;
+  expiresAt: number;
+}
+
+export interface SsoAccount {
+  accountId: string;
+  accountName: string;
+  emailAddress?: string;
+  roles: string[];
+}
+
+/** Step one: ask AWS to start a sign-in, and get a URL to send the person to. */
+export async function startSsoSetup(startUrl: string, ssoRegion: string): Promise<SsoDeviceAuth> {
+  const res = await fetch(`${BACKEND_URL}/auth/aws-sso-start`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ startUrl, ssoRegion }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || "Could not start the AWS sign-in");
+  return body;
+}
+
+/**
+ * Step two: has it been approved?
+ *
+ * `pending` is the ordinary answer while somebody is still in their browser, so
+ * it is a status rather than an error — the caller keeps asking.
+ */
+export async function pollSsoSetup(auth: {
+  clientId: string; clientSecret: string; deviceCode: string; ssoRegion: string;
+}): Promise<{ status: "pending" } | { status: "ready"; accounts: SsoAccount[] }> {
+  const res = await fetch(`${BACKEND_URL}/auth/aws-sso-poll`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(auth),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || "The AWS sign-in failed");
+  return body;
+}
+
+/** Step three: write it into ~/.aws/config. */
+export async function createSsoProfile(p: {
+  profileName: string; startUrl: string; ssoRegion: string;
+  accountId: string; roleName: string; region: string;
+}): Promise<{ profile: string; path: string }> {
+  const res = await fetch(`${BACKEND_URL}/auth/aws-sso-create-profile`, {
+    method: "POST",
+    headers: authHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(p),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error || "Could not create the profile");
+  return body;
 }

@@ -46,7 +46,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   if (!ok) failures++;
 }
 
-const USER = { githubId: 4242, login: "RDaou05", avatarUrl: "https://example.invalid/a.png" };
+const USER = { githubId: 4242, login: "test-user", avatarUrl: "https://example.invalid/a.png" };
 
 function verifies(token: string): boolean {
   try { verifyToken(token); return true; } catch { return false; }
@@ -120,7 +120,7 @@ function verifies(token: string): boolean {
   {
     const github = {
       GITHUB_CLIENT_ID: "id", GITHUB_CLIENT_SECRET: "secret",
-      GITHUB_APP_ID: "1", GITHUB_ORG: "Sorva-Studios",
+      GITHUB_APP_ID: "1", GITHUB_ORG: "Acme-Org",
     };
     for (const [k, v] of Object.entries(github)) process.env[k] = v;
 
