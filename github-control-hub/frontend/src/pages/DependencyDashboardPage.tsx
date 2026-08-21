@@ -1,4 +1,7 @@
 import { useState, useMemo } from "react";
+import { useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { fetchRenovate } from "../api/renovate";
 import { useDependencies, useDependencySummary, useEnableDependabot, useDisableDependabot } from "../hooks/useDependencies";
 import { useAuth } from "../App";
 import type { DependencyAlert } from "../types/Dependabot";
@@ -27,10 +30,47 @@ import RenovatePanel from "../components/RenovatePanel";
 import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
 
+/**
+ * The three questions this tab answers, as three views rather than one column.
+ *
+ * They used to be stacked: every vulnerable repository, then the Dependabot
+ * email settings, then Renovate, then the Renovate email settings. Reaching
+ * Renovate meant scrolling past the whole of Dependabot — a page of repository
+ * cards — which put the two halves of one question at opposite ends of a scroll
+ * bar and made the second half easy to forget existed.
+ *
+ * They are genuinely separate questions asked by the same person at different
+ * moments: what is vulnerable, what has been raised to fix it, and who gets
+ * told. Nothing on one view needs anything from another to make sense.
+ */
+type View = "alerts" | "updates" | "notifications";
+
+const VIEWS: View[] = ["alerts", "updates", "notifications"];
+
 export default function DependencyDashboardPage() {
   const { data: permissions } = usePermissions();
   const isAdmin = permissions?.isAwsAdmin ?? false;
   const { user } = useAuth();
+
+  // In the URL, so the view survives a refresh and can be linked to. An
+  // unrecognized value falls back rather than rendering nothing.
+  const [params, setParams] = useSearchParams();
+  const raw = params.get("view") as View | null;
+  const view: View = raw && VIEWS.includes(raw) ? raw : "alerts";
+  const setView = (v: View) => {
+    const next = new URLSearchParams(params);
+    if (v === "alerts") next.delete("view"); else next.set("view", v);
+    setParams(next, { replace: true });
+  };
+
+  // The same query key the panel uses, so this shares its cache rather than
+  // fetching a second time — it is here only to put a count on the tab.
+  const { data: renovate, isFetching: renovateFetching, refetch: refetchRenovate } = useQuery({
+    queryKey: ["renovate"],
+    queryFn: fetchRenovate,
+    staleTime: 120_000,
+  });
+  const renovateOpen = (renovate?.prs ?? []).filter(pr => pr.state === "open").length;
   const { data: dependencies, isLoading: depsLoading, isError: depsError, error: depsErrorObj,
           isFetching: depsFetching, refetch: refetchDeps } = useDependencies();
   const { data: summary, isLoading: sumLoading, isFetching: sumFetching, refetch: refetchSummary } = useDependencySummary();
@@ -117,7 +157,10 @@ export default function DependencyDashboardPage() {
     };
   }, [dependencies, summary]);
 
-  if (depsLoading || sumLoading) return <Page user={user}><Spinner /></Page>;
+  // Not an early return any more. Blocking the whole page on the Dependabot
+  // fetch meant opening the Renovate view still waited for data it does not
+  // use — the loading equivalent of the scroll this split removed.
+  const alertsLoading = depsLoading || sumLoading;
 
   const rateLimited = depsError && (depsErrorObj as any)?.message?.includes("429");
   const totalPages = Math.max(1, Math.ceil(groups.length / REPOS_PER_PAGE));
@@ -128,14 +171,36 @@ export default function DependencyDashboardPage() {
     <Page user={user}>
       <PageHeader
         title="Vulnerabilities"
-        subtitle="Known vulnerabilities in dependencies, which repositories are watching for them, and the updates Renovate has raised."
+        subtitle={
+          view === "alerts"
+            ? "Known vulnerabilities in dependencies, and which repositories are watching for them."
+            : view === "updates"
+            ? "The pull requests Renovate has raised to move dependencies forward."
+            : "Who gets emailed when something is found, or when an update is raised."
+        }
         actions={
+          // Refreshes what you are looking at. Refetching all three from here
+          // would spend GitHub's rate limit on two views nobody has open.
           <RefreshButton
-            busy={depsFetching || sumFetching}
-            onRefresh={() => Promise.all([refetchDeps(), refetchSummary()])}
+            busy={view === "updates" ? renovateFetching : depsFetching || sumFetching}
+            onRefresh={() => view === "updates"
+              ? refetchRenovate()
+              : Promise.all([refetchDeps(), refetchSummary()])}
           />
         }
       />
+
+      <div className="mb-5">
+        <Segmented
+          value={view}
+          onChange={setView}
+          options={[
+            ["alerts", counts.total > 0 ? `Alerts ${counts.total}` : "Alerts"] as [View, string],
+            ["updates", renovateOpen > 0 ? `Updates ${renovateOpen}` : "Updates"] as [View, string],
+            ["notifications", "Notifications"] as [View, string],
+          ]}
+        />
+      </div>
 
       {notice && (
         <div className={`mb-5 rounded-2xl border p-4 flex items-start gap-3 ${
@@ -153,175 +218,174 @@ export default function DependencyDashboardPage() {
         </div>
       )}
 
-      <StatusSlab
-        /* An org where almost nothing is being scanned is not "all clear" —
-           it is unmeasured. Saying so is the difference between a dashboard
-           that reports and one that reassures. */
-        intent={counts.critical > 0 ? "danger" : counts.total > 0 || counts.off > 0 ? "warn" : "good"}
-        eyebrow={
-          counts.critical > 0 ? "Critical vulnerabilities"
-          : counts.total > 0 ? "Vulnerabilities open"
-          : counts.off > 0 ? "Mostly unscanned"
-          : "Nothing outstanding"
-        }
-        metrics={[
-          { value: counts.critical, label: "critical", emphasis: true },
-          { value: counts.high, label: "high" },
-          { value: counts.off, label: "not watching" },
-        ]}
-        aside={<SlabPercent value={counts.pct} label="repos watched" />}
-        footer={
-          counts.off > 0
-            ? <>
-                <strong className="font-bold">{counts.watched}</strong> of {counts.repos} repositories are being
-                scanned, and {counts.total === 0 ? "no vulnerabilities were found in them" : `${counts.total} open alerts were found in them`}.
-                The other <strong className="font-bold">{counts.off}</strong> {counts.off === 1 ? "has" : "have"} Dependabot
-                switched off, so nothing is known about {counts.off === 1 ? "it" : "them"} either way.
-              </>
-            : <>{counts.total} open alerts across {counts.repos} repositories, all of which are being scanned.</>
-        }
-      />
+      {view === "alerts" && (alertsLoading ? <Spinner /> : (
+        <>
+        <StatusSlab
+          /* An org where almost nothing is being scanned is not "all clear" —
+             it is unmeasured. Saying so is the difference between a dashboard
+             that reports and one that reassures. */
+          intent={counts.critical > 0 ? "danger" : counts.total > 0 || counts.off > 0 ? "warn" : "good"}
+          eyebrow={
+            counts.critical > 0 ? "Critical vulnerabilities"
+            : counts.total > 0 ? "Vulnerabilities open"
+            : counts.off > 0 ? "Mostly unscanned"
+            : "Nothing outstanding"
+          }
+          metrics={[
+            { value: counts.critical, label: "critical", emphasis: true },
+            { value: counts.high, label: "high" },
+            { value: counts.off, label: "not watching" },
+          ]}
+          aside={<SlabPercent value={counts.pct} label="repos watched" />}
+          footer={
+            counts.off > 0
+              ? <>
+                  <strong className="font-bold">{counts.watched}</strong> of {counts.repos} repositories are being
+                  scanned, and {counts.total === 0 ? "no vulnerabilities were found in them" : `${counts.total} open alerts were found in them`}.
+                  The other <strong className="font-bold">{counts.off}</strong> {counts.off === 1 ? "has" : "have"} Dependabot
+                  switched off, so nothing is known about {counts.off === 1 ? "it" : "them"} either way.
+                </>
+              : <>{counts.total} open alerts across {counts.repos} repositories, all of which are being scanned.</>
+          }
+        />
 
-      {rateLimited && (
-        <Note intent="warn">GitHub rate-limited the alert fetch. Counts may be incomplete until the limit resets.</Note>
-      )}
+        {rateLimited && (
+          <Note intent="warn">GitHub rate-limited the alert fetch. Counts may be incomplete until the limit resets.</Note>
+        )}
 
-      <div className="flex items-center gap-3 flex-wrap mb-5">
-        <SearchInput value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search repos or packages" />
-        <Segmented value={filter} onChange={f => { setFilter(f); setPage(1); }} options={[
-          ["alerts", "With alerts"],
-          ["critical", `Critical ${counts.critical}`],
-          ["high", "Critical + high"],
-          ["off", `Not watching ${counts.off}`],
-          ["all", "All"],
-        ]} />
-        {totalPages > 1 && (
-          <div className="ml-auto flex items-center gap-2 text-sm">
-            <Button variant="ghost" disabled={safePage <= 1} onClick={() => setPage(p => p - 1)}>
-              <i className="ph-bold ph-caret-left"></i>
-            </Button>
-            <span className="text-slate-500 dark:text-slate-400 tabular-nums font-semibold">{safePage} / {totalPages}</span>
-            <Button variant="ghost" disabled={safePage >= totalPages} onClick={() => setPage(p => p + 1)}>
-              <i className="ph-bold ph-caret-right"></i>
-            </Button>
+        <div className="flex items-center gap-3 flex-wrap mb-5">
+          <SearchInput value={search} onChange={v => { setSearch(v); setPage(1); }} placeholder="Search repos or packages" />
+          <Segmented value={filter} onChange={f => { setFilter(f); setPage(1); }} options={[
+            ["alerts", "With alerts"],
+            ["critical", `Critical ${counts.critical}`],
+            ["high", "Critical + high"],
+            ["off", `Not watching ${counts.off}`],
+            ["all", "All"],
+          ]} />
+          {totalPages > 1 && (
+            <div className="ml-auto flex items-center gap-2 text-sm">
+              <Button variant="ghost" disabled={safePage <= 1} onClick={() => setPage(p => p - 1)}>
+                <i className="ph-bold ph-caret-left"></i>
+              </Button>
+              <span className="text-slate-500 dark:text-slate-400 tabular-nums font-semibold">{safePage} / {totalPages}</span>
+              <Button variant="ghost" disabled={safePage >= totalPages} onClick={() => setPage(p => p + 1)}>
+                <i className="ph-bold ph-caret-right"></i>
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {shown.length === 0 ? (
+          <Empty
+            title={filter === "off" ? "Every repository is watching" : "Nothing to show"}
+            body={filter === "off" ? "Dependabot alerts are enabled everywhere." : "No repositories match this filter."}
+          />
+        ) : (
+          <div className="grid gap-3">
+            {shown.map(([repo, alerts], i) => {
+              const org = alerts[0]?.org;
+              const off = alerts.some(a => a.disabled);
+              // Just switched on and GitHub has not reported yet. Without this the
+              // placeholder row rendered as a vulnerability named "Dependabot
+              // alerts disabled" for the first few seconds after enabling.
+              const scanning = !off && alerts.some(a => a.scanning);
+              const clean = !off && !scanning && alerts.every(a => a.clean);
+              const real = alerts.filter(a => !a.clean && !a.disabled && !a.scanning);
+              const critical = real.filter(a => a.severity === "critical").length;
+              const intent: Intent = off || scanning ? "neutral" : critical > 0 ? "danger" : real.length > 0 ? "warn" : "good";
+              const isOpen = expanded.has(repo);
+              const visible = isOpen ? real : real.slice(0, COLLAPSED);
+              const hidden = real.length - visible.length;
+
+              return (
+                <RailCard key={repo} intent={intent} index={i}>
+                  <div className="flex items-start justify-between gap-5 flex-wrap mb-1">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>{repo}</h3>
+                        {off && <Pill intent="neutral">not watching</Pill>}
+                        {scanning && <Pill intent="info">scanning</Pill>}
+                        {clean && <Pill intent="good">clean</Pill>}
+                      </div>
+                      {off && (
+                        <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>
+                          Dependabot is switched off, so vulnerabilities here go undetected.
+                        </p>
+                      )}
+                      {scanning && (
+                        <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5`}>
+                          <i className="ph-bold ph-circle-notch animate-spin text-[13px]"></i>
+                          Just switched on — GitHub is still scanning. Results appear shortly.
+                        </p>
+                      )}
+                      {clean && (
+                        <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>No known vulnerabilities.</p>
+                      )}
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-3">
+                      {!off && !clean && !scanning && (
+                        <Figure intent={critical > 0 ? "danger" : "warn"} value={real.length}
+                          label={real.length === 1 ? "alert" : "alerts"} />
+                      )}
+                      {org && (
+                        <a href={`https://github.com/${org}/${repo}/security/dependabot`} target="_blank" rel="noreferrer"
+                          className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 shadow-sm hover:shadow transition-shadow inline-flex items-center gap-1.5">
+                          <i className="ph-fill ph-github-logo"></i>GitHub
+                        </a>
+                      )}
+                      {off ? (
+                        <Button variant="primary" disabled={busyRepo === repo}
+                          onClick={() => runDependabot(repo, enable.mutateAsync, `Now watching ${repo}`)}>
+                          {busyRepo === repo ? "Enabling…" : "Start watching"}
+                        </Button>
+                      ) : (
+                        <Button variant="secondary" disabled={busyRepo === repo}
+                          onClick={() => {
+                            if (!window.confirm(`Stop watching ${repo} for vulnerable dependencies?`)) return;
+                            runDependabot(repo, disable.mutateAsync, `Stopped watching ${repo}`);
+                          }}>
+                          {busyRepo === repo ? "…" : "Stop watching"}
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {real.length > 0 && (
+                    <>
+                      <ul className="mt-3 grid gap-2">
+                        {visible.map(a => <VulnRow key={a.id} alert={a} />)}
+                      </ul>
+                      {(hidden > 0 || isOpen) && (
+                        <button onClick={() => toggle(repo)}
+                          className="mt-3 text-[13px] font-bold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1.5">
+                          <i className={`ph-bold ph-caret-${isOpen ? "up" : "down"} text-xs`}></i>
+                          {isOpen
+                            ? `Hide ${real.length - COLLAPSED} ${real.length - COLLAPSED === 1 ? "vulnerability" : "vulnerabilities"}`
+                            : `View ${hidden} more ${hidden === 1 ? "vulnerability" : "vulnerabilities"}`}
+                        </button>
+                      )}
+                    </>
+                  )}
+                </RailCard>
+              );
+            })}
           </div>
         )}
-      </div>
+        </>
+      ))}
 
-      {shown.length === 0 ? (
-        <Empty
-          title={filter === "off" ? "Every repository is watching" : "Nothing to show"}
-          body={filter === "off" ? "Dependabot alerts are enabled everywhere." : "No repositories match this filter."}
-        />
-      ) : (
-        <div className="grid gap-3">
-          {shown.map(([repo, alerts], i) => {
-            const org = alerts[0]?.org;
-            const off = alerts.some(a => a.disabled);
-            // Just switched on and GitHub has not reported yet. Without this the
-            // placeholder row rendered as a vulnerability named "Dependabot
-            // alerts disabled" for the first few seconds after enabling.
-            const scanning = !off && alerts.some(a => a.scanning);
-            const clean = !off && !scanning && alerts.every(a => a.clean);
-            const real = alerts.filter(a => !a.clean && !a.disabled && !a.scanning);
-            const critical = real.filter(a => a.severity === "critical").length;
-            const intent: Intent = off || scanning ? "neutral" : critical > 0 ? "danger" : real.length > 0 ? "warn" : "good";
-            const isOpen = expanded.has(repo);
-            const visible = isOpen ? real : real.slice(0, COLLAPSED);
-            const hidden = real.length - visible.length;
+      {view === "updates" && <RenovatePanel />}
 
-            return (
-              <RailCard key={repo} intent={intent} index={i}>
-                <div className="flex items-start justify-between gap-5 flex-wrap mb-1">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>{repo}</h3>
-                      {off && <Pill intent="neutral">not watching</Pill>}
-                      {scanning && <Pill intent="info">scanning</Pill>}
-                      {clean && <Pill intent="good">clean</Pill>}
-                    </div>
-                    {off && (
-                      <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>
-                        Dependabot is switched off, so vulnerabilities here go undetected.
-                      </p>
-                    )}
-                    {scanning && (
-                      <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5`}>
-                        <i className="ph-bold ph-circle-notch animate-spin text-[13px]"></i>
-                        Just switched on — GitHub is still scanning. Results appear shortly.
-                      </p>
-                    )}
-                    {clean && (
-                      <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>No known vulnerabilities.</p>
-                    )}
-                  </div>
-
-                  <div className="shrink-0 flex items-center gap-3">
-                    {!off && !clean && !scanning && (
-                      <Figure intent={critical > 0 ? "danger" : "warn"} value={real.length}
-                        label={real.length === 1 ? "alert" : "alerts"} />
-                    )}
-                    {org && (
-                      <a href={`https://github.com/${org}/${repo}/security/dependabot`} target="_blank" rel="noreferrer"
-                        className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 shadow-sm hover:shadow transition-shadow inline-flex items-center gap-1.5">
-                        <i className="ph-fill ph-github-logo"></i>GitHub
-                      </a>
-                    )}
-                    {off ? (
-                      <Button variant="primary" disabled={busyRepo === repo}
-                        onClick={() => runDependabot(repo, enable.mutateAsync, `Now watching ${repo}`)}>
-                        {busyRepo === repo ? "Enabling…" : "Start watching"}
-                      </Button>
-                    ) : (
-                      <Button variant="secondary" disabled={busyRepo === repo}
-                        onClick={() => {
-                          if (!window.confirm(`Stop watching ${repo} for vulnerable dependencies?`)) return;
-                          runDependabot(repo, disable.mutateAsync, `Stopped watching ${repo}`);
-                        }}>
-                        {busyRepo === repo ? "…" : "Stop watching"}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-                {real.length > 0 && (
-                  <>
-                    <ul className="mt-3 grid gap-2">
-                      {visible.map(a => <VulnRow key={a.id} alert={a} />)}
-                    </ul>
-                    {(hidden > 0 || isOpen) && (
-                      <button onClick={() => toggle(repo)}
-                        className="mt-3 text-[13px] font-bold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1.5">
-                        <i className={`ph-bold ph-caret-${isOpen ? "up" : "down"} text-xs`}></i>
-                        {isOpen
-                          ? `Hide ${real.length - COLLAPSED} ${real.length - COLLAPSED === 1 ? "vulnerability" : "vulnerabilities"}`
-                          : `View ${hidden} more ${hidden === 1 ? "vulnerability" : "vulnerabilities"}`}
-                      </button>
-                    )}
-                  </>
-                )}
-              </RailCard>
-            );
-          })}
+      {/* Both notification panels together: "who gets told" is one question,
+          and answering half of it on each of two other views is why the
+          Renovate half went unread. */}
+      {view === "notifications" && (
+        <div className="space-y-8">
+          <VulnNotifyPanel feed="dependabot-alert" isAdmin={isAdmin} />
+          <VulnNotifyPanel feed="renovate-pr" isAdmin={isAdmin} />
         </div>
       )}
-
-      {/* Placed under the table it describes rather than above it. Somebody
-          opening this tab came to see what is vulnerable; the question of who
-          gets told about it is the one they ask second. */}
-      <div className="mt-8">
-        <VulnNotifyPanel feed="dependabot-alert" isAdmin={isAdmin} />
-      </div>
-
-      {/* Renovate covers the other half of the same question: Dependabot says
-          what is vulnerable, Renovate says what has been raised to fix it. */}
-      <div className="mt-12">
-        <RenovatePanel />
-      </div>
-
-      <div className="mt-8">
-        <VulnNotifyPanel feed="renovate-pr" isAdmin={isAdmin} />
-      </div>
 
     </Page>
   );

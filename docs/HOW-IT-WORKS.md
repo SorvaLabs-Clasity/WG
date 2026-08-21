@@ -1003,6 +1003,31 @@ between one request and 350. Two details follow from that:
   it as *no reading*, so an alarm cannot resolve itself because half the answer
   was missing.
 
+### The three views
+
+The tab answers three questions, and they are three views rather than one
+column: **Alerts** (what is vulnerable), **Updates** (what Renovate has raised to
+fix it), and **Notifications** (who gets told). The view is a URL parameter, so
+it survives a refresh and can be linked to.
+
+They were stacked before — every vulnerable repository, then the Dependabot
+email settings, then Renovate, then the Renovate email settings. Reaching
+Renovate meant scrolling past a page of repository cards, which put the two
+halves of one question at opposite ends of a scroll bar.
+
+Two consequences worth keeping:
+
+- **No view waits for another view's data.** The Dependabot fetch used to be an
+  early return for the whole page, so opening Renovate waited for an alert list
+  it does not use — the same fault as the scroll, wearing a different hat. The
+  spinner belongs to the Alerts view now.
+- **Refresh refreshes the view you are on.** Refetching all three would spend
+  GitHub's rate limit on two views nobody has open.
+
+The Updates tab's count comes from the page issuing the *same* `["renovate"]`
+query the panel does, so React Query serves both from one request rather than
+fetching twice. `repro-vulnviews` pins all of this.
+
 ---
 
 ## Compliance scores
