@@ -356,6 +356,73 @@ export function Empty({ title, body, action }: { title: string; body?: string; a
   );
 }
 
+/**
+ * A read that failed, said plainly — never as an empty result.
+ *
+ * The two render identically otherwise, and the empty one is *reassuring*:
+ * "Nothing outstanding", "No alarms yet", "No open pull requests". Somebody
+ * whose token had expired, or whose laptop had slept through the credentials
+ * behind a tab going stale, was told in a calm voice that there was nothing to
+ * see. On a security or compliance screen that is the worst available answer —
+ * it under-reports, and it looks deliberate.
+ *
+ * `what` names the thing that could not be read, because "Something went wrong"
+ * tells a person nothing they can act on.
+ */
+export function LoadFailed({ what, error, onRetry }: {
+  what: string; error?: unknown; onRetry?: () => void;
+}) {
+  const reason = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+  return (
+    <Empty
+      title={`Could not load ${what}`}
+      body={`${reason ? reason.replace(/\.?$/, ". ") : ""}This is a failure to read, not a sign that there is nothing there.`}
+      action={onRetry ? <Button variant="primary" onClick={() => onRetry()}>Try again</Button> : undefined}
+    />
+  );
+}
+
+/**
+ * The grab strip between two columns.
+ *
+ * Sits in the header cell, pinned to its right edge, and is deliberately wider
+ * than it looks: a 1px line is honest about where the boundary is and horrible
+ * to hit, so the hit area is 9px and only the middle of it is ever painted.
+ *
+ * `touch-none` matters on a trackpad and a touchscreen — without it the browser
+ * claims the gesture for scrolling and the drag never starts.
+ */
+export function ColumnResizeHandle({ active, onPointerDown, onPointerMove, onPointerUp, onDoubleClick, label }: {
+  active?: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerUp: (e: React.PointerEvent) => void;
+  onDoubleClick?: () => void;
+  label: string;
+}) {
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${label}`}
+      title={`Drag to resize ${label} · double-click to reset`}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerUp}
+      onDoubleClick={(e) => { e.stopPropagation(); onDoubleClick?.(); }}
+      // The header cell is a sort button; a drag must never read as a click on it.
+      onClick={(e) => e.stopPropagation()}
+      className={`absolute top-0 right-0 h-full w-[9px] translate-x-1/2 z-20 cursor-col-resize
+        touch-none select-none flex justify-center group/resize
+        ${active ? "" : "opacity-0 hover:opacity-100 focus-within:opacity-100"} transition-opacity`}
+    >
+      <span className={`w-[2px] h-full rounded-full transition-colors ${
+        active ? "bg-blue-500" : "bg-slate-300 dark:bg-slate-600 group-hover/resize:bg-blue-400"}`} />
+    </span>
+  );
+}
+
 export function Spinner() {
   return (
     <div className="py-20 flex justify-center">

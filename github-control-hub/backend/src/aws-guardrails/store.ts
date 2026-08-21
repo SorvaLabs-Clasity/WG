@@ -34,6 +34,16 @@ export function resetGuardrailStore(): void {
   cached = undefined;
 }
 
+/**
+ * Test seam. `send()` is the only path to DynamoDB in this module and had no
+ * coverage at all, which is how it shipped calling itself instead of the
+ * client — a recursion that took out reading and writing guardrails alike.
+ * Standing in a recording client is the only way to assert what it really does.
+ */
+export function __setGuardrailClientForTests(client: any): void {
+  cached = client;
+}
+
 async function docClient() {
   if (cached) return cached;
   const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
@@ -88,7 +98,13 @@ function credentialsWentStale(err: any): boolean {
  */
 async function send<T = any>(command: any): Promise<T> {
   try {
-    return await send(command);
+    // The cached client, not this function. Calling `send` here recursed until
+    // the stack ran out, on every guardrail read and write alike — so the tab
+    // showed no rules and adding one crashed, which look like two faults and
+    // were one. Building the client is inside the try because it resolves
+    // credentials, and that is one of the ways they turn out to be stale.
+    const client = await docClient();
+    return await client.send(command);
   } catch (err: any) {
     if (!credentialsWentStale(err)) throw err;
     // Logged, because this is the evidence that the theory above is right. A

@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useAuth } from "../App";
 import {
   Page, Back, Note, Pill, Empty, Spinner, RailCard, Sheet, SheetHeader, Block,
-  InsetRow, SearchInput, Segmented, RefreshButton, Button, enter, type Intent,
+  InsetRow, SearchInput, Segmented, RefreshButton, Button, LoadFailed, enter, type Intent,
 } from "../design";
 import { useAccessSummary, useUserAccess, useRepoAccess, useAccessRepos, useAccessTeams, useTeamAccess } from "../hooks/useAccess";
 import { useGraphAggregation, useTriggerAggregation } from "../hooks/useGraph";
@@ -153,9 +153,11 @@ export default function AccessPage() {
   const [openPerson, setOpenPerson] = useState<string | null>(null);
   const [openRepo, setOpenRepo] = useState<string | null>(null);
 
-  const { data, isLoading, isFetching, refetch } = useAccessSummary();
-  const { data: repos } = useAccessRepos(mode === "repos");
-  const { data: teams } = useAccessTeams(mode === "teams");
+  const { data, isLoading, isError, error, isFetching, refetch } = useAccessSummary();
+  const { data: repos, isError: reposFailed, error: reposError,
+          refetch: refetchRepos } = useAccessRepos(mode === "repos");
+  const { data: teams, isError: teamsFailed, error: teamsError,
+          refetch: refetchTeams } = useAccessTeams(mode === "teams");
 
   // Matched on both the display name and the slug: people refer to a team by
   // either, and the slug is what appears on an access path.
@@ -275,7 +277,15 @@ export default function AccessPage() {
 
       {isLoading && <Spinner />}
 
-      {mode === "people" && !isLoading && (
+      {/* Each list has its own query, so each reports its own failure. With no
+          data every one of these is empty, and "Nobody matches" / "No teams"
+          reads as an answer about the organization rather than a failure to
+          ask it. */}
+      {mode === "people" && !isLoading && isError && (
+        <LoadFailed what="the access map" error={error} onRetry={() => refetch()} />
+      )}
+
+      {mode === "people" && !isLoading && !isError && (
         people.length === 0 ? (
           <Empty title="Nobody matches" body="Try a different name, or search by team." />
         ) : (
@@ -287,7 +297,11 @@ export default function AccessPage() {
         )
       )}
 
-      {mode === "teams" && (
+      {mode === "teams" && teamsFailed && (
+        <LoadFailed what="the team list" error={teamsError} onRetry={() => refetchTeams()} />
+      )}
+
+      {mode === "teams" && !teamsFailed && (
         teamList.length === 0 ? (
           <Empty title="No teams" body="Nothing in the graph matches that." />
         ) : (
@@ -317,7 +331,11 @@ export default function AccessPage() {
         )
       )}
 
-      {mode === "repos" && (
+      {mode === "repos" && reposFailed && (
+        <LoadFailed what="the repository list" error={reposError} onRetry={() => refetchRepos()} />
+      )}
+
+      {mode === "repos" && !reposFailed && (
         repoList.length === 0 ? (
           <Empty title="No repositories" body="Nothing in the graph matches that." />
         ) : (

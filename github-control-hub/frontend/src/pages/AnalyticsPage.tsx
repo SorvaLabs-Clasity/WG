@@ -1,7 +1,9 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter, SearchInput, Pager } from "../design";
+import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TYPE, SURFACE, enter, SearchInput, Pager, ColumnResizeHandle } from "../design";
 import { useTableControls } from "../hooks/useTableControls";
+import { useColumnWidths } from "../hooks/useColumnWidths";
+import { widgetColumns, defaultWidths, layoutId } from "../lib/widgetColumns";
 import { fetchRenovate } from "../api/renovate";
 import { apiGet } from "../api/client";
 import { useQuery } from "@tanstack/react-query";
@@ -978,6 +980,17 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
   // subject (repo/user/team) plus every scalar field the row happens to carry
   // rather than a fixed list. Objects are skipped — stringifying them matches
   // punctuation nobody typed.
+  // Above the early return, because these are hooks and that return is
+  // conditional. `hasStatus` is recomputed here rather than reused, because the
+  // original is declared below it for the same reason.
+  const columns = widgetColumns({
+    type: config.type,
+    presetId: config.presetId,
+    hasStatus: items.some((i: any) => i.status),
+  });
+  const widthDefaults = defaultWidths(columns);
+  const cols = useColumnWidths(layoutId(config.id, columns), widthDefaults);
+
   const table = useTableControls(items, {
     searchText: (it: any) => Object.entries(it)
       .filter(([, v]) => v === null || ["string", "number", "boolean"].includes(typeof v))
@@ -1013,9 +1026,23 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
 
   return (
     <>
-      {items.length > 8 && (
-        <div className="px-6 py-4">
-          <SearchInput value={table.search} onChange={table.setSearch} placeholder="Search rows…" />
+      {(items.length > 8 || cols.customised) && (
+        <div className="px-6 py-4 flex items-center gap-3">
+          {items.length > 8 && (
+            <div className="flex-1 min-w-0">
+              <SearchInput value={table.search} onChange={table.setSearch} placeholder="Search rows…" />
+            </div>
+          )}
+          {/* Only once something has been dragged. A control that undoes
+              nothing is noise on every table that was never touched. */}
+          {cols.customised && (
+            <button
+              onClick={cols.resetAll}
+              className="shrink-0 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white transition-colors"
+            >
+              <i className="ph-bold ph-arrows-in-line-horizontal mr-1.5"></i>Reset columns
+            </button>
+          )}
         </div>
       )}
       {table.visible.length === 0 ? (
@@ -1024,35 +1051,49 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
           Nothing in {table.totalCount} rows matches "{table.search.trim()}".
         </div>
       ) : (
-      <table className="w-full text-left border-collapse">
+      <table
+        className="text-left border-collapse"
+        // Fixed layout is what makes the colgroup widths authoritative. With
+        // `auto` the browser re-measures from content on every render and the
+        // width you dragged to is a suggestion it feels free to ignore.
+        style={{
+          tableLayout: "fixed",
+          width: "100%",
+          // Below this the columns would be squeezed back under their own
+          // widths; the container scrolls instead. The last column is not
+          // counted, since it is the one absorbing the slack.
+          minWidth: columns.slice(0, -1).reduce((sum, c) => sum + (cols.widths[c.id] ?? c.width), 0) + 200,
+        }}
+      >
+        <colgroup>
+          {columns.map((c, i) => (
+            // The last column has no width: it takes whatever is left, so the
+            // table has a clean right edge without any column claiming 100%.
+            <col key={c.id} style={i === columns.length - 1 ? undefined : { width: cols.widths[c.id] ?? c.width }} />
+          ))}
+        </colgroup>
         <thead className="bg-slate-50 dark:bg-slate-950 sticky top-0 z-10 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700">
           <tr>
-            <th className="px-6 py-3 w-16">#</th>
-            <th className="px-6 py-3">Entity</th>
-
-            {config.type === "preset" && config.presetId === "dependabot" && (
-              <>
-                <th className="px-6 py-3 text-center text-rose-600 dark:text-red-400">Critical</th>
-                <th className="px-6 py-3 text-center text-orange-500 dark:text-orange-400">High</th>
-                <th className="px-6 py-3 text-center text-amber-600 dark:text-amber-400">Medium</th>
-                <th className="px-6 py-3 text-center text-slate-500 dark:text-slate-400">Low</th>
-                <th className="px-6 py-3 text-center">Total</th>
-              </>
-            )}
-            {config.type === "preset" && config.presetId === "vuln-repos" && (
-              <>
-                <th className="px-6 py-3 text-center">Worst</th>
-                <th className="px-6 py-3 text-center">Alerts</th>
-              </>
-            )}
-            {config.type === "preset" && config.presetId === "bypasses" && (
-              <>
-                <th className="px-6 py-3">Bypasses</th>
-                <th className="px-6 py-3 w-full">Reason</th>
-              </>
-            )}
-            {config.type === "query" && hasStatus && <th className="px-6 py-3 text-center w-[80px]">Status</th>}
-            {config.type === "query" && <th className="px-6 py-3 w-full">Details</th>}
+            {columns.map((c, i) => (
+              <th
+                key={c.id}
+                className={`relative px-6 py-3 ${c.align === "center" ? "text-center" : ""} ${c.headClass ?? ""}`}
+              >
+                <span className="block truncate">{c.label}</span>
+                {/* Not on the last column: it has no width of its own to drag,
+                    and everything to its left does. */}
+                {i < columns.length - 1 && (
+                  <ColumnResizeHandle
+                    label={c.label}
+                    active={cols.dragging === c.id}
+                    onPointerDown={(e) => cols.onResizeStart(c.id, e)}
+                    onPointerMove={cols.onResizeMove}
+                    onPointerUp={cols.onResizeEnd}
+                    onDoubleClick={() => cols.resetColumn(c.id)}
+                  />
+                )}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100 dark:divide-slate-700 text-sm">
@@ -1066,9 +1107,9 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
               >
                 <td className="px-6 py-4 font-mono text-slate-400 dark:text-slate-500 text-xs">{String((table.page - 1) * 50 + idx + 1).padStart(3, "0")}</td>
                 <td className="px-6 py-4">
-                  <div className="font-bold text-slate-800 dark:text-slate-200">{name}</div>
+                  <div className="font-bold text-slate-800 dark:text-slate-200 truncate" title={name}>{name}</div>
                   {config.type === "query" && (
-                    <div className="text-xs text-slate-400 dark:text-slate-500 font-mono">{item.repo ? "repository" : item.user ? "user" : item.team ? "team" : "unknown"}</div>
+                    <div className="text-xs text-slate-400 dark:text-slate-500 font-mono truncate">{item.repo ? "repository" : item.user ? "user" : item.team ? "team" : "unknown"}</div>
                   )}
                 </td>
 
@@ -1117,8 +1158,8 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                 )}
                 {config.type === "query" && (
                   <td className="px-6 py-4 text-sm">
-                    <span className={`block truncate max-w-xl ${item.status === "fail" ? "text-rose-700 dark:text-red-400" : "text-slate-800 dark:text-slate-200"}`}>{item.reason}</span>
-                    {item.details && <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 block truncate max-w-xl">{item.details}</span>}
+                    <span title={item.reason} className={`block truncate ${item.status === "fail" ? "text-rose-700 dark:text-red-400" : "text-slate-800 dark:text-slate-200"}`}>{item.reason}</span>
+                    {item.details && <span title={item.details} className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5 block truncate">{item.details}</span>}
                   </td>
                 )}
               </tr>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { parseExportBlock } from "../lib/awsCredentialBlock";
 import { useNavigate } from "react-router-dom";
 import {
   getLoginUrl,
@@ -249,7 +250,6 @@ export default function LoginPage() {
     loadProfiles(!touchedMethod.current, status?.aws.profile);
   }, [awsOk, loadProfiles, status?.aws.profile]);
 
-
   const stage: Stage =
     loading ? "loading"
     : error ? "offline"
@@ -406,33 +406,47 @@ export default function LoginPage() {
 
   const handleUseProfile = async () => {
     if (!selectedProfile) return;
+    setNewError("");
     setRefreshing("aws");
-    await useAwsProfile(selectedProfile);
+    // The same reporting the account switcher already does. Discarding this
+    // made "Use <profile>" silent for the ordinary case of an SSO profile whose
+    // session has expired — the switch did nothing and said nothing.
+    const result = await useAwsProfile(selectedProfile);
+    if (!result.reachable) {
+      setNewError(result.error
+        ? `Could not use ${selectedProfile}: ${result.error}`
+        : `Could not reach AWS with ${selectedProfile}. It may need signing in again.`);
+    }
     await checkStatus();
   };
 
-  const parseExportBlock = (block: string) => {
-    const vals: Record<string, string> = {};
-    const re = /export\s+(AWS_\w+)\s*=\s*"?([^"\s]+)"?/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(block)) !== null) {
-      vals[m[1]] = m[2];
-    }
-    return vals;
-  };
 
   const handlePasteBlockConnect = async () => {
     const parsed = parseExportBlock(akPasteBlock);
     const id = parsed.AWS_ACCESS_KEY_ID;
     const secret = parsed.AWS_SECRET_ACCESS_KEY;
-    if (!id || !secret) return;
+    // Saying which part is missing, rather than returning and leaving a button
+    // that looks broken. This is the most likely thing to go wrong here.
+    if (!id || !secret) {
+      setNewError(Object.keys(parsed).length === 0
+        ? "Could not find any credentials in that. Paste the whole block from the "
+          + "AWS access portal — any of its formats will do."
+        : `That block is missing ${!id ? "AWS_ACCESS_KEY_ID" : "AWS_SECRET_ACCESS_KEY"}.`);
+      return;
+    }
+    setNewError("");
     setRefreshing("aws");
-    await setAwsAccessKeys({
+    const result = await setAwsAccessKeys({
       accessKeyId: id,
       secretAccessKey: secret,
       sessionToken: parsed.AWS_SESSION_TOKEN || undefined,
       region: parsed.AWS_DEFAULT_REGION || parsed.AWS_REGION || undefined,
     });
+    if (!result.reachable) {
+      setNewError(result.error
+        ? `Those keys did not work: ${result.error}`
+        : "Those keys did not reach AWS. They may have expired.");
+    }
     await checkStatus();
   };
 
@@ -443,13 +457,20 @@ export default function LoginPage() {
 
   const handleAccessKeys = async () => {
     if (!akId || !akSecret) return;
+    setNewError("");
     setRefreshing("aws");
-    await setAwsAccessKeys({
+    const result = await setAwsAccessKeys({
       accessKeyId: akId,
       secretAccessKey: akSecret,
       sessionToken: akSession || undefined,
       region: akRegion || undefined,
     });
+    // Same silence as the paste block had: expired keys looked like a dead button.
+    if (!result.reachable) {
+      setNewError(result.error
+        ? `Those keys did not work: ${result.error}`
+        : "Those keys did not reach AWS. They may have expired.");
+    }
     await checkStatus();
   };
 
@@ -606,13 +627,34 @@ export default function LoginPage() {
                     // Access keys always work. SSO and Profile need a profile to
                     // exist already — and "New profile" is the way out of having
                     // none, so it is the one option that must never be hidden.
-                    id === "keys" || id === "new" ||
-                    (id === "sso" && awsProfiles.some(p => p.type === "sso")) ||
+                    // SSO stays whether or not one exists yet: hiding it meant a
+                    // machine with no SSO profile showed nothing mentioning SSO
+                    // at all, and the way to make one was a tab called "New
+                    // profile" — so the people who most needed it were the only
+                    // ones who could not find it. Empty, the tab explains itself.
+                    id === "keys" || id === "new" || id === "sso" ||
                     (id === "profile" && awsProfiles.length > 0)
                   )}
                 />}
 
-                {awsMethod === "sso" && (
+                {awsMethod === "sso" && awsProfiles.every(p => p.type !== "sso") && (
+                  <div className="space-y-2.5">
+                    <Hint intent="info">
+                      No SSO profiles on this machine yet. Creating one asks AWS which
+                      accounts and roles you have, so you pick from a list instead of
+                      hunting for an account number.
+                    </Hint>
+                    <div className="flex justify-end">
+                      <Button variant="primary"
+                        onClick={() => { setAwsMethod("new"); setNewStep("form"); }}
+                        className="w-full sm:w-auto">
+                        <i className="ph-bold ph-plus mr-2"></i>Create an SSO profile
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {awsMethod === "sso" && awsProfiles.some(p => p.type === "sso") && (
                   <div className="space-y-2.5">
                     {awsProfiles.filter(p => p.type === "sso").length > 1 && !awsSsoStarted && (
                       <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)} className={SURFACE.input}>

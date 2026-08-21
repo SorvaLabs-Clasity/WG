@@ -334,6 +334,29 @@ function check(name: string, ok: boolean, got?: unknown) {
       "clearing it unconditionally hides the browser button after a failed check");
   }
 
+  // ── the way in is visible to the people who need it ─────────────────
+  //
+  // The tab list is filtered by what already exists, and SSO was hidden unless
+  // an SSO profile was already there — so a machine with none showed nothing
+  // mentioning SSO at all, and the only route to making one was a tab called
+  // "New profile". The people who most needed it were the only ones who could
+  // not find it.
+  {
+    const page = fs.readFileSync(`${__dirname}/../frontend/src/pages/LoginPage.tsx`, "utf8");
+    const filter = page.slice(page.indexOf("]).filter(([id]) =>"));
+    const clause = filter.slice(0, filter.indexOf(")}"));
+
+    check("the SSO tab does not depend on an SSO profile existing",
+      !/id === "sso" &&/.test(clause), clause.replace(/\s+/g, " ").trim().slice(0, 90));
+    check("  and neither does the one that creates a profile",
+      /id === "new"/.test(clause));
+    check("  while Profile still needs one, having nothing to point at",
+      /id === "profile" && awsProfiles\.length > 0/.test(clause));
+    check("  and an empty SSO tab offers to make one",
+      /awsMethod === "sso" && awsProfiles\.every\(p => p\.type !== "sso"\)/.test(page),
+      "otherwise the tab is present and blank, which is worse than hidden");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

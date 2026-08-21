@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Page, PageHeader, Empty, Spinner, RefreshButton } from "../design";
+import { Page, PageHeader, Empty, Spinner, LoadFailed, RefreshButton } from "../design";
 import { usePermissions } from "../hooks/usePermissions";
 import { useAuth } from "../App";
 import { useWidgets } from "../hooks/useWidgets";
@@ -24,7 +24,7 @@ export default function AlarmsPage() {
   const { data: permissions } = usePermissions();
   const isAdmin = permissions?.isAwsAdmin ?? false;
 
-  const { data: alarms, isLoading, isFetching, refetch } = useAlarms(isAdmin);
+  const { data: alarms, isLoading, isError, error, isFetching, refetch } = useAlarms(isAdmin);
   const { data: widgets } = useWidgets();
   const { data: groups } = useEmailGroups(isAdmin);
   const updateAlarm = useUpdateAlarm();
@@ -62,7 +62,9 @@ export default function AlarmsPage() {
         actions={<RefreshButton busy={isFetching} onRefresh={() => refetch()} />}
       />
 
-      {isLoading ? <Spinner /> : rows.length === 0 ? (
+      {isLoading ? <Spinner /> : isError ? (
+        <LoadFailed what="your alarms" error={error} onRetry={() => refetch()} />
+      ) : rows.length === 0 ? (
         <Empty
           title="No alarms yet"
           body="Open a widget on the Overview page and choose “Add alarm” to watch it."

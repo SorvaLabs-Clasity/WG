@@ -100,6 +100,31 @@ edits the code — you can ignore it otherwise.
 
 ---
 
+## How a failure is shown
+
+A screen has three states, not two, and the third is easy to lose: **loading**,
+**there is nothing**, and **we could not find out**. The last two render
+identically unless something makes them differ, and the empty one is
+*reassuring* — "Nothing outstanding", "No alarms yet", "Nobody matches". A
+person whose token had expired was being told, in a calm voice, that there was
+nothing to see. On a security or compliance screen that is the worst available
+answer: it under-reports, and it looks deliberate.
+
+| Kind of failure | Where it is announced |
+| --- | --- |
+| a **read** (query) that failed | `LoadFailed` from `design/index.tsx`, on the screen, naming what could not be read and offering a retry |
+| a **write** (mutation) that was refused | `components/MutationErrors.tsx` — one subscription to the mutation cache, so every mutation is covered including ones added later |
+| a **sign-in** action on the login screen | inline, above the tabs, because it happens before any of the above is mounted |
+
+The write side is the one that keeps coming back. These endpoints answer `200`
+with `{ reachable: false, error }` when they reached the server but not AWS — so
+a caller that ignores the result gets no exception and shows nothing, and the
+button looks dead rather than refused. Four handlers on the sign-in screen had
+exactly that. `repro-failedreads` pins all of them, plus the read side.
+
+On the login screen `MutationErrors` is not mounted yet, which is why that
+screen reports its own failures inline rather than relying on it.
+
 ## What runs on a schedule
 
 Five things happen without anybody pressing anything. Everything else happens
@@ -1217,6 +1242,36 @@ rather than rounding up.
 
 ---
 
+### The detail table's columns
+
+Clicking a widget opens a table whose columns are **draggable**, and the widths
+are the one piece of this app's state that lives in the browser rather than in
+DynamoDB — `localStorage`, under `columnWidths:widget:<id>:<column ids>`. It is
+per-machine preference, not organization data; there is nothing to reconcile
+across accounts and nothing worth a round trip.
+
+Three details are load-bearing:
+
+- **Only the differences are stored.** A column left alone keeps following its
+  default, so changing a default still reaches somebody who opened the table
+  once. Storing every width would freeze today's defaults into every saved
+  layout for ever.
+- **The column ids are part of the key.** A widget edited from a preset into a
+  query has different columns, and a layout saved for the old set describes a
+  table that no longer exists.
+- **The last column has no fixed width**, so it absorbs whatever is left and the
+  table keeps a clean right edge. Before this, that column carried `w-full` —
+  which in a table means `width: 100%`, so it claimed everything and every other
+  column collapsed to its narrowest renderable size. The repository name, the
+  column people were actually reading, was the one that got nothing while the
+  mostly-empty column beside it took half the screen.
+
+`lib/columnWidths.ts` holds the arithmetic and `lib/widgetColumns.ts` the column
+sets; both are pure and covered by `repro-columnwidths`, which also asserts that
+the number of columns matches the number of cells the body renders for each
+widget type — a `<colgroup>` of the wrong length does not throw, it silently
+shifts every width one column across.
+
 ## Security alerts
 
 **Shape: push.** Nothing here is computed or scanned. Every row on the Security
@@ -1657,6 +1712,20 @@ it — the whole path, for nothing.
 1. You connect **AWS** first, with your own credentials — a profile, SSO, or
    pasted keys. Nothing else can happen until this works, because the GitHub
    credentials live in Secrets Manager in your AWS account.
+
+   The **SSO** tab is shown whether or not a profile exists yet; with none it
+   explains and offers to create one. It used to be filtered out until an SSO
+   profile was already present, so a machine with none showed nothing about SSO
+   anywhere and the only route to making one was a tab called "New profile" —
+   the people who needed it were the only ones who could not find it.
+
+   **Pasted keys** accept all four shapes the AWS access portal hands out —
+   `export` (bash), `set` (command prompt), `$Env:` (PowerShell) and the
+   `aws_access_key_id=` credentials-file form. Parsing is line-based in
+   `lib/awsCredentialBlock.ts`, splitting on the *first* `=` because session
+   tokens are base64 and end in one. This once required the literal word
+   `export`, so three of the four parsed to nothing and the button silently did
+   nothing; `repro-credentialblock` pins every shape.
 2. The app reads that secret and loads the OAuth credentials into its process.
 3. You click **Sign in with GitHub**, which redirects to GitHub, and back to
    `localhost:4321/auth/callback` with a code. The app exchanges the code for a

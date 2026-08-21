@@ -4,7 +4,7 @@ import { usePermissions } from "../hooks/usePermissions";
 import { useAuth } from "../App";
 import {
   Page, PageHeader, StatusSlab, SlabPercent, Button, Segmented, Sheet, Block,
-  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, INTENT, enter, type Intent, RefreshButton,
+  RailCard, Note, Pill, Empty, Spinner, LoadFailed, Figure, TYPE, INTENT, enter, type Intent, RefreshButton,
   SearchInput, Pager,
 } from "../design";
 import { useTableControls } from "../hooks/useTableControls";
@@ -36,7 +36,8 @@ const ALERTS_PER_PAGE = 10;
 
 export default function SecurityPage() {
   const { user } = useAuth();
-  const { data: alerts, isLoading: alertsLoading, isFetching: alertsFetching, refetch: refetchAlerts } = useAlerts();
+  const { data: alerts, isLoading: alertsLoading, isError: alertsFailed, error: alertsError,
+          isFetching: alertsFetching, refetch: refetchAlerts } = useAlerts();
   // Resolving is the org's record that a finding was dealt with, so it is
   // gated like the rest of the shared state. The server enforces it.
   const { data: permissions } = usePermissions();
@@ -76,6 +77,16 @@ export default function SecurityPage() {
 
   if (alertsLoading) {
     return <Page user={user}><Spinner /></Page>;
+  }
+
+  // Before the counts are read, because every headline below is derived from
+  // them and an unread list counts as zero — which renders as the all-clear.
+  if (alertsFailed) {
+    return (
+      <Page user={user}>
+        <LoadFailed what="security alerts" error={alertsError} onRetry={refetchAlerts} />
+      </Page>
+    );
   }
 
   const clean = counts.active === 0;
