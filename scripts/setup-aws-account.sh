@@ -184,19 +184,12 @@ create_table "${PREFIX}-graph-edges" \
   --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
   --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE
 
-# org-config — keyed on `org`. Holds the org feature flags (org=<org name>),
-# the compliance rule config (org="compliance-config") and the registry of AWS
-# accounts the guardrails sweep (org="aws-accounts").
-# orgConfigService.ts:29, complianceConfigService.ts:88, aws-guardrails/accounts.ts
+# org-config — keyed on `org`. Holds the org feature flags (org=<org name>) and
+# the registry of AWS accounts the guardrails sweep reads (org="aws-accounts").
+# orgConfigService.ts:29, aws-guardrails/accounts.ts
 create_table "${PREFIX}-org-config" \
   --attribute-definitions AttributeName=org,AttributeType=S \
   --key-schema AttributeName=org,KeyType=HASH
-
-# compliance-cache — one row per repo, keyed on `repo`
-# complianceCacheService.ts:31 writing a RepoComplianceScore
-create_table "${PREFIX}-compliance-cache" \
-  --attribute-definitions AttributeName=repo,AttributeType=S \
-  --key-schema AttributeName=repo,KeyType=HASH
 
 # auth-codes is keyed on `code`, and rows expire via a `ttl` attribute
 # routes/auth.ts:55
@@ -251,7 +244,7 @@ echo
 
 # ── 2. TTL on auth-codes ──
 echo "==> Waiting for tables to become ACTIVE"
-for t in "${TABLES[@]}" activity scanners graph-edges org-config compliance-cache auth-codes aws-guardrails aws-exclusions aws-findings; do
+for t in "${TABLES[@]}" activity scanners graph-edges org-config auth-codes aws-guardrails aws-exclusions aws-findings; do
   $AWS dynamodb wait table-exists --table-name "${PREFIX}-${t}"
 done
 

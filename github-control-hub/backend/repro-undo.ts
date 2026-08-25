@@ -321,7 +321,6 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // configuration write sitting in a router nobody was checking, which is
     // exactly the failure the completeness assertion below exists to catch and
     // did not, because an inaccurate exemption reads the same as a correct one.
-    ["compliance.ts",    /router\.(post|put|delete)\(/g, /refuseUnlessAdmin/],
   ];
 
   for (const [file, routeRe, guardRe] of GUARDED) {

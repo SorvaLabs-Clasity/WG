@@ -762,10 +762,12 @@ function lastGoodIsForgotten(): void {
     const mkDeps = (prs: PullRequest[], states: Record<string, any> = {}) => {
       const posted: Array<{ repo: string; number: number; body: string }> = [];
       const recorded: string[] = [];
+      const touched: string[] = [];
       const deps: NudgeRunDeps = {
         listPrs: async () => ({ prs, truncated: false }),
         getState: async (repo, number) => states[`${repo}#${number}`],
         recordNudge: async (repo, number) => { recorded.push(`${repo}#${number}`); },
+        touchState: async (repo, number) => { touched.push(`${repo}#${number}`); },
         listComments: async () => [],
         deleteComment: async () => {},
         postComment: async (repo, number, body) => { posted.push({ repo, number, body }); return 1; },
@@ -774,7 +776,7 @@ function lastGoodIsForgotten(): void {
         // rewrite what these assertions mean.
         threshold: SEVEN_DAYS,
       };
-      return { deps, posted, recorded };
+      return { deps, posted, recorded, touched };
     };
 
     const staleOne = pr({ number: 1, lastCommitAt: daysAgo(10), reviewDecision: "APPROVED" });
@@ -843,6 +845,58 @@ function lastGoodIsForgotten(): void {
     check("a repository we cannot comment on does not stop the rest",
       !escaped && r5?.posted === 1 && r5?.failed === 1 && f.posted[0]?.repo === "o/good",
       { escaped, r5, posted: f.posted.map(p => p.repo) });
+  // ── a pause must outlive the row's expiry ───────────────────────────
+  //
+  // Stored pull request state expires 180 days after it was last *written*, and
+  // a paused pull request is the one case where nothing writes it: the pass
+  // skips it before any reminder is posted. So the row was deleted, the pause
+  // went with it, and reminders resumed on a pull request somebody had
+  // deliberately silenced — with nothing anywhere to say why.
+  //
+  // It cannot be fixed by recording a nudge, which is the other thing that
+  // writes: that restarts the seven-day clock, so lifting the pause would be
+  // followed by a week of silence rather than the next reminder.
+  {
+    const pausedPr = pr({ number: 1, lastCommitAt: daysAgo(10), reviewDecision: "APPROVED" });
+
+    const p1 = mkDeps([pausedPr], { "o/api#1": { paused: true } });
+    const r = await runNudgePass(p1.deps);
+
+    check("a paused pull request is still skipped", r.posted === 0 && r.skippedPaused === 1, r);
+    check("  and no nudge is recorded, which would restart the clock",
+      p1.recorded.length === 0, p1.recorded);
+    check("  but its stored state is kept alive",
+      p1.touched.join() === "o/api#1", p1.touched);
+
+    // Muting the only reviewer leaves nobody to name, by a different route.
+    const p2 = mkDeps([pausedPr], { "o/api#1": { pausedLogins: ["alice"] } });
+    p2.deps.mutes = { global: ["alice"], byRepo: {} };
+    await runNudgePass(p2.deps);
+    check("  the same holds when everyone on it is muted rather than the whole thing",
+      p2.touched.length === 1, p2.touched);
+
+    // A pull request that *is* nudged is written by recordNudge already.
+    const p3 = mkDeps([pausedPr]);
+    await runNudgePass(p3.deps);
+    check("a nudged pull request is not touched as well",
+      p3.touched.length === 0 && p3.recorded.length === 1,
+      { touched: p3.touched, recorded: p3.recorded });
+
+    // Optional, so an older caller keeps working rather than throwing.
+    const p4 = mkDeps([pausedPr], { "o/api#1": { paused: true } });
+    delete (p4.deps as any).touchState;
+    check("  and a caller that does not supply one still completes the pass",
+      (await runNudgePass(p4.deps)).skippedPaused === 1);
+
+    // Both schedulers have to do it: the timed pass is the one that runs for
+    // the months a pause has to survive.
+    const fs = await import("node:fs");
+    for (const f of ["src/alarms/handler.ts", "src/routes/pulls.ts"]) {
+      check(`  ${f} supplies it`,
+        /touchState: touchPrState/.test(fs.readFileSync(`${__dirname}/${f}`, "utf8")), f);
+    }
+  }
+
   }
 
   // ── the shipped threshold ───────────────────────────────────────────

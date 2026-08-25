@@ -118,7 +118,6 @@ function check(name: string, ok: boolean, got?: unknown) {
   {
     const ROUTES: Array<[string, string]> = [
       ["routes/graph.ts", "aggregate + query re-check"],
-      ["routes/compliance.ts", "score refresh, all and per-repo"],
       ["routes/access.ts", "access map recompute"],
       ["routes/scanners.ts", "scanner run"],
       ["routes/pulls.ts", "manual reminder pass"],
@@ -145,7 +144,6 @@ function check(name: string, ok: boolean, got?: unknown) {
     const MANUAL: Array<[string, RegExp, string]> = [
       ["routes/graph.ts",         /logSync\("graph"/,      "graph sync"],
       ["routes/graph.ts",         /logSync\("query"/,      "check re-run"],
-      ["routes/compliance.ts",    /logSync\("compliance"/, "score refresh"],
       ["routes/access.ts",        /logSync\("access"/,     "access recompute"],
       ["routes/scanners.ts",      /logSync\("scanner"/,    "scanner run"],
       ["routes/pulls.ts",         /logSync\("reminders"/,  "reminder pass"],
@@ -160,7 +158,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 
     // None of the route files may borrow the gate the scheduled jobs use. A
     // route is only ever reached because somebody asked.
-    for (const file of ["graph.ts", "compliance.ts", "access.ts", "scanners.ts", "pulls.ts", "awsGuardrails.ts"]) {
+    for (const file of ["graph.ts", "access.ts", "scanners.ts", "pulls.ts", "awsGuardrails.ts"]) {
       const src = fs.readFileSync(`${__dirname}/src/routes/${file}`, "utf8");
       check(`  ${file} does not gate a press on having changed something`,
         !/didSomething/.test(src));
@@ -168,7 +166,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 
     // And both outcomes are recorded, not just the happy one.
     for (const [file, kind] of [
-      ["routes/graph.ts", "query"], ["routes/compliance.ts", "compliance"],
+      ["routes/graph.ts", "query"],
       ["routes/scanners.ts", "scanner"], ["routes/pulls.ts", "reminders"],
     ] as const) {
       const src = fs.readFileSync(`${__dirname}/src/${file}`, "utf8");

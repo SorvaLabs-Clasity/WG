@@ -908,6 +908,37 @@ async function savePrState(row: PrState): Promise<void> {
   await put({ ...row, ttl: Math.floor(Date.now() / 1000) + PR_STATE_TTL_DAYS * 86_400 });
 }
 
+/** Close enough to expiry that keeping it alive is worth one write. */
+const PR_STATE_TOUCH_WITHIN_SEC = 30 * 86_400;
+
+/**
+ * Push a paused pull request's expiry out, without recording a nudge.
+ *
+ * The expiry is re-stamped on every write, so a row stays alive as long as
+ * something keeps happening to that pull request. A *paused* one is the exact
+ * case where nothing does: it is skipped before any nudge is posted, so nothing
+ * called `savePrState`, so after 180 days the row was deleted and the pause
+ * went with it. Reminders then resumed on a pull request somebody had
+ * deliberately silenced, with nothing anywhere to explain why.
+ *
+ * Deliberately not `recordNudge`, which is the other thing that would keep the
+ * row alive: that restarts the seven-day clock, so lifting the pause would be
+ * followed by a week of silence instead of the next reminder.
+ *
+ * Only within the last month of the row's life, so a paused pull request costs
+ * one write every five months rather than one on every pass.
+ */
+export async function touchPrState(repo: string, number: number): Promise<boolean> {
+  const existing = await getPrState(repo, number);
+  if (!existing) return false;
+  // An unpaused row holds nothing worth preserving — the next nudge rebuilds it.
+  if (!existing.paused && !existing.pausedLogins?.length) return false;
+  const now = Math.floor(Date.now() / 1000);
+  if (existing.ttl - now > PR_STATE_TOUCH_WITHIN_SEC) return false;
+  await savePrState(existing);
+  return true;
+}
+
 export async function recordNudge(
   repo: string, number: number, commentId: number | undefined,
 ): Promise<void> {

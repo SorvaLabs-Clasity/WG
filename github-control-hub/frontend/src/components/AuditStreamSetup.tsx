@@ -17,6 +17,10 @@ interface AuditStreamStatus {
   bucket: string;
   receiving: boolean;
   objectCount: number;
+  /** Checks that could not run. Empty means every one of them answered. */
+  unknown: { what: "role" | "bucket"; reason: string }[];
+  /** The account actually looked in — a wrong one is otherwise invisible. */
+  accountId: string;
 }
 
 const inputClass =
@@ -56,7 +60,7 @@ export default function AuditStreamSetup() {
   const isAdmin = permissions?.isAwsAdmin ?? false;
   const qc = useQueryClient();
 
-  const { data: status, isLoading } = useQuery({
+  const { data: status, isLoading, error: statusError } = useQuery({
     queryKey: ["audit-stream"],
     queryFn: () => apiGet<AuditStreamStatus>("/activity/audit-stream"),
     enabled: isAdmin,
@@ -89,18 +93,68 @@ export default function AuditStreamSetup() {
     onError: (e: any) => setError(e?.message || "Could not set that up."),
   });
 
+  // Never asked, so it must not answer.
+  //
+  // This used to say "Enterprise audit log not connected" — a claim about the
+  // stream, made by a branch that returns before the status is ever fetched.
+  // On a working stream it told everyone who was not an admin that the thing
+  // filling the table below them did not exist.
   if (!isAdmin) {
     return (
       <>
-        <p className="font-semibold text-slate-700 dark:text-slate-200">Enterprise audit log not connected</p>
+        <p className="font-semibold text-slate-700 dark:text-slate-200">Audit log streaming</p>
         <p className="text-sm mt-1 max-w-md mx-auto">
-          An organization admin can connect it. This stream stays empty until they do.
+          Only organization admins can see or change the streaming setup. Rows appear
+          here whenever it is switched on.
         </p>
       </>
     );
   }
 
   if (isLoading) return <p className="text-sm">Checking…</p>;
+
+  // The request itself failed. Falling through from here rendered the setup
+  // prompt, so a 403 or a network blip looked exactly like a stream that had
+  // never been connected.
+  if (statusError) {
+    return (
+      <>
+        <p className="font-semibold text-slate-700 dark:text-slate-200">
+          Could not check the streaming setup
+        </p>
+        <p className="text-sm mt-1 max-w-md mx-auto">
+          {(statusError as Error).message}
+        </p>
+        <p className="text-xs mt-2 text-gray-500 dark:text-slate-400 max-w-md mx-auto">
+          This says nothing about whether streaming is on — only that the check
+          could not run. Any rows below arrived normally.
+        </p>
+      </>
+    );
+  }
+
+  // The call worked but a check inside it did not. Same rule: an unknown is not
+  // a no, and the reason is the whole of what makes it fixable.
+  if (status?.unknown?.length) {
+    const role = status.unknown.find(u => u.what === "role");
+    return (
+      <>
+        <p className="font-semibold text-slate-700 dark:text-slate-200">
+          Could not check the streaming setup
+        </p>
+        <p className="text-sm mt-1 max-w-md mx-auto">
+          {role
+            ? <>Looked for the role <strong>{status.bucket.replace(/-audit-log-\d+$/, "")}-audit-log-stream</strong> in
+                account <strong>{status.accountId}</strong> and could not read it — {role.reason}.
+                Usually a missing <code>iam:GetRole</code> permission, or the wrong account.</>
+            : <>Could not list <strong>{status.bucket}</strong> — {status.unknown[0].reason}.</>}
+        </p>
+        <p className="text-xs mt-2 text-gray-500 dark:text-slate-400 max-w-md mx-auto">
+          Streaming may well be running. Any rows below arrived normally.
+        </p>
+      </>
+    );
+  }
 
   /**
    * A quiet link, not a red panel wedged into the page.

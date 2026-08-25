@@ -6,7 +6,7 @@ import { sanitizeError } from "../utils/errorSanitizer";
 import { logSync } from "../services/activityService";
 import { savePrSnapshot, readPrSnapshot } from "../services/alarmService";
 import {
-  getPrState, listPrStates, setPrPause, recordNudge,
+  getPrState, listPrStates, setPrPause, recordNudge, touchPrState,
   getPrSettings, savePrSettings, getPrMutes, setPrMute,
 } from "../services/alarmService";
 import {
@@ -263,6 +263,7 @@ router.post("/run", async (req: Request, res: Response) => {
         (query, variables) => (octokit as any).graphql(query, variables), org()),
       getState: (repo, number) => getPrState(repo, number),
       recordNudge,
+      touchState: touchPrState,
       listComments: async (repo, number) => {
         const { data } = await (octokit as any).rest.issues.listComments({
           ...split(repo), issue_number: number, per_page: 100,

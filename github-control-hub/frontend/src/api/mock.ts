@@ -2,7 +2,6 @@ import type { Repo, RepoDetails } from "../types/Repo";
 import type { Activity } from "../types/Activity";
 import type { Scanner, ScanResult } from "../types/Scanner";
 import type { SecurityAlert } from "../types/Alert";
-import type { RepoComplianceScore } from "../types/Compliance";
 import type { DependencyAlert, DependencySummary } from "../types/Dependabot";
 
 export const DEMO_USER = {
@@ -9824,63 +9823,8 @@ export async function mockUnresolveAlert(alertId: string): Promise<SecurityAlert
   return mockAlertsStore[idx];
 }
 
-const mockComplianceDashboard: RepoComplianceScore[] = [
-  {
-    repo: "web-platform",
-    score: 80,
-    protectionsActive: false,
-    rulesetsActive: true,
-    hasRequiredFiles: true,
-    outsideCollaborators: 0,
-    issues: ["Classic branch protection is missing on main"],
-    lastChecked: new Date().toISOString(),
-  },
-  {
-    repo: "api-gateway",
-    score: 90,
-    protectionsActive: true,
-    rulesetsActive: true,
-    hasRequiredFiles: true,
-    outsideCollaborators: 0,
-    issues: ["Approvals required is less than organization standard (2)"],
-    lastChecked: new Date().toISOString(),
-  },
-  {
-    repo: "design-system",
-    score: 100,
-    protectionsActive: true,
-    rulesetsActive: true,
-    hasRequiredFiles: true,
-    outsideCollaborators: 0,
-    issues: [],
-    lastChecked: new Date().toISOString(),
-  },
-  {
-    repo: "mobile-app",
-    score: 60,
-    protectionsActive: true,
-    rulesetsActive: false,
-    hasRequiredFiles: false,
-    outsideCollaborators: 2,
-    issues: ["Missing CODEOWNERS file", "2 outside collaborators have access", "No rulesets active"],
-    lastChecked: new Date().toISOString(),
-  },
-  {
-    repo: "infrastructure",
-    score: 40,
-    protectionsActive: false,
-    rulesetsActive: false,
-    hasRequiredFiles: false,
-    outsideCollaborators: 1,
-    issues: ["No branch protections", "No rulesets active", "Missing README.md", "1 outside collaborator has access"],
-    lastChecked: new Date().toISOString(),
-  },
-];
 
-export async function mockFetchComplianceDashboard(): Promise<RepoComplianceScore[]> {
-  await delay(600);
-  return [...mockComplianceDashboard];
-}
+
 
 const mockDependencyAlerts: DependencyAlert[] = [
   {

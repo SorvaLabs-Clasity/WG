@@ -392,8 +392,8 @@ export class GitHubControlHubStack extends cdk.Stack {
         handler: "handler",
         projectRoot: path.join(__dirname, ".."),
         depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-        // A single invocation can chain a compliance refresh, graph edge
-        // updates and scanner runs — background work that used to be unbounded
+        // A single invocation can chain graph edge updates and scanner runs —
+        // background work that used to be unbounded
         // on a long-lived server and now happens inside the invocation. Lambda
         // bills by duration actually used, so a high ceiling here costs nothing
         // when the work finishes early and only matters on the rare delivery
@@ -423,7 +423,6 @@ export class GitHubControlHubStack extends cdk.Stack {
           ALERTS_TABLE: `${stackPrefix}-alerts`,
           ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
           GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
-          COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
           WEBHOOK_DELIVERIES_TABLE: deliveriesTable.tableName,
           // The worker emails security alerts as it records them, so it reads
           // the toggle and the group from here.
@@ -506,7 +505,6 @@ export class GitHubControlHubStack extends cdk.Stack {
           SCANNERS_TABLE: `${stackPrefix}-scanners`,
           ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
           GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
-          COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
         },
         bundling: webhookBundling,
       });
@@ -519,8 +517,8 @@ export class GitHubControlHubStack extends cdk.Stack {
 
       // Reads widely, writes to one table.
       //
-      // Evaluating an alarm means reading widgets, graph edges and the
-      // compliance cache; the only thing it ever writes is the alarm's own
+      // Evaluating an alarm means reading widgets and graph edges; the only
+      // thing it ever writes is the alarm's own
       // runtime state. Granting writes across the prefix would have let a
       // scheduled job with no user in front of it modify the activity log — the
       // record used to reconstruct what happened, including to itself.
@@ -589,7 +587,6 @@ export class GitHubControlHubStack extends cdk.Stack {
           SECRET_NAME: secretName,
           ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
           GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
-          COMPLIANCE_CACHE_TABLE: `${stackPrefix}-compliance-cache`,
         },
         bundling: webhookBundling,
       });
@@ -618,7 +615,6 @@ export class GitHubControlHubStack extends cdk.Stack {
         ],
         resources: [
           `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-graph-edges`,
-          `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-compliance-cache`,
           `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-org-config`,
         ],
       }));

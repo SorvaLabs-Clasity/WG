@@ -3,7 +3,6 @@ import { getOrg } from "../github/client";
 import { runScan, listScanners } from "../services/scannerService";
 import { createAlert, autoResolveAlerts } from "../services/alertService";
 import { logActivity } from "../services/activityService";
-import { refreshRepo } from "../services/complianceCacheService";
 import {
   addBranchEdge, removeBranchEdge, updateBranchProtection,
   addCollaboratorEdge, removeCollaboratorEdge, addRepoEdges,
@@ -329,20 +328,6 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   // not prevent the others from running — which is what the bare .catch()
   // handlers gave us before.
   const background: Promise<unknown>[] = [];
-
-  const shouldRefreshCompliance =
-    event === "branch_protection_rule" ||
-    event === "repository_ruleset" ||
-    event === "member" ||
-    (event === "repository" && payload.action === "created") ||
-    (event === "push" && payload.ref === `refs/heads/${payload.repository?.default_branch}`);
-
-  if (repoName && token && shouldRefreshCompliance) {
-    console.log(`[Webhook] Refreshing compliance cache for ${repoName}`);
-    background.push(refreshRepo(token, repoName).catch((err) =>
-      console.error(`[Webhook] Compliance refresh failed for ${repoName}:`, (err as Error).message)
-    ));
-  }
 
   // Incremental graph edge updates
   const org = getOrg();

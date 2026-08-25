@@ -1,7 +1,6 @@
 import { Octokit } from "octokit";
 import { getOrg, getSystemTokenAsync } from "../github/client";
 import { usesDynamo, tableName, scanAll, batchWrite } from "../utils/dynamo";
-import { refreshAll } from "../services/complianceCacheService";
 import { invalidateAccessMap } from "../services/accessMapService";
 import { invalidateEdgeCache } from "../services/graphService";
 import { recordGraphAggregation } from "../services/orgConfigService";
@@ -538,11 +537,9 @@ export async function aggregateGraphData(fallbackToken?: string) {
   // a sync is exactly the moment that held copy is wrong.
   invalidateEdgeCache();
 
-  try {
-    console.log(`[GraphAggregator] Refreshing compliance cache for all repos...`);
-    const scores = await refreshAll(token);
-    console.log(`[GraphAggregator] Compliance cache refreshed for ${scores.length} repos.`);
-  } catch (err) {
-    console.error(`[GraphAggregator] Compliance cache refresh failed:`, err);
-  }
+  // The compliance score sweep used to run here, costing roughly seven to ten
+  // GitHub requests per repository on top of this rebuild — often more than the
+  // rebuild itself — for scores no screen in the app has ever displayed. The
+  // hooks and the route existed; nothing imported them. Removed rather than
+  // left running: an unread number is not worth a rate limit.
 }

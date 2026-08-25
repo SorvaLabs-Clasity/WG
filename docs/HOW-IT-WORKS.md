@@ -394,13 +394,17 @@ Three writers and one reader, and only the first of them is a Lambda.
 | press "Sync from GitHub" | The same rebuild code, run inside the desktop app on your machine, using **your** GitHub login rather than the app's |
 | work out every route | `services/accessMapService.ts`, holding its answer in memory for 60 seconds |
 
-Two more things the rebuild writes on its way past: the compliance score for
-every repository, and a note of when it finished — which is what the Access page
-header reads to tell you how old the picture is.
+One more thing the rebuild writes on its way past: a note of when it finished —
+which is what the Access page header reads to tell you how old the picture is.
+
+It used to also score every repository for compliance, at roughly seven to ten
+GitHub requests each, often costing more than the rebuild itself. No screen ever
+displayed those scores; the route and the hooks existed and nothing imported
+them. That sweep has been removed.
 
 1. **Nothing runs the rebuild except that timer and that button.** The Lambda
-   is allowed to *read* every table in the stack but to *write* only three: the
-   connections, the compliance scores, and the freshness note. Something that
+   is allowed to *read* every table in the stack but to *write* only two: the
+   connections and the freshness note. Something that
    clears and rewrites a whole table is deliberately kept away from the activity
    log, which is the record you would use to reconstruct what happened.
 2. **The walk is ordinary GitHub API calls**, using the app's own credentials:
@@ -481,10 +485,12 @@ row every time, which was the single most expensive thing in the app.
 
 ### What it costs
 
-Roughly four GitHub requests per repository for the walk, plus about six more per
-repository for compliance scores, which ride along. A few hundred repositories is
-a few thousand requests — a meaningful slice of one hour's rate limit, which is
+Roughly **four GitHub requests per repository**, plus two per team and about a
+dozen for the organization overall. Three hundred repositories works out at
+around 1,300 requests — under a tenth of one hour's allowance of 15,000, which is
 why it runs every six hours rather than every few minutes.
+
+It was about three times that until the compliance sweep was removed from it.
 
 ### What is recorded, and the one thing that is not
 
@@ -1029,123 +1035,6 @@ Two consequences worth keeping:
 The Updates tab's count comes from the page issuing the *same* `["renovate"]`
 query the panel does, so React Query serves both from one request rather than
 fetching twice. `repro-vulnviews` pins all of this.
-
----
-
-## Compliance scores
-
-**Shape: stored, refreshed on demand.**
-
-A compliance score is one number per repository, from a set of rules you define —
-"has a README", "has CODEOWNERS", "default branch is protected", and so on.
-
-**Scoring one repository** means reading it from GitHub: its settings, its
-branch protection, its rulesets, and a `getContent` call per required file to see
-whether it exists. That is roughly six requests, so scoring 350 repositories is
-about 2,000 — far too many to do while somebody waits.
-
-So the score is computed and stored, one row per repository in the
-`compliance-cache` table. Four things write it:
-
-1. **The 6-hour graph rebuild**, which scores every repository as its last step.
-   This is the normal path and why scores are usually current without anyone
-   doing anything.
-2. **Refresh on the dashboard**, which rescores every repository now.
-3. **Refresh on one repository**, which rescores just that one — a few requests
-   rather than thousands.
-4. **A webhook that changes what a score measures** — branch protection, a
-   ruleset, a membership, a repository being created, or a push to the default
-   branch. The worker rescores that repository alone, so the dashboard is
-   current for the thing that just changed without waiting for the rebuild.
-
-### The path
-
-Four writers, one row per repository, one reader.
-
-```
-  FOUR THINGS ASK FOR A RESCORE
-
-  the 6-hour rebuild, as its last step ─────┐
-  you press Refresh on the dashboard ───────┤
-  you press Refresh on one repository ──────┼──▶ score it: ask GitHub about
-  GitHub reports a change that would        │    that repository — its settings,
-  affect a score ───────────────────────────┘    its protection, whether the
-   (protection, a ruleset, a member,             required files exist
-    a new repo, a push to the main branch)                  │
-                                                            ▼
-                                              save one row per repository,
-                                              replacing whatever was there
-                                                            │
-                                                            ▼
-                                                   the dashboard reads it
-```
-
-**What each box really is:**
-
-| In the diagram | What it is |
-|---|---|
-| score it | About six GitHub calls per repository (`services/complianceService.ts`) — which is why 350 repositories is ~2,000 calls and never done while you wait |
-| one row per repository | The `github-control-hub-compliance-cache` table, keyed on the repository's name |
-| GitHub reports a change | A webhook, handled by `github-control-hub-webhook-worker` |
-
-1. **Scoring one repository is about six GitHub calls**: `repos.get` for its
-   settings, branch protection, a ruleset detail request per ruleset, a
-   `getContent` per required file to see whether it exists, and
-   `listCollaborators` for the outside-collaborator count. Times 350
-   repositories that is roughly 2,000 requests, which is why nobody waits for it.
-2. **The 6-hour rebuild is the normal path** — `refreshAll` is the last step of
-   the same walk that rebuilds the graph, which is why scores are usually
-   current without anyone pressing anything.
-3. **The webhook path keeps one repository current in between.** The worker
-   checks the event against a small list — `branch_protection_rule`,
-   `repository_ruleset`, `member`, `repository` created, or a push to the
-   default branch — and calls `refreshRepo` for that repository alone, as
-   best-effort background work inside the invocation.
-4. **All four writers end at the same single write, filed under the repository's
-   name.** Rescoring replaces that row outright — nothing to merge, no partial
-   update, and no way to end up holding two different scores for one
-   repository.
-5. **`complianceCacheService` is the only module that reads or writes the
-   table.** `complianceService` computes and returns a score and never persists
-   one.
-6. **Changing the rules rescores nothing.** The rules live in `org-config` and
-   the stored scores were computed under the old ones, so a rule change is
-   normally followed by a dashboard refresh.
-
-### The infrastructure
-
-**Table:** `github-control-hub-compliance-cache`, keyed on `repo`. One row per
-repository:
-
-```
-repo                  "payments-api"
-score                 82
-protectionsActive     true
-rulesetsActive        false
-hasRequiredFiles      true
-outsideCollaborators  2
-issues                ["No CODEOWNERS file"]
-lastChecked           "2026-08-20T03:00:11Z"
-```
-
-Keyed on the repository name rather than an id, so rescoring one repository is a
-single `PutItem` that replaces its row — there is nothing to reconcile and no way
-to end up with two scores for one repository.
-
-**Which code touches it:**
-
-| File | Role |
-|---|---|
-| `services/complianceService.ts` | does the scoring — the ~6 GitHub calls per repository |
-| `services/complianceCacheService.ts` | **the only reader and writer of the table** — `refreshAll`, `refreshRepo`, `getCachedScores` |
-| `services/complianceConfigService.ts` | the rules, in `org-config` |
-| `jobs/graphAggregator.ts` | calls `refreshAll` as the last step of every rebuild |
-| `routes/compliance.ts` | the dashboard and its two refresh buttons |
-
-The **rules themselves** live in `org-config` and are edited in the app by
-`control-hub-admins`. Changing them does not rescore anything: the stored scores
-were computed under the old rules until something recomputes them, so a rule
-change is usually followed by a dashboard refresh.
 
 ---
 

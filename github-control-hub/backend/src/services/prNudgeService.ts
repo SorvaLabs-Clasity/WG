@@ -831,6 +831,13 @@ export interface NudgeRunDeps extends NudgeDeps {
     paused?: boolean; pausedLogins?: string[];
   } | undefined>;
   recordNudge: (repo: string, number: number, commentId: number | undefined) => Promise<void>;
+  /**
+   * Keep a paused pull request's stored state from expiring.
+   *
+   * Separate from `recordNudge` because it must not restart the reminder clock
+   * — see `touchPrState`. Optional so an existing caller keeps working.
+   */
+  touchState?: (repo: string, number: number) => Promise<unknown>;
   now?: number;
   /** Overridable so a test can pin the interval the shipped constant may not be. */
   threshold?: number;
@@ -872,7 +879,19 @@ export async function runNudgePass(deps: NudgeRunDeps): Promise<{
     // Nobody to name. Deliberately no comment and no recorded nudge: recording
     // one would start the seven-day clock again, so lifting the pause would be
     // followed by a week of silence rather than the next reminder.
-    if (targets.length === 0) { skippedPaused++; continue; }
+    //
+    // The stored row still has to be kept alive, though. Its expiry is only
+    // ever re-stamped by a write, and this branch is the one case where no
+    // write happens — so a pause left alone was deleted after 180 days and
+    // reminders quietly resumed. Touching it moves the expiry without touching
+    // the clock.
+    if (targets.length === 0) {
+      skippedPaused++;
+      await deps.touchState?.(pr.repo, pr.number).catch(() => {
+        // A missed touch costs this row up to five more months, not the pause.
+      });
+      continue;
+    }
 
     try {
       const body = buildNudgeComment(

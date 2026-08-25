@@ -13,7 +13,7 @@ import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
 import {
   listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings,
   getFeedSettings, listPending, markPendingSent,
-  getPrState, recordNudge, getPrSettings, getPrMutes,
+  getPrState, recordNudge, touchPrState, getPrSettings, getPrMutes,
 } from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
@@ -279,6 +279,9 @@ export async function handler(): Promise<void> {
       listPrs: () => fetchOpenPrs(graphql, org).then(storeSnapshot),
       getState: (repo, number) => getPrState(repo, number),
       recordNudge,
+      // The scheduled pass is the one that matters here: it is what keeps
+      // running for the months a pause has to survive.
+      touchState: touchPrState,
       listComments: async (repo, number) => {
         const [owner, name] = repo.split("/");
         const { data } = await (octokit as any).rest.issues.listComments({

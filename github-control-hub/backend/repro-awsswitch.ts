@@ -217,6 +217,23 @@ function verifies(token: string): boolean {
         /completeAwsSwitch\(carried\)/.test(body) && !/reloadSecretsIfNeeded\(\)/.test(body),
         route);
     }
+
+    // Naming a profile has to clear the environment as well as set it.
+    //
+    // The credential chain reads AWS_ACCESS_KEY_ID before it ever looks at
+    // AWS_PROFILE, so keys left over from an access-key sign-in kept winning
+    // while the app went on reporting the profile it had just set. Every screen
+    // named one account and every call went to another — which reads, from
+    // inside the app, as a resource that is missing rather than an account that
+    // is wrong. It cost an afternoon on a working audit-log stream.
+    for (const route of ["reconnect-aws", "aws-use-profile"]) {
+      const start = auth.indexOf(`"/${route}"`);
+      const body = auth.slice(start, start + 2600);
+      for (const v of ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN"]) {
+        check(`  /${route} clears ${v} when a profile is named`,
+          new RegExp(`delete process\\.env\\.${v}`).test(body), route);
+      }
+    }
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

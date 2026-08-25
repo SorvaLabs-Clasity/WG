@@ -510,6 +510,21 @@ router.post("/reconnect-aws", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
       return;
     }
     process.env.AWS_PROFILE = profile;
+    // Cleared, because the environment beats the profile.
+    //
+    // The AWS credential chain reads AWS_ACCESS_KEY_ID before it ever looks at
+    // AWS_PROFILE, so keys left over from an earlier access-key sign-in kept
+    // winning — and this route went on reporting the profile it had just set.
+    // Every screen then named one account while every call went to another,
+    // which is unfalsifiable from inside the app: it looked exactly like a
+    // resource that was missing rather than an account that was wrong.
+    //
+    // Only when a profile was named. Without one this is "try again with
+    // whatever we already have", and clearing them would sign out anybody who
+    // connected by pasting keys.
+    delete process.env.AWS_ACCESS_KEY_ID;
+    delete process.env.AWS_SECRET_ACCESS_KEY;
+    delete process.env.AWS_SESSION_TOKEN;
     // The file may have changed since this process parsed it — a profile added
     // by this app, or one the person added in a terminal while it was running.
     const { refreshAwsConfigCache } = await import("../services/ssoSetupService");

@@ -33,6 +33,17 @@ export interface AuditStreamStatus {
   receiving: boolean;
   /** Objects seen in the bucket, capped — a floor, not a total. */
   objectCount: number;
+  /**
+   * Checks that could not be completed, rather than answered.
+   *
+   * "Not set up" and "I could not find out" were the same value here, and both
+   * rendered as the setup prompt. Somebody whose stream had been running for
+   * months was shown instructions for connecting it, with the rows from that
+   * very stream on the screen behind. Empty means every check ran.
+   */
+  unknown: { what: "role" | "bucket"; reason: string }[];
+  /** Which account was actually looked in, so a wrong one is visible. */
+  accountId: string;
 }
 
 export interface AuditStreamDeps {
@@ -126,13 +137,28 @@ export async function getStatus(deps: AuditStreamDeps): Promise<AuditStreamStatu
   const bucket = bucketName(deps.prefix, deps.accountId);
   const role = roleName(deps.prefix);
 
-  const trust = await deps.getRoleTrustPolicy(role).catch(() => null);
+  const unknown: { what: "role" | "bucket"; reason: string }[] = [];
+
+  // `getRoleTrustPolicy` already returns null for a role that is genuinely
+  // absent, so anything thrown here is a failure to look — most often no
+  // `iam:GetRole`. Catching it to null said "not set up" instead.
+  let trust: any = null;
+  try {
+    trust = await deps.getRoleTrustPolicy(role);
+  } catch (err: any) {
+    unknown.push({ what: "role", reason: err?.name || err?.message || "could not read the role" });
+  }
   const enterprise = trust ? enterpriseFromTrustPolicy(trust) : null;
 
   // Counted rather than assumed from the role's existence: a role can be
   // perfect and streaming still switched off in GitHub, which is the state
   // this screen most needs to tell apart from "not set up".
-  const objectCount = await deps.countBucketObjects(bucket).catch(() => 0);
+  let objectCount = 0;
+  try {
+    objectCount = await deps.countBucketObjects(bucket);
+  } catch (err: any) {
+    unknown.push({ what: "bucket", reason: err?.name || err?.message || "could not list the bucket" });
+  }
 
   return {
     configured: !!enterprise,
@@ -141,6 +167,8 @@ export async function getStatus(deps: AuditStreamDeps): Promise<AuditStreamStatu
     bucket,
     receiving: objectCount > 0,
     objectCount,
+    unknown,
+    accountId: deps.accountId,
   };
 }
 

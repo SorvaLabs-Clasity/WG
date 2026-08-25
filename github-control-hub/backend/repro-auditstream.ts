@@ -305,6 +305,70 @@ function harness(over: Partial<AuditStreamDeps> = {}) {
       back.configured && back.enterprise === "acme-ent", back);
   }
 
+  // ── "could not check" is not "not connected" ────────────────────────
+  //
+  // Both of these used to be swallowed to a falsy value, and every screen that
+  // read the result showed the setup prompt. A stream that had been running for
+  // months was reported as never connected, with its own rows on the page
+  // behind the prompt — the single most misleading thing this panel can say.
+  {
+    const denied: any = new Error("User is not authorized to perform iam:GetRole");
+    denied.name = "AccessDeniedException";
+
+    const { deps } = harness({ getRoleTrustPolicy: async () => { throw denied; } });
+    const status = await getStatus(deps);
+
+    check("a role that cannot be read is reported as unknown",
+      status.unknown.some(u => u.what === "role"), status.unknown);
+    check("  and the reason survives, because it is the fixable part",
+      status.unknown[0]?.reason === "AccessDeniedException", status.unknown[0]);
+    check("  configured stays false, but is no longer the whole answer",
+      status.configured === false);
+    check("  and the account looked in is reported, so a wrong one is visible",
+      status.accountId === ACCOUNT, status.accountId);
+  }
+
+  {
+    const { deps, setTrust } = harness({
+      countBucketObjects: async () => { throw new Error("AccessDenied"); },
+    });
+    setTrust(trustPolicyFor(ACCOUNT, "acme-ent"));
+    const status = await getStatus(deps);
+
+    check("a bucket that cannot be listed is reported as unknown",
+      status.unknown.some(u => u.what === "bucket"), status.unknown);
+    check("  rather than counting as zero batches received",
+      status.configured === true && status.receiving === false,
+      "the role is readable, so this must not read as 'never set up'");
+  }
+
+  // A working stream must still come back clean, or the new branch would
+  // swallow the ordinary case instead.
+  {
+    const { deps, setTrust } = harness();
+    setTrust(trustPolicyFor(ACCOUNT, "acme-ent"));
+    const status = await getStatus(deps);
+    check("a healthy stream reports nothing unknown",
+      status.unknown.length === 0, status.unknown);
+    check("  and a genuinely absent role is still a plain no",
+      (await getStatus(harness().deps)).unknown.length === 0,
+      "null from getRoleTrustPolicy means absent, which is an answer");
+  }
+
+  // ── the panel does not answer a question it never asked ─────────────
+  {
+    const fs = await import("node:fs");
+    const panel = fs.readFileSync(`${__dirname}/../frontend/src/components/AuditStreamSetup.tsx`, "utf8");
+
+    check("a non-admin is not told the stream is disconnected",
+      !/!isAdmin[\s\S]{0,300}audit log not connected/i.test(panel),
+      "that branch returns before the status is ever fetched");
+    check("  a failed request says so instead of showing the setup prompt",
+      /statusError/.test(panel) && /Could not check the streaming setup/.test(panel));
+    check("  and an unknown check is surfaced with its reason",
+      /status\?\.unknown\?\.length/.test(panel));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();
