@@ -55,6 +55,23 @@ function Copyable({ label, value }: { label: string; value: string }) {
  * configured while streaming is still switched off in GitHub, and a deploy has
  * no way to know that — it can only report what it created.
  */
+/**
+ * The bordered card the setup states live in.
+ *
+ * It used to be wrapped around this component by the Activity page, which meant
+ * it was drawn whether or not there was anything to say — a full-width panel
+ * offering to connect a stream that had been connected for months. The chrome
+ * belongs with the state that needs it, so the connected case can be a single
+ * quiet line instead.
+ */
+function Panel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mb-4 bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 p-4 text-center">
+      {children}
+    </div>
+  );
+}
+
 export default function AuditStreamSetup() {
   const { data: permissions } = usePermissions();
   const isAdmin = permissions?.isAwsAdmin ?? false;
@@ -101,24 +118,24 @@ export default function AuditStreamSetup() {
   // filling the table below them did not exist.
   if (!isAdmin) {
     return (
-      <>
+      <Panel><>
         <p className="font-semibold text-slate-700 dark:text-slate-200">Audit log streaming</p>
         <p className="text-sm mt-1 max-w-md mx-auto">
           Only organization admins can see or change the streaming setup. Rows appear
           here whenever it is switched on.
         </p>
-      </>
+      </></Panel>
     );
   }
 
-  if (isLoading) return <p className="text-sm">Checking…</p>;
+  if (isLoading) return <Panel><p className="text-sm">Checking…</p></Panel>;
 
   // The request itself failed. Falling through from here rendered the setup
   // prompt, so a 403 or a network blip looked exactly like a stream that had
   // never been connected.
   if (statusError) {
     return (
-      <>
+      <Panel><>
         <p className="font-semibold text-slate-700 dark:text-slate-200">
           Could not check the streaming setup
         </p>
@@ -129,7 +146,7 @@ export default function AuditStreamSetup() {
           This says nothing about whether streaming is on — only that the check
           could not run. Any rows below arrived normally.
         </p>
-      </>
+      </></Panel>
     );
   }
 
@@ -138,7 +155,7 @@ export default function AuditStreamSetup() {
   if (status?.unknown?.length) {
     const role = status.unknown.find(u => u.what === "role");
     return (
-      <>
+      <Panel><>
         <p className="font-semibold text-slate-700 dark:text-slate-200">
           Could not check the streaming setup
         </p>
@@ -152,7 +169,7 @@ export default function AuditStreamSetup() {
         <p className="text-xs mt-2 text-gray-500 dark:text-slate-400 max-w-md mx-auto">
           Streaming may well be running. Any rows below arrived normally.
         </p>
-      </>
+      </></Panel>
     );
   }
 
@@ -229,7 +246,7 @@ export default function AuditStreamSetup() {
   // so the second half is shown even while IAM is still catching up.
   if (setup.isSuccess && setup.data) {
     return (
-      <div className="max-w-xl mx-auto text-left">
+      <Panel><div className="max-w-xl mx-auto text-left">
         <p className="font-semibold text-green-700 dark:text-green-400 text-center">
           AWS side done — one step left, and it is not in this app
         </p>
@@ -242,52 +259,55 @@ export default function AuditStreamSetup() {
           className="mt-4 text-xs font-semibold text-gh-blue hover:underline">
           Done — check status
         </button>
-      </div>
+      </div></Panel>
     );
   }
 
-  // Set up in AWS, and objects are arriving. Nothing left to do.
+  /**
+   * Working, and therefore almost silent.
+   *
+   * This was a full-width bordered panel announcing "Connected" above every row
+   * on the page, permanently. A status that never changes is not information
+   * after the first read; it is furniture. One line, and the details behind a
+   * disclosure — which is also where the bucket and role ARN belong, since the
+   * only times anybody wants them are re-creating a deleted stream, pointing a
+   * second enterprise at the same bucket, or checking what GitHub was given.
+   * All of those happen long after setup, and none of them are urgent.
+   */
   if (status?.configured && status.receiving) {
     return (
-      <>
-        <p className="font-semibold text-slate-700 dark:text-slate-200">Connected</p>
-        <p className="text-sm mt-1 max-w-md mx-auto">
-          Streaming from <strong>{status.enterprise}</strong>. {status.objectCount}+ batches
-          delivered. Rows appear here as GitHub writes them — expect minutes, not seconds.
-        </p>
+      <details className="mb-4 group/stream">
+        <summary className="flex items-center gap-2 cursor-pointer list-none px-1 py-1.5 text-xs text-gh-muted dark:text-slate-400 hover:text-gh-textBase dark:hover:text-slate-200 transition-colors">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
+          <span>
+            Streaming from{" "}
+            <strong className="font-semibold text-gh-textBase dark:text-slate-200">{status.enterprise}</strong>
+          </span>
+          <span className="text-slate-400 dark:text-slate-500">· {status.objectCount}+ batches</span>
+          <i className="ph-bold ph-caret-down text-[10px] ml-auto transition-transform group-open/stream:rotate-180" />
+        </summary>
 
-        {/* The two values, still here once it is working.
-            They used to disappear at exactly this point: the moment streaming
-            connected, the only place the role ARN was written down was the IAM
-            console. That is the wrong time to lose them — re-entering the
-            stream after somebody deletes it, pointing a second enterprise at
-            the same bucket, or simply checking what GitHub was given all happen
-            long after setup. Folded away, because the answer on this screen is
-            "it works" and the details are for when that stops being enough. */}
-        <details className="mt-4 max-w-xl mx-auto text-left">
-          <summary className="text-xs font-semibold cursor-pointer text-gh-blue">
-            Bucket and role ARN
-          </summary>
-          <p className="text-xs mt-2 text-gray-500 dark:text-slate-400">
-            What an enterprise owner entered in GitHub, at{" "}
+        <div className="mt-2 rounded-lg border border-gh-border dark:border-slate-700 bg-white dark:bg-slate-900 p-4 text-left">
+          <p className="text-xs text-gray-500 dark:text-slate-400">
+            Rows appear as GitHub writes them — expect minutes, not seconds. These are what an
+            enterprise owner entered at{" "}
             <strong>Enterprise settings → Audit log → Log streaming → Amazon S3</strong>,
-            authenticating with <strong>OpenID Connect</strong>. Needed again only to
-            re-create the stream if it is removed there.
+            authenticating with <strong>OpenID Connect</strong>. Needed again only to re-create
+            the stream if it is removed there.
           </p>
           <Copyable label="Bucket" value={status.bucket} />
           <Copyable label="Role ARN" value={status.roleArn ?? ""} />
-        </details>
-
-        <div className="mt-3">{offSwitch()}</div>
+          <div className="mt-3">{offSwitch()}</div>
+        </div>
         {offDialog()}
-      </>
+      </details>
     );
   }
 
   // The state a deploy cannot detect: AWS is ready, GitHub is not sending.
   if (status?.configured) {
     return (
-      <div className="max-w-xl mx-auto text-left">
+      <Panel><div className="max-w-xl mx-auto text-left">
         <p className="font-semibold text-slate-700 dark:text-slate-200 text-center">
           AWS is ready — waiting on GitHub
         </p>
@@ -312,13 +332,13 @@ export default function AuditStreamSetup() {
         <div className="mt-4">{offSwitch()}</div>
         {offDialog()}
         {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
-      </div>
+      </div></Panel>
     );
   }
 
   // Nothing set up at all.
   return (
-    <div className="max-w-xl mx-auto text-left">
+    <Panel><div className="max-w-xl mx-auto text-left">
       <p className="font-semibold text-slate-700 dark:text-slate-200 text-center">
         Enterprise audit log not connected
       </p>
@@ -350,6 +370,6 @@ export default function AuditStreamSetup() {
         it goes into an IAM trust policy, which unlike GitHub is fussy about case.
       </p>
       {error && <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>}
-    </div>
+    </div></Panel>
   );
 }

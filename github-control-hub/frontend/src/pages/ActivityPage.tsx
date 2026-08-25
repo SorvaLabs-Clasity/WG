@@ -734,11 +734,10 @@ export default function ActivityPage() {
             reachable only while nothing was arriving — so a stream working
             correctly hid its own off switch, which is the one moment somebody
             goes looking for it. */}
-        {!isLoading && !error && category === "audit" && (
-          <div className="mb-4 bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 p-4 text-center">
-            <AuditStreamSetup />
-          </div>
-        )}
+        {/* No wrapper: the card belongs to whichever state needs one. A
+            working stream renders a single quiet line instead of a panel
+            announcing "Connected" above every row, for ever. */}
+        {!isLoading && !error && category === "audit" && <AuditStreamSetup />}
 
         {!isLoading && !error && (
           <div className="bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 shadow-subtle overflow-hidden relative">

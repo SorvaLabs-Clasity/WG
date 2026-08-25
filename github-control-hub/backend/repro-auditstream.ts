@@ -367,6 +367,36 @@ function harness(over: Partial<AuditStreamDeps> = {}) {
       /statusError/.test(panel) && /Could not check the streaming setup/.test(panel));
     check("  and an unknown check is surfaced with its reason",
       /status\?\.unknown\?\.length/.test(panel));
+
+    // A working stream is not news after the first read.
+    //
+    // The page drew a bordered card around this component whenever the audit
+    // stream was selected, so a stream that had run for months announced
+    // "Connected" above every row for ever. The chrome now belongs to the
+    // states that need it, and the working one is a single line.
+    const activity = fs.readFileSync(`${__dirname}/../frontend/src/pages/ActivityPage.tsx`, "utf8");
+    check("the page no longer wraps the panel in a card of its own",
+      /category === "audit" && <AuditStreamSetup \/>/.test(activity),
+      "an unconditional wrapper is drawn whether or not there is anything to say");
+
+    const connected = panel.slice(panel.indexOf("status?.configured && status.receiving"));
+    const body = connected.slice(0, connected.indexOf("\n  }"));
+    check("  a connected stream renders a disclosure rather than a panel",
+      /<details/.test(body) && !/<Panel>/.test(body), "it should be one quiet line");
+    check("  with the enterprise and the batch count on the line itself",
+      /status\.enterprise/.test(body) && /status\.objectCount/.test(body));
+    check("  and the bucket and role ARN still reachable behind it",
+      /Copyable label="Bucket"/.test(body) && /Copyable label="Role ARN"/.test(body),
+      "those are wanted long after setup, when a stream has to be re-created");
+    check("  along with the way to turn it off",
+      /offSwitch\(\)/.test(body));
+
+    // Every other state still gets the card, or they would float on the page.
+    for (const branch of ["if (!isAdmin)", "if (isLoading)", "if (statusError)", "if (status?.unknown?.length)"]) {
+      const at = panel.indexOf(branch);
+      check(`  ${branch} still has a panel`,
+        at >= 0 && panel.slice(at, at + 500).includes("<Panel>"), branch);
+    }
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
