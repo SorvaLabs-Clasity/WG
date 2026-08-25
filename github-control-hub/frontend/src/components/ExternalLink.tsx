@@ -17,7 +17,11 @@ import type { ReactNode } from "react";
  */
 declare global {
   interface Window {
-    electronAPI?: { openExternal?: (url: string) => Promise<boolean> };
+    electronAPI?: {
+      openExternal?: (url: string) => Promise<boolean>;
+      /** The version of the installed build. Absent in a browser. */
+      getAppVersion?: () => Promise<string>;
+    };
   }
 }
 

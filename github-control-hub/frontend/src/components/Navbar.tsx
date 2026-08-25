@@ -96,6 +96,23 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
     return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", esc); };
   }, [accountOpen]);
 
+  /**
+   * Which build this is.
+   *
+   * Worth a line on screen because the alternative is inspecting the installed
+   * bundle. A fix can be committed, pushed, built and still not be in the app
+   * you are running — a release whose version has not moved does not publish,
+   * so the download stays the previous build and nothing says so.
+   *
+   * Empty in a browser, where there is no installed build to name.
+   */
+  const [appVersion, setAppVersion] = useState("");
+  useEffect(() => {
+    window.electronAPI?.getAppVersion?.()
+      .then(setAppVersion)
+      .catch(() => { /* a missing version is not worth a broken menu */ });
+  }, []);
+
   const logout = async () => {
     const token = getToken();
     if (token) { try { await revokeGithub(token); } catch { /* best effort */ } }
@@ -166,6 +183,11 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
                       <p className="text-[10px] uppercase tracking-[0.16em] font-bold text-slate-400 dark:text-white/35">Signed in as</p>
                       <p className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">{login}</p>
                       <p className="text-[11px] text-slate-400 dark:text-white/40 mt-0.5">{COMPANY_NAME}</p>
+                      {appVersion && (
+                        <p className="text-[10px] font-mono text-slate-400 dark:text-white/30 mt-1.5">
+                          v{appVersion}
+                        </p>
+                      )}
                     </div>
                     <AwsAccountSwitcher
                       current={status?.aws?.profile}

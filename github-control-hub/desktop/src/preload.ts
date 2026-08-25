@@ -7,6 +7,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
     node: process.versions.node,
     chrome: process.versions.chrome,
   },
+  /**
+   * The version of this build, as electron-builder stamped it.
+   *
+   * Asked of the main process rather than read from a bundled constant: the
+   * frontend is built before packaging, so anything baked in at build time is
+   * the version at *compile* time, which is exactly the number that misleads.
+   * `app.getVersion()` is what the installed application actually is.
+   */
+  getAppVersion: (): Promise<string> => ipcRenderer.invoke("app-version"),
   onDeepLink: (callback: (url: string) => void) => {
     ipcRenderer.on("deep-link", (_event, url: string) => callback(url));
   },

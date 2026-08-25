@@ -152,6 +152,10 @@ function createWindow(): void {
   });
 
   // Register IPC handler here (not in setupAutoUpdater) so it works in dev mode too
+  // What this build actually is, for the About line in the account menu.
+  // Answered from the running app rather than from anything compiled in.
+  ipcMain.handle("app-version", () => app.getVersion());
+
   ipcMain.handle("clear-github-session", async () => {
     await clearGitHubCookies();
   });

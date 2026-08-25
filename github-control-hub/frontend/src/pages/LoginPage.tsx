@@ -50,6 +50,14 @@ export default function LoginPage() {
   const [refreshing, setRefreshing] = useState<"aws" | "github" | null>(null);
   const [awsSsoStarted, setAwsSsoStarted] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  /** Which build this is. Empty in a browser, where there is no build. */
+  const [appVersion, setAppVersion] = useState("");
+  useEffect(() => {
+    window.electronAPI?.getAppVersion?.()
+      .then(setAppVersion)
+      .catch(() => { /* a missing version must not break signing in */ });
+  }, []);
+
   const [awsProfiles, setAwsProfiles] = useState<AwsProfile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<string>("");
   const [awsMethod, setAwsMethod] = useState<"sso" | "profile" | "keys" | "new">("sso");
@@ -1066,6 +1074,16 @@ export default function LoginPage() {
             )}
           </div>
         </section>
+
+        {/* Also here, not only in the account menu.
+            The menu needs somebody signed in, and the moment you most want to
+            know which build you are running is the moment the app is not
+            working — which is this screen. */}
+        {appVersion && (
+          <p className="mt-6 text-center text-[11px] font-mono text-slate-400 dark:text-slate-600">
+            v{appVersion}
+          </p>
+        )}
       </div>
     </div>
   );
