@@ -110,6 +110,27 @@ function packageOf(spec: string): string {
       "resolvable from the repository root in dev, absent in the packaged app");
   }
 
+  // ── declared in both lists is the same as not declared ──────────────
+  //
+  // `npm install --omit=dev` drops a package that appears in *both*
+  // `dependencies` and `devDependencies` — the dev entry decides, and the
+  // dependency entry does not save it. So a package can be correctly listed as
+  // a runtime dependency and still be absent from the packaged app.
+  //
+  // That is how `@aws-sdk/client-iam` survived being "fixed": it was already in
+  // devDependencies, adding it to dependencies changed nothing, and the build
+  // went green while the installed app still could not load it.
+  {
+    const dev = Object.keys(pkg.devDependencies ?? {});
+    const both = dev.filter(name => declared.has(name));
+    check("no package is listed in both dependencies and devDependencies",
+      both.length === 0, both);
+
+    // Cheap to state, and it is the rule the packaging step actually applies.
+    check("  because --omit=dev drops those, dependency entry or not",
+      true);
+  }
+
   // The packaging step reads this file and nothing else, which is the whole
   // reason an undeclared import survives development.
   {
