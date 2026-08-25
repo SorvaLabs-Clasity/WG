@@ -400,7 +400,10 @@ export default function AnalyticsPage() {
             : undefined}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 items-start">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+          {/* No `items-start`: grid rows stretch by default, so every card in a
+              row matches the tallest. Each card root carries `h-full` to fill
+              the cell it is given, which is what makes them line up. */}
           {ordered.map((w, i) => (
             <CheckCard
               key={w.id}
@@ -651,7 +654,7 @@ function CheckCard({
     const pctDone = error.total > 0 ? Math.round((error.covered / error.total) * 100) : 0;
     return (
       <article style={enter(index)}
-        className="group rounded-2xl border border-slate-200/80 dark:border-white/[0.09] bg-white dark:bg-[#151a23] overflow-hidden">
+        className="group rounded-2xl border border-slate-200/80 dark:border-white/[0.09] bg-white dark:bg-[#151a23] overflow-hidden h-full">
         <div className="px-5 pt-5 pb-4 flex items-start gap-4">
           <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-gh-blue/10 border border-gh-blue/20">
             <i className="ph ph-circle-notch text-[26px] text-gh-blue animate-spin"></i>
@@ -698,7 +701,7 @@ function CheckCard({
   if (error) {
     return (
       <article style={enter(index)}
-        className="group rounded-2xl border border-amber-200/80 dark:border-amber-500/25 bg-white dark:bg-[#151a23] overflow-hidden">
+        className="group rounded-2xl border border-amber-200/80 dark:border-amber-500/25 bg-white dark:bg-[#151a23] overflow-hidden h-full">
         <div className="bg-gradient-to-br from-amber-500/[0.13] to-amber-500/[0.04] dark:from-amber-500/[0.20] dark:to-amber-500/[0.06] px-5 pt-5 pb-4 flex items-start gap-4">
           <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-amber-500/10 border border-amber-200/80 dark:border-amber-500/25">
             <i className="ph-fill ph-warning text-[26px] text-amber-600 dark:[color:#ffc14d]"></i>
@@ -729,7 +732,7 @@ function CheckCard({
 
   if (isLoading) {
     return (
-      <div className={`${SURFACE.card} p-6 h-[268px]`} style={enter(index)}>
+      <div className={`${SURFACE.card} p-6 h-full min-h-[268px]`} style={enter(index)}>
         <div className="flex items-center gap-4">
           <div className="w-[68px] h-[68px] rounded-full bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
           <div className="flex-1 space-y-2">
@@ -749,6 +752,7 @@ function CheckCard({
       onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
       style={enter(index)}
       className={`group cursor-pointer rounded-2xl border ${tone.edge} ${tone.lift} bg-white dark:bg-[#151a23] overflow-hidden
+        h-full flex flex-col
         transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5
         focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 dark:focus-visible:ring-white/30`}
     >
@@ -818,7 +822,10 @@ function CheckCard({
 
       {/* Names. Two-line cells, so what is affected is on the card rather than
           one click away. */}
-      <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.06]">
+      {/* `flex-1`: a card showing one name and a card showing three end up the
+          same height, and the difference reads as space under the list rather
+          than as a ragged grid. */}
+      <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.06] flex-1">
         {preview.length === 0 ? (
           <p className="text-[13px] text-slate-400 dark:text-slate-500 py-1.5">
             {graphEmpty ? "No graph data — sync to populate." : "Nothing to show."}
