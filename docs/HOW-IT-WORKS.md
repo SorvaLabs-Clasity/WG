@@ -1120,6 +1120,47 @@ Two, and the card tells you which one it is on.
    than trusted to the expiry. DynamoDB deletes late — often days late — and a
    row still sitting there is not the same as an answer still worth having.
 
+### The dashboard opens from stored answers
+
+Every widget's rows are computed by the **5-minute alarm pass** and stored, one
+row per widget in the `alarms` table (`kind: "widget-snapshot"`, 24-hour TTL).
+The Overview reads those and renders immediately.
+
+Before this, each card ran its check inside the request that drew it: a full
+scan of the graph table, live GitHub calls for the dependency cards, and — for
+the three subject-by-subject checks — up to twenty-five commit searches against
+a budget of thirty a minute, on a cold process, right after launching the app.
+
+| | |
+| --- | --- |
+| Written by | `alarms/handler.ts`, after the alarm evaluation |
+| Cost | Reuses the memoised sources the alarms already built, so a widget an alarm watches is not computed twice |
+| Order | Sequential, because running them at once would fire every live GitHub call in the same instant |
+| Read by | `GET /api/widgets/snapshots` — one request for the whole dashboard |
+
+Four rules make it safe to serve a stored answer:
+
+- **The live sources are switched off when a snapshot is used**, not fetched and
+  ignored. `useDependencies(!fromSnapshot)` and the `isQuery` / `isBypass` flags
+  do that. Fetching anyway would leave the cost exactly where it was.
+- **A stored error is not an answer.** A snapshot carrying one falls through to
+  a live read, so the card shows the real failure rather than a stale number.
+- **A trimmed snapshot is enough for a card, not for the table.** Results are
+  trimmed to 300KB to fit the item limit, and `total` still reports the true
+  count — so the card is right. The detail view asks with `needAllRows`, which
+  rejects a trimmed snapshot and reads live.
+- **The age is on screen.** "Checked 4 minutes ago · refresh to run them now",
+  under the headline. A figure shown as current when it is twenty minutes old is
+  the failure this feature could otherwise introduce.
+
+**Refresh** puts the page into a live window for 90 seconds: every card drops its
+stored answer and runs its own check, which is what the page used to do on every
+open. Long enough to finish and be read, short enough that a tab left open does
+not quietly return to running every check on every render.
+
+A widget added since the last pass has no snapshot and computes live, so it
+works immediately rather than showing nothing until the next tick.
+
 ### The infrastructure
 
 Verdicts share the `alarms` table, one row per subject:
@@ -1646,6 +1687,48 @@ it — the whole path, for nothing.
 3. You click **Sign in with GitHub**, which redirects to GitHub, and back to
    `localhost:4321/auth/callback` with a code. The app exchanges the code for a
    token, and issues you a session.
+
+### Why it says "Continue with <name>" when you reopen it
+
+Two different things are remembered, in two different places, and the split is
+the whole mechanism:
+
+| What | Where | Survives a restart |
+| --- | --- | --- |
+| Your session token (the JWT) | `sessionStorage` | **No** |
+| Your login name and avatar URL | `localStorage` | **Yes** |
+
+So reopening the app never leaves you signed in. `sessionStorage` is cleared when
+the window closes, so the token is genuinely gone and the app is genuinely signed
+out. What survives is only a note of *who you were* — enough to draw the button,
+and nothing that grants access.
+
+Clicking it does a real OAuth round trip. It feels instant because **GitHub's own
+cookies** live in Electron's session partition, so GitHub recognizes the browser
+and returns immediately without asking for a password.
+
+**The `?login=` parameter is load-bearing.** The button links to
+`/auth/github?login=<remembered>`, and without it GitHub signs in as whichever
+account its cookie happens to hold — so "Continue with alice" could hand back
+bob. That completes the moment it is asked, with no page and no choice offered,
+which is why the account is named before the redirect rather than announced
+after it.
+
+**"Use a different account"** calls into the main process and deletes every
+`github.com` cookie from the Electron session (`clearGitHubCookies` in
+`desktop/src/main.ts`). The next sign-in then asks properly.
+
+**The token itself** is a JWT signed with `JWT_SECRET`, which is read from
+Secrets Manager along with the other GitHub credentials. Because that secret
+lives in the AWS account rather than on the machine, a token stays valid across
+restarts and across machines pointed at the same account — and rotating the
+secret invalidates every outstanding session at once.
+
+One consequence worth knowing: `bootstrap.ts` generates a random `JWT_SECRET`
+if the secret does not provide one. That keeps the app usable before setup, but
+sessions then die on every relaunch, because the key that signed them is gone.
+A session that never persists is the symptom of a missing `JWT_SECRET` in
+Secrets Manager.
 
 The OAuth callback is `localhost` because the desktop app runs its own backend on
 your machine. The code comes back to you and never transits a shared server —

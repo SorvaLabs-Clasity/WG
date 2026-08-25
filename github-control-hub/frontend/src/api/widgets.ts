@@ -20,6 +20,29 @@ export interface WidgetConfig {
   updatedAt?: string;
 }
 
+export interface WidgetSnapshot {
+  widgetId: string;
+  rows: any[];
+  /** How many rows the check produced, before any trimming for size. */
+  total: number;
+  /** True when `rows` holds fewer than `total` — the count is still exact. */
+  trimmed: boolean;
+  /** Set when the check could not complete on the last pass. */
+  error?: string;
+  computedAt: string;
+}
+
+/**
+ * What every widget last worked out, computed on the schedule rather than now.
+ *
+ * One request for the whole dashboard. Empty is a normal answer — the scheduled
+ * pass may not have run yet — and the caller falls back to computing live.
+ */
+export function fetchWidgetSnapshots(): Promise<WidgetSnapshot[]> {
+  if (DEMO_MODE) return Promise.resolve([]);
+  return apiGet<WidgetSnapshot[]>("/widgets/snapshots");
+}
+
 export function fetchWidgets(): Promise<WidgetConfig[]> {
   if (DEMO_MODE) return mockFetchWidgets();
   return apiGet<WidgetConfig[]>("/widgets");

@@ -109,7 +109,7 @@ export interface PrSnapshot {
   ttl: number;
 }
 
-type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState | PrFeatureSettings | PrMutes | PrSnapshot;
+type AnyRecord = WidgetAlarm | EmailGroup | SecurityNotifySettings | FeedNotifySettings | PendingNotification | PrState | PrFeatureSettings | PrMutes | PrSnapshot | WidgetSnapshot;
 
 const TABLE = () => tableName("ALARMS_TABLE");
 
@@ -897,6 +897,120 @@ export async function readPrSnapshot(): Promise<
     // A corrupt snapshot must not take the tab down with it; the caller falls
     // back to fetching, which is what it did before this existed.
     return null;
+  }
+}
+
+/**
+ * A widget's rows, computed on the schedule rather than while somebody waits.
+ *
+ * Every check used to run inside the request that drew the card, so opening the
+ * Overview meant a full scan of the graph table, live GitHub calls for the
+ * dependency widgets, and — for the three subject-by-subject checks — up to
+ * twenty-five commit searches against a budget of thirty a minute. All of it in
+ * the page load, on a cold process, immediately after launching the app.
+ *
+ * The scheduled pass already computes exactly these rows for any widget an
+ * alarm watches. Storing them for every widget costs that pass a little more
+ * and takes the whole of it off the page load.
+ */
+export interface WidgetSnapshot {
+  id: string;
+  kind: "widget-snapshot";
+  widgetId: string;
+  /** The rows, JSON-encoded. Trimmed if the full set will not fit. */
+  payload: string;
+  /** How many rows the check actually produced, before any trimming. */
+  total: number;
+  /** True when `payload` holds fewer rows than `total`. */
+  trimmed: boolean;
+  /** Set when the check could not complete. Rows are then not to be trusted. */
+  error?: string;
+  computedAt: string;
+  ttl: number;
+}
+
+/**
+ * Kept well past the five-minute pass that writes it, so a Lambda that stops
+ * running leaves a visibly old snapshot rather than an empty dashboard. The age
+ * is returned with it and shown on screen; staleness is a thing to report, not
+ * to hide by discarding.
+ */
+const WIDGET_SNAPSHOT_TTL_HOURS = 24;
+
+/** Below the 400KB item limit, with room for the rest of the row. */
+const WIDGET_SNAPSHOT_BUDGET_BYTES = 300_000;
+
+export function widgetSnapshotId(widgetId: string): string {
+  return `widget-snapshot#${widgetId}`;
+}
+
+export async function saveWidgetSnapshot(
+  widgetId: string,
+  result: { rows: unknown[] | null; error?: string },
+): Promise<void> {
+  const all = result.rows ?? [];
+  let rows = all;
+  let payload = JSON.stringify(rows);
+
+  // Trimmed rather than refused: a card needs a count and three names, and the
+  // count below is the true one either way. Only the detail table wants every
+  // row, and it can read live when this says it is short.
+  while (Buffer.byteLength(payload) > WIDGET_SNAPSHOT_BUDGET_BYTES && rows.length > 1) {
+    rows = rows.slice(0, Math.floor(rows.length * 0.8));
+    payload = JSON.stringify(rows);
+  }
+
+  await put({
+    id: widgetSnapshotId(widgetId),
+    kind: "widget-snapshot",
+    widgetId,
+    payload,
+    total: all.length,
+    trimmed: rows.length < all.length,
+    ...(result.error ? { error: result.error } : {}),
+    computedAt: new Date().toISOString(),
+    ttl: Math.floor(Date.now() / 1000) + WIDGET_SNAPSHOT_TTL_HOURS * 3600,
+  });
+}
+
+export interface ReadWidgetSnapshot {
+  widgetId: string;
+  rows: any[];
+  total: number;
+  trimmed: boolean;
+  error?: string;
+  computedAt: string;
+}
+
+/** Every stored snapshot, in one read, for the dashboard to open with. */
+export async function readWidgetSnapshots(): Promise<ReadWidgetSnapshot[]> {
+  const rows = (await allRecords()).filter(r => r.kind === "widget-snapshot") as WidgetSnapshot[];
+  const out: ReadWidgetSnapshot[] = [];
+  for (const row of rows) {
+    try {
+      out.push({
+        widgetId: row.widgetId,
+        rows: JSON.parse(row.payload) ?? [],
+        total: row.total ?? 0,
+        trimmed: !!row.trimmed,
+        ...(row.error ? { error: row.error } : {}),
+        computedAt: row.computedAt,
+      });
+    } catch {
+      // One unreadable snapshot must not take the dashboard down with it. The
+      // widget falls back to computing live, which is what it did before.
+    }
+  }
+  return out;
+}
+
+/** Drops a widget's snapshot, so a deleted widget leaves nothing behind. */
+export async function deleteWidgetSnapshot(widgetId: string): Promise<void> {
+  const id = widgetSnapshotId(widgetId);
+  if (usesDynamo()) {
+    await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { id } }));
+  } else {
+    memStore = memStore.filter(r => r.id !== id);
   }
 }
 

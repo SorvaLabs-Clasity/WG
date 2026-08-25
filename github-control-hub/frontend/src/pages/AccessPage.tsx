@@ -8,20 +8,8 @@ import { useAccessSummary, useUserAccess, useRepoAccess, useAccessRepos, useAcce
 import { useGraphAggregation, useTriggerAggregation } from "../hooks/useGraph";
 import { usePermissions } from "../hooks/usePermissions";
 import type { AccessPath, Person, OrgRole } from "../api/access";
+import { ago } from "../lib/ago";
 
-/** "4 hours ago", down to a minute — below that, "just now". */
-function ago(iso?: string): string | null {
-  if (!iso) return null;
-  const ms = Date.now() - Date.parse(iso);
-  if (!Number.isFinite(ms)) return null;
-  const mins = Math.floor(ms / 60_000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins} minute${mins === 1 ? "" : "s"} ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  const days = Math.floor(hours / 24);
-  return `${days} day${days === 1 ? "" : "s"} ago`;
-}
 
 /**
  * How old this page's answer is, and how to make it newer.

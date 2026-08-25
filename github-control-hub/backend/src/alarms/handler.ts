@@ -170,6 +170,47 @@ export async function handler(): Promise<void> {
     `${summary.publishFailures} publish failures`,
   );
 
+  // ── the dashboard's snapshots ───────────────────────────────────────
+  //
+  // Every widget, not only the ones an alarm watches. This is the same
+  // `computeWidgetRows` the alarm evaluation just used, drawing on the same
+  // memoised sources — so a widget that already ran above is served from the
+  // cached promise rather than run twice, and only the unwatched ones cost
+  // anything extra.
+  //
+  // Sequential, deliberately. Running them at once would fire every live GitHub
+  // call in the same instant, and the subject-by-subject checks draw on commit
+  // search, which allows thirty requests a minute. The pass has five minutes and
+  // nothing waiting on it.
+  try {
+    const { listWidgets } = await import("../services/widgetService");
+    const { saveWidgetSnapshot } = await import("../services/alarmService");
+    const all = await listWidgets();
+
+    let stored = 0, failed = 0;
+    for (const widget of all) {
+      try {
+        const result = await computeWidgetRows(widget as any, sources);
+        await saveWidgetSnapshot(widget.id, result);
+        stored++;
+      } catch (err: any) {
+        // One widget that cannot be read must not cost the other twenty their
+        // snapshot. The error is stored with it, so the card can say so rather
+        // than showing a stale number as though it were current.
+        failed++;
+        await saveWidgetSnapshot(widget.id, {
+          rows: null,
+          error: err?.message ?? String(err),
+        }).catch(() => { /* nothing further to do for this one */ });
+      }
+    }
+    console.log(`[Alarm] widget snapshots: ${stored} stored, ${failed} unreadable of ${all.length}`);
+  } catch (err) {
+    // The snapshots are an optimisation; the dashboard falls back to computing
+    // live without them. A failure here must not fail the alarm pass.
+    console.error("[Alarm] widget snapshot pass failed:", (err as Error).message);
+  }
+
   // Written only when the pass did something.
   //
   // This runs every five minutes — 288 times a day — and the overwhelming

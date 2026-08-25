@@ -6,7 +6,8 @@ import { useColumnWidths } from "../hooks/useColumnWidths";
 import { widgetColumns, defaultWidths, layoutId } from "../lib/widgetColumns";
 import { fetchRenovate } from "../api/renovate";
 import { apiGet } from "../api/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ago } from "../lib/ago";
 import AlarmModal from "../components/AlarmModal";
 import { useAlarms } from "../hooks/useAlarms";
 import { useAuth } from "../App";
@@ -14,7 +15,7 @@ import { useSecurityQuery, useGraphMeta, useTriggerAggregation , useQueryFreshne
 import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS } from "../utils/queryOptions";
-import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget } from "../hooks/useWidgets";
+import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget, useWidgetSnapshots } from "../hooks/useWidgets";
 import { usePermissions } from "../hooks/usePermissions";
 import { useOrgConfig } from "../hooks/useOrgConfig";
 import type { WidgetConfig } from "../api/widgets";
@@ -238,9 +239,32 @@ const TONE: Record<Level, {
 
 const RANK: Record<Level, number> = { danger: 0, warn: 1, info: 2, clear: 3 };
 
+/**
+ * How long a manual refresh keeps the dashboard reading live.
+ *
+ * Long enough for the cards to finish and be looked at, short enough that
+ * leaving the tab open does not quietly return it to running every check on
+ * every render — which is the behaviour the snapshots exist to remove.
+ */
+const LIVE_WINDOW_MS = 90_000;
+
 export default function AnalyticsPage() {
   const { user } = useAuth();
+  const qc = useQueryClient();
+  const [liveUntil, setLiveUntil] = useState(0);
+  const [refreshingLive, setRefreshingLive] = useState(false);
+  const live = Date.now() < liveUntil;
   const { data: widgets = [], isLoading: widgetsLoading, isFetching: widgetsFetching, refetch: refetchWidgets } = useWidgets();
+  const { data: snapshots } = useWidgetSnapshots();
+
+  /** The oldest snapshot on screen — what the page can honestly claim. */
+  const oldestComputedAt = useMemo(() => {
+    const times = (snapshots ?? [])
+      .filter(sn => widgets.some(w => w.id === sn.widgetId))
+      .map(sn => sn.computedAt)
+      .filter(Boolean);
+    return times.length ? times.reduce((a, b) => (a < b ? a : b)) : null;
+  }, [snapshots, widgets]);
   const createWidget = useCreateWidget();
   const updateWidget = useUpdateWidget();
   const deleteWidgetMut = useDeleteWidget();
@@ -352,10 +376,44 @@ export default function AnalyticsPage() {
                 </>
               )}
             </h1>
+            {/* Said rather than implied. These numbers come from the last
+                scheduled pass, and a figure presented as current when it is
+                twenty minutes old is the thing this is meant to avoid. */}
+            {oldestComputedAt && !live && (
+              <p className="mt-1.5 text-[12.5px] text-slate-400 dark:text-slate-500">
+                Checked {ago(oldestComputedAt)} · refresh to run them now
+              </p>
+            )}
+            {live && (
+              <p className="mt-1.5 text-[12.5px] text-slate-400 dark:text-slate-500">
+                Running every check now…
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-2 shrink-0 pt-1">
-            <RefreshButton busy={widgetsFetching} onRefresh={() => refetchWidgets()} />
+            {/* Recompute now, rather than waiting for the next scheduled pass.
+                Every card drops its stored answer and runs its own check —
+                which is what the page used to do on every open. Deliberately a
+                choice now, not the default. */}
+            <RefreshButton
+              busy={widgetsFetching || refreshingLive}
+              onRefresh={async () => {
+                setLiveUntil(Date.now() + LIVE_WINDOW_MS);
+                setRefreshingLive(true);
+                try {
+                  await Promise.all([
+                    refetchWidgets(),
+                    qc.invalidateQueries({ queryKey: ["graph", "security-query"] }),
+                    qc.invalidateQueries({ queryKey: ["dependencies"] }),
+                    qc.invalidateQueries({ queryKey: ["renovate"] }),
+                    qc.invalidateQueries({ queryKey: ["widget-snapshots"] }),
+                  ]);
+                } finally {
+                  setRefreshingLive(false);
+                }
+              }}
+            />
             {/* Gated to match the endpoint. Syncing walks the whole organization
                 and spends its GitHub budget, so it is admin-only on the server —
                 and a button everyone can see, that only some can use, teaches
@@ -408,6 +466,7 @@ export default function AnalyticsPage() {
             <CheckCard
               key={w.id}
               config={w}
+              live={live}
               index={i}
               onOpen={() => setFocusId(w.id)}
               onReport={report}
@@ -492,7 +551,7 @@ function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName,
   onAlarm: () => void; canAlarm: boolean; alarmCount: number;
   canEdit: boolean; graphEmpty?: boolean; orgName?: string;
 }) {
-  const { items, isLoading, total, entity } = useWidgetData(config);
+  const { items, isLoading, total, entity } = useWidgetData(config, { needAllRows: true });
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const tone = TONE[verdict.level];
   const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
@@ -608,14 +667,16 @@ function detailOf(item: any, config: WidgetConfig): string {
 }
 
 function CheckCard({
-  config, index, onOpen, onReport, canEdit, onEdit, onRemove, graphEmpty,
+  config, index, onOpen, onReport, canEdit, onEdit, onRemove, graphEmpty, live,
 }: {
   config: WidgetConfig; index: number; onOpen: () => void;
+  /** Ignore the stored answer and compute now. Set by the refresh button. */
+  live?: boolean;
   onReport: (id: string, v: Verdict) => void;
   canEdit: boolean; onEdit: () => void; onRemove: () => void;
   graphEmpty?: boolean;
 }) {
-  const { items, isLoading, total, entity, error } = useWidgetData(config);
+  const { items, isLoading, total, entity, error, computedAt } = useWidgetData(config, { live });
   const refreshNow = useRefreshQueryNow();
 
   // Only for the checks that keep per-subject answers. Everything else is
@@ -889,10 +950,50 @@ function CheckCard({
   );
 }
 
-function useWidgetData(config: WidgetConfig) {
-  const { data: depsData, isLoading: depsLoading } = useDependencies();
-  const isBypass = config.type === "preset" && config.presetId === "bypasses";
-  const isRenovate = config.type === "preset" && config.presetId === "renovate-open";
+/**
+ * A card's rows, from the schedule where possible and live where not.
+ *
+ * Every check used to run inside the request that drew the card — a scan of the
+ * graph table, live GitHub calls for the dependency widgets, and up to
+ * twenty-five commit searches for the subject-by-subject ones, all while the
+ * page waited. The scheduled pass now computes and stores the same rows, and
+ * this reads them.
+ *
+ * The live sources are switched *off* when a snapshot is in use rather than
+ * fetched and ignored. Fetching them anyway would leave the cost exactly where
+ * it was and only hide it.
+ *
+ * Live is still the answer when there is no snapshot yet (a widget added since
+ * the last pass), when the stored one records an error, and whenever somebody
+ * presses refresh.
+ */
+function useWidgetData(
+  config: WidgetConfig,
+  opts?: {
+    /** Ignore the stored answer and compute now. */
+    live?: boolean;
+    /**
+     * The caller needs every row, not just the count and a preview. A snapshot
+     * trimmed to fit the item limit is not enough for the detail table, so it
+     * falls through to a live read — a card can be served from a short list,
+     * a table listing them cannot.
+     */
+    needAllRows?: boolean;
+  },
+) {
+  const { data: snapshots } = useWidgetSnapshots();
+
+  const snapshot = opts?.live
+    ? undefined
+    : snapshots?.find(s => s.widgetId === config.id);
+  // A stored error is not an answer. Fall through and let the live path
+  // produce the real one, and the real message with it.
+  const fromSnapshot = !!snapshot && !snapshot.error
+    && !(opts?.needAllRows && snapshot.trimmed);
+
+  const { data: depsData, isLoading: depsLoading } = useDependencies(!fromSnapshot);
+  const isBypass = !fromSnapshot && config.type === "preset" && config.presetId === "bypasses";
+  const isRenovate = !fromSnapshot && config.type === "preset" && config.presetId === "renovate-open";
   const { data: renovateData, isLoading: renovateLoading } = useQuery({
     queryKey: ["renovate"],
     queryFn: fetchRenovate,
@@ -901,12 +1002,19 @@ function useWidgetData(config: WidgetConfig) {
   });
   const { data: bypassData, isLoading: bypassLoading } = useSecurityQuery(isBypass ? "protection-bypasses-ranking" : null);
 
-  const isQuery = config.type === "query";
+  const isQuery = !fromSnapshot && config.type === "query";
   const { data: queryData, isLoading: queryLoading, error: queryError } = useSecurityQuery(isQuery ? config.queryId! : null, config.queryParam, config.queryAdvanced);
 
   const { data: repos } = useRepos();
 
   const { items, isLoading } = useMemo(() => {
+    // The stored answer, when there is one. Returned before any of the live
+    // branches are consulted, because those sources are switched off in that
+    // case and would read as empty rather than as absent.
+    if (fromSnapshot && snapshot) {
+      return { items: snapshot.rows ?? [], isLoading: false };
+    }
+
     let rawItems: any[] = [];
     let loading = false;
 
@@ -961,7 +1069,7 @@ function useWidgetData(config: WidgetConfig) {
     }
 
     return { items: rawItems, isLoading: loading };
-  }, [config, depsData, depsLoading, bypassData, bypassLoading, queryData, queryLoading, renovateData, renovateLoading]);
+  }, [config, fromSnapshot, snapshot, depsData, depsLoading, bypassData, bypassLoading, queryData, queryLoading, renovateData, renovateLoading]);
 
   // Only a check that counts repositories has the organization as its
   // denominator. Users and teams do not, and a share of the wrong thing is
@@ -972,7 +1080,16 @@ function useWidgetData(config: WidgetConfig) {
   // A widget whose check has been removed returns nothing, which on a card
   // looks exactly like a check that found nothing. Carrying the failure up
   // means it can say so instead of reading as clean.
-  return { items, isLoading, total, entity, error: (queryError as Error) ?? null };
+  return {
+    items, isLoading, total, entity,
+    error: (queryError as Error) ?? null,
+    /** When this was computed, or null when it was worked out just now. */
+    computedAt: fromSnapshot ? snapshot!.computedAt : null,
+    /** The true row count. A trimmed snapshot still knows how many there were. */
+    count: fromSnapshot ? snapshot!.total : items.length,
+    /** A stored snapshot that could not hold every row; the detail reads live. */
+    trimmed: fromSnapshot ? snapshot!.trimmed : false,
+  };
 }
 
 /* ─── Widget Card (Grid View) ─── */

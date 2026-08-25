@@ -32,6 +32,22 @@ router.get("/", async (_req: Request, res: Response) => {
   res.json(await listWidgets());
 });
 
+/**
+ * Every widget's last computed rows, in one read.
+ *
+ * The dashboard opens with these rather than running each check while somebody
+ * waits. `computedAt` travels with them so the page can say how old the number
+ * is instead of implying it is current — a stale figure presented as live is
+ * the failure this is meant to avoid, not one to introduce.
+ *
+ * An empty list is a normal answer: the scheduled pass may not have run yet, or
+ * a widget may have been added since. The caller computes live in that case.
+ */
+router.get("/snapshots", async (_req: Request, res: Response) => {
+  const { readWidgetSnapshots } = await import("../services/alarmService");
+  res.json(await readWidgetSnapshots());
+});
+
 router.post("/", async (req: Request, res: Response) => {
   if (await refusedWidgetChange(res, req.user!.login, "create", req.user!.accessToken)) return;
 
@@ -67,6 +83,10 @@ router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
     res.status(404).json({ error: "Widget not found" });
     return;
   }
+  // Otherwise the snapshot outlives the widget and sits in the table until its
+  // own expiry, counting against a scan nothing will ever read it from.
+  const { deleteWidgetSnapshot } = await import("../services/alarmService");
+  await deleteWidgetSnapshot(req.params.id).catch(() => { /* the widget is gone either way */ });
   res.json({ message: "Widget deleted" });
 });
 
