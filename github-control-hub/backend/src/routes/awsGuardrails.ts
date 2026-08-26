@@ -309,6 +309,37 @@ router.post("/preview", requireAdmin, async (req: Request, res: Response) => {
 
 // ── Exclusion lists ───────────────────────────────────────────────────
 
+/**
+ * Refuse a malformed list rather than storing one that cannot be read.
+ *
+ * `resources` and `whitelist` are matched with `.includes` and `.some`. A
+ * string sent where an array belongs makes the first match on substrings, so
+ * "prod" would exclude "prod-logs" and everything else containing it, and
+ * makes the second throw mid-sweep. Neither is visible until a rule runs.
+ */
+function badExclusionShape(b: { resources?: unknown; patterns?: unknown; whitelist?: unknown }): string | null {
+  for (const [field, v] of Object.entries(b)) {
+    if (v === undefined) continue;
+    if (!Array.isArray(v)) return `${field} must be an array`;
+    if (field !== "patterns" && v.some(x => typeof x !== "string")) {
+      return `${field} must contain only resource identifiers`;
+    }
+  }
+  const patterns = b.patterns as any[] | undefined;
+  const allowed = new Set(["starts_with", "contains", "tag_equals"]);
+  for (const p of patterns ?? []) {
+    // An unknown type matches nothing, so storing one leaves a rule somebody
+    // believes is excluding when it is not.
+    if (!p || typeof p !== "object" || !allowed.has(p.type)) {
+      return `pattern type must be one of ${[...allowed].join(", ")}`;
+    }
+    if (typeof p.value !== "string" || p.value === "") {
+      return "pattern value must not be empty";
+    }
+  }
+  return null;
+}
+
 router.get("/exclusions", async (_req: Request, res: Response) => {
   try {
     res.json(await listAwsExclusions());
@@ -321,6 +352,8 @@ router.post("/exclusions", requireAdmin, async (req: Request, res: Response) => 
   try {
     const { name, description, resources, patterns, whitelist } = req.body ?? {};
     if (!name) { res.status(400).json({ error: "name is required" }); return; }
+    const bad = badExclusionShape({ resources, patterns, whitelist });
+    if (bad) { res.status(400).json({ error: bad }); return; }
     const now = new Date().toISOString();
     const list: AwsExclusionList = {
       id: crypto.randomUUID(), name, description: description ?? "",
@@ -340,6 +373,8 @@ router.put("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>,
     const existing = all.find(l => l.id === req.params.id);
     if (!existing) { res.status(404).json({ error: "Exclusion list not found" }); return; }
     const { name, description, resources, patterns, whitelist } = req.body ?? {};
+    const bad = badExclusionShape({ resources, patterns, whitelist });
+    if (bad) { res.status(400).json({ error: bad }); return; }
     const updated: AwsExclusionList = {
       ...existing,
       name: name ?? existing.name,
@@ -356,8 +391,34 @@ router.put("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>,
   }
 });
 
+/**
+ * Deleting a list, but not out from under a rule that is using it.
+ *
+ * A rule stores exclusion lists by id, and the sweep resolves them with a
+ * filter: an id naming a list that no longer exists simply does not match, so
+ * the rule keeps running with one fewer exclusion and says nothing. The effect
+ * is that deleting a list silently widens every rule that named it, and the
+ * first sign is findings appearing for resources somebody had deliberately
+ * carved out, with nothing to connect them to the deletion.
+ *
+ * So it is refused while anything still points at it, and the rules are named
+ * so the fix is obvious. Unlinking them automatically would be the same silent
+ * widening with an extra step.
+ */
 router.delete("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>, res: Response) => {
   try {
+    const inUse = (await listGuardrails())
+      .filter(r => r.exclusionLists?.includes(req.params.id))
+      .map(r => r.name);
+    if (inUse.length > 0) {
+      res.status(409).json({
+        error: `Still used by ${inUse.length} rule${inUse.length === 1 ? "" : "s"}: `
+          + `${inUse.join(", ")}. Remove it from ${inUse.length === 1 ? "that rule" : "those rules"} first, `
+          + "or deleting it would quietly stop excluding what they exclude today.",
+        rules: inUse,
+      });
+      return;
+    }
     await deleteAwsExclusion(req.params.id);
     res.json({ message: "Exclusion list deleted" });
   } catch (err) {
