@@ -85,7 +85,7 @@ that anything happened.
 
 ## Group 2 — `alarms`, the busy one
 
-Keyed by `id` alone, but ten different *kinds* of row live in it, each tagged
+Keyed by `id` alone, but eleven different *kinds* of row live in it, each tagged
 with what it is:
 
 | Tag | What it is | Goes away |
@@ -100,6 +100,21 @@ with what it is:
 | `pr-snapshot` | the saved copy of your PR tab | 24 hours |
 | `pending` | emails waiting to be sent | 24 hours |
 | `query-subject` | saved answers for slow checks | 48 hours |
+| `widget-snapshot` | the saved rows behind each dashboard card | replaced every 5 min |
+
+**`widget-snapshot` never accumulates.** One row per widget, keyed
+`widget-snapshot#<widgetId>` with no timestamp in the key, so each 5-minute pass
+overwrites the one before it in place. Eleven widgets means eleven rows today
+and eleven rows a year from now; only `computedAt` moves. It carries a 24-hour
+TTL, but that is never what removes it — a snapshot is replaced roughly 288
+times before it could expire. The TTL is there for rows that *stop* being
+rewritten: deleting a widget removes its snapshot immediately, and if that is
+ever missed, the TTL clears it within a day instead of leaving it forever.
+
+Nothing reads a previous snapshot, which is why none is kept. A snapshot is a
+cache of the current answer, not a record of what was true earlier — history
+that is worth keeping is kept deliberately elsewhere, in `activity` (what
+changed) and in alarm rows (what fired).
 
 **`query-subject`** is how the expensive widget checks stay affordable. The
 dormant-admin check needs one GitHub commit search per privileged account, and
@@ -183,9 +198,15 @@ Four things write to it:
 | Writer | What it records |
 | --- | --- |
 | `services/activityService.ts` | actions taken in the app |
-| `audit/ingest.ts` | the GitHub enterprise audit log |
+| `webhooks/processDelivery.ts` | changes made on github.com, and, behind the detailed-logging toggle, the routine traffic (branches, tags, pushes, pull requests) |
 | `aws-guardrails/handler.ts` | AWS guardrail findings |
 | `routes/auth.ts` | sign-ins |
+
+Rows written under **detailed GitHub logging** carry `detailed: true`, so the
+Activity page can hide or show them as a view choice. The toggle (Activity,
+Organization tab, admins only) governs collection: turning it off stops new
+detailed rows and deletes nothing already stored. Which kinds are collected
+lives in `org-config` as `detailedLogging`.
 
 ### `alerts`
 

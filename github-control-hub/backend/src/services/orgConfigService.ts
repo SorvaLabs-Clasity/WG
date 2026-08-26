@@ -1,4 +1,4 @@
-import { docClient, usesDynamo, tableName, PutCommand, GetCommand } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, GetCommand } from "../utils/dynamo";
 
 export interface OrgFeatures {
   rulesetsSupported: boolean;
@@ -53,6 +53,22 @@ export interface OrgConfig {
    * is paid once per organization, ever.
    */
   prPageSize?: number;
+  /**
+   * Detailed GitHub logging: whether the webhook worker also records the
+   * routine traffic (branches, tags, pushes, pull requests) in the activity
+   * feed, and which of those kinds are switched off individually.
+   *
+   * Collection only. Rows already written are never touched by this setting:
+   * turning it off stops new detailed rows and deletes nothing, so the feed
+   * keeps showing what was collected while it was on.
+   */
+  detailedLogging?: {
+    enabled: boolean;
+    /** Kind ids from DETAILED_LOG_KINDS the admin has unchecked. */
+    disabledKinds?: string[];
+    changedAt?: string;
+    changedBy?: string;
+  };
 }
 
 const TABLE = () => tableName("ORG_CONFIG_TABLE");
@@ -67,7 +83,7 @@ let memConfig: OrgConfig = {
 };
 
 export async function getOrgConfig(): Promise<OrgConfig> {
-  if (usesDynamo()) {
+  if (hasTable("ORG_CONFIG_TABLE")) {
     const org = process.env.GITHUB_ORG || "";
     const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { org } }));
     if (result.Item) {
@@ -87,7 +103,7 @@ export async function getOrgConfig(): Promise<OrgConfig> {
 export async function updateRenovateBot(bot: string): Promise<OrgConfig> {
   const current = await getOrgConfig();
   const updated: OrgConfig = { ...current, renovateBot: bot.trim() || undefined };
-  if (usesDynamo()) {
+  if (hasTable("ORG_CONFIG_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
   } else {
     memConfig = updated;
@@ -111,7 +127,7 @@ export async function recordGraphAggregation(
     ...current,
     graphAggregation: { ...current.graphAggregation, ...update },
   };
-  if (usesDynamo()) {
+  if (hasTable("ORG_CONFIG_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
   } else {
     memConfig = updated;
@@ -124,7 +140,7 @@ export async function savePrPageSize(size: number): Promise<void> {
   const current = await getOrgConfig();
   if (current.prPageSize === size) return;
   const updated: OrgConfig = { ...current, prPageSize: size };
-  if (usesDynamo()) {
+  if (hasTable("ORG_CONFIG_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
   } else {
     memConfig = updated;
@@ -141,11 +157,50 @@ export async function updateOrgFeatures(featureUpdates: Partial<OrgFeatures>): P
     },
   };
 
-  if (usesDynamo()) {
+  if (hasTable("ORG_CONFIG_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
   } else {
     memConfig = updated;
   }
 
   return updated;
+}
+
+export interface DetailedLoggingSettings {
+  enabled: boolean;
+  disabledKinds: string[];
+  changedAt?: string;
+  changedBy?: string;
+}
+
+/** Never null: absent means the feature has not been turned on yet. */
+export async function getDetailedLogging(): Promise<DetailedLoggingSettings> {
+  const config = await getOrgConfig();
+  return {
+    enabled: config.detailedLogging?.enabled ?? false,
+    disabledKinds: config.detailedLogging?.disabledKinds ?? [],
+    changedAt: config.detailedLogging?.changedAt,
+    changedBy: config.detailedLogging?.changedBy,
+  };
+}
+
+export async function updateDetailedLogging(
+  update: { enabled: boolean; disabledKinds: string[]; changedBy: string },
+): Promise<DetailedLoggingSettings> {
+  const current = await getOrgConfig();
+  const updated: OrgConfig = {
+    ...current,
+    detailedLogging: {
+      enabled: update.enabled,
+      disabledKinds: update.disabledKinds,
+      changedAt: new Date().toISOString(),
+      changedBy: update.changedBy,
+    },
+  };
+  if (hasTable("ORG_CONFIG_TABLE")) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+  } else {
+    memConfig = updated;
+  }
+  return getDetailedLogging();
 }

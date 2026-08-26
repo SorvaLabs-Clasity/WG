@@ -1,5 +1,7 @@
 export type ActivityAction =
   | "branch.create"
+  | "tag.create"
+  | "tag.delete"
   | "branch.delete"
   | "branch.rename"
   | "branch.protect"
@@ -40,7 +42,6 @@ export type ActivityAction =
   | "github.ruleset_edited"
   | "config.import"
   | "config.updated"
-  | "audit.event"
   | "aws.guardrail.create"
   | "aws.guardrail.update"
   | "aws.guardrail.delete"
@@ -69,14 +70,14 @@ export interface RetryPayload {
 
 export interface Activity {
   id: string;
-  source: "app" | "github" | "audit";
+  source: "app" | "github";
   action: ActivityAction;
   actor: string;
   repo: string;
   target: string;
   details?: string;
-  /** Who an audit event was about, when that differs from who performed it. */
-  subject?: string;
+  /** Written under the detailed-logging toggle; the view filter keys off it. */
+  detailed?: boolean;
   diff?: any;
   timestamp: string;
   prNumber?: number;

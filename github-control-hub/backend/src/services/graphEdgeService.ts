@@ -1,20 +1,20 @@
 import { Octokit } from "octokit";
-import { docClient, usesDynamo, tableName, PutCommand, DeleteCommand, batchWrite } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, DeleteCommand, batchWrite } from "../utils/dynamo";
 
 const TABLE = () => tableName("GRAPH_EDGES_TABLE");
 
 async function putEdge(pk: string, sk: string, type: string, metadata?: Record<string, any>) {
-  if (!usesDynamo()) return;
+  if (!hasTable("GRAPH_EDGES_TABLE")) return;
   await docClient.send(new PutCommand({ TableName: TABLE(), Item: { pk, sk, type, metadata } }));
 }
 
 async function deleteEdge(pk: string, sk: string) {
-  if (!usesDynamo()) return;
+  if (!hasTable("GRAPH_EDGES_TABLE")) return;
   await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { pk, sk } }));
 }
 
 async function putEdgesBatch(edges: Array<{ pk: string; sk: string; type: string; metadata?: Record<string, any> }>) {
-  if (!usesDynamo() || edges.length === 0) return;
+  if (!hasTable("GRAPH_EDGES_TABLE") || edges.length === 0) return;
   // Deduplicated across the whole set rather than inside each batch of 25.
   // The same edge produced twice in different batches was written twice, and
   // DynamoDB rejects a batch containing two writes to one key outright — so a
@@ -48,6 +48,80 @@ export async function addCollaboratorEdge(repo: string, user: string, role: stri
 export async function removeCollaboratorEdge(repo: string, user: string) {
   await deleteEdge(`REPO#${repo}`, `USER#${user}`);
   await deleteEdge(`USER#${user}`, `REPO#${repo}`);
+}
+
+/**
+ * Merge fields into a repository's `repo_meta` edge.
+ *
+ * Read-modify-write rather than a plain put, because this edge carries a dozen
+ * fields the rebuild collected — visibility, archived, fork, last push, the
+ * scanning switches — and a webhook only ever knows about one of them.
+ * Overwriting would drop the rest and leave every check that reads them
+ * answering from a blank.
+ *
+ * A repository the rebuild has never seen is skipped rather than created from
+ * one field. A partial `repo_meta` is worse than none: "not collected" and
+ * "collected and empty" are different answers, and the checks that read this
+ * treat a missing edge as the former.
+ */
+export async function patchRepoMeta(repo: string, patch: Record<string, any>) {
+  if (!hasTable("GRAPH_EDGES_TABLE")) return;
+  const { GetCommand } = await import("@aws-sdk/lib-dynamodb");
+  const key = { pk: `REPO#${repo}`, sk: "META#repo" };
+
+  const existing: any = await docClient.send(new GetCommand({ TableName: TABLE(), Key: key }));
+  if (!existing?.Item) return;
+
+  await putEdge(key.pk, key.sk, "repo_meta", { ...(existing.Item.metadata ?? {}), ...patch });
+}
+
+/**
+ * A team gaining or losing a repository.
+ *
+ * Both directions, because the graph is walked from either end: `owns_repo`
+ * answers "what does this team have", `owned_by_team` answers "who owns this
+ * repository" — which is the one `unowned-repos` reads.
+ */
+export async function addTeamRepoEdge(team: string, repo: string, permission: string) {
+  await putEdge(`TEAM#${team}`, `REPO#${repo}`, "owns_repo", { permission });
+  await putEdge(`REPO#${repo}`, `TEAM#${team}`, "owned_by_team", { permission });
+}
+
+export async function removeTeamRepoEdge(team: string, repo: string) {
+  await deleteEdge(`TEAM#${team}`, `REPO#${repo}`);
+  await deleteEdge(`REPO#${repo}`, `TEAM#${team}`);
+}
+
+/** A person joining or leaving a team. `has_member` is what `empty-teams` reads. */
+export async function addTeamMemberEdge(team: string, user: string) {
+  await putEdge(`USER#${user}`, `TEAM#${team}`, "member_of");
+  await putEdge(`TEAM#${team}`, `USER#${user}`, "has_member");
+}
+
+export async function removeTeamMemberEdge(team: string, user: string) {
+  await deleteEdge(`USER#${user}`, `TEAM#${team}`);
+  await deleteEdge(`TEAM#${team}`, `USER#${user}`);
+}
+
+/**
+ * A vulnerable dependency appearing or clearing on a repository.
+ *
+ * Keyed on the package name, matching the rebuild — so a second advisory for
+ * the same package updates the edge rather than adding another. The severity
+ * shown is whichever alert most recently arrived, which is also what the
+ * rebuild would have written had it run at that moment.
+ */
+export async function addVulnerableDependencyEdge(
+  repo: string, dependency: string, severity: string, alertNumber?: number,
+) {
+  await putEdge(`REPO#${repo}`, `DEPENDENCY#${dependency}`, "has_vulnerable_dependency", {
+    severity,
+    ...(alertNumber !== undefined ? { alert_number: alertNumber } : {}),
+  });
+}
+
+export async function removeVulnerableDependencyEdge(repo: string, dependency: string) {
+  await deleteEdge(`REPO#${repo}`, `DEPENDENCY#${dependency}`);
 }
 
 /**

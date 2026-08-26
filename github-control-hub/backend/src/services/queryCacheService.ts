@@ -1,5 +1,5 @@
 import {
-  docClient, usesDynamo, tableName, PutCommand, scanAll,
+  docClient, hasTable, tableName, PutCommand, scanAll,
 } from "../utils/dynamo";
 
 /**
@@ -191,7 +191,7 @@ export async function listVerdicts(queryId: string): Promise<CachedVerdict[]> {
   // three checks is nine hundred rows on top of everything else living here.
   // Truncation would drop verdicts, so coverage would never complete and the
   // check would refuse forever while looking like it was still building.
-  const rows: CachedVerdict[] = usesDynamo()
+  const rows: CachedVerdict[] = hasTable("ALARMS_TABLE")
     ? await scanAll<CachedVerdict>(TABLE(), {
         filter: "#k = :kind AND #q = :queryId",
         names: { "#k": "kind", "#q": "queryId" },
@@ -224,7 +224,7 @@ export async function putVerdict(
     // was ever checked, and the reader above is what decides it is too old.
     ttl: Math.floor(Date.now() / 1000) + VERDICT_TTL_HOURS * 2 * 3_600,
   };
-  if (usesDynamo()) {
+  if (hasTable("ALARMS_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: row }));
   } else {
     const i = memStore.findIndex(r => r.id === row.id);
@@ -299,7 +299,7 @@ export function findingsFrom(
 export function describeProgress(queryLabel: string, c: Coverage): string {
   return `${queryLabel} has checked ${c.covered} of ${c.total} and is still building coverage. `
     + `Each one costs a GitHub request against a limit measured per minute, so they are read `
-    + `${REFRESH_BUDGET} at a time — the full picture is a few evaluations away. Nothing is `
+    + `${REFRESH_BUDGET} at a time. The full picture is a few evaluations away. Nothing is `
     + `reported until then rather than a list that looks shorter than it is.`;
 }
 

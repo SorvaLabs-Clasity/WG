@@ -131,6 +131,44 @@ function check(name: string, ok: boolean, got?: unknown) {
     const qn = widgetColumns({ type: "query", hasStatus: false }).length;
     check(`  query without one: ${qn} columns for ${base + 1} cells`,
       qn === base + 1, qn);
+
+    // ── the owning team column ────────────────────────────────────────
+    //
+    // Conditional on the rows carrying the field, so the column and the cell
+    // are gated separately and could drift apart — which does not throw, it
+    // shifts every width one column across.
+    const withOwner = widgetColumns({ type: "query", hasStatus: false, hasOwner: true });
+    check("  a check that reports an owner gets a column for it",
+      withOwner.length === qn + 1 && withOwner.some(c => c.id === "owner"),
+      withOwner.map(c => c.id));
+    check("    placed before Details, beside the name it belongs to",
+      withOwner.findIndex(c => c.id === "owner") < withOwner.findIndex(c => c.id === "details"));
+    check("    and absent when no row carries one",
+      !widgetColumns({ type: "query", hasStatus: false }).some(c => c.id === "owner"));
+
+    const ownerCell = /\{config\.type === "query" && columns\.some\(c => c\.id === "owner"\) && \(/;
+    check("    the body renders a cell under exactly the same condition",
+      ownerCell.test(page),
+      "a column without its cell shifts every width one across");
+    // Four tiers, and the label is what tells them apart — a team slug, a
+    // username and a git author name all render identically otherwise.
+    check("    an unregistered committer is labelled as having no account",
+      /no account/.test(page),
+      "a name out of git metadata rendered bare reads as a GitHub user");
+    for (const kind of ["team", "admin", "top committer"]) {
+      check(`    the cell can say "${kind}"`, page.includes(`"${kind}"`) || page.includes(`: "${kind}"`) || page.includes(`>${kind}`),
+        kind);
+    }
+    check("    every owner is labelled with its kind",
+      /item\.ownerKind === "team" \? "team"/.test(page)
+      && /item\.ownerKind === "admin" \? "admin"/.test(page),
+      "a team slug and a username look the same without it");
+    check("    and having nobody at all is stated outright",
+      /No owner found/.test(page),
+      "an empty cell reads as not-looked-up");
+    check("    the column is driven by the data, not by a check id",
+      /hasOwner: items\.some\(\(i: any\) => "owner" in i\)/.test(page),
+      "any check that starts returning an owner should get the column");
   }
 
   // ── and the bug that started it cannot come back ────────────────────

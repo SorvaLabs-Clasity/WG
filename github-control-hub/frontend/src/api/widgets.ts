@@ -25,8 +25,14 @@ export interface WidgetSnapshot {
   rows: any[];
   /** How many rows the check produced, before any trimming for size. */
   total: number;
-  /** True when `rows` holds fewer than `total` — the count is still exact. */
+  /** True when `rows` holds fewer than `total`, the count is still exact. */
   trimmed: boolean;
+  /**
+   * Repositories in the organization when this was computed. Present so a card
+   * can draw its share on the first paint instead of waiting on the repository
+   * listing, which arrives seconds later and repaints the card when it does.
+   */
+  repoTotal?: number;
   /** Set when the check could not complete on the last pass. */
   error?: string;
   computedAt: string;

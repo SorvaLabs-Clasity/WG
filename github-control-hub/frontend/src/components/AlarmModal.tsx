@@ -202,7 +202,7 @@ export default function AlarmModal({
                   </select>
                 ) : (
                   <p className="text-sm text-amber-700 dark:text-amber-400">
-                    No email groups yet — create one under Security → Notifications first.
+                    No email groups yet. Create one under Security → Notifications first.
                   </p>
                 )}
               </div>

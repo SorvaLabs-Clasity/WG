@@ -22,7 +22,7 @@ async function refusedWidgetChange(res: Response, login: string, verb: string, u
   if (await isControlHubAdmin(login, userToken)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
-      `dashboard widgets — there is one dashboard, shared by everyone.`,
+      `dashboard widgets. There is one dashboard, shared by everyone.`,
     code: "CONTROL_HUB_ADMIN_REQUIRED",
   });
   return true;

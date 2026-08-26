@@ -50,7 +50,7 @@ export function httpsOnlyStatement(bucket: string, sid: string) {
 
 const s3HttpsOnly: RuleKind = {
   kind: "s3_https_only",
-  title: "S3 — deny non-TLS requests",
+  title: "S3: deny non-TLS requests",
   summary: "Every bucket policy must deny requests that arrive over plain HTTP.",
   resourceType: "s3:bucket",
   defaultMode: "report",
@@ -96,7 +96,7 @@ const s3HttpsOnly: RuleKind = {
 
     const next = [...statements.filter(s => s?.Sid !== sid), httpsOnlyStatement(resource.id, sid)];
     return bad(partial
-      ? "Denies non-TLS for only part of the bucket — the other half is still reachable over HTTP"
+      ? "Denies non-TLS for only part of the bucket. The other half is still reachable over HTTP"
       : "No policy statement denying non-TLS requests", {
       description: `Add "${sid}" deny statement to the bucket policy`,
       before: policy,
@@ -109,7 +109,7 @@ const s3HttpsOnly: RuleKind = {
 
 const logRetentionMin: RuleKind = {
   kind: "log_retention_min",
-  title: "CloudWatch Logs — minimum retention",
+  title: "CloudWatch Logs: minimum retention",
   summary: "Log groups must keep logs for at least a set period.",
   resourceType: "logs:log-group",
   defaultMode: "report",

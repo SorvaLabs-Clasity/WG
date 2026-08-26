@@ -1,4 +1,3 @@
-import AuditStreamSetup from "../components/AuditStreamSetup";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuthStatus } from "../api/auth";
@@ -8,6 +7,7 @@ import {
 } from "../lib/activityCategories";
 import { Page, INTENT } from "../design";
 import DiffViewer from "../components/DiffViewer";
+import DetailedLoggingPanel from "../components/DetailedLoggingPanel";
 import UserAvatar from "../components/UserAvatar";
 import { useAuth } from "../App";
 import { useActivity, useUndoActivity, useRedoActivity, useRetryActivity, useUndoResolution } from "../hooks/useActivity";
@@ -20,6 +20,8 @@ const ACTION_CONFIG: Record<
   ActivityAction,
   { label: string; colorClass: string; iconClass: string }
 > = {
+  "tag.create": { label: "Tag Created", colorClass: "bg-green-50 text-green-700 border-green-200/60 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800", iconClass: "fa-solid fa-tag text-[10px]" },
+  "tag.delete": { label: "Tag Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-tag text-[10px]" },
   "branch.create": { label: "Branch Created", colorClass: "bg-green-50 text-green-700 border-green-200/60 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800", iconClass: "fa-solid fa-plus text-[10px]" },
   "branch.delete": { label: "Branch Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
   "branch.rename": { label: "Branch Renamed", colorClass: "bg-blue-50 text-blue-700 border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800", iconClass: "fa-solid fa-pen text-[10px]" },
@@ -39,7 +41,7 @@ const ACTION_CONFIG: Record<
   "activity.undo": { label: "Action Undone", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-rotate-left text-[10px]" },
   "activity.redo": { label: "Action Redone", colorClass: "bg-cyan-50 text-cyan-700 border-cyan-200/60 dark:bg-cyan-950/50 dark:text-cyan-400 dark:border-cyan-800", iconClass: "fa-solid fa-rotate-right text-[10px]" },
   "activity.retry": { label: "Action Retried", colorClass: "bg-violet-50 text-violet-700 border-violet-200/60 dark:bg-violet-950/50 dark:text-violet-400 dark:border-violet-800", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
-  "conflict.pending": { label: "Conflict — On Hold", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-pause text-[10px]" },
+  "conflict.pending": { label: "Conflict. On Hold", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-pause text-[10px]" },
   "conflict.override": { label: "Conflict Overridden", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-arrow-right-arrow-left text-[10px]" },
   "conflict.skip": { label: "Conflict Skipped", colorClass: "bg-gray-50 text-gray-600 border-gray-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-forward text-[10px]" },
   "github.push": { label: "Code Pushed", colorClass: "bg-teal-50 text-teal-700 border-teal-200/60 dark:bg-teal-950/50 dark:text-teal-400 dark:border-teal-800", iconClass: "fa-solid fa-code-commit text-[10px]" },
@@ -63,7 +65,6 @@ const ACTION_CONFIG: Record<
   // Every enterprise audit row carries this one action; the specific event
   // (protected_branch.destroy, org.add_member, …) is in `target`, which is what
   // distinguishes them. One label here covers all of them by design.
-  "audit.event": { label: "Audit Log", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-clipboard-list text-[10px]" },
   "sync.graph": { label: "Access Graph Synced", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
   "sync.compliance": { label: "Scores Recalculated", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
   "sync.query": { label: "Check Re-run", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
@@ -241,17 +242,15 @@ function actorLabel(actor: string): string {
  * this app or on github.com, because the same thing changed either way.
  */
 const CATEGORY_DESCRIPTIONS: Record<ActivityView, string> = {
-  all: "Every row from all four streams, newest first. Each row is tagged with the stream it belongs to.",
-  github: "Things that changed your GitHub organization — branches, protection, rulesets, repositories, Dependabot. Whether the change was made here or on github.com.",
+  all: "Every row from all three streams, newest first. Each row is tagged with the stream it belongs to.",
+  github: "Things that changed your GitHub organization, branches, protection, rulesets, repositories, Dependabot. Whether the change was made here or on github.com.",
   aws: "Findings and remediations from the AWS guardrail engine.",
-  app: "This app's own settings — widgets, scanners, imports, and undo history. Nothing here changed GitHub or AWS.",
-  audit: "The enterprise audit log, streamed from GitHub. Read-only, and the widest of the four.",
+  app: "This app's own settings, widgets, scanners, imports, and undo history. Nothing here changed GitHub or AWS.",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
   app: "Control Hub app",
   github: "GitHub webhook",
-  audit: "Audit log stream",
 };
 
 export default function ActivityPage() {
@@ -263,7 +262,19 @@ export default function ActivityPage() {
   const retryMutation = useRetryActivity();
   const undoResolutionMutation = useUndoResolution();
   const [search, setSearch] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<"all" | "app" | "github" | "audit">("all");
+  const [sourceFilter, setSourceFilter] = useState<"all" | "app" | "github">("all");
+  // Whether rows written under detailed logging are shown. A view preference,
+  // not a query: hiding them filters the list the page already has, and the
+  // choice survives reopening the app because it is the kind of preference
+  // somebody sets once.
+  const [showDetailed, setShowDetailed] = useState<boolean>(() => {
+    try { return localStorage.getItem("activity:show-detailed") !== "hide"; }
+    catch { return true; }
+  });
+  const setShowDetailedPersistent = (show: boolean) => {
+    setShowDetailed(show);
+    try { localStorage.setItem("activity:show-detailed", show ? "show" : "hide"); } catch { /* view still changes */ }
+  };
   /**
    * Which streams this AWS account can even have rows in.
    *
@@ -358,7 +369,7 @@ export default function ActivityPage() {
   const handleUndoResolution = useCallback((entry: Activity) => {
     undoResolutionMutation.mutate(entry.id, {
       onSuccess: () => {
-        setSnack({ msg: `Resolution undone for "${entry.target}" — conflict is back on hold`, severity: "success" });
+        setSnack({ msg: `Resolution undone for "${entry.target}". Conflict is back on hold`, severity: "success" });
         setSelectedEvent(null);
       },
       onError: (err) => { setSnack({ msg: (err as Error).message, severity: "error" }); },
@@ -369,11 +380,12 @@ export default function ActivityPage() {
     if (!data?.entries) return [];
     let entries = data.entries.filter((e) => inView(e.action, category));
     if (sourceFilter !== "all") entries = entries.filter((e) => e.source === sourceFilter);
+    if (!showDetailed) entries = entries.filter((e) => !e.detailed);
     if (repoFilter) { const q = repoFilter.toLowerCase(); entries = entries.filter((e) => e.repo.toLowerCase().includes(q)); }
     if (targetFilter) { const q = targetFilter.toLowerCase(); entries = entries.filter((e) => e.target.toLowerCase().includes(q) || (e.prNumber && e.prNumber.toString() === q) || (e.commitSha && e.commitSha.toLowerCase().includes(q))); }
     if (search) { const q = search.toLowerCase(); entries = entries.filter((e) => e.actor.toLowerCase().includes(q) || e.action.toLowerCase().includes(q) || (e.details && e.details.toLowerCase().includes(q))); }
     return entries;
-  }, [data, search, sourceFilter, repoFilter, targetFilter, category]);
+  }, [data, search, sourceFilter, repoFilter, targetFilter, category, showDetailed]);
 
   // Counted across the whole feed so each tab shows how much it holds, rather
   // than only what survived the current filters.
@@ -395,7 +407,7 @@ export default function ActivityPage() {
   const pageStart = (safePage - 1) * perPage;
   const paginatedEntries = filtered.slice(pageStart, pageStart + perPage);
 
-  useEffect(() => { setCurrentPage(1); }, [search, sourceFilter, repoFilter, targetFilter, perPage, category]);
+  useEffect(() => { setCurrentPage(1); }, [search, sourceFilter, repoFilter, targetFilter, perPage, category, showDetailed]);
 
   // A source that cannot occur in the new view would filter every row away and
   // read as an empty stream. Switching from Organization with "GitHub webhook"
@@ -493,16 +505,14 @@ export default function ActivityPage() {
               </button>
             ) : <span className="w-5 inline-block" />}
             {/* Audit rows had no case here and fell through to the shield,
-                captioned "Control Hub App Event" — which is the one thing they
+                captioned "Control Hub App Event". Which is the one thing they
                 are certainly not. They come from GitHub's enterprise stream and
                 this app never wrote them. */}
             {isFailedEntry
               ? <i className="fa-solid fa-circle-exclamation text-base text-red-500" title="Failed"></i>
               : entry.source === "github"
                 ? <i className="fa-brands fa-github text-base text-gh-textBase dark:text-slate-200" title="Reported by GitHub webhook"></i>
-                : entry.source === "audit"
-                  ? <i className="fa-solid fa-scroll text-base text-purple-600 dark:text-purple-400" title="From the enterprise audit log"></i>
-                  : <i className="fa-solid fa-shield-halved text-base text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
+                : <i className="fa-solid fa-shield-halved text-base text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
           </div>
         </td>
         <td className="px-4 py-3 whitespace-nowrap">
@@ -511,9 +521,17 @@ export default function ActivityPage() {
               <i className={isFailedEntry ? 'fa-solid fa-xmark text-[10px]' : cfg.iconClass}></i>
               {isFailedEntry ? `${cfg.label} (Failed)` : cfg.label}
             </span>
+            {/* Written under the detailed-logging toggle. The label is what
+                makes the "hide detailed" filter legible: you can see which rows
+                it would remove. */}
+            {entry.detailed && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/70 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 font-medium" title="Recorded by detailed GitHub logging">
+                detailed
+              </span>
+            )}
             {/* Which stream this row would be under, shown only while they are
                 merged. Without it the combined view is the undifferentiated
-                list the streams were introduced to break up — and clicking
+                list the streams were introduced to break up, and clicking
                 through to find out which tab a row lives in defeats the point
                 of merging them. Hidden in a single stream, where every row
                 would carry the same badge. */}
@@ -558,22 +576,10 @@ export default function ActivityPage() {
           <div className="flex items-center gap-2">
             <UserAvatar login={entry.actor} size={24} />
             <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">{actorLabel(entry.actor)}</span>
-            {/* Who it was done to, when that is someone else. Audit events are
-                mostly one person acting on another, and the Details column
-                that used to be the only place this appeared is hidden below a
-                large viewport. */}
-            {entry.subject && (
-              <>
-                <i className="fa-solid fa-arrow-right text-[9px] text-gh-muted dark:text-slate-500 mx-0.5"></i>
-                <span className="text-sm font-medium text-gh-textBase dark:text-slate-200 truncate max-w-[14ch]" title={entry.subject}>
-                  {entry.subject}
-                </span>
-              </>
-            )}
           </div>
         </td>
         <td className="px-4 py-3 whitespace-nowrap">
-          {/* Plenty of events are not about a repository at all — organization
+          {/* Plenty of events are not about a repository at all, organization
               membership, teams, tokens. An empty pill reads as a missing value;
               a rule reads as "does not apply", which is what it is. */}
           {!entry.repo ? (
@@ -646,7 +652,7 @@ export default function ActivityPage() {
               for the same reason. A widget being renamed and branch protection
               being removed were previously the same list.
               Everything sits first and merges all four, for the times you know
-              roughly when something happened but not which stream recorded it —
+              roughly when something happened but not which stream recorded it -
               a repository going public shows up in Organization and again in the
               audit log, and searching one at a time is how you miss it. */}
           {/* overflow-y-hidden is load-bearing: setting overflow-x to anything but
@@ -685,10 +691,24 @@ export default function ActivityPage() {
             {/* Three columns when Source does not apply, so the remaining
                 filters spread rather than leaving a gap where it was. */}
             <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${
-              availableSources.length > 1 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
+              availableSources.length > 1 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+              {/* Only where detailed rows can appear: the Organization stream
+                  and the merged view. Elsewhere the control could not change
+                  anything on screen. */}
+              {(category === "github" || category === "all") && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Detailed rows</label>
+                  <select value={showDetailed ? "show" : "hide"}
+                    onChange={(e) => setShowDetailedPersistent(e.target.value === "show")}
+                    className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    <option value="show">Shown</option>
+                    <option value="hide">Hidden</option>
+                  </select>
+                </div>
+              )}
               {/* Offered only where it can change what is shown. In three of the
                   four streams every row carries the same source, so the dropdown
-                  could only ever empty the table — and in the audit stream it did
+                  could only ever empty the table. And in the audit stream it did
                   exactly that, offering app and github when every audit row is
                   source `audit`. */}
               {availableSources.length > 1 && (
@@ -731,13 +751,10 @@ export default function ActivityPage() {
 
         {/* Streaming status and its controls, above the table rather than in
             the empty state. Putting them in the empty state meant they were
-            reachable only while nothing was arriving — so a stream working
+            reachable only while nothing was arriving, so a stream working
             correctly hid its own off switch, which is the one moment somebody
             goes looking for it. */}
-        {/* No wrapper: the card belongs to whichever state needs one. A
-            working stream renders a single quiet line instead of a panel
-            announcing "Connected" above every row, for ever. */}
-        {!isLoading && !error && category === "audit" && <AuditStreamSetup />}
+        {!isLoading && !error && category === "github" && <DetailedLoggingPanel />}
 
         {!isLoading && !error && (
           <div className="bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 shadow-subtle overflow-hidden relative">
@@ -758,13 +775,7 @@ export default function ActivityPage() {
                   {paginatedEntries.map((entry) => renderRow(entry, 0)).flat()}
                   {paginatedEntries.length === 0 && (
                     <tr><td colSpan={7} className="px-6 py-10 text-center text-gh-muted dark:text-slate-400">
-                      {/* An empty stream is not the same as a broken one, and
-                          the audit stream is empty by default until somebody
-                          configures streaming at the enterprise. Saying so
-                          beats an unexplained blank table. */}
-                      {category === "audit" && categoryCounts.audit === 0 ? (
-                        <p className="text-sm">Nothing streamed yet. The panel above shows where it is up to.</p>
-                      ) : categoryCounts[category] === 0 ? (
+                      {categoryCounts[category] === 0 ? (
                         <>
                           <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing recorded here yet</p>
                           <p className="text-sm mt-1">{CATEGORY_DESCRIPTIONS[category]}</p>
@@ -1011,7 +1022,7 @@ export default function ActivityPage() {
                   </>
                 )}
                 <span className="text-gh-muted dark:text-slate-400 font-medium">Source</span>
-                <span className="text-gh-textBase dark:text-slate-200">{popupEntry.source === 'github' ? 'Native GitHub Event' : popupEntry.source === 'audit' ? 'Audit Log' : 'Control Hub App'}</span>
+                <span className="text-gh-textBase dark:text-slate-200">{popupEntry.source === 'github' ? 'Native GitHub Event' : 'Control Hub App'}</span>
               </div>
 
               {/* Children summary */}
@@ -1079,7 +1090,7 @@ export default function ActivityPage() {
                     <span className="text-xs font-semibold text-amber-800 dark:text-amber-400">
                       {popupEntry.conflictResolution
                         ? `Resolved: ${popupEntry.conflictResolution === "override" ? "Overridden" : "Skipped"}`
-                        : "Conflict — Awaiting Resolution"}
+                        : "Conflict, Awaiting Resolution"}
                     </span>
                   </div>
                   <div className="px-3 py-2 space-y-2">
@@ -1127,7 +1138,7 @@ export default function ActivityPage() {
                     })()}
                     {!popupEntry.conflictResolution && (
                       <p className="text-[11px] text-gh-muted dark:text-slate-400 pt-2">
-                        This conflict was never resolved, and can no longer be — the templates
+                        This conflict was never resolved, and can no longer be, the templates
                         feature that raised it has been removed. The repository still has the
                         configuration shown under &ldquo;Existing&rdquo;.
                       </p>

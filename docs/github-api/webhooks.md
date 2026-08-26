@@ -20,19 +20,34 @@ disambiguate from.
 
 ## Events handled
 
-| Event | Recorded as |
-|---|---|
-| `repository` created / unarchived | repo appeared |
-| `repository` publicized / privatized | visibility changed |
-| `branch_protection_rule` created / edited / deleted | protection changed |
-| `repository_ruleset` created / edited / deleted | ruleset changed |
-| `delete` (branch) | branch deleted |
-| `member` added / removed | org membership changed |
-| `team` added_to / removed_from repository | team access changed |
+Eleven, and each one does two jobs: it records what happened, and it patches the
+access graph so the widgets that read it are current in seconds rather than at
+the next rebuild.
+
+| Event | Recorded as | Graph edge patched |
+|---|---|---|
+| `repository` created | repo appeared | all of the repo's edges |
+| `repository` publicized / privatized | visibility changed | `repo_meta.visibility` |
+| `repository` archived / unarchived | — | `repo_meta.archived` |
+| `push` | — | `repo_meta.pushedAt` |
+| `create` (branch) | branch created | `has_branch` |
+| `delete` (branch) | branch deleted | `has_branch` |
+| `branch_protection_rule` created / edited / deleted | protection changed | `has_branch.protected` |
+| `repository_ruleset` created / edited / deleted | ruleset changed | — |
+| `member` added / removed | access changed | `has_collaborator`, `collaborates_on` |
+| `team` added_to / removed_from repository | team access changed | `owned_by_team` |
+| `membership` added / removed | — | `has_member` |
+| `dependabot_alert` created / fixed / dismissed | — | `has_vulnerable_dependency` |
+| `pull_request` | — | — |
 
 These are the things nobody did through the app. Without them the activity log
 would only show the app's own actions, which is the least interesting half of an
-audit trail.
+audit trail — and six widgets would be as stale as the last six-hourly rebuild.
+
+**`membership` is the newest**, and the only one an installation set up before it
+existed will not have ticked. See
+[setup.md](../operations/setup.md) for the checkbox names, which do not resemble
+the API names.
 
 ## Health
 

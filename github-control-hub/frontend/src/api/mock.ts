@@ -9455,11 +9455,11 @@ export async function mockUndoActivity(activityId: string): Promise<{ undone: st
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
     source: "app",
-    action: "audit.event",
+    action: "activity.undo",
     actor: DEMO_USER.login,
     repo: entry.repo,
     target: entry.target,
-    details: `Undone: ${entry.action} — "${entry.details || entry.target}"`,
+    details: `Undone: ${entry.action}, "${entry.details || entry.target}"`,
     timestamp: new Date().toISOString(),
   });
 
@@ -9560,11 +9560,11 @@ export async function mockRedoActivity(activityId: string): Promise<{ redone: st
   mockActivityLog.unshift({
     id: crypto.randomUUID(),
     source: "app",
-    action: "audit.event",
+    action: "activity.redo",
     actor: DEMO_USER.login,
     repo: entry.repo,
     target: entry.target,
-    details: `Redone: ${entry.action} — "${entry.details || entry.target}"`,
+    details: `Redone: ${entry.action}, "${entry.details || entry.target}"`,
     timestamp: new Date().toISOString(),
   });
 
@@ -18538,7 +18538,7 @@ export async function mockFetchSecurityQuery(q: string, param?: string, advanced
       if (advanced?.requireSignedCommits) reqs.push("Signed commits");
       const branches = (param || "main").split(",").map((b: string) => b.trim()).filter(Boolean);
       const branchDetail = branches.map((b: string) => `${b}: Ruleset (${reqs.join(", ") || "any"})`).join(" | ");
-      const failDetail = branches.map((b: string) => `"${b}": Missing rules — ${reqs.join(", ") || "none specified"}`).join(" | ");
+      const failDetail = branches.map((b: string) => `"${b}": Missing rules, ${reqs.join(", ") || "none specified"}`).join(" | ");
       const mockRepos = MOCK_REPOS.slice(0, 30);
       const results: any[] = [];
       mockRepos.forEach((r, i) => {
@@ -19501,4 +19501,30 @@ export async function mockFetchSecurityQuery(q: string, param?: string, advanced
     default:
       return [];
   }
+}
+
+// ── detailed GitHub logging (demo) ──────────────────────────────────────
+// One in-memory setting so the demo toggle behaves like the real one,
+// including keeping already-shown rows when turned off.
+let demoDetailedLogging = { enabled: false, disabledKinds: [] as string[] };
+const DEMO_DETAILED_KINDS = [
+  { id: "branch-created", label: "Branch created", description: "A branch was created.", event: "create" },
+  { id: "branch-deleted", label: "Branch deleted", description: "A branch was deleted.", event: "delete" },
+  { id: "tag-created", label: "Tag created", description: "A tag was created.", event: "create" },
+  { id: "tag-deleted", label: "Tag deleted", description: "A tag was deleted.", event: "delete" },
+  { id: "push", label: "Commits pushed", description: "Commits landed on a branch.", event: "push" },
+  { id: "pr-opened", label: "Pull request opened", description: "A pull request was opened or reopened.", event: "pull_request" },
+  { id: "pr-merged", label: "Pull request merged", description: "A pull request was merged.", event: "pull_request" },
+  { id: "pr-closed", label: "Pull request closed", description: "A pull request was closed without merging.", event: "pull_request" },
+];
+
+export async function mockGetDetailedLogging() {
+  await new Promise(r => setTimeout(r, 150));
+  return { settings: { ...demoDetailedLogging }, kinds: DEMO_DETAILED_KINDS };
+}
+
+export async function mockUpdateDetailedLogging(settings: { enabled: boolean; disabledKinds: string[] }) {
+  await new Promise(r => setTimeout(r, 150));
+  demoDetailedLogging = { enabled: settings.enabled, disabledKinds: [...settings.disabledKinds] };
+  return { settings: { ...demoDetailedLogging }, kinds: DEMO_DETAILED_KINDS };
 }

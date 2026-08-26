@@ -17,7 +17,7 @@ So the app gates those on membership of a team.
 | Team | Controls | Default name |
 |---|---|---|
 | Control Hub admins | Scanners, widgets, alarms and email groups, security alerts, compliance rules, the Renovate bot name, pull request reminders, graph rebuilds, config import/export | `control-hub-admins` |
-| AWS guardrail admins | AWS rules, exclusions, sweeps, enforce mode, audit-log streaming | `aws-guardrail-admins` |
+| AWS guardrail admins | AWS rules, exclusions, sweeps, enforce mode, detailed-logging settings | `aws-guardrail-admins` |
 
 Both are overridable with `CONTROL_HUB_ADMIN_TEAM` and `AWS_ADMIN_TEAM`.
 

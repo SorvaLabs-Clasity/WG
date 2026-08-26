@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { docClient, usesDynamo, tableName, QueryCommand, ScanCommand } from "../utils/dynamo";
+import { docClient, hasTable, tableName, QueryCommand, ScanCommand } from "../utils/dynamo";
 import fs from "fs";
 import path from "path";
 import { evaluateSecurityQuery } from "../services/graphService";
@@ -30,7 +30,7 @@ function loadLocalEdges() {
 
 // Helper to query DynamoDB for edges originating from a specific node
 async function getEdgesForNode(nodeId: string) {
-  if (usesDynamo()) {
+  if (hasTable("GRAPH_EDGES_TABLE")) {
     const result = await docClient.send(
       new QueryCommand({
         TableName: tableName("GRAPH_EDGES_TABLE"),
@@ -168,7 +168,7 @@ router.get("/user-impact/:user", async (req: Request<{ user: string }>, res: Res
 router.get("/meta", async (_req: Request, res: Response) => {
   try {
     let count = 0;
-    if (usesDynamo()) {
+    if (hasTable("GRAPH_EDGES_TABLE")) {
       const result: any = await docClient.send(
         new ScanCommand({ TableName: tableName("GRAPH_EDGES_TABLE"), Select: "COUNT" })
       );
@@ -275,7 +275,7 @@ router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Re
 
   if (!isBatched(q)) {
     return res.status(400).json({
-      error: "This check reads the graph directly and is always current — there is nothing to "
+      error: "This check reads the graph directly and is always current. There is nothing to "
         + "re-check.",
     });
   }
@@ -307,7 +307,7 @@ router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Re
       target: q,
       details: complete
         ? "Re-checked every subject"
-        : `Re-checked ${covered} of ${total} subjects in ${batches} batches — more remain`,
+        : `Re-checked ${covered} of ${total} subjects in ${batches} batches, more remain`,
       startedAt: started,
     });
 
@@ -318,7 +318,7 @@ router.post("/query/:q/refresh-all", async (req: Request<{ q: string }>, res: Re
         ? `Every subject re-checked.`
         : SUBJECT_COST[q].budget === "search"
           ? `Checked ${covered} of ${total}. This check costs one GitHub commit search per `
-            + `account and that allowance is thirty a minute, so the rest cannot be hurried — `
+            + `account and that allowance is thirty a minute, so the rest cannot be hurried, `
             + `they will be covered by the scheduled passes, or press again in a minute.`
           : `Checked ${covered} of ${total} in ${batches} batches. Press again to continue.`,
     });
@@ -361,7 +361,7 @@ router.post("/aggregate", async (req: Request, res: Response) => {
     await logSync("graph", req.user!.login, {
       details: failed
         ? "Sync failed"
-        : `Synced from GitHub — ${after?.edgeCount ?? 0} connections`,
+        : `Synced from GitHub, ${after?.edgeCount ?? 0} connections`,
       failed,
       error: failed ? after?.lastError : undefined,
       startedAt,

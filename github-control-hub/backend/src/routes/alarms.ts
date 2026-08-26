@@ -239,7 +239,7 @@ router.post("/groups/:id/test", async (req: Request, res: Response) => {
     const ok = await publish(group.topicArn, subject, body);
     if (!ok) return res.status(502).json({ error: "SNS refused the message" });
     res.json({
-      message: "Test sent. Only confirmed addresses will receive it — " +
+      message: "Test sent. Only confirmed addresses will receive it, " +
         "anyone still pending has to click their confirmation link first.",
     });
   } catch (error: any) {

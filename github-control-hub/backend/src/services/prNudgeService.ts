@@ -478,7 +478,7 @@ function reportWalk(prs: number, requests: number, startedAt: number): void {
   console.log(
     `[pull requests] ${prs} open, ${requests} request(s), ${(ms / 1000).toFixed(1)}s` +
     (ms > 10_000
-      ? ` — that is the walk itself, not discovery: ${requests} pages at this size.`
+      ? `. That is the walk itself, not discovery: ${requests} pages at this size.`
       : ""),
   );
 }
@@ -559,7 +559,7 @@ async function graphqlAllowingPartial(
       console.warn(
         `[pull requests] GitHub refused "${path || "a field"}": ${e?.message}. ` +
         "The rest of the response is being used. If this is statusCheckRollup, " +
-        "the GitHub App needs Checks (read) and Commit statuses (read) — until " +
+        "the GitHub App needs Checks (read) and Commit statuses (read), until " +
         "then, check status shows as unknown.",
       );
     }
@@ -607,7 +607,7 @@ export async function fetchOpenPrs(
         rememberPageSize(size);
         console.warn(
           `[pull requests] GitHub returned ${err.status} for ${PAGE_SIZES[size - 1]} ` +
-          `pull requests per page — retrying at ${PAGE_SIZES[size]}, and starting there next time.`,
+          `pull requests per page, retrying at ${PAGE_SIZES[size]}, and starting there next time.`,
         );
         continue;
       }
@@ -760,10 +760,10 @@ export function buildNudgeComment(
     "",
   ];
 
-  if (author) lines.push(`@${author} — ${AUTHOR_TEXT[reason]}.`);
+  if (author) lines.push(`@${author}, ${AUTHOR_TEXT[reason]}.`);
   if (reviewers.length) {
     lines.push(
-      `${reviewers.map(r => `@${r}`).join(" ")} — a review was requested from you and is `
+      `${reviewers.map(r => `@${r}`).join(" ")}, a review was requested from you and is `
       + `still outstanding.`);
   }
 

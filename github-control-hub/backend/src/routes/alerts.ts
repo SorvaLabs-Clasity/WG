@@ -20,7 +20,7 @@ async function refusedAlertChange(res: Response, login: string, verb: string, us
   if (await isControlHubAdmin(login, userToken)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
-      `security alerts — the record of what was dealt with is the point of them.`,
+      `security alerts. The record of what was dealt with is the point of them.`,
     code: "CONTROL_HUB_ADMIN_REQUIRED",
   });
   return true;

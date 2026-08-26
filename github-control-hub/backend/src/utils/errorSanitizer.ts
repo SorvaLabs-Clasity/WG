@@ -31,7 +31,7 @@ export function sanitizeError(err: unknown, context: string): string {
     return "That data store does not exist yet. Re-run scripts/setup-aws-account.sh against this account to create it.";
   }
   if (name === "AccessDeniedException" || name === "AccessDenied" || name === "UnauthorizedOperation") {
-    return "AWS refused that call. The app's IAM role is missing a permission — deploy the CDK stack to update it.";
+    return "AWS refused that call. The app's IAM role is missing a permission, deploy the CDK stack to update it.";
   }
   if (name === "AWSOrganizationsNotInUseException") {
     return "This AWS account is not part of an organization.";

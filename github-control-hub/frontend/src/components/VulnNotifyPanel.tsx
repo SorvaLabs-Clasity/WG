@@ -35,7 +35,7 @@ const FEEDS: Record<NotifyFeed, {
   "renovate-pr": {
     title: "Email me when Renovate opens a pull request",
     blurb: "One email per pull request, sent within seconds of it being opened. " +
-      "Only pull requests from the bot account configured above — everything else " +
+      "Only pull requests from the bot account configured above, everything else " +
       "your team opens is ignored.",
     severity: false,
     volume: "The first time Renovate runs against a repository it can open many pull requests " +
@@ -47,9 +47,9 @@ const FEEDS: Record<NotifyFeed, {
     blurb: "One email per new alert, sent within seconds of GitHub raising it, rather " +
       "than waiting for the next scheduled check.",
     severity: true,
-    volume: "Only alerts at or above the severity you choose, and only ones raised from now on — " +
+    volume: "Only alerts at or above the severity you choose, and only ones raised from now on, " +
       "switching this on does not send the backlog already in the table.",
-    prerequisite: "This needs the Dependabot alert event on the webhook that feeds this app — " +
+    prerequisite: "This needs the Dependabot alert event on the webhook that feeds this app, " +
       "Organization → Settings → Webhooks → the Control Hub webhook → Edit, then tick " +
       "“Dependabot alerts” under “Let me select individual events”. It is the same webhook " +
       "and the same page used during setup. Until that is ticked nothing arrives here and " +
@@ -173,7 +173,7 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
 
         {!enabled && groupId && (
           <div className="mt-3 rounded-md bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
-            A group is selected but this is <strong>off</strong> — nobody is being emailed.
+            A group is selected but this is <strong>off</strong>. Nobody is being emailed.
             Use the switch above to start sending.
           </div>
         )}
@@ -184,9 +184,9 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
             {group && (() => {
               const ok = group.members.filter(m => m.confirmed).length;
               const pending = group.members.length - ok;
-              return <> — {ok} confirmed recipient{ok === 1 ? "" : "s"}
+              return <>: {ok} confirmed recipient{ok === 1 ? "" : "s"}
                 {pending > 0 && <>, {pending} still pending and receiving nothing</>}
-                {ok === 0 && <strong> — nobody will receive these until someone confirms</strong>}
+                {ok === 0 && <strong>. Nobody will receive these until someone confirms</strong>}
               </>;
             })()}
           </div>
@@ -197,7 +197,7 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
             <label className={labelClass}>Send to</label>
             {noGroups ? (
               <p className="text-sm text-amber-700 dark:text-amber-400">
-                No email groups yet — create one on the{" "}
+                No email groups yet. Create one on the{" "}
                 <Link to="/alarms" className="font-semibold underline">Alarms</Link> page first.
               </p>
             ) : (

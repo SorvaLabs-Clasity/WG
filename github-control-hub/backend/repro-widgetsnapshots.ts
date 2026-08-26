@@ -116,7 +116,10 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
       /needAllRows && snapshot\.trimmed/.test(page),
       "a card can be served from a short list; a table listing them cannot");
     check("  the detail view asks for every row",
-      /useWidgetData\(config, \{ needAllRows: true \}\)/.test(page));
+      /useWidgetData\(config, \{ needAllRows: true, live \}\)/.test(page));
+    check("    and honours the refresh window too",
+      /<CheckDetail\s+config=\{focused\}\s+live=\{live\}/.test(page),
+      "otherwise Refresh goes live on the Overview and the detail keeps the old snapshot");
     check("refresh forces a live pass rather than refetching the same answer",
       /setLiveUntil\(Date\.now\(\) \+ LIVE_WINDOW_MS\)/.test(page)
       && /useWidgetData\(config, \{ live \}\)/.test(page));
@@ -127,6 +130,42 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
 
   await deleteWidgetSnapshot("w2");
   await deleteWidgetSnapshot("w3");
+  // ── the denominator travels with the answer ─────────────────────────
+  //
+  // The card divides its row count by the number of repositories to pick its
+  // colour and its share. That number used to come from a separate request that
+  // landed seconds after the snapshot, so every repository-scoped card opened
+  // with no share, drew itself amber, said "found" instead of "of N
+  // repositories", and repainted once the listing arrived. It was already known
+  // when the rows were computed.
+  {
+    const svc = read("src/services/alarmService.ts");
+    const handler = read("src/alarms/handler.ts");
+    const page = read("../frontend/src/pages/AnalyticsPage.tsx");
+
+    check("a snapshot can carry the repository count it was measured against",
+      /repoTotal\?: number/.test(svc));
+    check("  it is written with the rows",
+      /typeof repoTotal === "number" \? \{ repoTotal \}/.test(svc));
+    check("  and read back out again",
+      /repoTotal: row\.repoTotal/.test(svc),
+      "stored but not returned is the same as not stored");
+    check("  counted once per pass, not once per widget",
+      handler.indexOf("const repoTotal") < handler.indexOf("for (const widget of all)"),
+      "a scan per widget would undo the point of computing them together");
+    check("  from the edges already in memory",
+      /scanGraphEdges\(\)[\s\S]{0,120}repo_meta/.test(handler));
+    check("  and a count that cannot be read is left unknown, not zero",
+      /\.catch\(\(\) => null\)/.test(handler),
+      "zero repositories would make every share 100%");
+
+    check("the card prefers the stored denominator over the live listing",
+      /typeof snapshot\?\.repoTotal === "number" \? snapshot\.repoTotal/.test(page));
+    check("  falling back to the listing when the snapshot predates this",
+      /: repos \? repos\.length : null/.test(page),
+      "snapshots written before this change carry no count");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

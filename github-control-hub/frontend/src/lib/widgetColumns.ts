@@ -33,8 +33,14 @@ export function widgetColumns(opts: {
   type: string;
   presetId?: string;
   hasStatus: boolean;
+  /**
+   * The rows carry an owning team. Driven by the data rather than by the check
+   * id, so any check that starts returning one gets the column without this
+   * file needing to know which checks those are.
+   */
+  hasOwner?: boolean;
 }): WidgetColumn[] {
-  const { type, presetId, hasStatus } = opts;
+  const { type, presetId, hasStatus, hasOwner } = opts;
 
   const columns: WidgetColumn[] = [
     { id: "index", label: "#", width: 72 },
@@ -67,6 +73,16 @@ export function widgetColumns(opts: {
 
   if (type === "query" && hasStatus) {
     columns.push({ id: "status", label: "Status", width: 104, align: "center" });
+  }
+
+  // Before Details, because "who do I ask" is read alongside the repository
+  // name rather than after the explanation of what is wrong with it.
+  //
+  // Labelled "Owner" rather than "Owning team" because it falls back to the
+  // person who has committed most where no team owns the repository — the
+  // column answers one question with two kinds of answer.
+  if (type === "query" && hasOwner) {
+    columns.push({ id: "owner", label: "Owner", width: 220 });
   }
 
   if (type === "query") {

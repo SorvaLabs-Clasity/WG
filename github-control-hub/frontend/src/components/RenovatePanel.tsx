@@ -95,7 +95,7 @@ export default function RenovatePanel() {
         <h3 className="text-base font-bold text-gray-900 dark:text-white">Renovate</h3>
         <p className="mt-1 text-sm text-gray-600 dark:text-slate-400 max-w-2xl">
           Self-hosted Renovate raises pull requests as a GitHub App, and its authorship is the
-          only way to find them — there is no Renovate API to ask. Type the name shown beside a
+          only way to find them. There is no Renovate API to ask. Type the name shown beside a
           Renovate pull request; the <code>[bot]</code> suffix an App's login carries is added for
           you if you leave it off.
         </p>
@@ -125,7 +125,7 @@ export default function RenovatePanel() {
         <h3 className="text-base font-bold text-gray-900 dark:text-white">Renovate</h3>
         <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
           GitHub does not recognize the account{" "}
-          <code className="px-1 rounded bg-black/5 dark:bg-white/10">{data.bot}</code> — it either
+          <code className="px-1 rounded bg-black/5 dark:bg-white/10">{data.bot}</code>. It either
           does not exist, or this app cannot see it. Check the spelling of the bot account.
         </p>
         {isAdmin
@@ -184,7 +184,7 @@ export default function RenovatePanel() {
       {table.visible.length === 0 ? (
         <Empty title={filter === "open" ? "Nothing waiting" : "Nothing here"}
           body={filter === "open"
-            ? "Renovate has no open pull requests — everything it raised has been dealt with."
+            ? "Renovate has no open pull requests. Everything it raised has been dealt with."
             : `No ${filter === "closed" ? "closed" : ""} pull requests match.`} />
       ) : (
         <div className="grid gap-2">

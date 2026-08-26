@@ -14,6 +14,23 @@ export interface RunOptions {
   accountIds?: string[];
   /** Evaluate and report without writing, whatever the rule's mode says. */
   dryRun?: boolean;
+  /**
+   * Fix these resources once, even where the rule only reports.
+   *
+   * For the button beside a single failed resource: somebody has looked at
+   * this one thing and decided to correct it, without deciding that every
+   * future violation of the rule should be corrected automatically.
+   *
+   * Deliberately **not** a way to enforce a whole rule. It is refused unless
+   * `resourceIds` names what to act on, so "fix this bucket" can never widen
+   * into "fix every bucket" by omitting a field.
+   *
+   * The rule's own mode is untouched, which is what makes this one-off: the
+   * next sweep evaluates as it always did, so a setting changed back is
+   * reported again rather than silently re-corrected. A rule in `enforce` mode
+   * still re-corrects, because that is what enforce means.
+   */
+  forceRemediate?: boolean;
 }
 
 export interface RunResult {
@@ -55,7 +72,7 @@ function readOnlyRefusal(err: any): string | undefined {
   const denied = name === "AccessDenied" || name === "AccessDeniedException"
     || /not authorized to perform/i.test(message);
   if (!denied) return undefined;
-  return "This rule found the violation but is not permitted to fix it — the Control Hub is " +
+  return "This rule found the violation but is not permitted to fix it. The Control Hub is " +
     "deployed read-only in this account. Redeploy with remediation enabled if you want it fixed " +
     "automatically; the finding and the proposed fix stand either way.";
 }
@@ -90,6 +107,16 @@ export async function run(
   }) => Promise<void>,
   deps: RunDeps = {}
 ): Promise<RunResult> {
+  // Named resources or nothing. Without this a caller that forgot
+  // `resourceIds` would turn a one-off fix into enforcing the whole rule — in
+  // a single absent field nobody would notice.
+  if (options.forceRemediate && !options.resourceIds?.length) {
+    throw new Error(
+      "forceRemediate requires resourceIds: it fixes named resources once, "
+      + "and is not a way to enforce a rule.",
+    );
+  }
+
   const collectorsFor = deps.collectors ?? COLLECTORS;
   const doRemediate = deps.remediate ?? remediate;
   const isRemediable = deps.canRemediate ?? canRemediate;
@@ -220,7 +247,7 @@ async function runScope(
         result.findings.push({
           ruleId: rule.id, ruleName: rule.name, kind: rule.kind,
           resourceId: resource.id, resourceType: resource.type,
-          verdict: "not_applicable", summary: `Excluded — ${exclusion.reason}`,
+          verdict: "not_applicable", summary: `Excluded: ${exclusion.reason}`,
           excluded: true, excludedBy: exclusion.reason, remediated: false, checkedAt, ...stamp,
         });
         continue;
@@ -242,7 +269,8 @@ async function runScope(
 
       result.violations++;
 
-      const shouldFix = rule.mode === "enforce" && !options.dryRun && impl.isRemediable(rule.kind);
+      const shouldFix = (rule.mode === "enforce" || options.forceRemediate)
+        && !options.dryRun && impl.isRemediable(rule.kind);
       if (!shouldFix) {
         result.findings.push(finding);
         continue;

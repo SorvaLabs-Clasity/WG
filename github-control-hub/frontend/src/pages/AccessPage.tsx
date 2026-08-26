@@ -193,6 +193,23 @@ export default function AccessPage() {
     );
   }
 
+  // The team list has always been clickable and `TeamDetail` has always
+  // existed; this branch was simply never written, so `setOpenTeam` set a piece
+  // of state nothing read and the click did nothing at all. Placed beside the
+  // other two, which is where its absence was invisible.
+  if (openTeam) {
+    return (
+      <Page user={user}>
+        <TeamDetail
+          slug={openTeam}
+          onBack={() => setOpenTeam(null)}
+          onOpenPerson={l => { setOpenTeam(null); setMode("people"); setOpenPerson(l); }}
+          onOpenRepo={r => { setOpenTeam(null); setMode("repos"); setOpenRepo(r); }}
+        />
+      </Page>
+    );
+  }
+
   const owners = (data?.people ?? []).filter(p => p.orgRole === "owner").length;
   const outsiders = (data?.people ?? []).filter(p => p.outside).length;
   const withDirect = (data?.people ?? []).filter(p => p.directCount > 0).length;
@@ -214,29 +231,24 @@ export default function AccessPage() {
       {data?.stale && (
         <Note intent="warn">
           Nothing has been collected from GitHub yet, so there is nobody in this map.
-          Press Sync from GitHub above, or wait for the next scheduled sync — an empty map
+          Press Sync from GitHub above, or wait for the next scheduled sync, an empty map
           here means nothing has been read, not that nobody has access.
         </Note>
       )}
 
       {data && !data.stale && (
         <>
-          {/* The single most load-bearing sentence on the page. The map shows
-              write and above; if read is the org default, everyone can already
-              see everything, and leaving that implied would be a lie of
-              omission on a page about access. */}
-          <Note intent="neutral">
-            {data.org.defaultRepositoryPermission === "none"
-              ? <>Members get no access by default in this organization, so everything below is the whole picture.</>
-              : data.org.defaultRepositoryPermission === "unknown"
-                ? <>The organization's default permission could not be read, so it is not known whether members can see repositories they are not listed against below.</>
-                : <>
-                    Every member of this organization already has <strong>{roleName(data.org.defaultRepositoryPermission)}</strong> on
-                    every repository — that is the organization default, and it is not repeated below.
-                    Everything above that default is listed, along with outside collaborators,
-                    who are not covered by it.
-                  </>}
-          </Note>
+          {/* Shown only when the default is worth stopping for: nobody gets
+              anything, or it could not be read at all. An ordinary default is
+              left to the tiles below rather than restated on every visit. */}
+          {(data.org.defaultRepositoryPermission === "none"
+            || data.org.defaultRepositoryPermission === "unknown") && (
+            <Note intent="neutral">
+              {data.org.defaultRepositoryPermission === "none"
+                ? <>Members get no access by default in this organization, so everything below is the whole picture.</>
+                : <>The organization's default permission could not be read, so it is not known whether members can see repositories they are not listed against below.</>}
+            </Note>
+          )}
 
           <div className="grid sm:grid-cols-4 gap-3 mb-5">
             <Stat value={data.people.length} label="people" />
@@ -440,7 +452,7 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
           aside={<Avatar login={data.login} size={44} />}
           subtitle={
             data.orgRole === "owner"
-              ? "An organization owner. Admin on every repository by virtue of the role — removing individual grants does not change that."
+              ? "An organization owner. Admin on every repository by virtue of the role. Removing individual grants does not change that."
               : data.orgRole === "outside_collaborator"
                 ? "Not a member of this organization. Reaches only what was granted to them."
                 : `Member of ${data.teams.length === 0 ? "no teams" : data.teams.map(t => t.name).join(", ")}.`
@@ -456,7 +468,7 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
         {direct.length > 0 && (
           <Note intent="warn">
             {direct.length === 1 ? "One repository is" : `${direct.length} repositories are`} reachable
-            only because of a grant made to this person specifically — no team and no role explains it.
+            only because of a grant made to this person specifically, no team and no role explains it.
             {direct.length <= 6 && <> {direct.map(r => r.repo).join(", ")}.</>}
           </Note>
         )}
@@ -582,7 +594,12 @@ function TeamDetail({ slug, onBack, onOpenPerson, onOpenRepo }: {
       </Sheet>
 
       <Sheet>
-        <SheetHeader title="Repositories this team opens" subtitle={`${data.repos.length} granted by membership`} />
+        {/* "has access to", not "owns". This list is whatever GitHub returns for
+            the team, at whatever permission. A read-only team appears here
+            too. Claiming ownership would also contradict `unowned-repos`, which
+            treats any team grant as ownership precisely because it is a floor
+            rather than a statement about the permission being right. */}
+        <SheetHeader title="Repositories this team has access to" subtitle={`${data.repos.length} granted by membership`} />
         {data.repos.length === 0 ? (
           <Empty title="This team grants no repository access"
             body="It may exist for mentions or reviews rather than permissions." />
@@ -625,7 +642,7 @@ function RepoDetail({ repo, onBack, onOpenPerson }: {
           title={data.repo}
           subtitle={`${data.people.length} ${data.people.length === 1 ? "person" : "people"} can write to this${
             admins.length ? `, ${admins.length} as admin` : ""
-          }.${data.archived ? " It is archived — access to an archived repository is still access to its history." : ""}`}
+          }.${data.archived ? " It is archived. Access to an archived repository is still access to its history." : ""}`}
         />
 
         {outsiders.length > 0 && (

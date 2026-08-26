@@ -110,7 +110,7 @@ async function send<T = any>(command: any): Promise<T> {
     // Logged, because this is the evidence that the theory above is right. A
     // silent recovery would leave the next person guessing at the same symptom.
     console.warn(
-      `[guardrails] credentials had gone stale (${err?.name || "no name"}: ${err?.message}) — ` +
+      `[guardrails] credentials had gone stale (${err?.name || "no name"}: ${err?.message}), ` +
       `rebuilding the client and trying once more`);
     resetGuardrailStore();
     const fresh = await docClient();

@@ -130,7 +130,7 @@ export default function LoginPage() {
       // open the next OAuth attempt in a cookie-free window, and a navigation
       // that beats the IPC lands straight back on the same account.
       await (window as any).electronAPI.clearGithubSession();
-    } catch { /* fall through — the worst case is the usual instant sign-in */ }
+    } catch { /* fall through. The worst case is the usual instant sign-in */ }
     clearToken();
     setLocalUserInfo(null);
     window.location.href = loginUrl;
@@ -438,7 +438,7 @@ export default function LoginPage() {
     if (!id || !secret) {
       setNewError(Object.keys(parsed).length === 0
         ? "Could not find any credentials in that. Paste the whole block from the "
-          + "AWS access portal — any of its formats will do."
+          + "AWS access portal. Any of its formats will do."
         : `That block is missing ${!id ? "AWS_ACCESS_KEY_ID" : "AWS_SECRET_ACCESS_KEY"}.`);
       return;
     }
@@ -588,7 +588,7 @@ export default function LoginPage() {
             action={awsOk && !loading && !error
               ? <div className="flex items-center gap-1">
                   {/* Reachable while connected, because "add a profile for the
-                      other account" is exactly when somebody wants it — and
+                      other account" is exactly when somebody wants it, and
                       before this, the only way to reach it was to disconnect
                       from the account they were happily using. */}
                   <Quiet onClick={() => { setAwsMethod("new"); setNewStep("form"); setAddingProfile(true); }}
@@ -613,7 +613,7 @@ export default function LoginPage() {
               <div className="space-y-3">
                 {profilesError && (
                   <Hint intent="warn">
-                    Could not read your AWS profiles — {profilesError}. Access keys still work.
+                    Could not read your AWS profiles: {profilesError}. Access keys still work.
                   </Hint>
                 )}
                 {/* Shown above the tabs rather than inside one, because a
@@ -668,7 +668,7 @@ export default function LoginPage() {
                       <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)} className={SURFACE.input}>
                         {awsProfiles.filter(p => p.type === "sso").map(p => (
                           <option key={p.name} value={p.name}>
-                            {p.name}{p.accountId ? ` (${p.accountId})` : ""}{p.roleName ? ` — ${p.roleName}` : ""}
+                            {p.name}{p.accountId ? ` (${p.accountId})` : ""}{p.roleName ? `, ${p.roleName}` : ""}
                           </option>
                         ))}
                       </select>
@@ -701,7 +701,7 @@ export default function LoginPage() {
                     <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)} className={SURFACE.input}>
                       {awsProfiles.map(p => (
                         <option key={p.name} value={p.name}>
-                          {p.name} ({p.type}){p.accountId ? ` — ${p.accountId}` : ""}{p.roleName ? ` / ${p.roleName}` : ""}
+                          {p.name} ({p.type}){p.accountId ? `, ${p.accountId}` : ""}{p.roleName ? ` / ${p.roleName}` : ""}
                         </option>
                       ))}
                     </select>
@@ -726,7 +726,7 @@ export default function LoginPage() {
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           Creates an AWS profile on this computer, so you do not have to
                           edit files or use a terminal. You need the sign-in link your
-                          admin gave you — it usually ends in <code>.awsapps.com/start</code>.
+                          admin gave you. It usually ends in <code>.awsapps.com/start</code>.
                         </p>
                         <div>
                           <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
@@ -743,7 +743,7 @@ export default function LoginPage() {
                           <input value={newSsoRegion} onChange={e => setNewSsoRegion(e.target.value)}
                             placeholder="us-east-1" className={SURFACE.input} />
                           <p className="mt-1 text-[11px] text-slate-400">
-                            Where your company's AWS login lives — one region for the whole
+                            Where your company's AWS login lives, one region for the whole
                             company, and usually <code>us-east-1</code>. Your admin knows it,
                             and it is <em>not</em> where this app runs.
                           </p>
@@ -788,7 +788,7 @@ export default function LoginPage() {
                           Approve the sign-in in your browser
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          A tab should have opened. Confirm the code shown there, then come back —
+                          A tab should have opened. Confirm the code shown there, then come back -
                           this page carries on by itself.
                         </p>
                         {newAuth && (
@@ -805,7 +805,7 @@ export default function LoginPage() {
                     {newStep === "choose" && (
                       <>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Signed in. These are the accounts you can reach — pick the one this
+                          Signed in. These are the accounts you can reach, pick the one this
                           app is deployed in.
                         </p>
                         <div>
@@ -823,7 +823,7 @@ export default function LoginPage() {
                             <option value="">Choose an account…</option>
                             {newAccounts.map(a => (
                               <option key={a.accountId} value={a.accountId}>
-                                {a.accountName} — {a.accountId}
+                                {a.accountName}: {a.accountId}
                               </option>
                             ))}
                           </select>
@@ -967,7 +967,7 @@ export default function LoginPage() {
                   : "Authenticated"
                 /* AWS first, because the OAuth secrets live in Secrets
                    Manager. Until AWS connects, ghConfigured is false for a
-                   reason that has nothing to do with the build — and saying
+                   reason that has nothing to do with the build, and saying
                    "OAuth is not configured on this build" there sends someone
                    looking at their packaging when the answer is one card
                    above. */
@@ -980,13 +980,13 @@ export default function LoginPage() {
                        ordinary state before setup, not a packaging fault, and
                        saying so sends people to the right place. */
                     : status?.github.reason === "secret_missing"
-                      ? "No GitHub credentials stored yet — run scripts/migrate-to-account.sh"
+                      ? "No GitHub credentials stored yet. Run scripts/migrate-to-account.sh"
                       : status?.github.reason === "secret_unreadable"
-                        ? "The credentials secret exists but could not be read — check this account's permissions"
+                        ? "The credentials secret exists but could not be read, check this account's permissions"
                         : status?.github.reason === "secret_incomplete"
                           ? "The credentials secret is missing its OAuth keys"
                           : "OAuth is not configured on this build"
-                : "Your own account — the app acts as you, never as someone else"
+                : "Your own account, the app acts as you, never as someone else"
             }
             action={!loading && !error && ghAuthed
               ? <Quiet onClick={handleSignOutGithub} disabled={signingOut}
@@ -999,7 +999,7 @@ export default function LoginPage() {
 
                 {remembered ? (
                   /* GitHub still holds a session for this account, so signing in
-                     completes the moment it is asked — no page, no choice. Say
+                     completes the moment it is asked, no page, no choice. Say
                      whose account it will be before that happens, rather than
                      announcing it afterwards. */
                   <>
@@ -1078,7 +1078,7 @@ export default function LoginPage() {
         {/* Also here, not only in the account menu.
             The menu needs somebody signed in, and the moment you most want to
             know which build you are running is the moment the app is not
-            working — which is this screen. */}
+            working. Which is this screen. */}
         {appVersion && (
           <p className="mt-6 text-center text-[11px] font-mono text-slate-400 dark:text-slate-600">
             v{appVersion}
@@ -1150,7 +1150,7 @@ function KeyCard({ index, intent, icon, avatar, title, subtitle, state, busy, lo
       className={`${SURFACE.card} overflow-hidden ${locked ? "opacity-60" : ""} transition-opacity duration-300`}
     >
       <div className="flex">
-        {/* Colour rail — state is visible before you read a word. */}
+        {/* Colour rail. State is visible before you read a word. */}
         <div className={`w-1.5 shrink-0 ${tone.mark} transition-colors duration-300`} />
 
         <div className="flex-1 min-w-0 p-5">

@@ -200,7 +200,7 @@ export default function PullRequestsPage() {
       setError("");
       setNotice(r.posted ? `Sent ${r.posted} reminder${r.posted === 1 ? "" : "s"}.`
         : r.due === 0 ? "Nothing was due."
-        : `${r.due} due, none sent — everyone who would be named is muted.`);
+        : `${r.due} due, none sent. Everyone who would be named is muted.`);
       qc.invalidateQueries({ queryKey: ["pulls"] });
     },
     onError: (e: any) => setError(e?.message || "Could not send reminders."),
@@ -278,15 +278,15 @@ export default function PullRequestsPage() {
                 {b.label}
               </span>
               <span className="text-sm font-bold tabular-nums text-slate-700 dark:text-slate-300 w-9 text-right"
-                title="Since the last commit — the clock reminders run on">
+                title="Since the last commit. The clock reminders run on">
                 {idleLabel(p.idleDays)}
               </span>
             </div>
           </div>
 
           {/* On every open pull request, not only the stale ones.
-              Muting somebody is something you decide when you notice it —
-              usually while the pull request is still fresh — and a panel that
+              Muting somebody is something you decide when you notice it -
+              usually while the pull request is still fresh, and a panel that
               only appears after seven days of silence means the mute can only
               be set once the first reminder has already gone out. Anything not
               yet stale reads as what *will* happen rather than what has. */}
@@ -305,13 +305,13 @@ export default function PullRequestsPage() {
                   // the sentence has to stand without one.
                   <span className="text-slate-500 dark:text-slate-400">
                     {p.muted.length > 0
-                      ? `Nobody to remind — ${p.muted.map(m => m.login).join(", ")} muted`
+                      ? `Nobody to remind, ${p.muted.map(m => m.login).join(", ")} muted`
                       : "Nobody to remind"}
                   </span>
                 ) : p.wouldNudge.length === 0 ? (
                   <span className="text-slate-400 dark:text-slate-500">
                     {p.muted.length > 0
-                      ? `Would remind nobody — ${p.muted.map(m => m.login).join(", ")} muted`
+                      ? `Would remind nobody, ${p.muted.map(m => m.login).join(", ")} muted`
                       : "Would remind nobody"}
                   </span>
                 ) : (
@@ -461,7 +461,7 @@ export default function PullRequestsPage() {
           <div>
             <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Open pull requests</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
-              Every open pull request in the organization, most idle first — closed ones never
+              Every open pull request in the organization, most idle first, closed ones never
               appear. Idle counts from the last <strong className="font-semibold">commit</strong>,
               not from when it was opened.
             </p>
@@ -579,7 +579,7 @@ export default function PullRequestsPage() {
           {/* How old the list is, when it did not come from a live walk.
               Shown rather than implied: reading GitHub takes seconds on a large
               organization, so the tab opens on the last stored answer and
-              refreshes behind it — which is only honest if the age is visible. */}
+              refreshes behind it. Which is only honest if the age is visible. */}
           {data?.cachedAt && (
             <div className="mb-4 text-xs text-slate-500 dark:text-slate-400">
               As of {ago(data.cachedAt)}
@@ -600,10 +600,10 @@ export default function PullRequestsPage() {
           ) : (
             <div className="space-y-7">
               {section({
-                title: `Stale — idle ${thresholdLabel(data?.staleSeconds ?? 604_800)} or more`,
+                title: `Stale, idle ${thresholdLabel(data?.staleSeconds ?? 604_800)} or more`,
                 hint: reminders
                   ? "These get one reminder naming whoever can move them. It replaces itself each cycle, and a commit resets the clock."
-                  : "Reminders are off, so nothing is posted — this is the list only.",
+                  : "Reminders are off, so nothing is posted. This is the list only.",
                 rows: stale, view: sv, onPage: setStalePage, total: data?.stale ?? stale.length,
               })}
               {section({

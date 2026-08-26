@@ -90,7 +90,7 @@ export default function AlarmsPage() {
                   <div className="font-bold text-gh-textBase dark:text-slate-100">{a.name}</div>
                   <div className="text-sm text-gray-600 dark:text-slate-400">
                     {widget
-                      ? <>on <span className="font-semibold">{widget.title}</span> — {describeCondition(a.condition, ALL_METRIC_SPECS)}</>
+                      ? <>on <span className="font-semibold">{widget.title}</span>: {describeCondition(a.condition, ALL_METRIC_SPECS)}</>
                       : <span className="text-amber-700 dark:text-amber-400">its widget was deleted</span>}
                   </div>
                   <div className="mt-1 text-xs text-gray-500 dark:text-slate-400">

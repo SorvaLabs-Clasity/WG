@@ -8,7 +8,7 @@ import type { Repo, RepoDetails } from "../types/Repo";
 // ── formatting helpers ────────────────────────────────────────────────
 
 function relativeTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${Math.max(mins, 0)}m ago`;
@@ -22,7 +22,7 @@ function relativeTime(iso: string | null | undefined): string {
 }
 
 function formatDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
+  if (!iso) return "-";
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
@@ -250,16 +250,41 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
   const { data: nodeData } = useGraphNode(`REPO#${repo}`);
 
   const people = useMemo(() => {
-    const collaborators: { name: string; role: string }[] = [];
+    // These are GitHub's *collaborators*, which is a question about who can
+    // reach the repository and not about who has worked on it. The distinction
+    // was invisible here: an organization owner holds admin on every repository
+    // in the organization without ever having touched one, and this listed them
+    // beside somebody deliberately given write access, in the same shape, under
+    // a heading that reads as "people who worked on this". Commits are answered
+    // by "Top contributors" below, and by the Who knows tab.
+    const collaborators: { name: string; role: string; source?: string }[] = [];
     const teams: { name: string; permission?: string }[] = [];
     nodeData?.edges.forEach(e => {
-      if (e.target.startsWith("USER#")) collaborators.push({ name: e.target.replace("USER#", ""), role: e.metadata?.role || "read" });
+      if (e.target.startsWith("USER#")) {
+        collaborators.push({
+          name: e.target.replace("USER#", ""),
+          role: e.metadata?.role || "read",
+          // `direct`, `team` or `org_owner`. Stored on every collaborator edge
+          // and, until now, thrown away before anyone could see it.
+          source: e.metadata?.source,
+        });
+      }
       else if (e.target.startsWith("TEAM#")) teams.push({ name: e.target.replace("TEAM#", ""), permission: e.metadata?.permission });
     });
     const order: Record<string, number> = { admin: 0, maintain: 1, write: 2, triage: 3, read: 4 };
-    collaborators.sort((a, b) => (order[a.role] ?? 5) - (order[b.role] ?? 5));
+    // Blanket access sorts last whatever its role. An org owner outranks
+    // everybody on paper and tells you the least about this repository, so
+    // leading with them buries the people the access was actually granted to.
+    const bySource: Record<string, number> = { direct: 0, team: 1, org_owner: 2 };
+    collaborators.sort((a, b) =>
+      (bySource[a.source ?? ""] ?? 1) - (bySource[b.source ?? ""] ?? 1)
+      || (order[a.role] ?? 5) - (order[b.role] ?? 5)
+      || a.name.localeCompare(b.name));
     teams.sort((a, b) => a.name.localeCompare(b.name));
-    return { collaborators, teams };
+    // Counted for the tile: people granted access to *this* repository, rather
+    // than everyone who can open it by virtue of running the organization.
+    const specific = collaborators.filter(c => c.source !== "org_owner").length;
+    return { collaborators, teams, specific };
   }, [nodeData]);
 
   if (isLoading) {
@@ -281,12 +306,14 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
   }
 
   const tiles = [
-    { label: "Branches", value: data.branches?.length ?? "—" },
-    { label: "People", value: people.collaborators.length || data.contributorCount || "—" },
-    { label: "Open PRs", value: data.openPullRequests?.count ?? "—" },
+    { label: "Branches", value: data.branches?.length ?? "-" },
+    // Was `collaborators.length`, which counted every organization owner on
+    // every repository and so read the same on all of them.
+    { label: "With access", value: people.specific || people.collaborators.length || data.contributorCount || "-" },
+    { label: "Open PRs", value: data.openPullRequests?.count ?? "-" },
     { label: "Issues", value: data.open_issues_count },
     { label: "Teams", value: people.teams.length },
-    { label: "Commits 30d", value: data.commitsLast30Days ?? "—" },
+    { label: "Commits 30d", value: data.commitsLast30Days ?? "-" },
   ];
 
   return (
@@ -347,7 +374,7 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
             ["Created", formatDate(data.created_at)],
             ["Last push", `${formatDate(data.pushed_at)} (${relativeTime(data.pushed_at)})`],
             ["Last update", `${formatDate(data.updated_at)} (${relativeTime(data.updated_at)})`],
-            ["Homepage", data.homepage ?? "—"],
+            ["Homepage", data.homepage ?? "-"],
             ["Stars / forks / watchers", `${data.stargazers_count} / ${data.forks_count} / ${data.watchers_count}`],
             ["Features", [
               data.features.issues && "issues", data.features.projects && "projects",
@@ -378,32 +405,48 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
 
         <Section label="Activity" icon="ph-pulse" color="emerald" count={0} defaultOpen>
           <Facts rows={[
-            ["Commits (30d)", data.commitsLast30Days ?? "—"],
-            ["Open pull requests", data.openPullRequests?.count ?? "—"],
+            ["Commits (30d)", data.commitsLast30Days ?? "-"],
+            ["Open pull requests", data.openPullRequests?.count ?? "-"],
             ["Oldest open PR", data.openPullRequests?.oldest
-              ? `#${data.openPullRequests.oldest.number} — ${relativeTime(data.openPullRequests.oldest.createdAt)}`
+              ? `#${data.openPullRequests.oldest.number}, ${relativeTime(data.openPullRequests.oldest.createdAt)}`
               : "none"],
             ["Open issues", data.open_issues_count],
             ["Latest release", data.latestRelease
               ? `${data.latestRelease.tag} (${relativeTime(data.latestRelease.publishedAt)})`
               : "none"],
-            ["Total releases", data.releaseCount ?? "—"],
+            ["Total releases", data.releaseCount ?? "-"],
           ]} />
           {data.openPullRequests?.oldest && (
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 truncate" title={data.openPullRequests.oldest.title}>
-              “{data.openPullRequests.oldest.title}” — {data.openPullRequests.oldest.author ?? "unknown"}
+              “{data.openPullRequests.oldest.title}”: {data.openPullRequests.oldest.author ?? "unknown"}
             </p>
           )}
         </Section>
 
         {people.collaborators.length > 0 && (
-          <Section label="Collaborators" icon="ph-user" color="violet" count={people.collaborators.length} defaultOpen={people.collaborators.length <= 8}>
+          /* "People with access", not "Collaborators" — the list answers who
+             can reach this repository, and the old heading was read as who
+             worked on it. */
+          <Section label="People with access" icon="ph-key" color="violet" count={people.collaborators.length} defaultOpen={people.collaborators.length <= 8}>
             {people.collaborators.map(c => (
-              <div key={c.name} className="flex items-center justify-between py-1.5">
-                <span className="text-sm text-slate-700 dark:text-slate-300">{c.name}</span>
-                <Pill tone="muted">{c.role}</Pill>
+              <div key={c.name} className="flex items-center justify-between py-1.5 gap-2">
+                <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{c.name}</span>
+                <span className="flex items-center gap-1.5 shrink-0">
+                  <Pill tone="muted">{c.role}</Pill>
+                  {/* How they got it. Without this an organization-wide grant
+                      is indistinguishable from access somebody chose to give
+                      for this repository in particular. */}
+                  {c.source === "org_owner" && <Pill tone="muted">org owner</Pill>}
+                  {c.source === "team" && <Pill tone="muted">via team</Pill>}
+                  {c.source === "direct" && <Pill tone="muted">direct</Pill>}
+                </span>
               </div>
             ))}
+            <p className="pt-2 text-xs text-slate-500 dark:text-slate-400">
+              Who can reach this repository. Not who has worked on it. Organization
+              owners hold admin on every repository whether or not they have ever
+              opened this one. For commits, see Top contributors below.
+            </p>
           </Section>
         )}
 
@@ -497,7 +540,7 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
 }
 
 function yesNo(v: boolean | null): string {
-  return v === null ? "—" : v ? "Enabled" : "Disabled";
+  return v === null ? "-" : v ? "Enabled" : "Disabled";
 }
 
 // ── small building blocks ─────────────────────────────────────────────

@@ -469,7 +469,7 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
         disposeTokenManager();
         const { resetGithubGate } = await import("../middleware/githubGate");
         resetGithubGate();
-        console.log(`[auth] Account ${account} has no GitHub App — token manager cleared`);
+        console.log(`[auth] Account ${account} has no GitHub App, token manager cleared`);
       }
       return true;
     }
@@ -835,7 +835,7 @@ router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
     res.status(missing ? 400 : 500).json({
       error: missing
         ? `The AWS CLI is not installed, or not on this app's PATH, so "aws sso login" could not be run. ` +
-          `Install it, or use the Access key tab instead — that needs no CLI.`
+          `Install it, or use the Access key tab instead. That needs no CLI.`
         : `Could not start "aws sso login": ${err?.message ?? err}`,
       code: missing ? "AWS_CLI_NOT_FOUND" : "AWS_SSO_LAUNCH_FAILED",
     });
@@ -999,7 +999,7 @@ router.get("/github", async (req: Request, res: Response) => {
       <p>${missingClientId
         ? "This AWS account's secret has no GitHub OAuth credentials in it, so there is "
           + "nothing to sign in with. If this account is meant to run the AWS guardrails "
-          + "only, that is expected — use the AWS tab."
+          + "only, that is expected. Use the AWS tab."
         : String(err?.message ?? err)}</p>
       <p><a href="/login">Back</a></p>
     `);

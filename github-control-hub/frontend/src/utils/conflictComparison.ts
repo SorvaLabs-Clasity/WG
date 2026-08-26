@@ -8,7 +8,7 @@
  */
 
 function fmtVal(v: any): string {
-  if (v === undefined || v === null) return "—";
+  if (v === undefined || v === null) return "-";
   if (typeof v === "boolean") return v ? "Yes" : "No";
   if (Array.isArray(v)) return v.length === 0 ? "None" : `${v.length} item(s)`;
   return String(v);
@@ -44,12 +44,12 @@ export function buildConflictComparison(
       const exPattern = exRules.get("tag_name_pattern");
       const tmplPattern = templateConfig.namePattern;
       if (exPattern || tmplPattern?.pattern) {
-        rows.push({ label: "Name Pattern", existing: exPattern ? `${exPattern.operator}: ${exPattern.pattern}` : "—", template: tmplPattern?.pattern ? `${tmplPattern.operator}: ${tmplPattern.pattern}` : "—" });
+        rows.push({ label: "Name Pattern", existing: exPattern ? `${exPattern.operator}: ${exPattern.pattern}` : "-", template: tmplPattern?.pattern ? `${tmplPattern.operator}: ${tmplPattern.pattern}` : "-" });
       }
 
       const supported = new Set(["creation", "update", "deletion", "non_fast_forward", "required_signatures", "tag_name_pattern"]);
       for (const [t] of exRules) {
-        if (!supported.has(t)) rows.push({ label: `Rule: ${t}`, existing: "Yes", template: "—" });
+        if (!supported.has(t)) rows.push({ label: `Rule: ${t}`, existing: "Yes", template: "-" });
       }
     } else {
       const exPr = exRules.get("pull_request");
@@ -77,7 +77,7 @@ export function buildConflictComparison(
 
       const supported = new Set(["pull_request", "required_status_checks", "creation", "update", "deletion", "non_fast_forward", "required_linear_history", "required_signatures", "required_deployments", "required_code_scanning", "code_quality", "copilot_code_review"]);
       for (const [t] of exRules) {
-        if (!supported.has(t)) rows.push({ label: `Rule: ${t}`, existing: "Yes", template: "—" });
+        if (!supported.has(t)) rows.push({ label: `Rule: ${t}`, existing: "Yes", template: "-" });
       }
     }
 

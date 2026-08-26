@@ -55,6 +55,29 @@ export function tableName(envVar: string): string {
   return name;
 }
 
+/**
+ * Is this table configured?
+ *
+ * Ask about the table you are about to write to, never about a different one.
+ * There used to be a single `usesDynamo()` that reported whether ACTIVITY_TABLE
+ * was set, and every service called it before touching its own, quite separate
+ * table. That is correct only while every process happens to hold both, and the
+ * graph aggregator's Lambda holds GRAPH_EDGES_TABLE and ORG_CONFIG_TABLE but
+ * not ACTIVITY_TABLE. In that function the answer was always "no", so the
+ * rebuild wrote its edges to a local file (and crashed), the light pass
+ * returned having done nothing, and the record of the last successful sync went
+ * to an in-memory object that died with the container, leaving the Access tab
+ * quoting a timestamp from the last time somebody pressed Sync by hand.
+ *
+ * Three separate outages, one wrong question. Each caller now asks about its
+ * own table, so a process missing one is wrong about that one alone and cannot
+ * be silently wrong about the rest.
+ */
+export function hasTable(envVar: string): boolean {
+  return !!process.env[envVar];
+}
+
+/** @deprecated Ask `hasTable("YOUR_TABLE")` instead. Kept for ACTIVITY_TABLE's own callers. */
 export function usesDynamo(): boolean {
   return !!process.env.ACTIVITY_TABLE;
 }
@@ -116,9 +139,6 @@ export async function scanAll<T>(
  * and a guardrail finding that is never stored: a security report that is
  * quietly shorter than the truth, which is the one failure mode the rest of
  * this codebase is built to avoid.
- *
- * `audit/ingest.ts` already got this right for the audit log. This is the same
- * loop, in one place, for everybody else.
  *
  * Requests are chunked to DynamoDB's limit of 25 here rather than by each
  * caller, and the backoff is exponential because the reason for a rejection is

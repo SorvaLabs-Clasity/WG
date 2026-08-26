@@ -131,7 +131,7 @@ export function StatusSlab({ intent, eyebrow, metrics, aside, footer }: {
 
       {/* The footer sits under the whole row, not inside the metrics column.
           Nested there, a sentence long enough to wrap made that column full
-          width, which pushed the aside onto its own line below — the big
+          width, which pushed the aside onto its own line below, the big
           percentage ending up bottom-left, under the caption, instead of
           opposite the numbers it belongs to. */}
       <div className="relative flex flex-wrap items-start justify-between gap-x-10 gap-y-6">

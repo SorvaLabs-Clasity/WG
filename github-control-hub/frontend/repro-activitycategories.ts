@@ -29,6 +29,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 const EXPECTED: Array<[string, ActivityCategory]> = [
   // Changed something about the organization.
   ["branch.create", "github"], ["branch.delete", "github"], ["branch.rename", "github"],
+  ["tag.create", "github"], ["tag.delete", "github"],
   ["branch.protect", "github"], ["branch.unprotect", "github"],
   ["repo.created", "github"], ["repo.publicized", "github"],
   ["repo.ruleset.create", "github"], ["repo.ruleset.delete", "github"], ["repo.ruleset.import", "github"],
@@ -63,7 +64,10 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
   ["sync.access", "app"], ["sync.scanner", "app"], ["sync.reminders", "app"],
   ["sync.alarms", "app"],
 
-  ["audit.event", "audit"],
+  // Legacy: the enterprise audit stream was removed, but rows it wrote keep
+  // their 13-month retention. They were always organization events, so that
+  // is where they read from now.
+  ["audit.event", "github"],
 ];
 
 {
@@ -144,14 +148,14 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
 {
   const counts = countByCategory(["branch.protect", "widget.create", "aws.guardrail", "audit.event", "branch.delete"]);
   check("counts add up per stream",
-    counts.github === 2 && counts.app === 1 && counts.aws === 1 && counts.audit === 1, counts);
+    counts.github === 3 && counts.app === 1 && counts.aws === 1, counts);
   check("  and an empty feed counts zero everywhere",
     Object.values(countByCategory([])).every(n => n === 0), countByCategory([]));
 
   // The tab label has to agree with what the tab holds, or the count says one
   // thing and the table shows another.
   check("  the Everything count is the sum of the four streams",
-    counts.all === counts.github + counts.app + counts.aws + counts.audit, counts);
+    counts.all === counts.github + counts.app + counts.aws, counts);
 }
 
 // ── the combined view ─────────────────────────────────────────────────
@@ -178,13 +182,11 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
 
 // ── the source filter, which used to be offered where it could only empty ──
 {
-  // Offered in all four streams, listing app and github. In the audit stream
-  // every row is source `audit`, so either choice matched nothing: the filter
-  // could only ever empty the table.
+  // Offered where it can change what is shown. A stream whose every row
+  // carries one source has nothing to filter by.
   check("a stream with one possible source does not offer the filter",
-    sourcesFor("audit").length === 1 && sourcesFor("app").length === 1
-      && sourcesFor("aws").length === 1,
-    { audit: sourcesFor("audit"), app: sourcesFor("app"), aws: sourcesFor("aws") });
+    sourcesFor("app").length === 1 && sourcesFor("aws").length === 1,
+    { app: sourcesFor("app"), aws: sourcesFor("aws") });
 
   check("  the organization stream does, being the only one written both ways",
     sourcesFor("github").length === 2
@@ -193,12 +195,11 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
 
   check("  and Everything offers each source once",
     sourcesFor("all").length === new Set(sourcesFor("all")).size
-      && sourcesFor("all").includes("audit"),
+      && sourcesFor("all").includes("app") && sourcesFor("all").includes("github"),
     sourcesFor("all"));
 
-  // The audit source was missing from the dropdown entirely, so audit rows
-  // could not be isolated in the combined view even though they are the
-  // majority of it.
+  // Every source any stream can produce has to be offered here, or rows of
+  // that source cannot be isolated in the merged view at all.
   const everySource = new Set(CATEGORY_ORDER.flatMap(c => CATEGORY_SOURCES[c]));
   check("  covering every source any stream can produce",
     [...everySource].every(src => sourcesFor("all").includes(src)),

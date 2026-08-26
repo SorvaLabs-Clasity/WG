@@ -7,6 +7,8 @@ export type ActivityAction =
   | "branch.create"
   | "branch.delete"
   | "branch.rename"
+  | "tag.create"
+  | "tag.delete"
   | "branch.protect"
   | "branch.unprotect"
   | "template.apply"
@@ -45,7 +47,6 @@ export type ActivityAction =
   | "github.ruleset_edited"
   | "config.import"
   | "config.updated"
-  | "audit.event"
   // The AWS guardrail screens. `aws.guardrail` itself is absent on purpose —
   // the Lambda writes that string directly, from a bundle that does not import
   // this file.
@@ -78,14 +79,18 @@ export interface RetryPayload {
 
 export interface ActivityEntry {
   id: string;
-  source: "app" | "github" | "audit";
+  source: "app" | "github";
   action: ActivityAction;
   actor: string;
   repo: string;
   target: string;
   details?: string;
-  /** Who an audit event was about, when that differs from who performed it. */
-  subject?: string;
+  /**
+   * Written under the detailed-logging toggle. Marked on the row rather than
+   * derived from the action, so the view filter stays truthful about what each
+   * row *was* even if the set of detailed kinds changes later.
+   */
+  detailed?: boolean;
   diff?: any;
   timestamp: string;
   prNumber?: number;
@@ -225,7 +230,7 @@ export async function logActivity(
   source: "app" | "github" = "app",
   prNumber?: number,
   commitSha?: string,
-  extra?: { parentId?: string; undoPayload?: UndoPayload; failed?: boolean; errorMessage?: string; retryPayload?: RetryPayload; conflictPayload?: ActivityEntry["conflictPayload"]; linkedActivityId?: string; undone?: boolean }
+  extra?: { parentId?: string; undoPayload?: UndoPayload; failed?: boolean; errorMessage?: string; retryPayload?: RetryPayload; conflictPayload?: ActivityEntry["conflictPayload"]; linkedActivityId?: string; undone?: boolean; detailed?: boolean }
 ): Promise<ActivityEntry> {
   const entry: ActivityEntry = {
     id: crypto.randomUUID(),
@@ -239,6 +244,7 @@ export async function logActivity(
     prNumber,
     commitSha,
     timestamp: new Date().toISOString(),
+    ...(extra?.detailed && { detailed: true }),
     ...(extra?.parentId && { parentId: extra.parentId }),
     ...(extra?.undoPayload && { undoPayload: extra.undoPayload }),
     ...(extra?.failed && { failed: true }),

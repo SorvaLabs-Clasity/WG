@@ -12,8 +12,6 @@ import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as cwActions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
-import * as s3 from "aws-cdk-lib/aws-s3";
-import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as wafv2 from "aws-cdk-lib/aws-wafv2";
 import * as logs from "aws-cdk-lib/aws-logs";
 import { SqsEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
@@ -61,7 +59,7 @@ interface GitHubControlHubProps extends cdk.StackProps {
   stackPrefix?: string;
   /**
    * Deploy only the AWS guardrail half: no webhook, no alarm evaluator, no
-   * access graph, no audit-log pipeline.
+   * access graph.
    *
    * For an account that should run the guardrails and hold nothing about the
    * GitHub organization. Set through `-c awsOnly=true`.
@@ -265,8 +263,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // ── The GitHub half ─────────────────────────────────────────────────
     //
     // Everything from here to the outputs exists to serve GitHub: the webhook
-    // endpoint and its queue, the alarm evaluator, the access graph rebuild, and
-    // the enterprise audit-log pipeline.
+    // endpoint and its queue, the alarm evaluator, and the access graph rebuild.
     //
     // An organization can reasonably want the guardrails watching a production
     // account while nothing about its GitHub organization lives there — no App
@@ -628,7 +625,35 @@ export class GitHubControlHubStack extends cdk.Stack {
         ruleName: `${stackPrefix}-graph-aggregation`,
         description: "Rebuilds the access graph from GitHub",
         schedule: events.Schedule.rate(cdk.Duration.hours(6)),
-        targets: [new targets.LambdaFunction(graphFn)],
+        targets: [new targets.LambdaFunction(graphFn, {
+          event: events.RuleTargetInput.fromObject({ mode: "full" }),
+        })],
+      });
+
+      // The cheap half, far more often.
+      //
+      // Six checks read edges the six-hourly walk is otherwise the only writer
+      // of — repository visibility, archival, last push, team ownership and
+      // team membership. None of that is per-repository work: the metadata
+      // arrives with the repository listing at no extra cost, and team
+      // composition is two calls per team. Under a hundred requests, against
+      // an allowance of fifteen thousand an hour.
+      //
+      // The expensive part of the rebuild — every repository's collaborators,
+      // branches, workflows and alerts, four requests each — stays on six
+      // hours. Running *that* every thirty minutes is what this deliberately
+      // is not.
+      //
+      // Webhooks already patch these edges as changes arrive. This is the
+      // backstop for a delivery that was missed, arrived out of order, or was
+      // never sent, which nothing else would correct until the next rebuild.
+      new events.Rule(this, "GraphLightRefreshSchedule", {
+        ruleName: `${stackPrefix}-graph-light-refresh`,
+        description: "Refreshes repository metadata and team composition",
+        schedule: events.Schedule.rate(cdk.Duration.minutes(30)),
+        targets: [new targets.LambdaFunction(graphFn, {
+          event: events.RuleTargetInput.fromObject({ mode: "light" }),
+        })],
       });
 
       const apiLogGroup = new logs.LogGroup(this, "WebhookApiAccessLogs", {
@@ -791,125 +816,13 @@ export class GitHubControlHubStack extends cdk.Stack {
         if (alarmTopic) alarm.addAlarmAction(new cwActions.SnsAction(alarmTopic));
       }
 
-      // ── Enterprise audit log ──
-      //
-      // GitHub streams the enterprise audit log here as gzipped newline-delimited
-      // JSON. Nothing in this stack can make that happen — an enterprise owner
-      // configures streaming in GitHub's UI and points it at this bucket. Until
-      // they do, everything below sits idle and costs nothing.
-      //
-      // Streaming rather than polling the audit log API: the API is rate limited
-      // to 1,750 requests an hour and its history is capped, while a bucket keeps
-      // everything for as long as the lifecycle rule below says.
-      // Some organizations run a Config rule that applies a TLS-only bucket
-      // policy the moment a bucket appears. That control and enforceSSL want the
-      // same thing and cannot both have it: CloudFormation creates the bucket,
-      // the remediation writes its policy within seconds, and CloudFormation's
-      // own CreateBucketPolicy then fails with "the bucket policy already
-      // exists". The stack rolls back, RETAIN keeps the bucket and the
-      // remediation's policy, and every retry replays the same race — there is
-      // no number of attempts that wins it.
-      //
-      // The guardrail owns bucket policies here; see the audit bucket below.
-      const auditBucket = new s3.Bucket(this, "AuditLogBucket", {
-        bucketName: `${stackPrefix}-audit-log-${this.account}`,
-        encryption: s3.BucketEncryption.S3_MANAGED,
-        blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-        // No bucket policy from this stack.
-        //
-        // enforceSSL would have CloudFormation write a deny-non-TLS statement —
-        // the same statement the app's own S3 guardrail writes on every bucket
-        // in the account, this one included. Two mechanisms for one job, and
-        // whichever lost the race to create it failed the deploy.
-        //
-        // So the guardrail owns bucket policies, alone. Add the S3 rule in the
-        // AWS tab and it covers this bucket like any other — and re-adds the
-        // statement on its next sweep if anyone strips it, which CloudFormation
-        // would only do on the next deploy.
-        //
-        // Until that rule exists and is set to enforce, this bucket has no TLS
-        // policy. It blocks all public access and only the audit-log role and
-        // the ingest Lambda can reach it, but that is the trade being made.
-        versioned: false,
-        // The audit log is the record of who did what. Deleting the stack must
-        // not take it with it, and CDK will refuse rather than silently destroy.
-        removalPolicy: cdk.RemovalPolicy.RETAIN,
-        lifecycleRules: [{
-          // The raw archive is the complete record; DynamoDB only indexes the
-          // consequential part. Thirteen months matches the activity feed's own
-          // retention, so both halves of the trail end at the same moment rather
-          // than one outliving the other by an unexplained margin.
-          id: "match-activity-retention",
-          expiration: cdk.Duration.days(400),
-          // Most of this is never read twice. Infrequent Access after a month
-          // costs less to store and more to retrieve, which is the right way
-          // round for an audit archive.
-          transitions: [{
-            storageClass: s3.StorageClass.INFREQUENT_ACCESS,
-            transitionAfter: cdk.Duration.days(30),
-          }],
-          abortIncompleteMultipartUploadAfter: cdk.Duration.days(7),
-        }],
-      });
-
-      const auditIngestFn = new NodejsFunction(this, "AuditLogIngest", {
-        functionName: `${stackPrefix}-audit-ingest`,
-        logGroup: logGroupFor("AuditLogIngest", `${stackPrefix}-audit-ingest`),
-        runtime: lambda.Runtime.NODEJS_24_X,
-        entry: path.join(__dirname, "..", "backend", "src", "audit", "ingest.ts"),
-        handler: "handler",
-        projectRoot: path.join(__dirname, ".."),
-        depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-        // One object holds a batch of events, not one event. Gunzip plus a
-        // BatchWrite loop is quick, but a large object on a busy enterprise
-        // should not be cut off part way — a truncated batch loses audit rows.
-        timeout: cdk.Duration.minutes(5),
-        memorySize: 512,
-        environment: {
-          STACK_NAME: stackPrefix,
-          ACTIVITY_TABLE: `${stackPrefix}-activity`,
-          // Widen this without a code change once real volume is known. Empty or
-          // absent means the built-in list of consequential events.
-          AUDIT_EVENT_ALLOWLIST: "",
-        },
-        bundling: webhookBundling,
-      });
-
-      auditBucket.grantRead(auditIngestFn);
-      auditIngestFn.addToRolePolicy(new iam.PolicyStatement({
-        sid: "WriteAuditRowsToActivity",
-        // Write-only, and to one table. This function reads nothing back: it
-        // turns objects into rows and has no reason to query the feed.
-        actions: ["dynamodb:PutItem", "dynamodb:BatchWriteItem"],
-        resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-activity`],
-      }));
-
-      auditBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(auditIngestFn));
-
-      // ── Audit log streaming: how GitHub authenticates ──
-      //
-      // GitHub offers two ways to write to the bucket: an AWS access key pair,
-      // or OpenID Connect. The key pair means storing long-lived AWS credentials
-      // on GitHub, which is a standing liability for a bucket that holds the
-      // record of who did what. OIDC hands GitHub a temporary credential per
-      // upload and stores nothing.
-      //
-      // The OIDC provider and the role GitHub assumes are NOT created here.
-      //
-      // They were, behind `-c auditEnterprise=<slug>`, which made the feature
-      // reachable only by someone who knew a flag documented in a code comment.
-      // The app creates them now, from the Activity page, where it can also say
-      // whether streaming is actually running — something a deploy cannot know.
-      //
-      // Left out rather than duplicated: two owners racing to create one role is
-      // the failure the audit bucket's policy used to produce, and it is not
-      // worth reproducing for the sake of a second way to do the same thing.
-
-
-      new cdk.CfnOutput(this, "AuditLogBucketName", {
-        value: auditBucket.bucketName,
-        description: "Point GitHub's enterprise audit log streaming at this bucket",
-      });
+      // The enterprise audit-log pipeline (an S3 bucket GitHub streamed into,
+      // and a Lambda that indexed it) used to live here. Removed: GitHub's own
+      // enterprise settings already show that log, and the activity feed's
+      // detailed-logging toggle now records the routine GitHub traffic through
+      // the webhook worker instead. The bucket carried RemovalPolicy.RETAIN,
+      // so on stacks that had it deployed it is orphaned, not deleted; empty
+      // and delete it by hand once its contents are no longer wanted.
 
       new cdk.CfnOutput(this, "WebhookUrl", {
         value: `${webhookApi.url}webhooks/github`,

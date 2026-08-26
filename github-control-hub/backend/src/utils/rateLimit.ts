@@ -55,7 +55,7 @@ export function parseRateLimit(err: unknown): RateLimitInfo | null {
 
 function describe(info: RateLimitInfo): string {
   if (info.kind === "secondary") {
-    return "GitHub is asking us to slow down — too many requests in a short window. " +
+    return "GitHub is asking us to slow down, too many requests in a short window. " +
       "This clears on its own in under a minute.";
   }
   return "GitHub's hourly request budget for this organization is spent" +

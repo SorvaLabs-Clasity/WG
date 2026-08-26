@@ -65,7 +65,7 @@ export const REMOVED_UNDO_ACTIONS = new Set<string>([
  */
 export function unsupportedUndoReason(action: string): string {
   if (REMOVED_UNDO_ACTIONS.has(action)) {
-    return `This action can no longer be undone — the templates and exclusion ` +
+    return `This action can no longer be undone, the templates and exclusion ` +
       `lists feature was removed, and with it the ability to reverse "${action}". ` +
       `The entry is kept so the history stays readable.`;
   }

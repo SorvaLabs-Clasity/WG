@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { logActivity } from "./activityService";
-import { docClient, usesDynamo, tableName, PutCommand, ScanCommand, GetCommand, DeleteCommand, scanAll } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, ScanCommand, GetCommand, DeleteCommand, scanAll } from "../utils/dynamo";
 import type { AlarmCondition, AlarmState, Severity } from "../alarms/conditions";
 import {
   DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY,
@@ -117,7 +117,7 @@ const TABLE = () => tableName("ALARMS_TABLE");
 let memStore: AnyRecord[] = [];
 
 async function allRecords(): Promise<AnyRecord[]> {
-  if (usesDynamo()) {
+  if (hasTable("ALARMS_TABLE")) {
     // Paged, and filtered server-side.
     //
     // Paged because a single scan stops at 1MB without saying so, and every
@@ -139,7 +139,7 @@ async function allRecords(): Promise<AnyRecord[]> {
 }
 
 async function put(record: AnyRecord): Promise<void> {
-  if (usesDynamo()) {
+  if (hasTable("ALARMS_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: record }));
     return;
   }
@@ -149,7 +149,7 @@ async function put(record: AnyRecord): Promise<void> {
 }
 
 async function getById<T extends AnyRecord>(id: string): Promise<T | undefined> {
-  if (usesDynamo()) {
+  if (hasTable("ALARMS_TABLE")) {
     const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id } }));
     return result.Item as T | undefined;
   }
@@ -318,7 +318,7 @@ export async function saveAlarmRuntime(
 export async function deleteAlarm(id: string, actor: string): Promise<boolean> {
   const existing = await getAlarm(id);
   if (!existing) return false;
-  if (usesDynamo()) {
+  if (hasTable("ALARMS_TABLE")) {
     await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { id } }));
   } else {
     memStore = memStore.filter(r => r.id !== id);
@@ -364,7 +364,7 @@ export async function createGroupRecord(
 export async function deleteGroupRecord(id: string, actor: string): Promise<EmailGroup | null> {
   const existing = await getGroup(id);
   if (!existing) return null;
-  if (usesDynamo()) {
+  if (hasTable("ALARMS_TABLE")) {
     await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { id } }));
   } else {
     memStore = memStore.filter(r => r.id !== id);
@@ -923,6 +923,11 @@ export interface WidgetSnapshot {
   total: number;
   /** True when `payload` holds fewer rows than `total`. */
   trimmed: boolean;
+  /**
+   * Repositories in the organization when this was computed, so the card can
+   * draw its share on the first paint rather than after a second request.
+   */
+  repoTotal?: number;
   /** Set when the check could not complete. Rows are then not to be trusted. */
   error?: string;
   computedAt: string;
@@ -947,6 +952,18 @@ export function widgetSnapshotId(widgetId: string): string {
 export async function saveWidgetSnapshot(
   widgetId: string,
   result: { rows: unknown[] | null; error?: string },
+  /**
+   * How many repositories the count is out of, at the moment the rows were
+   * computed.
+   *
+   * Stored with the answer because it *is* part of the answer. The dashboard
+   * used to take the rows from here and the denominator from a separate
+   * repository listing that arrived a few seconds later, so every card opened
+   * with no share, drew itself amber, then repainted to its real colour once
+   * the second request landed. A stored answer that needs a live request to be
+   * read is not a stored answer.
+   */
+  repoTotal?: number | null,
 ): Promise<void> {
   const all = result.rows ?? [];
   let rows = all;
@@ -967,6 +984,7 @@ export async function saveWidgetSnapshot(
     payload,
     total: all.length,
     trimmed: rows.length < all.length,
+    ...(typeof repoTotal === "number" ? { repoTotal } : {}),
     ...(result.error ? { error: result.error } : {}),
     computedAt: new Date().toISOString(),
     ttl: Math.floor(Date.now() / 1000) + WIDGET_SNAPSHOT_TTL_HOURS * 3600,
@@ -978,6 +996,8 @@ export interface ReadWidgetSnapshot {
   rows: any[];
   total: number;
   trimmed: boolean;
+  /** Repositories in the organization when this was computed, if known. */
+  repoTotal?: number;
   error?: string;
   computedAt: string;
 }
@@ -993,6 +1013,7 @@ export async function readWidgetSnapshots(): Promise<ReadWidgetSnapshot[]> {
         rows: JSON.parse(row.payload) ?? [],
         total: row.total ?? 0,
         trimmed: !!row.trimmed,
+        ...(typeof row.repoTotal === "number" ? { repoTotal: row.repoTotal } : {}),
         ...(row.error ? { error: row.error } : {}),
         computedAt: row.computedAt,
       });
@@ -1007,7 +1028,7 @@ export async function readWidgetSnapshots(): Promise<ReadWidgetSnapshot[]> {
 /** Drops a widget's snapshot, so a deleted widget leaves nothing behind. */
 export async function deleteWidgetSnapshot(widgetId: string): Promise<void> {
   const id = widgetSnapshotId(widgetId);
-  if (usesDynamo()) {
+  if (hasTable("ALARMS_TABLE")) {
     await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { id } }));
   } else {
     memStore = memStore.filter(r => r.id !== id);

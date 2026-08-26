@@ -30,8 +30,8 @@ has its own script:
 
 It creates the DynamoDB tables, a secret holding only what sign-in needs, and
 one Lambda on a schedule. It deploys with `-c awsOnly=true`, so the webhook
-endpoint, the alarm evaluator, the access graph and the audit-log pipeline are
-never created — six Lambda functions become one.
+endpoint, the alarm evaluator and the access graph are never created: five
+Lambda functions become one.
 
 Twelve tables are created, not six: the same script the full install uses makes
 them, so their schemas cannot drift from the ones the app reads. The six that
@@ -217,7 +217,7 @@ Then, in order:
 | Team slug | Controls |
 |---|---|
 | `control-hub-admins` | Everything GitHub-side: scanners, widgets, alerts, alarms and email groups, pull request reminders, the Renovate bot name, rebuilding the access graph, config import, and undoing changes to any of them |
-| `aws-guardrail-admins` | AWS rules, sweeps, enforce mode, and audit-log streaming — the things that write to the AWS account |
+| `aws-guardrail-admins` | AWS rules, sweeps, enforce mode, and the detailed-logging switch |
 
 The dividing line is which account an action touches, not which screen it is on.
 Alarms are delivered by SNS, for instance, and are still a `control-hub-admins`
@@ -444,7 +444,7 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 > a new deployment, but it is worth checking on a first setup too, in case a
 > teammate already ran phase 1 twice.
 
-**Events** — choose "Let me select individual events", then tick these ten.
+**Events** — choose "Let me select individual events", then tick these eleven.
 
 The checkboxes are labelled in prose, not by event name, and several do not
 resemble the name at all — `member` is "Collaborator add, remove, or changed"
@@ -458,12 +458,19 @@ what you are looking for on the page.
 | **Branch or tag deletion** | `delete` | Branch deletion in activity, and the protection-removed alert |
 | **Branch protection rules** | `branch_protection_rule` | The alert when protection is weakened or removed |
 | **Collaborator add, remove, or changed** | `member` | Access changes in activity and the access map |
-| **Dependabot alerts** | `dependabot_alert` | The Dependabot vulnerability email |
+| **Dependabot alerts** | `dependabot_alert` | The vulnerability email, and the dependency edges behind `repos-dependent-on` |
 | **Pull requests** | `pull_request` | The Renovate pull-request email |
-| **Pushes** | `push` | Default-branch pushes triggering a graph refresh |
-| **Repositories** | `repository` | Repository created, deleted, made public or private |
+| **Pushes** | `push` | The last-push time behind `stale-repos` |
+| **Repositories** | `repository` | Repository created or deleted, and the visibility and archival behind `public-repos` and `archived-repos-with-access` |
 | **Repository rulesets** | `repository_ruleset` | Ruleset changes, the modern form of branch protection |
-| **Teams** | `team` | Team access changes in the access map |
+| **Membership** | `membership` | A person joining or leaving a team — what `empty-teams` and team membership in the access map read. Its description reads "Team membership added or removed"; do not confuse it with **Teams** below |
+| **Teams** | `team` | Team access changes in the access map, and the ownership behind `unowned-repos` |
+
+> **Adding `membership` to an existing installation.** It is the only event here
+> that was added after the first release, so an App set up earlier will not have
+> it ticked. Without it `empty-teams` and team membership in the access map fall
+> back to the 30-minute refresh pass instead of updating in seconds — correct,
+> just slower. Nothing breaks if you forget it.
 
 **`organization` was on this list and should not be.** The app subscribes to
 nothing for it and drops every delivery, so ticking it costs a webhook call per
@@ -518,118 +525,51 @@ half of an audit trail. See [webhooks](../github-api/webhooks.md).
 
 ---
 
-## Phase 4 — Enterprise audit-log streaming (optional)
+## Phase 4 — Detailed GitHub logging (optional)
 
-Only if the organization belongs to a GitHub **Enterprise**. It gives the app
-the events GitHub does not send over a webhook — sign-ins, SSO changes, token
-grants, enterprise-level policy edits — as a gzipped archive nobody can rewrite.
+Nothing to deploy and nothing to configure in AWS. This is a switch inside the
+app, and it works off webhook deliveries Phase 3 already set up.
 
-There is **no deploy flag and no CDK context for this.** It used to be
-`-c auditEnterprise=<slug>`, which made the feature reachable only by somebody
-who knew a flag documented in a code comment. It is now set up from inside the
-app, in two halves, and neither half can do the other's job.
+By default the Activity feed's **Organization** stream records changes to
+structure and access: repositories created, deleted or made public; branch
+protection and rulesets changing. Detailed logging adds the routine traffic on
+top of that: branches and tags created or deleted, commits pushed, pull requests
+opened, merged and closed.
 
-### The AWS half — in the app
+**Activity → Organization**, as a member of `aws-guardrail-admins`. Flip
+**Detailed GitHub logging** on, then use **Choose kinds** to uncheck anything you
+do not want.
 
-**Activity → Audit log.** With nothing configured it says so and asks for your
-**enterprise slug** — the name in `github.com/enterprises/<name>`, not the
-organization name.
+Two things worth knowing before you turn it on:
 
-Setting it up uses **your own AWS credentials**, not the app's, and creates:
+- **Turning it off later keeps everything already collected.** The switch
+  governs what gets written from now on, never what is shown. Rows keep their
+  full 13-month retention either way.
+- **It adds rows to the `activity` table**, which is billed per write. On a busy
+  organization the push and pull-request kinds are by far the highest volume;
+  uncheck those first if the feed gets noisy.
 
-| Resource | Detail |
-|---|---|
-| **OIDC provider** | Issuer `https://oidc-configuration.audit-log.githubusercontent.com`, audience `sts.amazonaws.com`. Account-wide and shared — a second one for the same issuer is refused by AWS, so it is created only if absent |
-| **Role** `<prefix>-audit-log-stream` | Trusts that issuer **and only your enterprise slug**, allowed `s3:PutObject` on the audit bucket and nothing else |
+Readers who do not want to see them can set **Detailed rows: Hidden** in the
+Advanced Filters on the Activity page. That is a per-browser view choice and does
+not affect what is collected.
 
-Pinned deliberately: a role trusting the issuer without naming a subject would
-accept uploads from *any* GitHub enterprise into the bucket whose whole purpose
-is being the record nobody can rewrite.
+> **Enterprise audit-log streaming used to be this phase.** It created an S3
+> bucket GitHub streamed into and a Lambda that indexed it. It has been removed:
+> GitHub's own enterprise settings already show that log. If you deployed a
+> version that had it, the bucket was created with `RemovalPolicy.RETAIN` and so
+> still exists after the next deploy. Empty and delete
+> `<prefix>-audit-log-<account-id>` by hand once you no longer want its contents,
+> and remove the `<prefix>-audit-log-stream` IAM role and the
+> `oidc-configuration.audit-log.githubusercontent.com` OIDC provider if nothing
+> else uses them. Rows the pipeline wrote have been deleted from the activity
+> table; nothing of it remains in the app.
 
-The bucket itself already exists — `cdk deploy` created it in phase 2 under
-`RemovalPolicy.RETAIN`, with public access blocked, Infrequent Access after 30
-days and expiry at 400.
-
-### The GitHub half — an enterprise owner, once, in a browser
-
-The app cannot do this one and does not pretend to. It needs an **enterprise
-owner**; an organization owner does not see the page.
-
-`https://github.com/enterprises/<slug>/settings/audit_log/stream` — or navigate:
-avatar → **Your enterprises** → the enterprise → **Settings** → **Audit log** →
-**Log streaming** tab → **Configure stream** → **Amazon S3**.
-
-Fill in three things:
-
-| Field | Value |
-|---|---|
-| Authentication | **OpenID Connect** — *not* access keys |
-| Bucket | `<prefix>-audit-log-<aws-account-id>` |
-| ARN role | `arn:aws:iam::<aws-account-id>:role/<prefix>-audit-log-stream` |
-
-`<prefix>` is the stack prefix, `github-control-hub` unless you changed it.
-
-**Three places to get those two values**, in order of least room for error:
-
-1. **The app** — Activity → Audit log, after the AWS half. Both are shown with
-   copy buttons. Use this one.
-2. **The IAM console** — Roles → search `audit-log-stream` → the ARN is at the
-   top of the summary. The bucket is in S3 under the same prefix.
-3. **Build it yourself** from the pattern above, with
-   `aws sts get-caller-identity --query Account --output text` for the account
-   id. Only worth doing to double-check the other two.
-
-The role ARN is deliberately **not** a stack output. The stack does not create
-that role — the app does, with your credentials — so `cdk deploy` has nothing to
-print and printing a name for a role that may not exist would be worse than
-silence.
-
-Press **Check endpoint**, then save. GitHub sends a test event; if it succeeds,
-batches begin arriving and the app's page moves to **Connected** within a few
-minutes.
-
-**If the test fails**, it is almost always one of three things:
-
-| Symptom | Cause |
-|---|---|
-| Access denied | The enterprise slug given to the app does not match this enterprise. The trust policy names it explicitly, so a mismatch is refused by design — re-run the AWS half with the right slug |
-| Role does not exist | The AWS half was not run, or was run against a different AWS account |
-| Bucket not found | The bucket belongs to the account the stack was deployed to; check you are reading the ARN and bucket from the same install |
-
-Nothing arriving is **not** the same as a failed test. GitHub streams on its own
-schedule — minutes, not seconds — and an enterprise with no activity produces no
-batches.
-
-### Reading the state
-
-| The page says | Meaning |
-|---|---|
-| **Not set up** | Neither half done |
-| **AWS is ready — waiting on GitHub** | Your half is done; the enterprise owner has not switched streaming on |
-| **Connected** | Batches are arriving, with a count |
-
-That middle state is why this lives in the app rather than in a deploy: AWS can
-be perfectly configured while GitHub sends nothing, and a deploy cannot tell you
-that — it only knows what it created.
-
-### Turning it off
-
-**Turn off streaming** on the same page deletes the role GitHub assumes, so the
-next upload has nothing to assume. **Everything already collected is kept** —
-the bucket, its contents and the 400-day expiry are untouched. GitHub's own
-streaming switch is left alone and will simply fail to deliver; setting up again
-restores it.
-
-See [audit log](../features/audit-log.md) for what is captured and what it costs.
-
----
 
 ## Bucket policies belong to the guardrail
 
-This stack writes no S3 bucket policy. The audit bucket it creates has none
-until the app's own **S3 — deny non-TLS requests** rule exists and is set to
-enforce, at which point that rule covers it like every other bucket in the
-account.
+This stack writes no S3 bucket policy at all. Where a bucket exists in the
+account, the app's own **S3: deny non-TLS requests** rule covers it once that
+rule exists and is set to enforce.
 
 That is one mechanism rather than two. CloudFormation used to write the same
 deny the guardrail writes, and in an account running an S3 TLS auto-remediation
@@ -641,18 +581,6 @@ It also enforces better. CloudFormation reconciles a policy on the next deploy;
 the guardrail re-adds the statement on its next sweep, so a policy somebody
 strips is restored in minutes rather than whenever the stack is next touched.
 
-**The trade:** until you create that rule and enforce it, the audit bucket has
-no TLS policy. It blocks all public access and only the audit-log role and the
-ingest Lambda can reach it, but nothing denies a plaintext request. Check it
-after enforcing the rule:
-
-```bash
-aws s3api get-bucket-policy \
-  --bucket github-control-hub-audit-log-$(aws sts get-caller-identity --query Account --output text) \
-  --query Policy --output text | python3 -m json.tool
-```
-
-A `Deny` on `aws:SecureTransport: false` is what you want.
 
 ## Standing up a whole environment
 
@@ -697,8 +625,7 @@ Its deploy takes no context by default. Pass any through:
 ```
 
 This stack takes **no CDK context at all**. `-c auditEnterprise=<slug>` used to
-enable enterprise audit-log streaming and no longer exists — it is set up in the
-app instead, in [phase 4](#phase-4--enterprise-audit-log-streaming-optional).
+enable enterprise audit-log streaming; both the flag and the feature are gone.
 Passing it now is silently ignored.
 
 ## Running more than one environment

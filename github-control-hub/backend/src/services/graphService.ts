@@ -1,4 +1,4 @@
-import { docClient, usesDynamo, tableName, ScanCommand } from "../utils/dynamo";
+import { docClient, hasTable, tableName, ScanCommand } from "../utils/dynamo";
 import { getSystemToken } from "../github/client";
 import { rulesetCoversBranch } from "./branchService";
 import fs from "fs";
@@ -50,7 +50,7 @@ let edgeCacheInFlight: Promise<any[]> | null = null;
  * exists for.
  */
 export async function scanGraphEdges(): Promise<any[]> {
-  if (!usesDynamo()) return loadLocalEdges();
+  if (!hasTable("GRAPH_EDGES_TABLE")) return loadLocalEdges();
 
   if (edgeCache && Date.now() - edgeCache.at < EDGE_CACHE_MS) return edgeCache.edges;
   if (edgeCacheInFlight) return edgeCacheInFlight;
@@ -131,7 +131,7 @@ const REQUIRES: Record<string, string> = {
 /** A saved widget naming a check that no longer exists. */
 export class UnknownQueryError extends Error {
   constructor(readonly queryId: string) {
-    super(`No check named "${queryId}" — it may have been removed.`);
+    super(`No check named "${queryId}". It may have been removed.`);
     this.name = "UnknownQueryError";
   }
 }
@@ -578,7 +578,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
           if (missed.length > 0) {
             allBranchesPass = false;
-            failureDetails.push(`"${branch}": Missing rules — ${missed.join(", ")}`);
+            failureDetails.push(`"${branch}": Missing rules, ${missed.join(", ")}`);
           } else {
             branchSummaries.push(`${branch}: ${matchedType}${matched.length ? ` (${matched.join(", ")})` : ""}`);
           }
@@ -939,6 +939,56 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       const cutoff = new Date();
       cutoff.setUTCMonth(cutoff.getUTCMonth() - months);
 
+      // Who to ask about it, which is the question a stale repository raises.
+      //
+      // Built once rather than looked up per result: the edge list is already
+      // in memory and a scan per row would be quadratic on an organization
+      // where this check returns hundreds.
+      //
+      // Several teams can own one repository, so this is a list. Not every
+      // repository has any — that state is what `unowned-repos` exists to
+      // report — and an absent owner is left null here so the column can say
+      // so rather than showing an empty cell that reads as unknown.
+      // Who to ask about it, in three tiers, because "owner" is not one thing.
+      //
+      //   1. a team that owns it
+      //   2. failing that, a person holding admin *directly*
+      //   3. failing that, whoever has committed most
+      //
+      // Tier 2 leans on `source`, which the rebuild records on every
+      // collaborator edge. Without it this tier would be useless: organization
+      // owners hold admin on every repository, so every unowned repository
+      // would name the same handful of people, and a team member with admin
+      // would be reported as an individual owner when the team is the answer.
+      // Only `direct` is somebody who was granted it on this repository alone.
+      const staleOwners = new Map<string, string[]>();
+      const staleAdmins = new Map<string, string[]>();
+      const staleTopContributor = new Map<string, string>();
+      const staleUnlinkedContributor = new Map<string, string>();
+      for (const edge of allEdges) {
+        if (edge.type === "owned_by_team") {
+          const list = staleOwners.get(edge.pk) ?? [];
+          list.push(String(edge.sk).replace("TEAM#", ""));
+          staleOwners.set(edge.pk, list);
+        } else if (edge.type === "has_collaborator"
+                   && edge.metadata?.role === "admin"
+                   && edge.metadata?.source === "direct") {
+          const list = staleAdmins.get(edge.pk) ?? [];
+          list.push(String(edge.sk).replace("USER#", ""));
+          staleAdmins.set(edge.pk, list);
+        } else if (edge.type === "top_contributor") {
+          // A registered account, or a git identity with no account behind it.
+          // Kept apart all the way to the column: a username and a git author
+          // name are both answers to who pushes here, but only one of them is
+          // somebody you can go and ask, and the label is what says which.
+          if (edge.metadata?.login) {
+            staleTopContributor.set(edge.pk, String(edge.metadata.login));
+          } else if (edge.metadata?.name) {
+            staleUnlinkedContributor.set(edge.pk, String(edge.metadata.name));
+          }
+        }
+      }
+
       for (const edge of allEdges) {
         if (edge.type !== "repo_meta") continue;
         // An archived repository is stale by definition — archiving is the act
@@ -954,10 +1004,30 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         const when = new Date(pushedAt);
         if (isNaN(when.getTime()) || when >= cutoff) continue;
         const days = Math.floor((Date.now() - when.getTime()) / 86_400_000);
+        // One field and a kind, rather than three fields the caller has to
+        // work through in the right order — the order is the meaning, and it
+        // belongs here rather than repeated in whatever renders it.
+        const teams = staleOwners.get(edge.pk);
+        const admins = staleAdmins.get(edge.pk);
+        const committer = staleTopContributor.get(edge.pk);
+        const unlinked = staleUnlinkedContributor.get(edge.pk);
+        const owner =
+          teams?.length ? teams.sort().join(", ")
+          : admins?.length ? admins.sort().join(", ")
+          : committer ?? unlinked ?? null;
+        const ownerKind =
+          teams?.length ? "team"
+          : admins?.length ? "admin"
+          : committer ? "committer"
+          : unlinked ? "unlinked-committer"
+          : null;
+
         results.push({
           repo: edge.pk.replace("REPO#", ""),
           reason: `No push in ${Math.floor(days / 30)} months`,
           details: `last push ${when.toISOString().slice(0, 10)}`,
+          owner,
+          ownerKind,
         });
       }
       break;

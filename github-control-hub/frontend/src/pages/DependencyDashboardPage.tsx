@@ -318,7 +318,7 @@ export default function DependencyDashboardPage() {
                       {scanning && (
                         <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5`}>
                           <i className="ph-bold ph-circle-notch animate-spin text-[13px]"></i>
-                          Just switched on — GitHub is still scanning. Results appear shortly.
+                          Just switched on. GitHub is still scanning. Results appear shortly.
                         </p>
                       )}
                       {clean && (

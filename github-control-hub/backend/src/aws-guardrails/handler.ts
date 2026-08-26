@@ -18,6 +18,8 @@ interface DirectInvoke {
   source: "manual";
   ruleIds?: string[];
   resourceIds?: string[];
+  /** One-off fix of named resources, even where the rule only reports. */
+  forceRemediate?: boolean;
   accountIds?: string[];
   dryRun?: boolean;
 }
@@ -48,6 +50,7 @@ export async function handler(event: Incoming): Promise<RunResult & { trigger: s
     options = {
       ruleIds: event.ruleIds, resourceIds: event.resourceIds,
       accountIds: event.accountIds, dryRun: event.dryRun,
+      forceRemediate: event.forceRemediate,
     };
   } else if (event?.detail?.eventName) {
     const eventName = event.detail.eventName;
@@ -150,7 +153,7 @@ async function writeActivity(entry: {
         actor: `system (aws guardrail, ${entry.accountName})`,
         repo: entry.resourceId,
         target: entry.ruleName,
-        details: `${entry.description} — ${entry.accountName} (${entry.accountId}), ${entry.region}`,
+        details: `${entry.description} in ${entry.accountName} (${entry.accountId}), ${entry.region}`,
         timestamp,
         ...(entry.failed && { failed: true }),
         ...(entry.error && { errorMessage: entry.error }),

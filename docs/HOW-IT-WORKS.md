@@ -127,7 +127,7 @@ screen reports its own failures inline rather than relying on it.
 
 ## What runs on a schedule
 
-Five things happen without anybody pressing anything. Everything else happens
+Six things happen without anybody pressing anything. Everything else happens
 because a person clicked, or GitHub sent a webhook.
 
 | What | Runs | Which Lambda |
@@ -135,8 +135,8 @@ because a person clicked, or GitHub sent a webhook.
 | Guardrail sweep | every 15 minutes | `github-control-hub-guardrail-enforcer` |
 | Guardrail run for one resource | seconds after a covered resource changes, via CloudTrail | the same function |
 | Alarm evaluation, then the PR walk | every 5 minutes, whenever **Monitor pull requests** is on | `github-control-hub-alarm-evaluator` |
-| Access graph rebuild | every 6 hours | `github-control-hub-graph-aggregator` |
-| Audit-log ingest | when GitHub drops a batch into S3 | `github-control-hub-audit-ingest` |
+| Light graph refresh | every 30 minutes | `github-control-hub-graph-aggregator` (`mode: light`) |
+| Access graph rebuild | every 6 hours | `github-control-hub-graph-aggregator` (`mode: full`) |
 
 The schedules are EventBridge rules created by the CDK stack. Changing one means
 editing `infra/cdk-stack.ts` and redeploying — they are not settings in the app.
@@ -459,6 +459,166 @@ them. That sweep has been removed.
    `invalidateAccessMap()` when it finishes, so a completed sync is visible
    immediately rather than up to a minute later.
 
+### Two schedules, not one
+
+The full walk runs every 6 hours. A **light pass runs every 30 minutes** and
+refreshes only the edges that walk is otherwise the sole writer of.
+
+The split exists because the cost is wildly uneven. The expensive part is
+per-repository — collaborators, branches, workflows, alerts, four requests each,
+about 1,200 for 300 repositories. The parts six checks depend on cost almost
+nothing:
+
+| Edge type | Where it comes from | Cost |
+| --- | --- | --- |
+| `repo_meta` | already returned by the repository listing | **no extra request** |
+| `owned_by_team` | the team's repository list | 1 per team |
+| `has_member` | the team's member list | 1 per team |
+
+So a light pass over 300 repositories and 40 teams is **under 100 requests**,
+against an allowance of 15,000 an hour. Both schedules invoke the *same* Lambda
+with `{ mode: "light" }` or `{ mode: "full" }` — a second function would have
+meant a second bundle, bootstrap and permission set for a job reading the same
+API with the same token.
+
+### Light against full, side by side
+
+| | **Light** | **Full** |
+| --- | --- | --- |
+| Runs | every **30 minutes** | every **6 hours** |
+| EventBridge rule | `graph-light-refresh` | `graph-aggregation` |
+| Payload | `{ mode: "light" }` | `{ mode: "full" }` |
+| Lambda | `graph-aggregator` | **the same function** |
+| GitHub requests | **~85** | **~1,300** |
+| Per repository | **0 extra** — metadata arrives with the listing | **4** — collaborators, branches, workflows, alerts |
+| Per team | 2 | 2 |
+| Edge types written | **5** | **14** |
+| Clears the table first | **no** | **yes** |
+| How it removes stale edges | prunes only inside a team it just read | wholesale, by clearing |
+| Updates "last synced" | **no** | yes |
+| Activity row | only if it changed something or failed | every run |
+
+**What each one writes:**
+
+| | Edge types |
+| --- | --- |
+| Light | `repo_meta` · `owns_repo` / `owned_by_team` · `has_member` / `member_of` |
+| Full adds | `has_branch` · `has_collaborator` / `collaborates_on` · `has_vulnerable_dependency` · `uses_workflow` · `top_contributor` · `org_meta` / `team_meta` / `user_meta` |
+
+### Exactly what the light pass stores
+
+Five edge types, from three kinds of GitHub call. Every field below is written
+on every light pass; nothing else in the row is touched.
+
+**`repo_meta`** — one row per repository, `pk: REPO#<name>`, `sk: META#repo`.
+Built entirely from the organization repository listing
+(`GET /orgs/{org}/repos`, 100 per page), which is why the whole set costs three
+or four requests rather than one per repository.
+
+| Field | Type | From | Notes |
+| --- | --- | --- | --- |
+| `visibility` | `"public"` · `"private"` · `"internal"` | `repo.visibility` | falls back to `private ? "private" : "public"` on older payloads |
+| `archived` | boolean | `repo.archived` | coerced, never null |
+| `fork` | boolean | `repo.fork` | coerced, never null |
+| `pushedAt` | ISO timestamp or `null` | `repo.pushed_at` | what the dormant-repository check reads |
+| `defaultBranch` | string | `repo.default_branch` | defaults to `"main"` when absent |
+| `secretScanning` | `"enabled"` · `"disabled"` · `"unknown"` | `repo.security_and_analysis.secret_scanning.status` | `"unknown"` when the field is absent, which is not the same as disabled |
+| `pushProtection` | `"enabled"` · `"disabled"` · `"unknown"` | `repo.security_and_analysis.secret_scanning_push_protection.status` | same |
+
+**`owns_repo`** and **`owned_by_team`** — the same fact stored from both ends so
+either can be looked up without a scan. From `GET /orgs/{org}/teams/{slug}/repos`,
+one call per team per page.
+
+| Edge | `pk` | `sk` | Metadata |
+| --- | --- | --- | --- |
+| `owns_repo` | `TEAM#<slug>` | `REPO#<name>` | `{ permission }` |
+| `owned_by_team` | `REPO#<name>` | `TEAM#<slug>` | `{ permission }` |
+
+`permission` is GitHub's `role_name` — `admin`, `maintain`, `push`, `triage`,
+`pull` — and falls back to `"read"` when the listing does not carry one.
+
+**`has_member`** and **`member_of`** — again both directions, from
+`GET /orgs/{org}/teams/{slug}/members`, one call per team per page.
+
+| Edge | `pk` | `sk` | Metadata |
+| --- | --- | --- | --- |
+| `has_member` | `TEAM#<slug>` | `USER#<login>` | **none** |
+| `member_of` | `USER#<login>` | `TEAM#<slug>` | **none** |
+
+These two carry **no metadata at all**. Membership is the whole fact; the team's
+own role for that person is not read on the light pass, and a member with no
+`login` is skipped rather than stored as a blank.
+
+**What the light pass does not store:** anything needing a per-repository call.
+No collaborators, no branch protection, no workflows, no vulnerability edges,
+and no `top_contributor` — so the dormant-repository Owner column does not move
+between full rebuilds. Nor does it write `org_meta`, `team_meta` or `user_meta`.
+
+**Pruning is per team and conditional.** Rows under a team are removed only when
+*both* that team's repository list and its member list were read without error.
+A half-read team is indistinguishable from a team that lost everything, and
+deleting on that basis would turn a failed read into a confident wrong answer.
+A repository that disappears entirely is not pruned here — that waits for the
+full rebuild, which clears the table.
+
+`top_contributor` carries one of two shapes: a GitHub `login` where the top
+author's email is registered to an account, or a bare git author `name` marked
+`unlinked: true` where it is not. Both answer "who pushes here"; only the first
+is somebody who can be messaged, and the dormant-repository Owner column labels
+them apart. See [features/widgets.md](features/widgets.md) for the full tier
+order.
+
+So the light pass covers **repository facts and team composition** — precisely
+what the six otherwise-stale checks read — and touches nothing else. Branch
+protection, collaborators, workflows and dependency edges are all patched by
+webhooks as they change and otherwise wait for the full walk.
+
+**One consequence worth knowing.** The light pass deliberately does **not** update
+the "last synced" marker the Access page reads. That timestamp means *"when was
+the complete picture last rebuilt"*, and a light pass has not rebuilt it. So team
+membership and repository visibility can be fresher than the timestamp claims.
+Overstating it would be worse: a marker that moves every half hour while
+collaborators and branches are still six hours old is a marker that lies.
+
+Two rules the light pass follows, both of which would be silent if broken:
+
+- **It never clears the table.** The full rebuild does; doing that often would
+  be the expensive thing wearing a cheap hat. The light pass upserts what it
+  reads and prunes only within a team it just walked.
+- **It never prunes from a partial read.** A team whose members could not be
+  listed looks identical to a team that lost all of them, and deleting on that
+  basis would turn a failed read into a confident wrong answer.
+
+### The six checks that needed it
+
+`public-repos`, `archived-repos-with-access`, `stale-repos`, `unowned-repos`,
+`empty-teams` and `repos-dependent-on` read edge types **no webhook wrote**, so
+their answers could only ever be as fresh as the last 6-hourly rebuild.
+
+That was a gap rather than a decision: every one of them arrives on an event the
+worker was already receiving and already acting on. A repository going public
+raised a *critical* security alert within seconds, while the widget counting
+public repositories showed the old number for hours.
+
+The worker now patches the graph on those same deliveries:
+
+| Check | Event | What is written |
+| --- | --- | --- |
+| `public-repos` | `repository` publicized / privatized | `repo_meta.visibility` |
+| `archived-repos-with-access` | `repository` archived / unarchived | `repo_meta.archived` |
+| `stale-repos` | `push` | `repo_meta.pushedAt` |
+| `unowned-repos` | `team` added / removed from repository | `owned_by_team` |
+| `empty-teams` | `membership` added / removed | `has_member` |
+| `repos-dependent-on` | `dependabot_alert` | `has_vulnerable_dependency` |
+
+`repo_meta` is **merged, not replaced** — that edge carries a dozen fields the
+rebuild collected and a webhook knows about one. A repository the rebuild has
+never seen is skipped rather than created from a single field, because a partial
+`repo_meta` reads as "collected and empty" where the checks need "not collected".
+
+A resolved advisory has its edge **removed** rather than marked, matching the
+rebuild, which lists alerts with `state=open` and so would never have written it.
+
 ### What the rebuild does
 
 The rebuild — the 6-hour tick, or **Sync from GitHub** on the Access tab — walks
@@ -726,6 +886,26 @@ has not rewritten the rows it would be deleting, so doing it there would erase
 findings and replace them with nothing.
 
 ### Report and enforce
+
+**Fixing one resource, without enforcing the rule.** Every failing resource a
+fix exists for carries a **Fix** button, whatever mode its rule is in. Deciding
+to correct *this* bucket is a different decision from deciding that every future
+violation should be corrected automatically — and the rule's `mode` is what
+carries the second one.
+
+So the button does not touch the mode. A setting changed back afterwards is
+**reported again, not silently re-corrected** — unless the rule is in `enforce`,
+where re-correcting is the whole point.
+
+It works on a `report` rule because such a rule already carries the parameters a
+fix needs: the catalog defines them in `defaultParams`, and the rule form shows
+every field regardless of mode. What `report` withholds is *doing it
+automatically*, not the knowledge of how.
+
+Under the hood this is `forceRemediate` on the engine, and it is **refused
+unless `resourceIds` names what to act on** — one absent field would otherwise
+turn a button beside a single row into enforcing an entire rule.
+
 
 Every rule starts in report mode and is switched to enforce individually. A
 report-mode rule is not a dry run of a switched-off feature — it does the full
@@ -1126,6 +1306,25 @@ Every widget's rows are computed by the **5-minute alarm pass** and stored, one
 row per widget in the `alarms` table (`kind: "widget-snapshot"`, 24-hour TTL).
 The Overview reads those and renders immediately.
 
+**Each pass overwrites the last. No history is kept.** The row's key is
+`widget-snapshot#<widgetId>` — derived from the widget alone, with no timestamp
+in it — so writing the new snapshot replaces the old one in place. There is
+exactly one row per widget at any moment, however long the app has been running:
+eleven widgets means eleven rows, this month and next. What changes is
+`computedAt`, not the number of rows.
+
+This is deliberate. A snapshot is a cache of *the current answer*, not a record
+of what was true at 3pm; nothing in the app reads yesterday's snapshot, and
+keeping them would grow the table by 288 rows per widget per day to store
+answers nobody asks for. History that is worth keeping is kept elsewhere and on
+purpose — the `activity` table records what changed, and alarm rows record what
+fired.
+
+The 24-hour TTL is therefore not a retention policy — a snapshot is replaced
+long before it can expire. It is a cleanup for rows that stop being rewritten:
+delete a widget and its snapshot is removed immediately, but if that delete is
+missed, the TTL removes it within a day rather than leaving it forever.
+
 Before this, each card ran its check inside the request that drew it: a full
 scan of the graph table, live GitHub calls for the dependency cards, and — for
 the three subject-by-subject checks — up to twenty-five commit searches against
@@ -1350,12 +1549,11 @@ written once, when the thing happened, and read back later.
 | Any route that changes something | as it changes it — branch protection, a widget, a scanner, a ruleset |
 | The guardrail Lambda | when a rule **actually fixed** something, or failed trying |
 | The webhook worker | when GitHub reports a change somebody made on github.com |
-| The audit ingest Lambda | when GitHub delivers an enterprise audit-log batch |
 | Any sync | when a refresh, sweep or re-check runs |
 
 ### The path
 
-Five things write to it. Nothing ever rewrites a row: each one is written once,
+Four things write to it. Nothing ever rewrites a row: each one is written once,
 when the thing happened, and read back later.
 
 ```
@@ -1364,7 +1562,6 @@ when the thing happened, and read back later.
     a change somebody made on github.com ─────┤
   the AWS sweeper, when a rule actually       ├──▶ one long list, newest first
     fixed something ──────────────────────────┤    every row expires after
-  the audit-log reader ─────────────────────  ┤    13 months
   any refresh, sweep or re-check ─────────────┘              │
                                                              ▼
                                                      the Activity tab
@@ -1435,7 +1632,6 @@ order the page wants.
 |---|---|
 | `services/activityService.ts` | `logActivity`, `logSync`, and every read — **the app's only writer** |
 | `aws-guardrails/handler.ts` | writes rows **directly**, bypassing the service |
-| `audit/ingest.ts` | writes enterprise audit-log rows |
 | `routes/activity.ts` | the tab, plus undo, redo and retry |
 
 The guardrail Lambda writing directly is the one exception, and deliberate: it is
@@ -1443,9 +1639,9 @@ bundled on its own and importing the service would pull the whole app into that
 function. It inlines the retention stamp instead, with a comment saying it must
 match — a row without a TTL is a row that never expires.
 
-### The four streams
+### The three streams
 
-Rows are sorted into Organization, AWS, App settings and Audit log by the prefix
+Rows are sorted into Organization, AWS and App settings by the prefix
 of their action name — `branch.` and `repository.` are organization changes,
 `aws.` is the guardrails, `widget.` and `sync.` are housekeeping. The mapping is
 data, in `frontend/src/lib/activityCategories.ts`, and an unrecognized action
@@ -1471,76 +1667,80 @@ A row can carry an *undo payload* — the inverse of what was done. Undo replays
 would have authorized the original action. The app is not deciding you may
 reverse something; GitHub is, on the same terms as when you did it.
 
-## Enterprise audit log
+## Detailed GitHub logging
 
-**Shape: push, from S3.** The only feature whose data arrives as a file rather
-than as an API response, and the only Lambda in the stack with no schedule at
-all.
+**Shape: a toggle over what the webhook worker records.** No extra
+infrastructure, no schedule, no bucket. It reuses deliveries the worker already
+receives.
 
-### The path
+The Activity feed's Organization stream always records changes to **structure
+and access**: repositories created, deleted or made public; branch protection
+and rulesets changing. Those are why the feed exists and no switch governs them.
 
-```
-  GitHub uploads a file of audit events to your S3 bucket
-  (no AWS password is stored on GitHub — it gets a temporary
-   one for each upload)
-        │
-        ▼
-  the file landing IS the trigger ──▶ the reader wakes up
-  (no timer, nothing polling)          (a Lambda)
-                                            │
-                                            ▼
-                              unzip it, read it line by line,
-                              keep the events that matter
-                                            │
-                                            ▼
-                              add them to the activity feed,
-                              25 at a time
-```
+Detailed logging adds the **routine traffic of people working**, which is
+sometimes exactly what an admin wants to see and sometimes pure noise:
 
-**What each box really is:**
+| Kind | From webhook |
+| --- | --- |
+| Branch created / deleted | `create` / `delete` |
+| Tag created / deleted | `create` / `delete` |
+| Commits pushed | `push` |
+| Pull request opened / merged / closed | `pull_request` |
 
-| In the diagram | What it is |
-|---|---|
-| your S3 bucket | File storage. The raw files are kept for 400 days and moved to cheaper storage after 30, and deleting the stack will not delete them |
-| the trigger | An S3 notification. This is the only Lambda here with no timer behind it — a quiet month costs nothing |
-| the reader | A Lambda: `github-control-hub-audit-ingest`, 512 MB, 5-minute limit. It can read the bucket and add rows to one table, and nothing else — it cannot even read the feed back |
-| the events that matter | A configurable list. Anything ending in a dot matches a whole family, so `repo.` catches everything about repositories |
+Every kind comes from an event the app already subscribes to, so turning this on
+never means ticking a new box on the GitHub App.
 
-1. **GitHub authenticates with OIDC, not an access key.** A key pair would mean
-   long-lived AWS credentials stored on GitHub for the bucket holding the record
-   of who did what. OIDC hands GitHub a temporary credential per upload and
-   stores nothing. The provider and the role GitHub assumes are created from the
-   Activity page, not by a flag documented in a code comment.
-2. **S3 invokes the function per object**, through an `ObjectCreated`
-   notification on the bucket. Nothing polls and nothing is scheduled — a quiet
-   enterprise costs nothing at all, and this is the only Lambda in the stack
-   with no EventBridge rule behind it.
-3. **One object is a batch of events**, gzipped newline-delimited JSON. The
-   handler `GetObject`s it, `gunzipSync`es it, splits on newlines and parses each
-   line. The 5-minute ceiling exists so a large object on a busy enterprise is
-   never cut off part way, because a truncated batch silently loses audit rows.
-4. **The filter is a prefix match, changeable without a code change.**
-   `isConsequential` tests each action against an allow-list in which an entry
-   ending in `.` matches by prefix — `repo.` catches everything under it — and
-   anything else matches exactly. The `AUDIT_EVENT_ALLOWLIST` environment
-   variable overrides the built-in list; empty means the built-in one.
-5. **Each row's id is a SHA-256 of the event's own fields**, base64url-encoded,
-   cut to 40 characters and prefixed `audit-`. Hashing rather than concatenating
-   is what makes it both *stable* — replaying an object overwrites the same rows
-   instead of duplicating them — and *distinct*, which the old
-   truncated-concatenation id was not: an ISO timestamp ate 25 of its 30 bytes,
-   so the actor and the repository never reached the id at all and a bulk
-   operation's events collided.
-6. **Rows are added 25 at a time**, which is DynamoDB's limit per batch, and
-   whatever the database says it did not take is retried. It reports that as a
-   list rather than as an error, so ignoring it would drop audit rows in
-   silence.
-7. **The 13-month expiry is counted from when the event happened**, not from when
-   the file was read. Re-uploading an old file therefore does not give ancient
-   events another thirteen months of life.
-8. **The raw object stays in S3, untouched.** That is the complete record; this
-   only builds an index over the part anyone reads, which is why widening the
-   filter later loses nothing that already arrived.
+### Turning it on and off
+
+**Activity, Organization tab.** Admins only (`aws-guardrail-admins`); everyone
+else sees the rows and the view filter, never a control they cannot use. Each
+kind can be unchecked individually while the toggle stays on.
+
+**The toggle governs collection, never display.** Turning it off stops new
+detailed rows from being written and deletes nothing: everything collected while
+it was on stays in the feed for its full 13 months. Unchecked kinds are
+remembered, so turning the toggle back on restores the same selection.
+
+Flipping it is itself an activity row, so the feed records who changed it.
+
+### How a row is marked
+
+Rows written under the toggle carry `detailed: true` **on the row**, rather than
+being identified by their action name. That is what keeps the view filter
+truthful if the set of detailed kinds ever changes: a row still reports what it
+*was* collected as. The Activity page shows a small `detailed` label on those
+rows and offers a **Detailed rows: Shown / Hidden** filter, whose choice is
+remembered per browser.
+
+### Where the settings live
+
+`org-config`, under `detailedLogging` (`enabled`, `disabledKinds`, and who
+changed it when). The webhook worker reads it through a 30-second cache, because
+one push fans out to several deliveries and the answer changes a few times a
+year.
+
+Two deliberate failure choices:
+
+- **A settings read that fails skips the detailed row**, and logs why. Wrongly
+  skipping loses a line of routine history; wrongly writing ignores an admin's
+  explicit off switch.
+- **Detailed logging failing never fails the delivery.** A throw would make the
+  worker release its claim and re-run every other effect of that event.
+
+### What replaced
+
+This took the place of **enterprise audit-log streaming**: an S3 bucket GitHub
+streamed into, and a Lambda that indexed the consequential events into the
+activity feed. It was removed because GitHub's own enterprise settings already
+show that log, and the per-object cost of the pipeline (a PUT and a Lambda
+invocation per event) bought little the enterprise UI did not already give.
+
+The rows it wrote have been deleted along with it.
+
+On a stack that had it deployed, the bucket carried `RemovalPolicy.RETAIN`, so
+it is **orphaned rather than deleted**. Empty and delete it by hand when its
+contents are no longer wanted.
+
 
 ## Webhooks
 
@@ -1651,9 +1851,14 @@ dead-letter queue rather than vanishing.
 
 ### Which events
 
-Ten are subscribed: pushes, repositories, branch or tag creation and deletion,
-branch protection rules, repository rulesets, collaborator changes, teams, pull
-requests, and Dependabot alerts.
+Eleven are subscribed: pushes, repositories, branch or tag creation and deletion,
+branch protection rules, repository rulesets, collaborator changes, teams, **team
+membership**, pull requests, and Dependabot alerts.
+
+`membership` is the newest, and the only one that has to be ticked by hand on an
+existing installation. Without it `empty-teams` can only ever be as fresh as the
+last six-hourly rebuild, because nothing else reports somebody joining or leaving
+a team.
 
 `organization` and `issues` are deliberately **not** among them. Nothing in the
 worker handles either, so ticking them means GitHub sends a delivery, API Gateway
@@ -1965,7 +2170,7 @@ Team membership decides it:
 | Team | Controls |
 |---|---|
 | `control-hub-admins` | everything GitHub-side |
-| `aws-guardrail-admins` | AWS rules, sweeps, enforce mode, audit-log streaming |
+| `aws-guardrail-admins` | AWS rules, sweeps, enforce mode, detailed-logging settings |
 
 Org owners qualify for both, as a safety net against an empty or deleted team.
 Membership answers are cached for 60 seconds, keyed per team **and** per user. A
@@ -2002,7 +2207,7 @@ an account running guardrails needs the record of what they did.
 | | |
 |---|---|
 | Desktop app | the whole backend, in-process, on `localhost:4321`, using your AWS credentials |
-| Lambda | six functions: guardrails, webhook receiver, webhook worker, alarm evaluator, graph aggregator, audit ingest |
+| Lambda | five functions: guardrails, webhook receiver, webhook worker, alarm evaluator, graph aggregator |
 
 The same backend is compiled once and started both ways. What differs is who it
 authenticates as and what triggers it.

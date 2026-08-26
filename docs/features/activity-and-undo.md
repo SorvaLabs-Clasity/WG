@@ -13,13 +13,28 @@ so the page is split by what changed:
 | **Organization** | Branches, protection, rulesets, repositories, Dependabot — anything that changed GitHub |
 | **AWS** | The guardrail engine's findings and remediations (`aws.guardrail`) |
 | **App settings** | Widgets, scanners, imports, undo history, and every sync (`sync.*`) — housekeeping |
-| **Audit log** | The [enterprise audit log](audit-log.md), streamed from GitHub |
 
-A fifth tab, **Everything**, sits first and merges all four. It is for when you
-know roughly when something happened but not which stream recorded it — a
-repository going public appears in Organization *and* again in the audit log,
-and checking one stream at a time is how you miss it. Rows there carry a badge
-naming their stream, and clicking the badge narrows to it.
+A fourth tab, **Everything**, sits first and merges all three. It is for when you
+know roughly when something happened but not which stream recorded it. Rows there
+carry a badge naming their stream, and clicking the badge narrows to it.
+
+## Detailed GitHub logging
+
+Organization always records changes to **structure and access**: repositories
+created, deleted or made public, branch protection and rulesets changing.
+
+**Detailed GitHub logging** adds the routine traffic on top: branches and tags
+created or deleted, commits pushed, pull requests opened, merged and closed. It
+is off by default and lives at the top of the Organization tab, for members of
+`aws-guardrail-admins`. Each kind can be unchecked individually.
+
+**The toggle governs collection, never display.** Turning it off stops new
+detailed rows and deletes nothing — everything collected while it was on stays
+for its full 13 months, and unchecked kinds are remembered for next time.
+
+Rows collected this way carry a `detailed` label, and **Detailed rows:
+Shown / Hidden** in Advanced Filters hides them. That is a per-browser view
+choice and changes nothing about what is collected.
 
 It opens on Organization rather than Everything, so the security-relevant feed
 is what you land on and dashboard housekeeping is one click away rather than

@@ -109,7 +109,7 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
           <div>
             <h3 className="text-base font-bold text-gray-900 dark:text-white">Email me about security alerts</h3>
             <p className="mt-1 text-sm text-gray-600 dark:text-slate-400 max-w-2xl">
-              Sends within seconds of the event — a repository going public, branch protection being
+              Sends within seconds of the event. A repository going public, branch protection being
               removed, a team's permissions changing. Driven by the webhook, not by a schedule, so
               it does not wait for the next check.
             </p>
@@ -138,7 +138,7 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
             and sends nothing. Say so where the eye already is. */}
         {!enabled && groupId && (
           <div className="mt-3 rounded-md bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
-            A group is selected but this is <strong>off</strong> — alerts are being recorded and
+            A group is selected but this is <strong>off</strong>. Alerts are being recorded and
             nobody is emailed. Use the switch above to start sending.
           </div>
         )}
@@ -151,9 +151,9 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
               if (!g) return null;
               const ok = g.members.filter(m => m.confirmed).length;
               const pending = g.members.length - ok;
-              return <> — {ok} confirmed recipient{ok === 1 ? "" : "s"}
+              return <>: {ok} confirmed recipient{ok === 1 ? "" : "s"}
                 {pending > 0 && <>, {pending} still pending and receiving nothing</>}
-                {ok === 0 && <strong> — nobody will receive these until someone confirms</strong>}
+                {ok === 0 && <strong>. Nobody will receive these until someone confirms</strong>}
               </>;
             })()}
           </div>
@@ -164,7 +164,7 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
             <label className={labelClass}>Send to</label>
             {noGroups ? (
               <p className="text-sm text-amber-700 dark:text-amber-400">
-                No email groups yet — create one on the{" "}
+                No email groups yet. Create one on the{" "}
                 <Link to="/alarms" className="font-semibold underline">Alarms</Link> page first.
               </p>
             ) : (

@@ -538,7 +538,7 @@ export async function createRulesetWithFallback(
         if (idx >= 0 && idx < rules.length) {
           const removed = rules[idx];
           skippedRules.push(removed.type || `unknown(index ${idx})`);
-          console.warn(`[createRulesetWithFallback] Rule "${removed.type}" at index ${idx} not supported — removing and retrying`);
+          console.warn(`[createRulesetWithFallback] Rule "${removed.type}" at index ${idx} not supported, removing and retrying`);
           rules = rules.filter((_, i) => i !== idx);
           continue;
         }
@@ -673,7 +673,7 @@ const PARAM_LABELS: Record<string, string> = {
 };
 
 function fmtParam(v: any): string {
-  if (v === undefined || v === null) return "—";
+  if (v === undefined || v === null) return "-";
   if (typeof v === "boolean") return v ? "Yes" : "No";
   if (typeof v === "number") return String(v);
   if (Array.isArray(v)) return v.length === 0 ? "None" : JSON.stringify(v);

@@ -4,6 +4,7 @@ import {
   fetchFindings, runGuardrails, fetchAwsExclusions, createAwsExclusion,
   updateAwsExclusion, deleteAwsExclusion,
   fetchAwsAccounts,
+  remediateResource,
 } from "../api/aws";
 import type { Guardrail, AwsExclusionList, AwsAccount } from "../api/aws";
 
@@ -79,6 +80,22 @@ export function useRunGuardrails() {
     mutationFn: (body: { ruleIds?: string[]; resourceIds?: string[]; accountIds?: string[] }) => runGuardrails(body),
     // A run rewrites findings and may have changed AWS, so refresh everything.
     onSuccess: () => qc.invalidateQueries({ queryKey: ["aws"] }),
+  });
+}
+
+/**
+ * Fix a single failing resource.
+ *
+ * Invalidates findings on success so the row updates in place — a button that
+ * fixes something and leaves it looking broken is one people press twice.
+ */
+export function useRemediateResource() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: remediateResource,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["aws", "findings"] });
+    },
   });
 }
 

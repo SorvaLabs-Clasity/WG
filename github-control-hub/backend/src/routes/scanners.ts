@@ -102,7 +102,7 @@ router.post("/:id/run", async (req: Request<{id: string}>, res: Response) => {
     }
     await logSync("scanner", req.user!.login, {
       target: req.params.id,
-      details: `Scanned ${result.totalScanned} repositories — `
+      details: `Scanned ${result.totalScanned} repositories, `
         + `${result.nonCompliantCount} in violation, ${result.compliantCount} compliant`,
       startedAt,
     });

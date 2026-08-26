@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { logActivity } from "./activityService";
-import { docClient, usesDynamo, tableName, PutCommand, ScanCommand, GetCommand, scanAll } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, ScanCommand, GetCommand, scanAll } from "../utils/dynamo";
 
 export type AlertSeverity = "critical" | "high" | "medium" | "low";
 export type AlertType =
@@ -36,7 +36,7 @@ const TABLE = () => tableName("ALERTS_TABLE");
 let memAlertsStore: SecurityAlert[] = [];
 
 export async function getAlerts(): Promise<SecurityAlert[]> {
-  if (usesDynamo()) {
+  if (hasTable("ALERTS_TABLE")) {
     // Paged: a bare scan stops at 1MB without saying so, and a list that
     // silently loses its tail is worse here than an error would be.
     return (await scanAll<SecurityAlert>(TABLE())).sort(
@@ -72,7 +72,7 @@ export async function createAlert(
     details,
   };
 
-  if (usesDynamo()) {
+  if (hasTable("ALERTS_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: newAlert }));
   } else {
     memAlertsStore.unshift(newAlert);
@@ -114,7 +114,7 @@ export async function createAlert(
 }
 
 export async function resolveAlert(id: string, user: string): Promise<SecurityAlert | null> {
-  if (usesDynamo()) {
+  if (hasTable("ALERTS_TABLE")) {
     const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id } }));
     const alert = result.Item as SecurityAlert | undefined;
     if (!alert) return null;
@@ -154,7 +154,7 @@ export async function autoResolveAlerts(repo: string, type: AlertType): Promise<
 }
 
 export async function unresolveAlert(id: string): Promise<SecurityAlert | null> {
-  if (usesDynamo()) {
+  if (hasTable("ALERTS_TABLE")) {
     const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id } }));
     const alert = result.Item as SecurityAlert | undefined;
     if (!alert) return null;

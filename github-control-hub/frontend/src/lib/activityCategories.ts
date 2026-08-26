@@ -6,7 +6,7 @@
  * nobody reads them for the same reason: one is somebody tidying their
  * dashboard, the other is a security control disappearing.
  *
- * Four streams, because four things write here:
+ * Three streams, because three things write here:
  *
  *   github  changes to the organization — branches, protection, rulesets,
  *           repositories, Dependabot. Some done through this app, some caught
@@ -18,14 +18,12 @@
  *           Housekeeping. Real, and not why anyone opens an audit trail. Also
  *           the `sync.*` collection runs — when the app last went and looked,
  *           who asked it to, and what came back.
- *   audit   the enterprise audit log. `audit.event` is already in the union,
- *           reserved before anything wrote it.
  *
  * Kept as data rather than a switch so repro-activitycategories.ts can assert
  * every known action lands somewhere deliberate, rather than defaulting.
  */
 
-export type ActivityCategory = "github" | "aws" | "app" | "audit";
+export type ActivityCategory = "github" | "aws" | "app";
 
 /**
  * "all" is a view, not a category.
@@ -37,7 +35,7 @@ export type ActivityCategory = "github" | "aws" | "app" | "audit";
  */
 export type ActivityView = ActivityCategory | "all";
 
-export const CATEGORY_ORDER: ActivityCategory[] = ["github", "aws", "app", "audit"];
+export const CATEGORY_ORDER: ActivityCategory[] = ["github", "aws", "app"];
 
 /** Tab order: everything first, then the four streams it is made of. */
 export const VIEW_ORDER: ActivityView[] = ["all", ...CATEGORY_ORDER];
@@ -47,18 +45,16 @@ export const CATEGORY_LABELS: Record<ActivityView, string> = {
   github: "Organization",
   aws: "AWS",
   app: "App settings",
-  audit: "Audit log",
 };
 
 /** Which sources a row in each stream can actually carry. */
-export const CATEGORY_SOURCES: Record<ActivityCategory, Array<"app" | "github" | "audit">> = {
+export const CATEGORY_SOURCES: Record<ActivityCategory, Array<"app" | "github">> = {
   // The only stream written from both directions: this app makes a change, or
   // a webhook reports one somebody made on github.com.
   github: ["app", "github"],
   // The guardrail Lambda writes these itself.
   aws: ["app"],
   app: ["app"],
-  audit: ["audit"],
 };
 
 /**
@@ -68,7 +64,6 @@ export const CATEGORY_SOURCES: Record<ActivityCategory, Array<"app" | "github" |
  */
 const PREFIXES: Array<[string, ActivityCategory]> = [
   ["aws.", "aws"],
-  ["audit.", "audit"],
 
   // Collection runs: a sync, a sweep, a re-check. Housekeeping in the same sense
   // the rest of this bucket is — the app going and looking, rather than anything
@@ -122,7 +117,7 @@ export function categoryOf(action: string): ActivityCategory {
 
 /** Rows in each stream, in one pass. */
 export function countByCategory(actions: string[]): Record<ActivityView, number> {
-  const counts: Record<ActivityView, number> = { all: 0, github: 0, aws: 0, app: 0, audit: 0 };
+  const counts: Record<ActivityView, number> = { all: 0, github: 0, aws: 0, app: 0 };
   for (const a of actions) { counts[categoryOf(a)]++; counts.all++; }
   return counts;
 }
@@ -140,7 +135,7 @@ export function inView(action: string, view: ActivityView): boolean {
  * where in three of the four it could only ever empty the table: an audit row
  * is always source `audit`, and the dropdown listed only app and github.
  */
-export function sourcesFor(view: ActivityView): Array<"app" | "github" | "audit"> {
+export function sourcesFor(view: ActivityView): Array<"app" | "github"> {
   if (view === "all") {
     return [...new Set(CATEGORY_ORDER.flatMap(c => CATEGORY_SOURCES[c]))];
   }

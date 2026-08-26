@@ -116,14 +116,14 @@ export async function githubGateMiddleware(
   const message =
     verdict.reason === "no-credentials"
       ? `This AWS account holds no GitHub credentials, so the GitHub half of this app is not ` +
-        `available here. That is how GitHub is kept out of an account — the AWS tab works as ` +
+        `available here. That is how GitHub is kept out of an account. The AWS tab works as ` +
         `normal, and Activity still shows what the guardrails did.`
       : verdict.reason === "unknown-account"
         ? `This app's GitHub features are limited to AWS account ${verdict.expected}, and the ` +
           `account you are signed into could not be read. Sign in again, or use the AWS tab, ` +
           `which is available in every account.`
         : `This app's GitHub features live in AWS account ${verdict.expected}. You are signed ` +
-          `into ${verdict.account}, so only the AWS tab is available here — the GitHub side ` +
+          `into ${verdict.account}, so only the AWS tab is available here, the GitHub side ` +
           `deliberately has no credentials, data or configuration in this account.`;
 
   res.status(403).json({

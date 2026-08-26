@@ -104,7 +104,7 @@ async function resolve(login: string, team: string, userToken?: string): Promise
   if (!token) {
     console.warn(
       "[authorization] Neither a GitHub App token nor a caller token, so team " +
-      "membership cannot be read — denying this check without caching it.",
+      "membership cannot be read, denying this check without caching it.",
     );
     throw new Unanswerable("no token of any kind");
   }

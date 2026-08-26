@@ -113,7 +113,6 @@ holds no App credentials, and says why, rather than hiding a button.
 | The webhook receiver and worker Lambdas | Nothing reacts to GitHub events, because none arrive |
 | The alarm evaluator Lambda | No alarm emails, no SNS topics, no pull request walk |
 | The access graph rebuilder Lambda | No `graph-edges` data, so no access map and no security checks |
-| The audit-log pipeline | No S3 bucket, no OIDC provider, no enterprise audit rows |
 | The webhook queue and its dead-letter queue | — |
 | The deliveries table | — |
 

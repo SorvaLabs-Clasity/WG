@@ -1,6 +1,6 @@
 import { Octokit } from "octokit";
 import { getOrg, getSystemTokenAsync } from "../github/client";
-import { usesDynamo, tableName, scanAll, batchWrite } from "../utils/dynamo";
+import { tableName, scanAll, batchWrite } from "../utils/dynamo";
 import { invalidateAccessMap } from "../services/accessMapService";
 import { invalidateEdgeCache } from "../services/graphService";
 import { recordGraphAggregation } from "../services/orgConfigService";
@@ -27,7 +27,27 @@ export async function aggregateGraphData(fallbackToken?: string) {
   const octokit = new Octokit({ auth: token });
   const org = getOrg();
   const edges: GraphEdge[] = [];
-  const edgesTable = usesDynamo() ? tableName("GRAPH_EDGES_TABLE") : "";
+  // Keyed to the table this job actually writes.
+  //
+  // This asked `usesDynamo()`, which reports whether ACTIVITY_TABLE is set —
+  // a table this job never touches. The aggregator's Lambda is not given that
+  // variable, so the answer was always no: every scheduled run walked the whole
+  // organisation, built the edges, then took the local-development branch and
+  // died trying to `mkdir /data` on a read-only filesystem. Nothing was ever
+  // written. The graph only ever moved when somebody pressed Sync in the app,
+  // whose process does have ACTIVITY_TABLE set — which is why the table was
+  // never empty and the failure stayed invisible.
+  const edgesTable = process.env.GRAPH_EDGES_TABLE ? tableName("GRAPH_EDGES_TABLE") : "";
+
+  // Writing edges to a JSON file is a local-development convenience. Reaching
+  // it inside Lambda means the function is misconfigured, and saying so beats
+  // spending five minutes of API calls to throw the result away.
+  if (!edgesTable && process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    throw new Error(
+      "[GraphAggregator] GRAPH_EDGES_TABLE is not set. Refusing to rebuild the "
+      + "graph with nowhere to put it.",
+    );
+  }
 
   console.log(`[GraphAggregator] Starting aggregation for org: ${org}`);
 
@@ -154,6 +174,10 @@ export async function aggregateGraphData(fallbackToken?: string) {
     /** repo name -> logins that reach it through a team. */
     const viaTeam = new Map<string, Set<string>>();
 
+    // Which repositories any team owns, so the loop below knows which ones have
+    // nobody to name. Filled by the team walk, which runs first.
+    const ownedRepoNames = new Set<string>();
+
     // TEAM -> REPO edges & USER -> TEAM edges
     for (const team of teams) {
       const teamId = `TEAM#${team.slug}`;
@@ -184,6 +208,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
           for (const tr of teamRepos) {
             if (!viaTeam.has(tr.name)) viaTeam.set(tr.name, new Set());
             teamRepoNames.push(tr.name);
+            ownedRepoNames.add(tr.name);
             edges.push({
               pk: teamId,
               sk: `REPO#${tr.name}`,
@@ -339,6 +364,69 @@ export async function aggregateGraphData(fallbackToken?: string) {
          if (err.status !== 403 && err.status !== 404) console.warn(`[GraphAggregator] Failed to fetch collaborators for ${repo.name}`);
       }
 
+      // ── who to ask, when no team owns it ──────────────────────────────
+      //
+      // Only for repositories no team owns. An owned repository already has an
+      // answer to "who is responsible", and asking GitHub for one anyway would
+      // be a request per repository for a column that will not show it.
+      //
+      // The list comes back in descending order of contributions, so the
+      // answer is near the top and the rest is a page nobody reads.
+      //
+      // Asked *with* anonymous authors, then filtered here rather than by the
+      // API. `anon: "false"` looked right and quietly threw away the answer:
+      // a commit whose author email is not attached to any GitHub account is
+      // returned as an anonymous entry, and in an organisation whose pushes
+      // come from CI or from laptops signing with an unregistered address that
+      // is every contributor there is. Excluding them left the column reading
+      // "No owner found" on repositories that plainly had somebody pushing.
+      //
+      // A registered account still wins when there is one — it is a person you
+      // can actually reach — and the anonymous name is the last resort. One
+      // request either way; the window is wide enough that a real account
+      // ranked below it is, by contributions, genuinely not the top committer.
+      if (!ownedRepoNames.has(repo.name)) {
+        try {
+          const { data: contributors } = await octokit.rest.repos.listContributors({
+            owner: org, repo: repo.name, per_page: 25, anon: "1",
+          });
+          const rows = contributors ?? [];
+          const registered = rows.find((c: any) => c.type === "User" && c.login);
+          // Anonymous entries carry a git name and email and no account. The
+          // name is what gets shown; the email is not, because a column about
+          // who to ask should not be a place addresses leak out of.
+          const anonymous = rows.find((c: any) => !c.login && c.name);
+          if (registered?.login) {
+            edges.push({
+              pk: repoId,
+              sk: "META#top-contributor",
+              type: "top_contributor",
+              metadata: { login: registered.login, contributions: registered.contributions ?? 0 },
+            });
+          } else if (anonymous?.name) {
+            edges.push({
+              pk: repoId,
+              sk: "META#top-contributor",
+              type: "top_contributor",
+              metadata: {
+                name: String(anonymous.name),
+                contributions: anonymous.contributions ?? 0,
+                // Read by whatever renders this, so the name can be labelled as
+                // a git identity rather than passed off as a GitHub user.
+                unlinked: true,
+              },
+            });
+          }
+        } catch (err: any) {
+          // An empty repository answers 204, and one GitHub is still computing
+          // statistics for answers 202. Neither is a failure worth a line, and
+          // neither should cost the repository its other edges.
+          if (err.status !== 202 && err.status !== 204 && err.status !== 403 && err.status !== 404) {
+            console.warn(`[GraphAggregator] Failed to fetch contributors for ${repo.name}`);
+          }
+        }
+      }
+
       // Workflows
       try {
         const { data: workflows } = await octokit.rest.actions.listRepoWorkflows({ owner: org, repo: repo.name, per_page: 100 });
@@ -396,7 +484,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
     console.log(`[GraphAggregator] Generated ${edges.length} graph edges. Starting database sync...`);
 
     // Write edges to database
-    if (usesDynamo()) {
+    if (edgesTable) {
       // Only what changed.
       //
       // This deleted every row and rewrote every row on every run. The data it

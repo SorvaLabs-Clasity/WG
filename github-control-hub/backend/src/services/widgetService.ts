@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand, scanAll } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, GetCommand, DeleteCommand, ScanCommand, scanAll } from "../utils/dynamo";
 import { logActivity } from "./activityService";
 
 export interface WidgetConfig {
@@ -21,7 +21,7 @@ const TABLE = () => tableName("WIDGETS_TABLE");
 const memWidgets: Map<string, WidgetConfig> = new Map();
 
 export async function listWidgets(): Promise<WidgetConfig[]> {
-  if (usesDynamo()) {
+  if (hasTable("WIDGETS_TABLE")) {
     // Paged: a bare scan stops at 1MB without saying so, and a list that
     // silently loses its tail is worse here than an error would be.
     return (await scanAll<WidgetConfig>(TABLE())).sort(
@@ -34,7 +34,7 @@ export async function listWidgets(): Promise<WidgetConfig[]> {
 }
 
 export async function getWidget(id: string): Promise<WidgetConfig | undefined> {
-  if (usesDynamo()) {
+  if (hasTable("WIDGETS_TABLE")) {
     const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id } }));
     return result.Item as WidgetConfig | undefined;
   }
@@ -53,7 +53,7 @@ export async function createWidget(
     updatedAt: now,
   };
 
-  if (usesDynamo()) {
+  if (hasTable("WIDGETS_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: widget }));
   } else {
     memWidgets.set(widget.id, widget);
@@ -82,7 +82,7 @@ export async function updateWidget(
     updatedAt: new Date().toISOString(),
   };
 
-  if (usesDynamo()) {
+  if (hasTable("WIDGETS_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
   } else {
     memWidgets.set(id, updated);
@@ -99,7 +99,7 @@ export async function deleteWidget(id: string, actor: string): Promise<boolean> 
   const existing = await getWidget(id);
   if (!existing) return false;
 
-  if (usesDynamo()) {
+  if (hasTable("WIDGETS_TABLE")) {
     await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { id } }));
   } else {
     memWidgets.delete(id);
@@ -113,7 +113,7 @@ export async function deleteWidget(id: string, actor: string): Promise<boolean> 
 }
 
 export async function putWidgetRaw(widget: WidgetConfig): Promise<void> {
-  if (usesDynamo()) {
+  if (hasTable("WIDGETS_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: widget }));
   } else {
     memWidgets.set(widget.id, widget);
@@ -121,7 +121,7 @@ export async function putWidgetRaw(widget: WidgetConfig): Promise<void> {
 }
 
 export async function deleteWidgetRaw(id: string): Promise<void> {
-  if (usesDynamo()) {
+  if (hasTable("WIDGETS_TABLE")) {
     await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { id } }));
   } else {
     memWidgets.delete(id);

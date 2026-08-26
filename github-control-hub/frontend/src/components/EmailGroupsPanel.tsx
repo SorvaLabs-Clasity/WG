@@ -112,7 +112,7 @@ export default function EmailGroupsPanel() {
                       {m.endpoint}
                       {!m.confirmed && (
                         <span className="ml-2 text-xs px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300">
-                          pending — receives nothing yet
+                          pending, receives nothing yet
                         </span>
                       )}
                     </span>

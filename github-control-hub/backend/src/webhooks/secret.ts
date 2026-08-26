@@ -170,7 +170,7 @@ export async function loadSecretsIntoEnv(): Promise<void> {
  * depend on whose credentials are in the environment.
  */
 async function unconfiguredLoader(): Promise<never> {
-  throw new Error("secret loader not configured — inject one first");
+  throw new Error("secret loader not configured, inject one first");
 }
 
 export function __setWebhookSecretLoaderForTests(fn: () => Promise<string>): void {

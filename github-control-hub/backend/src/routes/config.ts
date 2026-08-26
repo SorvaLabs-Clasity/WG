@@ -51,7 +51,7 @@ async function refuseUnlessAdmin(res: Response, login: string, verb: string, use
   if (await isControlHubAdmin(login, userToken)) return false;
   res.status(403).json({
     error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ${verb} ` +
-      `configuration — it is every scanner, widget and guardrail the organization runs on.`,
+      `configuration. It is every scanner, widget and guardrail the organization runs on.`,
     code: "CONTROL_HUB_ADMIN_REQUIRED",
   });
   return true;

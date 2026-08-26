@@ -248,7 +248,7 @@ export default function PrReminderSettings({
                         // Otherwise a mute on a repository that has since gone
                         // reads as a repository nobody can find.
                         <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
-                          Not in your visible repositories — renamed, archived or removed from the
+                          Not in your visible repositories. Renamed, archived or removed from the
                           installation.
                         </p>
                       )}

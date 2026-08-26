@@ -80,7 +80,7 @@ router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => 
     }
     if (mode === "enforce") {
       if (!canRemediate(kind)) {
-        res.status(400).json({ error: `"${kind}" is report-only — remediating it automatically could cut live access.` });
+        res.status(400).json({ error: `"${kind}" is report-only. Remediating it automatically could cut live access.` });
         return;
       }
     }
@@ -92,7 +92,16 @@ router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => 
       enabled: enabled !== false,
       mode: (mode as GuardrailMode) ?? "report",
       applyOnCreate: applyOnCreate !== false,
-      params: params ?? {},
+      // Catalog defaults underneath whatever was sent.
+    //
+    // The rule form fills these in and shows every field regardless of mode, so
+    // a rule made in the app already carries them. One made through the API
+    // might not — and the fix parameters are exactly the ones a `report` rule
+    // looks like it does not need, right up until somebody presses Fix on a
+    // single resource. Storing them means the rule describes its own fix rather
+    // than leaning on a fallback inside the remediator that could drift from
+    // the documented default.
+    params: { ...(CATALOG.find(c => c.kind === kind)?.defaultParams ?? {}), ...(params ?? {}) },
       exclusionLists: exclusionLists ?? [],
       // Empty means every account, including ones added later. A rule that
       // stopped covering new accounts unless someone remembered to edit it
@@ -206,6 +215,73 @@ router.post("/run", requireAdmin, async (req: Request, res: Response) => {
     // interesting of the two outcomes to be able to find later.
     await logActivity("aws.guardrail.run", req.user!.login, "*", scope,
       "AWS guardrail run failed", undefined, "app", undefined, undefined,
+      { failed: true, errorMessage: (err as Error)?.message ?? String(err) });
+    res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
+  }
+});
+
+/**
+ * Fix one failing resource, now, without changing what the rule does next time.
+ *
+ * The button beside a single failed item. Somebody has looked at this one thing
+ * and decided to correct it; that is a different decision from deciding every
+ * future violation should be corrected automatically, and this keeps them
+ * separate — the rule's mode is not touched.
+ *
+ * So a setting changed back afterwards is reported again, not silently
+ * re-corrected. Unless the rule is in `enforce` mode, where re-correcting is
+ * the whole point.
+ *
+ * `resourceId` is required, and the engine refuses without it. Omitting it
+ * would turn this into enforcing the entire rule.
+ */
+router.post("/remediate", requireAdmin, async (req: Request, res: Response) => {
+  const { ruleId, resourceId, accountId } = req.body ?? {};
+  if (!ruleId || !resourceId) {
+    res.status(400).json({ error: "ruleId and resourceId are both required" });
+    return;
+  }
+
+  const rule = (await listGuardrails()).find(r => r.id === ruleId);
+  if (!rule) {
+    res.status(404).json({ error: "No such guardrail rule" });
+    return;
+  }
+  if (!canRemediate(rule.kind)) {
+    res.status(400).json({
+      error: `"${rule.kind}" has no automatic fix. Correcting it could cut live access, so it needs a human.`,
+    });
+    return;
+  }
+
+  try {
+    const result = await invokeEngine({
+      ruleIds: [ruleId],
+      resourceIds: [resourceId],
+      accountIds: accountId ? [accountId] : undefined,
+      forceRemediate: true,
+    });
+
+    const fixed = (result.remediated ?? 0) > 0;
+    await logActivity("aws.guardrail.run", req.user!.login, "*", resourceId,
+      fixed
+        ? `Fixed ${resourceId} for "${rule.name}"`
+        : `Asked to fix ${resourceId} for "${rule.name}". Nothing was changed`,
+      undefined, "app", undefined, undefined,
+      { failed: !fixed && (result.errors?.length ?? 0) > 0 });
+
+    res.json({
+      remediated: result.remediated ?? 0,
+      // Returned rather than assumed. A resource that was already compliant by
+      // the time this ran reports zero, and the caller should say so instead of
+      // claiming a fix that did not happen.
+      findings: result.findings ?? [],
+      errors: result.errors ?? [],
+    });
+  } catch (err) {
+    await logActivity("aws.guardrail.run", req.user!.login, "*", resourceId,
+      `Failed to fix ${resourceId} for "${rule.name}"`,
+      undefined, "app", undefined, undefined,
       { failed: true, errorMessage: (err as Error)?.message ?? String(err) });
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }

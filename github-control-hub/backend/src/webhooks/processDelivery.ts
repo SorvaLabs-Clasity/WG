@@ -6,6 +6,9 @@ import { logActivity } from "../services/activityService";
 import {
   addBranchEdge, removeBranchEdge, updateBranchProtection,
   addCollaboratorEdge, removeCollaboratorEdge, addRepoEdges,
+  patchRepoMeta, addTeamRepoEdge, removeTeamRepoEdge,
+  addTeamMemberEdge, removeTeamMemberEdge,
+  addVulnerableDependencyEdge, removeVulnerableDependencyEdge,
 } from "../services/graphEdgeService";
 
 export interface Delivery {
@@ -70,7 +73,7 @@ export async function awaitBackground(
   let timer: NodeJS.Timeout | undefined;
   const ceiling = new Promise<void>((resolve) => {
     timer = setTimeout(() => {
-      console.warn(`[Webhook] Background work exceeded ${ceilingMs}ms — abandoning it so the delivery can be marked done`);
+      console.warn(`[Webhook] Background work exceeded ${ceilingMs}ms. Abandoning it so the delivery can be marked done`);
       resolve();
     }, ceilingMs);
   });
@@ -292,14 +295,78 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
     }
   }
 
-  if (event === "delete" && payload.ref_type === "branch" && payload.repository?.name) {
-    // Sanitized like every other field taken from a payload. A branch name is
-    // the one string here that can legally hold < > " ' & — Git's ref rules
-    // forbid spaces and ~^:?*[\ but not those — so this is the field most
-    // able to carry markup, and it was the one going through raw.
-    const repo = sanitizeField(payload.repository.name, 100);
-    const actorLogin = sanitizeField(payload.sender?.login, 64) || "github";
-    await logActivity("branch.delete", actorLogin, repo, sanitizeField(payload.ref, 100) || "branch", "Branch deleted via GitHub", undefined, "github");
+  // ── detailed logging: the routine traffic, behind the toggle ─────────
+  //
+  // Branches, tags, pushes, pull requests. None of this changes structure or
+  // access, so none of it is recorded unless an admin has turned detailed
+  // logging on, and each kind can be unchecked individually. The toggle
+  // governs collection only: rows written while it was on stay in the feed
+  // for their full retention after it goes off.
+  //
+  // Deletions made *through this app* are recorded unconditionally, in
+  // routes/branches.ts, because those carry the undo payload that can put the
+  // branch back. This block only sees what happened on github.com.
+  try {
+    const { shouldLogDetailed } = await import("./detailedLogging");
+    const dRepo = sanitizeField(payload.repository?.name, 100);
+    const dActor = sanitizeField(payload.sender?.login, 64) || "github";
+    const detail = { detailed: true } as const;
+
+    if ((event === "create" || event === "delete") && dRepo && payload.ref) {
+      const refType = payload.ref_type === "tag" ? "tag" : "branch";
+      const kind = `${refType}-${event === "create" ? "created" : "deleted"}`;
+      if (await shouldLogDetailed(kind)) {
+        // A branch name can legally hold < > " ' &. Git's ref rules forbid
+        // spaces and ~^:?*[\ but not those, so it is sanitized like every
+        // other payload field.
+        const ref = sanitizeField(payload.ref, 100) || refType;
+        const action = (refType === "tag"
+          ? (event === "create" ? "tag.create" : "tag.delete")
+          : (event === "create" ? "branch.create" : "branch.delete")) as any;
+        await logActivity(action, dActor, dRepo, ref,
+          `${refType === "tag" ? "Tag" : "Branch"} ${event === "create" ? "created" : "deleted"} via GitHub`,
+          undefined, "github", undefined, undefined, detail);
+      }
+    }
+
+    // Pushes to tags arrive as `create`, handled above; `push` for a deleted
+    // branch has no commits worth a row.
+    if (event === "push" && dRepo && !payload.deleted
+        && String(payload.ref ?? "").startsWith("refs/heads/")
+        && await shouldLogDetailed("push")) {
+      const branch = sanitizeField(String(payload.ref).replace("refs/heads/", ""), 100) || "branch";
+      const n = Array.isArray(payload.commits) ? payload.commits.length : 0;
+      if (n > 0) {
+        await logActivity("github.push", dActor, dRepo, branch,
+          `${n} commit${n === 1 ? "" : "s"} pushed to ${branch}`,
+          undefined, "github", undefined,
+          sanitizeField(payload.after, 40) || undefined, detail);
+      }
+    }
+
+    if (event === "pull_request" && payload.pull_request && dRepo) {
+      const pr = payload.pull_request;
+      const prNumber = typeof pr.number === "number" ? pr.number : undefined;
+      const title = sanitizeField(pr.title, 140) || `#${prNumber ?? "?"}`;
+      const a = payload.action;
+      const kind = (a === "opened" || a === "reopened") ? "pr-opened"
+        : a === "closed" && pr.merged ? "pr-merged"
+        : a === "closed" ? "pr-closed"
+        : null;
+      if (kind && await shouldLogDetailed(kind)) {
+        const action = kind === "pr-opened" ? "github.pr_opened"
+          : kind === "pr-merged" ? "github.pr_merged" : "github.pr_closed";
+        const said = kind === "pr-opened" ? (a === "reopened" ? "reopened" : "opened")
+          : kind === "pr-merged" ? "merged" : "closed without merging";
+        await logActivity(action, dActor, dRepo, title,
+          `Pull request #${prNumber ?? "?"} ${said}`,
+          undefined, "github", prNumber, undefined, detail);
+      }
+    }
+  } catch (err: any) {
+    // Additive telemetry must not fail the delivery: a throw here would re-run
+    // every other effect of this event so a feed row could be retried.
+    console.warn("[Webhook] Detailed logging failed:", err?.message ?? err);
   }
 
   if (event === "repository" && (payload.action === "created" || payload.action === "unarchived")) {
@@ -372,6 +439,95 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
         const isProtected = payload.action !== "deleted";
         console.log(`[Webhook] Updating graph edge: branch "${branchName}" protection=${isProtected} in ${repoName}`);
         await updateBranchProtection(repoName, branchName, isProtected);
+      }
+    }
+
+    // ── the facts the rebuild used to be the only source of ──────────────
+    //
+    // Everything below arrives on an event this handler was already receiving
+    // and already acting on — it raised a security alert and then left the
+    // graph alone. So the Security tab knew a repository had gone public
+    // within seconds while the widget that counts public repositories went on
+    // showing the old number for up to six hours.
+    //
+    // These are the six checks that read edges no webhook wrote:
+    // public-repos, archived-repos-with-access, stale-repos, unowned-repos,
+    // empty-teams and repos-dependent-on.
+
+    // Visibility and archival. `repo_meta` carries a dozen fields the rebuild
+    // collected, so this merges rather than replaces — see patchRepoMeta.
+    if (event === "repository" && repoName) {
+      const visibility =
+        payload.action === "publicized" ? "public" :
+        payload.action === "privatized" ? "private" : null;
+      const archived =
+        payload.action === "archived" ? true :
+        payload.action === "unarchived" ? false : null;
+
+      if (visibility !== null || archived !== null) {
+        console.log(`[Webhook] Updating repo_meta for ${repoName}: ${payload.action}`);
+        await patchRepoMeta(repoName, {
+          ...(visibility !== null ? { visibility } : {}),
+          ...(archived !== null ? { archived } : {}),
+        });
+      }
+    }
+
+    // Last activity, which is the whole of what `stale-repos` reads. Taken from
+    // the event rather than from a clock: a delivery handled late still records
+    // when the push happened.
+    if (event === "push" && repoName) {
+      const pushedAt = payload.repository?.pushed_at;
+      const iso = typeof pushedAt === "number"
+        ? new Date(pushedAt * 1000).toISOString()
+        : typeof pushedAt === "string" ? pushedAt : new Date().toISOString();
+      await patchRepoMeta(repoName, { pushedAt: iso });
+    }
+
+    // A team gaining or losing a repository. The alert for this was already
+    // being raised above; only the edge was missing.
+    if (event === "team" && repoName && payload.team?.slug) {
+      const team = payload.team.slug;
+      if (payload.action === "added_to_repository") {
+        const permission = payload.team?.permission || "pull";
+        console.log(`[Webhook] Adding graph edge: team "${team}" owns ${repoName}`);
+        await addTeamRepoEdge(team, repoName, permission);
+      } else if (payload.action === "removed_from_repository") {
+        console.log(`[Webhook] Removing graph edge: team "${team}" from ${repoName}`);
+        await removeTeamRepoEdge(team, repoName);
+      }
+    }
+
+    // Team membership. `membership` was not handled at all before this, which
+    // is why `empty-teams` could only ever be as fresh as the last rebuild.
+    if (event === "membership" && payload.team?.slug && payload.member?.login) {
+      const team = payload.team.slug;
+      const user = payload.member.login;
+      if (payload.action === "added") {
+        console.log(`[Webhook] Adding graph edge: "${user}" is a member of ${team}`);
+        await addTeamMemberEdge(team, user);
+      } else if (payload.action === "removed") {
+        console.log(`[Webhook] Removing graph edge: "${user}" from team ${team}`);
+        await removeTeamMemberEdge(team, user);
+      }
+    }
+
+    // Vulnerable dependencies, keyed on the package as the rebuild keys them.
+    if (event === "dependabot_alert" && repoName && payload.alert) {
+      const dep = payload.alert.dependency?.package?.name
+        || payload.alert.security_vulnerability?.package?.name;
+      if (dep) {
+        const open = payload.action === "created" || payload.action === "reopened";
+        if (open) {
+          const severity = payload.alert.security_vulnerability?.severity
+            || payload.alert.security_advisory?.severity || "low";
+          await addVulnerableDependencyEdge(repoName, dep, severity, payload.alert.number);
+        } else if (["fixed", "dismissed", "auto_dismissed"].includes(payload.action)) {
+          // The edge only ever represents an *open* advisory, so a resolved one
+          // is removed rather than marked — the rebuild would not have written
+          // it either, since it lists alerts with state=open.
+          await removeVulnerableDependencyEdge(repoName, dep);
+        }
       }
     }
   } catch (graphErr) {

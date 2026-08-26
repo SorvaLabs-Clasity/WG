@@ -52,7 +52,7 @@ const MODES: Record<Kind, { label: string; icon: string; hint: string; placehold
     icon: "ph-file-code",
     hint: "Needs both boxes: a path only means something inside one repository, and "
       + "GitHub has no organization-wide search for who touched a file. A folder works "
-      + "as well as a file. Commits only — reviews belong to the pull request, not to "
+      + "as well as a file. Commits only, reviews belong to the pull request, not to "
       + "one file, and attributing them here would rank people who never opened it.",
     placeholder: "src/billing/charge.ts",
   },
@@ -105,7 +105,7 @@ function Signals({ e, size = "sm", sampled }: { e: Expert; size?: "sm" | "lg"; s
           <i className={`ph ${i.icon}`}></i>
           {/* A floor, not a total. GitHub returns one page of a hundred, so
               a repository with four thousand commits and one with a hundred and
-              one both came back as "100" — a number wrong in a way nobody could
+              one both came back as "100". A number wrong in a way nobody could
               see. */}
           <span className="font-bold tabular-nums">{i.n}{sampled && i.n >= 100 ? "+" : ""}</span>
           <span className="font-medium opacity-70">{i.n === 1 ? i.one : i.many}</span>
@@ -176,7 +176,7 @@ export default function ExpertisePage() {
       <header className="mb-6">
         <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Who knows this?</h1>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-3xl">
-          Ranks people by what they have actually touched — commits, reviews and discussion —
+          Ranks people by what they have actually touched, commits, reviews and discussion -
           weighted so recent work counts for more. For when something is broken and you need to
           know who to ask first.
         </p>
@@ -204,8 +204,8 @@ export default function ExpertisePage() {
 
         <div className="p-5">
           {/* Labelled, not just placeheld. Two unlabelled boxes side by side is
-              a guess, and the placeholder — the only thing saying which is which
-              — disappears the moment anyone types. */}
+              a guess, and the placeholder. The only thing saying which is which
+             , disappears the moment anyone types. */}
           <form className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end"
             onSubmit={e => { e.preventDefault(); if (canAsk) setAsked({ kind, repo, path, library }); }}>
             <div className={`grid gap-3 ${kind === "path" ? "sm:grid-cols-2" : ""}`}>
@@ -227,7 +227,7 @@ export default function ExpertisePage() {
             </div>
             <button type="submit" disabled={!canAsk || isFetching}
               title={canAsk ? "" : kind === "path"
-                ? "Both a repository and a path are needed — a path only means something inside one repository"
+                ? "Both a repository and a path are needed. A path only means something inside one repository"
                 : "Fill this in first"}
               className="h-fit px-6 py-2.5 text-sm font-bold rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:opacity-90 disabled:opacity-30 transition-opacity inline-flex items-center gap-2">
               {isFetching
@@ -270,7 +270,7 @@ export default function ExpertisePage() {
                   : data.degraded.length
                     ? `Could not read: ${data.degraded.join(", ")}. This may be a permissions or `
                       + `visibility problem rather than an empty history.`
-                    : "No commits, reviews or discussion match. Check the name is right — "
+                    : "No commits, reviews or discussion match. Check the name is right, "
                       + "this searches only what your own account can see."} />
           ) : (
             <>
@@ -292,7 +292,7 @@ export default function ExpertisePage() {
 
               {data.degraded.length > 0 && (
                 <div className="mb-4 rounded-xl bg-amber-50 dark:bg-amber-950/40 px-4 py-2.5 text-sm text-amber-800 dark:text-amber-300">
-                  Partial answer — could not read {data.degraded.join(", ")}. The ranking below is
+                  Partial answer. Could not read {data.degraded.join(", ")}. The ranking below is
                   from the signals that did load.
                 </div>
               )}
@@ -375,12 +375,12 @@ export default function ExpertisePage() {
                 <p className="leading-relaxed">
                   {data.sampled && (
                     <><strong className="font-semibold text-slate-500 dark:text-slate-400">
-                      Ranked from the most recent 100 commits</strong> — GitHub returns one page,
+                      Ranked from the most recent 100 commits</strong>, GitHub returns one page,
                     so the counts above are floors rather than totals.{" "}</>
                   )}
                   Scores are relative to the top person, not absolute. Contributions halve in weight
                   every 90 days, so this ranks who is likely to remember rather than who has done
-                  the most over all time. The dot is recency —{" "}
+                  the most over all time. The dot is recency -{" "}
                   <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 align-middle" /> within a
                   month,{" "}
                   <span className="inline-block w-2 h-2 rounded-full bg-amber-500 align-middle" /> within six,{" "}

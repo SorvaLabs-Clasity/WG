@@ -1,5 +1,5 @@
-import { apiGet, apiPost, DEMO_MODE } from "./client";
-import { mockFetchActivity, mockUndoActivity, mockRedoActivity, mockRetryActivity } from "./mock";
+import { apiGet, apiPost, apiPut, DEMO_MODE } from "./client";
+import { mockFetchActivity, mockUndoActivity, mockRedoActivity, mockRetryActivity, mockGetDetailedLogging, mockUpdateDetailedLogging } from "./mock";
 import type { Activity } from "../types/Activity";
 
 interface ActivityResponse {
@@ -43,4 +43,35 @@ export function undoResolution(
   activityId: string
 ): Promise<{ success: boolean }> {
   return apiPost<{ success: boolean }>(`/activity/${activityId}/undo-resolution`, {});
+}
+
+export interface DetailedLogKind {
+  id: string;
+  label: string;
+  description: string;
+  event: string;
+}
+
+export interface DetailedLoggingSettings {
+  enabled: boolean;
+  disabledKinds: string[];
+  changedAt?: string;
+  changedBy?: string;
+}
+
+export interface DetailedLoggingResponse {
+  settings: DetailedLoggingSettings;
+  kinds: DetailedLogKind[];
+}
+
+export function fetchDetailedLogging(): Promise<DetailedLoggingResponse> {
+  if (DEMO_MODE) return mockGetDetailedLogging();
+  return apiGet<DetailedLoggingResponse>("/activity/detailed-logging");
+}
+
+export function updateDetailedLogging(
+  settings: { enabled: boolean; disabledKinds: string[] },
+): Promise<DetailedLoggingResponse> {
+  if (DEMO_MODE) return mockUpdateDetailedLogging(settings);
+  return apiPut<DetailedLoggingResponse>("/activity/detailed-logging", settings);
 }

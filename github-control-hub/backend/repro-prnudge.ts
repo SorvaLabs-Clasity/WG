@@ -662,7 +662,7 @@ function lastGoodIsForgotten(): void {
     const ready = buildNudgeComment(
       pr({ author: "alice" }), "ready", ["alice", "bob"], 8, 1);
     check("  a ready pull request tells the author to merge, and only the author",
-      /@alice — .*merg/i.test(ready) && !/@bob — .*merg/i.test(ready), ready);
+      /@alice, .*merg/i.test(ready) && !/@bob, .*merg/i.test(ready), ready);
     check("  says how long it has been idle",
       body.includes("9 days") && !body.includes("9.7"), body);
 
@@ -973,7 +973,7 @@ function lastGoodIsForgotten(): void {
                      "conflict", "behind", "checks-failing", "checks-pending", "blocked"] as const) {
       const body = buildNudgeComment(pr({ author: "alice" }), r, ["alice"], 3, 1);
       check(`  the "${r}" state has wording`,
-        !/undefined/.test(body) && body.includes("@alice —"), body.slice(0, 80));
+        !/undefined/.test(body) && body.includes("@alice,"), body.slice(0, 80));
     }
   }
 

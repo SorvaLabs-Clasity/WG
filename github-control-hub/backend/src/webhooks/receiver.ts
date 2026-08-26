@@ -82,7 +82,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   } catch (err) {
     console.error(
       `[Webhook] Could not queue delivery ${deliveryId} (${githubEvent}), ` +
-      `${Buffer.byteLength(message, "utf8")} bytes — SQS rejects anything over 262144:`,
+      `${Buffer.byteLength(message, "utf8")} bytes, SQS rejects anything over 262144:`,
       (err as Error).message,
     );
     throw err;

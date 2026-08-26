@@ -206,7 +206,7 @@ export function buildDigest(
     `${n} ${n === 1 ? label.singular : label.plural} in ${repo}:\n\n` +
     `${shown.join("\n")}\n` +
     (omitted ? `\n  …and ${omitted} more, not listed to keep this email deliverable.\n` : "") +
-    `\n— — —\n\n${rendered.body}`;
+    `\n---\n\n${rendered.body}`;
 
   return { subject, body };
 }

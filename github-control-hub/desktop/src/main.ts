@@ -209,7 +209,7 @@ async function main(): Promise<void> {
     await startBackend(backendDir, frontendDir, BACKEND_PORT, isDev);
   } catch (err: any) {
     dialog.showErrorBox(
-      "GitHub Control Hub — Backend Error",
+      "GitHub Control Hub, Backend Error",
       `Failed to start the backend server:\n\n${err.message}\n\nMake sure you have valid AWS credentials.`
     );
   }
@@ -379,7 +379,7 @@ function scheduleUpdateChecks(): void {
             "[updater] AWS is reachable but there is no GitHub App token, so the update " +
             "check cannot run. Check the App credentials in Secrets Manager.",
           );
-          sendUpdateStatus("error", "No GitHub App token — cannot check for updates");
+          sendUpdateStatus("error", "No GitHub App token, cannot check for updates");
           return;
         }
         process.env.GH_TOKEN = token;
@@ -402,7 +402,7 @@ function scheduleUpdateChecks(): void {
 
     console.warn(
       "[updater] AWS was not reachable within five minutes, so no update check ran. " +
-      `Trying again in ${UPDATE_INTERVAL_MS / 60_000} minutes — signing in to AWS will ` +
+      `Trying again in ${UPDATE_INTERVAL_MS / 60_000} minutes. Signing in to AWS will ` +
       "make the next attempt work without restarting.",
     );
   };

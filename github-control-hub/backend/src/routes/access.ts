@@ -84,7 +84,7 @@ router.post("/refresh", async (req: Request, res: Response) => {
   const startedAt = Date.now();
   invalidateAccessMap();
   await logSync("access", req.user?.login ?? SCHEDULE_ACTOR, {
-    details: "Recomputed the access map from stored data — no GitHub read",
+    details: "Recomputed the access map from stored data. No GitHub read",
     startedAt,
   });
   res.json({ refreshed: true });

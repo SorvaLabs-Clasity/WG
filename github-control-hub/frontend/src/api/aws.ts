@@ -121,6 +121,15 @@ export const runGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[]
 export const previewGuardrails = (body: { ruleIds?: string[]; resourceIds?: string[]; accountIds?: string[] }) =>
   apiPost<RunResult>("/aws/preview", body);
 
+/**
+ * Fix one failing resource now, without changing what the rule does next time.
+ *
+ * `resourceId` is required by the server — omitting it would be a request to
+ * enforce the whole rule, which this is deliberately not.
+ */
+export const remediateResource = (body: { ruleId: string; resourceId: string; accountId?: string }) =>
+  apiPost<{ remediated: number; findings: Finding[]; errors: string[] }>("/aws/remediate", body);
+
 
 export const fetchAwsAccounts = () => apiGet<AwsAccount[]>("/aws/accounts");
 

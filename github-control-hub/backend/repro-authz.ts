@@ -165,8 +165,8 @@ globalThis.fetch = (async (input: any) => {
     const path = await import("node:path");
     const dir = path.join(__dirname, "src", "routes");
 
-    // All of these write AWS: guardrails; audit-log streaming, which creates
-    // IAM in the account with the operator's own credentials; and the config
+    // All of these consult the AWS admin check: guardrails; the activity
+    // router, whose detailed-logging settings are gated on it; and the config
     // import, whose bundle carries an `awsGuardrails` section that goes to the
     // same store the /api/aws routes own. That last one is the reason this set
     // is a set rather than one name — an import was a way to create an

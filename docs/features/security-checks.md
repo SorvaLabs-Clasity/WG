@@ -22,6 +22,9 @@ Runs named checks over the graph and lists what fails.
 | `empty-teams` | Teams with no members |
 | `repos-dependent-on` | Repos using a given dependency |
 
+Each check is documented individually — what it asks, what it reads, and how
+fresh it can be — in [widgets.md](widgets.md).
+
 ## What it is careful about
 
 **Missing data is not a clean result.** Each check declares the edge type it

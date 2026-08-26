@@ -2,6 +2,7 @@ import { createAppAuth } from "@octokit/auth-app";
 import { initTokenManager } from "../github/client";
 import { loadSecretsIntoEnv } from "../webhooks/secret";
 import { aggregateGraphData } from "./graphAggregator";
+import { refreshLightEdges } from "./lightGraphRefresh";
 import { getOrgConfig } from "../services/orgConfigService";
 import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
 
@@ -35,7 +36,7 @@ function bootstrapOnce(): Promise<void> {
 
       if (!process.env.GITHUB_ORG) {
         bootstrapped = null;
-        throw new Error("[GraphAggregator] Secrets did not load — GITHUB_ORG is unset; not caching this bootstrap");
+        throw new Error("[GraphAggregator] Secrets did not load. GITHUB_ORG is unset; not caching this bootstrap");
       }
 
       if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
@@ -55,8 +56,45 @@ function bootstrapOnce(): Promise<void> {
   return bootstrapped;
 }
 
-export async function handler(): Promise<{ ok: boolean }> {
+/**
+ * Two schedules, one function.
+ *
+ * `light` refreshes only the edges the expensive walk is otherwise the sole
+ * writer of — repository metadata and team composition — for well under a
+ * hundred requests. It runs often. The full rebuild stays on six hours.
+ *
+ * A second Lambda would have meant a second bundle, a second bootstrap and a
+ * second set of permissions for a job that reads the same API with the same
+ * token and writes the same table.
+ */
+export async function handler(event?: { mode?: "light" | "full" }): Promise<{ ok: boolean }> {
   await bootstrapOnce();
+
+  if (event?.mode === "light") {
+    const startedAt = Date.now();
+    const r = await refreshLightEdges();
+    console.log(
+      `[GraphAggregator] light refresh: ${r.repos} repos, ${r.teams} teams, `
+      + `${r.edgesWritten} written, ${r.edgesRemoved} removed, ${r.requests} requests`
+      + (r.errors.length ? `, ${r.errors.length} errors` : ""),
+    );
+
+    // Logged only when it changed something or failed.
+    //
+    // This runs every half hour and the organization's shape does not change
+    // that often, so recording every pass would bury the four daily rebuild
+    // rows people actually look for under fifty saying nothing happened.
+    if (r.edgesWritten > 0 && (r.edgesRemoved > 0 || r.errors.length > 0)) {
+      await logSync("graph", SCHEDULE_ACTOR, {
+        details: `Light refresh, ${r.repos} repositories, ${r.teams} teams, `
+          + `${r.edgesRemoved} connections removed`,
+        failed: r.errors.length > 0,
+        error: r.errors.length ? r.errors.slice(0, 3).join("; ") : undefined,
+        startedAt,
+      });
+    }
+    return { ok: true };
+  }
 
   const startedAt = Date.now();
 
@@ -80,7 +118,7 @@ export async function handler(): Promise<{ ok: boolean }> {
   await logSync("graph", SCHEDULE_ACTOR, {
     details: failed
       ? "Scheduled sync failed"
-      : `Scheduled sync from GitHub — ${after?.edgeCount ?? 0} connections`,
+      : `Scheduled sync from GitHub, ${after?.edgeCount ?? 0} connections`,
     failed,
     error: failed ? after?.lastError : undefined,
     startedAt,

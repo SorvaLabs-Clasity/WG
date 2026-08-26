@@ -9,14 +9,14 @@ import {
   useCatalog, useGuardrails, useFindings, useAwsExclusions,
   useCreateGuardrail, useUpdateGuardrail, useDeleteGuardrail, useRunGuardrails,
   useSaveAwsExclusion, useDeleteAwsExclusion,
-  useAwsAccounts,
+  useAwsAccounts, useRemediateResource,
 } from "../hooks/useAws";
 import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec, AwsAccount, AwsAccessMethod } from "../api/aws";
 import { awsConsoleUrl, consoleLinkLabel } from "../utils/awsConsole";
 
 const KIND_LABELS: Record<string, string> = {
-  s3_https_only: "S3 — deny non-TLS requests",
-  log_retention_min: "CloudWatch Logs — minimum retention",
+  s3_https_only: "S3, deny non-TLS requests",
+  log_retention_min: "CloudWatch Logs, minimum retention",
 };
 
 const label = (kind: string) => KIND_LABELS[kind] ?? kind;
@@ -93,7 +93,7 @@ export default function AwsPage() {
         {runError && <Note intent="danger">{runError}</Note>}
         {runRules.isSuccess && !runError && (
           <Note intent="good">
-            Checked {runRules.data.findings.length} resources — {runRules.data.violations} failing
+            Checked {runRules.data.findings.length} resources: {runRules.data.violations} failing
             {runRules.data.remediated > 0 && `, ${runRules.data.remediated} fixed`}
             {runRules.data.excluded > 0 && `, ${runRules.data.excluded} excluded`}
             {(runRules.data.accountsChecked?.length ?? 0) > 1 &&
@@ -216,8 +216,8 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
       <Empty
         title="Could not read your guardrails"
         body={failure
-          ? `${failure} Your rules are unaffected — this is a failure to read them, not a change to them.`
-          : "Your rules are unaffected — this is a failure to read them, not a change to them."}
+          ? `${failure} Your rules are unaffected. This is a failure to read them, not a change to them.`
+          : "Your rules are unaffected. This is a failure to read them, not a change to them."}
         action={onRetry ? <Button variant="primary" onClick={onRetry}>Try again</Button> : undefined}
       />
     );
@@ -270,7 +270,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
 
                 {failing > 0 ? <Figure intent="danger" value={failing} label="failing" />
                   : checked > 0 ? <Figure intent="good" value={checked} label="passing" />
-                    : <Figure intent="neutral" value="—" label="not checked" />}
+                    : <Figure intent="neutral" value="-" label="not checked" />}
 
                 <i className="ph-bold ph-caret-right text-slate-300 dark:text-slate-600 group-hover:text-slate-500 group-hover:translate-x-0.5 transition-all shrink-0"></i>
               </div>
@@ -283,7 +283,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
         <div className="mt-4">
           <Note intent="neutral">
             You can view every rule and finding. Creating, editing and running guardrails is limited to the{" "}
-            <span className="font-semibold">{adminTeam}</span> team — they change the whole AWS account.
+            <span className="font-semibold">{adminTeam}</span> team, they change the whole AWS account.
           </Note>
         </div>
       )}
@@ -312,6 +312,38 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
       </>
     );
   }
+
+  // Fixing one resource, without changing what the rule does next time.
+  //
+  // Deliberately per-resource: deciding to correct *this* bucket is a different
+  // decision from deciding every future violation should be corrected, and the
+  // rule's mode is what carries the second one. So a setting changed back after
+  // this is reported again rather than silently re-corrected — unless the rule
+  // is in enforce mode, where re-correcting is the point.
+  const remediate = useRemediateResource();
+  const [fixing, setFixing] = useState<string | null>(null);
+  const [fixNote, setFixNote] = useState<{ id: string; text: string; ok: boolean } | null>(null);
+
+  const fixOne = async (f: Finding) => {
+    if (!rule) return;
+    setFixing(f.resourceId);
+    setFixNote(null);
+    try {
+      const r = await remediate.mutateAsync({
+        ruleId: rule.id, resourceId: f.resourceId, accountId: f.accountId,
+      });
+      setFixNote(r.remediated > 0
+        ? { id: f.resourceId, text: "Fixed.", ok: true }
+        // Zero is a real outcome, not a failure: the resource may already have
+        // been compliant by the time this ran. Saying "fixed" would be a claim
+        // about something that did not happen.
+        : { id: f.resourceId, text: r.errors?.[0] ?? "Nothing was changed. It may already be compliant.", ok: false });
+    } catch (e: any) {
+      setFixNote({ id: f.resourceId, text: e?.message ?? "Could not fix it.", ok: false });
+    } finally {
+      setFixing(null);
+    }
+  };
 
   const failing = findings.filter(f => f.verdict === "violation" && !f.excluded);
   const rest = findings.filter(f => !(f.verdict === "violation" && !f.excluded));
@@ -390,7 +422,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
         </Block>
 
         <Block
-          title={`Resources — ${failing.length} failing of ${checked} checked${excluded ? `, ${excluded} excluded` : ""}`}
+          title={`Resources, ${failing.length} failing of ${checked} checked${excluded ? `, ${excluded} excluded` : ""}`}
           action={rest.length > 0 && (
             <button onClick={() => setShowPassing(v => !v)}
               className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline">
@@ -404,7 +436,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
             {/* Threshold on the whole finding set, not the visible subset.
                 Keying it off `candidates` meant a rule with five failures and
                 three hundred passes showed no search box until you revealed
-                the passing ones — and the control appeared and vanished as you
+                the passing ones, and the control appeared and vanished as you
                 toggled, which reads as a bug even when you find it. */}
             {findings.length > 8 && (
               <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -455,11 +487,36 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                         <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
                           {f.summary}
                           {f.proposedFix && !f.remediated && !f.excluded && (
-                            <span className="text-slate-400 dark:text-slate-500"> — would {f.proposedFix.charAt(0).toLowerCase() + f.proposedFix.slice(1)}</span>
+                            <span className="text-slate-400 dark:text-slate-500">. Would {f.proposedFix.charAt(0).toLowerCase() + f.proposedFix.slice(1)}</span>
                           )}
                         </p>
                         {f.error && <p className="text-[12.5px] text-rose-500 mt-0.5">{f.error}</p>}
+                        {fixNote?.id === f.resourceId && (
+                          <p className={`text-[12.5px] mt-0.5 ${fixNote.ok ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-500"}`}>
+                            {fixNote.text}
+                          </p>
+                        )}
                       </div>
+                      {/* Offered on any failing resource a fix exists for,
+                          whatever mode the rule is in. A report rule already
+                          carries the parameters a fix needs, the catalog
+                          collects them regardless of mode, so the only thing
+                          report withholds is doing it automatically. */}
+                      {isAdmin && entry?.canRemediate && f.verdict === "violation"
+                        && !f.excluded && !f.remediated && (
+                        <button
+                          onClick={() => fixOne(f)}
+                          disabled={fixing === f.resourceId}
+                          title={rule?.mode === "enforce"
+                            ? "Fix it now, rather than waiting for the next sweep"
+                            : "Fix this one resource. The rule keeps reporting, so a change back is reported rather than corrected."}
+                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.07] border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50"
+                        >
+                          {fixing === f.resourceId
+                            ? <><i className="ph-bold ph-circle-notch animate-spin text-[11px]"></i>Fixing</>
+                            : <><i className="ph-bold ph-wrench text-[11px]"></i>Fix</>}
+                        </button>
+                      )}
                       {href && (
                         <a href={href} target="_blank" rel="noreferrer"
                           title={consoleLinkLabel(f.resourceType)}
@@ -556,7 +613,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
         <select className={input} value={kind} onChange={e => onKindChange(e.target.value)} disabled={!!rule}>
           {catalog.map(c => <option key={c.kind} value={c.kind}>{label(c.kind)}</option>)}
         </select>
-        {rule && <p className="text-[11px] text-slate-400 mt-1">Rule type can't be changed after creation — delete and recreate instead.</p>}
+        {rule && <p className="text-[11px] text-slate-400 mt-1">Rule type can't be changed after creation, delete and recreate instead.</p>}
       </Field>
 
       <Field label="Name"><input className={input} value={name} onChange={e => setName(e.target.value)} /></Field>
@@ -590,7 +647,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
       <Field label="Run the moment something changes" hint={
         entry?.triggerEvents.length
           ? `Runs within seconds of ${entry.triggerEvents.join(", ")}. Needs a CloudTrail trail; without one the sweep is the only path.`
-          : "No live trigger for this rule — the sweep covers it."
+          : "No live trigger for this rule, the sweep covers it."
       }>
         <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
           <input type="checkbox" checked={applyOnCreate} onChange={e => setApplyOnCreate(e.target.checked)}
@@ -818,7 +875,7 @@ function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
     <>
       <Note intent="neutral">
         An exclusion list is a set of resources your guardrails should skip. Attach a list to a rule and
-        anything it matches is left alone — useful for scratch buckets, sandbox log groups, or anything
+        anything it matches is left alone, useful for scratch buckets, sandbox log groups, or anything
         deliberately configured differently.
       </Note>
 
@@ -981,7 +1038,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
             <input value={name} onChange={e => setName(e.target.value)} className={field}
               placeholder="Sandbox and scratch resources" />
             <input value={description} onChange={e => setDescription(e.target.value)} className={`${field} mt-2`}
-              placeholder="Optional — why these are excluded" />
+              placeholder="Optional. Why these are excluded" />
           </Block>
 
           <Block title="Matching rules" action={<Button onClick={addRule}>Add rule</Button>}>
@@ -1033,7 +1090,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
               values={names} draft={nameDraft} setDraft={setNameDraft}
               onAdd={v => setNames(n => n.includes(v) ? n : [...n, v])}
               onRemove={v => setNames(n => n.filter(x => x !== v))}
-              placeholder="my-bucket-name — press Enter"
+              placeholder="my-bucket-name, press Enter"
               intent="neutral"
             />
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
@@ -1046,11 +1103,11 @@ function ExclusionEditor({ list, onClose, onSave }: {
               values={keep} draft={keepDraft} setDraft={setKeepDraft}
               onAdd={v => setKeep(k => k.includes(v) ? k : [...k, v])}
               onRemove={v => setKeep(k => k.filter(x => x !== v))}
-              placeholder="prod-logs — press Enter"
+              placeholder="prod-logs, press Enter"
               intent="good"
             />
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
-              These win over everything above — use one when a rule casts too wide a net and you want a
+              These win over everything above, use one when a rule casts too wide a net and you want a
               single resource pulled back in.
             </p>
           </Block>
@@ -1093,7 +1150,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
               )}
               {hasTagRule && (
                 <p className="text-[12.5px] text-amber-600 dark:text-amber-400 mt-3">
-                  Tag rules are not previewed here — tags are read when a guardrail runs, not stored with findings.
+                  Tag rules are not previewed here. Tags are read when a guardrail runs, not stored with findings.
                   They will still apply.
                 </p>
               )}

@@ -136,7 +136,7 @@ export default function PersonPicker({
               className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2.5 transition-colors ${
                 i === cursor ? "bg-gh-blue text-white" : "text-slate-700 dark:text-slate-200"}`}>
               {/* The real avatar from the members list, not one guessed from a
-                  string — a guessed URL resolves for any GitHub account at all,
+                  string, a guessed URL resolves for any GitHub account at all,
                   which is how a stranger's face ended up in this box. */}
               <UserAvatar login={m.login} avatarUrl={m.avatarUrl ?? undefined} size={22} />
               <span className="text-[13px] font-medium truncate">{m.login}</span>

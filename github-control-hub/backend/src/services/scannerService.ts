@@ -2,7 +2,7 @@ import crypto from "crypto";
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
 import { listBranches, getProtection, listRulesets, getAllProtections } from "./branchService";
-import { docClient, usesDynamo, tableName, PutCommand, GetCommand, DeleteCommand, QueryCommand, ScanCommand } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, GetCommand, DeleteCommand, QueryCommand, ScanCommand } from "../utils/dynamo";
 import { logActivity } from "./activityService";
 
 export interface ScannerCondition {
@@ -76,7 +76,7 @@ const memScanners: Map<string, Scanner> = new Map();
 const memScanResults: Map<string, ScanResult> = new Map();
 
 export async function listScanners(): Promise<Scanner[]> {
-  if (usesDynamo()) {
+  if (hasTable("SCANNERS_TABLE")) {
     const result = await docClient.send(
       new QueryCommand({
         TableName: TABLE(),
@@ -94,7 +94,7 @@ export async function listScanners(): Promise<Scanner[]> {
 }
 
 export async function getScanner(id: string): Promise<Scanner | undefined> {
-  if (usesDynamo()) {
+  if (hasTable("SCANNERS_TABLE")) {
     const result = await docClient.send(
       new GetCommand({ TableName: TABLE(), Key: { pk: "SCANNER", sk: id } })
     );
@@ -112,7 +112,7 @@ export async function createScanner(data: Omit<Scanner, "id" | "createdAt" | "up
     updatedAt: now,
   };
 
-  if (usesDynamo()) {
+  if (hasTable("SCANNERS_TABLE")) {
     await docClient.send(
       new PutCommand({
         TableName: TABLE(),
@@ -144,7 +144,7 @@ export async function updateScanner(id: string, data: Partial<Omit<Scanner, "id"
     updatedAt: new Date().toISOString(),
   };
 
-  if (usesDynamo()) {
+  if (hasTable("SCANNERS_TABLE")) {
     await docClient.send(
       new PutCommand({
         TableName: TABLE(),
@@ -165,7 +165,7 @@ export async function updateScanner(id: string, data: Partial<Omit<Scanner, "id"
 }
 
 export async function putScannerRaw(scanner: Scanner): Promise<void> {
-  if (usesDynamo()) {
+  if (hasTable("SCANNERS_TABLE")) {
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: { pk: "SCANNER", sk: scanner.id, ...scanner } }));
   } else {
     memScanners.set(scanner.id, scanner);
@@ -173,7 +173,7 @@ export async function putScannerRaw(scanner: Scanner): Promise<void> {
 }
 
 export async function deleteScannerRaw(id: string): Promise<void> {
-  if (usesDynamo()) {
+  if (hasTable("SCANNERS_TABLE")) {
     await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { pk: "SCANNER", sk: id } }));
   } else {
     memScanners.delete(id);
@@ -183,7 +183,7 @@ export async function deleteScannerRaw(id: string): Promise<void> {
 export async function deleteScanner(id: string, actor?: string): Promise<boolean> {
   const existing = await getScanner(id);
   if (!existing) return false;
-  if (usesDynamo()) {
+  if (hasTable("SCANNERS_TABLE")) {
     await docClient.send(
       new DeleteCommand({ TableName: TABLE(), Key: { pk: "SCANNER", sk: id } })
     );
@@ -201,7 +201,7 @@ export async function deleteScanner(id: string, actor?: string): Promise<boolean
 }
 
 export async function getScanResult(scannerId: string): Promise<ScanResult | undefined> {
-  if (usesDynamo()) {
+  if (hasTable("SCANNERS_TABLE")) {
     const result = await docClient.send(
       new GetCommand({ TableName: TABLE(), Key: { pk: "RESULT", sk: scannerId } })
     );
@@ -689,7 +689,7 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
   const previous = overrideReposToScan ? await getScanResult(scannerId) : undefined;
   const stored = previous ? mergeScanResult(previous, result, reposToScan) : result;
 
-  if (usesDynamo()) {
+  if (hasTable("SCANNERS_TABLE")) {
     await docClient.send(
       new PutCommand({
         TableName: TABLE(),
@@ -721,7 +721,7 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
 }
 
 // Seed a default scanner for local dev (runs only in non-production)
-if (!usesDynamo()) {
+if (!hasTable("SCANNERS_TABLE")) {
   createScanner({
     name: "Standard Org Compliance",
     description: "Ensures main and uat branches exist and are protected via Rulesets with PRs required.",

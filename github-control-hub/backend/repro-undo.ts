@@ -305,10 +305,9 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // the completeness assertion below.
     ["awsGuardrails.ts", /router\.(post|put|delete)\(/g, /requireAdmin/],
     // Two gates, because the routes ask different questions. Undo and retry
-    // ask whether this person may reverse this particular action;
-    // audit-stream setup creates IAM in the account and asks whether they are
-    // an org admin at all. Either is a real gate; a route naming neither is
-    // what this catches.
+    // ask whether this person may reverse this particular action; the
+    // detailed-logging settings ask whether they are an org admin at all.
+    // Either is a real gate; a route naming neither is what this catches.
     ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted|isAwsAdmin|isControlHubAdmin/],
     ["alarms.ts",        /router\.(post|put|delete)\(/g, /requireAdmin/],
     // Pausing a stale-pull-request reminder silences it for everyone on that

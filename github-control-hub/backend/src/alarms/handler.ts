@@ -40,7 +40,7 @@ function bootstrapOnce(): Promise<void> {
 
       if (!process.env.GITHUB_ORG) {
         bootstrapped = null;
-        throw new Error("[Alarm] Secrets did not load — GITHUB_ORG is unset; not caching this bootstrap");
+        throw new Error("[Alarm] Secrets did not load. GITHUB_ORG is unset; not caching this bootstrap");
       }
 
       if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
@@ -187,11 +187,19 @@ export async function handler(): Promise<void> {
     const { saveWidgetSnapshot } = await import("../services/alarmService");
     const all = await listWidgets();
 
+    // One count for the whole pass, from the edges already in memory. This is
+    // the denominator every repository-scoped card divides by, and reading it
+    // here means the stored answer is complete when the dashboard opens.
+    const { scanGraphEdges } = await import("../services/graphService");
+    const repoTotal = await scanGraphEdges()
+      .then(edges => edges.filter((e: any) => e.type === "repo_meta").length)
+      .catch(() => null);
+
     let stored = 0, failed = 0;
     for (const widget of all) {
       try {
         const result = await computeWidgetRows(widget as any, sources);
-        await saveWidgetSnapshot(widget.id, result);
+        await saveWidgetSnapshot(widget.id, result, repoTotal);
         stored++;
       } catch (err: any) {
         // One widget that cannot be read must not cost the other twenty their
@@ -224,7 +232,7 @@ export async function handler(): Promise<void> {
     || summary.publishFailures > 0 || summary.unreadable > 0;
   if (didSomething) {
     await logSync("alarms", SCHEDULE_ACTOR, {
-      details: `${summary.evaluated} alarms evaluated — ${summary.fired} fired, `
+      details: `${summary.evaluated} alarms evaluated: ${summary.fired} fired, `
         + `${summary.recovered} recovered`
         + (summary.unreadable ? `, ${summary.unreadable} unreadable` : "")
         + (summary.publishFailures ? `, ${summary.publishFailures} could not be sent` : ""),

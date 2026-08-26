@@ -38,7 +38,7 @@ function bootstrapOnce(): Promise<void> {
       // cached rejection instead of retrying the load.
       if (!process.env.GITHUB_ORG) {
         bootstrapped = null;
-        throw new Error("[Webhook] Secrets did not load — GITHUB_ORG is unset; not caching this bootstrap");
+        throw new Error("[Webhook] Secrets did not load. GITHUB_ORG is unset; not caching this bootstrap");
       }
 
       if (process.env.GITHUB_APP_ID && process.env.GITHUB_APP_PRIVATE_KEY && process.env.GITHUB_APP_INSTALLATION_ID) {
@@ -88,7 +88,7 @@ export async function handler(event: SQSEvent): Promise<void> {
     token = await getSystemTokenAsync();
   } catch (err) {
     console.error(
-      "[Webhook] No GitHub App token for this invocation — anything needing GitHub " +
+      "[Webhook] No GitHub App token for this invocation, anything needing GitHub " +
       "will be skipped for these deliveries. Check the App credentials in Secrets Manager:",
       (err as Error).message,
     );
@@ -98,7 +98,7 @@ export async function handler(event: SQSEvent): Promise<void> {
     const { deliveryId, event: githubEvent, payload, receivedAt } = JSON.parse(record.body);
 
     if (!(await claimDelivery(deliveryId))) {
-      console.log(`[Webhook] Delivery ${deliveryId} is already handled — skipping`);
+      console.log(`[Webhook] Delivery ${deliveryId} is already handled, skipping`);
       continue;
     }
 

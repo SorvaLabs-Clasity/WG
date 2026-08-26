@@ -343,6 +343,7 @@ export default function AnalyticsPage() {
       {focused ? (
         <CheckDetail
           config={focused}
+          live={live}
           onBack={() => setFocusId(null)}
           onEdit={() => setEditingWidget(focused)}
           onAlarm={() => setAlarmWidgetId(focused.id)}
@@ -393,7 +394,7 @@ export default function AnalyticsPage() {
 
           <div className="flex items-center gap-2 shrink-0 pt-1">
             {/* Recompute now, rather than waiting for the next scheduled pass.
-                Every card drops its stored answer and runs its own check —
+                Every card drops its stored answer and runs its own check -
                 which is what the page used to do on every open. Deliberately a
                 choice now, not the default. */}
             <RefreshButton
@@ -415,7 +416,7 @@ export default function AnalyticsPage() {
               }}
             />
             {/* Gated to match the endpoint. Syncing walks the whole organization
-                and spends its GitHub budget, so it is admin-only on the server —
+                and spends its GitHub budget, so it is admin-only on the server -
                 and a button everyone can see, that only some can use, teaches
                 the rest that the app is broken. */}
             {canEditDashboard && (
@@ -443,7 +444,7 @@ export default function AnalyticsPage() {
       )}
       {aggregation.isError && (
         <div style={enter(1)} className="mb-5">
-          <Note intent="danger">Sync failed — {(aggregation.error as Error)?.message || "unknown error"}.</Note>
+          <Note intent="danger">Sync failed: {(aggregation.error as Error)?.message || "unknown error"}.</Note>
         </div>
       )}
 
@@ -452,7 +453,7 @@ export default function AnalyticsPage() {
       ) : widgets.length === 0 ? (
         <Empty
           title="No checks yet"
-          body="A check is a question about the organization — which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it gets a card here."
+          body="A check is a question about the organization. Which repositories have an unprotected default branch, who holds admin nobody granted, which packages are exposing you. Add one and it gets a card here."
           action={canEditDashboard
             ? <Button variant="primary" onClick={() => setShowAddModal(true)}>Add the first check</Button>
             : undefined}
@@ -546,12 +547,18 @@ function Ring({ share, tone, children }: { share: number; tone: typeof TONE[Leve
  * it.
  */
 function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName,
-                      onAlarm, canAlarm, alarmCount }: {
+                      onAlarm, canAlarm, alarmCount, live }: {
   config: WidgetConfig; onBack: () => void; onEdit: () => void;
   onAlarm: () => void; canAlarm: boolean; alarmCount: number;
   canEdit: boolean; graphEmpty?: boolean; orgName?: string;
+  /** Ignore the stored answer and compute now. Set by the refresh button. */
+  live?: boolean;
 }) {
-  const { items, isLoading, total, entity } = useWidgetData(config, { needAllRows: true });
+  // `live` as well as `needAllRows`: pressing Refresh has to reach here too.
+  // Without it the Overview went live and the detail table kept reading the
+  // stored snapshot — so a check that had started reporting a new field showed
+  // the old shape until the next scheduled pass wrote one.
+  const { items, isLoading, total, entity } = useWidgetData(config, { needAllRows: true, live });
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const tone = TONE[verdict.level];
   const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
@@ -653,7 +660,7 @@ function Emblem({ kind, tone }: { kind: Entity; tone: typeof TONE[Level] }) {
 
 /** The first few affected things, by name. A count sizes a problem; a name locates it. */
 function nameOf(item: any): string {
-  return item?.repo || item?.user || item?.team || "—";
+  return item?.repo || item?.user || item?.team || "-";
 }
 
 function detailOf(item: any, config: WidgetConfig): string {
@@ -889,7 +896,7 @@ function CheckCard({
       <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.06] flex-1">
         {preview.length === 0 ? (
           <p className="text-[13px] text-slate-400 dark:text-slate-500 py-1.5">
-            {graphEmpty ? "No graph data — sync to populate." : "Nothing to show."}
+            {graphEmpty ? "No graph data. Sync to populate." : "Nothing to show."}
           </p>
         ) : (
           <ul className="space-y-1.5">
@@ -899,7 +906,7 @@ function CheckCard({
                 <span className="text-slate-400 dark:text-slate-500 shrink-0 truncate max-w-[45%]"
                   title={item.checkedAt ? `Checked ${since(item.checkedAt)}` : undefined}>
                   {detailOf(item, config)}
-                  {/* Per row, because subjects are checked at different times —
+                  {/* Per row, because subjects are checked at different times -
                       one may be twenty hours old while its neighbour is fresh,
                       and a single date on the card would hide that. */}
                   {item.checkedAt && (
@@ -921,7 +928,7 @@ function CheckCard({
 
         {/* When this was established, for the checks whose answers are stored
             rather than derived on the spot. A finding with no date on it is a
-            claim the reader cannot weigh — "this repository bypasses its rules"
+            claim the reader cannot weigh, "this repository bypasses its rules"
             means something different four minutes old than twenty hours old.
             The oldest is shown, not the newest, because the oldest is the one
             that decides how much the whole card can be trusted. */}
@@ -1075,7 +1082,17 @@ function useWidgetData(
   // denominator. Users and teams do not, and a share of the wrong thing is
   // worse than no share.
   const entity = entityForConfig(config);
-  const total = entity === "repository" && repos ? repos.length : null;
+  // The snapshot's own denominator first, and the live repository list only as
+  // a fallback.
+  //
+  // The rows arrived instantly from the snapshot while `repos` was a separate
+  // request that landed a few seconds later. Until it did, `total` was null, so
+  // the card had no share, drew itself amber, printed "found" instead of "of N
+  // repositories", and then repainted. Everything needed to draw it correctly
+  // was already known when the snapshot was written.
+  const total = entity !== "repository" ? null
+    : typeof snapshot?.repoTotal === "number" ? snapshot.repoTotal
+    : repos ? repos.length : null;
 
   // A widget whose check has been removed returns nothing, which on a card
   // looks exactly like a check that found nothing. Carrying the failure up
@@ -1111,6 +1128,9 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
     type: config.type,
     presetId: config.presetId,
     hasStatus: items.some((i: any) => i.status),
+    // Any row carrying the field, including one where it is null — null is the
+    // answer "no team owns this", which is exactly what the column is for.
+    hasOwner: items.some((i: any) => "owner" in i),
   });
   const widthDefaults = defaultWidths(columns);
   const cols = useColumnWidths(layoutId(config.id, columns), widthDefaults);
@@ -1278,6 +1298,28 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                         <i className="fas fa-times-circle"></i> Fail
                       </span>
                     ) : null}
+                  </td>
+                )}
+                {config.type === "query" && columns.some(c => c.id === "owner") && (
+                  <td className="px-6 py-4 text-sm">
+                    {item.owner ? (
+                      <span title={item.owner} className="block truncate">
+                        <span className="font-mono text-slate-700 dark:text-slate-300">{item.owner}</span>
+                        {/* The kind, always. Without it a team slug and a
+                            username look identical, and "who owns this" gets a
+                            different answer depending on which you assumed. */}
+                        <span className="ml-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                          {item.ownerKind === "team" ? "team"
+                            : item.ownerKind === "admin" ? "admin"
+                            : item.ownerKind === "unlinked-committer" ? "top committer \u00b7 no account"
+                            : "top committer"}
+                        </span>
+                      </span>
+                    ) : (
+                      /* Said outright. An empty cell reads as "not looked up",
+                         and having nobody at all is a finding in itself. */
+                      <span className="text-amber-700 dark:text-amber-500">No owner found</span>
+                    )}
                   </td>
                 )}
                 {config.type === "query" && (
@@ -1595,7 +1637,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                       </button>
                     </div>
 
-                    {/* Any combination, not a threshold — "critical and medium
+                    {/* Any combination, not a threshold, "critical and medium
                         but not high" is a reasonable thing to ask for. */}
                     <div className="grid grid-cols-2 gap-2">
                       {SEVERITIES.map(sev => {
@@ -1621,7 +1663,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
 
                     <p className="text-xs text-slate-500 dark:text-slate-400 mt-2.5">
                       Counting <span className="font-semibold text-slate-600 dark:text-slate-300">{describeSeverities(picked)}</span>.
-                      Repositories, not alerts — a repo with six criticals counts once. Reads the same
+                      Repositories, not alerts. A repo with six criticals counts once. Reads the same
                       data as the Dependabot tab, so this widget makes no extra GitHub requests.
                     </p>
                   </div>

@@ -72,7 +72,7 @@ async function denyIfNotPermitted(
       status: 403,
       body: {
         error: `Only members of the "${CONTROL_HUB_ADMIN_TEAM}" team (or organization owners) can ` +
-          `${verb} this — it changes what every repository the template touches receives.`,
+          `${verb} this. It changes what every repository the template touches receives.`,
         code: "CONTROL_HUB_ADMIN_REQUIRED",
       },
     };
@@ -1023,76 +1023,61 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
 }
 
 /**
- * Enterprise audit-log streaming — status, and setting it up.
+ * Detailed GitHub logging: the toggle, and which kinds it collects.
  *
- * Admin-gated: it creates IAM in the account, using the operator's own AWS
- * credentials. Reading is gated too, because the status names the enterprise
- * the organization belongs to.
+ * The setting governs *collection*, not display. Rows already stored stay
+ * stored and keep rendering whatever the toggle says now: turning this off
+ * stops new detailed rows from being written and deletes nothing.
  */
-router.get("/audit-stream", async (req: Request, res: Response) => {
+router.get("/detailed-logging", async (req: Request, res: Response) => {
   try {
     if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: "Only organization admins can see audit-log streaming settings." });
+        error: "Only organization admins can see detailed logging settings." });
     }
-    const { getStatus, liveDeps } = await import("../services/auditStreamService");
-    const { accountId, prefix } = await auditStreamContext();
-    res.json(await getStatus(await liveDeps(accountId, prefix)));
-  } catch (error: any) {
-    res.status(500).json({ error: sanitizeError(error, "audit stream") });
+    const { getDetailedLogging } = await import("../services/orgConfigService");
+    const { DETAILED_LOG_KINDS } = await import("../webhooks/detailedLogging");
+    res.json({ settings: await getDetailedLogging(), kinds: DETAILED_LOG_KINDS });
+  } catch (error) {
+    res.status(500).json({ error: sanitizeError(error, "detailed logging") });
   }
 });
 
-router.post("/audit-stream", async (req: Request, res: Response) => {
+router.put("/detailed-logging", async (req: Request, res: Response) => {
   try {
     if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: "Only organization admins can set up audit-log streaming." });
+        error: "Only organization admins can change detailed logging." });
     }
-    const enterprise = String(req.body?.enterprise ?? "").trim();
-    const { setupStream, liveDeps, isValidEnterpriseSlug } = await import("../services/auditStreamService");
-    if (!isValidEnterpriseSlug(enterprise)) {
-      return res.status(400).json({
-        error: `"${enterprise}" is not a valid enterprise slug. It is the name in ` +
-               `github.com/enterprises/<name>, and unlike an organization name it is case-sensitive.` });
+    const { updateDetailedLogging } = await import("../services/orgConfigService");
+    const { DETAILED_LOG_KINDS } = await import("../webhooks/detailedLogging");
+
+    const enabled = req.body?.enabled;
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({ error: "enabled must be true or false" });
     }
-    const { accountId, prefix } = await auditStreamContext();
-    const result = await setupStream(enterprise, await liveDeps(accountId, prefix));
-    await logActivity("config.updated", req.user!.login, "", "audit_stream",
-      `Audit-log streaming set up for enterprise ${enterprise}`, result, "app");
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ error: sanitizeError(error, "audit stream") });
+    // Unknown kinds are refused rather than stored. A typo silently stored
+    // here would read back as a kind that can never be re-checked, because the
+    // checkbox for it does not exist.
+    const known = new Set(DETAILED_LOG_KINDS.map(k => k.id));
+    const disabledKinds: string[] = Array.isArray(req.body?.disabledKinds)
+      ? req.body.disabledKinds.map(String) : [];
+    const unknown = disabledKinds.filter(k => !known.has(k));
+    if (unknown.length) {
+      return res.status(400).json({ error: `Unknown kinds: ${unknown.join(", ")}` });
+    }
+
+    const settings = await updateDetailedLogging({
+      enabled, disabledKinds, changedBy: req.user!.login,
+    });
+    await logActivity("config.updated", req.user!.login, "", "detailed_logging",
+      enabled
+        ? `Detailed GitHub logging turned on (${DETAILED_LOG_KINDS.length - disabledKinds.length} of ${DETAILED_LOG_KINDS.length} kinds)`
+        : "Detailed GitHub logging turned off");
+    res.json({ settings, kinds: DETAILED_LOG_KINDS });
+  } catch (error) {
+    res.status(500).json({ error: sanitizeError(error, "detailed logging") });
   }
 });
-
-router.delete("/audit-stream", async (req: Request, res: Response) => {
-  try {
-    if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {
-      return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: "Only organization admins can turn off audit-log streaming." });
-    }
-    const { disconnectStream, liveDeps } = await import("../services/auditStreamService");
-    const { accountId, prefix } = await auditStreamContext();
-    const result = await disconnectStream(await liveDeps(accountId, prefix));
-    await logActivity("config.updated", req.user!.login, "", "audit_stream",
-      "Audit-log streaming disconnected; the archive was kept", result, "app");
-    res.json(result);
-  } catch (error: any) {
-    res.status(500).json({ error: sanitizeError(error, "audit stream") });
-  }
-});
-
-/** The account this app is pointed at, and its resource prefix. */
-async function auditStreamContext(): Promise<{ accountId: string; prefix: string }> {
-  const { STSClient, GetCallerIdentityCommand } = await import("@aws-sdk/client-sts");
-  const { awsRegion } = await import("../utils/region");
-  const sts = new STSClient({ region: awsRegion() });
-  const me = await sts.send(new GetCallerIdentityCommand({}));
-  return {
-    accountId: me.Account!,
-    prefix: process.env.STACK_NAME || "github-control-hub",
-  };
-}
 
 export default router;

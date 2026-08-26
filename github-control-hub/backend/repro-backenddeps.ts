@@ -100,9 +100,9 @@ function packageOf(spec: string): string {
     undeclared.length === 0,
     undeclared.map(([n, files]) => `${n} (${[...files].join(", ")})`));
 
-  // The three this was written for, named so a regression says which.
+  // Named so a regression says which. client-iam was the third of these until
+  // the enterprise audit stream (its only user) was removed along with it.
   for (const name of [
-    "@aws-sdk/client-iam",              // auditStreamService — the status check
     "@aws-sdk/client-cloudwatch-logs",  // guardrail collectors and remediators
     "@smithy/core",                     // refreshAwsConfigCache
   ]) {

@@ -119,7 +119,7 @@ router.post("/:repo/rulesets/import", validateParams("repo"), async (req: Reques
   } catch (err: any) {
     const ghMsg = err?.response?.data?.message || err?.message || "Unknown error";
     const ghErrors = err?.response?.data?.errors;
-    const detail = ghErrors ? ` — ${JSON.stringify(ghErrors)}` : "";
+    const detail = ghErrors ? `, ${JSON.stringify(ghErrors)}` : "";
     const errMsg = `Failed to import ruleset: ${ghMsg}${detail}`;
     await logActivity("repo.ruleset.import", req.user!.login, req.params.repo, raw?.name || "Imported ruleset",
       `Failed to import ruleset`, undefined, "app", undefined, undefined, {
