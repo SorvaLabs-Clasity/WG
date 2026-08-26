@@ -28,6 +28,56 @@ rather than returning an empty list that looks like a clean result.
 | **≤6 hours** | only the full rebuild collects it |
 | **live** | read from GitHub on each pass; no graph involved |
 
+### What still waits for the full rebuild
+
+Most of the graph is patched by webhook within seconds, and the rest by the
+thirty-minute light pass. **Five things are written only by the six-hourly full
+rebuild**, and only three of them are read by anything:
+
+| Written only by the full rebuild | Read by | Effect of the delay |
+| --- | --- | --- |
+| `top_contributor` | The **Owner** column's third tier | A newly unowned repository shows tiers 1 and 2 at once and gains the committer fallback at the next rebuild |
+| `uses_workflow` | Nothing today | None |
+| `org_meta` / `team_meta` / `user_meta` | The Access tab's header | The organization default permission can be up to six hours old |
+
+Everything else has a shorter path. `repo_meta.dependabotEnabled` used to be on
+this list and is now collected by the light pass as well, so it is at most
+thirty minutes old.
+
+**No check is wholly stale.** Where a delay exists it is a single field inside a
+check whose other fields are current, which is why the tables below give
+freshness per source rather than per widget.
+
+### Two writers, one row
+
+`repo_meta` is written by the full rebuild and by the light pass, and both write
+it as a **whole item**: a batch `PutRequest` replaces the row rather than merging
+into it. A field one writes and the other does not is therefore erased on the
+other's next pass.
+
+That is why both build the row from a single definition in
+`backend/src/jobs/repoMeta.ts`. It is not tidiness. `dependabotEnabled` was
+briefly added to the full rebuild alone, which would have wiped it every thirty
+minutes and left the vulnerable-package check unable to tell "alerts off" from
+"never looked" for every repository between one full rebuild and the next light
+pass.
+
+Webhook patches are the exception: `patchRepoMeta` is a read-modify-write on
+named fields, so a `push` updating `pushedAt` leaves the rest of the row alone.
+
+### A repository that is deleted, or renamed
+
+Its edges are removed **within seconds**, by the `repository` webhook.
+
+Before that they survived until the next full rebuild cleared the table, so
+every check kept naming a repository that no longer existed for up to six hours,
+and pressing refresh could not help because the rows being re-read were still
+there. The light pass does not cover this either: it prunes inside teams it has
+just read, and a vanished repository is under no team it reads.
+
+A rename is the same problem: the old name's edges are removed, and the new name
+arrives on the next pass.
+
 ### What changed, and why it matters
 
 Six checks used to sit at **≤6 hours** no matter how often the dashboard
@@ -221,12 +271,37 @@ repositories is worse than no team: it looks like ownership and answers nothing.
 
 # Repository state
 
-## Public repositories
+## Repos not private (public or internal)
 
-**Asks:** which repositories are public or internal.
+**Asks:** which repositories are visible to somebody who was never given access.
 
-Reports the two separately, because "internal" and "public" are different
-exposures and conflating them makes the count useless.
+Two answers, kept in one check because it is one question, and shown apart in a
+**Visibility** column because they are very different exposures:
+
+| Visibility | Means |
+| --- | --- |
+| `public` | Visible to anyone on the internet, without signing in |
+| `internal` | Visible to everyone in the enterprise |
+
+### Why this can disagree with the Repos tab
+
+**GitHub reports an internal repository as `private: true` with
+`visibility: "internal"`.** Both fields are correct and they say different
+things.
+
+The Repos tab counts the boolean `private`, so internal repositories are counted
+as private and the tab can read **100% private**. This check reads the
+`visibility` string, so it reports them. An enterprise organization with many
+internal repositories therefore sees a large number here and 100% private there,
+with neither screen wrong.
+
+That is why the check is no longer called "Public repositories": under that name
+the number looked like a count of repositories exposed to the internet, which on
+an enterprise organization it usually is not. The Visibility column is what makes
+the split readable without opening a row.
+
+If the column says `internal` for every row, nothing is on the internet. If any
+row says `public`, that one is.
 
 | | |
 | --- | --- |
@@ -249,12 +324,21 @@ decision to stop using it.
 
 **Asks:** which repositories have not been pushed to for N months.
 
-Two deliberate exclusions:
+One deliberate exclusion, and one deliberate inclusion:
 
 - **Archived repositories are skipped.** Archiving *is* the act of retiring
   something, so reporting it here says only that somebody did what they meant to.
-- **Repositories never pushed to are skipped.** Those are empty, not abandoned,
-  and calling them stale is a different claim.
+- **Repositories never pushed to are included, judged on their creation date.**
+  A repository with no commits is empty rather than abandoned, so it used to be
+  skipped outright. That hid the one category nobody can explain away: a
+  repository created eighteen months ago that nobody ever put anything in. It is
+  now measured against **when it was created**, so the same threshold applies and
+  one made this morning is still not called dormant.
+
+  Such a row reads *"Never pushed to, created N months ago"*. Where the creation
+  date is unknown too, because the row was last written by a rebuild predating
+  that field, it reads *"Never pushed to"* and is reported at every threshold:
+  an unknown age must not be treated as a recent one.
 
 Rows carry an **Owner** column, answered in four tiers, in this order:
 
@@ -301,9 +385,9 @@ repository shows tiers 1–2 immediately and gains 3–4 at the next rebuild.
 
 | | |
 | --- | --- |
-| Reads | `repo_meta.pushedAt`, `owned_by_team`, `has_collaborator`, `top_contributor` |
+| Reads | `repo_meta.pushedAt`, `repo_meta.createdAt`, `owned_by_team`, `has_collaborator`, `top_contributor` |
 | Parameter | months, default **6** |
-| Freshness | **seconds** for the push time; owner in seconds; contributor **≤6 hours** |
+| Freshness | `pushedAt` **seconds** (`push` webhook, taken from the event rather than a clock); `archived` **seconds**; owner tiers 1 and 2 **seconds**; tier 3 (top committer) **≤6 hours**; a deleted or renamed repository leaves **within seconds** |
 | Requests | one `listContributors` per unowned repository, per full rebuild |
 
 ---
@@ -395,11 +479,44 @@ morning an advisory lands and the question is "where are we affected".
 
 Accepts several packages, comma-separated.
 
+### What it can and cannot see
+
+**Every row comes from a Dependabot alert.** There is no dependency-graph read
+behind this, so the check answers *"which repositories are exposed through this
+package"* and not *"which repositories use it"*. Two consequences:
+
+- A repository using the package with **no open advisory** has no alert, so no
+  edge, so no row. That is correct: it is not exposed.
+- A repository with **Dependabot alerts switched off** raises no alerts at all.
+  It produces no row either, and that is *not* correct: it means nothing was
+  looked at.
+
+The second case used to be invisible. Those repositories were simply absent, and
+absent reads as clean.
+
+### The scope option
+
+| Setting | Covers |
+| --- | --- |
+| **Unticked** (default) | Every repository. Ones with Dependabot off are listed with status **unknown** and the reason *"Not checked: Dependabot alerts are off"* |
+| **Ticked** | Only repositories with Dependabot enabled. A shorter, cleaner list, and one that says nothing about the rest |
+
+A repository whose Dependabot status could not be read at all is reported
+separately from one known to have it off. Absent is not the same claim as
+disabled, and defaulting either way would hide or invent findings.
+
+Dependabot status is recorded on `repo_meta.dependabotEnabled` by **both** graph
+passes, from a single paginated GraphQL walk over the organization rather than a
+request per repository. The light pass collects it because it must: it writes
+`repo_meta` as a whole item, so a field it omitted would be erased every thirty
+minutes. The side effect is that the status is at most thirty minutes old.
+
 | | |
 | --- | --- |
-| Reads | `has_vulnerable_dependency` |
+| Reads | `has_vulnerable_dependency`, `repo_meta.dependabotEnabled` |
 | Parameter | package name(s) |
-| Freshness | **seconds** — `dependabot_alert` webhook |
+| Option | only repositories with Dependabot enabled |
+| Freshness | **seconds** for alerts (`dependabot_alert` webhook); Dependabot status **≤30 minutes**, collected by the light pass |
 
 Unlike the other checks, an empty result here is a **legitimate answer** — an
 organization with no open advisories genuinely has none — so this one does not

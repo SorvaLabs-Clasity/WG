@@ -167,6 +167,9 @@ export function isAbsence(err: any): boolean {
   return err?.status === 404;
 }
 
+/** Checkbox values arrive as booleans from the app and as strings from a URL. */
+const toBool = (v: unknown) => v === true || v === "true";
+
 export async function evaluateSecurityQuery(q: string, param?: string, advanced?: any, userToken?: string) {
   const allEdges = await scanGraphEdges();
 
@@ -205,11 +208,48 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       for (const [repo, hits] of byRepo) {
         results.push({
           repo,
+          status: "fail",
           reason: hits.length === 1
             ? `Vulnerable ${hits[0].pkg} (${hits[0].severity})`
             : `Vulnerable in ${hits.length} of the packages asked about`,
           details: hits.map(h => `${h.pkg} (${h.severity})`).join(", "),
         });
+      }
+
+      // ── the repositories this evidence cannot speak for ─────────────
+      //
+      // Everything above comes from Dependabot alerts. A repository with
+      // alerts switched off raises none, so it produces no edge, so it is
+      // absent from the results entirely. Absent reads as "clean", and for
+      // those repositories it means "never looked" instead.
+      //
+      // By default they are reported as unchecked, so the widget covers every
+      // repository in the organization and says which ones it could not
+      // answer for. Ticking "only repositories with Dependabot enabled"
+      // narrows it to the ones this evidence genuinely covers, for somebody
+      // who wants a clean list rather than a complete one.
+      if (!toBool(advanced?.onlyDependabotEnabled)) {
+        for (const edge of allEdges) {
+          if (edge.type !== "repo_meta") continue;
+          if (edge.metadata?.archived) continue;
+          const repo = edge.pk.replace("REPO#", "");
+          if (byRepo.has(repo)) continue;
+
+          const enabled = edge.metadata?.dependabotEnabled;
+          // Absent means the status could not be read, which is its own
+          // unknown and must not be reported as "off".
+          if (enabled === true) continue;
+          results.push({
+            repo,
+            status: "unknown",
+            reason: enabled === false
+              ? "Not checked: Dependabot alerts are off"
+              : "Not checked: could not read whether Dependabot is on",
+            details: enabled === false
+              ? "This check reads Dependabot alerts, and a repository with them off raises none. Whether it uses the package is unknown."
+              : "The organization's Dependabot status could not be read on the last rebuild.",
+          });
+        }
       }
       break;
 
@@ -383,7 +423,6 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     case "repos-with-branch-rules": {
       if (!param) throw new Error("Missing 'param' for branch name");
       const targetBranches = param.split(",").map(b => b.trim()).filter(Boolean);
-      const toBool = (v: unknown) => v === true || v === "true";
       const reqProtType = (advanced?.protectionType as string) || "any";
       const reqMatchMode = (advanced?.ruleMatchType as string) || "at_least";
       const protTypeLabel = reqProtType === "classic" ? "Classic protection" : reqProtType === "ruleset" ? "Repository ruleset" : "Any protection";
@@ -873,16 +912,33 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       // Becoming public raises an alert; being public raises nothing, so an
       // organization could be full of public repositories and the app would
       // have said so once, months ago, in a feed.
+      //
+      // "Not private" rather than "public", and the difference matters more
+      // than it looks. GitHub reports an **internal** repository as
+      // `private: true` with `visibility: "internal"`, so the Repos tab, which
+      // counts the boolean, calls it private, while this check, which reads the
+      // string, does not. An enterprise organization full of internal
+      // repositories therefore saw "100% private" on one screen and dozens of
+      // rows here on another, both correct and flatly contradictory.
+      //
+      // The two are kept together because the question is the same one (who can
+      // see this without being given access) and separating them would hide
+      // internal repositories from the only check that looks. The `visibility`
+      // field below is what lets the table say which is which at a glance
+      // rather than in prose at the end of a row.
       for (const edge of allEdges) {
         if (edge.type !== "repo_meta") continue;
         const visibility = String(edge.metadata?.visibility ?? "private");
         if (visibility === "private") continue;
         results.push({
           repo: edge.pk.replace("REPO#", ""),
+          visibility,
           reason: visibility === "internal"
             ? "Visible to everyone in the enterprise"
             : "Visible to anyone on the internet",
-          details: `visibility: ${visibility}`,
+          details: visibility === "internal"
+            ? "internal: GitHub also reports this as private, which is why other screens count it that way"
+            : "public: visible without signing in",
         });
       }
       break;
@@ -997,13 +1053,26 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         // knowing about those.
         if (edge.metadata?.archived) continue;
 
+        // A repository with no push has never had a commit. It used to be
+        // skipped on the grounds that empty is not abandoned, which quietly
+        // made the one category nobody can explain away invisible: a
+        // repository created two years ago that nobody ever put anything in
+        // is exactly what this check is for.
+        //
+        // Judged on when it was created instead, so the same "N months"
+        // threshold still means something and a repository made this morning
+        // is not called dormant. Where creation is unknown too (a repository
+        // last written by a rebuild older than this field) it is reported
+        // rather than dropped: the point of the change is that silence is not
+        // an answer.
         const pushedAt = edge.metadata?.pushedAt;
-        // A repository that has never been pushed to is empty rather than
-        // abandoned, and saying it is stale would be a different claim.
-        if (!pushedAt) continue;
-        const when = new Date(pushedAt);
-        if (isNaN(when.getTime()) || when >= cutoff) continue;
-        const days = Math.floor((Date.now() - when.getTime()) / 86_400_000);
+        const createdAt = edge.metadata?.createdAt;
+        const basis = pushedAt || createdAt;
+        const when = basis ? new Date(basis) : null;
+        if (when && !isNaN(when.getTime()) && when >= cutoff) continue;
+        const days = when && !isNaN(when.getTime())
+          ? Math.floor((Date.now() - when.getTime()) / 86_400_000)
+          : null;
         // One field and a kind, rather than three fields the caller has to
         // work through in the right order — the order is the meaning, and it
         // belongs here rather than repeated in whatever renders it.
@@ -1024,8 +1093,16 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
         results.push({
           repo: edge.pk.replace("REPO#", ""),
-          reason: `No push in ${Math.floor(days / 30)} months`,
-          details: `last push ${when.toISOString().slice(0, 10)}`,
+          reason: pushedAt
+            ? `No push in ${Math.floor(days! / 30)} months`
+            : days !== null
+              ? `Never pushed to, created ${Math.floor(days / 30)} months ago`
+              : "Never pushed to",
+          details: pushedAt
+            ? `last push ${when!.toISOString().slice(0, 10)}`
+            : when
+              ? `no commits, created ${when.toISOString().slice(0, 10)}`
+              : "no commits, and no creation date recorded",
           owner,
           ownerKind,
         });

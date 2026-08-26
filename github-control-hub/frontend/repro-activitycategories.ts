@@ -30,6 +30,7 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
   // Changed something about the organization.
   ["branch.create", "github"], ["branch.delete", "github"], ["branch.rename", "github"],
   ["tag.create", "github"], ["tag.delete", "github"],
+  ["repo.deleted", "github"], ["repo.renamed", "github"],
   ["branch.protect", "github"], ["branch.unprotect", "github"],
   ["repo.created", "github"], ["repo.publicized", "github"],
   ["repo.ruleset.create", "github"], ["repo.ruleset.delete", "github"], ["repo.ruleset.import", "github"],

@@ -64,6 +64,19 @@ a login — and the first live lookup ranked exactly such an account at 100. Any
 name carrying "bot" as a whole word is excluded, word-boundary matched so
 "Abbot", "Botha" and "Robotics" stay in.
 
+**Copilot**, which that word test cannot catch. There is no word boundary before
+"bot" in "copilot", and that boundary is exactly what keeps "Abbot" and
+"Robotics" from excluding real people, so Copilot has to be named outright.
+
+It matters because Copilot reviews pull requests, so it appears as an ordinary
+review-comment author, which is one of the three signals this tab scores on.
+Left in, it ranks as an expert on every repository it has ever commented on,
+which over time is all of them.
+
+Matched whole rather than as a substring: `Copilot`, `GitHub Copilot`,
+`github-copilot`, and anything starting `copilot-`. Somebody surnamed Copilot is
+a person, and the display-name fallback above means real names reach this check.
+
 **Lockfiles, for the library question.** They change on every unrelated install,
 so whoever last ran one would rank as the expert on every library in the
 project. Only manifests are read.

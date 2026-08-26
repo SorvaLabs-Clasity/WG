@@ -37,6 +37,8 @@ export type ActivityAction =
   | "conflict.override"
   | "conflict.skip"
   | "repo.created"
+  | "repo.deleted"
+  | "repo.renamed"
   | "repo.publicized"
   | "github.push"
   | "github.pr_opened"
@@ -325,12 +327,49 @@ export function webhookHealth(at: string | null, now = Date.now()) {
   return { status, lastEventAt: at, ageHours: hours === null ? null : Math.round(hours * 10) / 10 };
 }
 
+/**
+ * When GitHub last reached us, and what it was about.
+ *
+ * The stamp comes from `org-config`, written by the worker as each delivery
+ * arrives. What it does *not* come from any more is the activity feed.
+ *
+ * That earlier version searched the newest sixty feed rows for one with
+ * `source: "github"`, which under-reported in two independent ways. Most
+ * delivered events write no feed row at all: team, membership, member and
+ * dependabot_alert patch the access graph, and push does nothing visible unless
+ * detailed logging is on. And the window fills with the app's own `sync.*`
+ * housekeeping, so real events fall out of it as the app gets busier. On a live
+ * deployment the newest qualifying row sat at position 46 of 60 and was 259
+ * hours old, so the badge read "Nothing for 3 days" while the worker was
+ * handling deliveries every few minutes.
+ *
+ * The action is still taken from the feed, because that is where it is
+ * recorded, but it is now only a label on an answer the stamp already gave.
+ * A deployment that has not received a delivery since this shipped has no stamp
+ * yet, and falls back to the old search rather than claiming nothing has ever
+ * arrived.
+ */
 export async function lastGitHubEvent(): Promise<{ at: string | null; action: string | null }> {
   const recent = usesDynamo()
     ? await getActivity(60, 0)
     : memoryLog.slice(0, 60);
   const fromGitHub = recent.find(e => e.source === "github");
-  return { at: fromGitHub?.timestamp ?? null, action: fromGitHub?.action ?? null };
+
+  let stamped: string | null = null;
+  try {
+    const { getOrgConfig } = await import("./orgConfigService");
+    stamped = (await getOrgConfig()).lastWebhookAt ?? null;
+  } catch {
+    // Unreadable config is not evidence that GitHub has stopped calling.
+  }
+
+  // The later of the two. A feed row newer than the throttled stamp is a real
+  // delivery the stamp has not caught up with yet.
+  const at = stamped && fromGitHub?.timestamp
+    ? (Date.parse(stamped) >= Date.parse(fromGitHub.timestamp) ? stamped : fromGitHub.timestamp)
+    : stamped ?? fromGitHub?.timestamp ?? null;
+
+  return { at, action: fromGitHub?.action ?? null };
 }
 
 /**

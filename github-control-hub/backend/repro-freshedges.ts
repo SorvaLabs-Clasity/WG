@@ -280,6 +280,84 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
       "a repository can be owned by more than one team");
   }
 
+  // ── a deleted repository leaves nothing behind ──────────────────────
+  //
+  // It used to leave everything: repo_meta, collaborators, branches, the team
+  // links pointing at it. Nothing removed them, so every check kept naming a
+  // repository that no longer existed until the next full rebuild cleared the
+  // table. Up to six hours, with a refresh button that could not help because
+  // the rows it re-read were still there.
+  //
+  // The light pass does not cover it: it prunes inside teams it has just read,
+  // and a vanished repository is under no team it reads.
+  {
+    const wh = read("src/webhooks/processDelivery.ts");
+    const edges = read("src/services/graphEdgeService.ts");
+    const whCode = wh.split("\n").filter(l => !l.trim().startsWith("//")).join("\n");
+
+    check("repository deletion is handled at all",
+      /payload\.action === "deleted" \|\| payload\.action === "renamed"/.test(whCode),
+      "the only `deleted` handlers were for branch protection and rulesets");
+    check("  and it removes the repository's edges",
+      /removeAllRepoEdges\(/.test(whCode));
+    check("  a rename removes the old name, not the new one",
+      /payload\.changes\?\.repository\?\.name\?\.from/.test(whCode),
+      "the old name's edges are as stale as a deleted one's");
+    check("  both are recorded in the activity feed",
+      /"repo\.deleted"/.test(whCode) && /"repo\.renamed"/.test(whCode));
+
+    check("the removal follows paging rather than one page",
+      /LastEvaluatedKey/.test(edges),
+      "a repository with many collaborators would be half-removed");
+    check("  and clears the mirrored half as well",
+      /e\.sk\.startsWith\("TEAM#"\) \|\| e\.sk\.startsWith\("USER#"\)/.test(edges),
+      "an edge from a team to this repo lives under the team's key, not the repo's");
+  }
+
+  // ── the two writers of repo_meta cannot drift ───────────────────────
+  //
+  // Both write the row as a whole item, because a PutRequest in a batch write
+  // replaces rather than merges. So a field one writes and the other does not
+  // is erased on the other's next pass. `dependabotEnabled` was added to the
+  // full rebuild alone and would have been wiped every thirty minutes, leaving
+  // the vulnerable-package check unable to tell "alerts off" from "never
+  // looked" for every repository between passes.
+  {
+    const agg = read("src/jobs/graphAggregator.ts");
+    const light = read("src/jobs/lightGraphRefresh.ts");
+    const { buildRepoMeta } = await import("./src/jobs/repoMeta");
+
+    check("both writers build the row from one definition",
+      /buildRepoMeta\(repo/.test(agg) && /buildRepoMeta\(repo/.test(light),
+      "two hand-written field lists is the shape that lost the field");
+    check("  and neither hand-rolls a second list",
+      !/visibility: repo\.visibility/.test(agg) && !/visibility: repo\.visibility/.test(light));
+
+    const repo = {
+      name: "r", visibility: "private", archived: false, fork: false,
+      pushed_at: "2026-01-01T00:00:00Z", created_at: "2025-01-01T00:00:00Z",
+      default_branch: "main",
+    };
+    const bare = buildRepoMeta(repo);
+    const withDb = buildRepoMeta(repo, { dependabotEnabled: false });
+
+    check("the row carries what every check reads",
+      ["visibility", "archived", "fork", "pushedAt", "createdAt",
+       "defaultBranch", "secretScanning", "pushProtection"].every(k => k in bare),
+      Object.keys(bare));
+    check("  an unread security setting is unknown, not disabled",
+      bare.secretScanning === "unknown" && bare.pushProtection === "unknown");
+    check("  Dependabot status is absent when it is not known",
+      !("dependabotEnabled" in bare),
+      "absent and false are different claims to the check that reads it");
+    check("  and present, including false, when it is",
+      withDb.dependabotEnabled === false);
+
+    check("the light pass collects the status too, so it cannot erase it",
+      /fetchRepoAlertStatus/.test(light),
+      "omitting it from a whole-item write deletes it every thirty minutes");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

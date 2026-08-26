@@ -8,6 +8,9 @@ import {
 import { Page, INTENT } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import DetailedLoggingPanel from "../components/DetailedLoggingPanel";
+import { ColumnResizeHandle } from "../design";
+import { useColumnWidths } from "../hooks/useColumnWidths";
+import { activityColumns, activityWidths, activityLayoutId } from "../lib/activityColumns";
 import UserAvatar from "../components/UserAvatar";
 import { useAuth } from "../App";
 import { useActivity, useUndoActivity, useRedoActivity, useRetryActivity, useUndoResolution } from "../hooks/useActivity";
@@ -20,6 +23,8 @@ const ACTION_CONFIG: Record<
   ActivityAction,
   { label: string; colorClass: string; iconClass: string }
 > = {
+  "repo.deleted": { label: "Repo Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
+  "repo.renamed": { label: "Repo Renamed", colorClass: "bg-blue-50 text-blue-700 border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800", iconClass: "fa-solid fa-pen text-[10px]" },
   "tag.create": { label: "Tag Created", colorClass: "bg-green-50 text-green-700 border-green-200/60 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800", iconClass: "fa-solid fa-tag text-[10px]" },
   "tag.delete": { label: "Tag Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-tag text-[10px]" },
   "branch.create": { label: "Branch Created", colorClass: "bg-green-50 text-green-700 border-green-200/60 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800", iconClass: "fa-solid fa-plus text-[10px]" },
@@ -267,6 +272,21 @@ export default function ActivityPage() {
   // not a query: hiding them filters the list the page already has, and the
   // choice survives reopening the app because it is the kind of preference
   // somebody sets once.
+  // Matches the `lg:` breakpoint the Details column is gated on. Read rather
+  // than assumed, because a colgroup with one entry too many shifts every width
+  // one column across without throwing.
+  const [wide, setWide] = useState<boolean>(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const onChange = (e: MediaQueryListEvent) => setWide(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  const columns = useMemo(() => activityColumns(wide), [wide]);
+  const columnDefaults = useMemo(() => activityWidths(columns), [columns]);
+  const cols = useColumnWidths(activityLayoutId(columns), columnDefaults);
+
   const [showDetailed, setShowDetailed] = useState<boolean>(() => {
     try { return localStorage.getItem("activity:show-detailed") !== "hide"; }
     catch { return true; }
@@ -759,22 +779,54 @@ export default function ActivityPage() {
         {!isLoading && !error && (
           <div className="bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 shadow-subtle overflow-hidden relative">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table
+                className="text-left border-collapse"
+                // Fixed layout is what makes the colgroup widths authoritative.
+                // With `auto` the browser re-measures from content on every
+                // render and the width you dragged to is only a suggestion.
+                style={{
+                  tableLayout: "fixed",
+                  width: "100%",
+                  // Below this the columns would be squeezed back under their
+                  // own widths; the container scrolls instead. The last column
+                  // is not counted, since it absorbs the slack.
+                  minWidth: columns.slice(0, -1)
+                    .reduce((sum, c) => sum + (cols.widths[c.id] ?? c.width), 0) + 160,
+                }}
+              >
+                <colgroup>
+                  {columns.map((c, i) => (
+                    <col key={c.id} style={i === columns.length - 1
+                      ? undefined : { width: cols.widths[c.id] ?? c.width }} />
+                  ))}
+                </colgroup>
                 <thead className="bg-gray-50 dark:bg-slate-800 border-b border-gh-border dark:border-slate-700">
                   <tr>
-                    <th className="px-3 py-3 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider w-32">Source</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider w-52">Action</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">User</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">Repository</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">Target</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider hidden lg:table-cell">Details</th>
-                    <th className="px-4 py-3 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider text-right">When</th>
+                    {columns.map((c, i) => (
+                      <th key={c.id}
+                        className={`relative px-4 py-3 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider ${
+                          c.align === "right" ? "text-right" : ""}`}>
+                        <span className="block truncate">{c.label}</span>
+                        {/* Not on the last column: it has no width of its own
+                            to drag, and everything to its left does. */}
+                        {i < columns.length - 1 && (
+                          <ColumnResizeHandle
+                            label={c.label}
+                            active={cols.dragging === c.id}
+                            onPointerDown={(e) => cols.onResizeStart(c.id, e)}
+                            onPointerMove={cols.onResizeMove}
+                            onPointerUp={cols.onResizeEnd}
+                            onDoubleClick={() => cols.resetColumn(c.id)}
+                          />
+                        )}
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gh-border dark:divide-slate-700">
                   {paginatedEntries.map((entry) => renderRow(entry, 0)).flat()}
                   {paginatedEntries.length === 0 && (
-                    <tr><td colSpan={7} className="px-6 py-10 text-center text-gh-muted dark:text-slate-400">
+                    <tr><td colSpan={columns.length} className="px-6 py-10 text-center text-gh-muted dark:text-slate-400">
                       {categoryCounts[category] === 0 ? (
                         <>
                           <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing recorded here yet</p>

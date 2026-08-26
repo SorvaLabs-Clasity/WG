@@ -32,6 +32,8 @@ export type ActivityAction =
   | "conflict.override"
   | "conflict.skip"
   | "repo.created"
+  | "repo.deleted"
+  | "repo.renamed"
   | "repo.publicized"
   | "github.push"
   | "github.pr_opened"

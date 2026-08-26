@@ -1,0 +1,50 @@
+/**
+ * The one definition of what a `repo_meta` row holds.
+ *
+ * Two jobs write this row: the six-hourly full rebuild and the thirty-minute
+ * light pass. Both write it as a **whole item**, because a `PutRequest` in a
+ * batch write replaces the row rather than merging into it. That makes the
+ * field lists a contract between them rather than two independent lists: any
+ * field one writes and the other does not is silently erased on the other's
+ * next pass.
+ *
+ * That is not hypothetical. `dependabotEnabled` was added to the full rebuild
+ * alone, which would have wiped it every thirty minutes and left the
+ * vulnerable-package check reporting "could not read whether Dependabot is on"
+ * for every repository between one full rebuild and the next light pass.
+ *
+ * So both callers build the row here, and anything either of them knows is
+ * passed in. A field added below is a field both writers keep.
+ */
+
+export interface RepoMetaExtras {
+  /**
+   * Whether Dependabot alerts are on, where known.
+   *
+   * Deliberately tri-state. Absent means the status could not be read, which
+   * the vulnerable-package check reports differently from a known "off":
+   * guessing "enabled" would hide unscannable repositories, and guessing
+   * "disabled" would invent findings.
+   */
+  dependabotEnabled?: boolean;
+}
+
+/** Every field a `repo_meta` row carries, from one repository listing entry. */
+export function buildRepoMeta(repo: any, extras: RepoMetaExtras = {}): Record<string, any> {
+  return {
+    visibility: repo.visibility ?? (repo.private ? "private" : "public"),
+    archived: !!repo.archived,
+    fork: !!repo.fork,
+    pushedAt: repo.pushed_at ?? null,
+    // So a repository nobody has ever pushed to can still be judged against an
+    // age. Comes free with the listing.
+    createdAt: repo.created_at ?? null,
+    defaultBranch: repo.default_branch ?? "main",
+    // Every one of these is a control an auditor asks about by name, and
+    // "unknown" is not the same answer as "disabled".
+    secretScanning: repo.security_and_analysis?.secret_scanning?.status ?? "unknown",
+    pushProtection: repo.security_and_analysis?.secret_scanning_push_protection?.status ?? "unknown",
+    ...(typeof extras.dependabotEnabled === "boolean"
+      ? { dependabotEnabled: extras.dependabotEnabled } : {}),
+  };
+}

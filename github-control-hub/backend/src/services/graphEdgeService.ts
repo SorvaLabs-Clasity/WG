@@ -1,5 +1,5 @@
 import { Octokit } from "octokit";
-import { docClient, hasTable, tableName, PutCommand, DeleteCommand, batchWrite } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, DeleteCommand, QueryCommand, batchWrite } from "../utils/dynamo";
 
 const TABLE = () => tableName("GRAPH_EDGES_TABLE");
 
@@ -192,4 +192,54 @@ export async function addRepoEdges(token: string, org: string, repoName: string)
 
   console.log(`[GraphEdge] Writing ${edges.length} edges for new repo "${repoName}"`);
   await putEdgesBatch(edges);
+}
+
+/**
+ * Everything the graph holds about one repository, removed.
+ *
+ * A deleted repository used to leave every one of its edges behind: its
+ * `repo_meta`, its collaborators, its branches, the team links pointing at it.
+ * Nothing removed them, so every check reading those edges kept reporting a
+ * repository that no longer existed, and kept doing so until the next full
+ * rebuild cleared the table. Up to six hours of a widget naming something you
+ * had already deleted, with a refresh button that could not help because the
+ * rows it re-read were still there.
+ *
+ * The light pass does not cover it either: it prunes inside teams it has just
+ * read, and a vanished repository is not under any team it reads.
+ *
+ * Both directions are removed. An edge from a team or a user *to* this
+ * repository lives under that team's or user's partition key, so deleting the
+ * repository's own partition would leave the other half dangling.
+ */
+export async function removeAllRepoEdges(repo: string): Promise<number> {
+  if (!hasTable("GRAPH_EDGES_TABLE")) return 0;
+  const pk = `REPO#${repo}`;
+
+  const own: Array<{ pk: string; sk: string }> = [];
+  let cursor: any;
+  do {
+    const page: any = await docClient.send(new QueryCommand({
+      TableName: TABLE(),
+      KeyConditionExpression: "pk = :p",
+      ExpressionAttributeValues: { ":p": pk },
+      ProjectionExpression: "pk, sk",
+      ExclusiveStartKey: cursor,
+    }));
+    for (const it of page.Items ?? []) own.push({ pk: it.pk, sk: it.sk });
+    cursor = page.LastEvaluatedKey;
+  } while (cursor);
+
+  // The mirrored half: whatever pointed at this repository from a team or a
+  // user. `sk` on those rows is this repository's key, and `pk` is theirs.
+  const mirrored = own
+    .filter(e => e.sk.startsWith("TEAM#") || e.sk.startsWith("USER#"))
+    .map(e => ({ pk: e.sk, sk: pk }));
+
+  const all = [...own, ...mirrored];
+  if (all.length === 0) return 0;
+
+  await batchWrite(TABLE(), all.map(k => ({ DeleteRequest: { Key: k } })));
+  console.log(`[Graph] Removed ${all.length} edges for deleted repository ${repo}`);
+  return all.length;
 }

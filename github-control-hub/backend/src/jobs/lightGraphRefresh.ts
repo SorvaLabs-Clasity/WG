@@ -1,6 +1,7 @@
 import { Octokit } from "octokit";
 import { getOrg, getSystemTokenAsync } from "../github/client";
 import { docClient, tableName, QueryCommand, batchWrite } from "../utils/dynamo";
+import { buildRepoMeta } from "./repoMeta";
 
 /**
  * The cheap half of the access graph, refreshed far more often than the rest.
@@ -111,20 +112,36 @@ export async function refreshLightEdges(fallbackToken?: string): Promise<LightRe
     return result;
   }
 
+  // The same single GraphQL walk the full rebuild makes.
+  //
+  // Not an optional extra: this pass writes `repo_meta` as a whole item, so
+  // omitting a field the full rebuild writes would erase it every thirty
+  // minutes. Collecting it here keeps the row complete and, incidentally,
+  // makes Dependabot status thirty minutes fresh rather than six hours.
+  //
+  // About four requests for a few hundred repositories, against the nine this
+  // pass already spends.
+  let dependabotOn: Map<string, boolean> | null = null;
+  try {
+    const { fetchRepoAlertStatus } = await import("../services/dependencyService");
+    dependabotOn = await fetchRepoAlertStatus(
+      (query: string, vars: any) => (octokit as any).graphql(query, vars), org);
+    result.requests += 4;
+  } catch (err: any) {
+    // Left null rather than defaulted, and the field is then simply absent,
+    // which is its own answer downstream.
+    result.errors.push(`dependabot status: ${err?.message ?? err}`);
+  }
+
   for (const repo of repos) {
     writes.push({
       pk: `REPO#${repo.name}`,
       sk: "META#repo",
       type: "repo_meta",
-      metadata: {
-        visibility: repo.visibility ?? (repo.private ? "private" : "public"),
-        archived: !!repo.archived,
-        fork: !!repo.fork,
-        pushedAt: repo.pushed_at ?? null,
-        defaultBranch: repo.default_branch ?? "main",
-        secretScanning: repo.security_and_analysis?.secret_scanning?.status ?? "unknown",
-        pushProtection: repo.security_and_analysis?.secret_scanning_push_protection?.status ?? "unknown",
-      },
+      metadata: buildRepoMeta(repo, {
+        ...(dependabotOn?.has(repo.name)
+          ? { dependabotEnabled: !!dependabotOn.get(repo.name) } : {}),
+      }),
     });
   }
   result.repos = repos.length;

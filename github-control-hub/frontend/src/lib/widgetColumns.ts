@@ -39,12 +39,22 @@ export function widgetColumns(opts: {
    * file needing to know which checks those are.
    */
   hasOwner?: boolean;
+  /** The rows report a repository visibility, so public and internal can be told apart. */
+  hasVisibility?: boolean;
 }): WidgetColumn[] {
-  const { type, presetId, hasStatus, hasOwner } = opts;
+  const { type, presetId, hasStatus, hasOwner, hasVisibility } = opts;
 
   const columns: WidgetColumn[] = [
     { id: "index", label: "#", width: 72 },
-    { id: "entity", label: "Entity", width: ENTITY_WIDTH },
+    // Named for what the rows actually are. Renovate rows are pull requests
+    // whose entity is the repository they sit on, and several rows can share
+    // one, so "Entity" over a column of repeated repository names reads as a
+    // mistake rather than as a grouping.
+    {
+      id: "entity",
+      label: presetId === "renovate-open" ? "Repository" : "Entity",
+      width: presetId === "renovate-open" ? 240 : ENTITY_WIDTH,
+    },
   ];
 
   if (type === "preset" && presetId === "dependabot") {
@@ -64,11 +74,30 @@ export function widgetColumns(opts: {
     );
   }
 
+  // Renovate rows are pull requests, not repositories, so the entity column
+  // alone left the table listing the same repository name several times over
+  // with nothing to tell the rows apart. Everything below is already on the
+  // row; it was simply never given a column.
+  if (type === "preset" && presetId === "renovate-open") {
+    columns.push(
+      { id: "pr", label: "Pull request", width: 420 },
+      { id: "age", label: "Open for", width: 110, align: "center" },
+      { id: "link", label: "GitHub", width: 96, align: "center" },
+    );
+  }
+
   if (type === "preset" && presetId === "bypasses") {
     columns.push(
       { id: "bypasses", label: "Bypasses", width: 120 },
       { id: "reason", label: "Reason", width: 360 },
     );
+  }
+
+  // Public and internal are different findings and must not look alike. Driven
+  // by the data, like the owner column, so any check that starts reporting a
+  // visibility gets the column without this file knowing which checks those are.
+  if (type === "query" && hasVisibility) {
+    columns.push({ id: "visibility", label: "Visibility", width: 128, align: "center" });
   }
 
   if (type === "query" && hasStatus) {

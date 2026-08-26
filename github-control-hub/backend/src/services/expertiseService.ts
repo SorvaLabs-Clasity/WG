@@ -95,6 +95,21 @@ export function isBot(login: string): boolean {
   if (l.endsWith("[bot]") || l === "web-flow") return true;
   if (l === "github-actions" || l === "dependabot" || l === "renovate") return true;
 
+  // Copilot, which the word test below cannot catch.
+  //
+  // "copilot" has no word boundary before "bot" (it is preceded by "i"), and
+  // that is deliberate: the boundary is what stops "Abbot" and "Robotics"
+  // excluding real people. So Copilot has to be named.
+  //
+  // It reviews pull requests and appears as an ordinary review-comment author,
+  // which is exactly the signal this feature scores on. Left in, it ranks as an
+  // expert on every repository it has ever commented on, which is all of them.
+  //
+  // Matched whole, never as a substring: somebody surnamed Copilot is a person,
+  // and the display-name fallback means real names reach this function.
+  if (l === "copilot" || l === "github copilot" || l === "github-copilot") return true;
+  if (l.startsWith("copilot-") || l.startsWith("github-copilot")) return true;
+
   // "Bot" as a whole word, anywhere.
   //
   // A commit with no linked GitHub account falls back to the git config name,

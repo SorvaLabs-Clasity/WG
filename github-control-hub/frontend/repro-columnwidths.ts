@@ -117,6 +117,7 @@ function check(name: string, ok: boolean, got?: unknown) {
       ['presetId === "dependabot"', { type: "preset", presetId: "dependabot", hasStatus: false }, base],
       ['presetId === "vuln-repos"', { type: "preset", presetId: "vuln-repos", hasStatus: false }, base],
       ['presetId === "bypasses"', { type: "preset", presetId: "bypasses", hasStatus: false }, base],
+      ['presetId === "renovate-open"', { type: "preset", presetId: "renovate-open", hasStatus: false }, base],
     ];
     for (const [marker, opts, baseCount] of cases) {
       const tds = countTds(marker, ")}");
@@ -209,6 +210,120 @@ function check(name: string, ok: boolean, got?: unknown) {
       layoutId("w1", a) === layoutId("w1", widgetColumns({ type: "query", hasStatus: false })));
     check("  defaults are keyed by column id",
       defaultWidths(a).entity === 320, defaultWidths(a));
+  }
+
+  // ── the Activity table, resized by the same mechanism ───────────────
+  //
+  // The widget table got draggable columns first. The Activity table is wider,
+  // holds longer strings, and had two Tailwind widths hard-coded onto two of
+  // its seven headers, so it got the same treatment rather than a second
+  // mechanism.
+  //
+  // Its one complication is that Details carries `hidden lg:table-cell` in both
+  // the header and the body: below that breakpoint the table genuinely has six
+  // columns, and a seven-entry colgroup over it would shift every width one
+  // column across without throwing.
+  {
+    const page = fs.readFileSync("./src/pages/ActivityPage.tsx", "utf8");
+    const { activityColumns, activityWidths, activityLayoutId } = await import("./src/lib/activityColumns");
+
+    check("the Activity columns are data, not hand-written headers",
+      /columns\.map\(\(c, i\) => \(/.test(page) && !/uppercase tracking-wider w-32/.test(page),
+      "w-32 and w-52 were baked onto two of the seven headers");
+    check("  widths come from a colgroup",
+      /<colgroup>/.test(page));
+    check("  and the layout is fixed, so those widths are honoured",
+      /tableLayout: "fixed"/.test(page));
+    check("  the last column takes the slack",
+      /i === columns\.length - 1$/m.test(page) || /i === columns\.length - 1\s/.test(page));
+
+    // The count has to follow the viewport, because the cells do.
+    const wide = activityColumns(true), narrow = activityColumns(false);
+    check("Details is a column only where it is rendered",
+      wide.length === 7 && narrow.length === 6
+        && wide.some(c => c.id === "details") && !narrow.some(c => c.id === "details"),
+      { wide: wide.map(c => c.id), narrow: narrow.map(c => c.id) });
+    check("  the breakpoint is read, not assumed",
+      /matchMedia\("\(min-width: 1024px\)"\)/.test(page),
+      "lg: is 1024px; a hard-coded true would mis-size every narrow viewport");
+    check("  and the two layouts are remembered separately",
+      activityLayoutId(wide) !== activityLayoutId(narrow),
+      "one applied to the other is a layout for columns that are not there");
+    check("  When is last in both, so it absorbs the slack",
+      wide[wide.length - 1].id === "when" && narrow[narrow.length - 1].id === "when");
+    check("  and every column has a starting width",
+      wide.every(c => activityWidths(wide)[c.id] > 0));
+
+    check("the empty row spans however many columns there are",
+      /colSpan=\{columns\.length\}/.test(page),
+      "colSpan={7} would under-span at narrow widths");
+    check("  and a handle sits on every column but the last",
+      /i < columns\.length - 1 && \(/.test(page) && /ColumnResizeHandle/.test(page));
+  }
+
+  // ── the Renovate table shows the pull request, not just its repository ──
+  //
+  // Every row already carried a title, an age and a URL. None of them had a
+  // column, so the table listed the same repository name several times over
+  // with nothing to tell the rows apart, and the actual detail only appeared
+  // once a row was clicked.
+  {
+    const page = fs.readFileSync("./src/pages/AnalyticsPage.tsx", "utf8");
+    const cols = widgetColumns({ type: "preset", presetId: "renovate-open", hasStatus: false });
+    const ids = cols.map(c => c.id);
+
+    check("a Renovate row has a column for the pull request itself",
+      ids.includes("pr") && ids.includes("age") && ids.includes("link"), ids);
+    check("  and its entity column is named for what it holds",
+      cols.find(c => c.id === "entity")!.label === "Repository",
+      '"Entity" over repeated repository names reads as a mistake');
+    check("  the title and number are both rendered",
+      /\{item\.title \|\| "Untitled"\}/.test(page) && /#\{item\.number\}/.test(page));
+    check("  age is shown in days",
+      /\{item\.ageDays\}d/.test(page),
+      "how long nobody has merged it is the finding this widget exists for");
+    check("  and old ones are visibly old",
+      /item\.ageDays >= 30/.test(page) && /item\.ageDays >= 7/.test(page),
+      "a column of identical grey numbers is a column nobody reads");
+    check("  the GitHub link opens in a new tab, safely",
+      /rel="noreferrer noopener"/.test(page) && /href=\{item\.url\}/.test(page));
+    check("  and clicking it does not also open the detail panel",
+      /onClick=\{\(e\) => e\.stopPropagation\(\)\}/.test(page),
+      "the row and the link are two gestures in one place");
+  }
+
+  // ── public and internal must not look alike ─────────────────────────
+  //
+  // GitHub reports an internal repository as `private: true` with
+  // `visibility: "internal"`. The Repos tab counts the boolean and calls it
+  // private; this check reads the string and does not. An enterprise
+  // organization full of internal repositories saw "100% private" on one
+  // screen and dozens of rows on the other, both correct and contradictory,
+  // under a card titled "Public repositories".
+  {
+    const page = fs.readFileSync("./src/pages/AnalyticsPage.tsx", "utf8");
+    const opts: any = await import("./src/utils/queryOptions");
+    const list = opts.QUERY_OPTIONS ?? opts.default ?? [];
+    const pub = list.find((o: any) => o.id === "public-repos");
+
+    check("the check is not named for only half of what it finds",
+      !!pub && !/^Public repositories$/.test(pub.label), pub?.label);
+    check("  and its name says which two things it means",
+      !!pub && /public/i.test(pub.label) && /internal/i.test(pub.label), pub?.label);
+
+    const withVis = widgetColumns({ type: "query", hasStatus: false, hasVisibility: true });
+    check("a row reporting a visibility gets a column for it",
+      withVis.some(c => c.id === "visibility"), withVis.map(c => c.id));
+    check("  absent when no row reports one",
+      !widgetColumns({ type: "query", hasStatus: false }).some(c => c.id === "visibility"));
+    check("  the column is driven by the data, not by a check id",
+      /hasVisibility: items\.some\(\(i: any\) => "visibility" in i\)/.test(page));
+    check("  the body renders a cell under the same condition",
+      /columns\.some\(c => c\.id === "visibility"\) && \(/.test(page),
+      "a column without its cell shifts every width one across");
+    check("  and public reads differently from internal",
+      /item\.visibility === "public"/.test(page) && /fa-globe/.test(page) && /fa-building/.test(page),
+      "one pill colour for both would restate the problem the column exists to fix");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

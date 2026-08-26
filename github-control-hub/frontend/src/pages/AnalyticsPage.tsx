@@ -57,6 +57,20 @@ type DisplayType = "metric" | "table";
 type PresetId = "dependabot" | "bypasses" | "vuln-repos" | "renovate-open";
 
 /**
+ * What each preset is called, in one place.
+ *
+ * Used by the search box and by the row view. The `<select>` in the form used
+ * to be the only place these strings existed, which meant nothing else could
+ * name a preset without repeating them.
+ */
+const PRESET_LABELS: Record<string, string> = {
+  "dependabot": "Dependabot Issues Ranking",
+  "vuln-repos": "Repositories with vulnerabilities",
+  "bypasses": "Protection Rule Bypasses",
+  "renovate-open": "Open Renovate PRs",
+};
+
+/**
  * Which severities the "repositories with vulnerabilities" preset counts.
  *
  * A threshold — "high and above" — cannot express "critical and medium, but
@@ -299,6 +313,23 @@ export default function AnalyticsPage() {
    * list length changes between renders. Reporting upward keeps the hooks where
    * they belong and still lets the page order the grid and state the posture.
    */
+  const [search, setSearch] = useState("");
+  /**
+   * Cards or rows.
+   *
+   * Remembered per browser, because it is a preference about how somebody
+   * reads rather than anything about the organization, and being put back into
+   * the other one on every launch is the kind of small friction people stop
+   * reporting and start working around.
+   */
+  const [view, setView] = useState<"cards" | "rows">(() => {
+    try { return localStorage.getItem("overview:view") === "rows" ? "rows" : "cards"; }
+    catch { return "cards"; }
+  });
+  const setViewPersistent = (v: "cards" | "rows") => {
+    setView(v);
+    try { localStorage.setItem("overview:view", v); } catch { /* the view still changes */ }
+  };
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({});
   const report = useCallback((id: string, v: Verdict) => {
     setVerdicts(prev => {
@@ -325,6 +356,26 @@ export default function AnalyticsPage() {
       return ra - rb || (vb?.share ?? 0) - (va?.share ?? 0) || (vb?.value ?? 0) - (va?.value ?? 0);
     });
   }, [widgets, verdicts]);
+
+  /**
+   * The checks a search actually matches.
+   *
+   * Searches the title *and* the underlying check, so "protection" finds a card
+   * somebody named "Prod repos" whose check is about branch protection. A
+   * dashboard is usually named by the person who built it, and the words they
+   * chose are not the words somebody else looks for.
+   */
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return ordered;
+    return ordered.filter(w => {
+      const label = w.type === "query"
+        ? QUERY_OPTIONS.find(o => o.id === w.queryId)?.label ?? ""
+        : PRESET_LABELS[w.presetId as string] ?? "";
+      return `${w.title} ${label} ${w.queryParam ?? ""}`.toLowerCase().includes(q);
+    });
+  }, [ordered, search]);
+
 
   const handleSave = (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => {
     if (editingWidget) {
@@ -434,6 +485,60 @@ export default function AnalyticsPage() {
         </div>
       </header>
 
+      {/* Search and view, above the checks rather than in the header, because
+          they act on what is below them and a control that acts on a list
+          belongs next to the list. Hidden entirely when there is nothing to
+          search or switch: a filter over two cards is furniture. */}
+      {widgets.length > 2 && (
+        <div style={enter(1)} className="mb-5 flex items-center gap-3 flex-wrap">
+          <div className="relative flex-1 min-w-[220px] max-w-md">
+            <i className="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-sm pointer-events-none"></i>
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search checks by name or what they ask"
+              aria-label="Search checks"
+              className="w-full pl-9 pr-9 py-2 text-sm rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                aria-label="Clear search"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                <i className="ph-bold ph-x text-sm"></i>
+              </button>
+            )}
+          </div>
+
+          {/* Said out loud, because a filtered list that looks like the whole
+              list is how somebody concludes a check has been deleted. */}
+          {search && (
+            <span className="text-[12.5px] text-slate-500 dark:text-slate-400">
+              {visible.length} of {widgets.length}
+            </span>
+          )}
+
+          <div className="ml-auto inline-flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden shrink-0">
+            {([["cards", "ph-squares-four", "Cards"], ["rows", "ph-list", "List"]] as const).map(([v, icon, label]) => (
+              <button
+                key={v}
+                onClick={() => setViewPersistent(v)}
+                aria-pressed={view === v}
+                title={`${label} view`}
+                className={`px-3 py-2 text-xs font-semibold inline-flex items-center gap-1.5 transition-colors ${
+                  view === v
+                    ? "bg-slate-900 dark:bg-slate-200 text-white dark:text-slate-900"
+                    : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
+              >
+                <i className={`ph-bold ${icon}`}></i>{label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {graphEmpty && (
         <div style={enter(1)} className="mb-5">
           <Note intent="warn">
@@ -459,11 +564,18 @@ export default function AnalyticsPage() {
             : undefined}
         />
       ) : (
+        visible.length === 0 ? (
+          <Empty
+            title="No checks match that"
+            body={`Nothing here answers to "${search}". Try the name of a repository, a package, or what the check asks about.`}
+            action={<Button onClick={() => setSearch("")}>Clear the search</Button>}
+          />
+        ) : view === "cards" ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {/* No `items-start`: grid rows stretch by default, so every card in a
               row matches the tallest. Each card root carries `h-full` to fill
               the cell it is given, which is what makes them line up. */}
-          {ordered.map((w, i) => (
+          {visible.map((w, i) => (
             <CheckCard
               key={w.id}
               config={w}
@@ -478,6 +590,30 @@ export default function AnalyticsPage() {
             />
           ))}
         </div>
+        ) : (
+        /* One row per check, ordered exactly as the cards are, so switching
+           view never reorders anything. Denser on purpose: this is the view for
+           twenty checks, where a grid of cards is three screens of scrolling. */
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden bg-white dark:bg-slate-900">
+          <div className="hidden sm:grid grid-cols-[minmax(0,1fr)_120px_minmax(0,190px)_44px] gap-4 px-4 py-2.5 bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-700 text-[10.5px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+            <span>Check</span>
+            <span className="text-right">Found</span>
+            <span>Share</span>
+            <span></span>
+          </div>
+          {visible.map((w, i) => (
+            <CheckRow
+              key={w.id}
+              config={w}
+              live={live}
+              index={i}
+              onOpen={() => setFocusId(w.id)}
+              onReport={report}
+              graphEmpty={graphEmpty}
+            />
+          ))}
+        </div>
+        )
       )}
 
         </>
@@ -671,6 +807,101 @@ function detailOf(item: any, config: WidgetConfig): string {
   if (item?.status) return item.status;
   const r = String(item?.reason ?? "");
   return r.length > 28 ? r.slice(0, 27) + "…" : r;
+}
+
+/**
+ * One check as a row, for the list view.
+ *
+ * Deliberately a sibling of CheckCard rather than a mode inside it: the two
+ * render almost nothing in common, and a component that is a card or a row
+ * depending on a prop ends up being neither well.
+ *
+ * What it does share is the data path. It calls the same `useWidgetData` and
+ * the same `verdictFor`, and reports its verdict the same way, because the
+ * dashboard's ordering and its headline count are both derived from what the
+ * rendered checks report. A row view that skipped that would leave the page
+ * saying "0 of 0 checks" while showing twenty rows.
+ */
+function CheckRow({
+  config, index, onOpen, onReport, live, graphEmpty,
+}: {
+  config: WidgetConfig; index: number; onOpen: () => void;
+  live?: boolean;
+  onReport: (id: string, v: Verdict) => void;
+  graphEmpty?: boolean;
+}) {
+  const { items, isLoading, total, error } = useWidgetData(config, { live });
+  const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
+  const tone = TONE[verdict.level];
+
+  useEffect(() => {
+    if (!isLoading) onReport(config.id, verdict);
+  }, [isLoading, verdict, config.id, onReport]);
+
+  const label = config.type === "query"
+    ? QUERY_OPTIONS.find(o => o.id === config.queryId)?.label ?? "Check"
+    : PRESET_LABELS[config.presetId as string] ?? "Check";
+  const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
+  const broken = !!error;
+
+  return (
+    <button
+      onClick={onOpen}
+      style={enter(Math.min(index, 8))}
+      className="w-full text-left grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[minmax(0,1fr)_120px_minmax(0,190px)_44px] gap-4 items-center px-4 py-3 border-b border-slate-100 dark:border-slate-800 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
+    >
+      <span className="min-w-0 flex items-center gap-3">
+        {/* The same colour the card uses, as a bar rather than a ring. It is
+            the only thing here that is scannable down a column of twenty. */}
+        <span className={`w-1 h-8 rounded-full shrink-0 ${
+          broken ? "bg-slate-300 dark:bg-slate-600" : tone.bar}`} />
+        <span className="min-w-0">
+          <span className="block text-sm font-semibold text-slate-800 dark:text-slate-200 truncate">
+            {config.title}
+          </span>
+          <span className="block text-[12px] text-slate-400 dark:text-slate-500 truncate">
+            {label}{config.queryParam ? ` · ${config.queryParam}` : ""}
+          </span>
+        </span>
+      </span>
+
+      <span className="text-right tabular-nums">
+        {isLoading ? (
+          <span className="inline-block w-8 h-4 rounded bg-slate-100 dark:bg-slate-800 animate-pulse" />
+        ) : broken ? (
+          <span className="text-xs text-slate-400 dark:text-slate-500">unreadable</span>
+        ) : (
+          <>
+            <span className={`text-lg font-bold ${tone.figure}`}>{verdict.value}</span>
+            {verdict.denominator !== null && (
+              <span className="text-[12px] text-slate-400 dark:text-slate-500">/{verdict.denominator}</span>
+            )}
+          </>
+        )}
+      </span>
+
+      {/* Both hidden on narrow screens rather than wrapped: a share bar folded
+          onto its own line reads as a second finding. */}
+      <span className="hidden sm:block min-w-0">
+        {!isLoading && !broken && (
+          pct === null ? (
+            <span className="text-[12px] text-slate-400 dark:text-slate-500 truncate block">{verdict.caption}</span>
+          ) : (
+            <span className="flex items-center gap-2">
+              <span className="h-1.5 flex-1 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <span className={`block h-full rounded-full ${tone.bar}`} style={{ width: `${Math.max(pct, 2)}%` }} />
+              </span>
+              <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums w-9 text-right">{pct}%</span>
+            </span>
+          )
+        )}
+      </span>
+
+      <span className="hidden sm:flex justify-end text-slate-300 dark:text-slate-600">
+        <i className="ph-bold ph-caret-right text-sm"></i>
+      </span>
+    </button>
+  );
 }
 
 function CheckCard({
@@ -1131,6 +1362,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
     // Any row carrying the field, including one where it is null — null is the
     // answer "no team owns this", which is exactly what the column is for.
     hasOwner: items.some((i: any) => "owner" in i),
+    hasVisibility: items.some((i: any) => "visibility" in i),
   });
   const widthDefaults = defaultWidths(columns);
   const cols = useColumnWidths(layoutId(config.id, columns), widthDefaults);
@@ -1280,11 +1512,55 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                     <td className="px-6 py-4 text-center font-mono font-bold">{item.total}</td>
                   </>
                 )}
+                {config.type === "preset" && config.presetId === "renovate-open" && (
+                  <>
+                    <td className="px-6 py-4 text-sm">
+                      <span title={item.title} className="block truncate text-slate-800 dark:text-slate-200">
+                        {item.title || "Untitled"}
+                      </span>
+                      <span className="text-xs font-mono text-slate-500 dark:text-slate-400">#{item.number}</span>
+                    </td>
+                    {/* Age is the reason this widget exists: a Renovate pull
+                        request nobody merges is the finding, not its title. */}
+                    <td className={`px-6 py-4 text-center font-mono text-sm ${
+                      item.ageDays >= 30 ? "text-rose-600 dark:text-red-400 font-bold"
+                        : item.ageDays >= 7 ? "text-amber-600 dark:text-amber-400"
+                        : "text-slate-500 dark:text-slate-400"}`}>
+                      {item.ageDays}d
+                    </td>
+                    <td className="px-6 py-4 text-center">
+                      {/* Stops the row's own click handler: this opens GitHub,
+                          the row opens the detail panel, and one gesture must
+                          not do both. */}
+                      <a
+                        href={item.url} target="_blank" rel="noreferrer noopener"
+                        onClick={(e) => e.stopPropagation()}
+                        title={`Open #${item.number} on GitHub`}
+                        className="inline-flex items-center gap-1 text-xs font-semibold text-gh-blue hover:underline"
+                      >
+                        Open <i className="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                      </a>
+                    </td>
+                  </>
+                )}
+
                 {config.type === "preset" && config.presetId === "bypasses" && (
                   <>
                     <td className="px-6 py-4 font-mono font-bold text-rose-600 dark:text-red-400">{item.bypasses}</td>
                     <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 truncate">{item.reason}</td>
                   </>
+                )}
+
+                {config.type === "query" && columns.some(c => c.id === "visibility") && (
+                  <td className="px-6 py-4 text-center">
+                    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                      item.visibility === "public"
+                        ? "bg-rose-50 dark:bg-red-950/50 text-rose-700 dark:text-red-400 border-rose-200 dark:border-red-800"
+                        : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800"}`}>
+                      <i className={item.visibility === "public" ? "fa-solid fa-globe" : "fa-solid fa-building"}></i>
+                      {item.visibility ?? "unknown"}
+                    </span>
+                  </td>
                 )}
 
                 {config.type === "query" && hasStatus && (
@@ -1490,6 +1766,11 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
   const [branchTags, setBranchTags] = useState<string[]>(initQuery?.useTagInput && initParam ? initParam.split(",").map(s => s.trim()).filter(Boolean) : []);
   const [hasPendingBranch, setHasPendingBranch] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  // Narrows the vulnerable-package check to repositories whose answers this
+  // evidence actually covers. Off by default, because the wider answer, which
+  // names the repositories it could not check, is the honest one.
+  const [onlyDependabotEnabled, setOnlyDependabotEnabled] = useState<boolean>(
+    initAdv?.onlyDependabotEnabled || false);
   const [protectionType, setProtectionType] = useState<string>(initAdv?.protectionType || "any");
   const [ruleMatchType, setRuleMatchType] = useState<string>(initAdv?.ruleMatchType || "at_least");
   const [requirePr, setRequirePr] = useState(initAdv?.requirePr || false);
@@ -1531,7 +1812,10 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
         ...(presetId === "vuln-repos" && { queryParam: encodeSeverities(picked) }),
       });
     } else {
-      let advanced = undefined;
+      let advanced: Record<string, unknown> | undefined = undefined;
+      if ((selectedQuery as any)?.hasDependabotScope) {
+        advanced = { onlyDependabotEnabled };
+      }
       if (selectedQuery?.hasAdvancedRules) {
         advanced = {
           protectionType,
@@ -1618,10 +1902,9 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                   onChange={(e) => setPresetId(e.target.value as PresetId)}
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
                 >
-                  <option value="dependabot">Dependabot Issues Ranking</option>
-                  <option value="vuln-repos">Repositories with vulnerabilities</option>
-                  <option value="bypasses">Protection Rule Bypasses</option>
-                  <option value="renovate-open">Open Renovate PRs</option>
+                  {Object.entries(PRESET_LABELS).map(([id, label]) => (
+                    <option key={id} value={id}>{label}</option>
+                  ))}
                 </select>
 
                 {presetId === "vuln-repos" && (
@@ -1683,6 +1966,28 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                     ))}
                   </select>
                 </div>
+
+                {(selectedQuery as any)?.hasDependabotScope && (
+                  <label className="flex items-start gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={onlyDependabotEnabled}
+                      onChange={(e) => setOnlyDependabotEnabled(e.target.checked)}
+                      className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-gh-blue focus:ring-gh-blue"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-semibold text-slate-900 dark:text-white">
+                        Only repositories with Dependabot enabled
+                      </span>
+                      <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        This check reads Dependabot alerts, so a repository with them
+                        switched off raises none and cannot be answered for. Leave this
+                        unticked to cover every repository and have those listed as
+                        <strong> not checked</strong> rather than left out.
+                      </span>
+                    </span>
+                  </label>
+                )}
 
                 {selectedQuery?.requiresParam && (
                   <div>

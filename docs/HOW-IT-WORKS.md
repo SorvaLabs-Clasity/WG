@@ -520,7 +520,8 @@ or four requests rather than one per repository.
 | `visibility` | `"public"` · `"private"` · `"internal"` | `repo.visibility` | falls back to `private ? "private" : "public"` on older payloads |
 | `archived` | boolean | `repo.archived` | coerced, never null |
 | `fork` | boolean | `repo.fork` | coerced, never null |
-| `pushedAt` | ISO timestamp or `null` | `repo.pushed_at` | what the dormant-repository check reads |
+| `pushedAt` | ISO timestamp or `null` | `repo.pushed_at` | what the dormant-repository check reads; `null` means no commit has ever landed |
+| `createdAt` | ISO timestamp or `null` | `repo.created_at` | so a repository with no pushes can still be judged against an age |
 | `defaultBranch` | string | `repo.default_branch` | defaults to `"main"` when absent |
 | `secretScanning` | `"enabled"` · `"disabled"` · `"unknown"` | `repo.security_and_analysis.secret_scanning.status` | `"unknown"` when the field is absent, which is not the same as disabled |
 | `pushProtection` | `"enabled"` · `"disabled"` · `"unknown"` | `repo.security_and_analysis.secret_scanning_push_protection.status` | same |

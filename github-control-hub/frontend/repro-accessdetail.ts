@@ -76,6 +76,40 @@ const page = fs.readFileSync("./src/pages/AccessPage.tsx", "utf8");
       "read and admin are different findings and must not look alike");
   }
 
+  // ── the rebuild asks first ──────────────────────────────────────────
+  //
+  // "Sync from GitHub" reads like a refresh and is not one: it clears the
+  // stored map and rewrites it from a full walk, spending the organization's
+  // GitHub budget over several minutes, in this application rather than in
+  // AWS. The same walk runs by itself every six hours, so most presses were
+  // buying nothing at a real cost.
+  {
+
+    check("pressing Sync asks before it rebuilds",
+      /if \(confirmRebuild\(a\?\.edgeCount\)\) sync\.mutate\(\)/.test(page),
+      "the label reads lighter than the act");
+    check("  the dialog says what is replaced",
+      /Rebuild the whole access map\?/.test(page)
+        && /stored connections/.test(page));
+    check("  and quantifies it where the count is known",
+      /edgeCount\.toLocaleString\(\)/.test(page),
+      '"everything currently stored" is the fallback, not the usual case');
+    for (const [what, re] of [
+      ["how long it takes", /Takes several minutes/],
+      // Worded as a rate limit, not a "budget": the first reader of this
+      // dialog asked whether it meant money. It means requests.
+      ["that it draws on a shared rate limit", /shared GitHub rate limit/],
+      ["that the cost lands on everyone", /the app down for everyone/],
+      ["that closing the app stops it", /leave it open until it finishes/],
+      ["that waiting would have done it anyway", /automatically every 6 hours/],
+    ] as [string, RegExp][]) {
+      check(`  it states ${what}`, re.test(page));
+    }
+    check("  and cancelling starts nothing",
+      !/sync\.mutate\(\);\s*\}\s*\}/.test(page.replace(/if \(confirmRebuild[^\n]*\n/, "")),
+      "the mutation must be reachable only through the confirmation");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

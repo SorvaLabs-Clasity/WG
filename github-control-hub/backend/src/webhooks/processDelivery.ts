@@ -4,7 +4,7 @@ import { runScan, listScanners } from "../services/scannerService";
 import { createAlert, autoResolveAlerts } from "../services/alertService";
 import { logActivity } from "../services/activityService";
 import {
-  addBranchEdge, removeBranchEdge, updateBranchProtection,
+  addBranchEdge, removeBranchEdge, updateBranchProtection, removeAllRepoEdges,
   addCollaboratorEdge, removeCollaboratorEdge, addRepoEdges,
   patchRepoMeta, addTeamRepoEdge, removeTeamRepoEdge,
   addTeamMemberEdge, removeTeamMemberEdge,
@@ -98,6 +98,14 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   // GitHub handed it over rather than from whenever each write happens.
   const occurredAt = receivedAt || new Date().toISOString();
 
+  // Note that GitHub reached us, before anything else can fail. Throttled to
+  // one write every five minutes inside the service, and swallowed: the health
+  // stamp is diagnostic, and losing it must never cost the delivery its real
+  // effects.
+  await import("../services/orgConfigService")
+    .then(m => m.recordWebhookSeen(occurredAt))
+    .catch(err => console.warn("[Webhook] Could not record delivery time:", err?.message ?? err));
+
   const actor = sanitizeField(payload.sender?.login || payload.installation?.account?.login, 64) || "github";
 
   if (repoName) {
@@ -129,6 +137,30 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
 
     if (event === "repository" && payload.action === "privatized") {
       await autoResolveAlerts(repoName, "repo_made_public");
+    }
+
+    // A repository that is gone, or that is gone under this name.
+    //
+    // Without this every edge survived and every check kept naming it until
+    // the next full rebuild cleared the table, which is up to six hours of a
+    // widget reporting something already deleted. A rename is the same
+    // problem wearing a different hat: the old name's edges are as stale as a
+    // deleted one's, and the new name arrives on the next pass.
+    if (event === "repository"
+        && (payload.action === "deleted" || payload.action === "renamed")) {
+      const goneAs = payload.action === "renamed"
+        ? sanitizeField(payload.changes?.repository?.name?.from, 100)
+        : repoName;
+      if (goneAs) {
+        await logActivity(
+          payload.action === "deleted" ? "repo.deleted" : "repo.renamed",
+          actor, goneAs, goneAs,
+          payload.action === "deleted"
+            ? "Repository deleted on GitHub"
+            : `Repository renamed to ${repoName}`,
+          undefined, "github");
+        await removeAllRepoEdges(goneAs);
+      }
     }
 
     if (event === "branch_protection_rule") {

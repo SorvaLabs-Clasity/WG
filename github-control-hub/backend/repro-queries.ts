@@ -48,7 +48,19 @@ const EDGES = [
   // Staleness.
   meta("abandoned", { visibility: "private", archived: false, pushedAt: monthsAgo(14), defaultBranch: "main" }),
   meta("quiet", { visibility: "private", archived: false, pushedAt: monthsAgo(7), defaultBranch: "main" }),
-  meta("never-pushed", { visibility: "private", archived: false, pushedAt: null, defaultBranch: "main" }),
+  // Three shapes of "no commits ever", because they are reported differently:
+  // one created long ago, one created this week, and one written by a rebuild
+  // predating the createdAt field.
+  meta("never-pushed", { visibility: "private", archived: false, pushedAt: null, createdAt: monthsAgo(14), defaultBranch: "main" }),
+  meta("brand-new", { visibility: "private", archived: false, pushedAt: null, createdAt: monthsAgo(0.1), defaultBranch: "main" }),
+  meta("no-dates", { visibility: "private", archived: false, pushedAt: null, defaultBranch: "main" }),
+
+  // Dependabot scope. "dependabot-off" uses the package but raises no alert,
+  // "dependabot-unknown" has no recorded status at all, and both are distinct
+  // from a repository that was checked and came back clean.
+  meta("dependabot-off", { visibility: "private", archived: false, pushedAt: monthsAgo(1), defaultBranch: "main", dependabotEnabled: false }),
+  meta("dependabot-unknown", { visibility: "private", archived: false, pushedAt: monthsAgo(1), defaultBranch: "main" }),
+  meta("dependabot-on-clean", { visibility: "private", archived: false, pushedAt: monthsAgo(1), defaultBranch: "main", dependabotEnabled: true }),
 
   // Protection. "trunk" has no branch called main at all.
   meta("guarded", { visibility: "private", archived: false, pushedAt: monthsAgo(1), defaultBranch: "main" }),
@@ -105,19 +117,36 @@ function check(name: string, ok: boolean, got?: unknown) {
     // ── stale ────────────────────────────────────────────────────────
     {
       const twelve = await repos("stale-repos", "12");
-      check("at twelve months only the long-abandoned one qualifies", twelve.join() === "abandoned", twelve);
+      check("at twelve months the long-abandoned one qualifies",
+        twelve.includes("abandoned") && !twelve.includes("quiet"), twelve);
+      check("  along with the one created a year ago and never used",
+        twelve.includes("never-pushed"), twelve);
+      check("  and the undated one, which could be any age",
+        twelve.includes("no-dates"),
+        "an unknown age is reported at every threshold rather than assumed recent");
 
       const six = await repos("stale-repos", "6");
-      check("at six months the quieter one joins it", six.join() === "abandoned,quiet", six);
+      check("at six months the quieter one joins it",
+        six.includes("abandoned") && six.includes("quiet"), six);
 
-      check("a repository never pushed to is not called stale",
-        !six.includes("never-pushed"), six);
+      // This used to be skipped outright, on the grounds that empty is not
+      // abandoned. That hid the one category nobody can explain away: a
+      // repository created over a year ago that nobody ever put anything in.
+      // It is judged on its creation date so the same threshold still applies.
+      check("a repository never pushed to is reported, not skipped",
+        six.includes("never-pushed"), six);
+      check("  but one created this week is not called dormant",
+        !six.includes("brand-new"), six);
+      check("  and one with no dates at all is reported rather than dropped",
+        six.includes("no-dates"),
+        "silence is not an answer: an unknown age must not read as recent");
 
       const dflt = await repos("stale-repos");
-      check("the threshold defaults to six months", dflt.join() === "abandoned,quiet", dflt);
+      check("the threshold defaults to six months",
+        dflt.join() === six.join(), { dflt, six });
       const junk = await repos("stale-repos", "not-a-number");
       check("  and junk falls back to it rather than matching everything",
-        junk.join() === "abandoned,quiet", junk);
+        junk.join() === six.join() && !junk.includes("brand-new"), junk);
     }
 
     // ── nothing protected at all ─────────────────────────────────────
@@ -170,6 +199,41 @@ function check(name: string, ok: boolean, got?: unknown) {
   } finally {
     if (previous !== null) fs.writeFileSync(FIXTURE, previous);
     else fs.rmSync(FIXTURE, { force: true });
+  }
+
+  // ── the vulnerable-package check knows what it cannot see ───────────
+  //
+  // Every row it reports comes from a Dependabot alert. A repository with
+  // alerts switched off raises none, so it produced no edge, so it was absent
+  // from the results entirely, and absent reads as clean. For those
+  // repositories it meant "never looked".
+  {
+    const { evaluateSecurityQuery } = await import("./src/services/graphService");
+    const all = await evaluateSecurityQuery("repos-dependent-on", "left-pad") as any[];
+    const names = (rows: any[]) => rows.map(r => r.repo).sort();
+
+    check("by default the answer covers repositories it could not check",
+      names(all).includes("dependabot-off"),
+      "absent reads as clean, and for these it means never looked");
+    check("  and says so rather than reporting them as findings",
+      all.find(r => r.repo === "dependabot-off")?.status === "unknown",
+      all.find(r => r.repo === "dependabot-off"));
+    check("  a repository whose status could not be read is its own unknown",
+      /could not read/.test(all.find(r => r.repo === "dependabot-unknown")?.reason ?? ""),
+      "absent status is not the same claim as alerts being off");
+    check("  a repository with Dependabot on and no alert is not listed",
+      !names(all).includes("dependabot-on-clean"),
+      "that one really was checked and really is clean");
+
+    const scoped = await evaluateSecurityQuery(
+      "repos-dependent-on", "left-pad", { onlyDependabotEnabled: true }) as any[];
+    check("ticking the scope option narrows to what the evidence covers",
+      !names(scoped).includes("dependabot-off")
+        && !names(scoped).includes("dependabot-unknown"),
+      names(scoped));
+    check("  and the option accepts a string, as a URL would send it",
+      (await evaluateSecurityQuery("repos-dependent-on", "left-pad",
+        { onlyDependabotEnabled: "true" }) as any[]).every(r => r.status !== "unknown"));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

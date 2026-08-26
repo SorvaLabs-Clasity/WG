@@ -82,6 +82,19 @@ const c = (login: string, signal: Contribution["signal"], days: number): Contrib
       check(`  "${bot}" is too, being a display name rather than a login`, isBot(bot));
     }
 
+    // Copilot reviews pull requests, so it appears as a review-comment author,
+    // which is exactly what this feature scores on. The word test cannot catch
+    // it: "copilot" has no word boundary before "bot", and that boundary is
+    // what keeps "Abbot" and "Robotics" from excluding real people. So it is
+    // named explicitly.
+    for (const c of ["Copilot", "copilot", "GitHub Copilot", "github-copilot",
+                     "copilot-pull-request-reviewer[bot]", "copilot-swe-agent"]) {
+      check(`  "${c}" is recognised as not a person`, isBot(c));
+    }
+    check("  but somebody surnamed Copilot is",
+      !isBot("Jane Copilot") && !isBot("jcopilot"),
+      "matched whole, never as a substring");
+
     check("  while a human login is not", !isBot("alice") && !isBot("bobby-tables"));
     // Word-boundary matched, or the exclusion starts dropping people.
     for (const human of ["Abbot", "Botha", "Robotics Team", "Elliot", "Bobby"]) {

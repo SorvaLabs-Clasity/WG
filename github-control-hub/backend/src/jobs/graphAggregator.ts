@@ -1,6 +1,7 @@
 import { Octokit } from "octokit";
 import { getOrg, getSystemTokenAsync } from "../github/client";
 import { tableName, scanAll, batchWrite } from "../utils/dynamo";
+import { buildRepoMeta } from "./repoMeta";
 import { invalidateAccessMap } from "../services/accessMapService";
 import { invalidateEdgeCache } from "../services/graphService";
 import { recordGraphAggregation } from "../services/orgConfigService";
@@ -264,7 +265,24 @@ export async function aggregateGraphData(fallbackToken?: string) {
     }
 
     // 3. Repo details: Collaborators, Workflows, Dependabot
-    for (const repo of repos) {
+    // Which repositories have Dependabot alerts switched on.
+  //
+  // One paginated GraphQL walk for the whole organization, not a request per
+  // repository. It matters because the vulnerable-package check reads alert
+  // edges, and a repository with alerts off produces none: without this, "no
+  // rows" and "never looked" are the same answer, and the quieter one is wrong.
+  let dependabotOn: Map<string, boolean> | null = null;
+  try {
+    const { fetchRepoAlertStatus } = await import("../services/dependencyService");
+    dependabotOn = await fetchRepoAlertStatus(
+      (query: string, vars: any) => (octokit as any).graphql(query, vars), org);
+  } catch (err: any) {
+    // Left null rather than defaulted. Guessing "enabled" would hide
+    // unscannable repositories; guessing "disabled" would invent findings.
+    console.warn("[GraphAggregator] Could not read Dependabot status:", err?.message ?? err);
+  }
+
+  for (const repo of repos) {
       const repoId = `REPO#${repo.name}`;
 
       // The repository's own facts, which listForOrg already returned and this
@@ -276,17 +294,10 @@ export async function aggregateGraphData(fallbackToken?: string) {
         pk: repoId,
         sk: "META#repo",
         type: "repo_meta",
-        metadata: {
-          visibility: repo.visibility ?? (repo.private ? "private" : "public"),
-          archived: !!repo.archived,
-          fork: !!repo.fork,
-          pushedAt: repo.pushed_at ?? null,
-          defaultBranch: repo.default_branch ?? "main",
-          // Every one of these is off across the sampled organization, and each
-          // is a control an auditor asks about by name.
-          secretScanning: repo.security_and_analysis?.secret_scanning?.status ?? "unknown",
-          pushProtection: repo.security_and_analysis?.secret_scanning_push_protection?.status ?? "unknown",
-        },
+        metadata: buildRepoMeta(repo, {
+          ...(dependabotOn?.has(repo.name)
+            ? { dependabotEnabled: !!dependabotOn.get(repo.name) } : {}),
+        }),
       });
 
       // Who can write to this repository, and how they came by it.

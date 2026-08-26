@@ -54,6 +54,23 @@ export interface OrgConfig {
    */
   prPageSize?: number;
   /**
+   * When a webhook delivery last arrived, whatever it turned out to contain.
+   *
+   * Recorded because silence is this feature's only failure mode: a broken
+   * webhook looks exactly like a quiet week, and there is no backfill, so
+   * anything that happened meanwhile is gone rather than late.
+   *
+   * Written on arrival rather than inferred from the activity feed. The health
+   * check used to look for the newest feed row with `source: "github"` inside a
+   * window of sixty rows, which was wrong twice over: most delivered events
+   * (team, membership, member, dependabot_alert, and push with detailed logging
+   * off) patch the graph and write no feed row at all, and the window fills
+   * with the app's own `sync.*` housekeeping, pushing real events out of sight.
+   * On a live deployment the newest qualifying row sat at position 46 of 60 and
+   * was 259 hours old while deliveries were arriving every few minutes.
+   */
+  lastWebhookAt?: string;
+  /**
    * Detailed GitHub logging: whether the webhook worker also records the
    * routine traffic (branches, tags, pushes, pull requests) in the activity
    * feed, and which of those kinds are switched off individually.
@@ -203,4 +220,37 @@ export async function updateDetailedLogging(
     memConfig = updated;
   }
   return getDetailedLogging();
+}
+
+/**
+ * Note that a delivery arrived. Throttled, because this runs per delivery.
+ *
+ * At most one write every five minutes. The stamp is only read to answer "is
+ * GitHub still reaching us", where five minutes of imprecision changes no
+ * answer, and a write per delivery would be a DynamoDB write per webhook for a
+ * field nothing else reads.
+ *
+ * The throttle lives in module scope, so a warm Lambda container skips the
+ * write and a cold one pays for exactly one.
+ */
+let lastWebhookWriteAt = 0;
+const WEBHOOK_STAMP_THROTTLE_MS = 5 * 60_000;
+
+/** Test seam: forget the throttle so the next call writes. */
+export function __resetWebhookStampThrottle(): void {
+  lastWebhookWriteAt = 0;
+}
+
+export async function recordWebhookSeen(at?: string): Promise<void> {
+  const now = Date.now();
+  if (now - lastWebhookWriteAt < WEBHOOK_STAMP_THROTTLE_MS) return;
+  lastWebhookWriteAt = now;
+
+  const current = await getOrgConfig();
+  const updated: OrgConfig = { ...current, lastWebhookAt: at || new Date().toISOString() };
+  if (hasTable("ORG_CONFIG_TABLE")) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+  } else {
+    memConfig = updated;
+  }
 }
