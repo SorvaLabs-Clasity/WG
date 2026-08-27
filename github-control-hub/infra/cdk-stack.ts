@@ -652,7 +652,24 @@ export class GitHubControlHubStack extends cdk.Stack {
       // once the clocks go forward. Naming the zone keeps it at 10pm all year
       // and moves the UTC hour instead, which is the way round that matches
       // what somebody means by "10pm".
-      const graphSchedule = new scheduler.Schedule(this, "GraphAggregationSchedule", {
+      // ── the construct id is deliberately not "GraphAggregationSchedule" ──
+      //
+      // That id belonged to an `events.Rule`, and CloudFormation will not change
+      // the Type of a resource under an existing logical id. Reusing it fails
+      // the whole changeset before it starts, with:
+      //
+      //   Update of resource type is not permitted. The new template modifies
+      //   resource type of the following resources: [GraphAggregationSchedule…]
+      //
+      // A new id means CloudFormation creates the schedule and deletes the old
+      // rule in the same deployment, which is the only way to move between two
+      // resource types. So this name must not be "tidied" back.
+      //
+      // The two coexist for the minutes between create and cleanup. Harmless:
+      // an EventBridge *rule* and an EventBridge *Scheduler* schedule are
+      // separate services with separate name spaces, so the shared name does
+      // not collide, and the walk is idempotent if both happen to fire.
+      const graphSchedule = new scheduler.Schedule(this, "NightlyGraphRebuild", {
         scheduleName: `${stackPrefix}-graph-aggregation`,
         description: "Rebuilds the access graph from GitHub, nightly at 10pm Eastern",
         schedule: scheduler.ScheduleExpression.cron({

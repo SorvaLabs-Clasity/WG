@@ -30,6 +30,17 @@ export function sanitizeError(err: unknown, context: string): string {
   if (name === "ResourceNotFoundException") {
     return "That data store does not exist yet. Re-run scripts/setup-aws-account.sh against this account to create it.";
   }
+  // A table that exists but is missing an index the code reads through. Its own
+  // message is "The table does not have the specified index: feed-index", which
+  // fell through to the generic "unexpected error" below and left somebody
+  // staring at a broken tab with nothing to act on. The tables are not created
+  // by CDK, so `cdk deploy` cannot add an index and re-deploying looks like it
+  // should help and does not.
+  if (name === "ValidationException" && /does not have the specified index/i.test(message)) {
+    return "That data store is missing an index it needs. Re-run "
+      + "scripts/setup-aws-account.sh against this account to add it. "
+      + "Deploying the CDK stack will not: it does not create the tables.";
+  }
   if (name === "AccessDeniedException" || name === "AccessDenied" || name === "UnauthorizedOperation") {
     return "AWS refused that call. The app's IAM role is missing a permission, deploy the CDK stack to update it.";
   }

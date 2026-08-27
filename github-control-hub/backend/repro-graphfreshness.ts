@@ -99,11 +99,14 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
     const fs = await import("node:fs");
     const stack = fs.readFileSync(`${__dirname}/../infra/cdk-stack.ts`, "utf8");
     check("a rule rebuilds the graph on a schedule",
-      /GraphAggregationSchedule/.test(stack) && /aggregateHandler/.test(stack));
+      /NightlyGraphRebuild/.test(stack) && /aggregateHandler/.test(stack));
     check("  once a night rather than on a timer: the walk covers the whole org",
-      /GraphAggregationSchedule[\s\S]{0,900}?ScheduleExpression\.cron\(/.test(stack));
+      /NightlyGraphRebuild[\s\S]{0,900}?ScheduleExpression\.cron\(/.test(stack));
     check("  at an hour somebody chose, not whenever it was last deployed",
-      /GraphAggregationSchedule[\s\S]{0,900}?hour: "22"/.test(stack));
+      /NightlyGraphRebuild[\s\S]{0,900}?hour: "22"/.test(stack));
+    check("  and the schedule keeps the name the rule had, which is free",
+      /scheduleName: `\$\{stackPrefix\}-graph-aggregation`/.test(stack),
+      "rules and Scheduler schedules are separate services, so the name does not collide");
   }
 
   // ── the sync writes only what changed ───────────────────────────────

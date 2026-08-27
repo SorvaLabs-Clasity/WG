@@ -287,6 +287,41 @@ const branch = (repo: string, name: string, prot: boolean): EdgeLike =>
       "adding an index is a schema change; rewriting every row is the caller's call");
   }
 
+  // ── a missing index says what to do about it ────────────────────────
+  //
+  // The tables are not created by CDK: the stack builds exactly one, and the
+  // alerts table is not it. So somebody who deploys and finds the tab broken
+  // will reach for another deploy, which cannot help. The message has to say
+  // that, because nothing else will.
+  {
+    console.log("\nwhen the index is not there yet");
+
+    const { sanitizeError } = await import("./src/utils/errorSanitizer");
+    const err: any = new Error("The table does not have the specified index: feed-index");
+    err.name = "ValidationException";
+    const said = sanitizeError(err, "alerts");
+
+    check("the message names the script that fixes it",
+      /setup-aws-account\.sh/.test(said), said);
+    check("  and says a deploy will not",
+      /CDK stack will not/.test(said), said);
+    check("  rather than falling through to \"an unexpected error\"",
+      !/unexpected/i.test(said), said);
+
+    // Not every ValidationException is a missing index.
+    const other: any = new Error("One or more parameter values were invalid");
+    other.name = "ValidationException";
+    check("an unrelated validation error is untouched",
+      !/setup-aws-account/.test(sanitizeError(other, "alerts")));
+
+    // And the claim the message makes has to stay true.
+    const stack = fs.readFileSync(`${__dirname}/../infra/cdk-stack.ts`, "utf8");
+    check("the stack really does not create the alerts table",
+      (stack.match(/new dynamodb\.Table\(/g) ?? []).length === 1
+        && !/new dynamodb\.Table\([^)]*Alerts/.test(stack),
+      "if CDK ever owns this table the message becomes wrong advice");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

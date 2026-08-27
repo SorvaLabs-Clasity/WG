@@ -108,11 +108,20 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
     // patch access as it changes and the light pass carries repository facts,
     // so what is left is noticing a delivery that never arrived.
     check("the full rebuild runs nightly at 22:00 Eastern",
-      /GraphAggregationSchedule[\s\S]{0,900}hour: "22"[\s\S]{0,200}AMERICA_NEW_YORK/.test(cdk),
+      /NightlyGraphRebuild[\s\S]{0,900}hour: "22"[\s\S]{0,200}AMERICA_NEW_YORK/.test(cdk),
       "a rate(1 day) fires 24h after the last deploy, so the hour drifts with deploys");
     check("  named as a zone, so it stays 10pm when the clocks change",
-      !/GraphAggregationSchedule[\s\S]{0,900}Schedule\.rate\(/.test(cdk),
+      !/NightlyGraphRebuild[\s\S]{0,900}Schedule\.rate\(/.test(cdk),
       "an events.Rule cron is UTC only, which is 10pm in winter and 11pm in summer");
+
+    // The construct id must not go back to the one the old events.Rule used.
+    // CloudFormation refuses to change the Type of a resource under an existing
+    // logical id, so reusing it fails the whole changeset before it starts:
+    // "Update of resource type is not permitted." Every account that ever
+    // deployed the rule is stuck until the id differs.
+    check("  under a construct id the old events.Rule never had",
+      !/new scheduler\.Schedule\(this, "GraphAggregationSchedule"/.test(cdk),
+      "reusing that id fails the changeset on every account that has the old rule");
     check("  the light pass every thirty minutes",
       /GraphLightRefreshSchedule[\s\S]{0,300}Duration\.minutes\(30\)/.test(cdk));
     check("  each says which mode it wants",
