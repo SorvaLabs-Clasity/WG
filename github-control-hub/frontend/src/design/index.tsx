@@ -178,7 +178,7 @@ export function SlabPercent({ value, label }: { value: number; label: string }) 
 // ── controls ──────────────────────────────────────────────────────────
 
 export function Button({ variant = "secondary", onClick, disabled, children, className = "", type }: {
-  variant?: "primary" | "secondary" | "onDark" | "ghost";
+  variant?: "primary" | "secondary" | "onDark" | "ghost" | "caution";
   /**
    * Typed with the event it actually receives, even though almost nobody uses it.
    *
@@ -197,6 +197,17 @@ export function Button({ variant = "secondary", onClick, disabled, children, cla
     secondary: "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 shadow-sm hover:shadow",
     onDark: "bg-white text-slate-900 shadow-lg hover:scale-[1.03] active:scale-[0.98]",
     ghost: "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white",
+    /**
+     * For an action that is safe but expensive and slow.
+     *
+     * Not red: nothing here is destructive, and dressing it as destructive
+     * would be its own lie. Amber says "this one has a cost" and, more
+     * importantly, stops it looking identical to the refresh button beside it,
+     * which was the actual problem: two buttons that looked the same and did
+     * very different amounts of work.
+     */
+    caution: "bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/70 "
+      + "text-amber-800 dark:text-amber-300 shadow-sm hover:bg-amber-100 dark:hover:bg-amber-900/50",
   }[variant];
   const pad = variant === "ghost" ? "px-2 py-1.5" : "px-4 py-2.5";
   return (

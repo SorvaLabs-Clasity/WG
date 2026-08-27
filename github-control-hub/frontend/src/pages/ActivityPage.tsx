@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuthStatus } from "../api/auth";
 import {
-  categoryOf, countByCategory, inView, sourcesFor, CATEGORY_LABELS, VIEW_ORDER,
+  categoryOf, sourcesFor, CATEGORY_LABELS, VIEW_ORDER,
   type ActivityView,
 } from "../lib/activityCategories";
 import { Page, INTENT } from "../design";
@@ -260,7 +260,6 @@ const SOURCE_LABELS: Record<string, string> = {
 
 export default function ActivityPage() {
   const { user } = useAuth();
-  const { data, isLoading, error } = useActivity(100);
   const { data: orgConfig } = useOrgConfig();
   const undoMutation = useUndoActivity();
   const redoMutation = useRedoActivity();
@@ -338,7 +337,42 @@ export default function ActivityPage() {
   const [snack, setSnack] = useState<{ msg: string; severity: "success" | "error" } | null>(null);
   const [conflictDiffOpenId, setConflictDiffOpenId] = useState<string | null>(null);
   const [perPage, setPerPage] = useState(50);
-  const [currentPage, setCurrentPage] = useState(1);
+
+  /**
+   * The pages walked so far. Index 0 is the newest page.
+   *
+   * DynamoDB pages forward with an opaque cursor and cannot jump to page N, so
+   * "previous" is remembering where you were rather than computing it. Changing
+   * any filter empties this, because the cursors describe a walk of the old
+   * query.
+   */
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const [pageIndex, setPageIndex] = useState(0);
+
+  // Typing is not a request per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  const serverQuery = useMemo(() => ({
+    ...(debouncedSearch ? { q: debouncedSearch } : {}),
+    ...(sourceFilter !== "all" ? { source: sourceFilter } : {}),
+    ...(category !== "all" ? { category } : {}),
+    ...(repoFilter ? { repoFilter } : {}),
+    ...(targetFilter ? { target: targetFilter } : {}),
+    ...(showDetailed ? {} : { detailed: "hide" as const }),
+  }), [debouncedSearch, sourceFilter, category, repoFilter, targetFilter, showDetailed]);
+
+  // Back to the newest page whenever the question changes.
+  useEffect(() => {
+    setCursors([undefined]);
+    setPageIndex(0);
+  }, [serverQuery]);
+
+  const { data, isLoading, isFetching, error } = useActivity(
+    perPage, cursors[pageIndex], undefined, serverQuery);
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const highlightTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
@@ -396,23 +430,21 @@ export default function ActivityPage() {
     });
   }, [undoResolutionMutation]);
 
-  const filtered = useMemo(() => {
-    if (!data?.entries) return [];
-    let entries = data.entries.filter((e) => inView(e.action, category));
-    if (sourceFilter !== "all") entries = entries.filter((e) => e.source === sourceFilter);
-    if (!showDetailed) entries = entries.filter((e) => !e.detailed);
-    if (repoFilter) { const q = repoFilter.toLowerCase(); entries = entries.filter((e) => e.repo.toLowerCase().includes(q)); }
-    if (targetFilter) { const q = targetFilter.toLowerCase(); entries = entries.filter((e) => e.target.toLowerCase().includes(q) || (e.prNumber && e.prNumber.toString() === q) || (e.commitSha && e.commitSha.toLowerCase().includes(q))); }
-    if (search) { const q = search.toLowerCase(); entries = entries.filter((e) => e.actor.toLowerCase().includes(q) || e.action.toLowerCase().includes(q) || (e.details && e.details.toLowerCase().includes(q))); }
-    return entries;
-  }, [data, search, sourceFilter, repoFilter, targetFilter, category, showDetailed]);
+  /**
+   * Whatever the server matched. Every filter above ran against the whole
+   * table, not against a page that happened to be loaded.
+   */
+  const filtered = data?.entries ?? [];
 
-  // Counted across the whole feed so each tab shows how much it holds, rather
-  // than only what survived the current filters.
-  const categoryCounts = useMemo(
-    () => countByCategory((data?.entries ?? []).map(e => e.action)),
-    [data],
-  );
+  /**
+   * No per-stream totals any more, and deliberately none.
+   *
+   * They used to be counted from the hundred rows the browser held and shown on
+   * the tabs as though they described the stream. Now that the server returns
+   * one filtered page, that number would describe the page, which is a smaller
+   * lie in the same shape. A real total means counting every row in the table
+   * on every load, which is not worth a badge.
+   */
 
   // Which sources exist in this view, and therefore whether offering the
 
@@ -421,13 +453,29 @@ export default function ActivityPage() {
   const availableSources = useMemo(() => sourcesFor(category), [category]);
 
 
-  const totalTopLevel = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(totalTopLevel / perPage));
-  const safePage = Math.min(currentPage, totalPages);
-  const pageStart = (safePage - 1) * perPage;
-  const paginatedEntries = filtered.slice(pageStart, pageStart + perPage);
+  const paginatedEntries = filtered;
+  const hasMore = !!data?.cursor;
+  /**
+   * The server read its budget without reaching the end.
+   *
+   * Only meaningful when nothing matched: "no results in the newest few
+   * thousand rows" is a different answer from "no results", and saying the
+   * second when you mean the first is how somebody concludes a change was never
+   * recorded.
+   */
+  const stoppedEarly = data?.exhausted === false && filtered.length === 0;
 
-  useEffect(() => { setCurrentPage(1); }, [search, sourceFilter, repoFilter, targetFilter, perPage, category, showDetailed]);
+  const goNext = () => {
+    if (!data?.cursor) return;
+    setCursors(prev => {
+      const next = prev.slice(0, pageIndex + 1);
+      next.push(data.cursor);
+      return next;
+    });
+    setPageIndex(i => i + 1);
+  };
+  const goPrev = () => setPageIndex(i => Math.max(0, i - 1));
+  const hasFilters = Object.keys(serverQuery).length > 0;
 
   // A source that cannot occur in the new view would filter every row away and
   // read as an empty stream. Switching from Organization with "GitHub webhook"
@@ -471,7 +519,6 @@ export default function ActivityPage() {
     const topIdx = searchEntries.findIndex((e) => e.id === topLevelId);
     if (topIdx === -1) return;
 
-    const targetPage = Math.floor(topIdx / perPage) + 1;
 
     setExpandedIds((prev) => {
       const next = new Set(prev);
@@ -479,7 +526,6 @@ export default function ActivityPage() {
       return next;
     });
 
-    setCurrentPage(targetPage);
     setSelectedEvent(null);
     setHighlightedId(targetId);
   }, [filtered, data, perPage]);
@@ -683,7 +729,7 @@ export default function ActivityPage() {
           <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto overflow-y-hidden">
             {views.map(c => {
               const active = category === c;
-              const n = categoryCounts[c];
+
               return (
                 <button
                   key={c}
@@ -695,9 +741,6 @@ export default function ActivityPage() {
                       : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
                 >
                   {CATEGORY_LABELS[c]}
-                  <span className={`ml-2 text-xs tabular-nums ${active ? "text-slate-500 dark:text-slate-400" : "text-slate-400 dark:text-slate-500"}`}>
-                    {n}
-                  </span>
                 </button>
               );
             })}
@@ -827,17 +870,22 @@ export default function ActivityPage() {
                   {paginatedEntries.map((entry) => renderRow(entry, 0)).flat()}
                   {paginatedEntries.length === 0 && (
                     <tr><td colSpan={columns.length} className="px-6 py-10 text-center text-gh-muted dark:text-slate-400">
-                      {categoryCounts[category] === 0 ? (
+                      {stoppedEarly ? (
+                        /* The server read its budget without reaching the end,
+                           which is not the same answer as "there are none". */
                         <>
-                          <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing recorded here yet</p>
-                          <p className="text-sm mt-1">{CATEGORY_DESCRIPTIONS[category]}</p>
+                          <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing matched in the most recent {data?.examined?.toLocaleString() ?? "few thousand"} events</p>
+                          <p className="text-sm mt-1">There may be older matches. Press <strong>Older</strong> to keep looking.</p>
+                        </>
+                      ) : hasFilters ? (
+                        <>
+                          <p className="font-semibold text-slate-700 dark:text-slate-200">No matching activity</p>
+                          <p className="text-sm mt-1">Nothing in the whole feed matches these filters.</p>
                         </>
                       ) : (
                         <>
-                          <p className="font-semibold text-slate-700 dark:text-slate-200">No matching activity</p>
-                          <p className="text-sm mt-1">
-                            {categoryCounts[category]} {categoryCounts[category] === 1 ? "entry" : "entries"} in this stream, none matching the current filters.
-                          </p>
+                          <p className="font-semibold text-slate-700 dark:text-slate-200">Nothing recorded here yet</p>
+                          <p className="text-sm mt-1">{CATEGORY_DESCRIPTIONS[category]}</p>
                         </>
                       )}
                     </td></tr>
@@ -845,10 +893,17 @@ export default function ActivityPage() {
                 </tbody>
               </table>
             </div>
-            <div className="px-6 py-3 border-t border-gh-border dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-between">
+            {/* Numbered pages are gone with the client-side slice. DynamoDB
+                pages forward with an opaque cursor and cannot jump to page N,
+                so offering "page 7" would mean walking to it invisibly. What is
+                offered instead is exactly what the store can do. */}
+            <div className="px-6 py-3 border-t border-gh-border dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-3">
                 <span className="text-xs text-gh-muted dark:text-slate-400">
-                  Showing <strong>{pageStart + 1}</strong>–<strong>{Math.min(pageStart + perPage, totalTopLevel)}</strong> of <strong>{totalTopLevel}</strong> events
+                  {paginatedEntries.length === 0
+                    ? "No events"
+                    : <>Page <strong>{pageIndex + 1}</strong> &middot; <strong>{paginatedEntries.length}</strong> event{paginatedEntries.length === 1 ? "" : "s"}</>}
+                  {isFetching && <span className="ml-2 opacity-60">loading…</span>}
                 </span>
                 <div className="flex items-center gap-1.5">
                   <span className="text-[11px] text-gh-muted dark:text-slate-400">Per page:</span>
@@ -865,40 +920,21 @@ export default function ActivityPage() {
               </div>
               <div className="flex items-center gap-1">
                 <button
-                  onClick={() => setCurrentPage(1)}
-                  disabled={safePage <= 1}
+                  onClick={() => { setCursors([undefined]); setPageIndex(0); }}
+                  disabled={pageIndex === 0}
                   className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
-                  title="First page"
+                  title="Newest"
                 ><i className="fa-solid fa-angles-left text-[10px]"></i></button>
                 <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={safePage <= 1}
+                  onClick={goPrev}
+                  disabled={pageIndex === 0}
                   className="px-3 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
                 >Previous</button>
-                {(() => {
-                  const pages: number[] = [];
-                  const start = Math.max(1, safePage - 2);
-                  const end = Math.min(totalPages, safePage + 2);
-                  for (let i = start; i <= end; i++) pages.push(i);
-                  return pages.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => setCurrentPage(p)}
-                      className={`px-2.5 py-1 text-xs font-medium rounded border transition-colors ${p === safePage ? 'bg-gh-blue text-white border-gh-blue' : 'text-gh-muted dark:text-slate-400 border-gh-border dark:border-slate-700 bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700'}`}
-                    >{p}</button>
-                  ));
-                })()}
                 <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={safePage >= totalPages}
+                  onClick={goNext}
+                  disabled={!hasMore || isFetching}
                   className="px-3 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
-                >Next</button>
-                <button
-                  onClick={() => setCurrentPage(totalPages)}
-                  disabled={safePage >= totalPages}
-                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
-                  title="Last page"
-                ><i className="fa-solid fa-angles-right text-[10px]"></i></button>
+                >Older</button>
               </div>
             </div>
           </div>

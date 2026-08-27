@@ -165,14 +165,26 @@ done
 #   id-index        getActivityById   — every row has an id
 #   parentId-index  getChildActivities — only child rows have a parentId, so
 #                                        the index holds exactly those
+#   repo-index      filtering the feed by repository. Keyed on repo with the
+#                   timestamp as its sort key, so "everything that happened to
+#                   this repository, newest first" is a direct query at any
+#                   depth. Without it that filter read rows and discarded the
+#                   ones for other repositories, which is fine on a young log
+#                   and gives up after a few thousand rows on an old one.
+#
+#                   Sparse on purpose: a row with no repository (a sync, a
+#                   settings change) has no `repo` attribute written at all, so
+#                   it is not indexed and costs nothing here.
 create_table "${PREFIX}-activity" \
   --attribute-definitions \
       AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
       AttributeName=id,AttributeType=S AttributeName=parentId,AttributeType=S \
+      AttributeName=repo,AttributeType=S \
   --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE \
   --global-secondary-indexes \
       'IndexName=id-index,KeySchema=[{AttributeName=id,KeyType=HASH}],Projection={ProjectionType=ALL}' \
-      'IndexName=parentId-index,KeySchema=[{AttributeName=parentId,KeyType=HASH}],Projection={ProjectionType=ALL}' 
+      'IndexName=parentId-index,KeySchema=[{AttributeName=parentId,KeyType=HASH}],Projection={ProjectionType=ALL}' \
+      'IndexName=repo-index,KeySchema=[{AttributeName=repo,KeyType=HASH},{AttributeName=sk,KeyType=RANGE}],Projection={ProjectionType=ALL}' 
 
 # scanners — pk="SCANNER", sk=<scanner id>   scannerService.ts:88
 create_table "${PREFIX}-scanners" \

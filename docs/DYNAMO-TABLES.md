@@ -186,12 +186,26 @@ expired rows *within about 48 hours* of the date rather than exactly on it, so
 treat it as a floor rather than a deadline.
 
 Everything is filed under a single tab labelled `ACTIVITY`, sorted by time. Great
-for "show me the newest hundred." Useless for "find the row with *this* ID" —
-that would mean flipping through everything. So there are **two extra lookup
-lists** beside it: one that finds a row by its id, one that finds a row's
-children. Without them, those lookups fell back to *checking the most recent rows
-and hoping*, which answers "is it recent?" rather than "does it exist?" On a small
-log those look identical; on a large one it's silently wrong.
+for "show me the newest hundred." Useless for "find the row with *this* ID" or
+"everything about *this* repository", because either would mean flipping through
+the whole thing. So there are **three extra lookup lists** beside it:
+
+| Lookup list | Answers | Why it exists |
+| --- | --- | --- |
+| `id-index` | find one row by its id | every row has an id |
+| `parentId-index` | find a row's children | only child rows have a parent, so the list holds exactly those |
+| `repo-index` | everything about one repository, newest first | keyed on the repository with the timestamp beside it, so this is a direct lookup at any depth |
+
+Without them those lookups fell back to *checking the most recent rows and
+hoping*, which answers "is it recent?" rather than "does it exist?" On a small
+log those look identical; on a large one it is silently wrong.
+
+**`repo-index` is deliberately sparse.** A row that is not about one repository,
+a sync or a settings change, omits the `repo` attribute entirely rather than
+storing an empty string. DynamoDB indexes a row only when the attribute is
+present, so those rows are not indexed at all. Storing `""` would have put every
+one of them under a single empty key: the largest partition in the index and the
+one nobody ever queries.
 
 Four things write to it:
 
@@ -201,6 +215,25 @@ Four things write to it:
 | `webhooks/processDelivery.ts` | changes made on github.com, and, behind the detailed-logging toggle, the routine traffic (branches, tags, pushes, pull requests) |
 | `aws-guardrails/handler.ts` | AWS guardrail findings |
 | `routes/auth.ts` | sign-ins |
+
+### Reading it back
+
+The Activity tab asks the server for one page at a time, with every filter as
+part of the query. It used to fetch the newest hundred rows once and do paging
+and searching in the browser, which made the pager stop at page two whatever the
+table held and made a search blind to anything older than those hundred rows.
+
+Paging is by **cursor**, not page number: DynamoDB pages forward from where it
+left off and cannot jump to page seven, so the controls are Newest, Previous and
+Older, which is exactly what the store can do.
+
+Free-text search has a **read budget of 3,000 rows per request**, because a
+filter is applied after reading and a rare term would otherwise walk thirteen
+months in one request. Running out is reported as *unfinished*, with a cursor to
+carry on from, rather than as "no results" — those are different answers, and
+saying the second when you mean the first is how somebody concludes a change was
+never recorded. Filtering by an exact repository name skips the budget entirely
+by using `repo-index`.
 
 Rows written under **detailed GitHub logging** carry `detailed: true`, so the
 Activity page can hide or show them as a view choice. The toggle (Activity,

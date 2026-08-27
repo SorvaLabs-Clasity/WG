@@ -1,12 +1,28 @@
 import { useQuery, useMutation, useQueryClient, QueryClient } from "@tanstack/react-query";
-import { fetchActivity, undoActivity, redoActivity, retryActivity, undoResolution } from "../api/activity";
+import { fetchActivity, type ActivityQuery, undoActivity, redoActivity, retryActivity, undoResolution } from "../api/activity";
 
-export function useActivity(limit = 50, offset = 0, repo?: string) {
+/**
+ * One page of the feed, with filters applied on the server.
+ *
+ * `cursor` is whatever the previous page returned. Every filter is part of the
+ * query key, so changing one fetches rather than re-slicing what is already
+ * loaded, which is what made search blind to anything older than the first
+ * hundred rows.
+ */
+export function useActivity(
+  limit = 50,
+  cursor?: string,
+  repo?: string,
+  query: ActivityQuery = {},
+) {
   return useQuery({
-    queryKey: ["activity", limit, offset, repo],
-    queryFn: () => fetchActivity(limit, offset, repo),
+    queryKey: ["activity", limit, cursor, repo, query],
+    queryFn: () => fetchActivity(limit, cursor, repo, query),
     staleTime: 10_000,
-    refetchInterval: 15_000,
+    // Only the first page auto-refreshes. Re-fetching a deep page every fifteen
+    // seconds would fight whoever is reading it.
+    refetchInterval: cursor ? false : 15_000,
+    placeholderData: (prev: any) => prev,
   });
 }
 

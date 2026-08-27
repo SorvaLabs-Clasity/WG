@@ -99,7 +99,7 @@ export function invalidateEdgeCache(): void {
  */
 export class MissingGraphDataError extends Error {
   constructor(readonly edgeType: string) {
-    super("This check reads data the graph does not have yet. Press Sync data to collect it.");
+    super("This check reads data the graph does not have yet. Run a full GitHub recrawl to collect it.");
     this.name = "MissingGraphDataError";
   }
 }
@@ -208,7 +208,6 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       for (const [repo, hits] of byRepo) {
         results.push({
           repo,
-          status: "fail",
           reason: hits.length === 1
             ? `Vulnerable ${hits[0].pkg} (${hits[0].severity})`
             : `Vulnerable in ${hits.length} of the packages asked about`,
@@ -216,41 +215,6 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         });
       }
 
-      // ── the repositories this evidence cannot speak for ─────────────
-      //
-      // Everything above comes from Dependabot alerts. A repository with
-      // alerts switched off raises none, so it produces no edge, so it is
-      // absent from the results entirely. Absent reads as "clean", and for
-      // those repositories it means "never looked" instead.
-      //
-      // By default they are reported as unchecked, so the widget covers every
-      // repository in the organization and says which ones it could not
-      // answer for. Ticking "only repositories with Dependabot enabled"
-      // narrows it to the ones this evidence genuinely covers, for somebody
-      // who wants a clean list rather than a complete one.
-      if (!toBool(advanced?.onlyDependabotEnabled)) {
-        for (const edge of allEdges) {
-          if (edge.type !== "repo_meta") continue;
-          if (edge.metadata?.archived) continue;
-          const repo = edge.pk.replace("REPO#", "");
-          if (byRepo.has(repo)) continue;
-
-          const enabled = edge.metadata?.dependabotEnabled;
-          // Absent means the status could not be read, which is its own
-          // unknown and must not be reported as "off".
-          if (enabled === true) continue;
-          results.push({
-            repo,
-            status: "unknown",
-            reason: enabled === false
-              ? "Not checked: Dependabot alerts are off"
-              : "Not checked: could not read whether Dependabot is on",
-            details: enabled === false
-              ? "This check reads Dependabot alerts, and a repository with them off raises none. Whether it uses the package is unknown."
-              : "The organization's Dependabot status could not be read on the last rebuild.",
-          });
-        }
-      }
       break;
 
     case "repos-with-outside-admins": {

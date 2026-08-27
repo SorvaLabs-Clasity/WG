@@ -55,13 +55,6 @@ const EDGES = [
   meta("brand-new", { visibility: "private", archived: false, pushedAt: null, createdAt: monthsAgo(0.1), defaultBranch: "main" }),
   meta("no-dates", { visibility: "private", archived: false, pushedAt: null, defaultBranch: "main" }),
 
-  // Dependabot scope. "dependabot-off" uses the package but raises no alert,
-  // "dependabot-unknown" has no recorded status at all, and both are distinct
-  // from a repository that was checked and came back clean.
-  meta("dependabot-off", { visibility: "private", archived: false, pushedAt: monthsAgo(1), defaultBranch: "main", dependabotEnabled: false }),
-  meta("dependabot-unknown", { visibility: "private", archived: false, pushedAt: monthsAgo(1), defaultBranch: "main" }),
-  meta("dependabot-on-clean", { visibility: "private", archived: false, pushedAt: monthsAgo(1), defaultBranch: "main", dependabotEnabled: true }),
-
   // Protection. "trunk" has no branch called main at all.
   meta("guarded", { visibility: "private", archived: false, pushedAt: monthsAgo(1), defaultBranch: "main" }),
   branch("guarded", "main", true),
@@ -188,8 +181,10 @@ function check(name: string, ok: boolean, got?: unknown) {
       }
       check("a check over uncollected data refuses rather than reporting zero",
         threw?.name === "MissingGraphDataError", threw?.message ?? "no error");
-      check("  and says how to fix it",
-        (threw?.message ?? "").includes("Sync data"), threw?.message);
+      // Names the control by its label. A message telling somebody to press a
+      // button that was renamed is worse than one that says nothing.
+      check("  and says how to fix it, by the name on the button",
+        (threw?.message ?? "").includes("full GitHub recrawl"), threw?.message);
 
       // A check whose data IS present still answers normally.
       const stillWorks = await svc.evaluateSecurityQuery("repos-without-protection");
@@ -199,41 +194,6 @@ function check(name: string, ok: boolean, got?: unknown) {
   } finally {
     if (previous !== null) fs.writeFileSync(FIXTURE, previous);
     else fs.rmSync(FIXTURE, { force: true });
-  }
-
-  // ── the vulnerable-package check knows what it cannot see ───────────
-  //
-  // Every row it reports comes from a Dependabot alert. A repository with
-  // alerts switched off raises none, so it produced no edge, so it was absent
-  // from the results entirely, and absent reads as clean. For those
-  // repositories it meant "never looked".
-  {
-    const { evaluateSecurityQuery } = await import("./src/services/graphService");
-    const all = await evaluateSecurityQuery("repos-dependent-on", "left-pad") as any[];
-    const names = (rows: any[]) => rows.map(r => r.repo).sort();
-
-    check("by default the answer covers repositories it could not check",
-      names(all).includes("dependabot-off"),
-      "absent reads as clean, and for these it means never looked");
-    check("  and says so rather than reporting them as findings",
-      all.find(r => r.repo === "dependabot-off")?.status === "unknown",
-      all.find(r => r.repo === "dependabot-off"));
-    check("  a repository whose status could not be read is its own unknown",
-      /could not read/.test(all.find(r => r.repo === "dependabot-unknown")?.reason ?? ""),
-      "absent status is not the same claim as alerts being off");
-    check("  a repository with Dependabot on and no alert is not listed",
-      !names(all).includes("dependabot-on-clean"),
-      "that one really was checked and really is clean");
-
-    const scoped = await evaluateSecurityQuery(
-      "repos-dependent-on", "left-pad", { onlyDependabotEnabled: true }) as any[];
-    check("ticking the scope option narrows to what the evidence covers",
-      !names(scoped).includes("dependabot-off")
-        && !names(scoped).includes("dependabot-unknown"),
-      names(scoped));
-    check("  and the option accepts a string, as a URL would send it",
-      (await evaluateSecurityQuery("repos-dependent-on", "left-pad",
-        { onlyDependabotEnabled: "true" }) as any[]).every(r => r.status !== "unknown"));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

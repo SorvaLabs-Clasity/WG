@@ -2,19 +2,45 @@ import { apiGet, apiPost, apiPut, DEMO_MODE } from "./client";
 import { mockFetchActivity, mockUndoActivity, mockRedoActivity, mockRetryActivity, mockGetDetailedLogging, mockUpdateDetailedLogging } from "./mock";
 import type { Activity } from "../types/Activity";
 
-interface ActivityResponse {
+export interface ActivityResponse {
   entries: Activity[];
-  total: number;
+  /** Present when more pages exist. */
+  cursor?: string;
+  /** False when the server stopped at its read budget rather than the end. */
+  exhausted?: boolean;
+  examined?: number;
+  total?: number;
 }
 
+export interface ActivityQuery {
+  q?: string;
+  source?: string;
+  category?: string;
+  repoFilter?: string;
+  target?: string;
+  /** "hide" drops rows written under detailed logging. */
+  detailed?: "show" | "hide";
+}
+
+/**
+ * One page of the feed.
+ *
+ * Filters go to the server rather than being applied to whatever the browser
+ * happened to load. The cursor is opaque and comes back from the previous page;
+ * `exhausted: false` means the server stopped early, not that there is nothing
+ * more, which are different answers and were being conflated.
+ */
 export function fetchActivity(
   limit = 50,
-  offset = 0,
-  repo?: string
+  cursor?: string,
+  repo?: string,
+  query: ActivityQuery = {},
 ): Promise<ActivityResponse> {
-  if (DEMO_MODE) return mockFetchActivity(limit, offset, repo);
-  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  if (DEMO_MODE) return mockFetchActivity(limit, 0, repo);
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (cursor) params.set("cursor", cursor);
   if (repo) params.set("repo", repo);
+  for (const [k, v] of Object.entries(query)) if (v) params.set(k, String(v));
   return apiGet<ActivityResponse>(`/activity?${params}`);
 }
 

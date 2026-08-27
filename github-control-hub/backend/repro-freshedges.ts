@@ -339,7 +339,6 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
       default_branch: "main",
     };
     const bare = buildRepoMeta(repo);
-    const withDb = buildRepoMeta(repo, { dependabotEnabled: false });
 
     check("the row carries what every check reads",
       ["visibility", "archived", "fork", "pushedAt", "createdAt",
@@ -347,15 +346,10 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
       Object.keys(bare));
     check("  an unread security setting is unknown, not disabled",
       bare.secretScanning === "unknown" && bare.pushProtection === "unknown");
-    check("  Dependabot status is absent when it is not known",
-      !("dependabotEnabled" in bare),
-      "absent and false are different claims to the check that reads it");
-    check("  and present, including false, when it is",
-      withDb.dependabotEnabled === false);
 
-    check("the light pass collects the status too, so it cannot erase it",
-      /fetchRepoAlertStatus/.test(light),
-      "omitting it from a whole-item write deletes it every thirty minutes");
+    check("neither pass collects anything the other does not",
+      /fetchRepoAlertStatus/.test(light) === /fetchRepoAlertStatus/.test(agg),
+      "a field one writes and the other omits is erased on the other's next pass");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

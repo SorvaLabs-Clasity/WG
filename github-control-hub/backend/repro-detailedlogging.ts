@@ -158,8 +158,11 @@ const code = (s: string) => s.split("\n").filter(l => !l.trim().startsWith("//")
     check("  each kind is individually uncheckable",
       /toggleKind/.test(panel) && /checkbox/.test(panel));
 
+    // The filter moved to the server with the rest of them: hiding rows the
+    // browser had already loaded only ever hid part of the answer.
     check("the view filter can hide detailed rows",
-      /!showDetailed/.test(page) && /Detailed rows/.test(page));
+      /detailed: "hide"/.test(page) && /Detailed rows/.test(page),
+      "the filter must reach the query, not the loaded page");
     check("  the choice survives reopening, and a blocked localStorage still renders",
       /activity:show-detailed/.test(page) && /catch \{ return true; \}/.test(page));
     check("  detailed rows carry a visible label",

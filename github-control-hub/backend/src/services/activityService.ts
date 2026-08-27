@@ -84,7 +84,8 @@ export interface ActivityEntry {
   source: "app" | "github";
   action: ActivityAction;
   actor: string;
-  repo: string;
+  /** Absent when the row is not about one repository, so repo-index stays sparse. */
+  repo?: string;
   target: string;
   details?: string;
   /**
@@ -239,7 +240,16 @@ export async function logActivity(
     source,
     action,
     actor,
-    repo,
+    // Omitted rather than stored empty when the row is not about a repository.
+    //
+    // `repo-index` is keyed on this attribute, and DynamoDB indexes a row only
+    // if the attribute is present. Storing "" would index every sync and every
+    // settings change under one empty partition key, which is both the largest
+    // partition in the index and the one nobody ever queries.
+    //
+    // Readers already treat it as optional: the feed renders "not scoped to a
+    // repository" for a falsy value, and undefined is falsy.
+    ...(repo ? { repo } : {}),
     target,
     details,
     diff,
@@ -767,4 +777,28 @@ export async function updateActivityError(id: string, errorMessage: string): Pro
       (entry as any).errorMessage = errorMessage;
     }
   }
+}
+
+/** The in-memory feed, for local development search. Empty under DynamoDB. */
+export function memoryLogForSearch(): ActivityEntry[] {
+  return memoryLog;
+}
+
+/**
+ * Children for a page of parents, in one pass.
+ *
+ * Called with the ids on the page rather than per row: fifty parents used to
+ * mean fifty index queries, and the page is drawn from whatever comes back.
+ */
+export async function getChildrenFor(parentIds: string[]): Promise<ActivityEntry[]> {
+  if (parentIds.length === 0) return [];
+  const out: ActivityEntry[] = [];
+  for (const id of parentIds) {
+    try {
+      out.push(...await getChildActivities(id));
+    } catch {
+      // A child that cannot be read costs its parent a nested row, not the page.
+    }
+  }
+  return out;
 }

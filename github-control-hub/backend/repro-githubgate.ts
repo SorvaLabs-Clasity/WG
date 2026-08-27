@@ -112,9 +112,12 @@ function verdict(configured: string, actual: string | null) {
     check("the feed drops GitHub rows when GitHub is not available here",
       /await awsOnly\(\)/.test(src) && /isAwsRow/.test(src));
     check("  filtered on the server, not hidden in the page",
-      /allEntries = allEntries\.filter/.test(src),
-      "these rows are who has access to what — an account not meant to hold them "
-        + "is not meant to read them either");
+      /top = top\.filter\(e => isAwsRow/.test(src),
+      "these rows are who has access to what, and an account not meant to hold "
+        + "them is not meant to read them either");
+    check("  including rows nested under a parent that survived",
+      /children = children\.filter\(e => isAwsRow/.test(src),
+      "filtering parents alone lets a GitHub child through under an AWS parent");
 
     // Every route that acts on a row must refuse a GitHub one.
     const acting = [...src.matchAll(/router\.post\("\/:id\/([a-z-]+)"/g)].map(m => m[1]);

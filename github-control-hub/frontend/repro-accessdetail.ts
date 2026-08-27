@@ -85,14 +85,30 @@ const page = fs.readFileSync("./src/pages/AccessPage.tsx", "utf8");
   // buying nothing at a real cost.
   {
 
+    // The dialog is shared now: two buttons trigger the same walk, and one of
+    // them warning while the other did not is how somebody learns the warning
+    // is optional.
+    const dialog = fs.readFileSync("./src/lib/confirmRebuild.ts", "utf8");
+    const overview = fs.readFileSync("./src/pages/AnalyticsPage.tsx", "utf8");
+
+    check("both buttons that trigger a recrawl ask first",
+      /confirmRebuild\(/.test(page) && /confirmRebuild\(/.test(overview),
+      "Access had the dialog and Overview did not");
+    // Scoped to this dialog's wording. A blanket ban on window.confirm catches
+    // "Remove this from the dashboard?", which is a different question that has
+    // every right to its own prompt.
+    check("  and neither keeps its own copy of this wording",
+      !/Run a full GitHub recrawl/.test(page + overview),
+      "two copies drift, and the quieter one is the one people meet");
+
     check("pressing Sync asks before it rebuilds",
       /if \(confirmRebuild\(a\?\.edgeCount\)\) sync\.mutate\(\)/.test(page),
       "the label reads lighter than the act");
-    check("  the dialog says what is replaced",
-      /Rebuild the whole access map\?/.test(page)
-        && /stored connections/.test(page));
+    check("  the dialog says what it re-reads",
+      /Run a full GitHub recrawl\?/.test(dialog)
+        && /stored connections/.test(dialog));
     check("  and quantifies it where the count is known",
-      /edgeCount\.toLocaleString\(\)/.test(page),
+      /edgeCount\.toLocaleString\(\)/.test(dialog),
       '"everything currently stored" is the fallback, not the usual case');
     for (const [what, re] of [
       ["how long it takes", /Takes several minutes/],
@@ -103,11 +119,19 @@ const page = fs.readFileSync("./src/pages/AccessPage.tsx", "utf8");
       ["that closing the app stops it", /leave it open until it finishes/],
       ["that waiting would have done it anyway", /automatically every 6 hours/],
     ] as [string, RegExp][]) {
-      check(`  it states ${what}`, re.test(page));
+      check(`  it states ${what}`, re.test(dialog));
     }
     check("  and cancelling starts nothing",
       !/sync\.mutate\(\);\s*\}\s*\}/.test(page.replace(/if \(confirmRebuild[^\n]*\n/, "")),
       "the mutation must be reachable only through the confirmation");
+
+    // The two buttons must not look alike: one re-reads a stored answer in a
+    // second, the other re-reads the organization over several minutes.
+    check("the recrawl button is styled apart from refresh",
+      /variant="caution"/.test(page) && /variant="caution"/.test(overview));
+    check("  and is named for what it does",
+      /Full GitHub recrawl/.test(page) && /Full GitHub recrawl/.test(overview),
+      '"Sync data" read as a refresh');
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

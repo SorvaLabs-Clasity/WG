@@ -16,7 +16,7 @@ about the checks themselves.
 ## How to read the tables below
 
 **Reads** is the edge type in the access graph the check depends on. If the
-graph has never collected that type, the check refuses with *"press Sync data"*
+graph has never collected that type, the check refuses with *"run a full GitHub recrawl"*
 rather than returning an empty list that looks like a clean result.
 
 **Freshness** is the worst case:
@@ -40,9 +40,7 @@ rebuild**, and only three of them are read by anything:
 | `uses_workflow` | Nothing today | None |
 | `org_meta` / `team_meta` / `user_meta` | The Access tab's header | The organization default permission can be up to six hours old |
 
-Everything else has a shorter path. `repo_meta.dependabotEnabled` used to be on
-this list and is now collected by the light pass as well, so it is at most
-thirty minutes old.
+Everything else has a shorter path: a webhook, or the thirty-minute light pass.
 
 **No check is wholly stale.** Where a delay exists it is a single field inside a
 check whose other fields are current, which is why the tables below give
@@ -56,11 +54,9 @@ into it. A field one writes and the other does not is therefore erased on the
 other's next pass.
 
 That is why both build the row from a single definition in
-`backend/src/jobs/repoMeta.ts`. It is not tidiness. `dependabotEnabled` was
-briefly added to the full rebuild alone, which would have wiped it every thirty
-minutes and left the vulnerable-package check unable to tell "alerts off" from
-"never looked" for every repository between one full rebuild and the next light
-pass.
+`backend/src/jobs/repoMeta.ts`. It is not tidiness: a field was once added to
+the full rebuild alone, and the light pass would have erased it every thirty
+minutes by writing the same row without it.
 
 Webhook patches are the exception: `patchRepoMeta` is a read-modify-write on
 named fields, so a `push` updating `pushedAt` leaves the rest of the row alone.
@@ -486,37 +482,21 @@ behind this, so the check answers *"which repositories are exposed through this
 package"* and not *"which repositories use it"*. Two consequences:
 
 - A repository using the package with **no open advisory** has no alert, so no
-  edge, so no row. That is correct: it is not exposed.
-- A repository with **Dependabot alerts switched off** raises no alerts at all.
-  It produces no row either, and that is *not* correct: it means nothing was
-  looked at.
+  row. That is correct: it is not exposed.
+- A repository with **Dependabot alerts switched off** raises no alerts at all,
+  so it has no row either. That is *not* the same thing, and the check cannot
+  tell you which repositories those are.
 
-The second case used to be invisible. Those repositories were simply absent, and
-absent reads as clean.
-
-### The scope option
-
-| Setting | Covers |
-| --- | --- |
-| **Unticked** (default) | Every repository. Ones with Dependabot off are listed with status **unknown** and the reason *"Not checked: Dependabot alerts are off"* |
-| **Ticked** | Only repositories with Dependabot enabled. A shorter, cleaner list, and one that says nothing about the rest |
-
-A repository whose Dependabot status could not be read at all is reported
-separately from one known to have it off. Absent is not the same claim as
-disabled, and defaulting either way would hide or invent findings.
-
-Dependabot status is recorded on `repo_meta.dependabotEnabled` by **both** graph
-passes, from a single paginated GraphQL walk over the organization rather than a
-request per repository. The light pass collects it because it must: it writes
-`repo_meta` as a whole item, so a field it omitted would be erased every thirty
-minutes. The side effect is that the status is at most thirty minutes old.
+The second is a real limit rather than an oversight. Answering it needs the
+dependency graph, which is one API call per repository and roughly a hundred
+thousand stored edges on a five-hundred-repository organization: a separate
+feature, not a setting.
 
 | | |
 | --- | --- |
-| Reads | `has_vulnerable_dependency`, `repo_meta.dependabotEnabled` |
+| Reads | `has_vulnerable_dependency` |
 | Parameter | package name(s) |
-| Option | only repositories with Dependabot enabled |
-| Freshness | **seconds** for alerts (`dependabot_alert` webhook); Dependabot status **≤30 minutes**, collected by the light pass |
+| Freshness | **seconds** — `dependabot_alert` webhook |
 
 Unlike the other checks, an empty result here is a **legitimate answer** — an
 organization with no open advisories genuinely has none — so this one does not
@@ -528,7 +508,7 @@ refuse when the edge type is absent.
 
 **A failed read is never shown as an empty result.** Each check declares the
 edge type it needs. If the graph has never collected it, the widget says so and
-points at Sync data, rather than reporting zero.
+points at the full GitHub recrawl, rather than reporting zero.
 
 **Every check is computed on the 5-minute pass and stored**, so the dashboard
 opens from stored answers rather than running each one while you wait. The age

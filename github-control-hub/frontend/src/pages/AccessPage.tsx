@@ -9,6 +9,7 @@ import { useGraphAggregation, useTriggerAggregation } from "../hooks/useGraph";
 import { usePermissions } from "../hooks/usePermissions";
 import type { AccessPath, Person, OrgRole } from "../api/access";
 import { ago } from "../lib/ago";
+import { confirmRebuild } from "../lib/confirmRebuild";
 
 
 /**
@@ -25,37 +26,6 @@ import { ago } from "../lib/ago";
  * sync gets the button that actually goes to GitHub, and whoever cannot gets
  * the one that re-reads, which is all it could ever have done for them.
  */
-/**
- * Asked before a rebuild, because the button reads lighter than the act.
- *
- * "Sync from GitHub" sounds like a refresh. It is not: the stored map is
- * cleared and rewritten from a full walk of every repository, team and member,
- * which is thousands of requests against the shared GitHub rate limit the
- * whole team draws on, several minutes long, and running in this application
- * rather than in AWS, so closing the window stops it partway.
- *
- * None of that is recoverable from the label, and none of it is usually
- * necessary: the same walk runs on its own every six hours. So the dialog
- * leads with the thing that makes most people stop, which is that waiting
- * would have done it for them.
- */
-function confirmRebuild(edgeCount?: number): boolean {
-  const stored = edgeCount
-    ? `all ${edgeCount.toLocaleString()} stored connections`
-    : "everything currently stored";
-  return window.confirm(
-    "Rebuild the whole access map?\n\n"
-    + `This replaces ${stored} with a fresh walk of every repository, team and `
-    + "member in the organization.\n\n"
-    + "\u2022 Takes several minutes\n"
-    + "\u2022 Uses the organization's shared GitHub rate limit, so it can slow "
-    + "the app down for everyone\n"
-    + "\u2022 Runs in this app, so leave it open until it finishes\n\n"
-    + "This happens automatically every 6 hours. Only rebuild now if you need "
-    + "a change reflected before the next one."
-  );
-}
-
 function GraphFreshness({ busy, onReread }: { busy: boolean; onReread: () => void }) {
   const { data } = useGraphAggregation();
   const { data: permissions } = usePermissions();
@@ -81,13 +51,16 @@ function GraphFreshness({ busy, onReread }: { busy: boolean; onReread: () => voi
 
       {canSync ? (
         <Button
-          variant="secondary"
+          /* Not the same shape as the refresh button people see elsewhere.
+             That re-reads a stored answer; this re-reads the organization. */
+          variant="caution"
           disabled={sync.isPending}
           onClick={() => { if (confirmRebuild(a?.edgeCount)) sync.mutate(); }}
         >
-          {/* Named for how long it takes, because it is not instant: one pass
-              over every repository, team and member in the organization. */}
-          {sync.isPending ? "Syncing, this takes a few minutes…" : "Sync from GitHub"}
+          {/* Named for what it does rather than for how it feels. "Sync"
+              read as a refresh, and this is a full walk of every repository,
+              team and member. */}
+          {sync.isPending ? "Recrawling, this takes a few minutes…" : "Full GitHub recrawl"}
         </Button>
       ) : (
         <RefreshButton busy={busy} onRefresh={onReread} />
@@ -262,7 +235,7 @@ export default function AccessPage() {
       {data?.stale && (
         <Note intent="warn">
           Nothing has been collected from GitHub yet, so there is nobody in this map.
-          Press Sync from GitHub above, or wait for the next scheduled sync, an empty map
+          Press Full GitHub recrawl above, or wait for the next scheduled one, an empty map
           here means nothing has been read, not that nobody has access.
         </Note>
       )}

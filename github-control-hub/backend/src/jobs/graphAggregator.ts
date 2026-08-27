@@ -265,24 +265,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
     }
 
     // 3. Repo details: Collaborators, Workflows, Dependabot
-    // Which repositories have Dependabot alerts switched on.
-  //
-  // One paginated GraphQL walk for the whole organization, not a request per
-  // repository. It matters because the vulnerable-package check reads alert
-  // edges, and a repository with alerts off produces none: without this, "no
-  // rows" and "never looked" are the same answer, and the quieter one is wrong.
-  let dependabotOn: Map<string, boolean> | null = null;
-  try {
-    const { fetchRepoAlertStatus } = await import("../services/dependencyService");
-    dependabotOn = await fetchRepoAlertStatus(
-      (query: string, vars: any) => (octokit as any).graphql(query, vars), org);
-  } catch (err: any) {
-    // Left null rather than defaulted. Guessing "enabled" would hide
-    // unscannable repositories; guessing "disabled" would invent findings.
-    console.warn("[GraphAggregator] Could not read Dependabot status:", err?.message ?? err);
-  }
-
-  for (const repo of repos) {
+    for (const repo of repos) {
       const repoId = `REPO#${repo.name}`;
 
       // The repository's own facts, which listForOrg already returned and this
@@ -294,10 +277,7 @@ export async function aggregateGraphData(fallbackToken?: string) {
         pk: repoId,
         sk: "META#repo",
         type: "repo_meta",
-        metadata: buildRepoMeta(repo, {
-          ...(dependabotOn?.has(repo.name)
-            ? { dependabotEnabled: !!dependabotOn.get(repo.name) } : {}),
-        }),
+        metadata: buildRepoMeta(repo),
       });
 
       // Who can write to this repository, and how they came by it.

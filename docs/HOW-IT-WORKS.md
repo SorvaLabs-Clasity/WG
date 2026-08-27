@@ -1640,6 +1640,14 @@ bundled on its own and importing the service would pull the whole app into that
 function. It inlines the retention stamp instead, with a comment saying it must
 match — a row without a TTL is a row that never expires.
 
+### Reading it back
+
+One page at a time, filtered on the server. Paging is by cursor rather than page
+number, because that is what a single-partition time series supports; filtering
+by an exact repository uses `repo-index` and is complete at any depth; free-text
+search is bounded at 3,000 rows per request and says when it stopped early. See
+[DYNAMO-TABLES](DYNAMO-TABLES.md#activity--the-audit-trail) for the indexes.
+
 ### The three streams
 
 Rows are sorted into Organization, AWS and App settings by the prefix

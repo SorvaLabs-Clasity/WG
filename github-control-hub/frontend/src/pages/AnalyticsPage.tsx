@@ -8,10 +8,11 @@ import { fetchRenovate } from "../api/renovate";
 import { apiGet } from "../api/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ago } from "../lib/ago";
+import { confirmRebuild } from "../lib/confirmRebuild";
 import AlarmModal from "../components/AlarmModal";
 import { useAlarms } from "../hooks/useAlarms";
 import { useAuth } from "../App";
-import { useSecurityQuery, useGraphMeta, useTriggerAggregation , useQueryFreshness, useRefreshQueryNow } from "../hooks/useGraph";
+import { useSecurityQuery, useGraphMeta, useTriggerAggregation, useGraphAggregation, useQueryFreshness, useRefreshQueryNow } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
 import { QUERY_OPTIONS } from "../utils/queryOptions";
@@ -293,6 +294,8 @@ export default function AnalyticsPage() {
   const orgName = orgConfig?.org || "";
   const { data: graphMeta } = useGraphMeta();
   const aggregation = useTriggerAggregation();
+  // Only so the confirmation can say how many connections are being re-read.
+  const { data: graphInfo } = useGraphAggregation();
   const graphEmpty = graphMeta?.edgeCount === 0;
 
   const [showAddModal, setShowAddModal] = useState(false);
@@ -470,10 +473,19 @@ export default function AnalyticsPage() {
                 and spends its GitHub budget, so it is admin-only on the server -
                 and a button everyone can see, that only some can use, teaches
                 the rest that the app is broken. */}
+            {/* Deliberately not the same shape as Refresh beside it. That one
+                re-reads a stored answer in a second; this one re-reads the
+                whole organization over several minutes. They looked identical,
+                which is how the expensive one got pressed by mistake. */}
             {canEditDashboard && (
-              <Button onClick={() => aggregation.mutate()} disabled={aggregation.isPending} className="whitespace-nowrap">
+              <Button
+                variant="caution"
+                onClick={() => { if (confirmRebuild(graphInfo?.aggregation?.edgeCount)) aggregation.mutate(); }}
+                disabled={aggregation.isPending}
+                className="whitespace-nowrap"
+              >
                 <i className={`ph-bold ph-arrows-clockwise mr-2 ${aggregation.isPending ? "animate-spin" : ""}`}></i>
-                {aggregation.isPending ? "Syncing, this takes a few minutes" : "Sync data"}
+                {aggregation.isPending ? "Recrawling, this takes a few minutes" : "Full GitHub recrawl"}
               </Button>
             )}
             {canEditDashboard && (
@@ -1009,14 +1021,14 @@ function CheckCard({
             <p className={`${TYPE.label} text-amber-600 dark:[color:#ffc14d] mb-1.5`}>
               {/* "Needs data" and "no longer exists" are different problems
                   with different fixes, and the card is where that is decided. */}
-              {/Sync data/.test(error.message) ? "Needs a sync" : "Not running"}
+              {/recrawl/i.test(error.message) ? "Needs a recrawl" : "Not running"}
             </p>
             <h3 className="text-[15px] font-black text-slate-900 dark:text-white leading-tight line-clamp-2">{config.title}</h3>
           </div>
         </div>
         <div className="px-5 py-4 border-t border-slate-100 dark:border-white/[0.06]">
           <p className="text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">{error.message}</p>
-          {canEdit && !/Sync data/.test(error.message) && (
+          {canEdit && !/recrawl/i.test(error.message) && (
             <div className="flex gap-2 mt-3">
               <button onClick={e => { e.stopPropagation(); onEdit(); }}
                 className="text-[12.5px] font-bold text-slate-700 dark:text-slate-200 hover:underline">Edit check</button>
@@ -1766,11 +1778,6 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
   const [branchTags, setBranchTags] = useState<string[]>(initQuery?.useTagInput && initParam ? initParam.split(",").map(s => s.trim()).filter(Boolean) : []);
   const [hasPendingBranch, setHasPendingBranch] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
-  // Narrows the vulnerable-package check to repositories whose answers this
-  // evidence actually covers. Off by default, because the wider answer, which
-  // names the repositories it could not check, is the honest one.
-  const [onlyDependabotEnabled, setOnlyDependabotEnabled] = useState<boolean>(
-    initAdv?.onlyDependabotEnabled || false);
   const [protectionType, setProtectionType] = useState<string>(initAdv?.protectionType || "any");
   const [ruleMatchType, setRuleMatchType] = useState<string>(initAdv?.ruleMatchType || "at_least");
   const [requirePr, setRequirePr] = useState(initAdv?.requirePr || false);
@@ -1812,10 +1819,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
         ...(presetId === "vuln-repos" && { queryParam: encodeSeverities(picked) }),
       });
     } else {
-      let advanced: Record<string, unknown> | undefined = undefined;
-      if ((selectedQuery as any)?.hasDependabotScope) {
-        advanced = { onlyDependabotEnabled };
-      }
+      let advanced = undefined;
       if (selectedQuery?.hasAdvancedRules) {
         advanced = {
           protectionType,
@@ -1966,28 +1970,6 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                     ))}
                   </select>
                 </div>
-
-                {(selectedQuery as any)?.hasDependabotScope && (
-                  <label className="flex items-start gap-2.5 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={onlyDependabotEnabled}
-                      onChange={(e) => setOnlyDependabotEnabled(e.target.checked)}
-                      className="mt-0.5 rounded border-slate-300 dark:border-slate-600 text-gh-blue focus:ring-gh-blue"
-                    />
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-slate-900 dark:text-white">
-                        Only repositories with Dependabot enabled
-                      </span>
-                      <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                        This check reads Dependabot alerts, so a repository with them
-                        switched off raises none and cannot be answered for. Leave this
-                        unticked to cover every repository and have those listed as
-                        <strong> not checked</strong> rather than left out.
-                      </span>
-                    </span>
-                  </label>
-                )}
 
                 {selectedQuery?.requiresParam && (
                   <div>

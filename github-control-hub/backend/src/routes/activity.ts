@@ -144,58 +144,79 @@ function isAwsRow(action: string): boolean {
   return action.startsWith("aws.");
 }
 
+/**
+ * One page of the feed, filtered where the rows are.
+ *
+ * Everything used to be done in the browser over the newest hundred rows, which
+ * made the pager stop at page two whatever the table held and made search blind
+ * to anything older. Filters are query parameters now, and the cursor is opaque.
+ */
 router.get("/", async (req: Request, res: Response) => {
   const limit = Math.min(Number(req.query.limit) || 50, 200);
-  const offset = Number(req.query.offset) || 0;
   const repo = req.query.repo as string | undefined;
+  const cursor = req.query.cursor as string | undefined;
 
-  let allEntries = repo
-    ? await getActivityForRepo(repo, limit + 200)
-    : await getActivityMerged(limit + 200, 0);
+  const filters = {
+    ...(req.query.q ? { q: String(req.query.q) } : {}),
+    ...(req.query.source && req.query.source !== "all" ? { source: String(req.query.source) as any } : {}),
+    ...(req.query.category && req.query.category !== "all" ? { category: String(req.query.category) as any } : {}),
+    ...(req.query.repoFilter ? { repo: String(req.query.repoFilter) } : {}),
+    ...(req.query.target ? { target: String(req.query.target) } : {}),
+    ...(req.query.detailed === "hide" ? { includeDetailed: false } : {}),
+  };
 
-  // Children are dropped with their parents: an undo of a GitHub change is a
-  // GitHub row whatever its own action says.
-  if (await awsOnly()) {
-    const keep = new Set(allEntries.filter(e => isAwsRow(e.action)).map(e => e.id));
-    allEntries = allEntries.filter(e => keep.has(e.id));
-  }
-
-  const topLevel = allEntries.filter(e => !e.parentId);
-  const paginated = topLevel.slice(offset, offset + limit);
-
-  const neededIds = new Set<string>(paginated.map(e => e.id));
-  let prevSize = 0;
-  while (neededIds.size !== prevSize) {
-    prevSize = neededIds.size;
-    for (const e of allEntries) {
-      if (e.parentId && neededIds.has(e.parentId)) {
-        neededIds.add(e.id);
-      }
+  try {
+    // The per-repository panel is a different question with its own bounded
+    // read, and is left alone.
+    if (repo) {
+      const entries = await getActivityForRepo(repo, limit + 200);
+      res.json({ entries: buildActivityTree(entries), total: entries.length, limit, exhausted: true });
+      return;
     }
+
+    const { searchActivity, searchMemory } = await import("../services/activitySearch");
+    const { memoryLogForSearch, getChildrenFor } = await import("../services/activityService");
+
+    const { usesDynamo } = await import("../utils/dynamo");
+    const page = usesDynamo()
+      ? await searchActivity(filters, limit, cursor)
+      : searchMemory(memoryLogForSearch(), filters, limit, Number(cursor) || 0);
+
+    let top = page.entries;
+
+    // Children are dropped with their parents: an undo of a GitHub change is a
+    // GitHub row whatever its own action says.
+    const awsOnlyDeployment = await awsOnly();
+    if (awsOnlyDeployment) top = top.filter(e => isAwsRow(e.action));
+
+    // Children are fetched for the rows on this page only, rather than paged
+    // themselves. A page of fifty parents is fifty rows on screen however many
+    // children hang off them.
+    let children = top.length ? await getChildrenFor(top.map(e => e.id)) : [];
+    // Children are filtered on the same rule as their parents. A GitHub row
+    // nested under an AWS one would otherwise reach an account that is not
+    // meant to hold GitHub data at all, which is the whole point of the split.
+    if (awsOnlyDeployment) children = children.filter(e => isAwsRow(e.action));
+    let tree = buildActivityTree([...top, ...children]);
+
+    const nestedSigs = collectNestedSignatures(tree);
+    tree = tree.filter(entry => {
+      if (entry.source !== "github") return true;
+      const sig = `${entry.repo}|${entry.target}|${Math.floor(new Date(entry.timestamp).getTime() / 60000)}`;
+      return !nestedSigs.has(sig);
+    });
+
+    res.json({
+      entries: tree,
+      limit,
+      cursor: page.cursor,
+      /** False means the budget ran out, not that there is nothing more. */
+      exhausted: page.exhausted,
+      examined: page.examined,
+    });
+  } catch (err) {
+    res.status(500).json({ error: sanitizeError(err, "activity") });
   }
-
-  const relevant = allEntries.filter(e => neededIds.has(e.id));
-  let tree = buildActivityTree(relevant);
-
-  const nestedSigs = collectNestedSignatures(tree);
-  tree = tree.filter(entry => {
-    if (entry.source !== "github") return true;
-    const sig = `${entry.repo}|${entry.target}|${Math.floor(new Date(entry.timestamp).getTime() / 60000)}`;
-    return !nestedSigs.has(sig);
-  });
-
-  const filteredTopLevel = topLevel.filter(entry => {
-    if (entry.source !== "github") return true;
-    const sig = `${entry.repo}|${entry.target}|${Math.floor(new Date(entry.timestamp).getTime() / 60000)}`;
-    return !nestedSigs.has(sig);
-  });
-
-  res.json({
-    entries: tree,
-    total: filteredTopLevel.length,
-    limit,
-    offset,
-  });
 });
 
 /**
@@ -294,7 +315,7 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
     await logActivity(
       "activity.undo",
       req.user!.login,
-      entry.repo,
+      entry.repo ?? "",
       entry.target,
       `Undone: "${entry.details || entry.action}"${errors.length > 0 ? ` (${errors.length} error${errors.length !== 1 ? "s" : ""})` : ""}`,
       undefined, "app", undefined, undefined,
@@ -378,7 +399,7 @@ router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => 
     await logActivity(
       "activity.redo",
       req.user!.login,
-      entry.repo,
+      entry.repo ?? "",
       entry.target,
       `Redone: "${entry.details || entry.action}"${errors.length > 0 ? ` (${errors.length} error${errors.length !== 1 ? "s" : ""})` : ""}`,
       undefined, "app", undefined, undefined,
@@ -476,7 +497,7 @@ router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) =>
       await logActivity(
         "activity.retry",
         req.user!.login,
-        entry.repo,
+        entry.repo ?? "",
         entry.target,
         `Retried: "${entry.details || entry.action}"${errors.length > 0 ? ` (${errors.length} error${errors.length !== 1 ? "s" : ""})` : ""}`
       );
@@ -523,7 +544,7 @@ router.post("/:id/undo-resolution", async (req: Request<{ id: string }>, res: Re
     await clearConflictResolution(entry.id);
 
     await logActivity(
-      "activity.undo" as any, actor, entry.repo, entry.target,
+      "activity.undo" as any, actor, entry.repo ?? "", entry.target,
       `Undone: ${entry.conflictResolution === "override" ? "Override" : "Skip"} resolution for "${entry.target}"`,
       undefined, "app", undefined, undefined,
       { linkedActivityId: entry.id }

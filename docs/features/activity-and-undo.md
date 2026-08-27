@@ -18,6 +18,38 @@ A fourth tab, **Everything**, sits first and merges all three. It is for when yo
 know roughly when something happened but not which stream recorded it. Rows there
 carry a badge naming their stream, and clicking the badge narrows to it.
 
+## Searching and paging
+
+Every filter runs **on the server, across the whole table**. The search box, the
+source filter, the repository and target boxes and the detailed-rows switch are
+all part of the query rather than being applied to whatever the browser had
+already loaded.
+
+That is a change worth knowing about, because the old behaviour was quietly
+wrong: the tab fetched the newest hundred rows once and did everything in the
+browser, so the pager stopped at page two whatever the table held and a search
+for anything older than those hundred rows found nothing while looking exactly
+like a search that found nothing.
+
+**Paging is Newest / Previous / Older**, not page numbers. DynamoDB pages forward
+from a cursor and cannot jump to an arbitrary page, so offering "page 7" would
+mean walking there invisibly.
+
+**Filtering by a repository is a direct lookup.** It uses an index keyed on the
+repository, so it returns every match at any depth, instantly, whether the row is
+from this morning or fourteen months ago. A partial name falls back to a bounded
+scan.
+
+**Free-text search reads at most 3,000 rows per request.** A filter is applied
+after reading, so a rare term would otherwise walk a year of history in one go.
+When the budget runs out the page says so and offers **Older** to continue,
+rather than reporting no results for a question it only partly asked.
+
+There are no per-stream counts on the tabs any more. They used to be counted from
+the hundred rows the browser held and shown as though they described the stream;
+with server paging that number would describe the page, which is the same claim
+made smaller. A real total means counting every row on every load.
+
 ## Detailed GitHub logging
 
 Organization always records changes to **structure and access**: repositories

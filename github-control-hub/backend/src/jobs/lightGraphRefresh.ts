@@ -117,31 +117,12 @@ export async function refreshLightEdges(fallbackToken?: string): Promise<LightRe
   // Not an optional extra: this pass writes `repo_meta` as a whole item, so
   // omitting a field the full rebuild writes would erase it every thirty
   // minutes. Collecting it here keeps the row complete and, incidentally,
-  // makes Dependabot status thirty minutes fresh rather than six hours.
-  //
-  // About four requests for a few hundred repositories, against the nine this
-  // pass already spends.
-  let dependabotOn: Map<string, boolean> | null = null;
-  try {
-    const { fetchRepoAlertStatus } = await import("../services/dependencyService");
-    dependabotOn = await fetchRepoAlertStatus(
-      (query: string, vars: any) => (octokit as any).graphql(query, vars), org);
-    result.requests += 4;
-  } catch (err: any) {
-    // Left null rather than defaulted, and the field is then simply absent,
-    // which is its own answer downstream.
-    result.errors.push(`dependabot status: ${err?.message ?? err}`);
-  }
-
-  for (const repo of repos) {
+for (const repo of repos) {
     writes.push({
       pk: `REPO#${repo.name}`,
       sk: "META#repo",
       type: "repo_meta",
-      metadata: buildRepoMeta(repo, {
-        ...(dependabotOn?.has(repo.name)
-          ? { dependabotEnabled: !!dependabotOn.get(repo.name) } : {}),
-      }),
+      metadata: buildRepoMeta(repo),
     });
   }
   result.repos = repos.length;
