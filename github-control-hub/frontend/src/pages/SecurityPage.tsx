@@ -38,6 +38,13 @@ const sevIntent = (s?: string) => SEVERITY[(s ?? "").toLowerCase()] ?? "neutral"
 /** Sorting severity alphabetically puts "critical" under "high". Rank it. */
 const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
+/**
+ * Weeks the charts cover.
+ *
+ * Matches the server's default window. Where the server could not fit that
+ * window in one response the page says so rather than drawing a shorter span
+ * under a twelve-week heading.
+ */
 const WEEKS = 12;
 /**
  * Groups per page.
@@ -75,7 +82,10 @@ const NO_FILTERS: Filters = {
 
 export default function SecurityPage() {
   const { user } = useAuth();
-  const { data: alerts, isLoading, isError, error, isFetching, refetch } = useAlerts();
+  const {
+    data: alerts, isLoading, isError, error, isFetching, refetch,
+    complete, windowWeeks, hasNextPage, fetchNextPage, isFetchingNextPage,
+  } = useAlerts();
   const { data: permissions } = usePermissions();
 
   const [f, setF] = useState<Filters>(NO_FILTERS);
@@ -114,6 +124,12 @@ export default function SecurityPage() {
   }
 
   const all = useMemo(() => alerts ?? [], [alerts]);
+
+  /** The oldest row that has actually loaded, which bounds every claim below. */
+  const oldestLoaded = useMemo(
+    () => all.reduce((m, a) => (a.timestamp < m ? a.timestamp : m), all[0]?.timestamp ?? ""),
+    [all],
+  );
 
   // ── the dashboard reads the whole set, always ─────────────────────────
   // Deliberately not the filtered one. A chart that redraws itself from what
@@ -214,7 +230,8 @@ export default function SecurityPage() {
         footer={
           rising > 0
             ? <>Something is running above its usual rate. The tiles below say which.</>
-            : <>{counts.all} {counts.all === 1 ? "event" : "events"} on record over {WEEKS} weeks.
+            : <>{counts.all} {counts.all === 1 ? "event" : "events"}
+                {complete ? <> on record over {windowWeeks} weeks</> : <> loaded so far</>}.
                 They age out on their own; there is nothing to clear.</>
         }
       />
@@ -246,7 +263,7 @@ export default function SecurityPage() {
                     {label(a.type)}
                   </span>
                   <span className="text-[12.5px] text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1">
-                    {a.repo}{a.actor ? ` · by ${a.actor}` : ""}
+                    {a.repo}{a.actor ? ` · by ${a.actor}` : a.source === "reconciliation" ? " · no webhook" : ""}
                   </span>
                   {wasReverted(a) && (
                     <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
@@ -275,13 +292,20 @@ export default function SecurityPage() {
         />
       ) : (
         <>
-          {/* ── the shape of the last twelve weeks ───────────────────────── */}
+          {/* ── the shape of the window ──────────────────────────────────── */}
           <section className={`${SURFACE.card} p-5 sm:p-6 mb-4`} style={enter(0)}>
             <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
               <div>
                 <h2 className={TYPE.heading}>Activity</h2>
                 <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-0.5`}>
-                  {WEEKS} weeks. Click a week to see only what happened in it.
+                  {/* Not "12 weeks" unless twelve weeks were actually read. A
+                      chart drawn from a truncated set under a full heading is
+                      the exact shape of lie this page keeps being rebuilt to
+                      remove. */}
+                  {complete
+                    ? <>{windowWeeks} weeks. Click a week to see only what happened in it.</>
+                    : <>Since {shortDate(oldestLoaded)}, which is as far back as has loaded.
+                        Click a week to see only what happened in it.</>}
                 </p>
               </div>
               {/* A legend that is also the severity filter, because a reader
@@ -410,7 +434,9 @@ export default function SecurityPage() {
             <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
               <div>
                 <h2 className={TYPE.heading}>
-                  {active.length ? "Matching events" : "Everything recorded"}
+                  {active.length ? "Matching events"
+                    : complete ? "Everything recorded"
+                    : "Everything loaded"}
                 </h2>
                 <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-0.5`}>
                   Grouped by what caused them. One action across many repositories is one row.
@@ -469,6 +495,25 @@ export default function SecurityPage() {
               matchCount={situations.length} totalCount={allSituations.length}
               filtered={active.length > 0} noun="groups"
             />
+
+            {/* Said out loud, because a list that ends is indistinguishable
+                from a list that ran out. Search and the charts above cover
+                what has loaded and nothing else, and somebody filtering to
+                nothing deserves to know there is more behind it. */}
+            {!complete && (
+              <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-500/30
+                              bg-amber-50 dark:bg-amber-500/[0.1] px-4 py-3
+                              flex items-center justify-between gap-4 flex-wrap">
+                <p className="text-[12.5px] text-amber-800 dark:text-amber-200">
+                  Showing {all.length} alerts back to {shortDate(oldestLoaded)}. There are
+                  older ones. Everything above, including search, covers only what has loaded.
+                </p>
+                <Button variant="secondary" disabled={!hasNextPage || isFetchingNextPage}
+                  onClick={() => fetchNextPage()}>
+                  {isFetchingNextPage ? "Loading…" : "Load older"}
+                </Button>
+              </div>
+            )}
           </section>
         </>
       )}
@@ -510,7 +555,13 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
   index: number;
   open: boolean;
   onToggle: () => void;
-  alerts: Array<{ id: string; repo: string; message?: string; severity: string; timestamp: string; actor?: string; resolved?: boolean; resolvedBy?: string; details?: any }>;
+  // The shape this row reads, spelled out rather than inherited, because it is
+  // fed from `byId` and not from the query type.
+  alerts: Array<{
+    id: string; repo: string; message?: string; severity: string; timestamp: string;
+    actor?: string; subject?: string; source?: "reconciliation";
+    resolved?: boolean; resolvedBy?: string; details?: any;
+  }>;
 }) {
   const intent = sevIntent(s.severity);
   const spread = s.first !== s.last;
@@ -587,11 +638,20 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
                 </div>
                 <p className="text-[12.5px] mt-1 text-slate-600 dark:text-slate-300">{a.message}</p>
                 <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-1.5">
-                  {when(a.timestamp)}
+                  {/* A reconciliation alert's timestamp is when the nightly
+                      walk noticed, not when it happened, and the two render
+                      identically unless it is said out loud. */}
+                  {a.source === "reconciliation" ? <>found {when(a.timestamp)}</> : when(a.timestamp)}
                   {/* The first question anybody asks about a privilege change,
                       and until now the answer was not recorded at all. */}
                   {a.actor && <> · by <span className="font-semibold text-slate-500 dark:text-slate-400">{a.actor}</span></>}
                 </p>
+                {a.source === "reconciliation" && (
+                  <p className="text-[11.5px] mt-1.5 text-amber-700 dark:text-amber-300">
+                    Found by the nightly check, not reported by GitHub. Nobody knows
+                    who made this change, and it happened some time before it was found.
+                  </p>
+                )}
                 {a.details && (
                   <pre className="mt-2.5 p-2.5 rounded-lg bg-white dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.07]
                                   text-[11px] font-mono text-slate-500 dark:text-slate-300 max-h-32 overflow-auto">

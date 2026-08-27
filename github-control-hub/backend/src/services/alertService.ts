@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { logActivity, activityExpiry } from "./activityService";
-import { docClient, hasTable, tableName, PutCommand, ScanCommand, GetCommand, scanAll } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, ScanCommand, GetCommand, QueryCommand, scanAll } from "../utils/dynamo";
 
 export type AlertSeverity = "critical" | "high" | "medium" | "low";
 export type AlertType =
@@ -53,6 +53,37 @@ export interface SecurityAlert {
    */
   subject?: string;
   /**
+   * How this alert came to exist.
+   *
+   * Absent means the ordinary path: GitHub sent a webhook and the worker
+   * recorded it, so the timestamp is when it happened and `actor` is who did
+   * it. `"reconciliation"` means the nightly walk noticed the value had
+   * changed since the last walk and no webhook had ever arrived, in which case
+   * **the timestamp is when it was noticed, not when it happened**, and nobody
+   * knows who did it.
+   *
+   * The page has to say which, because the two look identical otherwise and
+   * one of them carries a timestamp that is a guess.
+   */
+  source?: "reconciliation";
+  /**
+   * Constant partition key for the time-ordered index. Always `"ALERT"`.
+   *
+   * A DynamoDB scan returns items in hash order, so "the newest five hundred"
+   * is not something a scan with a `Limit` can answer: it returns an arbitrary
+   * five hundred, and presenting those as the newest would be a lie. The index
+   * makes a real time-ordered read possible, so a page costs only what it
+   * returns instead of reading the whole table.
+   *
+   * One partition for the whole feed, which is what the activity table does
+   * for the same reason. A DynamoDB partition holds 10 GB, far past 13 months
+   * of security events.
+   *
+   * Rows written before this existed have no `feed` and are invisible to the
+   * index until the backfill runs. See scripts/backfill-alert-feed.sh.
+   */
+  feed?: string;
+  /**
    * Epoch seconds at which DynamoDB may delete this row.
    *
    * An alert is a record of something that happened, not a task, so it ages
@@ -81,6 +112,12 @@ export interface SecurityAlert {
  */
 export const REVERTED_BY = "system (auto-resolved)";
 
+/** The one partition key the time index uses. See the `feed` field. */
+export const ALERT_FEED = "ALERT";
+
+/** The index that makes a time-ordered read possible. */
+export const ALERT_FEED_INDEX = "feed-index";
+
 const TABLE = () => tableName("ALERTS_TABLE");
 
 /**
@@ -96,6 +133,110 @@ export function alertExpiry(iso: string): number {
 // In-memory fallback for local development
 let memAlertsStore: SecurityAlert[] = [];
 
+/**
+ * How far back the Security tab asks for by default.
+ *
+ * The same twelve weeks the charts draw. Asking for a window rather than a row
+ * count is what makes the default request cost what the page actually shows,
+ * however large the table has grown behind it.
+ */
+export const DEFAULT_WINDOW_WEEKS = 12;
+
+/**
+ * A ceiling on one response, whatever the window holds.
+ *
+ * Twelve weeks is normally a few hundred rows. It is not a bound: an
+ * organization enabling Dependabot across a monorepo, or a webhook storm, can
+ * put tens of thousands into a window. Past this the response says it is
+ * incomplete and hands back a cursor, rather than growing without limit.
+ */
+export const PAGE_LIMIT = 3000;
+
+export interface AlertPage {
+  alerts: SecurityAlert[];
+  /** Opaque; pass it back to continue into older rows. Null at the end. */
+  cursor: string | null;
+  /** True when `alerts` is everything in the window, with nothing behind it. */
+  complete: boolean;
+}
+
+const encode = (k: unknown) => Buffer.from(JSON.stringify(k)).toString("base64");
+function decode(c?: string): Record<string, any> | undefined {
+  if (!c) return undefined;
+  try {
+    return JSON.parse(Buffer.from(c, "base64").toString("utf8"));
+  } catch {
+    // A cursor from an older deploy, or a truncated one. Starting from the top
+    // is the safe answer: worse than continuing, far better than an error page.
+    return undefined;
+  }
+}
+
+/**
+ * One page of alerts, newest first.
+ *
+ * Reads through the time index rather than scanning, so the cost is what comes
+ * back rather than the size of the table. `GET /alerts` used to return every
+ * row on every poll, which was fine at seventeen and ships megabytes at ten
+ * thousand.
+ *
+ * **Rows with no `feed` attribute are invisible here.** Those were written
+ * before the index existed; the backfill script gives them one. Until it runs
+ * they are still readable through `getAlerts()`, which scans.
+ */
+export async function getAlertsPage(opts: {
+  since?: string;
+  limit?: number;
+  cursor?: string;
+} = {}): Promise<AlertPage> {
+  const limit = Math.min(Math.max(1, opts.limit ?? PAGE_LIMIT), PAGE_LIMIT);
+
+  if (!hasTable("ALERTS_TABLE")) {
+    const all = (await getAlerts()).filter(a => !opts.since || a.timestamp >= opts.since!);
+    return { alerts: all.slice(0, limit), cursor: null, complete: all.length <= limit };
+  }
+
+  const res = await docClient.send(new QueryCommand({
+    TableName: TABLE(),
+    IndexName: ALERT_FEED_INDEX,
+    KeyConditionExpression: opts.since
+      ? "#f = :f AND #ts >= :since"
+      : "#f = :f",
+    ExpressionAttributeNames: { "#f": "feed", ...(opts.since ? { "#ts": "timestamp" } : {}) },
+    ExpressionAttributeValues: { ":f": ALERT_FEED, ...(opts.since ? { ":since": opts.since } : {}) },
+    // Newest first, which is the only order this page is ever read in.
+    ScanIndexForward: false,
+    // One more than asked for, so "is there another page" is answered by the
+    // same read instead of a second one that might disagree with it.
+    Limit: limit + 1,
+    ExclusiveStartKey: decode(opts.cursor),
+  }));
+
+  const items = (res.Items ?? []) as SecurityAlert[];
+  const more = items.length > limit;
+  const alerts = more ? items.slice(0, limit) : items;
+
+  return {
+    alerts,
+    // The key of the last row handed back, not DynamoDB's own
+    // LastEvaluatedKey: that points past the extra row we asked for and would
+    // skip it on the next page.
+    cursor: more ? encode({
+      feed: ALERT_FEED,
+      timestamp: alerts[alerts.length - 1].timestamp,
+      id: alerts[alerts.length - 1].id,
+    }) : null,
+    complete: !more && !opts.cursor,
+  };
+}
+
+/**
+ * Every alert, by scanning.
+ *
+ * Kept for the callers that genuinely need all of them and run rarely: the
+ * nightly drift check, which has to know what is already on the record before
+ * it raises anything. Not for serving a page.
+ */
 export async function getAlerts(): Promise<SecurityAlert[]> {
   if (hasTable("ALERTS_TABLE")) {
     // Paged: a bare scan stops at 1MB without saying so, and a list that
@@ -121,6 +262,8 @@ export interface AlertContext {
   actor?: string;
   /** What it is about, for matching a later reversal. See the field. */
   subject?: string;
+  /** How it was found. See the field on SecurityAlert. */
+  source?: "reconciliation";
 }
 
 /**
@@ -138,7 +281,7 @@ export async function createAlert(
   severity: AlertSeverity,
   ctx: AlertContext = {},
 ): Promise<SecurityAlert> {
-  const { details, occurredAt, actor, subject } = ctx;
+  const { details, occurredAt, actor, subject, source } = ctx;
   const newAlert: SecurityAlert = {
     id: crypto.randomUUID(),
     repo,
@@ -150,6 +293,8 @@ export async function createAlert(
     // and "" reads as an actor named nothing rather than as an unknown one.
     ...(actor ? { actor } : {}),
     ...(subject ? { subject } : {}),
+    ...(source ? { source } : {}),
+    feed: ALERT_FEED,
     // Same retention as the activity log, and for the same reason: these are
     // two records of the same events, and two different expiry dates would
     // mean the Activity tab could show something the Security tab had

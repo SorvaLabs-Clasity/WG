@@ -24,6 +24,11 @@ export interface SecurityAlert {
   actor?: string;
   /** The member, branch or ruleset this is about, where there is one. */
   subject?: string;
+  /**
+   * Set when the nightly walk found this rather than a webhook reporting it.
+   * The timestamp is then when it was *noticed*, not when it happened.
+   */
+  source?: "reconciliation";
   resolved: boolean;
   resolvedAt?: string;
   resolvedBy?: string;

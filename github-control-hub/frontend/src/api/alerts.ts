@@ -4,17 +4,30 @@ import { mockFetchAlerts } from "./mock";
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 
-export async function fetchAlerts(): Promise<SecurityAlert[]> {
-  if (DEMO_MODE) return mockFetchAlerts();
-  return apiGet<SecurityAlert[]>("/alerts");
+export interface AlertPage {
+  alerts: SecurityAlert[];
+  /** Pass back to reach older rows. Null when there are none. */
+  cursor: string | null;
+  /** True when this is everything in the window, with nothing behind it. */
+  complete: boolean;
+  /** The oldest timestamp the server looked at. */
+  since: string;
+  windowWeeks: number;
 }
 
-export async function simulateAlert(scenario: string): Promise<void> {
+/**
+ * One page of alerts, newest first.
+ *
+ * The server used to return the whole table on every poll. It now bounds the
+ * read to a window and says whether that window fitted, so the page can state
+ * what it is showing instead of drawing a truncated list as if it were
+ * everything.
+ */
+export async function fetchAlerts(cursor?: string): Promise<AlertPage> {
   if (DEMO_MODE) {
-    // In demo mode, we just hit the real backend anyway if it's running, 
-    // or just console log since mockStore doesn't have an easy way to trigger from here without refactoring.
-    // Let's just make the API call. If backend is not running, it will fail, but demo mode usually runs with the backend.
+    const alerts = await mockFetchAlerts();
+    return { alerts, cursor: null, complete: true, since: "", windowWeeks: 12 };
   }
-  return apiPost<{ message: string }>("/alerts/simulate", { scenario }).then(() => {});
+  const q = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
+  return apiGet<AlertPage>(`/alerts${q}`);
 }
-

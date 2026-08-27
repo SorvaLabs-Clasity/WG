@@ -1512,6 +1512,37 @@ Taking "a team was added to a repository" as the example:
 | "already handled this one?" | A row written in the `github-control-hub-webhook-deliveries` table, written only if it is not already there — so a message delivered twice is handled once |
 | an alert | A row in the `github-control-hub-alerts` table |
 
+**How the tab reads them.** `GET /alerts` returns one page, newest first,
+bounded to the twelve weeks the charts draw, through a `feed-index` GSI keyed
+on `feed="ALERT"` with the timestamp as its sort key. One partition for the
+whole feed, the same shape the activity table uses.
+
+The index is not an optimisation, it is what makes the read possible. A
+DynamoDB Scan returns items in hash order, so a Scan with a `Limit` hands back
+an *arbitrary* subset, and calling those "the newest three hundred" would be
+untrue. Before this the tab fetched the entire table on every poll, and polled
+every ten seconds.
+
+- Under `PAGE_LIMIT` (3,000) in the window, the response is `complete: true`
+  and the page behaves exactly as it always has: search and the charts run in
+  the browser over everything.
+- Over it, the response carries a cursor, and the page **says so**: the chart
+  heading changes from "12 weeks" to "since \<date\>", the list heading from
+  "Everything recorded" to "Everything loaded", and a band under the list
+  offers **Load older**. A truncated chart under a full heading is the exact
+  shape of lie this tab keeps being rebuilt to remove.
+- The client polls once a minute, not every ten seconds. An alert is emailed
+  within seconds of the webhook, so the tab does not need to be a live ticker.
+
+`getAlerts()`, which scans, is kept for the nightly drift check: it has to know
+everything already on the record before it raises anything, and a paged read
+would let it duplicate something it could not see.
+
+**Rows written before the index have no `feed` and are not in it.** They are
+untouched and still readable by anything that scans, but the tab cannot see
+them until `scripts/backfill-alert-feed.sh --apply` runs. It writes only where
+the attribute is absent, so it is safe to run twice.
+
 1. **The only reason this works is that the app asked GitHub to tell it.** The
    GitHub App is subscribed to team events. Nothing scans for this, so if that
    subscription is off, nothing is ever flagged and nothing looks wrong.
@@ -1591,6 +1622,43 @@ Two details worth keeping:
 the alert as `actor`. It used to be computed for the activity log and dropped,
 so a record of a privilege change knew who *received* it and not who *granted*
 it.
+
+**A lost webhook is caught by the nightly walk.** Every alert is created by the
+webhook worker and nothing re-derives them, so a delivery lost past GitHub's
+retry window used to be an event that silently never became an alert. The
+nightly rebuild now compares the state it just read against the state it stored
+on the previous walk, and raises an alert for anything that changed with no
+webhook to explain it. It costs nothing extra: the rebuild already loads the
+whole stored graph to work out what to delete, so both sides are in memory.
+
+Only two things are compared, and both are critical:
+
+| Was | Is | Alert |
+|---|---|---|
+| repository not public | public | `repo_made_public` |
+| branch protected | not protected | `protection_removed`, named for the branch |
+
+Everything else in the graph churns for ordinary reasons and would bury the real
+ones. Four rules keep it quiet:
+
+- **No prior record, no drift.** A repository this walk is seeing for the first
+  time is a repository, not a change. This is what stops a first run alerting on
+  the whole organization at once.
+- **A deleted branch is not a protection removal.** There is no longer a branch
+  to protect.
+- **An alert already on the record silences it.** On a healthy installation
+  every change has arrived as a webhook already, so this writes nothing at all.
+  A *reverted* alert does not silence it: a repository that went public, was
+  made private, and went public again is a second event.
+- **More than `MAX_BELIEVABLE_DRIFT` (20) raises none of it.** Twenty
+  repositories quietly going public between two nightly walks is a bug, a
+  restored backup, or a graph written by another version. The run logs loudly
+  and writes nothing.
+
+These alerts carry `source: "reconciliation"` and **no actor**, and the Security
+tab labels them. All the walk knows is that the value changed between two runs,
+so the timestamp is when it was *noticed*, and nobody knows who did it. A login
+and an exact time would both be invented.
 
 **An alert does not touch the access graph.** The worker updates connections for
 branches, collaborators and protection, but not for teams — so the alert appears

@@ -133,7 +133,6 @@ fi
 # drops a table, an unread table costs nothing at PAY_PER_REQUEST, and a
 # deletion cannot be reversed.
 TABLES=(
-  alerts             # alertService.ts:86         Key: { id }
   widgets            # widgetService.ts:37        Key: { id }
   alarms             # alarmService.ts            Key: { id }
 )
@@ -154,6 +153,30 @@ for t in "${TABLES[@]}"; do
     --attribute-definitions AttributeName=id,AttributeType=S \
     --key-schema AttributeName=id,KeyType=HASH
 done
+
+# alerts — keyed on { id }, plus one index the Security tab reads through.
+#
+#   feed-index   every alert carries feed="ALERT" and its own timestamp, so the
+#                index is one partition ordered by time. That is what makes
+#                "the newest three hundred" a real query: a Scan returns items
+#                in hash order, so a Scan with a Limit hands back an arbitrary
+#                subset, and calling those "the newest" would be untrue. Before
+#                this the tab fetched the entire table on every poll.
+#
+#                One partition for the whole feed, the same shape the activity
+#                table uses. A partition holds 10 GB, far past 13 months of
+#                security events.
+#
+#                Rows written before the index existed have no `feed` attribute
+#                and are not in it. scripts/backfill-alert-feed.sh gives them
+#                one; it is safe to run repeatedly.
+create_table "${PREFIX}-alerts" \
+  --attribute-definitions \
+      AttributeName=id,AttributeType=S \
+      AttributeName=feed,AttributeType=S AttributeName=timestamp,AttributeType=S \
+  --key-schema AttributeName=id,KeyType=HASH \
+  --global-secondary-indexes \
+      'IndexName=feed-index,KeySchema=[{AttributeName=feed,KeyType=HASH},{AttributeName=timestamp,KeyType=RANGE}],Projection={ProjectionType=ALL}' 
 
 # Enabling expiry is deferred until after the wait below: a table that is still
 # CREATING rejects update-time-to-live, and on a fresh account these have only

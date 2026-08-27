@@ -507,8 +507,12 @@ export async function aggregateGraphData(fallbackToken?: string) {
       const keyOf = (e: { pk: string; sk: string }) => `${e.pk}\u0000${e.sk}`;
 
       let stored: Map<string, { fingerprint: string; pk: string; sk: string }>;
+      // Kept whole, not just fingerprinted, because the drift check below needs
+      // the previous *values* and this is the only place they are in memory.
+      let previous: GraphEdge[] = [];
       try {
         const oldItems = await scanAll<GraphEdge>(edgesTable);
+        previous = oldItems;
         stored = new Map(oldItems.map(i =>
           [keyOf(i), { fingerprint: fingerprint(i), pk: i.pk, sk: i.sk }]));
       } catch (e) {
@@ -541,6 +545,22 @@ export async function aggregateGraphData(fallbackToken?: string) {
         `[GraphAggregator] ${wanted.size} edges: ${puts.length} new or changed, ` +
         `${deletes.length} gone, ${wanted.size - puts.length} unchanged and left alone.`,
       );
+
+      // ── what changed without a webhook ────────────────────────────────
+      //
+      // Every security alert in this app comes from the webhook worker, and
+      // nothing re-derives them, so a lost delivery is an event that never
+      // becomes an alert and nothing can notice. This is the one place that
+      // can: both the previous state and the current one are already loaded.
+      //
+      // Wrapped and swallowed on purpose. The graph is what this job exists to
+      // write, and a failure to notice drift must never turn into a failure to
+      // rebuild.
+      try {
+        await raiseDriftAlerts(previous, [...wanted.values()]);
+      } catch (err: any) {
+        console.warn("[GraphAggregator] Drift check failed:", err?.message ?? err);
+      }
 
       // Writes first, deletions after.
       //
@@ -616,4 +636,46 @@ export async function aggregateGraphData(fallbackToken?: string) {
   // rebuild itself — for scores no screen in the app has ever displayed. The
   // hooks and the route existed; nothing imported them. Removed rather than
   // left running: an unread number is not worth a rate limit.
+}
+
+/**
+ * Raise an alert for anything that changed without a webhook reporting it.
+ *
+ * Deliberately quiet about the ordinary case: on a healthy installation every
+ * change has already arrived as a webhook, so `alreadyKnown` matches and this
+ * writes nothing at all.
+ */
+async function raiseDriftAlerts(previous: GraphEdge[], current: GraphEdge[]): Promise<void> {
+  const { findDrift, alreadyKnown, MAX_BELIEVABLE_DRIFT } = await import("./reconcileDrift");
+  const drifts = findDrift(previous as any, current as any);
+  if (drifts.length === 0) return;
+
+  // Past this it is a bug, a restored backup, or a first run against a graph
+  // written by another version. Raising a critical alert per repository on the
+  // strength of that guess is worse than raising none.
+  if (drifts.length > MAX_BELIEVABLE_DRIFT) {
+    console.warn(
+      `[GraphAggregator] ${drifts.length} security changes appear to have happened ` +
+      `without a webhook, which is more than is believable (${MAX_BELIEVABLE_DRIFT}). ` +
+      `Raising none. This usually means the stored graph was written by a different ` +
+      `version or restored from a backup.`,
+    );
+    return;
+  }
+
+  const { getAlerts, createAlert } = await import("../services/alertService");
+  const known = await getAlerts();
+
+  for (const d of drifts) {
+    if (alreadyKnown(d, known)) continue;
+    console.warn(`[GraphAggregator] Unreported change: ${d.type} on ${d.repo}`);
+    await createAlert(d.repo, d.type, d.message, d.severity, {
+      subject: d.subject,
+      // No actor and no occurredAt, both deliberately. GitHub never told us
+      // about this, so nobody knows who did it, and all that is known about
+      // the timing is that it happened between two nightly walks. A login and
+      // a precise timestamp would both be invented.
+      source: "reconciliation",
+    });
+  }
 }

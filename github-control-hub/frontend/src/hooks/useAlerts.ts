@@ -1,12 +1,42 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchAlerts, simulateAlert } from "../api/alerts";
+import { useInfiniteQuery } from "@tanstack/react-query";
+import { fetchAlerts } from "../api/alerts";
 
+/**
+ * Alerts, newest first, a window at a time.
+ *
+ * The server used to return the whole table and the client polled it **every
+ * ten seconds** with the comment "for demo" beside it: a full scan and a full
+ * transfer, 360 times an hour, per open app. Fine at seventeen rows; megabytes
+ * at ten thousand.
+ *
+ * Now the server bounds the read to the twelve weeks the page charts and hands
+ * back a cursor if that window did not fit. `complete` says which happened, so
+ * the page can state what it is showing rather than drawing a truncated list as
+ * though it were everything.
+ *
+ * A minute between polls rather than ten seconds. Nothing is lost: an alert
+ * reaches whoever asked to hear about it by email within seconds of the webhook
+ * arriving, so the tab does not need to be a live ticker, and React Query still
+ * refetches on window focus, which is when somebody actually looks.
+ */
 export function useAlerts() {
-  return useQuery({
+  const q = useInfiniteQuery({
     queryKey: ["alerts"],
-    queryFn: fetchAlerts,
-    refetchInterval: 10000, // Refresh every 10s for demo
+    queryFn: ({ pageParam }) => fetchAlerts(pageParam as string | undefined),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (last) => last.cursor ?? undefined,
+    refetchInterval: 60_000,
   });
+
+  const pages = q.data?.pages ?? [];
+  return {
+    ...q,
+    /** Every row loaded so far, newest first. */
+    data: pages.flatMap(p => p.alerts),
+    /** True when nothing is being withheld: what is loaded is what there is. */
+    complete: pages.length > 0 && !pages[pages.length - 1].cursor,
+    windowWeeks: pages[0]?.windowWeeks ?? 12,
+  };
 }
 
 /*
@@ -16,14 +46,3 @@ export function useAlerts() {
  * that still marks one is the webhook worker noticing the change was undone.
  * The server no longer exposes a route for either.
  */
-
-export function useSimulateAlert() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: simulateAlert,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["alerts"] });
-    },
-  });
-}
-

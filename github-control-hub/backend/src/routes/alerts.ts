@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { getAlerts, createAlert } from "../services/alertService";
+import { getAlertsPage, DEFAULT_WINDOW_WEEKS } from "../services/alertService";
 import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
@@ -26,57 +26,50 @@ async function refusedAlertChange(res: Response, login: string, verb: string, us
   return true;
 }
 
+/**
+ * One page of alerts, newest first.
+ *
+ * `?since=<iso>` bounds the window and defaults to the twelve weeks the
+ * Security tab charts. `?cursor=` continues into older rows.
+ *
+ * This used to return the whole table on every request, which is fine at
+ * seventeen rows and ships megabytes at ten thousand. The response now says
+ * whether it is complete, so the page can state what it is showing rather than
+ * drawing a truncated list as if it were everything.
+ */
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const alerts = await getAlerts();
-    res.json(alerts);
+    const weeks = DEFAULT_WINDOW_WEEKS;
+    const since = typeof req.query.since === "string" && req.query.since
+      ? req.query.since
+      : new Date(Date.now() - weeks * 7 * 86_400_000).toISOString();
+
+    const page = await getAlertsPage({
+      since,
+      cursor: typeof req.query.cursor === "string" ? req.query.cursor : undefined,
+      limit: Number(req.query.limit) || undefined,
+    });
+
+    res.json({ ...page, since, windowWeeks: weeks });
   } catch (error: any) {
-    if (sendIfRateLimited(res, error)) return;
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "alerts") });
   }
 });
 
 /*
- * There is no route to clear an alert, and that is the feature.
+ * `POST /alerts/simulate` was removed.
  *
- * An alert is a record of something that happened, not a task. Clearing one by
- * hand wrote `resolvedBy: "<someone>"` into a row nobody ever opened again,
- * and asking for it on every routine change is what turned a security tab into
- * a queue nobody could keep up with. Rows age out on their own now, and the
- * only thing that still sets `resolved` is the webhook worker noticing that
- * the change was undone. See REVERTED_BY in services/alertService.ts.
+ * It injected four hardcoded alerts naming repositories that do not exist
+ * ("api-gateway", "web-platform", "design-system", "infrastructure") and was
+ * left over from the mock-data era. Nothing in the app called it: the client
+ * kept a `useSimulateAlert` hook that no screen ever used.
+ *
+ * The reason to delete it rather than leave it: it wrote **real rows into the
+ * real alerts table**, indistinguishable from genuine ones once written. That
+ * was tolerable when an alert was a queue item somebody would clear. It is not
+ * now that alerts are the permanent security record, expire on their own, and
+ * feed the drift check, which compares against what is on that record.
  */
-
-router.post("/simulate", async (req: Request, res: Response) => {
-  try {
-    if (await refusedAlertChange(res, req.user!.login, "create", req.user!.accessToken)) return;
-    const { scenario } = req.body;
-    
-    switch (scenario) {
-      case "compromised_dev":
-        await createAlert("api-gateway", "suspicious_activity", "User 'dev-john' pushed to 40 repos in 5 minutes.", "critical");
-        break;
-      case "malicious_pr":
-        await createAlert("web-platform", "protection_drift", "Branch protection bypassed for malicious PR on 'main'.", "high");
-        break;
-      case "force_push":
-        await createAlert("design-system", "protection_drift", "Force push protection disabled on 'main'.", "high");
-        break;
-      case "privilege_escalation":
-        await createAlert("infrastructure", "user_promoted", "User 'guest-user' promoted to Admin.", "critical");
-        break;
-      default:
-        return res.status(400).json({ error: "Unknown scenario" });
-    }
-    
-    res.json({ message: "Simulation triggered" });
-  } catch (error: any) {
-    if (sendIfRateLimited(res, error)) return;
-    if (sendIfRateLimited(res, error)) return;
-    res.status(500).json({ error: sanitizeError(error, "alerts") });
-  }
-});
-
 
 export default router;
