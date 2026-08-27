@@ -172,6 +172,47 @@ const code = (s: string) => s.split("\n").filter(l => !l.trim().startsWith("//")
       !/AuditStreamSetup/.test(page));
   }
 
+  // ── the toggle records what it changed ──────────────────────────────
+  //
+  // It used to write "on (6 of 8 kinds)", which is the same sentence whichever
+  // kind somebody unchecked. The feed could tell you the shape of a change and
+  // never which one it was, which is the only part anybody reads it for.
+  {
+    const routes = read("src/routes/activity.ts");
+    check("the change is compared against what was set before",
+      /const before = await getDetailedLogging\(\)/.test(routes),
+      "without the previous state there is nothing to diff against");
+    check("  and names the kinds that stopped being recorded",
+      /stopped recording \$\{stopped\.join/.test(routes));
+    check("  and the ones that started",
+      /started recording \$\{started\.join/.test(routes));
+    check("  by label rather than by id",
+      /DETAILED_LOG_KINDS\.find\(k => k\.id === id\)\?\.label/.test(routes),
+      '"pr-merged" is not what the checkbox says');
+    check("  a save that changed nothing writes no row",
+      /if \(parts\.length\) \{/.test(routes),
+      "otherwise opening the panel and pressing save records a change");
+  }
+
+  // ── the historical rows the filter could not reach ──────────────────
+  {
+    const fs2 = require("node:fs");
+    const script = `${__dirname}/../scripts/backfill-detailed-flag.sh`;
+    check("there is a one-time backfill for rows written before the flag existed",
+      fs2.existsSync(script),
+      "otherwise the hide filter leaves old rows on screen and reads as broken");
+
+    const sh = read("../scripts/backfill-detailed-flag.sh");
+    check("  it only touches rows GitHub reported",
+      /"S\\":\\"github/.test(sh) || /:s.*github/.test(sh),
+      "a branch deleted through this app carries an undo payload and is not detailed traffic");
+    check("  it writes only where the flag is absent",
+      /attribute_not_exists\(detailed\)/.test(sh),
+      "so running it twice is a no-op rather than a rewrite");
+    check("  and it does nothing until asked",
+      /--apply/.test(sh) && /dry run/.test(sh));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

@@ -254,6 +254,26 @@ function check(name: string, ok: boolean, got?: unknown) {
     check("  and every column has a starting width",
       wide.every(c => activityWidths(wide)[c.id] > 0));
 
+    // Fixed layout means a cell does not shrink to fit: without overflow
+    // hidden a long value draws straight over the column beside it, which is
+    // what dragging a column narrow revealed.
+    // Bounded forwards. renderRow is defined after paginatedEntries, so
+    // slicing between them the other way round produced an empty string and
+    // two assertions that passed by having nothing to look at.
+    const rowStart = page.indexOf("const renderRow =");
+    const body = page.slice(rowStart, page.indexOf("return (", rowStart + 20000));
+    const cells = body.match(/<td className="[^"]*"/g) ?? [];
+    const clipping = cells.filter(c => /overflow-hidden/.test(c));
+    check("every activity cell clips rather than overlapping its neighbour",
+      clipping.length >= cells.length - 1,
+      { cells: cells.length, clipping: clipping.length });
+    check("  and the long values ellipsize with the full text on hover",
+      /truncate/.test(body) && /title=\{entry\.repo\}/.test(body)
+        && /title=\{entry\.target\}/.test(body));
+    check("  a pill cannot outgrow its cell either",
+      /max-w-full/.test(body),
+      "an inline-flex badge ignores the cell width without it");
+
     check("the empty row spans however many columns there are",
       /colSpan=\{columns\.length\}/.test(page),
       "colSpan={7} would under-span at narrow widths");

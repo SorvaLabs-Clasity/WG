@@ -581,9 +581,9 @@ export default function ActivityPage() {
                 : <i className="fa-solid fa-shield-halved text-base text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
           </div>
         </td>
-        <td className="px-4 py-3 whitespace-nowrap">
-          <div className="flex items-center gap-2">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${isFailedEntry ? 'bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : cfg.colorClass} ${isUndoneEntry ? 'line-through' : ''}`}>
+        <td className="px-4 py-3 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border shrink-0 ${isFailedEntry ? 'bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : cfg.colorClass} ${isUndoneEntry ? 'line-through' : ''}`}>
               <i className={isFailedEntry ? 'fa-solid fa-xmark text-[10px]' : cfg.iconClass}></i>
               {isFailedEntry ? `${cfg.label} (Failed)` : cfg.label}
             </span>
@@ -638,13 +638,16 @@ export default function ActivityPage() {
             )}
           </div>
         </td>
-        <td className="px-4 py-3 whitespace-nowrap">
-          <div className="flex items-center gap-2">
+        {/* overflow-hidden on every cell, because the table is fixed-layout:
+            without it a long value does not shrink, it draws straight over the
+            column beside it, which is what dragging a column narrow revealed. */}
+        <td className="px-4 py-3 overflow-hidden">
+          <div className="flex items-center gap-2 min-w-0">
             <UserAvatar login={entry.actor} size={24} />
-            <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">{actorLabel(entry.actor)}</span>
+            <span className="text-sm font-medium text-gh-textBase dark:text-slate-200 truncate" title={entry.actor}>{actorLabel(entry.actor)}</span>
           </div>
         </td>
-        <td className="px-4 py-3 whitespace-nowrap">
+        <td className="px-4 py-3 overflow-hidden">
           {/* Plenty of events are not about a repository at all, organization
               membership, teams, tokens. An empty pill reads as a missing value;
               a rule reads as "does not apply", which is what it is. */}
@@ -655,21 +658,25 @@ export default function ActivityPage() {
               aria-label="Not scoped to a repository"
             />
           ) : (
-            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${entry.repo === '*' ? 'bg-gray-600 text-white border-gray-700' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-gray-200 dark:border-slate-600'}`}>
-              {entry.repo === '*' ? '* (Global)' : entry.repo}
+            <span
+              title={entry.repo}
+              className={`inline-flex items-center max-w-full px-2 py-0.5 rounded text-xs font-medium border ${entry.repo === '*' ? 'bg-gray-600 text-white border-gray-700' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-gray-200 dark:border-slate-600'}`}>
+              <span className="truncate">{entry.repo === '*' ? '* (Global)' : entry.repo}</span>
             </span>
           )}
         </td>
-        <td className="px-4 py-3 whitespace-nowrap">
-          <span className="font-mono text-xs text-gh-textBase dark:text-slate-200 bg-gray-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200/50 dark:border-slate-700">
-            {entry.action.includes('branch') && <i className="fa-solid fa-code-branch text-[10px] text-gray-400 dark:text-slate-500 mr-1"></i>}
-            {entry.target}
+        <td className="px-4 py-3 overflow-hidden">
+          <span
+            title={entry.target}
+            className="inline-flex items-center max-w-full font-mono text-xs text-gh-textBase dark:text-slate-200 bg-gray-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200/50 dark:border-slate-700">
+            {entry.action.includes('branch') && <i className="fa-solid fa-code-branch text-[10px] text-gray-400 dark:text-slate-500 mr-1 shrink-0"></i>}
+            <span className="truncate">{entry.target}</span>
           </span>
         </td>
-        <td className="px-4 py-3 whitespace-nowrap hidden lg:table-cell">
-          <span className={`text-sm truncate block max-w-xs ${isFailedEntry ? 'text-red-600 dark:text-red-400' : 'text-gh-muted dark:text-slate-400'}`} title={entry.details}>{entry.details || "\u2014"}</span>
+        <td className="px-4 py-3 overflow-hidden hidden lg:table-cell">
+          <span className={`text-sm truncate block ${isFailedEntry ? 'text-red-600 dark:text-red-400' : 'text-gh-muted dark:text-slate-400'}`} title={entry.details}>{entry.details || "\u2014"}</span>
         </td>
-        <td className="px-4 py-3 whitespace-nowrap text-right">
+        <td className="px-4 py-3 overflow-hidden text-right">
           <div className="flex items-center justify-end gap-2">
             <span className="text-sm text-gh-muted dark:text-slate-400" title={entry.timestamp}>{formatTimestamp(entry.timestamp)}</span>
             {isFailedEntry && <span className="w-2 h-2 rounded-full bg-red-500" title="Failed - click to manage"></span>}

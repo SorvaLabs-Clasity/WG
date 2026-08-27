@@ -1070,7 +1070,7 @@ router.put("/detailed-logging", async (req: Request, res: Response) => {
       return res.status(403).json({ code: "CONTROL_HUB_ADMIN_REQUIRED",
         error: "Only organization admins can change detailed logging." });
     }
-    const { updateDetailedLogging } = await import("../services/orgConfigService");
+    const { updateDetailedLogging, getDetailedLogging } = await import("../services/orgConfigService");
     const { DETAILED_LOG_KINDS } = await import("../webhooks/detailedLogging");
 
     const enabled = req.body?.enabled;
@@ -1088,13 +1088,39 @@ router.put("/detailed-logging", async (req: Request, res: Response) => {
       return res.status(400).json({ error: `Unknown kinds: ${unknown.join(", ")}` });
     }
 
+    // Read before writing, so the row can say what actually changed.
+    //
+    // It used to record a count: "on (6 of 8 kinds)". That is the same sentence
+    // whichever kind somebody unchecked, so the feed could tell you the shape of
+    // the change and never which one it was, which is the only part anybody
+    // reads it for.
+    const before = await getDetailedLogging();
     const settings = await updateDetailedLogging({
       enabled, disabledKinds, changedBy: req.user!.login,
     });
-    await logActivity("config.updated", req.user!.login, "", "detailed_logging",
-      enabled
-        ? `Detailed GitHub logging turned on (${DETAILED_LOG_KINDS.length - disabledKinds.length} of ${DETAILED_LOG_KINDS.length} kinds)`
+
+    const label = (id: string) => DETAILED_LOG_KINDS.find(k => k.id === id)?.label ?? id;
+    const wasOff = new Set(before.disabledKinds);
+    const nowOff = new Set(disabledKinds);
+    const stopped = disabledKinds.filter(k => !wasOff.has(k)).map(label);
+    const started = before.disabledKinds.filter(k => !nowOff.has(k)).map(label);
+
+    const parts: string[] = [];
+    if (before.enabled !== enabled) {
+      parts.push(enabled
+        ? `Detailed GitHub logging turned on, recording ${DETAILED_LOG_KINDS.length - disabledKinds.length} of ${DETAILED_LOG_KINDS.length} kinds`
         : "Detailed GitHub logging turned off");
+    }
+    if (stopped.length) parts.push(`stopped recording ${stopped.join(", ")}`);
+    if (started.length) parts.push(`started recording ${started.join(", ")}`);
+
+    // A save that changed nothing is not a change. Writing a row for it would
+    // put "config.updated" in the feed every time somebody opened the panel and
+    // pressed save without touching anything.
+    if (parts.length) {
+      await logActivity("config.updated", req.user!.login, "", "detailed_logging",
+        parts.join("; "));
+    }
     res.json({ settings, kinds: DETAILED_LOG_KINDS });
   } catch (error) {
     res.status(500).json({ error: sanitizeError(error, "detailed logging") });

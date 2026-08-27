@@ -28,7 +28,10 @@ export function activityColumns(wide: boolean): ActivityColumn[] {
     { id: "source", label: "Source", width: 116 },
     { id: "action", label: "Action", width: 210 },
     { id: "user", label: "User", width: 170 },
-    { id: "repository", label: "Repository", width: 200 },
+    // Narrower than it looks like it wants to be. Repository names are long, but
+    // the cell truncates with the full name on hover, and every pixel here comes
+    // straight out of Target and Details, which cannot.
+    { id: "repository", label: "Repository", width: 160 },
     { id: "target", label: "Target", width: 200 },
   ];
 
