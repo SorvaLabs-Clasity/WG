@@ -280,7 +280,13 @@ const branch = (repo: string, name: string, prot: boolean): EdgeLike =>
       /Checking alerts table index/.test(setup)
         && /global-secondary-index-updates[\s\S]{0,200}?feed-index/.test(setup));
     check("  waiting for it to go ACTIVE before moving on",
-      /IndexStatus" --output text\)" == "ACTIVE" \]\]; do[\s\S]{0,60}?sleep 10/.test(setup));
+      /idx_status" = "ACTIVE" \] && break/.test(setup));
+    // A bare `until ACTIVE` prints nothing, so a normal five-minute wait looks
+    // identical to a creation that failed, and a failed one waits forever.
+    check("    saying how long it has been, rather than looking frozen",
+      /elapsed/.test(setup));
+    check("    and giving up rather than waiting forever",
+      /Gave up after 20 minutes/.test(setup));
     check("  and rows left outside the index are reported, not silently rewritten",
       /attribute_not_exists\(feed\)" --select COUNT/.test(setup)
         && /backfill-alert-feed\.sh --apply/.test(setup),

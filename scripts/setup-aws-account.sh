@@ -312,16 +312,41 @@ have=$($AWS dynamodb describe-table --table-name "${PREFIX}-alerts" \
 if [[ "$have" == *"feed-index"* ]]; then
   echo "    feed-index already present"
 else
-  echo "    creating feed-index (backfill can take several minutes)"
+  echo "    creating feed-index"
   $AWS dynamodb update-table --table-name "${PREFIX}-alerts" \
     --attribute-definitions AttributeName=feed,AttributeType=S AttributeName=timestamp,AttributeType=S \
     --global-secondary-index-updates \
       '[{"Create":{"IndexName":"feed-index","KeySchema":[{"AttributeName":"feed","KeyType":"HASH"},{"AttributeName":"timestamp","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}}]' >/dev/null
-  until [[ "$($AWS dynamodb describe-table --table-name "${PREFIX}-alerts" \
-      --query "Table.GlobalSecondaryIndexes[?IndexName=='feed-index'].IndexStatus" --output text)" == "ACTIVE" ]]; do
+
+  # Waited for with a ceiling and a running status, not `until ... ACTIVE`.
+  #
+  # A bare loop prints nothing for however long this takes, so five minutes of
+  # normal CREATING looks exactly like a creation that failed, and a failed one
+  # spins forever. Three to eight minutes is ordinary even on a tiny table:
+  # DynamoDB has fixed provisioning overhead per index, and it is not
+  # proportional to the row count.
+  deadline=$(( $(date +%s) + 1200 ))
+  while :; do
+    idx_status=$($AWS dynamodb describe-table --table-name "${PREFIX}-alerts" \
+      --query "Table.GlobalSecondaryIndexes[?IndexName=='feed-index'].IndexStatus" \
+      --output text 2>/dev/null || echo "UNREADABLE")
+    [ "$idx_status" = "ACTIVE" ] && break
+
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo
+      echo "    Gave up after 20 minutes. Last status: ${idx_status:-none}."
+      echo "    The index is still being created and nothing here has broken;"
+      echo "    check it with:"
+      echo "      aws dynamodb describe-table --table-name ${PREFIX}-alerts \\"
+      echo "        --query \"Table.GlobalSecondaryIndexes\""
+      echo "    Re-run this script once it reads ACTIVE."
+      exit 1
+    fi
+    printf "\r    feed-index: %s (%ss elapsed)   " "${idx_status:-CREATING}" \
+      "$(( $(date +%s) - deadline + 1200 ))"
     sleep 10
   done
-  echo "    feed-index active"
+  printf "\r    feed-index active                         \n"
 fi
 
 # An index only holds rows carrying both of its keys, so alerts written before

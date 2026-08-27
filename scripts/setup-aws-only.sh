@@ -113,9 +113,23 @@ aws ec2 describe-regions --region-names "$REGION" >/dev/null 2>&1 \
   || die "'$REGION' is not a region this account can see."
 
 step "This install"
-ask GH_ORG "GitHub org name, as it appears in github.com/orgs/<name>"
+# Prefix first, because the secret's name is built from it and the org can then
+# be offered from what the secret already holds. Asked the other way round, a
+# re-run against a configured account demanded the org be retyped from memory,
+# which is the one prompt here that overwrites a working value.
 ask PREFIX "Resource name prefix" "github-control-hub"
 SECRET_NAME="${PREFIX}/secrets"
+
+EXISTING=$(aws secretsmanager get-secret-value --secret-id "$SECRET_NAME" \
+  --query SecretString --output text 2>/dev/null || echo "")
+cur() {
+  [ -n "$EXISTING" ] || return 0
+  CUR="$EXISTING" node -e '
+    try { const v = JSON.parse(process.env.CUR)[process.argv[1]]; if (v) process.stdout.write(String(v)); } catch {}
+  ' "$1" 2>/dev/null
+}
+
+ask GH_ORG "GitHub org name, as it appears in github.com/orgs/<name>" "$(cur GITHUB_ORG)"
 
 echo
 echo "    account : $ACCOUNT  ${dim}(guardrails only)${off}"
@@ -158,14 +172,7 @@ echo "  not asked for and must not be put here — it is the credential that can
 echo "  read your organization, and keeping it out of this account is the point."
 echo
 
-EXISTING=$(aws secretsmanager get-secret-value --secret-id "$SECRET_NAME" \
-  --query SecretString --output text 2>/dev/null || echo "")
-cur() {
-  [ -n "$EXISTING" ] || return 0
-  CUR="$EXISTING" node -e '
-    try { const v = JSON.parse(process.env.CUR)[process.argv[1]]; if (v) process.stdout.write(String(v)); } catch {}
-  ' "$1" 2>/dev/null
-}
+# $EXISTING and cur() were read above, before the org prompt that needs them.
 
 if [ -n "$EXISTING" ]; then
   ok "Secret exists — enter keeps what it already holds"
