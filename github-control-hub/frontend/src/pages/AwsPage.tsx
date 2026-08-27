@@ -70,7 +70,7 @@ export default function AwsPage() {
           <div>
             <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">AWS Guardrails</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Checked when resources are created, every 15 minutes, and on demand.
+              Checked when resources are created, every hour, and on demand.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -227,7 +227,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
     return (
       <Empty
         title="No guardrails yet"
-        body={`A guardrail says how a kind of AWS resource must be configured, and checks it on creation, every 15 minutes, and on demand. ${catalog?.length ?? 0} rule types available.`}
+        body={`A guardrail says how a kind of AWS resource must be configured, and checks it on creation, every hour, and on demand. ${catalog?.length ?? 0} rule types available.`}
         action={isAdmin ? <Button variant="primary" onClick={onNew}>Add the first rule</Button> : undefined}
       />
     );

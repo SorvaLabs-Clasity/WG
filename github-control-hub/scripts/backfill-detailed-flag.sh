@@ -55,10 +55,14 @@ for action in "${ACTIONS[@]}"; do
 
   [ "$APPLY" = 0 ] && continue
 
+  # Passed as arguments, not through the environment. TABLE and PROFILE are
+  # ordinary shell variables here, so they are not in the child process's
+  # environment and os.environ raised KeyError after the scan had already run.
   echo "$rows" | python3 -c '
-import sys, json, subprocess, os
+import sys, json, subprocess
 items = json.load(sys.stdin)["Items"]
-table, profile = os.environ["TABLE"], os.environ.get("PROFILE", "")
+table, profile = sys.argv[1], sys.argv[2]
+failed = 0
 for it in items:
     cmd = ["aws", "dynamodb", "update-item",
            "--table-name", table,
@@ -72,7 +76,11 @@ for it in items:
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0 and "ConditionalCheckFailed" not in r.stderr:
         print("   failed:", it["sk"]["S"][:40], r.stderr.strip()[:120], file=sys.stderr)
-'
+        failed += 1
+if failed:
+    print(f"   {failed} row(s) could not be written", file=sys.stderr)
+    sys.exit(1)
+' "$TABLE" "$PROFILE"
 done
 
 echo

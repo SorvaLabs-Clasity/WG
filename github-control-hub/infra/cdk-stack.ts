@@ -154,8 +154,8 @@ export class GitHubControlHubStack extends cdk.Stack {
         // version AWS happens to ship, which can change under you without any
         // deploy. Bundling removes that variable entirely and makes the
         // function correct on any runtime. It costs about two megabytes and a
-        // fraction of a second of cold start, on a function that runs every
-        // fifteen minutes and then makes hundreds of AWS calls.
+        // fraction of a second of cold start, on a function that runs
+        // hourly and then makes hundreds of AWS calls.
         externalModules: [],
         minify: false,
         sourceMap: true,
@@ -254,9 +254,16 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     // The sweep is the floor, not an optimisation: it catches drift, covers
     // anything the event path missed, and works with no trail at all.
+    //
+    // Hourly rather than every fifteen minutes. The interval only sets how long
+    // a drift can go uncorrected *when the event path did not fire*, and in the
+    // ordinary case CloudTrail has already corrected it within seconds. Four
+    // times the sweeps bought four times the cost of looking, for a worst case
+    // that moved from an hour to fifteen minutes on a path that is already the
+    // fallback.
     new events.Rule(this, "GuardrailSweep", {
       description: "Periodic guardrail sweep across the account",
-      schedule: events.Schedule.rate(cdk.Duration.minutes(15)),
+      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
       targets: [new targets.LambdaFunction(guardrailFn, { deadLetterQueue: guardrailDlq })],
     });
 

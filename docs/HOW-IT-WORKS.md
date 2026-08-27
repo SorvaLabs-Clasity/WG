@@ -48,7 +48,7 @@ assumed.
 
 **A tick.** An EventBridge rule in AWS invoking a Lambda function on a timer.
 Nobody presses anything; AWS calls the function on a schedule you set when the
-stack was deployed. Three of these exist, at 15 minutes, 5 minutes and 6 hours.
+stack was deployed. Four of these exist, at 5 minutes, 30 minutes, 1 hour and 6 hours.
 
 **A sweep.** One complete run of the guardrail engine: list the resources in the
 account, check each against each rule, write down what it found. Described in
@@ -132,7 +132,7 @@ because a person clicked, or GitHub sent a webhook.
 
 | What | Runs | Which Lambda |
 |---|---|---|
-| Guardrail sweep | every 15 minutes | `github-control-hub-guardrail-enforcer` |
+| Guardrail sweep | every hour | `github-control-hub-guardrail-enforcer` |
 | Guardrail run for one resource | seconds after a covered resource changes, via CloudTrail | the same function |
 | Alarm evaluation, then the PR walk | every 5 minutes, whenever **Monitor pull requests** is on | `github-control-hub-alarm-evaluator` |
 | Light graph refresh | every 30 minutes | `github-control-hub-graph-aggregator` (`mode: light`) |
