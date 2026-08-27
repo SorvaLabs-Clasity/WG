@@ -1,7 +1,7 @@
 /**
  * The one definition of what a `repo_meta` row holds.
  *
- * Two jobs write this row: the six-hourly full rebuild and the thirty-minute
+ * Two jobs write this row: the daily full rebuild and the thirty-minute
  * light pass. Both write it as a **whole item**, because a `PutRequest` in a
  * batch write replaces the row rather than merging into it. That makes the
  * field lists a contract between them rather than two independent lists: any

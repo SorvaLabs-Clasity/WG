@@ -123,6 +123,21 @@ export const SURFACE = {
 /** Motion confirms; it never loops. Curve is ease-out-quart throughout. */
 export const EASE = "cubic-bezier(0.16,1,0.3,1)";
 
+/**
+ * The entrance animation, staggered by position.
+ *
+ * `backwards`, not `both`. `fadeInUp` animates `transform`, and a filled-
+ * *forwards* animation keeps its final `transform: translateY(0)` applied for
+ * the life of the element. A CSS animation outranks an ordinary declaration,
+ * so that silently beat every `hover:-translate-y-0.5` on the same element:
+ * `RailCard` and every card built on it had a hover lift that had never once
+ * been drawn.
+ *
+ * `backwards` still holds `opacity: 0` through the stagger delay, which is the
+ * only reason a fill mode is wanted here. Afterwards the element goes back to
+ * its own styles, which is where the hover state lives. The final keyframe is
+ * identical to the resting state, so nothing moves at the handover.
+ */
 export function enter(index = 0, step = 45, cap = 400): React.CSSProperties {
-  return { animation: `fadeInUp 0.45s ${EASE} ${Math.min(index * step, cap)}ms both` };
+  return { animation: `fadeInUp 0.45s ${EASE} ${Math.min(index * step, cap)}ms backwards` };
 }

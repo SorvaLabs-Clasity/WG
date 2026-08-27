@@ -15,7 +15,7 @@ import { useAuth } from "../App";
 import { useSecurityQuery, useGraphMeta, useTriggerAggregation, useGraphAggregation, useQueryFreshness, useRefreshQueryNow } from "../hooks/useGraph";
 import { useDependencies } from "../hooks/useDependencies";
 import { useRepos } from "../hooks/useRepos";
-import { QUERY_OPTIONS } from "../utils/queryOptions";
+import { QUERY_OPTIONS, paramNoun } from "../utils/queryOptions";
 import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget, useWidgetSnapshots } from "../hooks/useWidgets";
 import { usePermissions } from "../hooks/usePermissions";
 import { useOrgConfig } from "../hooks/useOrgConfig";
@@ -555,7 +555,7 @@ export default function AnalyticsPage() {
         <div style={enter(1)} className="mb-5">
           <Note intent="warn">
             The graph has no data, so anything reading from it comes back empty. It builds
-            itself every six hours, or an admin can sync it now.
+            itself once a day, or an admin can recrawl now.
           </Note>
         </div>
       )}
@@ -1775,8 +1775,8 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
   const initQuery = initialData?.queryId ? QUERY_OPTIONS.find(q => q.id === initialData.queryId) : null;
   const initAdv = initialData?.queryAdvanced;
   const [paramValue, setParamValue] = useState<string>(initQuery?.useTagInput ? "" : initParam);
-  const [branchTags, setBranchTags] = useState<string[]>(initQuery?.useTagInput && initParam ? initParam.split(",").map(s => s.trim()).filter(Boolean) : []);
-  const [hasPendingBranch, setHasPendingBranch] = useState(false);
+  const [paramTags, setParamTags] = useState<string[]>(initQuery?.useTagInput && initParam ? initParam.split(",").map(s => s.trim()).filter(Boolean) : []);
+  const [hasPendingTag, setHasPendingTag] = useState(false);
   const [submitAttempted, setSubmitAttempted] = useState(false);
   const [protectionType, setProtectionType] = useState<string>(initAdv?.protectionType || "any");
   const [ruleMatchType, setRuleMatchType] = useState<string>(initAdv?.ruleMatchType || "at_least");
@@ -1800,17 +1800,17 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
     const q = QUERY_OPTIONS.find(opt => opt.id === id);
     if (q?.requiresParam && q.paramDefault) setParamValue(q.paramDefault);
     else setParamValue("");
-    setBranchTags([]);
+    setParamTags([]);
   };
 
-  const pendingBranchError = type === "query" && selectedQuery?.useTagInput && hasPendingBranch;
-  const emptyBranchError = type === "query" && selectedQuery?.useTagInput && branchTags.length === 0;
+  const pendingTagError = type === "query" && selectedQuery?.useTagInput && hasPendingTag;
+  const emptyTagError = type === "query" && selectedQuery?.useTagInput && paramTags.length === 0;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitAttempted(true);
     if (!title.trim()) return;
-    if (pendingBranchError || emptyBranchError) return;
+    if (pendingTagError || emptyTagError) return;
     if (type === "query" && selectedQuery?.requiresParam && !selectedQuery?.useTagInput && !paramValue.trim()) return;
 
     if (type === "preset") {
@@ -1838,7 +1838,7 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
           preventDeletion,
         };
       }
-      const resolvedParam = selectedQuery?.useTagInput ? branchTags.join(", ") : paramValue.trim();
+      const resolvedParam = selectedQuery?.useTagInput ? paramTags.join(", ") : paramValue.trim();
       onSave({
         title,
         type,
@@ -1977,23 +1977,23 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                     {selectedQuery.useTagInput ? (
                       <>
                         <TagInput
-                          tags={branchTags}
-                          onChange={setBranchTags}
-                          onPendingTextChange={setHasPendingBranch}
-                          icon="ph-git-branch"
+                          tags={paramTags}
+                          onChange={setParamTags}
+                          onPendingTextChange={setHasPendingTag}
+                          icon={selectedQuery.paramIcon ?? selectedQuery.icon}
                           colorClass="blue"
-                          placeholder="Type branch name and press Enter"
+                          placeholder={`Type ${paramNoun(selectedQuery.paramLabel)} and press Enter`}
                         />
-                        {submitAttempted && pendingBranchError && (
+                        {submitAttempted && pendingTagError && (
                           <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1">
                             <i className="ph-bold ph-warning-circle"></i>
-                            Press Enter to confirm the branch name before saving.
+                            Press Enter to confirm the {paramNoun(selectedQuery.paramLabel)} before saving.
                           </p>
                         )}
-                        {submitAttempted && emptyBranchError && !pendingBranchError && (
+                        {submitAttempted && emptyTagError && !pendingTagError && (
                           <p className="mt-1.5 text-xs text-rose-600 flex items-center gap-1">
                             <i className="ph-bold ph-warning-circle"></i>
-                            At least one branch name is required.
+                            At least one {paramNoun(selectedQuery.paramLabel)} is required.
                           </p>
                         )}
                       </>

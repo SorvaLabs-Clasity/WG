@@ -155,6 +155,29 @@ for t in "${TABLES[@]}"; do
     --key-schema AttributeName=id,KeyType=HASH
 done
 
+# Enabling expiry is deferred until after the wait below: a table that is still
+# CREATING rejects update-time-to-live, and on a fresh account these have only
+# just been asked for.
+#
+# Safe on a table that already has rows. DynamoDB only expires items carrying
+# the attribute, so rows written before a `ttl` was stamped are kept forever.
+# Enabling it twice is a no-op.
+enable_ttl() {
+  local name="$1"
+  local status
+  status=$($AWS dynamodb describe-time-to-live --table-name "$name" \
+    --query "TimeToLiveDescription.TimeToLiveStatus" --output text 2>/dev/null || echo "UNKNOWN")
+  case "$status" in
+    ENABLED|ENABLING) echo "    already on:  $name" ;;
+    UNKNOWN)          echo "    unreadable:  $name (skipped)" ;;
+    *)
+      $AWS dynamodb update-time-to-live --table-name "$name" \
+        --time-to-live-specification "Enabled=true,AttributeName=ttl" >/dev/null
+      echo "    enabled:     $name"
+      ;;
+  esac
+}
+
 # activity — single-partition time series: pk="ACTIVITY", sk="<timestamp>#<id>"
 # activityService.ts:135 (write) and :150 (Query on pk)
 #
@@ -254,58 +277,32 @@ for pair in "id-index:id" "parentId-index:parentId"; do
 done
 echo
 
-# ── 2. TTL on auth-codes ──
+# ── 2. Wait, before anything that modifies a table ──
 echo "==> Waiting for tables to become ACTIVE"
 for t in "${TABLES[@]}" activity scanners graph-edges org-config auth-codes aws-guardrails aws-exclusions aws-findings; do
   $AWS dynamodb wait table-exists --table-name "${PREFIX}-${t}"
 done
 
-# ── 2b. Retention on the activity table ──
-# Thirteen months: a year of audit history plus a month of slack, so an auditor
-# looking back twelve months always finds a complete record. Rows carry a `ttl`
-# stamped from their own timestamp; DynamoDB only deletes items that have one,
-# so a table with TTL enabled but unstamped rows keeps them forever.
-echo "==> Enabling TTL on ${PREFIX}-activity"
-act_ttl=$($AWS dynamodb describe-time-to-live \
-  --table-name "${PREFIX}-activity" \
-  --query 'TimeToLiveDescription.TimeToLiveStatus' --output text)
-if [[ "$act_ttl" == "ENABLED" || "$act_ttl" == "ENABLING" ]]; then
-  echo "    already $act_ttl"
-else
-  $AWS dynamodb update-time-to-live \
-    --table-name "${PREFIX}-activity" \
-    --time-to-live-specification "Enabled=true,AttributeName=ttl" >/dev/null
-  echo "    enabled"
-fi
-
-# The alarms table also holds the pending-notification buffer, which is the only
-# thing in it that expires. Without TTL those rows accumulate forever in a table
-# the alarm evaluator scans on every tick.
-echo "==> Enabling TTL on ${PREFIX}-alarms"
-alarm_ttl=$($AWS dynamodb describe-time-to-live \
-  --table-name "${PREFIX}-alarms" \
-  --query 'TimeToLiveDescription.TimeToLiveStatus' --output text)
-if [[ "$alarm_ttl" == "ENABLED" || "$alarm_ttl" == "ENABLING" ]]; then
-  echo "    already $alarm_ttl"
-else
-  $AWS dynamodb update-time-to-live \
-    --table-name "${PREFIX}-alarms" \
-    --time-to-live-specification "Enabled=true,AttributeName=ttl" >/dev/null
-  echo "    enabled"
-fi
-
-echo "==> Enabling TTL on ${PREFIX}-auth-codes"
-ttl_status=$($AWS dynamodb describe-time-to-live \
-  --table-name "${PREFIX}-auth-codes" \
-  --query 'TimeToLiveDescription.TimeToLiveStatus' --output text)
-if [[ "$ttl_status" == "ENABLED" || "$ttl_status" == "ENABLING" ]]; then
-  echo "    already $ttl_status"
-else
-  $AWS dynamodb update-time-to-live \
-    --table-name "${PREFIX}-auth-codes" \
-    --time-to-live-specification Enabled=true,AttributeName=ttl >/dev/null
-  echo "    enabled"
-fi
+# ── 2b. Retention ──
+#
+# Thirteen months on the two logs: a year of audit history plus a month of
+# slack, so an auditor looking back twelve months always finds a complete
+# record. Rows carry a `ttl` stamped from their own timestamp.
+#
+#   activity     the feed
+#   alerts       security events. Same 13 months as the feed on purpose: they
+#                are two records of the same events, and two expiry dates would
+#                mean Activity could show something Security had dropped. This
+#                table had no expiry at all until the Resolve button was
+#                removed, so the only way a row ever left was by hand.
+#   alarms       holds the pending-notification buffer, the only thing in it
+#                that expires. Without TTL those accumulate forever in a table
+#                the alarm evaluator scans on every tick.
+#   auth-codes   short-lived sign-in codes
+echo "==> Enabling expiry where rows should age out"
+for t in activity alerts alarms auth-codes; do
+  enable_ttl "${PREFIX}-${t}"
+done
 
 # ── 3. Secrets Manager ──
 if [[ "${SKIP_SECRET:-}" == "1" ]]; then

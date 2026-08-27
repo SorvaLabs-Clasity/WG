@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { getAlerts, resolveAlert, unresolveAlert, createAlert } from "../services/alertService";
+import { getAlerts, createAlert } from "../services/alertService";
 import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
@@ -37,38 +37,16 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/:id/resolve", async (req: Request, res: Response) => {
-  try {
-    if (await refusedAlertChange(res, req.user!.login, "resolve", req.user!.accessToken)) return;
-    const user = req.user?.login || "system";
-    const alertId = req.params.id as string;
-    const alert = await resolveAlert(alertId, user);
-    if (!alert) {
-      return res.status(404).json({ error: "Alert not found" });
-    }
-    res.json(alert);
-  } catch (error: any) {
-    if (sendIfRateLimited(res, error)) return;
-    if (sendIfRateLimited(res, error)) return;
-    res.status(500).json({ error: sanitizeError(error, "alerts") });
-  }
-});
-
-router.post("/:id/unresolve", async (req: Request, res: Response) => {
-  try {
-    if (await refusedAlertChange(res, req.user!.login, "reopen", req.user!.accessToken)) return;
-    const alertId = req.params.id as string;
-    const alert = await unresolveAlert(alertId);
-    if (!alert) {
-      return res.status(404).json({ error: "Alert not found" });
-    }
-    res.json(alert);
-  } catch (error: any) {
-    if (sendIfRateLimited(res, error)) return;
-    if (sendIfRateLimited(res, error)) return;
-    res.status(500).json({ error: sanitizeError(error, "alerts") });
-  }
-});
+/*
+ * There is no route to clear an alert, and that is the feature.
+ *
+ * An alert is a record of something that happened, not a task. Clearing one by
+ * hand wrote `resolvedBy: "<someone>"` into a row nobody ever opened again,
+ * and asking for it on every routine change is what turned a security tab into
+ * a queue nobody could keep up with. Rows age out on their own now, and the
+ * only thing that still sets `resolved` is the webhook worker noticing that
+ * the change was undone. See REVERTED_BY in services/alertService.ts.
+ */
 
 router.post("/simulate", async (req: Request, res: Response) => {
   try {

@@ -296,8 +296,15 @@ function deps(over: Partial<{
       a.marked.length === 4, a.marked);
 
     const apiMail = a.sent.find(m => m.subject.includes("acme/api"))!;
-    check("  the subject counts them rather than naming one",
-      /\[3\]/.test(apiMail.subject) && /3 Dependabot alerts/.test(apiMail.subject), apiMail.subject);
+    // Three different packages on one repository. The subject comes from the
+    // template, with the count in front, and every field the three rows
+    // disagree on collapses to a count rather than naming whichever was first.
+    check("  the subject counts them and names where",
+      /^\[3\]/.test(apiMail.subject) && apiMail.subject.includes("acme/api")
+        && apiMail.subject.includes("3 packages"),
+      apiMail.subject);
+    check("  naming one package would have been a sample presented as a fact",
+      !/lodash|minimist|axios/.test(apiMail.subject), apiMail.subject);
     check("  the body lists all three",
       ["lodash", "minimist", "axios"].every(p => apiMail.body.includes(p)), apiMail.body);
     check("  worst severity first, so a critical is not buried",
@@ -360,14 +367,19 @@ function deps(over: Partial<{
     const label = { singular: "alert", plural: "alerts" };
 
     check("a digest of one is left exactly as the template rendered it",
-      buildDigest([{ item: { package: "a" }, occurredAt: "t" }], rendered, label, "r") === rendered);
+      buildDigest([{ item: { package: "a" }, occurredAt: "t" }], rendered, label, "a on r") === rendered);
 
     const d = buildDigest([
       { item: { package: "zzz-low-pkg", severity: "low", url: "u1" }, occurredAt: "t1" },
       { item: { package: "qqq-crit-pkg", severity: "critical", url: "u2" }, occurredAt: "t2" },
-    ], rendered, label, "acme/api");
-    check("  a digest of two names the repository and the count",
-      d.subject.includes("acme/api") && d.subject.includes("2 alerts"), d.subject);
+    ], rendered, label, "2 findings on acme/api");
+    // The customised subject wins, with the count in front. Overwriting it was
+    // how somebody's mail-filter keyword disappeared exactly when two events
+    // arrived together.
+    check("  a digest of two keeps the customised subject",
+      d.subject === "[2] one", d.subject);
+    check("  and the body still leads with what happened",
+      d.body.startsWith("2 findings on acme/api"), d.body.slice(0, 40));
     check("  keeps the rendered single-item body below the list",
       d.body.includes("the single-item body"), d.body);
     check("  and still sorts critical above low",
@@ -419,14 +431,14 @@ function deps(over: Partial<{
       },
       occurredAt: `t${i}`,
     }));
-    const big = buildDigest(huge, rendered, label, "org/repo");
+    const big = buildDigest(huge, rendered, label, "4000 findings on org/repo");
     check("a very large digest stays inside the SNS message limit",
       Buffer.byteLength(big.body, "utf8") < 256_000,
       Buffer.byteLength(big.body, "utf8"));
     check("  and says how many it left out rather than silently dropping them",
       /and \d+ more/.test(big.body), big.body.slice(-200));
     check("  while still naming the true total at the top",
-      big.body.startsWith("4000 alerts in org/repo"), big.body.slice(0, 40));
+      /4000 findings on org\/repo/.test(big.body.split("\n")[0]), big.body.slice(0, 60));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

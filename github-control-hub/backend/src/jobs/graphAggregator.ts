@@ -418,20 +418,15 @@ export async function aggregateGraphData(fallbackToken?: string) {
         }
       }
 
-      // Workflows
-      try {
-        const { data: workflows } = await octokit.rest.actions.listRepoWorkflows({ owner: org, repo: repo.name, per_page: 100 });
-        for (const wf of workflows.workflows) {
-          edges.push({
-            pk: repoId,
-            sk: `WORKFLOW#${wf.name}`,
-            type: "uses_workflow",
-            metadata: { path: wf.path, state: wf.state }
-          });
-        }
-      } catch (err: any) {
-        if (err.status !== 403 && err.status !== 404) console.warn(`[GraphAggregator] Failed to fetch workflows for ${repo.name}`);
-      }
+      // Workflows are not collected.
+      //
+      // `uses_workflow` cost one request per repository, a quarter of the whole
+      // rebuild, and nothing read it: no check, no widget, no alarm. Only the
+      // repository detail panel ever showed it, and that can ask GitHub for the
+      // one repository somebody is actually looking at.
+      //
+      // The rows already stored are removed by the next rebuild, which deletes
+      // any edge it did not just write.
 
       // Dependabot Alerts (Dependencies)
       try {

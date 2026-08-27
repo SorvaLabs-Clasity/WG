@@ -23,6 +23,7 @@ const ACTION_CONFIG: Record<
   ActivityAction,
   { label: string; colorClass: string; iconClass: string }
 > = {
+  "security.alert": { label: "Security Alert", colorClass: "bg-rose-50 text-rose-700 border-rose-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-shield-exclamation text-[10px]" },
   "repo.deleted": { label: "Repo Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
   "repo.renamed": { label: "Repo Renamed", colorClass: "bg-blue-50 text-blue-700 border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800", iconClass: "fa-solid fa-pen text-[10px]" },
   "tag.create": { label: "Tag Created", colorClass: "bg-green-50 text-green-700 border-green-200/60 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800", iconClass: "fa-solid fa-tag text-[10px]" },
@@ -932,16 +933,25 @@ export default function ActivityPage() {
                   className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
                   title="Newest"
                 ><i className="fa-solid fa-angles-left text-[10px]"></i></button>
+                {/* Icons, matching the jump-to-newest button beside them. The
+                    direction is the whole meaning, and two words of different
+                    lengths made a row of controls that never lined up. Both
+                    keep a title and an aria-label, since an arrow alone tells
+                    a screen reader nothing. */}
                 <button
                   onClick={goPrev}
                   disabled={pageIndex === 0}
-                  className="px-3 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
-                >Previous</button>
+                  title="Newer"
+                  aria-label="Newer events"
+                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
+                ><i className="fa-solid fa-angle-left text-[10px]"></i></button>
                 <button
                   onClick={goNext}
                   disabled={!hasMore || isFetching}
-                  className="px-3 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
-                >Older</button>
+                  title="Older"
+                  aria-label="Older events"
+                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
+                ><i className="fa-solid fa-angle-right text-[10px]"></i></button>
               </div>
             </div>
           </div>

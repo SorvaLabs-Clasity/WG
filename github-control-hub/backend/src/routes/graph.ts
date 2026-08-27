@@ -8,6 +8,7 @@ import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { getOrgConfig } from "../services/orgConfigService";
+import { createOctokit, getOrg } from "../github/client";
 import { logSync } from "../services/activityService";
 
 const router = Router();
@@ -72,7 +73,25 @@ router.get("/blast-radius/repo/:repo", async (req: Request<{ repo: string }>, re
     const repoId = `REPO#${req.params.repo}`;
     const edges = await getEdgesForNode(repoId);
 
-    const workflows = edges.filter(e => e.type === "uses_workflow").map(e => e.sk.replace("WORKFLOW#", ""));
+    // Read live, for this one repository.
+    //
+    // The rebuild stopped collecting `uses_workflow`: it cost a request per
+    // repository across the whole organization, four times a day, to fill a
+    // list only this panel ever showed. One request for the repository somebody
+    // is actually looking at is the same information for a fraction of it.
+    //
+    // Falls back to whatever is stored if the call fails, and to nothing if
+    // there is nothing stored, rather than failing the panel over a list.
+    let workflows = edges.filter(e => e.type === "uses_workflow").map(e => e.sk.replace("WORKFLOW#", ""));
+    try {
+      const octokit = createOctokit(req.user!.accessToken);
+      const { data } = await octokit.rest.actions.listRepoWorkflows({
+        owner: getOrg(), repo: req.params.repo, per_page: 100,
+      });
+      workflows = data.workflows.map((w: any) => w.name);
+    } catch {
+      // 403 and 404 are ordinary here: Actions disabled, or no permission.
+    }
     const vulnerableDeps = edges.filter(e => e.type === "has_vulnerable_dependency").map(e => ({
       name: e.sk.replace("DEPENDENCY#", ""),
       severity: e.metadata?.severity
@@ -141,14 +160,14 @@ router.get("/user-impact/:user", async (req: Request<{ user: string }>, res: Res
     const allRepos = Array.from(allReposMap.values());
     
     // Calculate how many distinct workflows this user can potentially influence
-    let workflowsReachable = 0;
-    for (const repo of allRepos) {
-      if (repo.permission === "admin" || repo.permission === "write" || repo.permission === "maintain") {
-        const repoEdges = await getEdgesForNode(`REPO#${repo.repo}`);
-        const wfs = repoEdges.filter(e => e.type === "uses_workflow");
-        workflowsReachable += wfs.length;
-      }
-    }
+    // Not counted any more.
+    //
+    // This walked every repository a person can write to and counted their
+    // workflow edges. Those edges are no longer collected, so the count would
+    // read zero for everybody: a confident number that means "not collected",
+    // which is worse than no number. The write access it was standing in for is
+    // reported directly, one line above.
+    const workflowsReachable = null;
 
     res.json({
       user: req.params.user,

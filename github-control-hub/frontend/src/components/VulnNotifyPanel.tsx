@@ -267,6 +267,20 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
                 onBlur={() => save({ bodyTemplate: body })}
                 className={inputClass + " font-mono text-xs"} />
             </div>
+            {/*
+              * The one thing somebody customising a subject needs to know, and
+              * cannot see from the form: their template renders against a
+              * digest, not against one alert. `{{repo}}` on an email covering
+              * forty repositories says "40 repositories", because naming
+              * whichever arrived first would be a sample presented as a fact.
+              */}
+            <p className="text-xs rounded-md px-2.5 py-2 bg-black/5 dark:bg-white/5 text-gray-600 dark:text-slate-300">
+              Alerts arriving together are sent as one email, so a template
+              renders against the whole group. Anything the group disagrees on,
+              like <code className="font-mono">{"{{repo}}"}</code>, is counted
+              rather than named. Use <code className="font-mono">{"{{count}}"}</code>{" "}
+              and <code className="font-mono">{"{{repos}}"}</code> to describe the group.
+            </p>
             <VariableChips variables={variables} target={tpl.target} onInsert={tpl.insert}>
               Times use the timezone set on the Security tab, which applies to every email this app sends.
             </VariableChips>

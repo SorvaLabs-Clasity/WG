@@ -104,15 +104,30 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
       "fifty rows a day saying nothing changed would bury the four that matter");
 
     const cdk = read("../infra/cdk-stack.ts");
-    check("the full rebuild still runs every six hours",
-      /GraphAggregationSchedule[\s\S]{0,300}Duration\.hours\(6\)/.test(cdk));
+    // Daily, because reconciliation is nearly all it still does: webhooks
+    // patch access as it changes and the light pass carries repository facts,
+    // so what is left is noticing a delivery that never arrived.
+    check("the full rebuild runs nightly at 22:00 Eastern",
+      /GraphAggregationSchedule[\s\S]{0,900}hour: "22"[\s\S]{0,200}AMERICA_NEW_YORK/.test(cdk),
+      "a rate(1 day) fires 24h after the last deploy, so the hour drifts with deploys");
+    check("  named as a zone, so it stays 10pm when the clocks change",
+      !/GraphAggregationSchedule[\s\S]{0,900}Schedule\.rate\(/.test(cdk),
+      "an events.Rule cron is UTC only, which is 10pm in winter and 11pm in summer");
     check("  the light pass every thirty minutes",
       /GraphLightRefreshSchedule[\s\S]{0,300}Duration\.minutes\(30\)/.test(cdk));
     check("  each says which mode it wants",
       /fromObject\(\{ mode: "full" \}\)/.test(cdk) && /fromObject\(\{ mode: "light" \}\)/.test(cdk),
       "an unlabelled invocation would run the expensive walk on the frequent schedule");
-    check("  and both target the one function",
-      (cdk.match(/new targets\.LambdaFunction\(graphFn/g) ?? []).length === 2);
+
+    // Exactly one, deliberately. Replacing a schedule by adding the new one and
+    // leaving the old is how a rebuild ends up running twice a night, and
+    // nothing about the app would look wrong: the walk is idempotent, so the
+    // only symptom is double the GitHub traffic at an hour nobody watches.
+    check("  and exactly one thing asks for a full rebuild",
+      (cdk.match(/mode: "full"/g) ?? []).length === 1,
+      "two schedules on the same walk doubles the org's GitHub traffic silently");
+    check("  and exactly one thing asks for a light one",
+      (cdk.match(/mode: "light"/g) ?? []).length === 1);
   }
 
   // ── the docs and the code agree about which events to subscribe ─────

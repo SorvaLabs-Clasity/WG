@@ -17,7 +17,12 @@ export interface UserImpactResponse {
   teams: string[];
   repos: { repo: string; access: string; team?: string; permission: string }[];
   writeOrAdminReposCount: number;
-  productionPipelinesReachable: number;
+  /**
+   * Null since workflow edges stopped being collected. Kept in the shape rather
+   * than removed, because a field that vanishes and a field that is null are
+   * different things to anything already reading it.
+   */
+  productionPipelinesReachable: number | null;
 }
 
 export async function fetchGraphMeta(): Promise<{ edgeCount: number }> {

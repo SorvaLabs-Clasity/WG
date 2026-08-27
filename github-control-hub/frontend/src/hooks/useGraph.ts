@@ -14,7 +14,7 @@ export function useGraphMeta() {
 /**
  * How old the access graph is.
  *
- * Polled slowly rather than never: the scheduled rebuild lands every six hours
+ * Polled slowly rather than never: the scheduled rebuild lands once a day
  * without anyone here doing anything, and a page left open would otherwise go on
  * claiming the age it had when it loaded.
  */

@@ -44,7 +44,7 @@ function GraphFreshness({ busy, onReread }: { busy: boolean; onReread: () => voi
       <span>
         {synced ? <>Synced {synced}</> : <>Never synced</>}
         {a?.edgeCount ? <> · {a.edgeCount.toLocaleString()} connections</> : null}
-        {" · updates itself every 6 hours"}
+        {" · updates itself daily, and on every change GitHub reports"}
       </span>
 
       {failedAfterSuccess && <Pill intent="warn">Last sync failed</Pill>}

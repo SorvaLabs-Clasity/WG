@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchAlerts, resolveAlert, unresolveAlert, simulateAlert } from "../api/alerts";
+import { fetchAlerts, simulateAlert } from "../api/alerts";
 
 export function useAlerts() {
   return useQuery({
@@ -9,25 +9,13 @@ export function useAlerts() {
   });
 }
 
-export function useResolveAlert() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: resolveAlert,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["alerts"] });
-    },
-  });
-}
-
-export function useUnresolveAlert() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: unresolveAlert,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["alerts"] });
-    },
-  });
-}
+/*
+ * `useResolveAlert` and `useUnresolveAlert` were removed with the button.
+ *
+ * An alert is a record, not a task: it ages out on its own, and the only thing
+ * that still marks one is the webhook worker noticing the change was undone.
+ * The server no longer exposes a route for either.
+ */
 
 export function useSimulateAlert() {
   const queryClient = useQueryClient();

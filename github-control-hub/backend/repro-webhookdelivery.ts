@@ -559,6 +559,64 @@ const code = (src: string) => src
     "getSystemTokenAsync throwing here used to escape uncaught and fail the whole SQS batch to the DLQ");
 }
 
+// ── a reversal closes what it actually reversed ──────────────────────
+//
+// `autoResolveAlerts` matched on repository and type alone, so removing one of
+// two people added to a repository marked *both* their alerts as undone, and
+// restoring protection on one branch marked every branch in that repository.
+//
+// That was survivable while `resolved` only meant "off the queue". It is not
+// now that the Security tab prints "undone" as a claim about what happened on
+// GitHub, because for the second person the claim is false.
+{
+  const fs = require("node:fs") as typeof import("node:fs");
+  const service = fs.readFileSync(`${__dirname}/src/services/alertService.ts`, "utf8");
+  const worker = fs.readFileSync(`${__dirname}/src/webhooks/processDelivery.ts`, "utf8");
+
+  check("a reversal can name what it reversed",
+    /export async function autoResolveAlerts\(\s*repo: string,\s*type: AlertType,\s*subject\?: string,/.test(service),
+    "matching on repository and type alone closes the neighbours too");
+  check("  and the filter uses it",
+    /\(subject === undefined \|\| a\.subject === subject\)/.test(service));
+
+  // The one case that must not regress into the original bug: an old row has
+  // no subject, so there is no way to know what it was about. Closing it would
+  // be a guess printed as a fact.
+  check("  a row with no subject is left alone when a subject is given",
+    /subject === undefined \|\| a\.subject === subject/.test(service)
+      && !/a\.subject === subject \|\| !a\.subject/.test(service),
+    "closing unattributed rows is the original bug wearing a new hat");
+
+  check("removing a member reverses that member only",
+    /autoResolveAlerts\(repoName, "admin_added", sanitizeField\(payload\.member\?\.login, 64\)\)/.test(worker));
+  check("restoring protection reverses that branch only",
+    /autoResolveAlerts\(repoName, "protection_removed", branch\)/.test(worker));
+  check("a repository going private still reverses the whole repository",
+    /autoResolveAlerts\(repoName, "repo_made_public"\);/.test(worker),
+    "the repository is the subject there, so naming one would be noise");
+
+  // A recreated ruleset gets a new id from GitHub, so an id could never match
+  // its own reversal.
+  check("a ruleset is matched by name, never by id",
+    /const ruleset = sanitizeField\(payload\.ruleset\?\.name, 100\);/.test(worker)
+      && /autoResolveAlerts\(repoName, "ruleset_disabled", ruleset\)/.test(worker));
+
+  // `changes` is only populated on an edit, so the deletion recorded its
+  // target as the literal word "branch".
+  check("a deleted branch rule reads its name from the rule, not from changes",
+    /const branch = sanitizeField\(payload\.rule\?\.name, 100\);/.test(worker)
+      && !/changes\?\.name\?\.from, 100\) \|\| "branch"/.test(worker),
+    "the delete recorded its own target as the word 'branch'");
+  check("  and the alert says which branch",
+    /Branch protection on \$\{branch\} was completely removed/.test(worker));
+
+  // Four trailing optionals is where somebody passes a value into the wrong
+  // slot and the compiler cannot tell them.
+  check("the optional half of createAlert is named, not positional",
+    /export interface AlertContext/.test(service)
+      && /ctx: AlertContext = \{\}/.test(service));
+}
+
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
 process.exit(failures === 0 ? 0 : 1);
 })();

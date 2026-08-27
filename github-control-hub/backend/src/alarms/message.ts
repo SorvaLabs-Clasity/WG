@@ -22,6 +22,11 @@ export const TEMPLATE_VARIABLES: { name: string; description: string }[] = [
   { name: "number", description: "For Renovate: the pull request number" },
   { name: "package", description: "For Dependabot: the vulnerable package" },
   { name: "advisory", description: "For Dependabot: the advisory summary" },
+  // Filled on a grouped message, where one event's fields describe only one of
+  // the many rows the email covers.
+  { name: "count", description: "How many events this email covers" },
+  { name: "repos", description: "The repositories involved, named or counted" },
+  { name: "what", description: "What happened, in a phrase" },
 ];
 
 const VARIABLE_NAMES = new Set(TEMPLATE_VARIABLES.map(v => v.name));
@@ -36,11 +41,57 @@ const VARIABLE_NAMES = new Set(TEMPLATE_VARIABLES.map(v => v.name));
  * somebody can still fix it.
  */
 export function render(template: string, vars: Record<string, string | number | undefined>): string {
-  return template.replace(/\{\{(\w+)\}\}/g, (whole, name: string) => {
+  const filled = template.replace(/\{\{(\w+)\}\}/g, (whole, name: string) => {
     if (!VARIABLE_NAMES.has(name)) return whole;
     const v = vars[name];
     return v === undefined || v === null ? "" : String(v);
   });
+  return dropEmptyLines(template, filled);
+}
+
+/**
+ * Remove lines that held nothing but variables, all of which came out empty.
+ *
+ * Templates have no conditionals, and the same template now renders both a
+ * single event and a digest of two hundred. Some variables only exist on one of
+ * those paths: `{{url}}` is a link to one alert, and a digest covering forty
+ * repositories has no single link to give. Blanking it leaves the line, so the
+ * email arrives with a gap exactly where the reader was looking for the link,
+ * which reads as a broken email rather than an absent value.
+ *
+ * Only lines whose entire content was placeholders are removed, so a blank line
+ * somebody typed deliberately stays a blank line. A line with any literal text
+ * on it, "Package: {{package}}", is left alone: the author wrote a label, and
+ * silently dropping their label would be its own surprise.
+ */
+function dropEmptyLines(template: string, filled: string): string {
+  const before = template.split("\n");
+  const after = filled.split("\n");
+  // A `{{var}}` cannot span lines, so the two always have the same line count
+  // and index into each other. Bail rather than guess if that ever stops being
+  // true, because mangling somebody's email body is worse than a blank line.
+  if (before.length !== after.length) return filled;
+
+  const kept = after.filter((line, i) => {
+    const src = before[i];
+    // Was it only placeholders to begin with, and is there nothing left?
+    const wasOnlyVars = /\{\{\w+\}\}/.test(src) && src.replace(/\{\{\w+\}\}/g, "").trim() === "";
+    return !(wasOnlyVars && line.trim() === "");
+  });
+
+  // Nothing went, so nothing about the author's spacing is this function's
+  // business. Return the rendered text exactly as it came.
+  if (kept.length === after.length) return filled;
+
+  // A removed line takes its blank separator with it. Dropping `{{url}}` from
+  // the top of a body otherwise leaves the email opening on an empty line, and
+  // dropping a line from between two paragraphs leaves a double gap. Both look
+  // like the template broke. Only runs created by a drop are touched, which is
+  // why this is below the early return.
+  return kept
+    .join("\n")
+    .replace(/^\n+/, "")
+    .replace(/\n{3,}/g, "\n\n");
 }
 
 /** Names used in a template that are not real variables. Reported when saving. */
@@ -87,7 +138,21 @@ export const DEFAULT_ALARM_BODY =
   `Organization: {{org}}\nObserved at: {{time}}\n\n` +
   `This is an automated message from GitHub Control Hub.`;
 
-export const DEFAULT_SECURITY_SUBJECT = "[{{severity}}] {{repo}}: {{message}}";
+/**
+ * The defaults below are written to read correctly as **one** event and as a
+ * digest of two hundred, because the same template renders both.
+ *
+ * Three rules came out of that:
+ *
+ *   - Nothing leads with `[`. A digest prefixes its own `[12]`, and two
+ *     brackets in a row is where a subject stops being scannable.
+ *   - Every variable used is one that is populated on both paths. `{{url}}`
+ *     and `{{advisory}}` describe a single alert, so on a digest they are
+ *     empty and their line is dropped rather than left as a gap.
+ *   - `{{repo}}` and `{{package}}` say "40 repositories" or "3 packages" when
+ *     the group disagrees, so the sentence stays true either way.
+ */
+export const DEFAULT_SECURITY_SUBJECT = "{{severity}}: {{message}} in {{repo}}";
 export const DEFAULT_SECURITY_BODY =
   `{{message}}\n\nRepository: {{repo}}\nSeverity: {{severity}}\n` +
   `Organization: {{org}}\nDetected at: {{time}}\n\n` +
@@ -102,9 +167,9 @@ export const DEFAULT_RENOVATE_BODY =
   `{{title}}\n\nOrganization: {{org}}\nOpened at: {{time}}\n\n` +
   `This is an automated message from GitHub Control Hub.`;
 
-export const DEFAULT_DEPENDABOT_SUBJECT = "[{{severity}}] {{repo}}: {{package}}";
+export const DEFAULT_DEPENDABOT_SUBJECT = "{{severity}}: {{package}} in {{repo}}";
 export const DEFAULT_DEPENDABOT_BODY =
-  `{{url}}\n\n{{advisory}}\n\nRepository: {{repo}}\nPackage: {{package}}\n` +
+  `{{url}}\n{{advisory}}\n\nPackage: {{package}}\nRepository: {{repo}}\n` +
   `Severity: {{severity}}\nOrganization: {{org}}\nDetected at: {{time}}\n\n` +
   `This is an automated message from GitHub Control Hub.`;
 

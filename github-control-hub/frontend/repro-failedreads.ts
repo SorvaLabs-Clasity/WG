@@ -52,8 +52,13 @@ const read = (p: string) => fs.readFileSync(p, "utf8");
     // Security derives its whole headline from counts, so the check has to come
     // before them: an unread list counts as zero, which renders as the all-clear.
     const sec = read("src/pages/SecurityPage.tsx");
-    check("  and Security does so before it counts anything",
-      sec.indexOf("alertsFailed) {") < sec.indexOf("const clean ="),
+    // The headline, not the arithmetic: the counts are a hook and must run on
+    // every render. What must not happen is drawing a headline from them
+    // before knowing whether the list was read at all.
+    const guard = sec.indexOf("if (isError) {");
+    const headline = sec.indexOf("<StatusSlab");
+    check("  and Security does so before it draws a headline from them",
+      guard > -1 && headline > -1 && guard < headline,
       "counting an unread list gives zero, and zero renders as the all-clear");
 
     // Each list on Access has its own query; one failing must not blank the others.

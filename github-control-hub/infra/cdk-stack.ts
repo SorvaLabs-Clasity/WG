@@ -5,6 +5,8 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import { NodejsFunction } from "aws-cdk-lib/aws-lambda-nodejs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
+import * as scheduler from "aws-cdk-lib/aws-scheduler";
+import * as schedulerTargets from "aws-cdk-lib/aws-scheduler-targets";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
@@ -623,18 +625,54 @@ export class GitHubControlHubStack extends cdk.Stack {
         ],
       }));
 
-      // Six hours, not minutes. The walk is expensive in GitHub's rate limit and
-      // what it records — who is in which team, who can reach which repository —
-      // changes on the scale of days. The manual refresh in the app covers the
-      // case six hours is too long for, which is someone wanting to see an access
-      // change they just made.
-      new events.Rule(this, "GraphAggregationSchedule", {
-        ruleName: `${stackPrefix}-graph-aggregation`,
-        description: "Rebuilds the access graph from GitHub",
-        schedule: events.Schedule.rate(cdk.Duration.hours(6)),
-        targets: [new targets.LambdaFunction(graphFn, {
-          event: events.RuleTargetInput.fromObject({ mode: "full" }),
-        })],
+      // Daily, not six-hourly, and the reason is what this pass is actually for.
+      //
+      // Almost nothing here is collected only by this walk any more: webhooks
+      // patch access as it changes, and the thirty-minute pass carries
+      // repository facts and team composition. What remains is reconciliation.
+      // Webhook delivery is best-effort, and a missed one leaves the graph
+      // holding something that is no longer true, with nothing else in the
+      // system able to notice. This walk re-reads everything and deletes what
+      // GitHub no longer has, so a missed delivery is wrong for a day rather
+      // than forever.
+      //
+      // Running it four times a day bought a worst case of six hours instead of
+      // twenty-four on a failure that is already rare, at four times the GitHub
+      // traffic. The manual recrawl covers anyone who needs it sooner.
+      //
+      // **At 10pm Eastern, not "once every 24 hours".** A `rate(1 day)` fires
+      // 24 hours after the rule was last written, so the hour it lands on is
+      // whenever the stack happened to be deployed, and it moves every time
+      // the rule is touched. This walk reads every repository in the
+      // organization and is the heaviest GitHub traffic the app produces, so
+      // the hour it runs at is worth deciding rather than inheriting.
+      //
+      // EventBridge Scheduler rather than an `events.Rule`, because a Rule's
+      // cron is UTC only. Pinning 03:00 UTC would be 10pm in winter and 11pm
+      // once the clocks go forward. Naming the zone keeps it at 10pm all year
+      // and moves the UTC hour instead, which is the way round that matches
+      // what somebody means by "10pm".
+      const graphSchedule = new scheduler.Schedule(this, "GraphAggregationSchedule", {
+        scheduleName: `${stackPrefix}-graph-aggregation`,
+        description: "Rebuilds the access graph from GitHub, nightly at 10pm Eastern",
+        schedule: scheduler.ScheduleExpression.cron({
+          minute: "0", hour: "22", day: "*", month: "*", year: "*",
+          timeZone: cdk.TimeZone.AMERICA_NEW_YORK,
+        }),
+        target: new schedulerTargets.LambdaInvoke(graphFn, {
+          input: scheduler.ScheduleTargetInput.fromObject({ mode: "full" }),
+          // The rebuild is idempotent: it re-reads GitHub and writes what it
+          // finds. A retry costs traffic, not correctness. But two of them
+          // overlapping would double the traffic for nothing, so a failure
+          // waits for tomorrow rather than being retried into the same night.
+          retryAttempts: 0,
+        }),
+      });
+      // So the nightly walk is findable from the console without knowing the
+      // scheduler exists.
+      new cdk.CfnOutput(this, "GraphRebuildSchedule", {
+        value: `${graphSchedule.scheduleName} (22:00 America/New_York)`,
+        description: "When the access graph is rebuilt from GitHub",
       });
 
       // The cheap half, far more often.

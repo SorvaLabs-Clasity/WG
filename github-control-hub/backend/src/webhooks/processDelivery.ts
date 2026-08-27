@@ -110,7 +110,8 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
 
   if (repoName) {
     if (event === "repository" && payload.action === "publicized") {
-      await createAlert(repoName, "repo_made_public", `Repository ${repoName} was made public.`, "critical", undefined, occurredAt);
+      await createAlert(repoName, "repo_made_public",
+        `Repository ${repoName} was made public.`, "critical", { occurredAt, actor });
       await logActivity("repo.publicized", actor, repoName, repoName, "Repository was made public", undefined, "github");
     }
 
@@ -120,19 +121,27 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
 
     if (event === "member" && payload.action === "added") {
       const userAdded = sanitizeField(payload.member?.login, 64);
-      await createAlert(repoName, "admin_added", `User ${userAdded} was added to ${repoName}. Verify privileges.`, "medium", undefined, occurredAt);
+      await createAlert(repoName, "admin_added",
+        `User ${userAdded} was added to ${repoName} by ${actor}. Verify privileges.`,
+        "medium", { occurredAt, actor, subject: userAdded });
     }
 
     if (event === "team" && payload.action === "added_to_repository") {
-      await createAlert(repoName, "team_added", `Team ${sanitizeField(payload.team?.name, 100)} was added to ${repoName}.`, "medium", undefined, occurredAt);
+      await createAlert(repoName, "team_added",
+        `Team ${sanitizeField(payload.team?.name, 100)} was added to ${repoName}.`,
+        "medium", { occurredAt, actor, subject: sanitizeField(payload.team?.name, 100) });
     }
 
     if (event === "team" && payload.action === "removed_from_repository") {
-      await createAlert(repoName, "team_removed", `Team ${sanitizeField(payload.team?.name, 100)} was removed from ${repoName}.`, "medium", undefined, occurredAt);
+      await createAlert(repoName, "team_removed",
+        `Team ${sanitizeField(payload.team?.name, 100)} was removed from ${repoName}.`,
+        "medium", { occurredAt, actor, subject: sanitizeField(payload.team?.name, 100) });
     }
 
     if (event === "team" && payload.action === "edited" && payload.changes?.repository?.permissions) {
-      await createAlert(repoName, "team_permission_changed", `Team ${sanitizeField(payload.team?.name, 100)} permissions were changed in ${repoName}.`, "high", undefined, occurredAt);
+      await createAlert(repoName, "team_permission_changed",
+        `Team ${sanitizeField(payload.team?.name, 100)} permissions were changed in ${repoName}.`,
+        "high", { occurredAt, actor, subject: sanitizeField(payload.team?.name, 100) });
     }
 
     if (event === "repository" && payload.action === "privatized") {
@@ -164,31 +173,63 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
     }
 
     if (event === "branch_protection_rule") {
+      // The branch pattern the rule covers, which GitHub sends on every action
+      // for this event. `changes.name.from` was used on the delete, and
+      // `changes` is only populated on an *edit*, so the deletion recorded its
+      // target as the literal word "branch".
+      const branch = sanitizeField(payload.rule?.name, 100);
+
       if (payload.action === "deleted") {
-        await createAlert(repoName, "protection_removed", `Branch protection was completely removed.`, "critical", undefined, occurredAt);
-        await logActivity("branch.unprotect", actor, repoName, sanitizeField(payload.changes?.name?.from, 100) || "branch", "Branch protection removed via GitHub", undefined, "github");
+        await createAlert(repoName, "protection_removed",
+          branch
+            ? `Branch protection on ${branch} was completely removed.`
+            : `Branch protection was completely removed.`,
+          "critical", { occurredAt, actor, subject: branch });
+        await logActivity("branch.unprotect", actor, repoName, branch || "branch", "Branch protection removed via GitHub", undefined, "github");
       } else if (payload.action === "created") {
-        await autoResolveAlerts(repoName, "protection_removed");
+        // Only the branch that came back. Restoring protection on `main` used
+        // to mark every branch in the repository as protected again.
+        await autoResolveAlerts(repoName, "protection_removed", branch);
       } else if (payload.action === "edited") {
-        await createAlert(repoName, "protection_drift", `Branch protection rules were modified (drift detected).`, "high", undefined, occurredAt);
-        await logActivity("github.branch_protection_edited", actor, repoName, sanitizeField(payload.rule?.name, 100) || "branch", "Branch protection rules modified", undefined, "github");
+        await createAlert(repoName, "protection_drift",
+          branch
+            ? `Branch protection rules on ${branch} were modified (drift detected).`
+            : `Branch protection rules were modified (drift detected).`,
+          "high", { occurredAt, actor, subject: branch });
+        await logActivity("github.branch_protection_edited", actor, repoName, branch || "branch", "Branch protection rules modified", undefined, "github");
       }
     }
 
     if (event === "repository_ruleset") {
+      // The name, deliberately, not the id. A ruleset that is deleted and
+      // recreated comes back with a new id, so an id would never match its own
+      // reversal. Names are what people keep stable.
+      const ruleset = sanitizeField(payload.ruleset?.name, 100);
+
       if (payload.action === "deleted") {
-        await createAlert(repoName, "ruleset_disabled", `A repository ruleset was deleted.`, "critical", undefined, occurredAt);
-        await logActivity("repo.ruleset.delete", actor, repoName, sanitizeField(String(payload.ruleset?.id || ""), 64), "Ruleset deleted via GitHub", undefined, "github");
+        await createAlert(repoName, "ruleset_disabled",
+          ruleset
+            ? `Repository ruleset ${ruleset} was deleted.`
+            : `A repository ruleset was deleted.`,
+          "critical", { occurredAt, actor, subject: ruleset });
+        await logActivity("repo.ruleset.delete", actor, repoName, ruleset || sanitizeField(String(payload.ruleset?.id || ""), 64), "Ruleset deleted via GitHub", undefined, "github");
       } else if (payload.action === "created") {
-        await autoResolveAlerts(repoName, "ruleset_disabled");
+        await autoResolveAlerts(repoName, "ruleset_disabled", ruleset);
       } else if (payload.action === "edited") {
-        await createAlert(repoName, "protection_drift", `Repository ruleset was modified (drift detected).`, "high", undefined, occurredAt);
-        await logActivity("github.ruleset_edited", actor, repoName, sanitizeField(payload.ruleset?.name, 100) || "ruleset", "Repository ruleset modified", undefined, "github");
+        await createAlert(repoName, "protection_drift",
+          ruleset
+            ? `Repository ruleset ${ruleset} was modified (drift detected).`
+            : `Repository ruleset was modified (drift detected).`,
+          "high", { occurredAt, actor, subject: ruleset });
+        await logActivity("github.ruleset_edited", actor, repoName, ruleset || "ruleset", "Repository ruleset modified", undefined, "github");
       }
     }
 
     if (event === "member" && payload.action === "removed") {
-      await autoResolveAlerts(repoName, "admin_added");
+      // Only this member's alert. Removing one of two people added to a
+      // repository used to mark both as undone, which the Security tab now
+      // states out loud, and for the second person it was untrue.
+      await autoResolveAlerts(repoName, "admin_added", sanitizeField(payload.member?.login, 64));
     }
   }
 

@@ -1,5 +1,6 @@
 import { buildMessage, formatTimestamp, sanitizeSubject } from "./message";
 import { meetsMinimumSeverity } from "./evaluate";
+import { groupBurst, describeBurst, nameAndCount, worstSeverity, type Axis } from "./grouping";
 
 /**
  * The Vulnerabilities-tab toggles: email once per Renovate pull request, and
@@ -160,7 +161,10 @@ export function buildDigest(
   items: Array<{ item: Record<string, string>; occurredAt: string }>,
   rendered: { subject: string; body: string },
   label: { singular: string; plural: string },
-  repo: string,
+  /** What happened, in a phrase: "left-pad across 100 repositories". */
+  headline: string,
+  /** Where, when the grouping was by subject and the reader cannot infer it. */
+  reached?: string,
 ): { subject: string; body: string } {
   if (items.length <= 1) return rendered;
 
@@ -180,16 +184,31 @@ export function buildDigest(
   // limit, and SNS rejects the publish outright. That failure leaves the rows
   // pending by design, so the effect would be a digest retried every tick
   // forever and never delivered.
+  // The customised subject, rendered against the group rather than discarded.
+  //
+  // This used to be overwritten outright, so anybody who had set a subject to
+  // carry a ticket prefix or a mail-filter keyword silently lost it the moment
+  // two events arrived together, which is exactly when the email matters most.
+  // `rendered.subject` already went through the template with group variables
+  // in scope; the count is prefixed because a digest that does not say how many
+  // it covers reads as a single event.
   const subject = sanitizeSubject(
-    `[${n}] ${repo}: ${n} ${n === 1 ? label.singular : label.plural}`,
+    rendered.subject ? `[${n}] ${rendered.subject}` : `[${n}] ${headline}`,
     `${n} new ${n === 1 ? label.singular : label.plural}`,
   );
 
-  const lines = sorted.map(({ item }) => {
-    const sev = item.severity ? `[${item.severity}] ` : "";
-    const what = item.package || item.title || item.number || "(no description)";
-    return `  ${sev}${what}${item.url ? `\n    ${item.url}` : ""}`;
-  });
+  // Grouped by subject, the interesting half is which repositories it reached,
+  // and every line would otherwise repeat the same package name.
+  const lines = reached
+    ? sorted.map(({ item }) => {
+        const sev = item.severity ? `[${item.severity}] ` : "";
+        return `  ${sev}${item.repo ?? "(unknown repository)"}${item.url ? `\n    ${item.url}` : ""}`;
+      })
+    : sorted.map(({ item }) => {
+        const sev = item.severity ? `[${item.severity}] ` : "";
+        const what = item.package || item.title || item.number || "(no description)";
+        return `  ${sev}${what}${item.url ? `\n    ${item.url}` : ""}`;
+      });
 
   // SNS refuses a message over 256 KB. Enabling Dependabot on a monorepo can
   // raise hundreds of alerts at once, and a truncated list that says so is far
@@ -203,7 +222,8 @@ export function buildDigest(
   }
 
   const body =
-    `${n} ${n === 1 ? label.singular : label.plural} in ${repo}:\n\n` +
+    `${headline}\n\n` +
+    (reached ? `Repositories: ${reached}\n\n` : "") +
     `${shown.join("\n")}\n` +
     (omitted ? `\n  …and ${omitted} more, not listed to keep this email deliverable.\n` : "") +
     `\n---\n\n${rendered.body}`;
@@ -211,7 +231,8 @@ export function buildDigest(
   return { subject, body };
 }
 
-export type FeedName = "renovate-pr" | "dependabot-alert";
+export /** Everything the buffer can hold, including the security channel. */
+type FeedName = "renovate-pr" | "dependabot-alert" | "security";
 
 export interface PendingRow {
   id: string;
@@ -237,6 +258,7 @@ export interface FlushDeps {
 const FEED_LABELS: Record<FeedName, { singular: string; plural: string }> = {
   "renovate-pr": { singular: "Renovate pull request", plural: "Renovate pull requests" },
   "dependabot-alert": { singular: "Dependabot alert", plural: "Dependabot alerts" },
+  "security": { singular: "security alert", plural: "security alerts" },
 };
 
 /**
@@ -258,20 +280,37 @@ export async function flushPending(deps: FlushDeps): Promise<{
   const pending = await deps.listPending();
   if (pending.length === 0) return { items: 0, repos: 0, messages: 0, failures: 0 };
 
-  const groups = new Map<string, PendingRow[]>();
+  // Grouped per feed by whichever axis describes the burst, rather than always
+  // by repository. One advisory reaching a hundred repositories used to be a
+  // hundred emails, each with one line in it; grouped by the advisory it is one.
+  // A single repository with thirty findings still groups by the repository,
+  // because there the advisory axis is the one that would fragment.
+  const byFeed = new Map<FeedName, PendingRow[]>();
   for (const row of pending) {
-    const key = `${row.feed} ${row.repo}`;
-    const existing = groups.get(key);
-    if (existing) existing.push(row);
-    else groups.set(key, [row]);
+    const list = byFeed.get(row.feed as FeedName);
+    if (list) list.push(row); else byFeed.set(row.feed as FeedName, [row]);
+  }
+
+  const groups = new Map<string, { feed: FeedName; axis: Axis; label: string; rows: PendingRow[] }>();
+  for (const [feed, rows] of byFeed) {
+    const { axis, groups: burst } = groupBurst(rows.map(r => ({
+      ...r,
+      // What the event is about. The buffered item carries it under different
+      // names per feed, so it is normalised here rather than in three callers.
+      subject: r.item.package || r.item.title || r.item.message || r.item.widget || r.repo,
+    })));
+    for (const g of burst) {
+      groups.set(`${feed} ${axis} ${g.key}`, {
+        feed, axis, label: g.key, rows: g.rows as unknown as PendingRow[],
+      });
+    }
   }
 
   let messages = 0, failures = 0, items = 0;
   const tz = await deps.timezone();
 
-  for (const [key, rows] of groups) {
-    const feed = key.split(" ")[0] as FeedName;
-    const repo = rows[0].repo;
+  for (const [, group] of groups) {
+    const { feed, axis, label, rows } = group;
     const settings = await deps.settings(feed);
 
     // Turned off, or switched to per-alert, while these sat in the buffer.
@@ -285,15 +324,58 @@ export async function flushPending(deps: FlushDeps): Promise<{
     if (!topicArn) { await deps.markSent(rows.map(r => r.id)); continue; }
 
     const first = rows[0];
+    const repos = [...new Set(rows.map(r => r.repo).filter(Boolean))];
+    const what = describeBurst(
+      rows.map(r => ({
+        repo: r.repo,
+        subject: r.item.package || r.item.title || r.item.message || r.item.widget || r.repo,
+      })),
+      axis, label,
+    );
+    /**
+     * A row-level field, but only where the whole group agrees on it.
+     *
+     * `{package}` on a digest covering three different packages used to render
+     * whichever row happened to be first. That is not wrong so much as
+     * arbitrary, and a subject line stating one package when three are affected
+     * reads as a fact rather than as a sample. Where the group disagrees, the
+     * count is the true answer.
+     */
+    const agreed = (key: string, plural: string) => {
+      const values = [...new Set(rows.map(r => r.item[key]).filter(Boolean))];
+      if (values.length === 1) return values[0];
+      if (values.length === 0) return undefined;
+      return `${values.length} ${plural}`;
+    };
+
     const rendered = buildMessage(settings.subjectTemplate, settings.bodyTemplate, {
       ...first.item,
+      package: agreed("package", "packages"),
+      title: agreed("title", "pull requests"),
+      message: agreed("message", "events"),
+      advisory: rows.length === 1 ? first.item.advisory : undefined,
+      // Severity is the exception: the worst one, not a count. "3 severities"
+      // tells a reader nothing they can act on, and the digest already sorts
+      // critical to the top, so the subject naming the worst present is both
+      // the useful answer and the one the body already leads with.
+      severity: worstSeverity(rows.map(r => r.item.severity)),
+      // Describes one alert. On a digest the list above carries every link, and
+      // an empty line where a link belongs reads as a broken email, so the
+      // template drops the line instead.
+      url: rows.length === 1 ? first.item.url : undefined,
+      repo: repos.length === 1 ? repos[0] : `${repos.length} repositories`,
+      repos: nameAndCount(repos),
+      count: String(rows.length),
+      what,
       org: deps.org,
       state: "ALARM",
       time: formatTimestamp(first.occurredAt, tz),
     });
     const msg = buildDigest(
       rows.map(r => ({ item: r.item, occurredAt: r.occurredAt })),
-      rendered, FEED_LABELS[feed], repo,
+      rendered, FEED_LABELS[feed],
+      what,
+      axis === "subject" ? nameAndCount(rows.map(r => r.repo)) : undefined,
     );
 
     if (await deps.publish(topicArn, msg.subject, msg.body)) {

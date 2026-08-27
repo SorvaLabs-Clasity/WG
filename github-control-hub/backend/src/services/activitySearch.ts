@@ -47,6 +47,7 @@ export const MAX_EXAMINED_PER_REQUEST = 3000;
  */
 const PREFIXES: Array<[string, string]> = [
   ["aws.", "aws"],
+  ["security.", "github"],
   ["sync.", "app"],
   ["widget.", "app"],
   ["scanner.", "app"],

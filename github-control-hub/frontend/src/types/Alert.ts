@@ -20,6 +20,10 @@ export interface SecurityAlert {
   message: string;
   severity: AlertSeverity;
   timestamp: string;
+  /** Who made the change. Absent on rows written before this was recorded. */
+  actor?: string;
+  /** The member, branch or ruleset this is about, where there is one. */
+  subject?: string;
   resolved: boolean;
   resolvedAt?: string;
   resolvedBy?: string;

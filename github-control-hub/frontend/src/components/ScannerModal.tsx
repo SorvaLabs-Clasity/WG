@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useCreateScanner, useUpdateScanner } from "../hooks/useScanners";
 import { useRepos } from "../hooks/useRepos";
 import type { ScannerCondition } from "../types/Scanner";
-import { QUERY_OPTIONS } from "../utils/queryOptions";
+import { QUERY_OPTIONS, paramNoun } from "../utils/queryOptions";
 import { TagInput } from "./TagInput";
 
 export default function ScannerModal({ isOpen, onClose, scanner }: any) {
@@ -510,9 +510,9 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                 <TagInput
                                   tags={cond.queryParam ? cond.queryParam.split(",").map(s => s.trim()).filter(Boolean) : []}
                                   onChange={(tags) => updateCondition(idx, "queryParam", tags.join(", "))}
-                                  placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'} and press Enter`}
+                                  placeholder={`Enter ${paramNoun(selectedQuery.paramLabel)} and press Enter`}
                                   onPendingTextChange={(pending) => updateCondition(idx, "hasPendingQuery", pending)}
-                                  icon="ph-git-branch"
+                                  icon={selectedQuery.paramIcon ?? selectedQuery.icon}
                                   colorClass="blue"
                                 />
                               ) : (
@@ -520,7 +520,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   type="text"
                                   value={cond.queryParam || ""}
                                   onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
-                                  placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
+                                  placeholder={`Enter ${paramNoun(selectedQuery.paramLabel)}...`}
                                   className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                                 />
                               )}
@@ -619,9 +619,9 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                 <TagInput
                                   tags={cond.queryParam ? cond.queryParam.split(",").map(s => s.trim()).filter(Boolean) : []}
                                   onChange={(tags) => updateCondition(idx, "queryParam", tags.join(", "))}
-                                  placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'} and press Enter`}
+                                  placeholder={`Enter ${paramNoun(selectedQuery.paramLabel)} and press Enter`}
                                   onPendingTextChange={(pending) => updateCondition(idx, "hasPendingQuery", pending)}
-                                  icon="ph-git-branch"
+                                  icon={selectedQuery.paramIcon ?? selectedQuery.icon}
                                   colorClass="blue"
                                 />
                               ) : (
@@ -629,7 +629,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   type="text"
                                   value={cond.queryParam || ""}
                                   onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
-                                  placeholder={`Enter ${selectedQuery.paramLabel?.toLowerCase() || 'value'}...`}
+                                  placeholder={`Enter ${paramNoun(selectedQuery.paramLabel)}...`}
                                   className="block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200"
                                 />
                               )}

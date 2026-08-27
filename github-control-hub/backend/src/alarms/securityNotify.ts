@@ -27,10 +27,32 @@ export interface SecurityNotifyDeps {
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   publish: (topicArn: string, subject: string, body: string) => Promise<boolean>;
   org: string;
+  /** Absent in tests that only exercise the immediate path. */
+  buffer?: (row: {
+    repo: string; subject: string; severity: string; type: string; occurredAt: string;
+  }) => Promise<void>;
 }
 
 export type NotifyOutcome =
-  | "sent" | "disabled" | "below-threshold" | "no-group" | "publish-failed";
+  | "sent" | "disabled" | "below-threshold" | "no-group" | "publish-failed"
+  /** Held for the next flush, so a burst arrives as one message. */
+  | "buffered";
+
+/**
+ * Which alerts go out at once, and which wait to be grouped.
+ *
+ * Critical means somebody needs to know now: a repository is public, or branch
+ * protection is gone. Those publish immediately, one each, and a burst of them
+ * is a burst worth having in the mailbox.
+ *
+ * Everything below critical waits for the next flush. A team added to a hundred
+ * repositories is one action, and it used to arrive as a hundred separate
+ * emails, which is the shape that teaches people to filter the whole feed into
+ * a folder they never open.
+ */
+export function sendsImmediately(severity: string): boolean {
+  return (severity ?? "").toLowerCase() === "critical";
+}
 
 export async function notifySecurityAlert(
   alert: NotifiableAlert,
@@ -46,6 +68,21 @@ export async function notifySecurityAlert(
   if (!settings.groupId) return "no-group";
   const topicArn = await deps.topicArnFor(settings.groupId);
   if (!topicArn) return "no-group";
+
+  // Below critical, hand it to the buffer and let the flush group it with
+  // whatever else arrives in the same window.
+  if (!sendsImmediately(alert.severity) && deps.buffer) {
+    await deps.buffer({
+      repo: alert.repo,
+      // What was done, not which row it was. The flush groups on this, so it is
+      // what decides whether a hundred rows become one email.
+      subject: alert.message.replace(/\s+on\s+\S+$/, "").trim() || alert.type,
+      severity: alert.severity,
+      type: alert.type,
+      occurredAt: alert.timestamp,
+    });
+    return "buffered";
+  }
 
   const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, {
     repo: alert.repo,

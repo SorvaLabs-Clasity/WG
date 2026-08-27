@@ -260,7 +260,20 @@ export async function handler(): Promise<void> {
     const flushed = await flushPending({
       listPending,
       markSent: markPendingSent,
-      settings: getFeedSettings,
+      // The security channel has no feed settings row. It reads the security
+      // tab's own toggle instead, and is always grouped: an alert reaches the
+      // buffer only after that tab decided it should be sent at all.
+      settings: async (feed: string) => {
+        if (feed !== "security") return getFeedSettings(feed as any);
+        const sec = await getSecuritySettings();
+        return {
+          enabled: sec.enabled,
+          groupId: sec.groupId,
+          grouping: "per-repository",
+          subjectTemplate: sec.subjectTemplate,
+          bodyTemplate: sec.bodyTemplate,
+        };
+      },
       topicArnFor: async (groupId: string) => (await getGroup(groupId))?.topicArn,
       publish,
       timezone: async () => (await getSecuritySettings()).timezone,

@@ -27,7 +27,8 @@ export function confirmRebuild(edgeCount?: number): boolean {
     + "\u2022 Uses the organization's shared GitHub rate limit, so it can slow "
     + "the app down for everyone\n"
     + "\u2022 Runs in this app, so leave it open until it finishes\n\n"
-    + "This happens automatically every 6 hours. Only run it now if you need a "
+    + "This happens automatically once a day, and access changes arrive by webhook "
+    + "within seconds regardless. Only run it now if you need a "
     + "change reflected before the next one."
   );
 }

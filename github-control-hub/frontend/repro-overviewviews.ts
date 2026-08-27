@@ -99,6 +99,56 @@ const code = page.split("\n")
       "share is null for a check with nothing to divide by");
   }
 
+  // ── the widget form asks for what the query actually takes ──────────
+  //
+  // "Repos exposed through vulnerable package(s)" asked for a branch name and
+  // put a git-branch icon on every package you typed. The tag input was built
+  // for the branch queries and the copy was hard-coded there, so every query
+  // added afterwards inherited a branch form. The state was called
+  // `branchTags`, which is how it stayed unnoticed.
+  {
+    const src = (f: string) => fs.readFileSync(`./src/${f}`, "utf8");
+    const modal = src("pages/AnalyticsPage.tsx");
+    const scanner = src("components/ScannerModal.tsx");
+    const options = src("utils/queryOptions.ts");
+    const { QUERY_OPTIONS, paramNoun } = await import("./src/utils/queryOptions");
+
+    // Scoped to the tag input, since a branch *query* legitimately shows a
+    // branch icon in the picker.
+    const tagInputs = [...modal.matchAll(/<TagInput[\s\S]{0,900}?\/>/g),
+                       ...scanner.matchAll(/<TagInput[\s\S]{0,900}?\/>/g)].map(m => m[0]);
+    check("every query's tag input exists to check", tagInputs.length >= 3, String(tagInputs.length));
+
+    const queryTagInputs = tagInputs.filter(t => t.includes("selectedQuery"));
+    check("  and the ones driven by a query hard-code neither icon nor prompt",
+      queryTagInputs.length >= 3 &&
+      queryTagInputs.every(t => !/icon="/.test(t) && !/placeholder="/.test(t)),
+      "a literal here is a promise that every future query is about branches");
+
+    check("  the icon comes from the query",
+      queryTagInputs.every(t => /icon=\{selectedQuery\.paramIcon/.test(t)));
+    check("  and the prompt from its own label",
+      queryTagInputs.every(t => /placeholder=\{`Type \$\{paramNoun|placeholder=\{`Enter \$\{paramNoun/.test(t)));
+
+    // The errors beside the field said "branch name" too.
+    check("no leftover copy calls a package a branch",
+      !/the branch name before saving|At least one branch name is required/.test(modal),
+      "the message you get for typing a package name wrong said 'branch'");
+
+    // Every tag query declares what its tags are, or the fallback silently
+    // puts the query's own icon on them.
+    for (const q of QUERY_OPTIONS.filter(o => o.useTagInput)) {
+      check(`  ${q.id} says what its tags are`, !!q.paramIcon && !!q.paramLabel, q.id);
+    }
+    check("the package query asks for packages",
+      QUERY_OPTIONS.find(q => q.id === "repos-dependent-on")?.paramIcon === "ph-package");
+    check("  and reads as a noun in a sentence",
+      paramNoun("Package name(s)") === "package name" && paramNoun("Branch Name(s)") === "branch name",
+      paramNoun("Package name(s)"));
+    check("  with the list typed, so an optional field cannot be inferred away",
+      /QUERY_OPTIONS: QueryOption\[\]/.test(options));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

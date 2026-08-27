@@ -48,7 +48,8 @@ assumed.
 
 **A tick.** An EventBridge rule in AWS invoking a Lambda function on a timer.
 Nobody presses anything; AWS calls the function on a schedule you set when the
-stack was deployed. Four of these exist, at 5 minutes, 30 minutes, 1 hour and 6 hours.
+stack was deployed. Four of these exist: at 5 minutes, 30 minutes and 1 hour, plus one
+that runs at a fixed time each night rather than on an interval.
 
 **A sweep.** One complete run of the guardrail engine: list the resources in the
 account, check each against each rule, write down what it found. Described in
@@ -136,7 +137,7 @@ because a person clicked, or GitHub sent a webhook.
 | Guardrail run for one resource | seconds after a covered resource changes, via CloudTrail | the same function |
 | Alarm evaluation, then the PR walk | every 5 minutes, whenever **Monitor pull requests** is on | `github-control-hub-alarm-evaluator` |
 | Light graph refresh | every 30 minutes | `github-control-hub-graph-aggregator` (`mode: light`) |
-| Access graph rebuild | every 6 hours | `github-control-hub-graph-aggregator` (`mode: full`) |
+| Access graph rebuild | nightly, 22:00 America/New_York | `github-control-hub-graph-aggregator` (`mode: full`) |
 
 The schedules are EventBridge rules created by the CDK stack. Changing one means
 editing `infra/cdk-stack.ts` and redeploying — they are not settings in the app.
@@ -359,7 +360,7 @@ Three writers and one reader, and only the first of them is a Lambda.
 ```
   THREE THINGS WRITE THE CONNECTIONS
 
-  every 6 hours ──────▶ the rebuilder ──▶ ask GitHub for everything ──┐
+  nightly at 10pm ────▶ the rebuilder ──▶ ask GitHub for everything ──┐
                         (a Lambda)        teams, members, who can     │
                                           reach what                  │
                                                                       ▼
@@ -386,7 +387,7 @@ Three writers and one reader, and only the first of them is a Lambda.
 
 | In the diagram | What it is |
 |---|---|
-| every 6 hours | An EventBridge rule, `github-control-hub-graph-aggregation` |
+| nightly at 10pm Eastern | An EventBridge **Scheduler** schedule, `github-control-hub-graph-aggregation`. A Scheduler schedule rather than an EventBridge rule because only Scheduler understands a named timezone: a rule's cron is UTC, which would be 10pm in winter and 11pm after the clocks change. |
 | the rebuilder | A Lambda: `github-control-hub-graph-aggregator`, 1024 MB, 15-minute limit (`jobs/graphAggregator.ts`) |
 | ask GitHub | Ordinary GitHub API calls with the app's own credentials — about four per repository |
 | the connections table | A DynamoDB table, `github-control-hub-graph-edges` |
@@ -445,7 +446,7 @@ them. That sweep has been removed.
    that every security check reads as current. A failed sync leaves the previous
    one in place, which is merely old. A failed *write* is rethrown so the
    freshness stamp is never reached — a snapshot dated now is worse than one
-   dated six hours ago, because only one of them looks wrong.
+   dated last night, because only one of them looks wrong.
 6. **Sync from GitHub calls the same function in-process**, not the Lambda:
    `routes/graph.ts` imports `aggregateGraphData` and runs it in the desktop
    backend with your token. (Guardrails do the opposite and invoke their Lambda.
@@ -461,7 +462,7 @@ them. That sweep has been removed.
 
 ### Two schedules, not one
 
-The full walk runs every 6 hours. A **light pass runs every 30 minutes** and
+The full walk runs once a night. A **light pass runs every 30 minutes** and
 refreshes only the edges that walk is otherwise the sole writer of.
 
 The split exists because the cost is wildly uneven. The expensive part is
@@ -485,7 +486,7 @@ API with the same token.
 
 | | **Light** | **Full** |
 | --- | --- | --- |
-| Runs | every **30 minutes** | every **6 hours** |
+| Runs | every **30 minutes** | **nightly at 22:00 America/New_York** |
 | EventBridge rule | `graph-light-refresh` | `graph-aggregation` |
 | Payload | `{ mode: "light" }` | `{ mode: "full" }` |
 | Lambda | `graph-aggregator` | **the same function** |
@@ -579,7 +580,7 @@ the "last synced" marker the Access page reads. That timestamp means *"when was
 the complete picture last rebuilt"*, and a light pass has not rebuilt it. So team
 membership and repository visibility can be fresher than the timestamp claims.
 Overstating it would be worse: a marker that moves every half hour while
-collaborators and branches are still six hours old is a marker that lies.
+collaborators and branches are still from last night is a marker that lies.
 
 Two rules the light pass follows, both of which would be silent if broken:
 
@@ -594,7 +595,7 @@ Two rules the light pass follows, both of which would be silent if broken:
 
 `public-repos`, `archived-repos-with-access`, `stale-repos`, `unowned-repos`,
 `empty-teams` and `repos-dependent-on` read edge types **no webhook wrote**, so
-their answers could only ever be as fresh as the last 6-hourly rebuild.
+their answers could only ever be as fresh as last night's rebuild.
 
 That was a gap rather than a decision: every one of them arrives on an event the
 worker was already receiving and already acting on. A repository going public
@@ -622,7 +623,7 @@ rebuild, which lists alerts with `state=open` and so would never have written it
 
 ### What the rebuild does
 
-The rebuild — the 6-hour tick, or **Sync from GitHub** on the Access tab — walks
+The rebuild — the nightly tick, or **Full GitHub recrawl** on the Access tab — walks
 the whole organization and turns it into *connections*: small rows saying "this
 person reaches this repository, at this level, by this route".
 
@@ -648,10 +649,39 @@ row every time, which was the single most expensive thing in the app.
 
 Roughly **four GitHub requests per repository**, plus two per team and about a
 dozen for the organization overall. Three hundred repositories works out at
-around 1,300 requests — under a tenth of one hour's allowance of 15,000, which is
-why it runs every six hours rather than every few minutes.
+around 1,300 requests — under a tenth of one hour's allowance of 15,000. Cost is not
+why it runs nightly rather than every few minutes: webhooks and the 30-minute light
+pass already keep the graph current, so all this walk still does is reconcile. See
+"Why nightly, and why 10pm" below.
 
 It was about three times that until the compliance sweep was removed from it.
+
+### Why nightly, and why 10pm
+
+Almost nothing in the graph is collected *only* by this walk any more. Webhooks
+patch access as it changes, and the 30-minute light pass carries repository
+facts and team composition. What is left is **reconciliation**: webhook delivery
+is best-effort, and a delivery that never arrives leaves the graph holding
+something that is no longer true, with nothing else in the system able to
+notice. The walk re-reads everything and deletes what GitHub no longer has, so a
+missed delivery is wrong for a day rather than forever.
+
+Running it four times a day bought a worst case of six hours instead of
+twenty-four on a failure that is already rare, at four times the GitHub traffic.
+**Full GitHub recrawl** covers anyone who needs it sooner.
+
+The hour is chosen rather than inherited. An interval schedule
+(`rate(1 day)`) fires 24 hours after the rule was last written, so the hour it
+lands on is whenever the stack happened to be deployed, and it moves every time
+the rule is touched. This is the heaviest GitHub traffic the app produces, so it
+runs at 22:00 in `America/New_York`, named as a zone so it stays 10pm on both
+sides of a daylight-saving change.
+
+There is deliberately **exactly one** trigger for the full walk. Adding a new
+schedule and leaving an old one in place would run the rebuild twice a night
+with no visible symptom, because the walk is idempotent: the only effect is
+double the GitHub traffic at an hour nobody is watching. A test asserts that
+only one thing in the stack asks for `mode: "full"`.
 
 ### What is recorded, and the one thing that is not
 
@@ -701,12 +731,12 @@ repository", and without both one of those questions would need a full scan.
 
 ### Webhooks patch it between rebuilds
 
-The six-hour rebuild is not the only writer. When GitHub sends a webhook saying a
+The nightly rebuild is not the only writer. When GitHub sends a webhook saying a
 branch was created, a collaborator was added, or protection changed,
 `webhooks/processDelivery.ts` calls the matching function in `graphEdgeService`
 and updates **just those rows**.
 
-So the graph is usually more current than "six hours old" suggests: the rebuild is
+So the graph is usually more current than "rebuilt last night" suggests: the rebuild is
 the floor, and webhooks keep the fast-moving parts up to date in between. What a
 rebuild catches that webhooks cannot is anything that happened while the webhook
 was misconfigured, plus connection types no webhook reports.
@@ -1520,16 +1550,51 @@ Taking "a team was added to a repository" as the example:
 
 ### Three things worth knowing
 
-**Some alerts clear themselves and some do not.** `repo_made_public` resolves
-when the repository is made private again, `protection_removed` when a rule is
-recreated, `admin_added` when the member is removed. `team_added` has no such
-partner — removing the team writes a *second* alert rather than resolving the
-first. The `alerts` table has no TTL either, so these accumulate until somebody
-resolves them by hand.
+**No alert is ever cleared by hand.** There is no Resolve button and no route
+behind one. An alert is a record of something that happened, not a task: it is
+written, counted, and expires on the same 13-month schedule as the activity log.
+
+The reason is that nearly every alert reports a change somebody made on purpose.
+Asking a person to clear each one recorded only that a button had been pressed,
+in a row nobody opened again, and a queue that is right almost every time is a
+queue nobody reads. So the Security tab shows a **last 7 days** window that
+empties itself, a 12-week chart, and per-kind trends against each kind's own
+baseline. What deserves attention is the kind running *above* its usual rate,
+which the page computes rather than asking somebody to notice.
+
+**`resolved` now means one thing: the change was undone.** The webhook worker
+still sets it when a repository is made private again, when branch protection
+is recreated, when a ruleset comes back, or when a member is removed, and the
+page shows those as "undone since". `team_added` has no such partner: removing
+the team writes a *second* alert rather than marking the first. Rows carrying a
+person's login in `resolvedBy` are from before this change and mean only that
+somebody pressed the old button.
+
+**A reversal closes only what it reversed.** Each alert records a `subject`:
+the member's login, the branch pattern, the ruleset's name. `autoResolveAlerts`
+used to match on repository and type alone, so removing **one** of two people
+added to a repository marked *both* alerts undone, and restoring protection on
+one branch marked every branch in that repository. Harmless while `resolved`
+only meant "off the queue"; not harmless once the page states it as a fact.
+
+Two details worth keeping:
+
+- The ruleset subject is its **name**, not its id. A deleted-and-recreated
+  ruleset comes back with a new id, so an id could never match its own
+  reversal.
+- **A row with no `subject` is never closed by a subject-bearing reversal.**
+  Those are rows written before this existed and there is no way to tell what
+  they were about. Closing them would be the original bug; they age out
+  instead.
+
+**Who made the change is recorded.** The webhook's `sender.login` is stored on
+the alert as `actor`. It used to be computed for the activity log and dropped,
+so a record of a privilege change knew who *received* it and not who *granted*
+it.
 
 **An alert does not touch the access graph.** The worker updates connections for
 branches, collaborators and protection, but not for teams — so the alert appears
-in seconds while the Access map still shows the team's old connections until the 6-hour
+in seconds while the Access map still shows the team's old connections until the nightly
 rebuild.
 
 **A lost delivery is lost.** Rejected at the gateway, GitHub retries for a while
@@ -1866,7 +1931,7 @@ membership**, pull requests, and Dependabot alerts.
 
 `membership` is the newest, and the only one that has to be ticked by hand on an
 existing installation. Without it `empty-teams` can only ever be as fresh as the
-last six-hourly rebuild, because nothing else reports somebody joining or leaving
+last nightly rebuild, because nothing else reports somebody joining or leaving
 a team.
 
 `organization` and `issues` are deliberately **not** among them. Nothing in the

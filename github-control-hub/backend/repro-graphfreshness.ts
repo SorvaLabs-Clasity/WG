@@ -100,8 +100,10 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
     const stack = fs.readFileSync(`${__dirname}/../infra/cdk-stack.ts`, "utf8");
     check("a rule rebuilds the graph on a schedule",
       /GraphAggregationSchedule/.test(stack) && /aggregateHandler/.test(stack));
-    check("  measured in hours, not minutes — the walk covers the whole org",
-      /GraphAggregationSchedule[\s\S]{0,400}?Schedule\.rate\(cdk\.Duration\.hours\(/.test(stack));
+    check("  once a night rather than on a timer: the walk covers the whole org",
+      /GraphAggregationSchedule[\s\S]{0,900}?ScheduleExpression\.cron\(/.test(stack));
+    check("  at an hour somebody chose, not whenever it was last deployed",
+      /GraphAggregationSchedule[\s\S]{0,900}?hour: "22"/.test(stack));
   }
 
   // ── the sync writes only what changed ───────────────────────────────

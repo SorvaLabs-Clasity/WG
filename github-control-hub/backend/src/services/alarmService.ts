@@ -477,6 +477,18 @@ export async function saveSecuritySettings(
 
 export type NotifyFeed = "renovate-pr" | "dependabot-alert";
 
+/**
+ * What the pending buffer can hold.
+ *
+ * Wider than NotifyFeed, and deliberately a separate type. Security alerts are
+ * buffered so a burst can be grouped the way Dependabot findings already were,
+ * but they have no feed settings row: the security tab's own toggle and
+ * severity floor decide whether an alert is buffered at all, and by the time it
+ * reaches the buffer that decision is behind it. Folding it into NotifyFeed
+ * would have demanded templates and a grouping mode that mean nothing here.
+ */
+export type BufferChannel = NotifyFeed | "security";
+
 export const FEED_SETTINGS_ID: Record<NotifyFeed, string> = {
   "renovate-pr": "renovate-pr-settings",
   "dependabot-alert": "dependabot-alert-settings",
@@ -595,8 +607,8 @@ export async function saveFeedSettings(
 export interface PendingNotification {
   id: string;
   kind: "pending";
-  feed: NotifyFeed;
-  /** What the digest groups by. */
+  feed: BufferChannel;
+  /** The repository, which is one of the two axes the flush can group on. */
   repo: string;
   /** Rendered fields for one line of the digest. */
   item: Record<string, string>;
@@ -610,7 +622,7 @@ export interface PendingNotification {
 const PENDING_TTL_HOURS = 24;
 
 export async function bufferNotification(
-  feed: NotifyFeed,
+  feed: BufferChannel,
   repo: string,
   item: Record<string, string>,
   occurredAt: string,
@@ -628,7 +640,7 @@ export async function bufferNotification(
 }
 
 /** Everything buffered and not yet sent, oldest first. */
-export async function listPending(feed?: NotifyFeed): Promise<PendingNotification[]> {
+export async function listPending(feed?: BufferChannel): Promise<PendingNotification[]> {
   const rows = (await allRecords()).filter(
     r => r.kind === "pending" && !(r as PendingNotification).sentAt,
   ) as PendingNotification[];

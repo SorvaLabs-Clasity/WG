@@ -117,7 +117,7 @@ const page = fs.readFileSync("./src/pages/AccessPage.tsx", "utf8");
       ["that it draws on a shared rate limit", /shared GitHub rate limit/],
       ["that the cost lands on everyone", /the app down for everyone/],
       ["that closing the app stops it", /leave it open until it finishes/],
-      ["that waiting would have done it anyway", /automatically every 6 hours/],
+      ["that waiting would have done it anyway", /automatically once a day/],
     ] as [string, RegExp][]) {
       check(`  it states ${what}`, re.test(dialog));
     }

@@ -64,11 +64,12 @@ export const CATEGORY_SOURCES: Record<ActivityCategory, Array<"app" | "github">>
  */
 const PREFIXES: Array<[string, ActivityCategory]> = [
   ["aws.", "aws"],
+  ["security.", "github"],
 
   // Collection runs: a sync, a sweep, a re-check. Housekeeping in the same sense
   // the rest of this bucket is — the app going and looking, rather than anything
   // in GitHub or AWS changing. Without a prefix here they would fall through to
-  // the organization stream, where a six-hourly sync would sit between two
+  // the organization stream, where a scheduled sync would sit between two
   // protection changes and push real events off the first page.
   ["sync.", "app"],
 

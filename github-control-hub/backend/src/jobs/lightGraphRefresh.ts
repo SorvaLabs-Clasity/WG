@@ -112,7 +112,8 @@ export async function refreshLightEdges(fallbackToken?: string): Promise<LightRe
     return result;
   }
 
-  // The same single GraphQL walk the full rebuild makes.
+  // The same single listing the full rebuild makes. REST, not GraphQL: the
+  // comment here said GraphQL for a while and no query was ever involved.
   //
   // Not an optional extra: this pass writes `repo_meta` as a whole item, so
   // omitting a field the full rebuild writes would erase it every thirty

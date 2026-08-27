@@ -31,6 +31,7 @@ export type ActivityAction =
   | "conflict.pending"
   | "conflict.override"
   | "conflict.skip"
+  | "security.alert"
   | "repo.created"
   | "repo.deleted"
   | "repo.renamed"
