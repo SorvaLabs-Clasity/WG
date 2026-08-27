@@ -239,6 +239,54 @@ const branch = (repo: string, name: string, prot: boolean): EdgeLike =>
         fs.readFileSync(`${__dirname}/../scripts/backfill-alert-feed.sh`, "utf8")));
   }
 
+  // ── a fresh account gets all of this without being told ────────────
+  //
+  // Everything above is worthless on a new install if the setup script does not
+  // provision it. Two of these have already been broken once by an edit
+  // elsewhere in the same file.
+  {
+    console.log("\nsetting up a new account from nothing");
+
+    const setup = fs.readFileSync(`${__dirname}/../../scripts/setup-aws-account.sh`, "utf8");
+
+    check("the alerts table is created with its index",
+      /create_table "\$\{PREFIX\}-alerts"[\s\S]{0,400}?IndexName=feed-index/.test(setup));
+
+    // `alerts` left the TABLES array to get its own create_table call, and
+    // quietly left the wait loop with it. The TTL step then ran against a table
+    // still CREATING, could not read it, and skipped it: no expiry on the one
+    // table expiry was added for.
+    // Identified by what the loop *does*, not by what precedes it. Anchoring on
+    // the echo above broke the moment a comment was written between them, and
+    // anchoring on "the first loop mentioning TABLES" matched the create loop,
+    // which says nothing about waiting.
+    const wait = setup.match(/for t in ([^\n]*); do\n\s*\$AWS dynamodb wait table-exists/)?.[1] ?? "";
+    check("  and is waited for before anything modifies it",
+      /\balerts\b/.test(wait), wait);
+    check("  which happens before expiry is enabled",
+      setup.indexOf("Waiting for tables to become ACTIVE") < setup.indexOf("enable_ttl \"${PREFIX}-${t}\""),
+      "update-time-to-live against a CREATING table fails");
+
+    check("expiry is enabled on the alerts table",
+      /for t in activity alerts alarms auth-codes; do[\s\S]{0,80}?enable_ttl/.test(setup));
+    check("  and a skipped one is a warning, not a line to scroll past",
+      /WARNING: could not read TTL/.test(setup),
+      "silently not enabling expiry is how the table grew without bound before");
+
+    // An account provisioned before the index existed skips create_table
+    // entirely, and the tab reads *through* the index: without it the Security
+    // tab shows nothing at all.
+    check("an existing alerts table has the index added to it",
+      /Checking alerts table index/.test(setup)
+        && /global-secondary-index-updates[\s\S]{0,200}?feed-index/.test(setup));
+    check("  waiting for it to go ACTIVE before moving on",
+      /IndexStatus" --output text\)" == "ACTIVE" \]\]; do[\s\S]{0,60}?sleep 10/.test(setup));
+    check("  and rows left outside the index are reported, not silently rewritten",
+      /attribute_not_exists\(feed\)" --select COUNT/.test(setup)
+        && /backfill-alert-feed\.sh --apply/.test(setup),
+      "adding an index is a schema change; rewriting every row is the caller's call");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

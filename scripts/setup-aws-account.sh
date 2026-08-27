@@ -192,7 +192,7 @@ enable_ttl() {
     --query "TimeToLiveDescription.TimeToLiveStatus" --output text 2>/dev/null || echo "UNKNOWN")
   case "$status" in
     ENABLED|ENABLING) echo "    already on:  $name" ;;
-    UNKNOWN)          echo "    unreadable:  $name (skipped)" ;;
+    UNKNOWN)          echo "    WARNING: could not read TTL on $name, so expiry was NOT enabled." ;;
     *)
       $AWS dynamodb update-time-to-live --table-name "$name" \
         --time-to-live-specification "Enabled=true,AttributeName=ttl" >/dev/null
@@ -300,9 +300,53 @@ for pair in "id-index:id" "parentId-index:parentId"; do
 done
 echo
 
+# ── 1c. The feed index on an alerts table that already existed ──
+# Same reason as the activity indexes above: create_table leaves an existing
+# table alone, so an account provisioned before this index existed would skip
+# it. The Security tab reads *through* this index, so without it the tab shows
+# no alerts at all rather than showing them slowly.
+echo "==> Checking alerts table index"
+$AWS dynamodb wait table-exists --table-name "${PREFIX}-alerts"
+have=$($AWS dynamodb describe-table --table-name "${PREFIX}-alerts" \
+  --query "Table.GlobalSecondaryIndexes[?IndexName=='feed-index'].IndexName" --output text 2>/dev/null || true)
+if [[ "$have" == *"feed-index"* ]]; then
+  echo "    feed-index already present"
+else
+  echo "    creating feed-index (backfill can take several minutes)"
+  $AWS dynamodb update-table --table-name "${PREFIX}-alerts" \
+    --attribute-definitions AttributeName=feed,AttributeType=S AttributeName=timestamp,AttributeType=S \
+    --global-secondary-index-updates \
+      '[{"Create":{"IndexName":"feed-index","KeySchema":[{"AttributeName":"feed","KeyType":"HASH"},{"AttributeName":"timestamp","KeyType":"RANGE"}],"Projection":{"ProjectionType":"ALL"}}}]' >/dev/null
+  until [[ "$($AWS dynamodb describe-table --table-name "${PREFIX}-alerts" \
+      --query "Table.GlobalSecondaryIndexes[?IndexName=='feed-index'].IndexStatus" --output text)" == "ACTIVE" ]]; do
+    sleep 10
+  done
+  echo "    feed-index active"
+fi
+
+# An index only holds rows carrying both of its keys, so alerts written before
+# this existed are not in it and the tab cannot see them. Reported rather than
+# fixed here: adding an index is a schema change, rewriting every row is not,
+# and that is the caller's call to make.
+stale=$($AWS dynamodb scan --table-name "${PREFIX}-alerts" \
+  --filter-expression "attribute_not_exists(feed)" --select COUNT \
+  --query "Count" --output text 2>/dev/null || echo 0)
+if [[ "$stale" =~ ^[0-9]+$ ]] && [ "$stale" -gt 0 ]; then
+  echo
+  echo "    NOTE: $stale existing alert(s) are not in the index and will not"
+  echo "          appear on the Security tab. To add them:"
+  echo "            ./scripts/backfill-alert-feed.sh --apply"
+fi
+echo
+
 # ── 2. Wait, before anything that modifies a table ──
 echo "==> Waiting for tables to become ACTIVE"
-for t in "${TABLES[@]}" activity scanners graph-edges org-config auth-codes aws-guardrails aws-exclusions aws-findings; do
+# `alerts` is listed here explicitly because it is no longer in TABLES: it needs
+# its own create_table call for the feed-index, and dropping out of the array
+# quietly dropped it out of this wait too. The TTL step below then ran against a
+# table still CREATING, could not read it, and skipped it. On a fresh account
+# that means no expiry on the one table this was all added for.
+for t in "${TABLES[@]}" alerts activity scanners graph-edges org-config auth-codes aws-guardrails aws-exclusions aws-findings; do
   $AWS dynamodb wait table-exists --table-name "${PREFIX}-${t}"
 done
 
