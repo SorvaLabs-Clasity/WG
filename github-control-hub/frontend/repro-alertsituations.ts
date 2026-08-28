@@ -14,7 +14,8 @@
  */
 import fs from "node:fs";
 import {
-  toSituations, trends, recent, wasReverted, isRestingState, BURST_GAP_MS,
+  toSituations, trends, recent, wasReverted, isRestingState, countBySeverity,
+  worstIn, BASELINE_WEEKS, BURST_GAP_MS,
 } from "./src/lib/alertSituations";
 
 let failures = 0;
@@ -171,7 +172,7 @@ const alert = (over: Partial<any> = {}): any => ({
 
   // ── the page uses it ─────────────────────────────────────────────────
   {
-    const page = fs.readFileSync("./src/pages/SecurityPage.tsx", "utf8");
+    const page = fs.readFileSync("./src/components/ImportantEvents.tsx", "utf8");
     check("the security page groups alerts into situations",
       /toSituations\(/.test(page));
     // Via summarizeKinds, which folds trends() into the per-kind rows the
@@ -187,6 +188,76 @@ const alert = (over: Partial<any> = {}): any => ({
       "a button that clears a record is a queue, however it is drawn");
     check("  and the window is what replaced the queue",
       /recent\(all\)/.test(page) && /Last \{RECENT_DAYS\} days/.test(page));
+  }
+
+  // ── one critical outweighs a normal rate ────────────────────────────
+  //
+  // The headline was decided by rate alone: "above its usual rate" or nothing.
+  // An organization that makes a repository public most weeks therefore saw a
+  // calm "Nothing unusual" over a repository that had just gone public, because
+  // the rate was ordinary. The rate was ordinary. The event was not, and it is
+  // the event somebody needs to see.
+  {
+    console.log("\nseverity is not a rate");
+
+    // A kind that happens every week, at its usual rate, one of them critical.
+    const usual: AlertLike[] = [];
+    for (let w = 1; w <= 9; w++) {
+      // Offset by a day so none sits exactly on the seven-day boundary, which
+      // `recent` includes and would put two criticals in the window.
+      usual.push(alert({ type: "repo_made_public", severity: "critical", timestamp: at(w * 7 * DAY + DAY) }));
+    }
+    const withOne = [...usual, alert({ type: "repo_made_public", severity: "critical", timestamp: at(DAY) })];
+
+    check("one a week is not a rate anomaly",
+      !trends(withOne, NOW).some(t => t.direction === "up" || t.direction === "new"),
+      "so rate alone would call this an ordinary week");
+    check("  but the week is still not at rest",
+      !isRestingState(withOne, NOW),
+      "a critical in the window ends the resting state whatever the rate says");
+
+    check("a week with nothing critical and an ordinary rate is at rest",
+      isRestingState(usual.map(a => ({ ...a, severity: "low" })), NOW));
+
+    // The headline needs the count, not just the worst.
+    const counts = countBySeverity(recent(withOne, 7, NOW));
+    check("the counts are per severity, so the headline can lead with one",
+      counts.critical === 1 && counts.low === 0, counts);
+    check("  and the worst is available on its own",
+      worstIn(recent(withOne, 7, NOW)) === "critical");
+
+    const page = fs.readFileSync("./src/components/ImportantEvents.tsx", "utf8");
+    check("the page leads with critical, not with the rate",
+      /bySeverity\.critical > 0 \? "danger"/.test(page)
+        && /\$\{bySeverity\.critical\} critical this week/.test(page));
+    check("  and does not settle for info on a critical",
+      !/worstLately === "critical" \? "info"/.test(page),
+      "a critical rendered as a calm blue 'Nothing unusual'");
+  }
+
+  // ── the baseline reads in whole events ──────────────────────────────
+  {
+    console.log("\na tenth of an event is not a thing that happens");
+
+    // One event in the eight-week window is 0.125 a week. Arithmetically right
+    // and unreadable: nobody can check "usually 0.1" against what they recall.
+    const spiky = [
+      alert({ type: "admin_added", timestamp: at(30 * DAY) }),
+      ...Array.from({ length: 4 }, (_, i) =>
+        alert({ type: "admin_added", timestamp: at((i + 1) * 0.5 * DAY) })),
+    ];
+    const t = trends(spiky, NOW).find(x => x.type === "admin_added")!;
+    check("the spike is detected", t.direction === "up", t);
+    check("  and the comparison is a whole count over a stated window",
+      t.baselineTotal === 1 && t.baselineWeeks === BASELINE_WEEKS,
+      { total: t.baselineTotal, weeks: t.baselineWeeks });
+
+    const page = fs.readFileSync("./src/components/ImportantEvents.tsx", "utf8");
+    check("the tile says it that way",
+      /\$\{k\.baselineTotal\} in the \$\{k\.baselineWeeks\} weeks before/.test(page));
+    check("  and never prints the weekly mean at a reader",
+      !/usually \$\{k\.baseline\}/.test(page),
+      '"usually 0.1" is a rate wearing the clothes of a count');
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

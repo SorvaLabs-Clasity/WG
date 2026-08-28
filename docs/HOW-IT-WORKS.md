@@ -677,6 +677,37 @@ the rule is touched. This is the heaviest GitHub traffic the app produces, so it
 runs at 22:00 in `America/New_York`, named as a zone so it stays 10pm on both
 sides of a daylight-saving change.
 
+**At most one manual recrawl an hour, across the organization.** The button on
+Access and on Overview is one component reading one answer from the server, so
+it behaves the same in both places and for everybody.
+
+| State | What every screen shows |
+|---|---|
+| a walk running, anybody's | "Recrawling, this takes a few minutes…", naming who started it |
+| within an hour of the last walk | "Recrawl available in N min", with how long ago the last one was |
+| otherwise | "Full GitHub recrawl" |
+
+Both answers come from `graphAggregation` in the org config, which the desktop
+app and the nightly Lambda both write. That is what makes the state shared: it
+was `mutation.isPending` in one component on one machine, so it vanished on a
+tab switch and nobody else ever saw it.
+
+- **The nightly walk counts toward the hour.** It is a full recrawl like any
+  other and writes the same `lastAttemptAt`, so a manual attempt at 10:40pm,
+  forty minutes after the 10pm walk, waits twenty minutes.
+- **The nightly walk is never itself blocked.** The gate is in the route, which
+  the Lambda does not call. Skipping the pass that catches missed webhooks to
+  save one crawl would delay reconciliation by a day.
+- **Counted from when the last walk started**, not when it finished, so the
+  number somebody is shown matches the clock they watched.
+- **A run that never says it finished is assumed dead after 20 minutes**, past
+  the Lambda's own 15-minute timeout. `runningSince` is cleared however a walk
+  ends, including on a throw, but it cannot survive the process disappearing:
+  the Lambda being killed, or somebody closing the desktop app mid-walk.
+- **A refusal is a 409, not a 429.** The client turns any 429 into a
+  `RateLimitError` and raises a banner saying GitHub's rate limit was reached,
+  which is a different thing and untrue here.
+
 There is deliberately **exactly one** trigger for the full walk. Adding a new
 schedule and leaving an old one in place would run the rebuild twice a night
 with no visible symptom, because the walk is idempotent: the only effect is
@@ -1497,7 +1528,7 @@ Taking "a team was added to a repository" as the example:
                  write an alert              note it in the        email it, if
                         │                    activity feed         you turned that on
                         ▼
-                 the Security tab shows it
+            Activity, Important events
 ```
 
 **What each box really is:**
@@ -1588,9 +1619,9 @@ written, counted, and expires on the same 13-month schedule as the activity log.
 The reason is that nearly every alert reports a change somebody made on purpose.
 Asking a person to clear each one recorded only that a button had been pressed,
 in a row nobody opened again, and a queue that is right almost every time is a
-queue nobody reads. So the Security tab shows a **last 7 days** window that
-empties itself, a 12-week chart, and per-kind trends against each kind's own
-baseline. What deserves attention is the kind running *above* its usual rate,
+queue nobody reads. So **Activity, Important events** shows a **last 7 days**
+window that empties itself, a 12-week chart, and per-kind trends against each
+kind's own baseline. What deserves attention is the kind running *above* its usual rate,
 which the page computes rather than asking somebody to notice.
 
 **`resolved` now means one thing: the change was undone.** The webhook worker
@@ -1622,6 +1653,23 @@ Two details worth keeping:
 the alert as `actor`. It used to be computed for the activity log and dropped,
 so a record of a privilege change knew who *received* it and not who *granted*
 it.
+
+**There is no Security tab.** It was deleted, and everything it held lives in
+**Activity, under Important events**: the twelve-week chart, the per-kind
+trends, the repositories involved, the grouped rows that open to the events
+inside them, and the notification settings that decide who is emailed about
+them.
+
+The events are the same material as the activity streams, read as a shape
+rather than as a table, so they belong beside them. And "security alert" was
+the wrong name for them: almost every row is a legitimate action, a repository
+made public on purpose or somebody given the access they were hired to have.
+The word promised a vulnerability and delivered a changelog, which is what made
+the tab read as a queue.
+
+`/security` still resolves, as a redirect to `/activity`. The desktop app
+restores the route it was last on, so removing it outright would reopen to a
+blank screen for anyone who quit while it was open.
 
 **A lost webhook is caught by the nightly walk.** Every alert is created by the
 webhook worker and nothing re-derives them, so a delivery lost past GitHub's

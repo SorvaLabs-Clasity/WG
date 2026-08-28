@@ -10,6 +10,11 @@
  * spends the organization's shared GitHub rate limit doing it, and runs in this
  * application rather than in AWS, so closing the window stops it partway.
  *
+ * The cadence in here has been wrong twice. It is the nightly schedule in
+ * infra/cdk-stack.ts ("NightlyGraphRebuild", 22:00 America/New_York) and
+ * nothing else; a number typed here from memory is a number that goes stale
+ * the next time the schedule moves.
+ *
  * What it does *not* do is touch GitHub: it is read-only there, and it updates
  * the stored map by writing the differences rather than clearing it. Worth
  * knowing, and not worth putting in a dialog whose job is to slow somebody
@@ -27,8 +32,10 @@ export function confirmRebuild(edgeCount?: number): boolean {
     + "\u2022 Uses the organization's shared GitHub rate limit, so it can slow "
     + "the app down for everyone\n"
     + "\u2022 Runs in this app, so leave it open until it finishes\n\n"
-    + "This happens automatically once a day, and access changes arrive by webhook "
-    + "within seconds regardless. Only run it now if you need a "
-    + "change reflected before the next one."
+    + "\u2022 At most one an hour for the whole organization, counting the "
+    + "scheduled one\n\n"
+    + "This happens automatically every night at 10pm Eastern, and access changes "
+    + "arrive by webhook within seconds regardless. Only run it now if you need a "
+    + "change reflected before tonight."
   );
 }

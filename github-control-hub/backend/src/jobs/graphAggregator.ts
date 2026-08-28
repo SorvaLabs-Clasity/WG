@@ -5,6 +5,7 @@ import { buildRepoMeta } from "./repoMeta";
 import { invalidateAccessMap } from "../services/accessMapService";
 import { invalidateEdgeCache } from "../services/graphService";
 import { recordGraphAggregation } from "../services/orgConfigService";
+import { SCHEDULE_ACTOR } from "../services/recrawlWindow";
 
 interface GraphEdge {
   pk: string;
@@ -13,11 +14,43 @@ interface GraphEdge {
   metadata?: any;
 }
 
-export async function aggregateGraphData(fallbackToken?: string) {
+export async function aggregateGraphData(
+  fallbackToken?: string,
+  /**
+   * Who asked for this walk: a login, or SCHEDULE_ACTOR for the nightly one.
+   *
+   * Stored so every screen can say who is recrawling, not just that somebody
+   * is. Both callers pass it, and the two paths write the same row.
+   */
+  startedBy: string = SCHEDULE_ACTOR,
+) {
   // Stamped before the walk, so a run that dies mid-way still leaves evidence
   // it was tried. The success timestamp is written only once edges are on disk.
-  await recordGraphAggregation({ lastAttemptAt: new Date().toISOString() })
-    .catch(err => console.warn("[GraphAggregator] Could not record the attempt:", err?.message ?? err));
+  //
+  // `runningSince` goes on at the same moment and comes off in the `finally`
+  // below, so the hour-long window and the "recrawling" state on every screen
+  // are both driven by this one write.
+  await recordGraphAggregation({
+    lastAttemptAt: new Date().toISOString(),
+    runningSince: new Date().toISOString(),
+    startedBy,
+    // Cleared here rather than left to imply the *new* walk has already
+    // failed. A stale error beside a running walk reads as this one failing.
+    lastError: undefined,
+  }).catch(err => console.warn("[GraphAggregator] Could not record the attempt:", err?.message ?? err));
+
+  try {
+    return await runAggregation(fallbackToken);
+  } finally {
+    // Always, including on the throw. A walk that ends without clearing this
+    // leaves every screen in the organization saying "recrawling" until the
+    // twenty-minute ceiling ages it out.
+    await recordGraphAggregation({ runningSince: undefined, startedBy: undefined })
+      .catch(err => console.warn("[GraphAggregator] Could not clear the running flag:", err?.message ?? err));
+  }
+}
+
+async function runAggregation(fallbackToken?: string) {
 
   const token = await getSystemTokenAsync() || fallbackToken;
   if (!token) {

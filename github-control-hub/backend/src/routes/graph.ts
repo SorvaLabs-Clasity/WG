@@ -8,6 +8,7 @@ import { sanitizeError } from "../utils/errorSanitizer";
 import { sendIfRateLimited } from "../utils/rateLimit";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { getOrgConfig } from "../services/orgConfigService";
+import { recrawlState, refusalReason } from "../services/recrawlWindow";
 import { createOctokit, getOrg } from "../github/client";
 import { logSync } from "../services/activityService";
 
@@ -366,9 +367,42 @@ router.post("/aggregate", async (req: Request, res: Response) => {
           + `rebuild the access graph. It spends the organization's GitHub budget, not yours.`,
       });
     }
+    // ── one at a time, and once an hour ──────────────────────────────
+    //
+    // A full recrawl spends the organization's shared GitHub budget, and two
+    // people pressing this ten minutes apart is pure waste.
+    //
+    // Read-then-write, deliberately. Two clicks inside the same second both
+    // pass this check, because closing that window means a conditional write
+    // and `recordGraphAggregation` writes the whole config item with a Put.
+    // The exposure is one wasted crawl in a one-second window; the fix is a
+    // reshaping of how the config is stored. Left as it is, on purpose.
+    //
+    // Measured against whichever walk ran last, scheduled or manual, because
+    // the nightly one is a full recrawl like any other. The nightly walk itself
+    // is never blocked by this: it is the pass that catches missed webhooks,
+    // and delaying that by a day to save one crawl is the wrong trade.
+    const before = (await getOrgConfig()).graphAggregation;
+    const state = recrawlState(before);
+    const refused = refusalReason(state);
+    if (refused) {
+      // 409 for both, not 429 for the cooldown.
+      //
+      // 429 is the honest status code for a rate limit, but the client turns
+      // every 429 into a RateLimitError, which raises a global banner saying
+      // GitHub's rate limit has been reached. That is a different thing, it is
+      // untrue here, and it is alarming. A conflict with the resource's current
+      // state is what this actually is.
+      return res.status(409).json({
+        code: state.running ? "RECRAWL_IN_PROGRESS" : "RECRAWL_TOO_SOON",
+        error: refused,
+        state,
+      });
+    }
+
     const { aggregateGraphData } = await import("../jobs/graphAggregator");
     const startedAt = Date.now();
-    await aggregateGraphData(req.user?.accessToken);
+    await aggregateGraphData(req.user?.accessToken, req.user!.login);
 
     // Read back rather than assumed, for the same reason the response is: the
     // aggregator swallows its own fatal errors, so "it returned" is not "it
@@ -398,15 +432,22 @@ router.post("/aggregate", async (req: Request, res: Response) => {
 });
 
 /**
- * When the graph was last rebuilt.
+ * When the graph was last rebuilt, whether one is running, and who may start one.
  *
  * Ungated: every screen reading the graph should be able to say how old it is,
  * and the answer is two timestamps, not data about anybody.
+ *
+ * The *decision* is computed here rather than sent as raw fields for the client
+ * to interpret. Two copies of "is it running" and "how long must I wait" is two
+ * chances for the button to disagree with the server that refuses it.
  */
 router.get("/aggregate/status", async (_req: Request, res: Response) => {
   try {
     const { graphAggregation } = await getOrgConfig();
-    res.json({ aggregation: graphAggregation ?? null });
+    res.json({
+      aggregation: graphAggregation ?? null,
+      recrawl: recrawlState(graphAggregation),
+    });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "graph") });
   }

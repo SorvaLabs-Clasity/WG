@@ -42,11 +42,48 @@ export interface GraphAggregation {
   lastAttemptAt?: string;
   lastError?: string;
   edgeCount?: number;
+  runningSince?: string;
+  startedBy?: string;
 }
 
-export async function fetchGraphAggregation(): Promise<{ aggregation: GraphAggregation | null }> {
-  if (DEMO_MODE) return { aggregation: { lastSuccessAt: new Date().toISOString(), edgeCount: 100 } };
-  return apiGet<{ aggregation: GraphAggregation | null }>("/graph/aggregate/status");
+/**
+ * Whether a recrawl may be started, decided by the server.
+ *
+ * Deliberately an answer rather than the raw timestamps. Working out "is one
+ * running" and "how long must I wait" in the browser as well would be a second
+ * copy of the rule that refuses the request, and two copies is two chances for
+ * the button to disagree with the server behind it.
+ */
+export interface RecrawlState {
+  running: boolean;
+  runningSince?: string;
+  /** Who started it: a login, or "the nightly schedule". */
+  startedBy?: string;
+  minutesSinceLast: number | null;
+  waitMinutes: number;
+  allowed: boolean;
+}
+
+export interface AggregationStatus {
+  aggregation: GraphAggregation | null;
+  recrawl: RecrawlState;
+}
+
+const IDLE: RecrawlState = {
+  running: false, minutesSinceLast: null, waitMinutes: 0, allowed: true,
+};
+
+export async function fetchGraphAggregation(): Promise<AggregationStatus> {
+  if (DEMO_MODE) {
+    return {
+      aggregation: { lastSuccessAt: new Date().toISOString(), edgeCount: 100 },
+      recrawl: IDLE,
+    };
+  }
+  const r = await apiGet<Partial<AggregationStatus>>("/graph/aggregate/status");
+  // A server that predates this sends no `recrawl`. Treating that as "allowed"
+  // keeps the button working rather than locking it on a missing field.
+  return { aggregation: r.aggregation ?? null, recrawl: r.recrawl ?? IDLE };
 }
 
 export async function triggerGraphAggregation(): Promise<{ aggregation: GraphAggregation | null }> {

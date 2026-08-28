@@ -8,7 +8,7 @@ import { fetchRenovate } from "../api/renovate";
 import { apiGet } from "../api/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ago } from "../lib/ago";
-import { confirmRebuild } from "../lib/confirmRebuild";
+import RecrawlButton from "../components/RecrawlButton";
 import AlarmModal from "../components/AlarmModal";
 import { useAlarms } from "../hooks/useAlarms";
 import { useAuth } from "../App";
@@ -477,17 +477,7 @@ export default function AnalyticsPage() {
                 re-reads a stored answer in a second; this one re-reads the
                 whole organization over several minutes. They looked identical,
                 which is how the expensive one got pressed by mistake. */}
-            {canEditDashboard && (
-              <Button
-                variant="caution"
-                onClick={() => { if (confirmRebuild(graphInfo?.aggregation?.edgeCount)) aggregation.mutate(); }}
-                disabled={aggregation.isPending}
-                className="whitespace-nowrap"
-              >
-                <i className={`ph-bold ph-arrows-clockwise mr-2 ${aggregation.isPending ? "animate-spin" : ""}`}></i>
-                {aggregation.isPending ? "Recrawling, this takes a few minutes" : "Full GitHub recrawl"}
-              </Button>
-            )}
+            {canEditDashboard && <RecrawlButton className="whitespace-nowrap" />}
             {canEditDashboard && (
               <Button variant="primary" onClick={() => setShowAddModal(true)}>
                 <i className="ph-bold ph-plus mr-2"></i>Add check

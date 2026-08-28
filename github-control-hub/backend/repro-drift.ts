@@ -328,6 +328,40 @@ const branch = (repo: string, name: string, prot: boolean): EdgeLike =>
       "if CDK ever owns this table the message becomes wrong advice");
   }
 
+  // ── security alerts are not issues ──────────────────────────────────
+  {
+    console.log("\na security alert is logged as one");
+
+    const svc = fs.readFileSync(`${__dirname}/src/services/alertService.ts`, "utf8");
+    const script = fs.readFileSync(
+      `${__dirname}/../scripts/backfill-security-alert-action.sh`, "utf8");
+
+    // It was `"github.issue_opened" as any`, and the cast is the tell: nothing
+    // in createAlert opens an issue. The feed showed every security alert under
+    // a green "Issue Opened" chip, which is the one row somebody scanning for a
+    // security alert would skip past.
+    check("the activity row carries its own action",
+      /logActivity\(\s*\n\s*"security\.alert",/.test(svc));
+    // Comments stripped first: the note above that call quotes the old cast to
+    // explain it, and a guard that reads its own explanation as the bug is a
+    // guard that can only be satisfied by deleting the explanation.
+    const code = svc.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    check("  and no cast is left behind",
+      !/issue_opened/.test(code));
+
+    // Rows written before that was fixed still say issue.
+    check("a backfill exists for rows written before the fix",
+      /security\.alert/.test(script) && /github\.issue_opened/.test(script));
+    check("  matched on being a security alert, not just on the old action",
+      /"#t":"target"/.test(script) && /security_alert/.test(script)
+        && /startswith\("Security Alert \["\)/.test(script),
+      "a genuine issue row arriving later must not be caught by a re-run");
+    check("  and each write is conditional, so a second run is a no-op",
+      /--condition-expression "#a = :old"/.test(script));
+    check("  changing the action and nothing else",
+      /--update-expression "SET #a = :new"/.test(script));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

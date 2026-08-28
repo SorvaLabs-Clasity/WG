@@ -17,13 +17,22 @@ export function useGraphMeta() {
  * Polled slowly rather than never: the scheduled rebuild lands once a day
  * without anyone here doing anything, and a page left open would otherwise go on
  * claiming the age it had when it loaded.
+ *
+ * It now also carries whether a walk is running *right now* and who started
+ * it, so every screen says "recrawling" while anybody's walk is going.
+ *
+ * Polled faster while one is running: that is the only time the answer changes
+ * on its own and the only time somebody is watching it. Idle, these move once
+ * a night.
  */
 export function useGraphAggregation() {
   return useQuery({
     queryKey: ["graph", "aggregation"],
     queryFn: fetchGraphAggregation,
-    staleTime: 60_000,
-    refetchInterval: 5 * 60_000,
+    refetchInterval: (q) => (q.state.data?.recrawl.running ? 10_000 : 60_000),
+    // So a walk somebody else started shows up on this screen the moment it is
+    // opened, rather than at the next tick.
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -31,6 +40,11 @@ export function useTriggerAggregation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: triggerGraphAggregation,
+    // Settled, not success. A refusal is also news: it carries the minutes left
+    // to wait, and the button has to stop offering itself either way.
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: ["graph", "aggregation"] });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["graph"] });
       // The access map is derived from the graph and cached separately, so

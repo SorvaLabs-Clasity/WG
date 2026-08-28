@@ -48,6 +48,38 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
   const clamp = evaluateResource("log_retention_min", res("lg", { retentionInDays: 3653 }),
     { ...p, leaveLongerAlone: false });
   check("longer retention flagged when leaveLongerAlone is off", clamp.verdict === "violation", clamp);
+
+  // What unchecking that box actually promises: the group is flagged, and the
+  // fix *reduces* it. Asserting the fix, not only the verdict, because a
+  // violation nobody can act on is a worse answer than no violation.
+  check("  and the fix reduces it to the configured target",
+    clamp.fix?.before === "3653 days" && clamp.fix?.after === "365 days", clamp.fix);
+  check("  which is the value the remediator would write",
+    canRemediate("log_retention_min"),
+    "a violation with no remediator can only ever be a complaint");
+
+  // The target, not the threshold, decides what is already correct. With a
+  // 365-day threshold and a 400-day target, comparing against the threshold
+  // flags every group already at 400, "fixes" it by writing 400, and flags it
+  // again on the next sweep. A finding that can never be cleared.
+  {
+    const q = { minDays: 365, setToDays: 400, leaveLongerAlone: false, neverExpireIsCompliant: true };
+    const atTarget = evaluateResource("log_retention_min", res("lg", { retentionInDays: 400 }), q);
+    check("a group already at the target is compliant",
+      atTarget.verdict === "compliant", atTarget);
+    const above = evaluateResource("log_retention_min", res("lg", { retentionInDays: 731 }), q);
+    check("  while one above it is reduced to the target",
+      above.verdict === "violation" && above.fix?.after === "400 days", above.fix);
+  }
+
+  // Left alone is the default, and it is the safe direction: the box has to be
+  // deliberately unchecked before anything shortens a retention period.
+  {
+    const dflt = evaluateResource("log_retention_min", res("lg", { retentionInDays: 3653 }),
+      { minDays: 365 });
+    check("by default, longer retention is never shortened",
+      dflt.verdict === "compliant" && dflt.fix === undefined, dflt);
+  }
 }
 
 // ── the statement matches enforce_https_buckets.sh, exactly ───────────
@@ -250,6 +282,38 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
   check("unknown event triggers nothing", kindsForEvent("SomethingElse").length === 0);
   check("every kind declares a resource type", CATALOG.every(k => !!k.resourceType));
   check("every kind defaults to report mode", CATALOG.every(k => k.defaultMode === "report"));
+}
+
+// ── every bucket carries the region it is actually in ─────────────────
+//
+// The sweep listed buckets with `ListBuckets({})`. AWS returns `BucketRegion`
+// only "if the request contains at least one valid parameter", and an empty
+// request has none — so the field came back undefined on every bucket and the
+// collector's fallback decided the whole account lived in us-east-1.
+//
+// The way that fails is quiet and wrong in both directions: a sweep of any
+// other region scans nothing and reports every bucket as unswept *in
+// us-east-1*, and a sweep of us-east-1 tries to read buckets that are not
+// there.
+{
+  const src = readFileSync(join(__dirname, "src/aws-guardrails/collectors.ts"), "utf8");
+
+  check("the bucket listing asks for a parameter, so regions come back",
+    /MaxBuckets: 1000/.test(src),
+    "an empty ListBuckets omits BucketRegion on every bucket");
+  check("  and no call is left without one",
+    !/new ListBucketsCommand\(\{\}\)/.test(src));
+  check("  paging too, which the empty call never did",
+    /ContinuationToken: token/.test(src) && /page\.ContinuationToken/.test(src),
+    "an account past the page size would have lost its tail");
+  check("  with a guard against a token that never clears",
+    /if \(!page\.Buckets\?\.length\) break;/.test(src),
+    "an unbounded loop against a paid API is a worse failure than a short read");
+
+  // The filter itself was never wrong; it was being fed a constant.
+  check("a bucket outside the swept region is counted, not dropped",
+    /elsewhere\.set\(home/.test(src) && /unswept:/.test(src),
+    "an invisible bucket reads on screen exactly like a compliant one");
 }
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

@@ -1,18 +1,18 @@
 import { useState, useMemo, useRef } from "react";
 import { useAlerts } from "../hooks/useAlerts";
 import { usePermissions } from "../hooks/usePermissions";
-import { useAuth } from "../App";
+import SecurityAlertPanel from "./SecurityAlertPanel";
 import {
   toSituations, isRestingState, weeklyActivity, summarizeKinds, summarizeRepos,
-  recent, wasReverted, RECENT_DAYS, SEVERITIES, type Severity, type Situation,
+  recent, wasReverted, countBySeverity, RECENT_DAYS, SEVERITIES,
+  type Severity, type Situation,
 } from "../lib/alertSituations";
-import { ActivityChart, Spark, SEVERITY_BAR, SEVERITY_DOT } from "../components/AlertCharts";
+import { ActivityChart, Spark, SEVERITY_BAR, SEVERITY_DOT } from "./AlertCharts";
 import {
-  Page, PageHeader, StatusSlab, Button, Empty, Spinner, LoadFailed,
+  StatusSlab, Button, Empty, Spinner, LoadFailed,
   Pill, TYPE, INTENT, SURFACE, enter, type Intent, RefreshButton,
   SearchInput, Pager,
 } from "../design";
-import SecurityAlertPanel from "../components/SecurityAlertPanel";
 
 const TYPE_LABELS: Record<string, string> = {
   protection_removed: "Protection removed",
@@ -35,8 +35,6 @@ const SEVERITY: Record<string, Intent> = {
 };
 const sevIntent = (s?: string) => SEVERITY[(s ?? "").toLowerCase()] ?? "neutral";
 
-/** Sorting severity alphabetically puts "critical" under "high". Rank it. */
-const SEV_RANK: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
 
 /**
  * Weeks the charts cover.
@@ -59,6 +57,12 @@ const SITUATIONS_PER_PAGE = 10;
 /**
  * Every way the page can be narrowed, in one place.
  *
+ * **This content becomes a section called "Important events".** Almost every
+ * row is a legitimate action: a repository made public on purpose, somebody
+ * given the access they were hired to have. "Security alert" promised a
+ * vulnerability and delivered a changelog. The section keeps the whole
+ * dashboard; only its home and its name change.
+ *
  * This is the whole reason the page was rebuilt. It used to be two views
  * behind a toggle: an "Overview" that summarised every alert, and an "Every
  * alert" list that defaulted to *unresolved* ones. On an organization where
@@ -80,8 +84,26 @@ const NO_FILTERS: Filters = {
   kind: null, repo: null, severity: null, week: null, search: "",
 };
 
-export default function SecurityPage() {
-  const { user } = useAuth();
+/**
+ * Important events: what has changed across the organization.
+ *
+ * A view inside Activity, not a page. It was the whole Security tab, under the
+ * name "security alerts", and the name was the problem: almost every row is a
+ * legitimate action. A repository made public on purpose. Somebody given the
+ * access they were hired to have. Calling that an alert promises a
+ * vulnerability and delivers a changelog, and it is what made the tab read as
+ * a queue.
+ *
+ * It belongs beside the activity streams because that is what it is: the same
+ * events, read through a dashboard rather than a table. Activity answers "what
+ * happened, exactly"; this answers "what has been happening, and is any of it
+ * unusual".
+ *
+ * Everything the page had is here unchanged. The chart, the per-kind tiles with
+ * their own history, the repository chips, the grouped rows that open to the
+ * events inside them, and every one of them still a filter on the list below.
+ */
+export default function ImportantEvents() {
   const {
     data: alerts, isLoading, isError, error, isFetching, refetch,
     complete, windowWeeks, hasNextPage, fetchNextPage, isFetchingNextPage,
@@ -189,46 +211,62 @@ export default function SecurityPage() {
     f.search.trim() && { k: "search" as const, text: `"${f.search.trim()}"` },
   ].filter(Boolean) as Array<{ k: keyof Filters; text: string }>;
 
-  if (isLoading) return <Page user={user}><Spinner /></Page>;
+  if (isLoading) return <Spinner />;
 
   // Before any count is read: an unread list counts as zero, which renders as
   // the all-clear.
   if (isError) {
-    return (
-      <Page user={user}>
-        <LoadFailed what="security alerts" error={error} onRetry={refetch} />
-      </Page>
-    );
+    return <LoadFailed what="important events" error={error} onRetry={refetch} />;
   }
 
-  /** The worst thing that has happened lately, which sets the page's tone. */
-  const worstLately = lately.reduce(
-    (w, a) => (SEV_RANK[(a.severity ?? "").toLowerCase()] ?? 0) > (SEV_RANK[w] ?? 0) ? (a.severity ?? "").toLowerCase() : w,
-    "",
-  );
-  const tone: Intent = rising > 0 ? "warn" : worstLately === "critical" ? "info" : resting ? "good" : "info";
+  /**
+   * Severity decides the headline, and rate is the tiebreak.
+   *
+   * It used to be the other way round: `rising > 0` set the tone and a critical
+   * only reached `"info"`, so an organization that makes a repository public
+   * most weeks saw a calm blue "Nothing unusual" over a repository that had
+   * just gone public. The rate was ordinary; the event was not.
+   *
+   * One critical is enough. A rate comparison can only ever say "this is more
+   * than usual", and the thing most worth seeing is often exactly one of
+   * something that has happened before.
+   */
+  const bySeverity = useMemo(() => countBySeverity(lately), [lately]);
+  const tone: Intent =
+    bySeverity.critical > 0 ? "danger"
+      : bySeverity.high > 0 || rising > 0 ? "warn"
+      : "good";
+  const eyebrow =
+    bySeverity.critical > 0
+      ? `${bySeverity.critical} critical this week`
+      : bySeverity.high > 0 ? "High severity this week"
+      : rising > 0 ? "Above its usual rate"
+      : lately.length === 0 ? "A quiet week"
+      : "Nothing unusual";
 
   return (
-    <Page user={user}>
-      <PageHeader
-        title="Security"
-        subtitle="A record of what has changed across the organization. Nothing here needs clearing."
-        actions={<RefreshButton busy={isFetching} onRefresh={() => refetch()} />}
-      />
-
+    <>
       {/* The headline is what happened, not what is outstanding.
           It used to count alerts "wanting a decision", which on an
           organization where every change is deliberate is a number that only
           grows and that nobody can act on. */}
       <StatusSlab
         intent={tone}
-        eyebrow={rising > 0 ? "Above its usual rate" : lately.length === 0 ? "A quiet week" : "Nothing unusual"}
+        eyebrow={eyebrow}
         metrics={[
-          { value: lately.length, label: `in the last ${RECENT_DAYS} days`, emphasis: true },
+          // Critical first and emphasised when there is one, because it is the
+          // number that decides whether anybody needs to look.
+          ...(bySeverity.critical > 0
+            ? [{ value: bySeverity.critical, label: "critical", emphasis: true }]
+            : []),
+          { value: lately.length, label: `in the last ${RECENT_DAYS} days`, emphasis: bySeverity.critical === 0 },
           { value: rising, label: "above normal" },
         ]}
         footer={
-          rising > 0
+          bySeverity.critical > 0
+            ? <>Critical events do not wait for a rate to look unusual. They are in
+                the last {RECENT_DAYS} days below.</>
+          : rising > 0
             ? <>Something is running above its usual rate. The tiles below say which.</>
             : <>{counts.all} {counts.all === 1 ? "event" : "events"}
                 {complete ? <> on record over {windowWeeks} weeks</> : <> loaded so far</>}.
@@ -518,20 +556,20 @@ export default function SecurityPage() {
         </>
       )}
 
-      {/* Who hears about these, and how quickly. Under the alerts rather than
-          in a settings screen, because "should somebody be emailed about
-          this?" arrives while looking at one. */}
+      {/* Who hears about these, and how quickly.
+          Under the events rather than in a settings screen, because the
+          question "should somebody be emailed about this?" arrives while
+          looking at one, not while looking for a preferences page. */}
       <div className="mt-12">
         <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Notifications</h2>
         <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
-          Email delivery for the alerts above. Groups are created on the Alarms page.
+          Email delivery for the events above. Groups are created on the Alarms page.
         </p>
         <SecurityAlertPanel isAdmin={permissions?.isAwsAdmin ?? false} />
       </div>
-    </Page>
+    </>
   );
 }
-
 /* ── pieces ───────────────────────────────────────────────────────────── */
 
 function SectionHead({ title, sub }: { title: string; sub: string }) {
@@ -669,11 +707,22 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
 
 /* ── words ────────────────────────────────────────────────────────────── */
 
-function trendWords(k: { direction: string; baseline: number; thisWeek: number; last: string }): string {
+/**
+ * The trend as a sentence, in whole events rather than a rate.
+ *
+ * This said "4 this week, usually 0.1". The 0.1 is a weekly mean over eight
+ * weeks, so one event in that whole window renders as a tenth of an event, and
+ * nobody can check that against what they remember. "1 in the 8 weeks before"
+ * is the same fact counted in things that actually happened.
+ */
+function trendWords(k: {
+  direction: string; thisWeek: number; baselineTotal: number; baselineWeeks: number; last: string;
+}): string {
+  const before = `${k.baselineTotal} in the ${k.baselineWeeks} weeks before`;
   switch (k.direction) {
     case "new": return "first time this has happened";
-    case "up": return `${k.thisWeek} this week, usually ${k.baseline}`;
-    case "down": return `${k.thisWeek} this week, below the usual ${k.baseline}`;
+    case "up": return `${k.thisWeek} this week, ${before}`;
+    case "down": return `${k.thisWeek} this week, ${before}`;
     case "steady": return `${k.thisWeek} this week, about usual`;
     // "none this week" on its own was the whole problem: it is the same
     // sentence whether the last one was yesterday or in March.

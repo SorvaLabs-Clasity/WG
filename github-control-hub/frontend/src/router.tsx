@@ -3,7 +3,6 @@ import LoginPage from "./pages/LoginPage";
 import AuthCallback from "./pages/AuthCallback";
 import ActivityPage from "./pages/ActivityPage";
 import AccessPage from "./pages/AccessPage";
-import SecurityPage from "./pages/SecurityPage";
 import AlarmsPage from "./pages/AlarmsPage";
 import DependencyDashboardPage from "./pages/DependencyDashboardPage";
 import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
@@ -82,12 +81,15 @@ export const router = createBrowserRouter([
     ),
   },
   {
+    // The Security tab is gone: everything it held moved to Activity, under
+    // Important events, including the notification settings for those events.
+    //
+    // Kept as a redirect rather than removed outright. The desktop app restores
+    // the route it was last on, so somebody who quit while on this tab would
+    // reopen to a blank screen, and anyone with it bookmarked gets sent
+    // somewhere useful instead of nowhere.
     path: "/security",
-    element: (
-      <RequireAuth>
-        <SecurityPage />
-      </RequireAuth>
-    ),
+    element: <Navigate to="/activity" replace />,
   },
   {
     path: "/dependencies",

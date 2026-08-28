@@ -146,10 +146,16 @@ const logRetentionMin: RuleKind = {
     }
 
     if (current >= minDays) {
+      // Compared against `setTo`, not `minDays`, because `setTo` is what a fix
+      // would actually produce. With a threshold of 365 and a target of 400,
+      // comparing against the threshold flags every group already sitting at
+      // 400, "fixes" it by setting it to 400, and flags it again on the next
+      // sweep: a finding that can never be cleared and a remediation that
+      // changes nothing. They are the same number by default.
       return leaveLongerAlone
         ? ok(`Retention ${current}d meets the ${minDays}d minimum`)
-        : current === minDays
-          ? ok(`Retention is exactly ${minDays}d`)
+        : current === setTo
+          ? ok(`Retention is exactly ${setTo}d`)
           : bad(`Retention ${current}d exceeds the required ${minDays}d`, {
               description: `Set retention to ${setTo} days`,
               before: `${current} days`,

@@ -118,11 +118,29 @@ export function toSituations(alerts: AlertLike[]): Situation[] {
 export interface Trend {
   type: string;
   thisWeek: number;
-  /** Mean per week over the eight weeks before this one. */
+  /** Mean per week over the baseline window. Used for the up/down test. */
   baseline: number;
+  /**
+   * Whole count over the baseline window, and the width of that window.
+   *
+   * The mean alone is what produced "4 this week, usually 0.1": one event in
+   * eight weeks is 0.125 a week, which is arithmetically right and unreadable.
+   * A count over a stated number of weeks is the same fact in words a person
+   * can check against their own memory.
+   */
+  baselineTotal: number;
+  baselineWeeks: number;
   /** "new" when there is no history to compare against. */
   direction: "up" | "down" | "steady" | "new" | "quiet";
 }
+
+/**
+ * Weeks of history a rate is judged against.
+ *
+ * Fewer is noise on anything weekly; more starts including a period the
+ * organization no longer resembles.
+ */
+export const BASELINE_WEEKS = 8;
 
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -137,8 +155,8 @@ export function trends(alerts: AlertLike[], now = Date.now()): Trend[] {
   return types.map(type => {
     const mine = alerts.filter(a => a.type === type).map(a => Date.parse(a.timestamp));
     const thisWeek = mine.filter(t => t > now - WEEK_MS).length;
-    const before = mine.filter(t => t <= now - WEEK_MS && t > now - 9 * WEEK_MS);
-    const baseline = before.length / 8;
+    const before = mine.filter(t => t <= now - WEEK_MS && t > now - (BASELINE_WEEKS + 1) * WEEK_MS);
+    const baseline = before.length / BASELINE_WEEKS;
 
     let direction: Trend["direction"];
     if (before.length === 0 && thisWeek > 0) direction = "new";
@@ -149,7 +167,12 @@ export function trends(alerts: AlertLike[], now = Date.now()): Trend[] {
     else if (baseline > 0 && thisWeek <= baseline * 0.5) direction = "down";
     else direction = "steady";
 
-    return { type, thisWeek, baseline: Math.round(baseline * 10) / 10, direction };
+    return {
+      type, thisWeek, direction,
+      baseline: Math.round(baseline * 10) / 10,
+      baselineTotal: before.length,
+      baselineWeeks: BASELINE_WEEKS,
+    };
   }).sort((a, b) => b.thisWeek - a.thisWeek);
 }
 
@@ -199,11 +222,35 @@ export function wasReverted(a: { resolved?: boolean; resolvedBy?: string }): boo
  * Is this an ordinary week?
  *
  * Used to give the page a resting state. A quiet week should look visibly
- * quiet, rather than looking like a list that failed to load. It no longer
- * asks whether anything is outstanding, because nothing ever is.
+ * quiet, rather than looking like a list that failed to load.
+ *
+ * **Severity counts, not only rate.** This used to ask about rate alone, which
+ * meant an organization that makes a repository public most weeks would see
+ * "Nothing unusual" over a repository that had just gone public. The rate was
+ * ordinary and the event was not, and it is the event somebody needs to see.
+ * One critical is enough to end the resting state whatever the rate says.
  */
 export function isRestingState(alerts: AlertLike[], now = Date.now()): boolean {
+  if (worstIn(recent(alerts, RECENT_DAYS, now)) === "critical") return false;
   return !trends(alerts, now).some(t => t.direction === "up" || t.direction === "new");
+}
+
+/** The highest severity in a set, lowercased, or "" if there is none. */
+export function worstIn(alerts: AlertLike[]): string {
+  return alerts.reduce(
+    (w, a) => (rank(a.severity) > rank(w) ? (a.severity ?? "").toLowerCase() : w),
+    "",
+  );
+}
+
+/** How many of each severity, for a headline that leads with the worst. */
+export function countBySeverity(alerts: AlertLike[]): Record<string, number> {
+  const out: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
+  for (const a of alerts) {
+    const s = (a.severity ?? "").toLowerCase();
+    if (s in out) out[s]++;
+  }
+  return out;
 }
 
 /* ────────────────────────────────────────────────────────────────────────
@@ -271,6 +318,8 @@ export interface KindSummary {
   reverted: number;
   thisWeek: number;
   baseline: number;
+  baselineTotal: number;
+  baselineWeeks: number;
   direction: Trend["direction"];
   /** Weekly counts, oldest first, for the tile's own small chart. */
   spark: number[];
@@ -302,6 +351,8 @@ export function summarizeKinds(alerts: AlertLike[], weeks = 12, now = Date.now()
       reverted: mine.filter(wasReverted).length,
       thisWeek: t?.thisWeek ?? 0,
       baseline: t?.baseline ?? 0,
+      baselineTotal: t?.baselineTotal ?? 0,
+      baselineWeeks: t?.baselineWeeks ?? BASELINE_WEEKS,
       direction: t?.direction ?? "quiet",
       spark: weeklyActivity(mine, weeks, now).map(b => b.total),
       worst: mine.reduce((w, a) => (rank(a.severity) > rank(w) ? a.severity : w), mine[0]?.severity ?? "low"),

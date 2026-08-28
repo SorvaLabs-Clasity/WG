@@ -8,6 +8,7 @@ import {
 import { Page, INTENT } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import DetailedLoggingPanel from "../components/DetailedLoggingPanel";
+import ImportantEvents from "../components/ImportantEvents";
 import { ColumnResizeHandle } from "../design";
 import { useColumnWidths } from "../hooks/useColumnWidths";
 import { activityColumns, activityWidths, activityLayoutId } from "../lib/activityColumns";
@@ -321,6 +322,19 @@ export default function ActivityPage() {
   // housekeeping beside branch protection disappearing — which is the mixing
   // the streams were introduced to undo. Everything is one click away.
   const [category, setCategory] = useState<ActivityView>("github");
+
+  /**
+   * Which lens: the table of everything, or the dashboard.
+   *
+   * Two readings of the same events. The table answers "what happened,
+   * exactly", down to a single row and its diff. Important events answers
+   * "what has been happening, and is any of it unusual" — the same material
+   * as a shape rather than as a list.
+   *
+   * Held apart from `category` on purpose. It is not a fifth stream: the
+   * streams narrow which rows the table shows, and this replaces the table.
+   */
+  const [lens, setLens] = useState<"feed" | "important">("feed");
 
   /**
    * Follow the account, including when it changes underneath the open tab.
@@ -717,7 +731,11 @@ export default function ActivityPage() {
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
             <div>
               <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Activity</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{CATEGORY_DESCRIPTIONS[category]}</p>
+              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+                {lens === "important"
+                  ? "Changes worth knowing about, grouped by what caused them. Most are somebody doing their job."
+                  : CATEGORY_DESCRIPTIONS[category]}
+              </p>
             </div>
             <WebhookPulse />
           </div>
@@ -752,8 +770,31 @@ export default function ActivityPage() {
                 </button>
               );
             })}
+
+            {/* Pushed to the far end and given its own divider, because it is
+                not a fifth stream. The streams narrow the table; this replaces
+                it. Sitting flush against them would say they were the same
+                kind of control. */}
+            <span className="ml-auto pl-3 border-l border-slate-200 dark:border-slate-700 self-stretch flex items-center">
+              <button
+                onClick={() => setLens(lens === "important" ? "feed" : "important")}
+                aria-pressed={lens === "important"}
+                className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors flex items-center gap-2
+                  ${lens === "important"
+                    ? "border-rose-500 dark:border-rose-400 text-slate-900 dark:text-white"
+                    : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
+              >
+                <i className="ph-bold ph-shield-warning text-[13px]" aria-hidden="true" />
+                Important events
+              </button>
+            </span>
           </nav>
 
+          {/* Every control in here narrows the table. On the dashboard lens
+              there is no table, and the dashboard brings its own filters, so
+              leaving these on screen would offer two filter sets where only
+              one of them did anything. */}
+          {lens === "feed" && (
           <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-gh-border dark:border-slate-700 shadow-sm">
             <div className="flex items-center gap-2 mb-3">
               <i className="fa-solid fa-filter text-gh-muted dark:text-slate-400 text-sm"></i>
@@ -815,7 +856,11 @@ export default function ActivityPage() {
               </div>
             )}
           </div>
+          )}
         </header>
+
+        {lens === "important" ? <ImportantEvents /> : (
+        <>
 
         {isLoading && <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gh-blue"></div></div>}
         {error && <div className="bg-red-50 dark:bg-red-950/50 border-l-4 border-red-500 p-4 rounded-md mb-6"><p className="text-red-700 dark:text-red-400">Failed to load activity: {(error as Error).message}</p></div>}
@@ -1359,6 +1404,8 @@ export default function ActivityPage() {
           </div>
         </div>
       )}
+        </>
+        )}
     </Page>
   );
 }

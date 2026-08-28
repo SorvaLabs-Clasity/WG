@@ -39,7 +39,9 @@ const read = (p: string) => fs.readFileSync(p, "utf8");
 
     // The screens where a calm "nothing here" is actively misleading.
     const pages: [string, string][] = [
-      ["SecurityPage.tsx", "security alerts"],
+      // Moved out of the Security page and into Activity, where it is a
+      // dashboard beside the streams rather than a tab of its own.
+      ["../components/ImportantEvents.tsx", "important events"],
       ["AlarmsPage.tsx", "your alarms"],
       ["AccessPage.tsx", "the access map"],
     ];
@@ -51,7 +53,7 @@ const read = (p: string) => fs.readFileSync(p, "utf8");
 
     // Security derives its whole headline from counts, so the check has to come
     // before them: an unread list counts as zero, which renders as the all-clear.
-    const sec = read("src/pages/SecurityPage.tsx");
+    const sec = read("src/components/ImportantEvents.tsx");
     // The headline, not the arithmetic: the counts are a hook and must run on
     // every render. What must not happen is drawing a headline from them
     // before knowing whether the list was read at all.

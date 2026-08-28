@@ -37,7 +37,7 @@ const allResolved: AlertLike[] = [
 ];
 
 (async () => {
-  const page = fs.readFileSync("./src/pages/SecurityPage.tsx", "utf8");
+  const page = fs.readFileSync("./src/components/ImportantEvents.tsx", "utf8");
   const charts = fs.readFileSync("./src/components/AlertCharts.tsx", "utf8");
 
   // ── the contradiction cannot come back ──────────────────────────────
@@ -288,6 +288,59 @@ const allResolved: AlertLike[] = [
     check("  the count is against the unfiltered total",
       /totalCount=\{allSituations\.length\}/.test(page),
       '"3 groups" leaves somebody wondering where the other eight went');
+  }
+
+  // ── where it lives, and what it is called ───────────────────────────
+  //
+  // "Security alert" promised a vulnerability and delivered a changelog:
+  // almost every row is a legitimate action. The dashboard is the same events
+  // as the activity streams, read as a shape rather than as a table, so it
+  // sits with them.
+  {
+    console.log("\nimportant events, in Activity");
+
+    const activity = fs.readFileSync("./src/pages/ActivityPage.tsx", "utf8");
+    const router = fs.readFileSync("./src/router.tsx", "utf8");
+    const navbar = fs.readFileSync("./src/components/Navbar.tsx", "utf8");
+
+    check("the dashboard is a view inside Activity",
+      /<ImportantEvents \/>/.test(activity) && /import ImportantEvents/.test(activity));
+    check("  reached by its own control, named for what it holds",
+      /Important events\n/.test(activity) || /Important events/.test(activity));
+
+    // Not a fifth stream. The streams narrow the table; this replaces it, and
+    // a control that sits flush against them says they are the same kind.
+    check("  held apart from the stream tabs",
+      /const \[lens, setLens\]/.test(activity) && /border-l border-slate/.test(activity),
+      "the streams filter the table, this replaces it");
+    check("  and it swaps the table rather than filtering it",
+      /lens === "important" \? <ImportantEvents \/> : \(/.test(activity));
+
+    // Two filter sets on screen where only one does anything is worse than
+    // either alone.
+    check("  the table's own filters go with the table",
+      /\{lens === "feed" && \(/.test(activity));
+
+    // Everything moved, so the Security tab was deleted rather than left as an
+    // empty room. A page kept alive with nothing in it is a tab people learn to
+    // skip, and then learn to skip when it does have something.
+    check("the Security tab is gone",
+      !fs.existsSync("./src/pages/SecurityPage.tsx") && !/SecurityPage/.test(router));
+    check("  and out of the navigation",
+      !/path: "\/security"/.test(navbar));
+
+    // The desktop app restores the route it was last on, so quitting while on
+    // that tab would reopen to a blank screen.
+    check("  but the route still lands somewhere useful",
+      /path: "\/security",[\s\S]{0,80}?<Navigate to="\/activity" replace \/>/.test(router),
+      "a removed route is a blank screen for anyone who had it open");
+
+    // The panel decides who is emailed about exactly these events, so it moved
+    // with them. A control on a different tab from the thing it controls is a
+    // control people do not find.
+    const events = fs.readFileSync("./src/components/ImportantEvents.tsx", "utf8");
+    check("  including the notification settings",
+      /<SecurityAlertPanel/.test(events));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

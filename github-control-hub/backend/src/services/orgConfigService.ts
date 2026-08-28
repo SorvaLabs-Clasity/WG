@@ -36,6 +36,21 @@ export interface OrgConfig {
     /** Set when the last attempt failed, so the UI can say so rather than just looking stale. */
     lastError?: string;
     edgeCount?: number;
+    /**
+     * Set while a walk is under way, cleared when it ends.
+     *
+     * Shared, which is the point: the desktop app on one machine and the
+     * nightly Lambda write the same row, so everybody's button says
+     * "recrawling" while anybody's walk is running. Before this it was local
+     * component state, so it vanished on a tab switch and was invisible to
+     * everyone else.
+     *
+     * Not authoritative on its own. A process that disappears never clears it,
+     * so readers age it out. See RUN_ASSUMED_DEAD_MS in recrawlWindow.ts.
+     */
+    runningSince?: string;
+    /** Who started the running walk: a login, or SCHEDULE_ACTOR. */
+    startedBy?: string;
   };
   /**
    * Pull requests fetched per GraphQL page, learned rather than configured.

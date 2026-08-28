@@ -40,7 +40,7 @@ export async function collectBuckets(scope: Scope, only?: string[]): Promise<Col
 
   const listed = only?.length
     ? only.map(name => ({ Name: name, BucketRegion: scope.region }))
-    : (await s3.send(new ListBucketsCommand({}))).Buckets ?? [];
+    : await listEveryBucket(s3, ListBucketsCommand);
 
   const out: ResourceSnapshot[] = [];
   const elsewhere = new Map<string, number>();
@@ -53,6 +53,10 @@ export async function collectBuckets(scope: Scope, only?: string[]): Promise<Col
     // region was asked for. Without this filter a two-region account would
     // report every bucket twice and remediate each of them twice — and reading
     // a bucket from the wrong region's endpoint fails outright with a redirect.
+    // Genuinely absent only for very old us-east-1 buckets, whose location
+    // constraint AWS has always returned as null. Every other bucket carries
+    // its region now that the listing asks for one, so this is a real fallback
+    // rather than the answer for the whole account.
     const home = b.BucketRegion || "us-east-1";
     if (home !== scope.region) {
       // Counted rather than dropped. A bucket in a region nobody added to the
@@ -83,6 +87,38 @@ export async function collectBuckets(scope: Scope, only?: string[]): Promise<Col
     resources: out,
     unswept: [...elsewhere].map(([region, count]) => ({ region, count })),
   };
+}
+
+/**
+ * Every bucket in the account, each carrying the region it actually lives in.
+ *
+ * `ListBuckets({})` does not do this, and the way it fails is silent. AWS
+ * documents `BucketRegion` as returned only "if the request contains at least
+ * one valid parameter" — an empty request has none, so the field comes back
+ * undefined on every bucket. The caller's `b.BucketRegion || "us-east-1"` then
+ * decides that the entire account lives in us-east-1: a sweep of any other
+ * region scans nothing and reports every bucket as unswept *in us-east-1*, and
+ * a sweep of us-east-1 tries to read buckets that are somewhere else.
+ *
+ * `MaxBuckets` is that one valid parameter. It also turns the call into a paged
+ * one, which the empty version was not: an account past the page size would
+ * have silently lost its tail.
+ */
+async function listEveryBucket(s3: any, ListBucketsCommand: any): Promise<any[]> {
+  const buckets: any[] = [];
+  let token: string | undefined;
+  do {
+    const page = await s3.send(new ListBucketsCommand({
+      MaxBuckets: 1000,
+      ...(token ? { ContinuationToken: token } : {}),
+    }));
+    buckets.push(...(page.Buckets ?? []));
+    token = page.ContinuationToken;
+    // A page that returns nothing but keeps handing back a token would spin
+    // forever against a paid API.
+    if (!page.Buckets?.length) break;
+  } while (token);
+  return buckets;
 }
 
 function safeJson(s: string): any {

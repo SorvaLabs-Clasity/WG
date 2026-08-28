@@ -9,7 +9,7 @@ import { useGraphAggregation, useTriggerAggregation } from "../hooks/useGraph";
 import { usePermissions } from "../hooks/usePermissions";
 import type { AccessPath, Person, OrgRole } from "../api/access";
 import { ago } from "../lib/ago";
-import { confirmRebuild } from "../lib/confirmRebuild";
+import RecrawlButton from "../components/RecrawlButton";
 
 
 /**
@@ -49,22 +49,7 @@ function GraphFreshness({ busy, onReread }: { busy: boolean; onReread: () => voi
 
       {failedAfterSuccess && <Pill intent="warn">Last sync failed</Pill>}
 
-      {canSync ? (
-        <Button
-          /* Not the same shape as the refresh button people see elsewhere.
-             That re-reads a stored answer; this re-reads the organization. */
-          variant="caution"
-          disabled={sync.isPending}
-          onClick={() => { if (confirmRebuild(a?.edgeCount)) sync.mutate(); }}
-        >
-          {/* Named for what it does rather than for how it feels. "Sync"
-              read as a refresh, and this is a full walk of every repository,
-              team and member. */}
-          {sync.isPending ? "Recrawling, this takes a few minutes…" : "Full GitHub recrawl"}
-        </Button>
-      ) : (
-        <RefreshButton busy={busy} onRefresh={onReread} />
-      )}
+      {canSync ? <RecrawlButton /> : <RefreshButton busy={busy} onRefresh={onReread} />}
     </div>
   );
 }
