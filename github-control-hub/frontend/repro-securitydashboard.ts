@@ -343,6 +343,37 @@ const allResolved: AlertLike[] = [
       /<SecurityAlertPanel/.test(events));
   }
 
+  // ── every hook runs on every render ─────────────────────────────────
+  //
+  // React error #310, live on the work environment: a useMemo sat below the
+  // `isLoading` and `isError` guards, next to the prose it fed. The loading
+  // render stopped at the guard and ran one hook fewer than the render after
+  // it, so the page crashed the moment the query resolved.
+  //
+  // It went unnoticed on the old Security tab because the query was usually
+  // already warm there, so `isLoading` was never true on a first render. Moving
+  // the component into Activity gave it a cold mount and it failed immediately.
+  {
+    console.log("\nhooks, and the guards they must sit above");
+
+    const src = fs.readFileSync("./src/components/ImportantEvents.tsx", "utf8");
+    const lines = src.split("\n");
+
+    const firstGuard = lines.findIndex(l => /^\s*if \((isLoading|isError)\)/.test(l));
+    check("the component has an early return to guard against", firstGuard > 0, firstGuard);
+
+    const late = lines
+      .map((l, i) => [i, l] as const)
+      .filter(([i, l]) => i > firstGuard && /\buse(Memo|State|Ref|Effect|Callback)\(/.test(l))
+      // Nested components declared later in the file have their own render, so
+      // their hooks are not this component's.
+      .filter(([i]) => !lines.slice(0, i).some((l, j) => j > firstGuard && /^(export )?function [A-Z]/.test(l)));
+
+    check("  and no hook below it",
+      late.length === 0,
+      late.map(([i, l]) => `${i + 1}: ${l.trim()}`));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

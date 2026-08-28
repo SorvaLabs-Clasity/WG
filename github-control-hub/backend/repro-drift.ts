@@ -356,6 +356,20 @@ const branch = (repo: string, name: string, prot: boolean): EdgeLike =>
       /"#t":"target"/.test(script) && /security_alert/.test(script)
         && /startswith\("Security Alert \["\)/.test(script),
       "a genuine issue row arriving later must not be caught by a re-run");
+
+    // It read `message`. logActivity's fifth parameter is `details`, so the
+    // "Security Alert [...]" text is stored there and `message` is absent on
+    // every one of these rows: the scan found them and the filter dropped them
+    // all, which the script then reported as "nothing to do".
+    const activity = fs.readFileSync(`${__dirname}/src/services/activityService.ts`, "utf8");
+    check("  reading the attribute the text is actually in",
+      /it\.get\("details"\)/.test(script) && !/it\.get\("message"\)/.test(script));
+    check("    which logActivity's signature says is details",
+      /export async function logActivity\(\s*\n\s*action[\s\S]{0,200}?target: string,\s*\n\s*details\?: string,/.test(activity),
+      "the fifth positional argument is what createAlert passes the text in");
+    check("  and every attribute name aliased, reserved or not",
+      /"#d":"details"/.test(script),
+      "a projection naming a reserved word fails the whole scan under set -e");
     check("  and each write is conditional, so a second run is a no-op",
       /--condition-expression "#a = :old"/.test(script));
     check("  changing the action and nothing else",

@@ -38,24 +38,33 @@ echo "Table:  $TABLE"
 echo "Mode:   $([ "$APPLY" = 1 ] && echo APPLY || echo 'dry run (pass --apply to write)')"
 echo
 
+# Every attribute is aliased, including ones that look safe. DynamoDB's reserved
+# word list is long and unmemorable, and a projection naming a reserved word
+# fails the whole scan rather than skipping that field, which under `set -e`
+# ends the script before it prints anything useful.
+#
 # `target` is the discriminator: createAlert has always written "security_alert"
-# there. The message prefix is checked too, because a target alone would also
+# there. The `details` prefix is checked too, because a target alone would also
 # match anything else that ever adopted that word.
 rows=$("${AWS[@]}" dynamodb scan \
   --table-name "$TABLE" \
   --filter-expression "#a = :old AND #t = :tgt" \
-  --expression-attribute-names '{"#a":"action","#t":"target"}' \
+  --expression-attribute-names '{"#a":"action","#t":"target","#d":"details"}' \
   --expression-attribute-values '{":old":{"S":"github.issue_opened"},":tgt":{"S":"security_alert"}}' \
-  --projection-expression "pk,sk,message" \
+  --projection-expression "pk,sk,#d" \
   --output json)
 
 keys=$(printf '%s' "$rows" | python3 -c '
 import json, sys
 items = json.load(sys.stdin).get("Items", [])
 for it in items:
-    msg = (it.get("message") or {}).get("S", "")
-    # Belt and braces. Every one of these rows was written with this prefix.
-    if not msg.startswith("Security Alert ["):
+    # `details`, not `message`. logActivity takes (action, actor, repo, target,
+    # details, ...) and the caller passes the "Security Alert [...]" string in
+    # the fifth position, so that is where it is stored. Reading `message` found
+    # nothing on every row and silently dropped all of them, which the script
+    # then reported as "nothing to do".
+    text = (it.get("details") or {}).get("S", "")
+    if not text.startswith("Security Alert ["):
         continue
     print("%s\t%s" % (it["pk"]["S"], it["sk"]["S"]))
 ')
@@ -73,9 +82,9 @@ if [ "$APPLY" != 1 ]; then
   printf '%s\n' "$rows" | python3 -c '
 import json, sys
 for it in json.load(sys.stdin).get("Items", [])[:5]:
-    msg = (it.get("message") or {}).get("S", "")
-    if msg.startswith("Security Alert ["):
-        print("    " + msg[:90])
+    text = (it.get("details") or {}).get("S", "")
+    if text.startswith("Security Alert ["):
+        print("    " + text[:90])
 '
   echo
   echo "Dry run. Re-run with --apply to relabel them."

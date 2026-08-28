@@ -158,6 +158,14 @@ export default function ImportantEvents() {
   // you just clicked cannot show you where the click sits in the whole, which
   // is the only thing a chart is for.
   const lately = useMemo(() => recent(all), [all]);
+  // Above the early returns, with every other hook.
+  //
+  // This sat below them, next to the prose it feeds, and that is React error
+  // #310: the loading render stopped at the guard and ran one hook fewer than
+  // the render after it. The page then crashed the moment the query resolved.
+  // It survived on the old Security tab only because the query was usually
+  // already warm, so `isLoading` was never true on a first render there.
+  const bySeverity = useMemo(() => countBySeverity(lately), [lately]);
   const buckets = useMemo(() => weeklyActivity(all, WEEKS), [all]);
   const kinds = useMemo(() => summarizeKinds(all, WEEKS), [all]);
   const repos = useMemo(() => summarizeRepos(all), [all]);
@@ -231,7 +239,6 @@ export default function ImportantEvents() {
    * than usual", and the thing most worth seeing is often exactly one of
    * something that has happened before.
    */
-  const bySeverity = useMemo(() => countBySeverity(lately), [lately]);
   const tone: Intent =
     bySeverity.critical > 0 ? "danger"
       : bySeverity.high > 0 || rising > 0 ? "warn"
