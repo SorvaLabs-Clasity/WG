@@ -1065,7 +1065,10 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
  * moves on the scale of the poll interval rather than the request.
  */
 let pulseCache: { at: number; hours: number; tz: string; value: any } | null = null;
-const PULSE_TTL_MS = 60_000;
+// Five minutes, not one. The chart is a shape over days and weeks; it does not
+// move meaningfully inside five minutes, and the walk behind it reads thousands
+// of rows. The client still polls every minute and is served from here.
+const PULSE_TTL_MS = 5 * 60_000;
 
 router.get("/pulse", async (req: Request, res: Response) => {
   try {

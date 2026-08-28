@@ -8,7 +8,9 @@
  * reaches the far end of a month.
  */
 import * as fs from "node:fs";
-import { activityPulse } from "./src/services/activitySearch";
+import {
+  activityPulse, MAX_EXAMINED_FOR_PULSE, MAX_EXAMINED_PER_REQUEST,
+} from "./src/services/activitySearch";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -106,6 +108,10 @@ const onePage = (items: any[]) => async () => ({ items, next: undefined });
 
     const p = await activityPulse(720, 28, "UTC", { query: endless });
     check("the budget stops the walk", p.examined >= 3000, p.examined);
+    check("  a budget of its own, larger than the search's",
+      MAX_EXAMINED_FOR_PULSE > MAX_EXAMINED_PER_REQUEST,
+      "an org writing 500 rows a week passes 3,000 inside a month, and a count that "
+      + "stops there reports a plateau as a total");
     check("  and the answer admits it is partial",
       p.exhausted === false,
       "a count of what was read presented as a count of what happened is the lie");
@@ -127,7 +133,7 @@ const onePage = (items: any[]) => async () => ({ items, next: undefined });
 
     const route = fs.readFileSync(`${__dirname}/src/routes/activity.ts`, "utf8");
     check("the route caches it",
-      /PULSE_TTL_MS = 60_000/.test(route) && /pulseCache/.test(route),
+      /PULSE_TTL_MS = 5 \* 60_000/.test(route) && /pulseCache/.test(route),
       "it reads far more rows than a page does, and a room of open apps would each pay");
     check("  keyed on the window, so switching does not serve the other one",
       /pulseCache\.hours === hours/.test(route));
@@ -247,6 +253,30 @@ const onePage = (items: any[]) => async () => ({ items, next: undefined });
     const bad = await activityPulse(168, 28, "Not/AZone", { query: onePage(fixed) });
     check("an unresolvable zone falls back rather than throwing",
       bad.timeZone === "UTC");
+  }
+
+  // ── a floor is shown as a floor ─────────────────────────────────────
+  {
+    console.log("\nsaying so when the count is a floor");
+
+    const page = fs.readFileSync(`${__dirname}/../frontend/src/pages/ActivityPage.tsx`, "utf8");
+    const pulseUi = fs.readFileSync(`${__dirname}/../frontend/src/components/ActivityPulse.tsx`, "utf8");
+    const stats = fs.readFileSync(`${__dirname}/../frontend/src/components/ActivityStats.tsx`, "utf8");
+
+    // A precise-looking number that has quietly stopped rising is worse than a
+    // rough one that admits it.
+    check("the stream tabs mark a truncated count",
+      /!pulse\.exhausted && "\+"/.test(page));
+    check("  as does the headline",
+      /pulse && !pulse\.exhausted && <span/.test(pulseUi) && /pulse && !pulse\.exhausted && <span/.test(stats));
+    check("  and no trend is computed between two floors",
+      /if \(prev === null\) return null;/.test(stats),
+      "a percentage between two counts that both stopped early is not a percentage");
+
+    // The cache is what makes the larger walk affordable.
+    const route = fs.readFileSync(`${__dirname}/src/routes/activity.ts`, "utf8");
+    check("the bigger walk is paid for once every few minutes, not per request",
+      /PULSE_TTL_MS = 5 \* 60_000/.test(route));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

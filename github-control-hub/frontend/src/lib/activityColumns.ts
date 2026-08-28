@@ -36,10 +36,11 @@ export function activityColumns(wide: boolean, merged = false): ActivityColumn[]
     // than by a column of its own.
     //
     // Wider than the label needs, because the cell holds more than the label:
-    // the expand control, the action chip, and up to three badges. At the old
-    // 210 the chip was clipped as soon as two of them appeared together, which
-    // reads as a broken column rather than a narrow one.
-    { id: "event", label: "Event", width: merged ? 340 : 300 },
+    // the expand control, the action chip, and up to three badges. At 210 the
+    // chip was clipped outright; at 300 the "important" badge still wrapped
+    // under the chip on the longer event names, which is a column somebody
+    // widens by hand on every visit.
+    { id: "event", label: "Event", width: merged ? 390 : 350 },
     { id: "actor", label: "Who", width: 165 },
     // Repository and target were also two columns, and target is empty on a
     // good half of all rows. Stacked, the repository leads and the target sits

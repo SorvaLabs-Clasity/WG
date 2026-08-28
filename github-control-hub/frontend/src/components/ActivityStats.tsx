@@ -31,6 +31,9 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
    * dash is the honest rendering of the second.
    */
   const delta = useMemo(() => {
+    // A truncated count is a floor, and a percentage between two floors is not
+    // a percentage of anything. `previousTotal` is already null in that case,
+    // so this reads as "nothing to compare against" rather than as a trend.
     if (prev === null) return null;
     if (prev === 0) return total === 0 ? 0 : null;   // no baseline to be a share of
     return Math.round(((total - prev) / prev) * 100);
@@ -61,6 +64,7 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
           <div className="flex items-end gap-3 mt-2.5">
             <span className="text-[52px] font-black tabular-nums leading-[0.85] tracking-[-0.04em] text-slate-900 dark:text-white">
               {total.toLocaleString()}
+              {pulse && !pulse.exhausted && <span className="text-slate-300 dark:text-slate-600">+</span>}
             </span>
             {delta !== null && (
               <span className={`mb-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold tabular-nums

@@ -35,6 +35,21 @@ const TABLE = () => tableName("ACTIVITY_TABLE");
 export const MAX_EXAMINED_PER_REQUEST = 3000;
 
 /**
+ * A larger budget for the aggregate, because it is not the same kind of read.
+ *
+ * A search runs while somebody types and has to come back before they finish
+ * the word. The pulse runs once and is cached, so it can afford to walk
+ * further, and it needs to: an organization writing five hundred rows a week
+ * passes three thousand inside a month, and a count that quietly stops there
+ * reports a plateau as if it were a total.
+ *
+ * Not unbounded, and the cache is what keeps it affordable. See PULSE_TTL_MS in
+ * routes/activity.ts: at one walk every few minutes this is cents a month, and
+ * at one walk per request it would not be.
+ */
+export const MAX_EXAMINED_FOR_PULSE = 6000;
+
+/**
  * Which stream an action belongs to.
  *
  * A copy of `frontend/src/lib/activityCategories.ts`, kept deliberately: the
@@ -520,7 +535,7 @@ export async function activityPulse(
     }
     if (exhausted) break;
     key = page.next;
-  } while (key && examined < MAX_EXAMINED_PER_REQUEST);
+  } while (key && examined < MAX_EXAMINED_FOR_PULSE);
 
   const top = (m: Map<string, number>, name: "actor" | "repo") =>
     [...m.entries()]

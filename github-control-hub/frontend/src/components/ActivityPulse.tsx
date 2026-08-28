@@ -107,6 +107,8 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading }: {
           <div className="flex items-baseline gap-2.5">
             <span className="text-[38px] font-black tabular-nums leading-none tracking-[-0.03em] text-slate-900 dark:text-white">
               {isLoading ? "—" : (pulse?.total ?? 0).toLocaleString()}
+              {/* At least this many. The sentence underneath says why. */}
+              {pulse && !pulse.exhausted && <span className="text-slate-400 dark:text-slate-500">+</span>}
             </span>
             <span className={`${TYPE.sub} text-slate-500 dark:text-slate-400`}>
               {pulse?.total === 1 ? "event" : "events"} in {label(hours)}

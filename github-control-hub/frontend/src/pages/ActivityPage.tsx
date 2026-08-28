@@ -874,7 +874,12 @@ export default function ActivityPage() {
                       ${active
                         ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
                         : "bg-slate-100 dark:bg-white/[0.07] text-slate-500 dark:text-slate-400"}`}>
+                      {/* A "+" when the walk stopped before the window did.
+                          The count is then a floor, not a total, and a precise
+                          looking number that has quietly stopped rising is
+                          worse than a rough one that admits it. */}
                       {(c === "all" ? pulse.total : pulse.byCategory?.[c] ?? 0).toLocaleString()}
+                      {!pulse.exhausted && "+"}
                     </span>
                   )}
                 </button>
