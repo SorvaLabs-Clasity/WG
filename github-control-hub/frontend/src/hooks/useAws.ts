@@ -104,7 +104,13 @@ export function useSaveAwsExclusion() {
   return useMutation({
     mutationFn: ({ id, body }: { id?: string; body: Partial<AwsExclusionList> }) =>
       id ? updateAwsExclusion(id, body) : createAwsExclusion(body),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["aws", "exclusions"] }),
+    // Findings too, not only the lists.
+    //
+    // Editing a list changes what its rules skip, and the server re-checks
+    // those rules before answering. Invalidating just ["aws","exclusions"]
+    // left the findings table showing the verdicts from before the edit, so
+    // the fix landed and the screen still disagreed with it.
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["aws"] }),
   });
 }
 

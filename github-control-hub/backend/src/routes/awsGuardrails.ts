@@ -11,6 +11,7 @@ import {
   listFindings, deleteFindingsForRule,
 } from "../aws-guardrails/store";
 import { resolveAccounts, scopesFor } from "../aws-guardrails/accounts";
+import { ruleExclusionsChanged, listContentChanged, rulesUsingList } from "../aws-guardrails/staleness";
 import type { Guardrail, AwsExclusionList, GuardrailMode, AwsAccount } from "../aws-guardrails/types";
 import { awsRegion, resolveAwsRegion } from "../utils/region";
 
@@ -150,7 +151,13 @@ router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>,
     await putGuardrail(updated);
     await logActivity("aws.guardrail.update", req.user!.login, updated.name, updated.kind,
       `Updated AWS guardrail "${updated.name}"${mode && mode !== existing.mode ? ` (${existing.mode} → ${updated.mode})` : ""}`);
-    res.json(updated);
+
+    // Its own findings are the ones this can have invalidated, and only when
+    // the set of lists actually moved.
+    const findingsRefreshed = await recheckRules(
+      ruleExclusionsChanged(existing, updated) && updated.enabled ? [updated.id] : [],
+    );
+    res.json({ ...updated, findingsRefreshed });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }
@@ -199,6 +206,39 @@ async function invokeEngine(payload: Record<string, unknown>): Promise<any> {
   const body = out.Payload ? JSON.parse(Buffer.from(out.Payload).toString()) : {};
   if (out.FunctionError) throw new Error(body?.errorMessage || "Guardrail run failed");
   return body;
+}
+
+/**
+ * Re-evaluate the rules whose exclusions have just changed.
+ *
+ * Synchronous on purpose. The alternative is returning a saved rule while the
+ * findings behind it still say the opposite — which is precisely the bug this
+ * exists to close: a resource stays marked "skipped" after the list excluding
+ * it has been taken away, and pressing refresh cannot fix it, because refresh
+ * re-reads stored findings rather than producing new ones.
+ *
+ * Scoped to the affected rules, so this is one collector pass rather than a
+ * whole sweep, and skipped entirely when nothing exclusion-related moved —
+ * renaming a rule or toggling its mode stays instant.
+ *
+ * A failure here is not a failed save. The change is already stored and is
+ * correct; only the re-check did not run. Rejecting the request would tell
+ * somebody their edit had not taken, which is both worse and untrue — so the
+ * outcome is reported instead, and the caller can say the findings are still
+ * from before rather than implying they are current.
+ */
+async function recheckRules(ruleIds: string[]): Promise<boolean> {
+  if (ruleIds.length === 0) return false;
+  try {
+    await invokeEngine({ ruleIds });
+    return true;
+  } catch (err) {
+    console.error(
+      "[aws-guardrails] Findings could not be re-checked after an exclusion change:",
+      (err as Error)?.message ?? err,
+    );
+    return false;
+  }
 }
 
 router.post("/run", requireAdmin, async (req: Request, res: Response) => {
@@ -385,7 +425,15 @@ router.put("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>,
       updatedAt: new Date().toISOString(),
     };
     await putAwsExclusion(updated);
-    res.json(updated);
+
+    // Every rule pointing at this list, because each of them evaluated its own
+    // resources against the contents that just changed.
+    const findingsRefreshed = await recheckRules(
+      listContentChanged(existing, updated)
+        ? rulesUsingList(updated.id, await listGuardrails())
+        : [],
+    );
+    res.json({ ...updated, findingsRefreshed });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }

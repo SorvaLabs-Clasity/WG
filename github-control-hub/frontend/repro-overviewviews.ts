@@ -19,6 +19,7 @@
  * Run:  npx tsx repro-overviewviews.ts   from github-control-hub/frontend
  */
 import fs from "node:fs";
+import { widgetColumns, layoutId } from "./src/lib/widgetColumns";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -147,6 +148,97 @@ const code = page.split("\n")
       paramNoun("Package name(s)"));
     check("  with the list typed, so an optional field cannot be inferred away",
       /QUERY_OPTIONS: QueryOption\[\]/.test(options));
+  }
+
+  // ── bypass ranking moved from a preset to an insight query ──────────
+  //
+  // Both forms always asked the backend the same question, so this is a change
+  // to which door the form offers rather than to what the check does. The trap
+  // is entirely in the widgets that already exist: they are stored as presets,
+  // and the alarm catalogue keys its "bypasses in total" metric off that stored
+  // presetId. Rewriting them to the query form would silently invalidate any
+  // alarm someone had set, so they are left alone and only the form changes.
+  {
+    const { QUERY_OPTIONS } = await import("./src/utils/queryOptions");
+    const bypass = QUERY_OPTIONS.find(q => q.id === "protection-bypasses-ranking");
+    check("bypass ranking is offered as an insight query",
+      !!bypass, QUERY_OPTIONS.map(q => q.id));
+    check("  which takes no parameter, so the form asks for nothing",
+      bypass?.requiresParam === false);
+    check("  and counts repositories, so the card's share has a denominator",
+      bypass?.entity === "repository", bypass?.entity);
+
+    const presets = fs.readFileSync("./src/lib/widgetPresets.ts", "utf8");
+    check("the preset form no longer offers it",
+      /CREATABLE_PRESETS = \[[^\]]*\]/.test(presets)
+      && !/CREATABLE_PRESETS = \[[^\]]*"bypasses"/.test(presets),
+      presets.match(/CREATABLE_PRESETS = \[[^\]]*\]/)?.[0]);
+    check("  the dropdown is built from that list, not from every label",
+      /presetOptions\(initialData\?\.presetId\)\.map\(id => \(/.test(code),
+      "iterating PRESET_LABELS would put it back");
+
+    // A <select> whose value is not among its options shows the first one
+    // instead. Editing the title of an existing bypass widget would then submit
+    // whatever the browser had settled on.
+    const { presetOptions } = await import("./src/lib/widgetPresets");
+    check("  a new widget is offered only the creatable presets",
+      !presetOptions(undefined).includes("bypasses"), presetOptions(undefined));
+    check("  but editing an old one can still see what it is set to",
+      presetOptions("bypasses").includes("bypasses"),
+      "the form would claim it was a Dependabot ranking, and saving would make that true");
+    check("    without duplicating a preset that is already there",
+      presetOptions("dependabot").filter(x => x === "dependabot").length === 1,
+      presetOptions("dependabot"));
+
+    // Everything below is what an existing widget still depends on.
+    check("a widget stored as the old preset is still named",
+      /"bypasses": "Protection Rule Bypasses"/.test(presets),
+      "dropping the label leaves old widgets blank in search and the row view");
+    check("  and still renders its own columns",
+      widgetColumns({ type: "preset", presetId: "bypasses", hasStatus: false })
+        .some(c => c.id === "bypasses"));
+    check("  under the column set it was saved with",
+      layoutId("w", widgetColumns({ type: "preset", presetId: "bypasses", hasStatus: false }))
+        === "widget:w:index,entity,bypasses,reason",
+      "changing the ids would discard the widths someone dragged");
+
+    // The new form has to reach the same place.
+    const q = widgetColumns({ type: "query", hasStatus: false });
+    const qb = widgetColumns({ type: "query", hasStatus: false, hasBypasses: true });
+    check("the query form gets a column for the count",
+      qb.length === q.length + 1 && qb.some(c => c.id === "bypasses"), qb.map(c => c.id));
+    check("  placed before Details, which already carries the reason",
+      qb.findIndex(c => c.id === "bypasses") < qb.findIndex(c => c.id === "details"));
+    check("  and absent when no row carries one",
+      !q.some(c => c.id === "bypasses"));
+    check("  the body renders a cell under exactly the same condition",
+      /\{config\.type === "query" && columns\.some\(c => c\.id === "bypasses"\) && \(/.test(page),
+      "a column without its cell shifts every width one across");
+    check("  driven by the data, not by a check id",
+      /hasBypasses: items\.some\(\(i: any\) => typeof i\.bypasses === "number"\)/.test(code));
+    check("both forms describe a row the same way",
+      /if \(typeof item\?\.bypasses === "number"\) return `\$\{item\.bypasses\} bypasses`/.test(code),
+      "keying off the config left the query form showing a truncated sentence");
+  }
+
+  // ── the display format control ──────────────────────────────────────
+  //
+  // It chose between a big number and a table back when those were different
+  // renderings. The card carries both now, so the control changed nothing you
+  // could see. The stored field stays: the API requires one, and every widget
+  // on disk has one.
+  {
+    check("the form no longer asks for a display format",
+      !/Display Format/.test(page) && !/setDisplayType/.test(code),
+      "a control that changes nothing is worse than no control");
+    check("  and nothing branches on it",
+      !/displayType === "metric"|displayType === "table"/.test(code));
+    check("  but a created widget still carries the field",
+      (code.match(/\bdisplayType,/g) ?? []).length === 2,
+      "the API rejects a widget without one");
+    check("  and editing an existing widget preserves the value it had",
+      /initialData\?\.displayType \|\|/.test(code),
+      "defaulting unconditionally would rewrite every widget it touched");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

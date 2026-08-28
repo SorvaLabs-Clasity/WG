@@ -51,6 +51,7 @@ export const QUERY_OPTIONS: QueryOption[] = [
   { id: "repos-with-branch", entity: "repository", informational: true, label: "Repos that have specific branch(es)...", requiresParam: true, paramLabel: "Branch Name(s)", icon: "ph-git-branch", paramIcon: "ph-git-branch", useTagInput: true },
   { id: "repos-with-branch-rules", entity: "repository", label: "Repos matching specific branch rules...", requiresParam: true, paramLabel: "Branch Name(s)", icon: "ph-shield-check", hasAdvancedRules: true, paramIcon: "ph-git-branch", useTagInput: true },
   { id: "stale-branch-protections", entity: "repository", label: "Stale Branch Protection Detector", requiresParam: false, icon: "ph-shield-warning" },
+  { id: "protection-bypasses-ranking", entity: "repository", label: "Protection Rule Bypasses", requiresParam: false, icon: "ph-shield-slash" },
   { id: "dormant-privileged-users", entity: "user", label: "Dormant privileged access...", requiresParam: true, paramLabel: "Months without a commit to count as dormant", paramDefault: "6", icon: "ph-clock-countdown" }
 ];
 

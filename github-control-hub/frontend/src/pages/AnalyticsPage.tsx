@@ -4,6 +4,7 @@ import { Page, RefreshButton, Button, Back, Note, Empty, Spinner, useCountUp, TY
 import { useTableControls } from "../hooks/useTableControls";
 import { useColumnWidths } from "../hooks/useColumnWidths";
 import { widgetColumns, defaultWidths, layoutId } from "../lib/widgetColumns";
+import { PRESET_LABELS, presetOptions } from "../lib/widgetPresets";
 import { fetchRenovate } from "../api/renovate";
 import { apiGet } from "../api/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -56,20 +57,6 @@ function since(iso: string | null | undefined): string | null {
 type WidgetType = "preset" | "query";
 type DisplayType = "metric" | "table";
 type PresetId = "dependabot" | "bypasses" | "vuln-repos" | "renovate-open";
-
-/**
- * What each preset is called, in one place.
- *
- * Used by the search box and by the row view. The `<select>` in the form used
- * to be the only place these strings existed, which meant nothing else could
- * name a preset without repeating them.
- */
-const PRESET_LABELS: Record<string, string> = {
-  "dependabot": "Dependabot Issues Ranking",
-  "vuln-repos": "Repositories with vulnerabilities",
-  "bypasses": "Protection Rule Bypasses",
-  "renovate-open": "Open Renovate PRs",
-};
 
 /**
  * Which severities the "repositories with vulnerabilities" preset counts.
@@ -804,7 +791,10 @@ function nameOf(item: any): string {
 function detailOf(item: any, config: WidgetConfig): string {
   if (config.type === "preset" && config.presetId === "dependabot") return `${item.total ?? 0} alerts`;
   if (config.type === "preset" && config.presetId === "vuln-repos") return item.worst ?? "";
-  if (config.type === "preset" && config.presetId === "bypasses") return `${item.bypasses ?? 0} bypasses`;
+  // Both forms of the bypass check, which return the same rows. Read off the
+  // row rather than off the config so the query form gets "3 bypasses" instead
+  // of falling through to a truncated sentence saying the same thing.
+  if (typeof item?.bypasses === "number") return `${item.bypasses} bypasses`;
   if (config.type === "preset" && config.presetId === "renovate-open") return `#${item.number} · open ${item.ageDays}d`;
   if (item?.status) return item.status;
   const r = String(item?.reason ?? "");
@@ -1365,6 +1355,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
     // answer "no team owns this", which is exactly what the column is for.
     hasOwner: items.some((i: any) => "owner" in i),
     hasVisibility: items.some((i: any) => "visibility" in i),
+    hasBypasses: items.some((i: any) => typeof i.bypasses === "number"),
   });
   const widthDefaults = defaultWidths(columns);
   const cols = useColumnWidths(layoutId(config.id, columns), widthDefaults);
@@ -1551,6 +1542,10 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                     <td className="px-6 py-4 font-mono font-bold text-rose-600 dark:text-red-400">{item.bypasses}</td>
                     <td className="px-6 py-4 text-sm text-slate-500 dark:text-slate-400 truncate">{item.reason}</td>
                   </>
+                )}
+
+                {config.type === "query" && columns.some(c => c.id === "bypasses") && (
+                  <td className="px-6 py-4 text-center font-mono font-bold text-rose-600 dark:text-red-400">{item.bypasses}</td>
                 )}
 
                 {config.type === "query" && columns.some(c => c.id === "visibility") && (
@@ -1758,7 +1753,17 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
   // Reuses queryParam rather than adding a field, so it persists with the rest
   // of the widget without a schema change.
   const [picked, setSeverities] = useState<Severity[]>(() => parseSeverities(initialData?.queryParam));
-  const [displayType, setDisplayType] = useState<DisplayType>(initialData?.displayType || "metric");
+  /**
+   * Nothing reads this any more.
+   *
+   * A widget used to render either as a big number or as a table depending on
+   * it; it now renders as a card that carries both, so the setting was a form
+   * control that changed nothing about what you got. The field itself stays —
+   * the API still requires one and every stored widget still has one — so it is
+   * sent as a constant rather than removed from the payload, which keeps widgets
+   * created before and after this change identical on disk.
+   */
+  const displayType: DisplayType = initialData?.displayType || "table";
 
   const [selectedQueryId, setSelectedQueryId] = useState<string>(initialData?.queryId || QUERY_OPTIONS[0].id);
   const initParam = initialData?.queryParam || "";
@@ -1862,29 +1867,16 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Data Source</label>
-              <select
-                value={type}
-                onChange={(e) => setType(e.target.value as WidgetType)}
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
-              >
-                <option value="preset">Built-in Ranking Presets</option>
-                <option value="query">Security Insight Query</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Display Format</label>
-              <select
-                value={displayType}
-                onChange={(e) => setDisplayType(e.target.value as DisplayType)}
-                className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
-              >
-                <option value="metric">Big Metric (Count)</option>
-                <option value="table">List / Table</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-900 dark:text-white mb-1">Data Source</label>
+            <select
+              value={type}
+              onChange={(e) => setType(e.target.value as WidgetType)}
+              className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
+            >
+              <option value="preset">Built-in Ranking Presets</option>
+              <option value="query">Security Insight Query</option>
+            </select>
           </div>
 
           <div className="p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-700 rounded-lg space-y-4">
@@ -1896,8 +1888,8 @@ function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: 
                   onChange={(e) => setPresetId(e.target.value as PresetId)}
                   className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-slate-800 dark:text-slate-200"
                 >
-                  {Object.entries(PRESET_LABELS).map(([id, label]) => (
-                    <option key={id} value={id}>{label}</option>
+                  {presetOptions(initialData?.presetId).map(id => (
+                    <option key={id} value={id}>{PRESET_LABELS[id] ?? id}</option>
                   ))}
                 </select>
 

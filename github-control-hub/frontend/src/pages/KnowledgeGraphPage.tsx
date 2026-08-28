@@ -48,7 +48,7 @@ function languageHue(name: string | null | undefined): string {
   return `hsl(${h} 55% 55%)`;
 }
 
-type SortKey = "pushed" | "name" | "size" | "issues";
+type SortKey = "pushed" | "name" | "size";
 
 // ── page ──────────────────────────────────────────────────────────────
 
@@ -90,7 +90,6 @@ export default function KnowledgeGraphPage() {
       switch (sortKey) {
         case "name": return a.name.localeCompare(b.name);
         case "size": return (b.size ?? 0) - (a.size ?? 0);
-        case "issues": return (b.open_issues_count ?? 0) - (a.open_issues_count ?? 0);
         default: {
           const at = new Date(a.pushed_at ?? a.updated_at ?? 0).getTime();
           const bt = new Date(b.pushed_at ?? b.updated_at ?? 0).getTime();
@@ -148,7 +147,6 @@ export default function KnowledgeGraphPage() {
                   <option value="pushed">Recently pushed</option>
                   <option value="name">Name</option>
                   <option value="size">Size</option>
-                  <option value="issues">Open issues</option>
                 </select>
                 <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
                   <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded border-slate-300 dark:border-slate-600" />
@@ -229,11 +227,6 @@ function RepoRow({ repo, selected, onSelect }: { repo: Repo; selected: boolean; 
           <div className="flex items-center gap-2.5 mt-2 text-[12px] text-slate-400 dark:text-slate-500">
             {repo.language && <span className="font-semibold text-slate-500 dark:text-slate-400">{repo.language}</span>}
             <span>{formatSize(repo.size)}</span>
-            {!!repo.open_issues_count && (
-              <span className="inline-flex items-center gap-1">
-                <i className="ph-fill ph-circle-dashed text-[11px]"></i>{repo.open_issues_count}
-              </span>
-            )}
             <span className="ml-auto shrink-0">{relativeTime(repo.pushed_at ?? repo.updated_at)}</span>
           </div>
         </div>
@@ -311,7 +304,6 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
     // every repository and so read the same on all of them.
     { label: "With access", value: people.specific || people.collaborators.length || data.contributorCount || "-" },
     { label: "Open PRs", value: data.openPullRequests?.count ?? "-" },
-    { label: "Issues", value: data.open_issues_count },
     { label: "Teams", value: people.teams.length },
     { label: "Commits 30d", value: data.commitsLast30Days ?? "-" },
   ];
@@ -374,13 +366,7 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
             ["Created", formatDate(data.created_at)],
             ["Last push", `${formatDate(data.pushed_at)} (${relativeTime(data.pushed_at)})`],
             ["Last update", `${formatDate(data.updated_at)} (${relativeTime(data.updated_at)})`],
-            ["Homepage", data.homepage ?? "-"],
             ["Stars / forks / watchers", `${data.stargazers_count} / ${data.forks_count} / ${data.watchers_count}`],
-            ["Features", [
-              data.features.issues && "issues", data.features.projects && "projects",
-              data.features.wiki && "wiki", data.features.pages && "pages",
-              data.features.discussions && "discussions",
-            ].filter(Boolean).join(", ") || "none enabled"],
           ]} />
         </Section>
 
@@ -410,7 +396,6 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
             ["Oldest open PR", data.openPullRequests?.oldest
               ? `#${data.openPullRequests.oldest.number}, ${relativeTime(data.openPullRequests.oldest.createdAt)}`
               : "none"],
-            ["Open issues", data.open_issues_count],
             ["Latest release", data.latestRelease
               ? `${data.latestRelease.tag} (${relativeTime(data.latestRelease.publishedAt)})`
               : "none"],
