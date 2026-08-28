@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, QueryClient } from "@tanstack/react-query";
-import { fetchActivity, type ActivityQuery, undoActivity, redoActivity, retryActivity, undoResolution } from "../api/activity";
+import { fetchActivityPulse, fetchActivity, type ActivityQuery, undoActivity, redoActivity, retryActivity, undoResolution } from "../api/activity";
 
 /**
  * One page of the feed, with filters applied on the server.
@@ -67,5 +67,22 @@ export function useUndoResolution() {
   return useMutation({
     mutationFn: (activityId: string) => undoResolution(activityId),
     onSuccess: () => invalidateAll(qc),
+  });
+}
+
+/**
+ * The feed's shape, polled slowly.
+ *
+ * Far cheaper to read than it looks: the server caches it for a minute, so a
+ * room full of open apps costs one walk a minute between them rather than one
+ * each. Slower than the table's own poll because it is a backdrop, not a
+ * ticker.
+ */
+export function useActivityPulse(hours = 168) {
+  return useQuery({
+    queryKey: ["activity", "pulse", hours],
+    queryFn: () => fetchActivityPulse(hours),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
   });
 }

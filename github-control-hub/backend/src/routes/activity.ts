@@ -1054,6 +1054,40 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
  * stored and keep rendering whatever the toggle says now: turning this off
  * stops new detailed rows from being written and deletes nothing.
  */
+/**
+ * The shape of the feed, for the header above it.
+ *
+ * Ungated like the feed itself, and deliberately unfiltered: this is the
+ * backdrop the filtered table sits in front of, so narrowing it would make the
+ * chart agree with the table and stop being a comparison.
+ *
+ * Cached for a minute. It reads far more rows than a page does, and the answer
+ * moves on the scale of the poll interval rather than the request.
+ */
+let pulseCache: { at: number; hours: number; tz: string; value: any } | null = null;
+const PULSE_TTL_MS = 60_000;
+
+router.get("/pulse", async (req: Request, res: Response) => {
+  try {
+    const hours = Math.min(Math.max(Number(req.query.hours) || 168, 1), 24 * 90);
+    // The reader's own zone, so "busiest hour" is an hour they recognise. Kept
+    // in the cache key: two people in different zones get different pictures of
+    // the same events, and both are right.
+    const tz = typeof req.query.tz === "string" && req.query.tz.length <= 64
+      ? req.query.tz : "UTC";
+    if (pulseCache && pulseCache.hours === hours && pulseCache.tz === tz
+        && Date.now() - pulseCache.at < PULSE_TTL_MS) {
+      return res.json(pulseCache.value);
+    }
+    const { activityPulse } = await import("../services/activitySearch");
+    const value = await activityPulse(hours, hours <= 48 ? 24 : 28, tz);
+    pulseCache = { at: Date.now(), hours, tz, value };
+    res.json(value);
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "activity") });
+  }
+});
+
 router.get("/detailed-logging", async (req: Request, res: Response) => {
   try {
     if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {

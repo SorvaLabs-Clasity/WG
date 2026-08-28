@@ -5,88 +5,26 @@ import {
   categoryOf, sourcesFor, CATEGORY_LABELS, VIEW_ORDER,
   type ActivityView,
 } from "../lib/activityCategories";
-import { Page, INTENT } from "../design";
+import { Page, INTENT, TYPE, SURFACE } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import DetailedLoggingPanel from "../components/DetailedLoggingPanel";
 import ImportantEvents from "../components/ImportantEvents";
+import ActivityPulse from "../components/ActivityPulse";
+import ActivityTimeline from "../components/ActivityTimeline";
+import ActivityStats from "../components/ActivityStats";
 import { IMPORTANT_KINDS, importantLabel } from "../lib/importantEvents";
 import { ColumnResizeHandle } from "../design";
 import { useColumnWidths } from "../hooks/useColumnWidths";
 import { activityColumns, activityWidths, activityLayoutId } from "../lib/activityColumns";
+import { ACTION_CONFIG, actionLabel } from "../lib/activityActions";
 import UserAvatar from "../components/UserAvatar";
 import { useAuth } from "../App";
-import { useActivity, useUndoActivity, useRedoActivity, useRetryActivity, useUndoResolution } from "../hooks/useActivity";
+import { useActivity, useActivityPulse, useUndoActivity, useRedoActivity, useRetryActivity, useUndoResolution } from "../hooks/useActivity";
 import { useOrgConfig } from "../hooks/useOrgConfig";
 import { useWebhookHealth } from "../hooks/useWebhookHealth";
 import type { Activity, ActivityAction } from "../types/Activity";
 import { buildConflictComparison } from "../utils/conflictComparison";
 
-const ACTION_CONFIG: Record<
-  ActivityAction,
-  { label: string; colorClass: string; iconClass: string }
-> = {
-  "security.alert": { label: "Security Alert", colorClass: "bg-rose-50 text-rose-700 border-rose-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-shield-exclamation text-[10px]" },
-  "repo.deleted": { label: "Repo Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
-  "repo.renamed": { label: "Repo Renamed", colorClass: "bg-blue-50 text-blue-700 border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800", iconClass: "fa-solid fa-pen text-[10px]" },
-  "tag.create": { label: "Tag Created", colorClass: "bg-green-50 text-green-700 border-green-200/60 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800", iconClass: "fa-solid fa-tag text-[10px]" },
-  "tag.delete": { label: "Tag Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-tag text-[10px]" },
-  "branch.create": { label: "Branch Created", colorClass: "bg-green-50 text-green-700 border-green-200/60 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800", iconClass: "fa-solid fa-plus text-[10px]" },
-  "branch.delete": { label: "Branch Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
-  "branch.rename": { label: "Branch Renamed", colorClass: "bg-blue-50 text-blue-700 border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800", iconClass: "fa-solid fa-pen text-[10px]" },
-  "branch.protect": { label: "Branch Protected", colorClass: "bg-blue-50 text-blue-700 border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800", iconClass: "fa-solid fa-shield text-[10px]" },
-  "template.apply": { label: "Template Applied", colorClass: "bg-sky-50 text-sky-700 border-sky-200/60 dark:bg-sky-950/50 dark:text-sky-400 dark:border-sky-800", iconClass: "fa-solid fa-play text-[10px]" },
-  "template.apply.repo": { label: "Template \u2192 Repo", colorClass: "bg-sky-50 text-sky-700 border-sky-200/60 dark:bg-sky-950/50 dark:text-sky-400 dark:border-sky-800", iconClass: "fa-solid fa-cube text-[10px]" },
-  "template.create": { label: "Template Created", colorClass: "bg-purple-50 text-purple-700 border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-400 dark:border-purple-800", iconClass: "fa-solid fa-gear text-[10px]" },
-  "template.update": { label: "Template Updated", colorClass: "bg-orange-50 text-orange-700 border-orange-200/60 dark:bg-orange-950/50 dark:text-orange-400 dark:border-orange-800", iconClass: "fa-solid fa-pen text-[10px]" },
-  "template.delete": { label: "Template Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
-  "exclusion.create": { label: "Exclusion List Created", colorClass: "bg-purple-50 text-purple-700 border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-400 dark:border-purple-800", iconClass: "fa-solid fa-ban text-[10px]" },
-  "exclusion.update": { label: "Exclusion List Updated", colorClass: "bg-orange-50 text-orange-700 border-orange-200/60 dark:bg-orange-950/50 dark:text-orange-400 dark:border-orange-800", iconClass: "fa-solid fa-pen text-[10px]" },
-  "exclusion.delete": { label: "Exclusion List Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
-  "branch.unprotect": { label: "Branch Unprotected", colorClass: "bg-orange-50 text-orange-700 border-orange-200/60 dark:bg-orange-950/50 dark:text-orange-400 dark:border-orange-800", iconClass: "fa-solid fa-shield-slash text-[10px]" },
-  "repo.ruleset.create": { label: "Ruleset Created", colorClass: "bg-indigo-50 text-indigo-700 border-indigo-200/60 dark:bg-indigo-950/50 dark:text-indigo-400 dark:border-indigo-800", iconClass: "fa-solid fa-list-check text-[10px]" },
-  "repo.ruleset.delete": { label: "Ruleset Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
-  "repo.ruleset.import": { label: "Ruleset Imported", colorClass: "bg-indigo-50 text-indigo-700 border-indigo-200/60 dark:bg-indigo-950/50 dark:text-indigo-400 dark:border-indigo-800", iconClass: "fa-solid fa-file-import text-[10px]" },
-  "activity.undo": { label: "Action Undone", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-rotate-left text-[10px]" },
-  "activity.redo": { label: "Action Redone", colorClass: "bg-cyan-50 text-cyan-700 border-cyan-200/60 dark:bg-cyan-950/50 dark:text-cyan-400 dark:border-cyan-800", iconClass: "fa-solid fa-rotate-right text-[10px]" },
-  "activity.retry": { label: "Action Retried", colorClass: "bg-violet-50 text-violet-700 border-violet-200/60 dark:bg-violet-950/50 dark:text-violet-400 dark:border-violet-800", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
-  "conflict.pending": { label: "Conflict. On Hold", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-pause text-[10px]" },
-  "conflict.override": { label: "Conflict Overridden", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-arrow-right-arrow-left text-[10px]" },
-  "conflict.skip": { label: "Conflict Skipped", colorClass: "bg-gray-50 text-gray-600 border-gray-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-forward text-[10px]" },
-  "github.push": { label: "Code Pushed", colorClass: "bg-teal-50 text-teal-700 border-teal-200/60 dark:bg-teal-950/50 dark:text-teal-400 dark:border-teal-800", iconClass: "fa-solid fa-code-commit text-[10px]" },
-  "github.pr_opened": { label: "PR Opened", colorClass: "bg-green-50 text-green-700 border-green-200/60 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800", iconClass: "fa-solid fa-code-pull-request text-[10px]" },
-  "github.pr_merged": { label: "PR Merged", colorClass: "bg-purple-50 text-purple-700 border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-400 dark:border-purple-800", iconClass: "fa-solid fa-code-merge text-[10px]" },
-  "github.pr_closed": { label: "PR Closed", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-code-pull-request text-[10px]" },
-  "github.issue_opened": { label: "Issue Opened", colorClass: "bg-green-50 text-green-700 border-green-200/60 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800", iconClass: "fa-regular fa-circle-dot text-[10px]" },
-  "repo.created": { label: "Repo Created", colorClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800", iconClass: "fa-solid fa-repo text-[10px]" },
-  "repo.publicized": { label: "Repo Made Public", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-globe text-[10px]" },
-  "github.branch_protection_edited": { label: "Protection Changed", colorClass: "bg-blue-50 text-blue-700 border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800", iconClass: "fa-solid fa-shield-halved text-[10px]" },
-  "github.ruleset_edited": { label: "Ruleset Changed", colorClass: "bg-indigo-50 text-indigo-700 border-indigo-200/60 dark:bg-indigo-950/50 dark:text-indigo-400 dark:border-indigo-800", iconClass: "fa-solid fa-list-check text-[10px]" },
-  "config.import": { label: "Configuration Imported", colorClass: "bg-sky-50 text-sky-700 border-sky-200/60 dark:bg-sky-950/50 dark:text-sky-400 dark:border-sky-800", iconClass: "fa-solid fa-file-import text-[10px]" },
-  "scanner.create": { label: "Scanner Created", colorClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800", iconClass: "fa-solid fa-radar text-[10px]" },
-  "scanner.update": { label: "Scanner Updated", colorClass: "bg-yellow-50 text-yellow-700 border-yellow-200/60 dark:bg-yellow-950/50 dark:text-yellow-400 dark:border-yellow-800", iconClass: "fa-solid fa-radar text-[10px]" },
-  "scanner.delete": { label: "Scanner Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-radar text-[10px]" },
-  "widget.create": { label: "Widget Created", colorClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800", iconClass: "fa-solid fa-chart-simple text-[10px]" },
-  "widget.update": { label: "Widget Updated", colorClass: "bg-yellow-50 text-yellow-700 border-yellow-200/60 dark:bg-yellow-950/50 dark:text-yellow-400 dark:border-yellow-800", iconClass: "fa-solid fa-chart-simple text-[10px]" },
-  "widget.delete": { label: "Widget Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-chart-simple text-[10px]" },
-  "dependabot.enable": { label: "Dependabot Enabled", colorClass: "bg-emerald-50 text-emerald-700 border-emerald-200/60 dark:bg-emerald-950/50 dark:text-emerald-400 dark:border-emerald-800", iconClass: "fa-solid fa-bug text-[10px]" },
-  "dependabot.disable": { label: "Dependabot Disabled", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-bug-slash text-[10px]" },
-  // Every enterprise audit row carries this one action; the specific event
-  // (protected_branch.destroy, org.add_member, …) is in `target`, which is what
-  // distinguishes them. One label here covers all of them by design.
-  "sync.graph": { label: "Access Graph Synced", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
-  "sync.compliance": { label: "Scores Recalculated", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
-  "sync.query": { label: "Check Re-run", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
-  "sync.access": { label: "Access Map Refreshed", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-arrows-rotate text-[10px]" },
-  "sync.scanner": { label: "Scanner Run", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-magnifying-glass text-[10px]" },
-  "sync.reminders": { label: "Reminders Sent", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-bell text-[10px]" },
-  "sync.alarms": { label: "Alarms Evaluated", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-bell text-[10px]" },
-  "config.updated": { label: "Setting Changed", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-gear text-[10px]" },
-  "aws.guardrail.create": { label: "Guardrail Created", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-plus text-[10px]" },
-  "aws.guardrail.update": { label: "Guardrail Updated", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-pen text-[10px]" },
-  "aws.guardrail.delete": { label: "Guardrail Deleted", colorClass: "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800", iconClass: "fa-solid fa-trash text-[10px]" },
-  "aws.guardrail.run": { label: "Guardrails Run", colorClass: "bg-amber-50 text-amber-700 border-amber-200/60 dark:bg-amber-950/50 dark:text-amber-400 dark:border-amber-800", iconClass: "fa-solid fa-play text-[10px]" },
-  "aws.guardrail.preview": { label: "Guardrails Previewed", colorClass: "bg-slate-50 text-slate-700 border-slate-200/60 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700", iconClass: "fa-solid fa-eye text-[10px]" },
-};
 
 function formatTimestamp(ts: string): string {
   const d = new Date(ts);
@@ -201,6 +139,18 @@ function allChildrenUndone(entry: Activity): boolean {
  * is gone rather than late. Saying when GitHub last got through is what makes
  * the two distinguishable.
  */
+/**
+ * The stream, as a colour on the row's left edge.
+ *
+ * The same three the chart above uses, so a row and a band in the graph are
+ * recognisably the same thing. It replaces a 116px column that held one icon.
+ */
+const STREAM_RAIL: Record<string, string> = {
+  github: "bg-indigo-400 dark:bg-indigo-500",
+  aws: "bg-amber-400 dark:bg-amber-500",
+  app: "bg-emerald-400 dark:bg-emerald-500",
+};
+
 function WebhookPulse() {
   const { data } = useWebhookHealth();
   if (!data) return null;
@@ -285,9 +235,6 @@ export default function ActivityPage() {
     mq.addEventListener("change", onChange);
     return () => mq.removeEventListener("change", onChange);
   }, []);
-  const columns = useMemo(() => activityColumns(wide), [wide]);
-  const columnDefaults = useMemo(() => activityWidths(columns), [columns]);
-  const cols = useColumnWidths(activityLayoutId(columns), columnDefaults);
 
   const [showDetailed, setShowDetailed] = useState<boolean>(() => {
     try { return localStorage.getItem("activity:show-detailed") !== "hide"; }
@@ -324,6 +271,13 @@ export default function ActivityPage() {
   // the streams were introduced to undo. Everything is one click away.
   const [category, setCategory] = useState<ActivityView>("github");
 
+  // The merged view puts one more badge in every Action cell, so it gets its
+  // own default width and remembers its own layout.
+  const merged = category === "all";
+  const columns = useMemo(() => activityColumns(wide, merged), [wide, merged]);
+  const columnDefaults = useMemo(() => activityWidths(columns), [columns]);
+  const cols = useColumnWidths(activityLayoutId(columns, merged), columnDefaults);
+
   /**
    * Which lens: the table of everything, or the dashboard.
    *
@@ -335,7 +289,57 @@ export default function ActivityPage() {
    * Held apart from `category` on purpose. It is not a fifth stream: the
    * streams narrow which rows the table shows, and this replaces the table.
    */
-  const [lens, setLens] = useState<"feed" | "important">("feed");
+  /**
+   * Three things this tab is for, separated rather than stacked.
+   *
+   * They were one screen: a chart nobody asked for above a table somebody was
+   * trying to search, with a third view hidden behind a control off to the
+   * side. Each answers a different question and each got in the others' way.
+   *
+   *   Statistics       the shape everything makes. Organization-wide, never
+   *                    filtered, nothing to click through.
+   *   Events           find one row. Streams, filters, table or timeline.
+   *   Important events the changes worth knowing about, and who is told.
+   */
+  const [lens, setLens] = useState<"stats" | "feed" | "important">(() => {
+    try {
+      const v = localStorage.getItem("activity:lens");
+      return v === "stats" || v === "important" ? v : "feed";
+    } catch { return "feed"; }
+  });
+  const setLensPersistent = (v: "stats" | "feed" | "important") => {
+    setLens(v);
+    try { localStorage.setItem("activity:lens", v); } catch { /* the view still changes */ }
+  };
+
+  /**
+   * Table or timeline. The same rows, the same filters, a different arrangement.
+   *
+   * The table is the right shape for working, with resizable columns, diffs and
+   * the undo controls. The timeline is the right shape for the question people
+   * open this tab with, which is "what happened last night" — a question a
+   * table answers only after you have done the grouping in your head.
+   */
+  const [shape, setShape] = useState<"table" | "timeline">(() => {
+    try { return localStorage.getItem("activity:shape") === "timeline" ? "timeline" : "table"; }
+    catch { return "table"; }
+  });
+  const setShapePersistent = (v: "table" | "timeline") => {
+    setShape(v);
+    try { localStorage.setItem("activity:shape", v); } catch { /* the view still changes */ }
+  };
+
+  /** How far back the header charts. Remembered, like the other view choices. */
+  const [pulseHours, setPulseHours] = useState<number>(() => {
+    try { return Number(localStorage.getItem("activity:pulse-hours")) || 168; }
+    catch { return 168; }
+  });
+  const setPulseHoursPersistent = (h: number) => {
+    setPulseHours(h);
+    try { localStorage.setItem("activity:pulse-hours", String(h)); }
+    catch { /* the view still changes */ }
+  };
+  const { data: pulse, isLoading: pulseLoading } = useActivityPulse(pulseHours);
 
   /**
    * Whether the important events show in the table, and which of them.
@@ -404,6 +408,18 @@ export default function ActivityPage() {
     return () => clearTimeout(t);
   }, [search]);
 
+  /**
+   * How many filters are narrowing the feed right now.
+   *
+   * A filtered feed and an empty one look identical from the outside, and the
+   * controls that caused it are collapsed into a card somebody has scrolled
+   * past. This is the number that tells them which they are looking at.
+   */
+  const activeFilterCount = [
+    sourceFilter !== "all", !!repoFilter, !!targetFilter, !!search,
+    !showDetailed, !showImportant, importantKinds.length > 0,
+  ].filter(Boolean).length;
+
   const serverQuery = useMemo(() => ({
     ...(debouncedSearch ? { q: debouncedSearch } : {}),
     ...(sourceFilter !== "all" ? { source: sourceFilter } : {}),
@@ -413,7 +429,12 @@ export default function ActivityPage() {
     ...(showDetailed ? {} : { detailed: "hide" as const }),
     ...(showImportant ? {} : { important: "hide" as const }),
     ...(showImportant && importantKinds.length ? { importantKinds: importantKinds.join(",") } : {}),
-  }), [debouncedSearch, sourceFilter, category, repoFilter, targetFilter, showDetailed]);
+    // Every value read above is listed below. A filter left out of this array
+    // is a filter that does nothing at all: the object never rebuilds, so the
+    // query key never changes and React Query never refetches. It looks exactly
+    // like a broken backend from the outside.
+  }), [debouncedSearch, sourceFilter, category, repoFilter, targetFilter,
+       showDetailed, showImportant, importantKinds]);
 
   // Back to the newest page whenever the question changes.
   useEffect(() => {
@@ -606,153 +627,146 @@ export default function ActivityPage() {
       <tr
         key={entry.id}
         data-activity-id={entry.id}
-        className={`transition-all group cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 ${dimmed ? 'opacity-50' : ''} ${isFailedEntry ? 'bg-red-50/40 dark:bg-red-950/40' : ''} ${isHighlighted ? 'ring-2 ring-inset ring-gh-blue bg-blue-50/60 dark:bg-blue-950/60 animate-pulse-once' : ''} ${showHoldHighlight ? 'bg-amber-50/70 dark:bg-amber-950/70 border-l-2 !border-l-amber-400' : ''}`}
+        // The hold state is a background wash only. It used to add a left
+        // border too, which now runs down the same three pixels as the stream
+        // rail and won, so a held row lost the one mark saying where it came
+        // from.
+        className={`group cursor-pointer transition-colors duration-150
+          hover:bg-slate-50 dark:hover:bg-white/[0.04]
+          ${dimmed ? "opacity-50" : ""}
+          ${isFailedEntry ? "bg-red-50/40 dark:bg-red-950/40" : ""}
+          ${isHighlighted ? "ring-2 ring-inset ring-gh-blue bg-blue-50/60 dark:bg-blue-950/60 animate-pulse-once" : ""}
+          ${showHoldHighlight ? "bg-amber-50/70 dark:bg-amber-950/70" : ""}`}
         onClick={(e) => {
           if ((e.target as HTMLElement).closest('[data-expand-btn]')) return;
           setSelectedEvent(entry);
         }}
       >
-        <td className="px-3 py-3 whitespace-nowrap text-center" style={{ paddingLeft: `${12 + depth * 24}px` }}>
-          <div className="flex items-center gap-2">
-            {depth > 0 && <span className="text-gray-300 dark:text-slate-600 text-xs select-none"><i className="fa-solid fa-turn-up fa-rotate-90"></i></span>}
-            {hasChildren ? (
-              <button data-expand-btn onClick={(e) => { e.stopPropagation(); toggleExpanded(entry.id); }} className="w-5 h-5 flex items-center justify-center rounded hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors text-gray-500 dark:text-slate-400">
-                <i className={`fa-solid fa-chevron-${isExpanded ? 'down' : 'right'} text-[10px]`}></i>
-              </button>
-            ) : <span className="w-5 inline-block" />}
-            {/* Audit rows had no case here and fell through to the shield,
-                captioned "Control Hub App Event". Which is the one thing they
-                are certainly not. They come from GitHub's enterprise stream and
-                this app never wrote them. */}
-            {isFailedEntry
-              ? <i className="fa-solid fa-circle-exclamation text-base text-red-500" title="Failed"></i>
-              : entry.source === "github"
-                ? <i className="fa-brands fa-github text-base text-gh-textBase dark:text-slate-200" title="Reported by GitHub webhook"></i>
-                : <i className="fa-solid fa-shield-halved text-base text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
-          </div>
-        </td>
-        <td className="px-4 py-3 overflow-hidden">
-          <div className="flex items-center gap-2 min-w-0">
-            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border shrink-0 ${isFailedEntry ? 'bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : cfg.colorClass} ${isUndoneEntry ? 'line-through' : ''}`}>
-              <i className={isFailedEntry ? 'fa-solid fa-xmark text-[10px]' : cfg.iconClass}></i>
-              {/* The event itself, not the category it belongs to.
-                  Every one of these rows said "Security Alert", which is the
-                  name of the drawer rather than the name of the thing in it:
-                  a repository going public and somebody being granted admin
-                  are not the same event and should not read as one. */}
-              {isFailedEntry
-                ? `${cfg.label} (Failed)`
-                : entry.action === "security.alert"
-                  ? importantLabel(entry.importantKind)
-                  : cfg.label}
-            </span>
+        {/* ── 1. what happened ──────────────────────────────────────── */}
+        <td className="py-3 pr-4 overflow-hidden relative"
+            style={{ paddingLeft: `${16 + depth * 22}px` }}>
+          {/* The stream, as a colour rather than as a column of its own. Same
+              three colours the chart above uses, so a row and a band in the
+              graph are recognisably the same thing. */}
+          <span aria-hidden="true"
+            className={`absolute left-0 inset-y-0 w-[3px] ${STREAM_RAIL[categoryOf(entry.action)] ?? "bg-slate-300 dark:bg-slate-600"}`} />
 
-            {/* The category, now that the chip carries the event. Mirrors the
-                "detailed" badge exactly, and for the same reason: it is what
-                makes the show/hide filter legible, because you can see which
-                rows it would take away. */}
-            {entry.action === "security.alert" && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 font-medium shrink-0"
-                title="An important event: it also raised an alert and may have been emailed">
-                important
-              </span>
-            )}
-            {/* Written under the detailed-logging toggle. The label is what
-                makes the "hide detailed" filter legible: you can see which rows
-                it would remove. */}
-            {entry.detailed && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/70 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 font-medium" title="Recorded by detailed GitHub logging">
-                detailed
-              </span>
-            )}
-            {/* Which stream this row would be under, shown only while they are
-                merged. Without it the combined view is the undifferentiated
-                list the streams were introduced to break up, and clicking
-                through to find out which tab a row lives in defeats the point
-                of merging them. Hidden in a single stream, where every row
-                would carry the same badge. */}
-            {category === "all" && (
-              <button
-                onClick={(e) => { e.stopPropagation(); setCategory(categoryOf(entry.action)); }}
-                title={`Show only ${CATEGORY_LABELS[categoryOf(entry.action)]}`}
-                className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-600 font-medium hover:border-gh-blue hover:text-gh-blue dark:hover:text-blue-400">
-                {CATEGORY_LABELS[categoryOf(entry.action)]}
-              </button>
-            )}
-            {isUndoneEntry && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 border border-gray-200 dark:border-slate-700 font-medium">Undone</span>}
-            {entry.action === "conflict.pending" && !entry.conflictResolution && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold">On Hold</span>
-            )}
-            {entry.conflictResolution === "override" && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium">Overridden</span>
-            )}
-            {entry.conflictResolution === "skip" && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 font-medium">Skipped</span>
-            )}
-            {hasChildren && !isExpanded && (
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 border border-gray-200 dark:border-slate-700 font-medium">
-                  {countAllChildren(entry)} sub-action{countAllChildren(entry) !== 1 ? 's' : ''}
+          <div className="flex items-start gap-2 min-w-0">
+            <div className="flex items-center gap-1 shrink-0 pt-0.5">
+              {depth > 0 && (
+                <span className="text-slate-300 dark:text-slate-600 text-[10px] select-none" aria-hidden="true">
+                  <i className="fa-solid fa-turn-up fa-rotate-90"></i>
                 </span>
-                {failedCount > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium">
-                    {failedCount} failed
-                  </span>
-                )}
-                {containsHold && (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold animate-pulse">
-                    <i className="fa-solid fa-pause text-[8px] mr-0.5"></i> Has Hold
-                  </span>
-                )}
-              </div>
-            )}
+              )}
+              {hasChildren ? (
+                <button data-expand-btn onClick={(e) => { e.stopPropagation(); toggleExpanded(entry.id); }}
+                  aria-expanded={isExpanded}
+                  aria-label={isExpanded ? "Collapse" : `Expand ${countAllChildren(entry)} related`}
+                  className="w-5 h-5 flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500
+                             hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                  <i className={`fa-solid fa-chevron-${isExpanded ? "down" : "right"} text-[9px]`}></i>
+                </button>
+              ) : <span className="w-5 inline-block" />}
+
+              {/* Audit rows had no case here and fell through to the shield,
+                  captioned "Control Hub App Event". Which is the one thing they
+                  are certainly not: they come from GitHub's enterprise stream
+                  and this app never wrote them. */}
+              {isFailedEntry
+                ? <i className="fa-solid fa-circle-exclamation text-[13px] text-red-500" title="Failed"></i>
+                : entry.source === "github"
+                  ? <i className="fa-brands fa-github text-[13px] text-slate-500 dark:text-slate-400" title="Reported by GitHub webhook"></i>
+                  : <i className="fa-solid fa-shield-halved text-[12px] text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
+            </div>
+
+            <div className="min-w-0 flex flex-wrap items-center gap-1.5">
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border shrink-0 ${isFailedEntry ? "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800" : cfg.colorClass} ${isUndoneEntry ? "line-through" : ""}`}>
+                <i className={isFailedEntry ? "fa-solid fa-xmark text-[10px]" : cfg.iconClass}></i>
+                {/* The event itself, not the category it belongs to. Every one
+                    of these rows said "Security Alert", which is the name of
+                    the drawer rather than the name of the thing in it. */}
+                {isFailedEntry
+                  ? `${cfg.label} (Failed)`
+                  : entry.action === "security.alert"
+                    ? importantLabel(entry.importantKind)
+                    : cfg.label}
+              </span>
+
+              {entry.action === "security.alert" && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 font-medium shrink-0"
+                  title="An important event: it also raised an alert and may have been emailed">
+                  important
+                </span>
+              )}
+              {entry.detailed && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/70 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 font-medium shrink-0" title="Recorded by detailed GitHub logging">
+                  detailed
+                </span>
+              )}
+              {hasChildren && !isExpanded && (
+                <span className="text-[11px] tabular-nums text-slate-400 dark:text-slate-500 shrink-0">
+                  +{countAllChildren(entry)}
+                </span>
+              )}
+            </div>
           </div>
         </td>
-        {/* overflow-hidden on every cell, because the table is fixed-layout:
-            without it a long value does not shrink, it draws straight over the
-            column beside it, which is what dragging a column narrow revealed. */}
+
+        {/* ── 2. who ────────────────────────────────────────────────────── */}
         <td className="px-4 py-3 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
-            <UserAvatar login={entry.actor} size={24} />
-            <span className="text-sm font-medium text-gh-textBase dark:text-slate-200 truncate" title={entry.actor}>{actorLabel(entry.actor)}</span>
+            <UserAvatar login={entry.actor} size={22} />
+            <span className="text-[13px] font-medium text-gh-textBase dark:text-slate-200 truncate" title={entry.actor}>
+              {actorLabel(entry.actor)}
+            </span>
           </div>
         </td>
+
+        {/* ── 3. where, both halves of it ───────────────────────────────── */}
         <td className="px-4 py-3 overflow-hidden">
-          {/* Plenty of events are not about a repository at all, organization
-              membership, teams, tokens. An empty pill reads as a missing value;
-              a rule reads as "does not apply", which is what it is. */}
-          {!entry.repo ? (
-            <span
-              className="inline-block w-6 h-px bg-slate-300 dark:bg-slate-600 align-middle"
-              title="Not scoped to a repository"
-              aria-label="Not scoped to a repository"
-            />
-          ) : (
-            <span
-              title={entry.repo}
-              className={`inline-flex items-center max-w-full px-2 py-0.5 rounded text-xs font-medium border ${entry.repo === '*' ? 'bg-gray-600 text-white border-gray-700' : 'bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-slate-300 border-gray-200 dark:border-slate-600'}`}>
-              <span className="truncate">{entry.repo === '*' ? '* (Global)' : entry.repo}</span>
+          {/* Nothing at all when there is no repository.
+              A rule was drawn here to mean "does not apply", which reads as
+              information on the odd row among many that have one. In the App
+              stream almost nothing is scoped to a repository, so every row
+              carried the same mark and it became a texture rather than a fact.
+              An empty cell under a column headed Scope already says it. */}
+          {entry.repo && (
+            <span className="block text-[13px] font-medium text-gh-textBase dark:text-slate-200 truncate" title={entry.repo}>
+              {entry.repo === "*" ? "Everywhere" : entry.repo}
+            </span>
+          )}
+          {entry.target && (
+            <span className="mt-0.5 flex items-center gap-1 font-mono text-[11.5px] text-slate-500 dark:text-slate-400 min-w-0"
+              title={entry.target}>
+              {entry.action.includes("branch") && (
+                <i className="fa-solid fa-code-branch text-[9px] shrink-0" aria-hidden="true"></i>
+              )}
+              <span className="truncate">{entry.target}</span>
             </span>
           )}
         </td>
-        <td className="px-4 py-3 overflow-hidden">
-          <span
-            title={entry.target}
-            className="inline-flex items-center max-w-full font-mono text-xs text-gh-textBase dark:text-slate-200 bg-gray-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200/50 dark:border-slate-700">
-            {entry.action.includes('branch') && <i className="fa-solid fa-code-branch text-[10px] text-gray-400 dark:text-slate-500 mr-1 shrink-0"></i>}
-            <span className="truncate">{entry.target}</span>
+
+        {/* ── 4. the detail line ────────────────────────────────────────── */}
+        <td className="px-4 py-3 overflow-hidden hidden lg:table-cell">
+          <span className={`text-[13px] truncate block ${isFailedEntry ? "text-red-600 dark:text-red-400" : "text-gh-muted dark:text-slate-400"}`}
+            title={entry.details}>
+            {entry.details || "\u2014"}
           </span>
         </td>
-        <td className="px-4 py-3 overflow-hidden hidden lg:table-cell">
-          <span className={`text-sm truncate block ${isFailedEntry ? 'text-red-600 dark:text-red-400' : 'text-gh-muted dark:text-slate-400'}`} title={entry.details}>{entry.details || "\u2014"}</span>
-        </td>
+
+        {/* ── 5. when, and whether it wants anything ────────────────────── */}
         <td className="px-4 py-3 overflow-hidden text-right">
           <div className="flex items-center justify-end gap-2">
-            <span className="text-sm text-gh-muted dark:text-slate-400" title={entry.timestamp}>{formatTimestamp(entry.timestamp)}</span>
-            {isFailedEntry && <span className="w-2 h-2 rounded-full bg-red-500" title="Failed - click to manage"></span>}
+            <span className="text-[12.5px] tabular-nums text-gh-muted dark:text-slate-400" title={entry.timestamp}>
+              {formatTimestamp(entry.timestamp)}
+            </span>
+            {isFailedEntry && <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" title="Failed - click to manage"></span>}
             {!isFailedEntry && (canUndo(entry) || canRedo(entry)) && (
-              <span className={`w-2 h-2 rounded-full ${isUndoneEntry || allDone ? 'bg-orange-400' : 'bg-green-400'}`} title="Click to manage"></span>
+              <span className={`w-2 h-2 rounded-full shrink-0 ${isUndoneEntry || allDone ? "bg-orange-400" : "bg-green-400"}`} title="Click to manage"></span>
             )}
+            {/* Appears on hover: every row opens, and nothing said so. */}
+            <i className="fa-solid fa-chevron-right text-[10px] text-slate-300 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+               aria-hidden="true"></i>
           </div>
         </td>
       </tr>
@@ -782,14 +796,19 @@ export default function ActivityPage() {
 
   return (
     <Page user={user}>
-        <header className="flex flex-col mb-6 space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-            <div>
-              <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Activity</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                {lens === "important"
-                  ? "Changes worth knowing about, grouped by what caused them. Most are somebody doing their job."
-                  : CATEGORY_DESCRIPTIONS[category]}
+        <header className="flex flex-col mb-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="min-w-0">
+              <h1 className={TYPE.title + " text-slate-900 dark:text-white"}>Activity</h1>
+              {/* One line, and only where it is not already obvious. The stream
+                  descriptions moved to the tabs themselves, where the thing
+                  they describe is the thing being pointed at. */}
+              <p className="text-[13.5px] text-slate-500 dark:text-slate-400 mt-1 max-w-[70ch]">
+                {lens === "stats"
+                  ? "The shape of everything, across the whole organization."
+                  : lens === "important"
+                    ? "Changes worth knowing about, grouped by what caused them. Most are somebody doing their job."
+                    : "Everything this app and GitHub have recorded, newest first."}
               </p>
             </div>
             <WebhookPulse />
@@ -802,15 +821,39 @@ export default function ActivityPage() {
               roughly when something happened but not which stream recorded it -
               a repository going public shows up in Organization and again in the
               audit log, and searching one at a time is how you miss it. */}
-          {/* overflow-y-hidden is load-bearing: setting overflow-x to anything but
-              visible makes overflow-y compute to auto rather than staying visible,
-              and the tabs' -mb-px against a 2px bottom border overflows by exactly
-              enough to raise a vertical scrollbar on a row of buttons. */}
+          {/* ── the three views ──────────────────────────────────────────
+              A segmented control, not tabs, because these are not three slices
+              of one list. They are three different jobs: see the shape, find a
+              row, review what mattered. Tabs would have put them on the same
+              footing as the stream tabs below, which really are slices. */}
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-white/[0.06] w-fit">
+            {([
+              ["stats", "ph-chart-line-up", "Statistics"],
+              ["feed", "ph-list-magnifying-glass", "Events"],
+              ["important", "ph-shield-warning", "Important events"],
+            ] as const).map(([v, icon, label]) => (
+              <button key={v} onClick={() => setLensPersistent(v)} aria-pressed={lens === v}
+                className={`px-3.5 py-2 rounded-lg text-[13px] font-semibold whitespace-nowrap
+                            flex items-center gap-2 transition-all
+                  ${lens === v
+                    ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}>
+                <i className={`ph-bold ${icon} text-[14px]`} aria-hidden="true" />
+                {label}
+              </button>
+            ))}
+          </div>
 
+          {/* ── the streams, which only narrow the feed ───────────────────
+              overflow-y-hidden is load-bearing: setting overflow-x to anything
+              but visible makes overflow-y compute to auto rather than staying
+              visible, and the tabs' -mb-px against a 2px bottom border
+              overflows by exactly enough to raise a vertical scrollbar on a row
+              of buttons. */}
+          {lens === "feed" && (
           <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto overflow-y-hidden">
             {views.map(c => {
               const active = category === c;
-
               return (
                 <button
                   key={c}
@@ -822,38 +865,70 @@ export default function ActivityPage() {
                       : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
                 >
                   {CATEGORY_LABELS[c]}
+                  {/* What is in each stream over the charted window, so the
+                      choice of tab is informed before it is made rather than
+                      after. From the pulse, which is unfiltered, so these are
+                      stream totals and not a preview of the current filter. */}
+                  {pulse && (
+                    <span className={`ml-2 text-[11px] tabular-nums px-1.5 py-0.5 rounded-md
+                      ${active
+                        ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
+                        : "bg-slate-100 dark:bg-white/[0.07] text-slate-500 dark:text-slate-400"}`}>
+                      {(c === "all" ? pulse.total : pulse.byCategory?.[c] ?? 0).toLocaleString()}
+                    </span>
+                  )}
                 </button>
               );
             })}
-
-            {/* Pushed to the far end and given its own divider, because it is
-                not a fifth stream. The streams narrow the table; this replaces
-                it. Sitting flush against them would say they were the same
-                kind of control. */}
-            <span className="ml-auto pl-3 border-l border-slate-200 dark:border-slate-700 self-stretch flex items-center">
-              <button
-                onClick={() => setLens(lens === "important" ? "feed" : "important")}
-                aria-pressed={lens === "important"}
-                className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors flex items-center gap-2
-                  ${lens === "important"
-                    ? "border-rose-500 dark:border-rose-400 text-slate-900 dark:text-white"
-                    : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
-              >
-                <i className="ph-bold ph-shield-warning text-[13px]" aria-hidden="true" />
-                Important events
-              </button>
-            </span>
           </nav>
+          )}
+
+          {/* The stream's own sentence, under the stream. A row lands in a
+              stream by what its action *changed*, not by where the change came
+              from, and that reads as arbitrary until it is stated. Beside the
+              tabs it is read when the tab is chosen; in the page header it was
+              read once and never again. */}
+          {lens === "feed" && (
+            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-[86ch]">
+              {CATEGORY_DESCRIPTIONS[category]}
+            </p>
+          )}
 
           {/* Every control in here narrows the table. On the dashboard lens
               there is no table, and the dashboard brings its own filters, so
               leaving these on screen would offer two filter sets where only
               one of them did anything. */}
           {lens === "feed" && (
-          <div className="bg-white dark:bg-slate-900 p-4 rounded-lg border border-gh-border dark:border-slate-700 shadow-sm">
+          <div className={`${SURFACE.card} p-4`}>
             <div className="flex items-center gap-2 mb-3">
-              <i className="fa-solid fa-filter text-gh-muted dark:text-slate-400 text-sm"></i>
-              <span className="text-sm font-semibold text-gh-textBase dark:text-slate-200">Advanced Filters</span>
+              <i className="fa-solid fa-filter text-slate-400 dark:text-slate-500 text-[11px]"></i>
+              <span className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Narrow the feed</span>
+
+              {/* What the filters are doing, in a number, beside the controls
+                  doing it. A filtered feed and an empty one look identical
+                  until something says which it is. */}
+              {activeFilterCount > 0 && (
+                <span className="text-[11px] font-bold px-1.5 py-0.5 rounded-md bg-gh-blue/10 dark:bg-blue-400/15 text-gh-blue dark:text-blue-300">
+                  {activeFilterCount} on
+                </span>
+              )}
+
+              {/* The arrangement, beside the filters that feed it. Both views
+                  read the same rows, so this is presentation and belongs with
+                  the other view controls rather than in the toolbar. */}
+              <div className="ml-auto flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-white/[0.07]">
+                {([["table", "ph-table", "Table"], ["timeline", "ph-list-dashes", "Timeline"]] as const).map(
+                  ([v, icon, label]) => (
+                    <button key={v} onClick={() => setShapePersistent(v)} aria-pressed={shape === v} title={label}
+                      className={`px-2.5 py-1 rounded-md text-[12px] font-semibold flex items-center gap-1.5 transition-colors
+                        ${shape === v
+                          ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                          : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}>
+                      <i className={`ph-bold ${icon} text-[13px]`} aria-hidden="true" />
+                      {label}
+                    </button>
+                  ))}
+              </div>
             </div>
             {/* Three columns when Source does not apply, so the remaining
                 filters spread rather than leaving a gap where it was. */}
@@ -969,7 +1044,16 @@ export default function ActivityPage() {
           )}
         </header>
 
-        {lens === "important" ? <ImportantEvents /> : (
+        {lens === "stats" ? (
+          <div className="grid gap-4">
+            {/* The chart keeps its own window control, and Statistics reads the
+                same one, so the whole view moves together. */}
+            <ActivityPulse pulse={pulse} hours={pulseHours}
+              onHours={setPulseHoursPersistent} isLoading={pulseLoading} />
+            <ActivityStats pulse={pulse} hours={pulseHours}
+              windowLabel={pulseHours <= 24 ? "24 hours" : pulseHours <= 168 ? "7 days" : "30 days"} />
+          </div>
+        ) : lens === "important" ? <ImportantEvents /> : (
         <>
 
         {isLoading && <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gh-blue"></div></div>}
@@ -984,6 +1068,29 @@ export default function ActivityPage() {
 
         {!isLoading && !error && (
           <div className="bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 shadow-subtle overflow-hidden relative">
+            {shape === "timeline" ? (
+              <div className="px-5 py-3">
+                {/* Read-only by design. Undo, redo and diffs live in the table,
+                    and a second implementation of the one thing in this app
+                    that writes is two chances to get it wrong. Opening a row
+                    here takes you there. */}
+                <ActivityTimeline
+                  entries={filtered}
+                  categoryOf={categoryOf}
+                  // Opens the same detail panel a table row opens, in place.
+                  //
+                  // It used to switch back to the table first, which threw away
+                  // the view somebody had deliberately chosen in order to show
+                  // them something they could have seen without leaving it.
+                  onOpen={setSelectedEvent}
+                />
+                {filtered.length === 0 && (
+                  <p className="py-10 text-center text-sm text-slate-500 dark:text-slate-400">
+                    Nothing to show for this filter.
+                  </p>
+                )}
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table
                 className="text-left border-collapse"
@@ -1006,11 +1113,14 @@ export default function ActivityPage() {
                       ? undefined : { width: cols.widths[c.id] ?? c.width }} />
                   ))}
                 </colgroup>
-                <thead className="bg-gray-50 dark:bg-slate-800 border-b border-gh-border dark:border-slate-700">
+                {/* Sticky, because the feed is long and a column you cannot
+                    name is a column you have to scroll back up to read. */}
+                <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm
+                                  border-b border-gh-border dark:border-slate-700">
                   <tr>
                     {columns.map((c, i) => (
                       <th key={c.id}
-                        className={`relative px-4 py-3 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider ${
+                        className={`relative px-4 py-2.5 text-[10.5px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-[0.13em] ${
                           c.align === "right" ? "text-right" : ""}`}>
                         <span className="block truncate">{c.label}</span>
                         {/* Not on the last column: it has no width of its own
@@ -1056,6 +1166,7 @@ export default function ActivityPage() {
                 </tbody>
               </table>
             </div>
+            )}
             {/* Numbered pages are gone with the client-side slice. DynamoDB
                 pages forward with an opaque cursor and cannot jump to page N,
                 so offering "page 7" would mean walking to it invisibly. What is

@@ -468,7 +468,13 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     const scanNames = (p: string) => {
       const full = path.join(ROOT, p);
       if (fs.statSync(full).isDirectory()) {
-        if (/(^|\/)(cdk\.out|node_modules|dist|build|\.git|coverage)$/.test(p)) return;
+        // Build output too, not only dependencies. `desktop/release` holds a
+        // packaged app: an `app-update.yml` naming the repository the updates
+        // come from, and a copy of every dependency. All of it is generated,
+        // all of it is gitignored, and none of it is source somebody wrote. A
+        // scan that reads it reports the same finding on every machine that has
+        // run a build, which teaches people to ignore this check.
+        if (/(^|\/)(cdk\.out|node_modules|dist|build|release|out|\.git|coverage)$/.test(p)) return;
         for (const e of fs.readdirSync(full)) scanNames(p ? path.join(p, e) : e);
         return;
       }

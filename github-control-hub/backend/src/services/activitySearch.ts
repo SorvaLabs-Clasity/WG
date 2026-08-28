@@ -298,3 +298,278 @@ export function searchMemory(
 }
 
 export { usesDynamo };
+
+/* ────────────────────────────────────────────────────────────────────────
+ * Aggregates for the Activity tab's header.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Actors that are not a person.
+ *
+ * "Most active" is a question about people. The app writes `system` on its own
+ * background work, GitHub sends `github[system]` on enterprise rows, and bots
+ * announce themselves with a `[bot]` suffix. Left in, the leaderboard is topped
+ * by the scheduler every time and says nothing about anybody.
+ */
+const NOT_A_PERSON = new Set(["", "system", "unknown", "github", "github[system]", "ci"]);
+// A hyphen before "bot" rather than the bare word, so somebody named Abbot or
+// Botha stays a person.
+const BOTISH = /\[bot\]$|-bot$|^bot-|^dependabot|^renovate|^github-actions|^system[ (]/i;
+
+export function isPerson(actor: string | undefined): boolean {
+  const a = (actor ?? "").trim().toLowerCase();
+  return !!a && !NOT_A_PERSON.has(a) && !BOTISH.test(a);
+}
+
+export interface PulseBucket {
+  /** Start of the bucket, ISO. */
+  start: string;
+  github: number;
+  aws: number;
+  app: number;
+  total: number;
+}
+
+export interface ActivityPulse {
+  buckets: PulseBucket[];
+  /** Hours each bucket covers, so the caller can label the axis. */
+  bucketHours: number;
+  total: number;
+  byCategory: Record<string, number>;
+  topActors: { actor: string; count: number }[];
+  topRepos: { repo: string; count: number }[];
+  /** The commonest kinds of thing, by action. */
+  topActions: { action: string; count: number }[];
+  /**
+   * Counts by hour of day, in the timezone the caller asked for.
+   *
+   * UTC was wrong for a reader: "busiest hour 14:00" means nothing to somebody
+   * whose working day is in another zone, and the whole point of the number is
+   * to recognise your own afternoon in it.
+   */
+  byHour: number[];
+  /** One entry per calendar day in the window, oldest first. */
+  byDay: { date: string; count: number }[];
+  /** The zone the two above were computed in, so the label can name it. */
+  timeZone: string;
+  /**
+   * The same window immediately before this one.
+   *
+   * A number is only interesting next to another number. Counted in the same
+   * walk, so it costs nothing extra, and left null when the walk stopped before
+   * reaching that far, because a previous period that was only half read would
+   * make this week look like a spike.
+   */
+  previousTotal: number | null;
+  /** Rows read to produce this. */
+  examined: number;
+  /**
+   * True when the whole window was walked. False means the budget ran out
+   * before the window did, so these are counts of *what was read*, not of what
+   * happened — a different answer, and one the header has to say out loud.
+   */
+  exhausted: boolean;
+  /** Oldest row actually counted, so a truncated answer can name its own edge. */
+  oldest?: string;
+}
+
+/**
+ * What has been happening, bucketed for a chart.
+ *
+ * Walks the feed newest-first within the same budget every other read here
+ * uses. A busy organization will hit that budget before it reaches the far end
+ * of a week, which is why `exhausted` and `oldest` come back with the counts:
+ * a chart drawn from a truncated walk under a "last 7 days" heading is the
+ * exact lie this codebase keeps having to remove.
+ *
+ * Deliberately no filters. This is the shape of everything, and the point of it
+ * is to be the backdrop the filtered table sits in front of.
+ */
+export async function activityPulse(
+  hours = 168,
+  buckets = 24,
+  timeZone = "UTC",
+  deps?: { query?: (cursor: any) => Promise<{ items: ActivityEntry[]; next: any }> },
+): Promise<ActivityPulse> {
+  const now = Date.now();
+  const span = hours * 3_600_000;
+  const bucketMs = span / buckets;
+  const since = now - span;
+
+  const out: PulseBucket[] = Array.from({ length: buckets }, (_, i) => ({
+    start: new Date(since + i * bucketMs).toISOString(),
+    github: 0, aws: 0, app: 0, total: 0,
+  }));
+
+  const byCategory: Record<string, number> = { github: 0, aws: 0, app: 0 };
+  const actors = new Map<string, number>();
+  const repos = new Map<string, number>();
+  const actions = new Map<string, number>();
+  const byHour = new Array(24).fill(0);
+  const dayCounts = new Map<string, number>();
+
+  /**
+   * Local hour and calendar day, without doing date arithmetic by hand.
+   *
+   * One formatter, reused. Asking Intl per event is the only way to get this
+   * right across a daylight-saving change inside the window, and at a few
+   * thousand events behind a one-minute cache it costs nothing worth avoiding.
+   *
+   * An unknown zone throws rather than falling back, and a thrown formatter
+   * would take the whole endpoint with it, so it is validated once here.
+   */
+  let zone = timeZone;
+  let parts: Intl.DateTimeFormat;
+  try {
+    parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", hour12: false,
+    });
+  } catch {
+    zone = "UTC";
+    parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+      hour: "2-digit", hour12: false,
+    });
+  }
+  const localOf = (d: Date) => {
+    const f = parts.formatToParts(d);
+    const at = (t: string) => f.find(x => x.type === t)?.value ?? "00";
+    return {
+      // Intl gives 24 for midnight under hour12:false in some environments.
+      hour: Number(at("hour")) % 24,
+      date: `${at("year")}-${at("month")}-${at("day")}`,
+    };
+  };
+
+  // The window before this one, walked in the same pass.
+  const prevSince = since - span;
+  let previousCount = 0;
+  let reachedPrevious = false;
+
+  let examined = 0;
+  let total = 0;
+  let oldest: string | undefined;
+  let key: any;
+  let exhausted = false;
+
+  const readPage = deps?.query ?? (async (start: any) => {
+    const res: any = await docClient.send(new QueryCommand({
+      TableName: TABLE(),
+      KeyConditionExpression: "pk = :pk",
+      ExpressionAttributeValues: { ":pk": "ACTIVITY" },
+      ScanIndexForward: false,
+      ExclusiveStartKey: start,
+    }));
+    return { items: (res.Items ?? []) as ActivityEntry[], next: res.LastEvaluatedKey };
+  });
+
+  do {
+    const page = await readPage(key);
+    for (const e of page.items) {
+      examined++;
+      const t = Date.parse(e.timestamp);
+      // Newest-first, so the first row older than the window ends the walk:
+      // everything behind it is older still.
+      if (Number.isNaN(t)) continue;
+
+      // Behind the window: keep going a little, to count the period before it.
+      if (t < since) {
+        if (t >= prevSince) { previousCount++; continue; }
+        reachedPrevious = true;
+        exhausted = true;
+        break;
+      }
+
+      oldest = e.timestamp;
+      total++;
+
+      const cat = categoryOf(e.action);
+      if (cat in byCategory) byCategory[cat]++;
+
+      const i = Math.min(buckets - 1, Math.max(0, Math.floor((t - since) / bucketMs)));
+      const b = out[i];
+      b.total++;
+      if (cat === "github") b.github++;
+      else if (cat === "aws") b.aws++;
+      else b.app++;
+
+      actions.set(e.action, (actions.get(e.action) ?? 0) + 1);
+
+      // UTC on purpose. The rhythm of a week is a property of the organization,
+      // and reading it in each viewer's own zone would give two people looking
+      // at the same chart two different pictures of it.
+      const local = localOf(new Date(t));
+      byHour[local.hour]++;
+      dayCounts.set(local.date, (dayCounts.get(local.date) ?? 0) + 1);
+
+      // People, not the scheduler. See isPerson.
+      if (isPerson(e.actor)) actors.set(e.actor, (actors.get(e.actor) ?? 0) + 1);
+
+      // `repo` on an AWS row is a resource path — "github-control-hub/lambda/
+      // alarm-evaluator" — because the guardrail engine reuses the field to say
+      // what a finding is about. Counting those as repositories put four
+      // Lambdas at the top of "busiest repositories", which is true of the
+      // field and false of the question.
+      // "*" is the marker for organization-wide, written by rules that apply
+      // everywhere. It is the one value in this field that names no repository,
+      // so counting it puts "everywhere" at the top of "busiest repositories".
+      if (e.repo && e.repo !== "*" && cat !== "aws") {
+        repos.set(e.repo, (repos.get(e.repo) ?? 0) + 1);
+      }
+    }
+    if (exhausted) break;
+    key = page.next;
+  } while (key && examined < MAX_EXAMINED_PER_REQUEST);
+
+  const top = (m: Map<string, number>, name: "actor" | "repo") =>
+    [...m.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 6)
+      .map(([k, count]) => ({ [name]: k, count })) as any[];
+
+  return {
+    buckets: out,
+    bucketHours: bucketMs / 3_600_000,
+    total,
+    byCategory,
+    topActors: top(actors, "actor"),
+    topRepos: top(repos, "repo"),
+    topActions: [...actions.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 8)
+      .map(([action, count]) => ({ action, count })),
+    byHour,
+    // Every calendar day the window covers, including the empty ones. A chart
+    // built only from days that have events draws a quiet week and a busy one
+    // identically, and the gaps are the shape being looked for.
+    byDay: daysBetween(since, now, zone).map(date => ({
+      date, count: dayCounts.get(date) ?? 0,
+    })),
+    timeZone: zone,
+    // Only where the walk actually got past the previous window. A partial
+    // count compared against a complete one is a comparison that invents a
+    // trend.
+    previousTotal: reachedPrevious ? previousCount : null,
+    examined,
+    // Either the window ran out before the budget did, or the feed did.
+    exhausted: exhausted || !key,
+    oldest,
+  };
+}
+
+/** Every calendar date between two instants, in a zone, oldest first. */
+function daysBetween(fromMs: number, toMs: number, zone: string): string[] {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: zone, year: "numeric", month: "2-digit", day: "2-digit",
+  });
+  const out: string[] = [];
+  const seen = new Set<string>();
+  // Stepped in hours rather than days, so a day is never skipped across a
+  // daylight-saving change that makes one of them 23 hours long.
+  for (let t = fromMs; t <= toMs + 3_600_000; t += 3_600_000) {
+    const d = fmt.format(new Date(t));
+    if (!seen.has(d)) { seen.add(d); out.push(d); }
+  }
+  return out;
+}

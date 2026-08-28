@@ -23,20 +23,32 @@ export interface ActivityColumn {
   align?: "right";
 }
 
-export function activityColumns(wide: boolean): ActivityColumn[] {
+/**
+ * @param wide   Whether the Details column is on screen. See the note above.
+ * @param merged Whether the Everything view is showing, which puts an extra
+ *               badge in every Action cell.
+ */
+export function activityColumns(wide: boolean, merged = false): ActivityColumn[] {
   const columns: ActivityColumn[] = [
-    { id: "source", label: "Source", width: 116 },
-    { id: "action", label: "Action", width: 210 },
-    { id: "user", label: "User", width: 170 },
-    // Narrower than it looks like it wants to be. Repository names are long, but
-    // the cell truncates with the full name on hover, and every pixel here comes
-    // straight out of Target and Details, which cannot.
-    { id: "repository", label: "Repository", width: 160 },
-    { id: "target", label: "Target", width: 200 },
+    // Source and action were two columns, and the first held one icon in
+    // 116px. They describe the same thing — what happened and where it came
+    // from — so they are one cell with the stream carried by a colour rather
+    // than by a column of its own.
+    //
+    // Wider than the label needs, because the cell holds more than the label:
+    // the expand control, the action chip, and up to three badges. At the old
+    // 210 the chip was clipped as soon as two of them appeared together, which
+    // reads as a broken column rather than a narrow one.
+    { id: "event", label: "Event", width: merged ? 340 : 300 },
+    { id: "actor", label: "Who", width: 165 },
+    // Repository and target were also two columns, and target is empty on a
+    // good half of all rows. Stacked, the repository leads and the target sits
+    // under it in the space the empty column used to occupy.
+    { id: "scope", label: "Scope", width: 210 },
   ];
 
   // Only when it is actually on screen.
-  if (wide) columns.push({ id: "details", label: "Details", width: 260 });
+  if (wide) columns.push({ id: "details", label: "Details", width: 280 });
 
   // Last, so it absorbs the slack and the right edge stays clean without any
   // column claiming `width: 100%`.
@@ -56,7 +68,12 @@ export function activityWidths(columns: ActivityColumn[]): Record<string, number
  * The column set is part of it, so the six-column layout below `lg` and the
  * seven-column one above it are remembered separately rather than one being
  * applied to the other.
+ *
+ * So is the merged view, for the same reason one step further in: it renders an
+ * extra badge in every Action cell, so a width that fits one stream does not
+ * fit Everything. Sharing one id meant a width set on either was applied to
+ * both, and the narrower one always won by being the one somebody dragged.
  */
-export function activityLayoutId(columns: ActivityColumn[]): string {
-  return `activity:${columns.map(c => c.id).join(",")}`;
+export function activityLayoutId(columns: ActivityColumn[], merged = false): string {
+  return `activity:${columns.map(c => c.id).join(",")}${merged ? ":merged" : ""}`;
 }
