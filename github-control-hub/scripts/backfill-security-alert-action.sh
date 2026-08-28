@@ -46,6 +46,10 @@ echo
 # `target` is the discriminator: createAlert has always written "security_alert"
 # there. The `details` prefix is checked too, because a target alone would also
 # match anything else that ever adopted that word.
+#
+# Either prefix. Rows written before the feature was renamed say "Security
+# Alert"; ones written after say "Important event". Both are the same event and
+# both need the same action.
 rows=$("${AWS[@]}" dynamodb scan \
   --table-name "$TABLE" \
   --filter-expression "#a = :old AND #t = :tgt" \
@@ -64,7 +68,7 @@ for it in items:
     # nothing on every row and silently dropped all of them, which the script
     # then reported as "nothing to do".
     text = (it.get("details") or {}).get("S", "")
-    if not text.startswith("Security Alert ["):
+    if not (text.startswith("Security Alert [") or text.startswith("Important event [")):
         continue
     print("%s\t%s" % (it["pk"]["S"], it["sk"]["S"]))
 ')
@@ -83,7 +87,7 @@ if [ "$APPLY" != 1 ]; then
 import json, sys
 for it in json.load(sys.stdin).get("Items", [])[:5]:
     text = (it.get("details") or {}).get("S", "")
-    if text.startswith("Security Alert ["):
+    if text.startswith(("Security Alert [", "Important event [")):
         print("    " + text[:90])
 '
   echo

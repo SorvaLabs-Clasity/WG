@@ -234,7 +234,7 @@ export async function logActivity(
   source: "app" | "github" = "app",
   prNumber?: number,
   commitSha?: string,
-  extra?: { parentId?: string; undoPayload?: UndoPayload; failed?: boolean; errorMessage?: string; retryPayload?: RetryPayload; conflictPayload?: ActivityEntry["conflictPayload"]; linkedActivityId?: string; undone?: boolean; detailed?: boolean }
+  extra?: { parentId?: string; undoPayload?: UndoPayload; failed?: boolean; errorMessage?: string; retryPayload?: RetryPayload; conflictPayload?: ActivityEntry["conflictPayload"]; linkedActivityId?: string; undone?: boolean; detailed?: boolean; importantKind?: string }
 ): Promise<ActivityEntry> {
   const entry: ActivityEntry = {
     id: crypto.randomUUID(),

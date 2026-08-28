@@ -444,7 +444,7 @@ export async function saveSecuritySettings(
   };
   await put(updated);
   const changes = describeChanges(current, updated, [
-    ["enabled", "Security alert emails"],
+    ["enabled", "Important event emails"],
     ["groupId", "email group"],
     ["minSeverity", "severity floor"],
     ["timezone", "timezone"],
@@ -454,10 +454,10 @@ export async function saveSecuritySettings(
   await logActivity(
     "config.updated" as any, actor, "", "alarm_security",
     changes.length
-      ? `Security alerts: ${changes.join(", ")}`
+      ? `Important events: ${changes.join(", ")}`
       // Saved with nothing different. Still recorded, because "somebody opened
       // this and pressed save" is itself worth seeing in an audit trail.
-      : "Security alert settings saved with no change",
+      : "Important event settings saved with no change",
     { enabled: updated.enabled, minSeverity: updated.minSeverity, changed: changes }, "app",
   );
   return updated;

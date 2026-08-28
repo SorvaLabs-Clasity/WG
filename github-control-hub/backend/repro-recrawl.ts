@@ -98,9 +98,9 @@ const at = (minsAgo: number) => new Date(NOW - minsAgo * 60_000).toISOString();
   {
     console.log("\nwhile one is running, every screen says so");
 
-    const s = recrawlState({ runningSince: at(2), startedBy: "roni", lastAttemptAt: at(2) }, NOW);
+    const s = recrawlState({ runningSince: at(2), startedBy: "a-person", lastAttemptAt: at(2) }, NOW);
     check("a walk in progress is reported as running", s.running);
-    check("  naming who started it", s.startedBy === "roni");
+    check("  naming who started it", s.startedBy === "a-person");
     check("  and refusing a second one",
       !s.allowed && /already running/.test(refusalReason(s)!), refusalReason(s));
 

@@ -9,6 +9,7 @@ import { Page, INTENT } from "../design";
 import DiffViewer from "../components/DiffViewer";
 import DetailedLoggingPanel from "../components/DetailedLoggingPanel";
 import ImportantEvents from "../components/ImportantEvents";
+import { IMPORTANT_KINDS, importantLabel } from "../lib/importantEvents";
 import { ColumnResizeHandle } from "../design";
 import { useColumnWidths } from "../hooks/useColumnWidths";
 import { activityColumns, activityWidths, activityLayoutId } from "../lib/activityColumns";
@@ -337,6 +338,38 @@ export default function ActivityPage() {
   const [lens, setLens] = useState<"feed" | "important">("feed");
 
   /**
+   * Whether the important events show in the table, and which of them.
+   *
+   * Same shape as the detailed-rows toggle and for the same pair of wishes:
+   * they are among the noisiest rows in the organization stream, and they are
+   * also the ones people most often want on their own.
+   *
+   * An empty `kinds` means all of them. It is a narrowing, not a whitelist, so
+   * a fresh install shows everything rather than nothing.
+   */
+  const [showImportant, setShowImportant] = useState<boolean>(() => {
+    try { return localStorage.getItem("activity:show-important") !== "hide"; }
+    catch { return true; }
+  });
+  const [importantKinds, setImportantKinds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("activity:important-kinds") || "[]"); }
+    catch { return []; }
+  });
+  const setShowImportantPersistent = (show: boolean) => {
+    setShowImportant(show);
+    try { localStorage.setItem("activity:show-important", show ? "show" : "hide"); }
+    catch { /* the view still changes */ }
+  };
+  const toggleKind = (id: string) => {
+    setImportantKinds(prev => {
+      const next = prev.includes(id) ? prev.filter(k => k !== id) : [...prev, id];
+      try { localStorage.setItem("activity:important-kinds", JSON.stringify(next)); }
+      catch { /* the view still changes */ }
+      return next;
+    });
+  };
+
+  /**
    * Follow the account, including when it changes underneath the open tab.
    *
    * Switching accounts from the navbar does not remount this page, so a stream
@@ -378,6 +411,8 @@ export default function ActivityPage() {
     ...(repoFilter ? { repoFilter } : {}),
     ...(targetFilter ? { target: targetFilter } : {}),
     ...(showDetailed ? {} : { detailed: "hide" as const }),
+    ...(showImportant ? {} : { important: "hide" as const }),
+    ...(showImportant && importantKinds.length ? { importantKinds: importantKinds.join(",") } : {}),
   }), [debouncedSearch, sourceFilter, category, repoFilter, targetFilter, showDetailed]);
 
   // Back to the newest page whenever the question changes.
@@ -600,8 +635,28 @@ export default function ActivityPage() {
           <div className="flex items-center gap-2 min-w-0">
             <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border shrink-0 ${isFailedEntry ? 'bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : cfg.colorClass} ${isUndoneEntry ? 'line-through' : ''}`}>
               <i className={isFailedEntry ? 'fa-solid fa-xmark text-[10px]' : cfg.iconClass}></i>
-              {isFailedEntry ? `${cfg.label} (Failed)` : cfg.label}
+              {/* The event itself, not the category it belongs to.
+                  Every one of these rows said "Security Alert", which is the
+                  name of the drawer rather than the name of the thing in it:
+                  a repository going public and somebody being granted admin
+                  are not the same event and should not read as one. */}
+              {isFailedEntry
+                ? `${cfg.label} (Failed)`
+                : entry.action === "security.alert"
+                  ? importantLabel(entry.importantKind)
+                  : cfg.label}
             </span>
+
+            {/* The category, now that the chip carries the event. Mirrors the
+                "detailed" badge exactly, and for the same reason: it is what
+                makes the show/hide filter legible, because you can see which
+                rows it would take away. */}
+            {entry.action === "security.alert" && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900 font-medium shrink-0"
+                title="An important event: it also raised an alert and may have been emailed">
+                important
+              </span>
+            )}
             {/* Written under the detailed-logging toggle. The label is what
                 makes the "hide detailed" filter legible: you can see which rows
                 it would remove. */}
@@ -804,6 +859,21 @@ export default function ActivityPage() {
                 filters spread rather than leaving a gap where it was. */}
             <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${
               availableSources.length > 1 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+              {/* Same placement rule as detailed rows: only the streams these
+                  can appear in. Elsewhere the control could not change
+                  anything on screen. */}
+              {(category === "github" || category === "all") && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Important events</label>
+                  <select value={showImportant ? "show" : "hide"}
+                    onChange={(e) => setShowImportantPersistent(e.target.value === "show")}
+                    className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    <option value="show">Shown</option>
+                    <option value="hide">Hidden</option>
+                  </select>
+                </div>
+              )}
+
               {/* Only where detailed rows can appear: the Organization stream
                   and the merged view. Elsewhere the control could not change
                   anything on screen. */}
@@ -850,6 +920,46 @@ export default function ActivityPage() {
                 </div>
               </div>
             </div>
+            {/* Which of them, once they are shown at all. Chips rather than a
+                multi-select, because the answer is usually "these two" and a
+                multi-select hides what is chosen behind a closed list.
+                None selected means all: a narrowing, never a whitelist that
+                would show an empty table until somebody ticked something. */}
+            {showImportant && (category === "github" || category === "all") && (
+              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+                <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
+                  <span className="text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">
+                    Which important events
+                  </span>
+                  <span className="text-[11px] text-gh-muted dark:text-slate-500">
+                    {importantKinds.length === 0
+                      ? "all of them"
+                      : `${importantKinds.length} selected`}
+                    {importantKinds.length > 0 && (
+                      <button onClick={() => { setImportantKinds([]); try { localStorage.setItem("activity:important-kinds", "[]"); } catch { /* view still changes */ } }}
+                        className="ml-2 font-semibold text-gh-muted dark:text-slate-400 hover:text-gh-blue dark:hover:text-blue-400">
+                        show all
+                      </button>
+                    )}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {IMPORTANT_KINDS.map(k => {
+                    const on = importantKinds.includes(k.id);
+                    return (
+                      <button key={k.id} onClick={() => toggleKind(k.id)} aria-pressed={on}
+                        className={`px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-colors
+                          ${on
+                            ? "bg-rose-600 border-rose-600 text-white"
+                            : "bg-gray-50 dark:bg-slate-800 border-gh-border dark:border-slate-600 text-gh-textBase dark:text-slate-300 hover:border-rose-400 dark:hover:border-rose-500"}`}>
+                        {k.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {(sourceFilter !== 'all' || repoFilter || targetFilter || search) && (
               <div className="mt-3 flex justify-end">
                 <button onClick={() => { setSourceFilter('all'); setRepoFilter(''); setTargetFilter(''); setSearch(''); }} className="text-[11px] font-medium text-gh-muted dark:text-slate-400 hover:text-gh-blue dark:hover:text-blue-400">Clear Filters</button>

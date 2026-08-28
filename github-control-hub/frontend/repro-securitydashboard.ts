@@ -189,7 +189,7 @@ const allResolved: AlertLike[] = [
     // The reversal is the one fact `resolved` still carries.
     check("a change undone on GitHub is labelled, a button press is not",
       wasReverted({ resolved: true, resolvedBy: "system (auto-resolved)" })
-        && !wasReverted({ resolved: true, resolvedBy: "roni" }));
+        && !wasReverted({ resolved: true, resolvedBy: "a-person" }));
 
     // Records expire rather than waiting for somebody.
     const service = fs.readFileSync("../backend/src/services/alertService.ts", "utf8");
@@ -340,7 +340,7 @@ const allResolved: AlertLike[] = [
     // control people do not find.
     const events = fs.readFileSync("./src/components/ImportantEvents.tsx", "utf8");
     check("  including the notification settings",
-      /<SecurityAlertPanel/.test(events));
+      /<ImportantEventsPanel/.test(events));
   }
 
   // ── every hook runs on every render ─────────────────────────────────
@@ -372,6 +372,95 @@ const allResolved: AlertLike[] = [
     check("  and no hook below it",
       late.length === 0,
       late.map(([i, l]) => `${i + 1}: ${l.trim()}`));
+  }
+
+  // ── the feed names the event, not the drawer ────────────────────────
+  //
+  // Every one of these rows read "Security Alert", which is the category
+  // rather than the thing: a repository going public and somebody being
+  // granted admin are not the same event and should not render as one.
+  {
+    console.log("\nnaming the event in the feed");
+
+    const page = fs.readFileSync("./src/pages/ActivityPage.tsx", "utf8");
+    const lib = fs.readFileSync("./src/lib/importantEvents.ts", "utf8");
+    const events = fs.readFileSync("./src/components/ImportantEvents.tsx", "utf8");
+    const { IMPORTANT_KINDS, importantLabel } = await import("./src/lib/importantEvents");
+
+    check("the chip shows which event it was",
+      /entry\.action === "security\.alert"[\s\S]{0,80}?importantLabel\(entry\.importantKind\)/.test(page));
+    check("  badged as important, the way detailed rows are badged",
+      /important\n/.test(page) && /entry\.action === "security\.alert" && \(/.test(page),
+      "the badge is what makes the show/hide filter legible");
+
+    // A row from before the kind was stored genuinely does not say which event
+    // it was, and reading it out of the prose would be a guess.
+    check("a row with no kind falls back rather than guessing",
+      importantLabel(undefined) === "Security event"
+        && importantLabel("repo_made_public") === "Repository made public");
+
+    // Two lists naming the same events have to agree, or the feed and the
+    // dashboard call the same row different things.
+    const onDash = [...events.matchAll(/^\s{2}(\w+): "([^"]+)",$/gm)]
+      .filter(m => /_/.test(m[1]))
+      .map(m => [m[1], m[2]] as const);
+    check("  and the feed's names match the dashboard's",
+      onDash.length > 0 && onDash.every(([id, label]) =>
+        !IMPORTANT_KINDS.some(k => k.id === id) || IMPORTANT_KINDS.find(k => k.id === id)!.label === label),
+      onDash.filter(([id, label]) =>
+        IMPORTANT_KINDS.some(k => k.id === id && k.label !== label)));
+    check("  covering every kind the dashboard knows",
+      onDash.every(([id]) => IMPORTANT_KINDS.some(k => k.id === id)),
+      onDash.filter(([id]) => !IMPORTANT_KINDS.some(k => k.id === id)).map(x => x[0]));
+
+    check("they can be hidden, and narrowed to some of them",
+      /important: "hide" as const/.test(page) && /importantKinds: importantKinds\.join/.test(page));
+    check("  with none selected meaning all, not none",
+      /showImportant && importantKinds\.length \? \{ importantKinds/.test(page),
+      "a whitelist would show an empty table until somebody ticked something");
+    check("  and the choice survives a reload",
+      /activity:show-important/.test(page) && /activity:important-kinds/.test(page));
+  }
+
+  // ── the feature is called one thing everywhere ──────────────────────
+  //
+  // "Security alert" survived in the copy long after the tab was renamed:
+  // the panel heading, the words in the emails, the activity rows written when
+  // settings changed. A feature with two names is two features to anybody
+  // reading about it.
+  {
+    console.log("\ncalled the same thing everywhere");
+
+    const read = (p: string) => fs.readFileSync(p, "utf8");
+    const visible = [
+      ["../backend/src/alarms/feedNotify.ts", /singular: "important event", plural: "important events"/],
+      ["../backend/src/services/alarmService.ts", /Important event emails/],
+      ["../backend/src/services/alertService.ts", /Important event \[\$\{severity/],
+      ["./src/components/ImportantEventsPanel.tsx", /Email me about important events/],
+    ] as [string, RegExp][];
+    for (const [f, re] of visible) {
+      check(`  ${f.split("/").pop()} says important event`, re.test(read(f)), f);
+    }
+
+    // The stored side is deliberately untouched. Renaming a row id orphans the
+    // settings somebody saved; renaming the action orphans rows this session
+    // has already backfilled *to* it; renaming the feed key orphans the
+    // notification buffer. The words people read and the strings the data is
+    // keyed on are not the same thing.
+    const alarm = read("../backend/src/services/alarmService.ts");
+    const alerts = read("../backend/src/services/alertService.ts");
+    check("  while the stored keys are left alone",
+      /SECURITY_SETTINGS_ID = "security-settings"/.test(alarm)
+        && /kind: "security"/.test(alarm)
+        && /"security\.alert",/.test(alerts),
+      "renaming a stored key orphans the data written under the old one");
+
+    // The details prefix changed, so a re-run of the backfill has to match
+    // rows from both sides of the rename.
+    const script = read("../scripts/backfill-security-alert-action.sh");
+    check("  and the backfill accepts either prefix",
+      /Security Alert \[/.test(script) && /Important event \[/.test(script),
+      "rows written before the rename would stop matching otherwise");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

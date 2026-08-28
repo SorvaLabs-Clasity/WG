@@ -163,6 +163,10 @@ router.get("/", async (req: Request, res: Response) => {
     ...(req.query.repoFilter ? { repo: String(req.query.repoFilter) } : {}),
     ...(req.query.target ? { target: String(req.query.target) } : {}),
     ...(req.query.detailed === "hide" ? { includeDetailed: false } : {}),
+    ...(req.query.important === "hide" ? { includeImportant: false } : {}),
+    ...(typeof req.query.importantKinds === "string" && req.query.importantKinds
+      ? { importantKinds: req.query.importantKinds.split(",").filter(Boolean) }
+      : {}),
   };
 
   try {

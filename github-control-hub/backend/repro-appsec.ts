@@ -447,7 +447,21 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     ]
       .map(t => t.trim())
       .filter(t => t.length > 0 && !t.startsWith("#"))
-      .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+      .map(t => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      // Word boundaries, so a short term is usable at all.
+      //
+      // Joined bare, a four-letter name matches inside ordinary English. One
+      // real first name sits inside the word "synchronize"; another sits inside
+      // "same". The list then either fails on every run or gets pruned of
+      // exactly the short names most likely to be somebody's.
+      //
+      // Not spelled out here, deliberately: this check reads its own source,
+      // so an example would be the leak it exists to catch.
+      //
+      // Added only where the term begins or ends with a word character. A term
+      // starting with a hyphen or a dot has no boundary there, and `\b` would
+      // invert its meaning rather than tighten it.
+      .map(t => (/^\w/.test(t) ? "\\b" : "") + t + (/\w$/.test(t) ? "\\b" : ""));
     const nameRe = forbidden.length ? new RegExp(forbidden.join("|"), "i") : null;
 
     const named: string[] = [];

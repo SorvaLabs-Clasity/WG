@@ -84,6 +84,21 @@ export interface ActivityFilters {
   target?: string;
   /** False hides rows written under detailed logging. */
   includeDetailed?: boolean;
+  /**
+   * False hides the important events: repositories going public, access being
+   * granted, protection disappearing.
+   *
+   * They are the noisiest rows in the organization stream and the ones people
+   * most often want on their own, which is the same pair of wishes the
+   * detailed toggle exists for.
+   */
+  includeImportant?: boolean;
+  /**
+   * Which kinds to keep, when only some are wanted. Empty or absent means all
+   * of them; it is a narrowing, not a whitelist that hides everything by
+   * default.
+   */
+  importantKinds?: string[];
 }
 
 export interface ActivityPage {
@@ -113,6 +128,17 @@ export function matches(e: ActivityEntry, f: ActivityFilters): boolean {
   if (f.source && e.source !== f.source) return false;
   if (f.category && categoryOf(e.action) !== f.category) return false;
   if (f.includeDetailed === false && (e as any).detailed) return false;
+
+  // An important event is one that raised an alert, which the action says.
+  // Rows written before the kind was recorded still match the on/off filter,
+  // and are kept by a kind filter rather than silently dropped: they are the
+  // same events, and hiding them because of when they were written would make
+  // the filter lie about the history.
+  const kind = (e as any).importantKind as string | undefined;
+  if (e.action === "security.alert") {
+    if (f.includeImportant === false) return false;
+    if (f.importantKinds?.length && kind && !f.importantKinds.includes(kind)) return false;
+  }
 
   if (f.repo) {
     if (!(e.repo ?? "").toLowerCase().includes(f.repo.toLowerCase())) return false;

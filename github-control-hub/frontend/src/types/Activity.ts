@@ -81,6 +81,14 @@ export interface Activity {
   details?: string;
   /** Written under the detailed-logging toggle; the view filter keys off it. */
   detailed?: boolean;
+  /**
+   * Which security event this row recorded, for the rows whose action is
+   * `security.alert`.
+   *
+   * Absent on rows written before it was stored, which fall back to the
+   * generic label rather than being hidden.
+   */
+  importantKind?: string;
   diff?: any;
   timestamp: string;
   prNumber?: number;

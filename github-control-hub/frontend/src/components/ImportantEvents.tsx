@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from "react";
 import { useAlerts } from "../hooks/useAlerts";
 import { usePermissions } from "../hooks/usePermissions";
-import SecurityAlertPanel from "./SecurityAlertPanel";
+import ImportantEventsPanel from "./ImportantEventsPanel";
 import {
   toSituations, isRestingState, weeklyActivity, summarizeKinds, summarizeRepos,
   recent, wasReverted, countBySeverity, RECENT_DAYS, SEVERITIES,
@@ -572,7 +572,7 @@ export default function ImportantEvents() {
         <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
           Email delivery for the events above. Groups are created on the Alarms page.
         </p>
-        <SecurityAlertPanel isAdmin={permissions?.isAwsAdmin ?? false} />
+        <ImportantEventsPanel isAdmin={permissions?.isAwsAdmin ?? false} />
       </div>
     </>
   );

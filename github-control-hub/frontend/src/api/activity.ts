@@ -20,6 +20,10 @@ export interface ActivityQuery {
   target?: string;
   /** "hide" drops rows written under detailed logging. */
   detailed?: "show" | "hide";
+  /** "hide" drops the important events: alerts that also reached the feed. */
+  important?: "show" | "hide";
+  /** Comma separated kinds to keep. Absent means all of them. */
+  importantKinds?: string;
 }
 
 /**

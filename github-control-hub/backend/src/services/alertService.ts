@@ -324,9 +324,18 @@ export async function createAlert(
     actor || "system",
     repo,
     "security_alert",
-    `Security Alert [${severity.toUpperCase()}]: ${message}`,
+    // Shown in the feed's details column. "Important event" here and
+    // "Security Alert" on rows written before the rename, which is why the
+    // backfill script matches either prefix.
+    `Important event [${severity.toUpperCase()}]: ${message}`,
     details,
-    "app"
+    "app",
+    undefined,
+    undefined,
+    // Which event this was, so the feed can say "Repository made public"
+    // rather than the generic "Security Alert" that every one of these shared.
+    // The same field is what the "important events" filter selects on.
+    { importantKind: type },
   );
 
   // Emailed if the security toggle is on. Wrapped and swallowed on purpose:
@@ -355,12 +364,12 @@ export async function createAlert(
         }, row.occurredAt);
       },
     });
-    if (outcome === "sent") console.log(`[Alarm] Security alert emailed: ${type} on ${repo}`);
-    else if (outcome === "buffered") console.log(`[Alarm] Security alert buffered for grouping: ${type} on ${repo}`);
+    if (outcome === "sent") console.log(`[Alarm] Important event emailed: ${type} on ${repo}`);
+    else if (outcome === "buffered") console.log(`[Alarm] Important event buffered for grouping: ${type} on ${repo}`);
     else if (outcome === "no-group") console.error("[Alarm] Security emails are on but no email group is set");
-    else if (outcome === "publish-failed") console.error(`[Alarm] Security alert email failed: ${type} on ${repo}`);
+    else if (outcome === "publish-failed") console.error(`[Alarm] Important event email failed: ${type} on ${repo}`);
   } catch (err) {
-    console.error("[Alarm] Security alert notification failed:", (err as Error).message);
+    console.error("[Alarm] Important event notification failed:", (err as Error).message);
   }
 
   return newAlert;

@@ -31,13 +31,13 @@ const cardClass =
   "bg-white dark:bg-slate-900 rounded-[12px] border border-gh-border dark:border-slate-700 p-5";
 
 /**
- * The security-alert toggle: chooses among existing groups, never makes one.
+ * The important-events toggle: chooses among existing groups, never makes one.
  *
  * Group creation lives on the Alarms page. Offering it here as well would mean
  * two screens producing SNS topics, and a set of recipients nobody can find
  * again.
  */
-export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
+export default function ImportantEventsPanel({ isAdmin }: { isAdmin: boolean }) {
   const { data: groups } = useEmailGroups(isAdmin);
   const { data: settings } = useSecuritySettings(isAdmin);
   const { data: variables } = useTemplateVariables(isAdmin);
@@ -107,7 +107,7 @@ export default function SecurityAlertPanel({ isAdmin }: { isAdmin: boolean }) {
       <div className={cardClass}>
         <div className="flex items-start justify-between gap-4">
           <div>
-            <h3 className="text-base font-bold text-gray-900 dark:text-white">Email me about security alerts</h3>
+            <h3 className="text-base font-bold text-gray-900 dark:text-white">Email me about important events</h3>
             <p className="mt-1 text-sm text-gray-600 dark:text-slate-400 max-w-2xl">
               Sends within seconds of the event. A repository going public, branch protection being
               removed, a team's permissions changing. Driven by the webhook, not by a schedule, so

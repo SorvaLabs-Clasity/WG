@@ -148,7 +148,7 @@ const alert = (over: Partial<any> = {}): any => ({
     check("a reversal by the worker reads as undone",
       wasReverted({ resolved: true, resolvedBy: "system (auto-resolved)" }));
     check("  and somebody's old button press does not",
-      !wasReverted({ resolved: true, resolvedBy: "roni" }),
+      !wasReverted({ resolved: true, resolvedBy: "a-person" }),
       "the two were the same flag, so a reversal looked like an acknowledgement");
   }
 

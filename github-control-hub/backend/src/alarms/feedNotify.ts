@@ -258,7 +258,9 @@ export interface FlushDeps {
 const FEED_LABELS: Record<FeedName, { singular: string; plural: string }> = {
   "renovate-pr": { singular: "Renovate pull request", plural: "Renovate pull requests" },
   "dependabot-alert": { singular: "Dependabot alert", plural: "Dependabot alerts" },
-  "security": { singular: "security alert", plural: "security alerts" },
+  // The key is the stored feed name and must not change; the words are what
+  // an email says, and those are the ones people read.
+  "security": { singular: "important event", plural: "important events" },
 };
 
 /**

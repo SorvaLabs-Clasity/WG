@@ -599,7 +599,7 @@ their answers could only ever be as fresh as last night's rebuild.
 
 That was a gap rather than a decision: every one of them arrives on an event the
 worker was already receiving and already acting on. A repository going public
-raised a *critical* security alert within seconds, while the widget counting
+raised a *critical* important event within seconds, while the widget counting
 public repositories showed the old number for hours.
 
 The worker now patches the graph on those same deliveries:
@@ -1490,7 +1490,7 @@ the number of columns matches the number of cells the body renders for each
 widget type — a `<colgroup>` of the wrong length does not throw, it silently
 shifts every width one column across.
 
-## Security alerts
+## Important events
 
 **Shape: push.** Nothing here is computed or scanned. Every row on the Security
 tab's alert list exists because GitHub sent a webhook saying something changed.
@@ -1670,6 +1670,27 @@ the tab read as a queue.
 `/security` still resolves, as a redirect to `/activity`. The desktop app
 restores the route it was last on, so removing it outright would reopen to a
 blank screen for anyone who quit while it was open.
+
+**The name changed; the stored keys did not.** Everything a person reads says
+"important event": the panel heading, the words in the emails, the activity row
+written when the settings change, the details column in the feed.
+
+What is keyed on has been left exactly as it was, deliberately:
+
+| Stays | Why |
+|---|---|
+| `security-settings` row id | renaming it orphans the settings somebody saved |
+| `kind: "security"` | the discriminator every stored notification row carries |
+| `"security.alert"` action | rows have already been backfilled *to* this value |
+| `"security"` feed key | the pending-notification buffer is keyed on it |
+| `/alarms/security` | an API path, not a sentence |
+
+The words people read and the strings the data is keyed on are not the same
+thing, and a rename that treats them as one is a rename that loses data. One
+consequence to know about: the feed's details column says "Important event
+\[CRITICAL\]: …" on new rows and "Security Alert \[CRITICAL\]: …" on rows
+written before the rename, so `backfill-security-alert-action.sh` matches
+either prefix.
 
 **A lost webhook is caught by the nightly walk.** Every alert is created by the
 webhook worker and nothing re-derives them, so a delivery lost past GitHub's
@@ -1952,7 +1973,7 @@ the last hop.
                                                                           │
                     ┌──────────────┬──────────────┬──────────────┬────────┘
                     ▼              ▼              ▼              ▼
-              activity feed   connections   security alert   rescore that
+              activity feed   connections   important event  rescore that
                                                              repository
 ```
 
