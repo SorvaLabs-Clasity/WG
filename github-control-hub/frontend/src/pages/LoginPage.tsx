@@ -78,7 +78,7 @@ export default function LoginPage() {
    */
   const [newStep, setNewStep] = useState<"form" | "waiting" | "choose" | "done">("form");
   const [newStartUrl, setNewStartUrl] = useState("");
-  const [newSsoRegion, setNewSsoRegion] = useState("us-east-1");
+  const [newSsoRegion, setNewSsoRegion] = useState("us-east-2");
   /**
    * Where this app's own infrastructure is.
    *
@@ -725,8 +725,8 @@ export default function LoginPage() {
                       <>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           Creates an AWS profile on this computer, so you do not have to
-                          edit files or use a terminal. You need the sign-in link your
-                          admin gave you. It usually ends in <code>.awsapps.com/start</code>.
+                          edit files or use a terminal. You need the sign-in link. It
+                          usually ends in <code>.awsapps.com/start</code>.
                         </p>
                         <div>
                           <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
@@ -741,11 +741,10 @@ export default function LoginPage() {
                             Region of that sign-in link
                           </label>
                           <input value={newSsoRegion} onChange={e => setNewSsoRegion(e.target.value)}
-                            placeholder="us-east-1" className={SURFACE.input} />
+                            placeholder="us-east-2" className={SURFACE.input} />
                           <p className="mt-1 text-[11px] text-slate-400">
                             Where your company's AWS login lives, one region for the whole
-                            company, and usually <code>us-east-1</code>. Your admin knows it,
-                            and it is <em>not</em> where this app runs.
+                            company.
                           </p>
                         </div>
 

@@ -305,21 +305,25 @@ const allResolved: AlertLike[] = [
 
     check("the dashboard is a view inside Activity",
       /<ImportantEvents \/>/.test(activity) && /import ImportantEvents/.test(activity));
-    check("  reached by its own control, named for what it holds",
-      /Important events\n/.test(activity) || /Important events/.test(activity));
 
-    // Not a fifth stream. The streams narrow the table; this replaces it, and
-    // a control that sits flush against them says they are the same kind.
-    check("  held apart from the stream tabs",
-      /const \[lens, setLens\]/.test(activity) && /border-l border-slate/.test(activity),
-      "the streams filter the table, this replaces it");
-    check("  and it swaps the table rather than filtering it",
+    // Three views, not two slices and a toggle. Statistics, Events and
+    // Important events answer different questions and each was getting in the
+    // others' way on one screen.
+    check("  one of three named views",
+      /\["stats", "ph-chart-line-up", "Statistics"\]/.test(activity)
+        && /\["important", "ph-shield-warning", "Important events"\]/.test(activity));
+    check("  chosen by a segmented control, not by the stream tabs",
+      /const \[lens, setLens\] = useState<"stats" \| "feed" \| "important">/.test(activity),
+      "the streams are slices of one list; these are different jobs");
+    check("  and the choice survives a reload",
+      /localStorage\.setItem\("activity:lens"/.test(activity));
+    check("  and it replaces the feed rather than filtering it",
       /lens === "important" \? <ImportantEvents \/> : \(/.test(activity));
 
-    // Two filter sets on screen where only one does anything is worse than
-    // either alone.
-    check("  the table's own filters go with the table",
-      /\{lens === "feed" && \(/.test(activity));
+    // The streams and their filters belong to the feed alone: on Statistics
+    // there is no table for them to narrow.
+    check("  the stream tabs and filters go with the feed",
+      (activity.match(/\{lens === "feed" && \(/g) ?? []).length >= 2);
 
     // Everything moved, so the Security tab was deleted rather than left as an
     // empty room. A page kept alive with nothing in it is a tab people learn to
@@ -420,6 +424,46 @@ const allResolved: AlertLike[] = [
       "a whitelist would show an empty table until somebody ticked something");
     check("  and the choice survives a reload",
       /activity:show-important/.test(page) && /activity:important-kinds/.test(page));
+
+    // The filters shipped doing nothing at all. `serverQuery` is memoised, and
+    // neither new value was in its dependency array, so the object never
+    // rebuilt, the query key never changed and React Query never refetched.
+    // From the outside it looked exactly like a broken backend.
+    const deps = page.match(/\}\), \[debouncedSearch[\s\S]{0,160}?\]\);/)?.[0] ?? "";
+    check("  and every value the query reads is a dependency of it",
+      /showImportant/.test(deps) && /importantKinds/.test(deps) && /showDetailed/.test(deps),
+      deps.replace(/\s+/g, " "));
+
+    // Read straight out of the built object, so a filter that is set but never
+    // sent cannot pass by being mentioned somewhere else in the file.
+    const built = page.match(/const serverQuery = useMemo\(\(\) => \(\{[\s\S]*?\}\), \[/)?.[0] ?? "";
+    check("  and both are actually put on the request",
+      /important: "hide"/.test(built) && /importantKinds: importantKinds\.join/.test(built));
+  }
+
+  // ── how long is dormant ─────────────────────────────────────────────
+  {
+    console.log("\ndormant is a length of time somebody chooses");
+
+    const opts = fs.readFileSync("./src/utils/queryOptions.ts", "utf8");
+    const graph = fs.readFileSync("../backend/src/services/graphService.ts", "utf8");
+
+    check("the check takes a number of months",
+      /dormant-privileged-users[^\n]*requiresParam: true[^\n]*paramDefault: "6"/.test(opts));
+    check("  and the backend reads it rather than hardcoding six",
+      /const dormMonths = Math\.max\(1, parseInt\(String\(param \?\? "6"\), 10\) \|\| 6\)/.test(graph));
+    check("  including in what the finding says",
+      /in the last \$\{dormMonths\} months/.test(graph),
+      "a finding that says six months while measuring twelve is worse than no finding");
+
+    // A verdict is an answer about one window. Cached under the bare login, a
+    // widget asking for twelve months would be served the six-month answer.
+    check("  and a cached verdict is tied to the window it was computed for",
+      /const dormKey = \(u: string\) => `\$\{u\}@\$\{dormMonths\}m`/.test(graph)
+        && /putVerdict\("dormant-privileged-users", key, finding\)/.test(graph));
+    check("    on the subject, not the check id",
+      /budgetFor\("dormant-privileged-users"\)/.test(graph),
+      "budgetFor and isBatched look the id up in a table a composite one falls off");
   }
 
   // ── the feature is called one thing everywhere ──────────────────────

@@ -1142,12 +1142,28 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         }
       }
 
-      const sixMonthsAgo = new Date();
-      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
-      const since = sixMonthsAgo.toISOString().split("T")[0];
+      // Months, the same unit and the same shape as stale-repos. Six was
+      // hardcoded, which is a reasonable default and a bad rule: what counts as
+      // dormant is a property of the organization, not of this check.
+      const dormMonths = Math.max(1, parseInt(String(param ?? "6"), 10) || 6);
+      const dormCutoff = new Date();
+      dormCutoff.setUTCMonth(dormCutoff.getUTCMonth() - dormMonths);
+      const since = dormCutoff.toISOString().split("T")[0];
 
       const candidates = [...userAccessMap.entries()].filter(([, repos]) => repos.length >= 2);
-      const dormSubjects = candidates.map(([u]) => u);
+
+      // The window is part of the cache key, not just of the search.
+      //
+      // A verdict is "no commits since <date>", which is an answer about one
+      // window and says nothing about another. Cached under the bare login, a
+      // widget asking for twelve months would be served the six-month answer
+      // and report somebody as dormant who committed eight months ago. The
+      // suffix is on the *subject* rather than the check id because the id is
+      // what budgetFor and isBatched look up, and a composite one falls off
+      // both of those tables.
+      const dormKey = (u: string) => `${u}@${dormMonths}m`;
+      const dormLogin = (k: string) => k.slice(0, k.lastIndexOf("@"));
+      const dormSubjects = candidates.map(([u]) => dormKey(u));
 
       // Cached per account rather than re-read every pass. One commit search
       // each, against a limit of thirty a minute, for a question whose answer
@@ -1160,7 +1176,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       const { refresh: dormRefresh, known: dormKnown } =
         planRefresh(dormSubjects, dormCached, dormMay ? budgetFor("dormant-privileged-users") : 0);
       if (dormMay) markRefreshed("dormant-privileged-users");
-      const dormRepos = new Map(candidates);
+      const dormRepos = new Map(candidates.map(([u, repos]) => [dormKey(u), repos] as const));
 
       // One search per candidate, and search is the small budget — 30 requests
       // a *minute*, not the 15,000 an hour the rest of the app draws on. An
@@ -1169,8 +1185,9 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       // halfway through.
       const unchecked: string[] = [];
 
-      for (const u of dormRefresh) {
-        const repos = dormRepos.get(u)!;
+      for (const key of dormRefresh) {
+        const u = dormLogin(key);
+        const repos = dormRepos.get(key)!;
         try {
           const { data: searchData } = await dormOctokit.rest.search.commits({
             q: `author:${u} org:${dormOrg} committer-date:>=${since}`,
@@ -1183,11 +1200,11 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
             ? {
                 user: u,
                 reason: `Dormant high-privilege account`,
-                details: `Admin of ${repos.length} repos, but 0 commits in the org in the last 6 months`,
+                details: `Admin of ${repos.length} repos, but 0 commits in the org in the last ${dormMonths} months`,
                 adminRepos: repos.length,
               }
             : null;
-          dormKnown.set(u, await putVerdict("dormant-privileged-users", u, finding));
+          dormKnown.set(key, await putVerdict("dormant-privileged-users", key, finding));
         } catch (err) {
           // Not swallowed.
           //

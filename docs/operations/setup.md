@@ -444,7 +444,7 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 > a new deployment, but it is worth checking on a first setup too, in case a
 > teammate already ran phase 1 twice.
 
-**Events** — choose "Let me select individual events", then tick these eleven.
+**Events** — choose "Let me select individual events", then tick these twelve.
 
 The checkboxes are labelled in prose, not by event name, and several do not
 resemble the name at all — `member` is "Collaborator add, remove, or changed"
@@ -460,6 +460,7 @@ what you are looking for on the page.
 | **Collaborator add, remove, or changed** | `member` | Access changes in activity and the access map |
 | **Dependabot alerts** | `dependabot_alert` | The vulnerability email, and the dependency edges behind `repos-dependent-on` |
 | **Pull requests** | `pull_request` | The Renovate pull-request email |
+| **Pull request reviews** | `pull_request_review` | The "changes requested" notification a developer can turn on for themselves in My work. Nothing else uses it |
 | **Pushes** | `push` | The last-push time behind `stale-repos` |
 | **Repositories** | `repository` | Repository created or deleted, and the visibility and archival behind `public-repos` and `archived-repos-with-access` |
 | **Repository rulesets** | `repository_ruleset` | Ruleset changes, the modern form of branch protection |

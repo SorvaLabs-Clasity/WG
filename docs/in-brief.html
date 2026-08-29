@@ -1,0 +1,145 @@
+<title>How the Control Hub Works</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+
+<style>
+:root{
+  --paper:#f2f3f6; --ink:#10141c; --ink-2:#414a5c; --muted:#737d8f;
+  --rule:#dcdfe6; --accent:#123a6b;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0b0e14; --ink:#e9ecf1; --ink-2:#b6bdc9; --muted:#8a93a1;
+  --rule:#242a34; --accent:#7ba7d9;
+}}
+:root[data-theme="dark"]{
+  --paper:#0b0e14; --ink:#e9ecf1; --ink-2:#b6bdc9; --muted:#8a93a1;
+  --rule:#242a34; --accent:#7ba7d9;
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16.5px; line-height:1.62; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:680px; margin:0 auto; padding:0 26px 96px}
+
+.eyebrow{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; font-weight:500;
+  letter-spacing:.22em; text-transform:uppercase; color:var(--muted); margin:0;
+}
+
+header{padding:88px 0 0}
+h1{
+  font-family:"Instrument Serif",Georgia,"Times New Roman",serif; font-weight:400;
+  font-size:clamp(2.2rem,6.5vw,3.2rem); line-height:1.08; letter-spacing:-.012em;
+  margin:24px 0 0; text-wrap:balance;
+}
+.lede{font-size:1.05rem; color:var(--ink-2); margin:22px 0 0; max-width:52ch}
+
+section{margin-top:66px}
+h2{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:10.5px; font-weight:500;
+  letter-spacing:.22em; text-transform:uppercase; color:var(--muted);
+  margin:0 0 22px; padding-bottom:16px; border-bottom:1px solid var(--rule);
+}
+
+/* Numbered because this genuinely is a sequence: each step is where the next
+   one gets its input. */
+.step{display:grid; grid-template-columns:38px 1fr; gap:18px;
+  padding:22px 0; border-bottom:1px solid var(--rule)}
+@media (max-width:520px){.step{grid-template-columns:1fr; gap:8px}}
+.step .n{
+  font-family:"IBM Plex Mono",ui-monospace,monospace; font-size:12px; font-weight:500;
+  color:var(--accent); padding-top:5px; font-variant-numeric:tabular-nums;
+}
+.step h3{font-size:1.02rem; font-weight:600; margin:0 0 8px; line-height:1.35}
+.step p{margin:0; color:var(--ink-2); font-size:.965rem; max-width:58ch}
+.step p + p{margin-top:9px}
+
+footer{margin-top:56px; padding-top:20px; border-top:1px solid var(--rule);
+  color:var(--muted); font-size:13px}
+footer p{margin:0; max-width:60ch}
+
+:focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+
+  <header>
+    <p class="eyebrow">GitHub Control Hub</p>
+    <h1>It keeps its own copy of the organization, and sends your changes out under your name.</h1>
+    <p class="lede">A desktop app watching a GitHub organization and an AWS account. Five things
+    explain most of how it behaves.</p>
+  </header>
+
+  <section>
+    <h2>How it works</h2>
+
+    <div class="step">
+      <span class="n">01</span>
+      <div>
+        <h3>It walks the whole GitHub API once a night</h3>
+        <p>Every repository, team, member, branch and collaborator, read again from scratch, so
+        what the app knows about the organization does not drift away from what is actually
+        there. A lighter pass covers the fast-moving parts every thirty minutes.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="n">02</span>
+      <div>
+        <h3>Every screen reads what that walk collected, not GitHub</h3>
+        <p>Which is the whole reason a tab opens immediately. Asking GitHub directly would mean
+        several hundred API calls per screen, and you would wait for all of them. The trade is
+        that answers are as fresh as the last update, not as fresh as this second, so every
+        screen says when it was last refreshed.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="n">03</span>
+      <div>
+        <h3>GitHub tells it when something changes</h3>
+        <p>A webhook arrives within seconds of a change on github.com and updates just the part
+        it affects, so what you see is usually current rather than a night old. The nightly walk
+        is there to catch whatever a missed delivery would otherwise leave wrong forever, not to
+        be the main way things stay up to date.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="n">04</span>
+      <div>
+        <h3>Your changes go out as you</h3>
+        <p>When you change branch protection, a repository setting or anything else through the
+        app, the call is made with <b>your own GitHub sign-in</b>, not with a service account.
+        If GitHub would refuse you, it refuses the app.</p>
+        <p>The app does hold credentials of its own, but they are for reading in the background:
+        the nightly walk, and receiving webhooks. The one thing they write is the reminder
+        comment on a pull request, which has to come from a consistent account rather than from
+        whoever happened to press the button.</p>
+      </div>
+    </div>
+
+    <div class="step">
+      <span class="n">05</span>
+      <div>
+        <h3>AWS is the same arrangement</h3>
+        <p>You sign in with an AWS profile and the app uses it. It reads the account through
+        those credentials and can only change what they already allow. The guardrail rules are
+        set to <b>report</b> by default and enforce nothing until somebody turns that on for a
+        specific rule.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Answers most of what would otherwise mean opening one repository at a time, and a few
+    things github.com has no page for at all, such as everything one person can reach and how
+    they got it.</p>
+  </footer>
+
+</div>

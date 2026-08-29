@@ -42,7 +42,7 @@ export const VIEW_ORDER: ActivityView[] = ["all", ...CATEGORY_ORDER];
 
 export const CATEGORY_LABELS: Record<ActivityView, string> = {
   all: "Everything",
-  github: "Organization",
+  github: "GitHub Organization",
   aws: "AWS",
   app: "App settings",
 };

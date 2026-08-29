@@ -1054,6 +1054,57 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
  * stored and keep rendering whatever the toggle says now: turning this off
  * stops new detailed rows from being written and deletes nothing.
  */
+/**
+ * The shape of the feed, for the header above it.
+ *
+ * Ungated like the feed itself, and deliberately unfiltered by the *view* — it
+ * is the backdrop the filtered table sits in front of, so narrowing it to
+ * whatever category somebody has selected would make the chart agree with the
+ * table and stop being a comparison.
+ *
+ * The AWS-only gate is not that kind of filter and is applied. The feed drops
+ * GitHub rows in an account holding no GitHub credentials because such an
+ * account is not supposed to be able to read GitHub history; leaving them in
+ * here published the same history as totals, a busiest hour, and named top
+ * actors and repositories.
+ *
+ * Cached for a minute. It reads far more rows than a page does, and the answer
+ * moves on the scale of the poll interval rather than the request.
+ */
+// `awsOnly` is part of the key. It cannot change inside a process today, but a
+// cache keyed on less than what varies the answer is the kind of thing that is
+// only wrong later, and being wrong here means serving GitHub totals into an
+// account that is not allowed to see them.
+let pulseCache: { at: number; hours: number; tz: string; awsOnly: boolean; value: any } | null = null;
+// Five minutes, not one. The chart is a shape over days and weeks; it does not
+// move meaningfully inside five minutes, and the walk behind it reads thousands
+// of rows. The client still polls every minute and is served from here.
+const PULSE_TTL_MS = 5 * 60_000;
+
+router.get("/pulse", async (req: Request, res: Response) => {
+  try {
+    const hours = Math.min(Math.max(Number(req.query.hours) || 168, 1), 24 * 90);
+    // The reader's own zone, so "busiest hour" is an hour they recognise. Kept
+    // in the cache key: two people in different zones get different pictures of
+    // the same events, and both are right.
+    const tz = typeof req.query.tz === "string" && req.query.tz.length <= 64
+      ? req.query.tz : "UTC";
+    const awsOnlyNow = await awsOnly();
+    if (pulseCache && pulseCache.hours === hours && pulseCache.tz === tz
+        && pulseCache.awsOnly === awsOnlyNow
+        && Date.now() - pulseCache.at < PULSE_TTL_MS) {
+      return res.json(pulseCache.value);
+    }
+    const { activityPulse } = await import("../services/activitySearch");
+    const value = await activityPulse(hours, hours <= 48 ? 24 : 28, tz, undefined,
+      awsOnlyNow ? isAwsRow : undefined);
+    pulseCache = { at: Date.now(), hours, tz, awsOnly: awsOnlyNow, value };
+    res.json(value);
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "activity") });
+  }
+});
+
 router.get("/detailed-logging", async (req: Request, res: Response) => {
   try {
     if (!(await isAwsAdmin(req.user!.login, req.user!.accessToken))) {

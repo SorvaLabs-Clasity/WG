@@ -9,6 +9,7 @@ import KnowledgeGraphPage from "./pages/KnowledgeGraphPage";
 import AnalyticsPage from "./pages/AnalyticsPage";
 import AwsPage from "./pages/AwsPage";
 import ExpertisePage from "./pages/ExpertisePage";
+import MyWorkPage from "./pages/MyWorkPage";
 import PullRequestsPage from "./pages/PullRequestsPage";
 import { isAuthenticated } from "./api/client";
 
@@ -37,6 +38,14 @@ export const router = createBrowserRouter([
     element: (
       <RequireAuth>
         <PullRequestsPage />
+      </RequireAuth>
+    ),
+  },
+  {
+    path: "/my-work",
+    element: (
+      <RequireAuth>
+        <MyWorkPage />
       </RequireAuth>
     ),
   },

@@ -11,7 +11,9 @@ import {
   listFindings, deleteFindingsForRule,
 } from "../aws-guardrails/store";
 import { resolveAccounts, scopesFor } from "../aws-guardrails/accounts";
-import type { Guardrail, AwsExclusionList, GuardrailMode, AwsAccount } from "../aws-guardrails/types";
+import { ruleExclusionsChanged, listContentChanged, rulesUsingList } from "../aws-guardrails/staleness";
+import { callerMayRemediate, liveProbe, type ResourceRef, type WriteIntent } from "../aws-guardrails/permissions";
+import type { Guardrail, AwsExclusionList, GuardrailMode, GuardrailKind, AwsAccount } from "../aws-guardrails/types";
 import { awsRegion, resolveAwsRegion } from "../utils/region";
 
 const router = Router();
@@ -83,6 +85,9 @@ router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => 
         res.status(400).json({ error: `"${kind}" is report-only. Remediating it automatically could cut live access.` });
         return;
       }
+      // No named resources: arming enforce is a standing instruction over every
+      // resource the rule matches, including ones that do not exist yet.
+      if (await refuseIfCallerCannotWrite(kind as GuardrailKind, [], res, "enforce")) return;
     }
 
     const now = new Date().toISOString();
@@ -133,6 +138,7 @@ router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>,
         res.status(400).json({ error: `"${existing.kind}" is report-only.` });
         return;
       }
+      if (await refuseIfCallerCannotWrite(existing.kind, [], res, "enforce")) return;
     }
 
     const updated: Guardrail = {
@@ -150,7 +156,13 @@ router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>,
     await putGuardrail(updated);
     await logActivity("aws.guardrail.update", req.user!.login, updated.name, updated.kind,
       `Updated AWS guardrail "${updated.name}"${mode && mode !== existing.mode ? ` (${existing.mode} → ${updated.mode})` : ""}`);
-    res.json(updated);
+
+    // Its own findings are the ones this can have invalidated, and only when
+    // the set of lists actually moved.
+    const findingsRefreshed = await recheckRules(
+      ruleExclusionsChanged(existing, updated) && updated.enabled ? [updated.id] : [],
+    );
+    res.json({ ...updated, findingsRefreshed });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }
@@ -199,6 +211,62 @@ async function invokeEngine(payload: Record<string, unknown>): Promise<any> {
   const body = out.Payload ? JSON.parse(Buffer.from(out.Payload).toString()) : {};
   if (out.FunctionError) throw new Error(body?.errorMessage || "Guardrail run failed");
   return body;
+}
+
+/**
+ * Re-evaluate the rules whose exclusions have just changed.
+ *
+ * Synchronous on purpose. The alternative is returning a saved rule while the
+ * findings behind it still say the opposite — which is precisely the bug this
+ * exists to close: a resource stays marked "skipped" after the list excluding
+ * it has been taken away, and pressing refresh cannot fix it, because refresh
+ * re-reads stored findings rather than producing new ones.
+ *
+ * Scoped to the affected rules, so this is one collector pass rather than a
+ * whole sweep, and skipped entirely when nothing exclusion-related moved —
+ * renaming a rule or toggling its mode stays instant.
+ *
+ * A failure here is not a failed save. The change is already stored and is
+ * correct; only the re-check did not run. Rejecting the request would tell
+ * somebody their edit had not taken, which is both worse and untrue — so the
+ * outcome is reported instead, and the caller can say the findings are still
+ * from before rather than implying they are current.
+ */
+async function recheckRules(ruleIds: string[]): Promise<boolean> {
+  if (ruleIds.length === 0) return false;
+  try {
+    await invokeEngine({ ruleIds });
+    return true;
+  } catch (err) {
+    console.error(
+      "[aws-guardrails] Findings could not be re-checked after an exclusion change:",
+      (err as Error)?.message ?? err,
+    );
+    return false;
+  }
+}
+
+/**
+ * Whether this caller could make the change themselves.
+ *
+ * Team membership says somebody may configure guardrails. It does not say they
+ * may rewrite a production bucket policy, and remediation runs under the
+ * engine's role rather than theirs — so without this, being in the admin team
+ * is enough to have a privileged Lambda perform a write AWS would refuse them
+ * directly. See the note in permissions.ts.
+ *
+ * Called at the moment of authoring for enforce mode, and per resource for the
+ * fix button, because a policy can allow one bucket and not another.
+ */
+async function refuseIfCallerCannotWrite(
+  kind: GuardrailKind, resources: ResourceRef[], res: Response,
+  intent: WriteIntent, region?: string,
+): Promise<boolean> {
+  const verdict = await callerMayRemediate(kind, resources, liveProbe(awsRegion()),
+    region ?? awsRegion(), intent);
+  if (verdict.allowed) return false;
+  res.status(403).json({ code: "AWS_WRITE_DENIED", error: verdict.reason });
+  return true;
 }
 
 router.post("/run", requireAdmin, async (req: Request, res: Response) => {
@@ -253,6 +321,21 @@ router.post("/remediate", requireAdmin, async (req: Request, res: Response) => {
     });
     return;
   }
+
+  // The narrow question, for the one thing being changed. A policy can allow
+  // the sandbox bucket and refuse the production one, and this is the only
+  // gate between "read-only in production" and a privileged Lambda rewriting
+  // its bucket policy on request.
+  // Region and account come off the finding, falling back to the request. A
+  // log-group ARN needs both, and a missing one refuses rather than guessing —
+  // simulating against a group in the wrong account would look like an answer.
+  const found = (await listFindings()).find(
+    f => f.ruleId === ruleId && f.resourceId === resourceId);
+  const region = found?.region;
+  if (await refuseIfCallerCannotWrite(
+        rule.kind,
+        [{ id: resourceId, region, accountId: accountId ?? found?.accountId }],
+        res, "fix", region)) return;
 
   try {
     const result = await invokeEngine({
@@ -385,7 +468,15 @@ router.put("/exclusions/:id", requireAdmin, async (req: Request<{ id: string }>,
       updatedAt: new Date().toISOString(),
     };
     await putAwsExclusion(updated);
-    res.json(updated);
+
+    // Every rule pointing at this list, because each of them evaluated its own
+    // resources against the contents that just changed.
+    const findingsRefreshed = await recheckRules(
+      listContentChanged(existing, updated)
+        ? rulesUsingList(updated.id, await listGuardrails())
+        : [],
+    );
+    res.json({ ...updated, findingsRefreshed });
   } catch (err) {
     res.status(500).json({ error: sanitizeError(err, "aws-guardrails") });
   }

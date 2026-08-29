@@ -395,4 +395,20 @@ export async function handler(): Promise<void> {
       console.error("[PR] Stale pull request pass failed:", (err as Error).message);
     }
   }
+
+  // ── the developers' own digests ───────────────────────────────────
+  //
+  // Last, and outside the block above, deliberately. It reads the stored
+  // snapshot rather than the walk, so it still works on a tick where the pull
+  // request pass was switched off or failed — and a failure of somebody's
+  // webhook must not be able to take down the reminders that ran before it.
+  try {
+    const { runDigestPass } = await import("./devDigest");
+    const digests = await runDigestPass();
+    if (digests.sent > 0 || digests.failed > 0) {
+      console.log(`[DevDigest] ${digests.sent} sent, ${digests.skipped} skipped, ${digests.failed} failed`);
+    }
+  } catch (err) {
+    console.error("[DevDigest] Digest pass failed:", (err as Error).message);
+  }
 }

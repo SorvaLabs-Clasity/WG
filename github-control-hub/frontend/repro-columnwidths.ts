@@ -239,8 +239,12 @@ function check(name: string, ok: boolean, got?: unknown) {
 
     // The count has to follow the viewport, because the cells do.
     const wide = activityColumns(true), narrow = activityColumns(false);
+    // Asserted on the difference rather than on a count, so consolidating
+    // columns is a change to make and not a test to edit. Seven cramped ones
+    // became five: source folded into the event, and repository and target
+    // stacked into one scope cell.
     check("Details is a column only where it is rendered",
-      wide.length === 7 && narrow.length === 6
+      wide.length === narrow.length + 1
         && wide.some(c => c.id === "details") && !narrow.some(c => c.id === "details"),
       { wide: wide.map(c => c.id), narrow: narrow.map(c => c.id) });
     check("  the breakpoint is read, not assumed",
@@ -270,9 +274,11 @@ function check(name: string, ok: boolean, got?: unknown) {
     check("  and the long values ellipsize with the full text on hover",
       /truncate/.test(body) && /title=\{entry\.repo\}/.test(body)
         && /title=\{entry\.target\}/.test(body));
-    check("  a pill cannot outgrow its cell either",
-      /max-w-full/.test(body),
-      "an inline-flex badge ignores the cell width without it");
+    // The action chip is `shrink-0`, so it cannot be squeezed. What stops it
+    // pushing its neighbours out of the cell is the container wrapping instead.
+    check("  and the badges wrap rather than pushing out of the cell",
+      /flex flex-wrap items-center gap-1\.5/.test(body),
+      "a row of shrink-0 chips in a nowrap container overflows the column");
 
     check("the empty row spans however many columns there are",
       /colSpan=\{columns\.length\}/.test(page),
@@ -345,6 +351,109 @@ function check(name: string, ok: boolean, got?: unknown) {
       /item\.visibility === "public"/.test(page) && /fa-globe/.test(page) && /fa-building/.test(page),
       "one pill colour for both would restate the problem the column exists to fix");
   }
+
+// ── the Action column holds more than its label ───────────────────────
+//
+// Beside the action chip sit up to three badges: "important", "detailed", and
+// in the merged view the stream the row belongs to. At the old 210 the chip was
+// clipped as soon as two appeared together, which reads as a broken column
+// rather than a narrow one, and had to be dragged wider on every visit.
+{
+  const { activityColumns, activityLayoutId } = await import("./src/lib/activityColumns");
+
+  const single = activityColumns(true, false);
+  const mergedCols = activityColumns(true, true);
+  // "action" became "event" when source folded into it. Looked up rather than
+  // indexed, so consolidating columns again is a change to make, not a test to
+  // rewrite.
+  const w = (cs: ReturnType<typeof activityColumns>) => cs.find(c => c.id === "event")!.width;
+
+  check("the event column fits its badges", w(single) >= 240, w(single));
+  check("  and the merged view, which shows one more badge, is wider still",
+    w(mergedCols) > w(single), { single: w(single), merged: w(mergedCols) });
+
+  // Sharing one id meant a width set on either view was applied to both, and
+  // the narrower one always won by being the one somebody dragged.
+  check("each view remembers its own layout",
+    activityLayoutId(single, false) !== activityLayoutId(mergedCols, true),
+    [activityLayoutId(single, false), activityLayoutId(mergedCols, true)]);
+  check("  and the id still distinguishes the column sets",
+    activityLayoutId(activityColumns(false, true), true)
+      !== activityLayoutId(activityColumns(true, true), true));
+}
+
+// ── the two arrangements of one feed ──────────────────────────────────
+//
+// The table is the right shape for working: resizable columns, diffs, and the
+// undo controls. It is the wrong shape for the question people open this tab
+// with, which is "what happened last night", because a table answers that only
+// after the reader has done the grouping in their head.
+{
+  const page = fs.readFileSync("./src/pages/ActivityPage.tsx", "utf8");
+  const timeline = fs.readFileSync("./src/components/ActivityTimeline.tsx", "utf8");
+  const pulse = fs.readFileSync("./src/components/ActivityPulse.tsx", "utf8");
+
+  check("the feed can be read as a timeline",
+    /<ActivityTimeline/.test(page) && /shape === "timeline" \?/.test(page));
+  check("  over the same rows the table shows",
+    /entries=\{filtered\}/.test(page),
+    "a second view over a different set is two answers to one question");
+  check("  and the choice survives a reload",
+    /localStorage\.setItem\("activity:shape"/.test(page));
+
+  // The detail panel is a modal over the page, not part of the table, so the
+  // timeline reaches undo, redo, retry and the diff without reimplementing any
+  // of them.
+  check("the timeline does not reimplement the writes",
+    !/undoMutation|redoMutation|retryMutation/.test(timeline),
+    "two implementations of the one thing in this app that writes");
+  check("  and opens a row in place",
+    /onOpen=\{setSelectedEvent\}/.test(page),
+    "switching view to show something visible without switching is a view thrown away");
+
+  // A chart that narrows with the table is the table drawn twice.
+  // Asserted on the wiring rather than on the prose: the component is handed
+  // the pulse and nothing else, so it cannot narrow with the table even if
+  // somebody later wanted it to.
+  check("the header charts everything, not the filter",
+    /<ActivityPulse pulse=\{pulse\}/.test(page) && !/serverQuery/.test(pulse),
+    "a backdrop that narrows with the table is the table drawn twice");
+  check("  and says when it could not reach the end of its own window",
+    /!pulse\.exhausted &&/.test(pulse) && /There is more behind that/.test(pulse),
+    "a count of what was read, under the heading of a period, is the lie");
+
+  // Muting every stream leaves an empty chart, which is a view of nothing.
+  check("the legend cannot hide every stream at once",
+    /next\.size < STREAMS\.length - 1/.test(pulse));
+
+  // Stacking answers composition and was being read as comparison: with GitHub
+  // at 132 and AWS at 2, the AWS band begins at 132 and its top sits at 134, so
+  // AWS looked as tall as GitHub and App on top looked tallest of all on 13.
+  check("comparing draws every stream from the baseline",
+    /L\$\{\(\(buckets\.length - 1\) \* step\)\.toFixed\(1\)\},\$\{H\}L0,\$\{H\}Z/.test(pulse),
+    "a height has to be a value, not a value stacked on other values");
+  check("  translucent, so an overlap shows both",
+    /rgba\(99,102,241,0\.28\)/.test(pulse));
+  check("  and its scale ignores what is muted",
+    /if \(mode === "lines"\) return Math\.max\(1, \.\.\.buckets\.flatMap\(b => STREAMS\.map/.test(pulse),
+    "a line that grows because you hid something lied before or lies now");
+
+  check("composing is the other mode, and there is only one chart",
+    /\["bars", "ph-chart-bar", "Compose"\]/.test(pulse)
+      && /\["lines", "ph-chart-line", "Compare"\]/.test(pulse));
+  check("  where a bar is built from the parts that make it up",
+    /const h = \(v \/ peak\) \* H;[\s\S]{0,120}?acc \+= h;/.test(pulse));
+  check("  and the mode survives a reload",
+    /localStorage\.setItem\("activity:pulse-mode"/.test(pulse));
+
+  const stats = fs.readFileSync("./src/components/ActivityStats.tsx", "utf8");
+  check("a bar says which day it is, not just its number",
+    /titleFor\(hover\)/.test(stats) && /weekday: "short"/.test(stats),
+    "an axis tick has room for a day number and not for a day");
+  check("  and the hour is on a clock people read",
+    /function clockHour/.test(stats) && /h < 12 \? "AM" : "PM"/.test(stats),
+    '"14:00" is correct and is not how anybody says it');
+}
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);

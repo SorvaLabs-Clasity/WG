@@ -1,4 +1,7 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { apiGet } from "../api/client";
+import UserAvatar from "../components/UserAvatar";
 import { useAuth } from "../App";
 import { Page, PageHeader, StatusSlab, SlabPercent, SearchInput, Sheet, Empty, Spinner, TYPE, enter } from "../design";
 import { useGraphNode } from "../hooks/useGraph";
@@ -48,7 +51,7 @@ function languageHue(name: string | null | undefined): string {
   return `hsl(${h} 55% 55%)`;
 }
 
-type SortKey = "pushed" | "name" | "size" | "issues";
+type SortKey = "pushed" | "name" | "size";
 
 // ── page ──────────────────────────────────────────────────────────────
 
@@ -90,7 +93,6 @@ export default function KnowledgeGraphPage() {
       switch (sortKey) {
         case "name": return a.name.localeCompare(b.name);
         case "size": return (b.size ?? 0) - (a.size ?? 0);
-        case "issues": return (b.open_issues_count ?? 0) - (a.open_issues_count ?? 0);
         default: {
           const at = new Date(a.pushed_at ?? a.updated_at ?? 0).getTime();
           const bt = new Date(b.pushed_at ?? b.updated_at ?? 0).getTime();
@@ -148,7 +150,6 @@ export default function KnowledgeGraphPage() {
                   <option value="pushed">Recently pushed</option>
                   <option value="name">Name</option>
                   <option value="size">Size</option>
-                  <option value="issues">Open issues</option>
                 </select>
                 <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
                   <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded border-slate-300 dark:border-slate-600" />
@@ -229,11 +230,6 @@ function RepoRow({ repo, selected, onSelect }: { repo: Repo; selected: boolean; 
           <div className="flex items-center gap-2.5 mt-2 text-[12px] text-slate-400 dark:text-slate-500">
             {repo.language && <span className="font-semibold text-slate-500 dark:text-slate-400">{repo.language}</span>}
             <span>{formatSize(repo.size)}</span>
-            {!!repo.open_issues_count && (
-              <span className="inline-flex items-center gap-1">
-                <i className="ph-fill ph-circle-dashed text-[11px]"></i>{repo.open_issues_count}
-              </span>
-            )}
             <span className="ml-auto shrink-0">{relativeTime(repo.pushed_at ?? repo.updated_at)}</span>
           </div>
         </div>
@@ -311,7 +307,6 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
     // every repository and so read the same on all of them.
     { label: "With access", value: people.specific || people.collaborators.length || data.contributorCount || "-" },
     { label: "Open PRs", value: data.openPullRequests?.count ?? "-" },
-    { label: "Issues", value: data.open_issues_count },
     { label: "Teams", value: people.teams.length },
     { label: "Commits 30d", value: data.commitsLast30Days ?? "-" },
   ];
@@ -374,13 +369,7 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
             ["Created", formatDate(data.created_at)],
             ["Last push", `${formatDate(data.pushed_at)} (${relativeTime(data.pushed_at)})`],
             ["Last update", `${formatDate(data.updated_at)} (${relativeTime(data.updated_at)})`],
-            ["Homepage", data.homepage ?? "-"],
             ["Stars / forks / watchers", `${data.stargazers_count} / ${data.forks_count} / ${data.watchers_count}`],
-            ["Features", [
-              data.features.issues && "issues", data.features.projects && "projects",
-              data.features.wiki && "wiki", data.features.pages && "pages",
-              data.features.discussions && "discussions",
-            ].filter(Boolean).join(", ") || "none enabled"],
           ]} />
         </Section>
 
@@ -410,7 +399,6 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
             ["Oldest open PR", data.openPullRequests?.oldest
               ? `#${data.openPullRequests.oldest.number}, ${relativeTime(data.openPullRequests.oldest.createdAt)}`
               : "none"],
-            ["Open issues", data.open_issues_count],
             ["Latest release", data.latestRelease
               ? `${data.latestRelease.tag} (${relativeTime(data.latestRelease.publishedAt)})`
               : "none"],
@@ -460,6 +448,8 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
             ))}
           </Section>
         )}
+
+        <WhoKnows repo={repo} />
 
         {data.contributors && data.contributors.length > 0 && (
           <Section label="Top contributors" icon="ph-trophy" color="amber" count={data.contributorCount ?? data.contributors.length} defaultOpen={false}>
@@ -564,6 +554,97 @@ function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+/**
+ * Who to ask about this repository, in the panel rather than in its own tab.
+ *
+ * The scoring already exists and is already reachable — from a separate screen
+ * you have to think to go to, which makes it something people use during an
+ * incident and never otherwise. The question "who do I ask about this" arrives
+ * while you are looking at the repository, so the answer belongs here.
+ *
+ * Collapsed by default and only fetched when opened. It reads GitHub live —
+ * three requests for commits, review comments and issue comments — and paying
+ * that on every repository somebody clicks would make the panel slow for a
+ * question most opens do not have.
+ */
+function WhoKnows({ repo }: { repo: string }) {
+  const [open, setOpen] = useState(false);
+  const { data, isFetching, error } = useQuery<{
+    experts: { login: string; score: number; commits: number; reviews: number; daysSinceActive: number | null }[];
+    degraded: string[];
+    sampled?: boolean;
+  }>({
+    queryKey: ["expertise", "repo", repo],
+    queryFn: () => apiGet(`/expertise/repo/${encodeURIComponent(repo)}`),
+    enabled: open,
+    staleTime: 300_000,
+    retry: false,
+  });
+
+  return (
+    <div className="border-t border-slate-100 dark:border-slate-800">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 py-2.5 text-left"
+      >
+        <i className={`ph-fill ph-users-three text-violet-500 text-base`}></i>
+        <span className="text-[13px] font-bold text-slate-700 dark:text-slate-200">Who knows this</span>
+        <i className={`ph-bold ph-caret-down ml-auto text-[11px] text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}></i>
+      </button>
+
+      {open && (
+        <div className="pb-3">
+          {isFetching && <div className="py-3 text-[12.5px] text-slate-400">Reading commits and reviews…</div>}
+
+          {!!error && (
+            <p className="py-2 text-[12.5px] text-amber-700 dark:text-amber-500">
+              {(error as Error)?.message ?? "Could not work out who knows this."}
+            </p>
+          )}
+
+          {data && !isFetching && data.experts.length === 0 && (
+            <p className="py-2 text-[12.5px] text-slate-500 dark:text-slate-400">
+              Nobody has committed, reviewed or commented here recently enough to rank.
+            </p>
+          )}
+
+          {data && !isFetching && data.experts.map((e) => (
+            <div key={e.login} className="flex items-center gap-2.5 py-1.5">
+              <UserAvatar login={e.login} size={20} />
+              <span className="text-sm text-slate-700 dark:text-slate-300 truncate">{e.login}</span>
+              <span className="ml-auto flex items-center gap-2 shrink-0">
+                {/* Recency is the point of the scoring, so it is on the row.
+                    Somebody who owned this two years ago is a worse answer than
+                    somebody with four commits last week. */}
+                {e.daysSinceActive !== null && (
+                  <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                    {e.daysSinceActive === 0 ? "today" : `${e.daysSinceActive}d ago`}
+                  </span>
+                )}
+                <span className="w-10 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                  <span className="block h-full bg-violet-500" style={{ width: `${e.score}%` }} />
+                </span>
+              </span>
+            </div>
+          ))}
+
+          {/* One page from GitHub, so a hundred means "at least a hundred". */}
+          {data?.sampled && (
+            <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+              Based on the most recent page of activity, so this is a sample rather than a full count.
+            </p>
+          )}
+          {(data?.degraded?.length ?? 0) > 0 && (
+            <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-500">
+              Could not read: {data!.degraded.join(", ")}. The ranking is from what was readable.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

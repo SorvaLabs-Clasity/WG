@@ -105,3 +105,54 @@ export function updateDetailedLogging(
   if (DEMO_MODE) return mockUpdateDetailedLogging(settings);
   return apiPut<DetailedLoggingResponse>("/activity/detailed-logging", settings);
 }
+
+export interface PulseBucket {
+  start: string;
+  github: number;
+  aws: number;
+  app: number;
+  total: number;
+}
+
+export interface ActivityPulse {
+  buckets: PulseBucket[];
+  bucketHours: number;
+  total: number;
+  byCategory: Record<string, number>;
+  topActors: { actor: string; count: number }[];
+  topRepos: { repo: string; count: number }[];
+  topActions: { action: string; count: number }[];
+  byHour: number[];
+  /** One entry per calendar day in the window, oldest first. */
+  byDay: { date: string; count: number }[];
+  /** The zone byHour and byDay were computed in. */
+  timeZone: string;
+  /** The same window before this one, or null if the walk did not reach it. */
+  previousTotal: number | null;
+  examined: number;
+  /** False means the budget ran out before the window did. Say so. */
+  exhausted: boolean;
+  oldest?: string;
+}
+
+/**
+ * The shape of the whole feed, for the header above the table.
+ *
+ * Unfiltered on purpose: it is the backdrop the filtered table sits in front
+ * of, and a chart that narrows with the table stops being a comparison.
+ */
+export function fetchActivityPulse(hours = 168): Promise<ActivityPulse> {
+  if (DEMO_MODE) {
+    return Promise.resolve({
+      buckets: [], bucketHours: 6, total: 0, byCategory: {},
+      topActors: [], topRepos: [], topActions: [],
+      byHour: new Array(24).fill(0), byDay: [], timeZone: "UTC",
+      previousTotal: null, examined: 0, exhausted: true,
+    });
+  }
+  // The reader's own zone, so "busiest hour" is an hour they recognise rather
+  // than one they have to convert. Falls back to UTC on the server if the
+  // browser reports something it cannot resolve.
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  return apiGet<ActivityPulse>(`/activity/pulse?hours=${hours}&tz=${encodeURIComponent(tz)}`);
+}

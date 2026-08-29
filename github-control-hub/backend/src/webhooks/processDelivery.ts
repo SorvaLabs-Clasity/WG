@@ -259,6 +259,18 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   // Both are wrapped and swallowed for the reason the security notify is: a
   // throw here fails the whole delivery, the worker releases its claim, and
   // every other effect of that delivery runs again so SNS can be retried.
+  // The developers' own immediate notifications. Wrapped and swallowed for the
+  // same reason as everything else out here: a throw fails the delivery, the
+  // worker releases its claim, and every other effect of this event runs again.
+  if (event === "pull_request" || event === "pull_request_review") {
+    try {
+      const { notifyDevEvents } = await import("./devEvents");
+      await notifyDevEvents(event, payload);
+    } catch (err: any) {
+      console.warn("[DevEvent] Notification pass failed:", err?.message ?? err);
+    }
+  }
+
   if (event === "pull_request" && payload.action === "opened" && payload.pull_request) {
     try {
       const { notifyRenovatePr, isConfiguredBot } = await import("../alarms/feedNotify");

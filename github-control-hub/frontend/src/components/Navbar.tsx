@@ -39,6 +39,8 @@ interface NavbarProps {
 const ALWAYS_AVAILABLE = new Set(["/aws", "/activity"]);
 
 const ITEMS = [
+  // First, because it is the one somebody opens without being sent there.
+  { label: "My work", short: "Mine", icon: "ph-user-focus", path: "/my-work", match: (p: string) => p.startsWith("/my-work") },
   { label: "Overview", short: "Overview", icon: "ph-chart-line-up", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics") },
   { label: "AWS", short: "AWS", icon: "ph-cloud", path: "/aws", match: (p: string) => p.startsWith("/aws") },
   { label: "Alarms", short: "Alarms", icon: "ph-bell", path: "/alarms", match: (p: string) => p.startsWith("/alarms") },

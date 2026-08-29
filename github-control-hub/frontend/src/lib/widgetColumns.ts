@@ -41,8 +41,10 @@ export function widgetColumns(opts: {
   hasOwner?: boolean;
   /** The rows report a repository visibility, so public and internal can be told apart. */
   hasVisibility?: boolean;
+  /** The rows carry a bypass count. See the note on the column below. */
+  hasBypasses?: boolean;
 }): WidgetColumn[] {
-  const { type, presetId, hasStatus, hasOwner, hasVisibility } = opts;
+  const { type, presetId, hasStatus, hasOwner, hasVisibility, hasBypasses } = opts;
 
   const columns: WidgetColumn[] = [
     { id: "index", label: "#", width: 72 },
@@ -91,6 +93,19 @@ export function widgetColumns(opts: {
       { id: "bypasses", label: "Bypasses", width: 120 },
       { id: "reason", label: "Reason", width: 360 },
     );
+  }
+
+  // Bypass ranking is offered as an insight query now, and was offered as a
+  // preset before. The preset block above is left exactly as it was rather than
+  // merged into this one: `layoutId` is built from the column ids, so changing
+  // that set would throw away the widths somebody had already dragged on a
+  // widget created under the old form.
+  //
+  // Only the count needs a column here — the shared Details column below
+  // already renders the row's reason, which is what the preset's second column
+  // held.
+  if (type === "query" && hasBypasses) {
+    columns.push({ id: "bypasses", label: "Bypasses", width: 120, align: "center" });
   }
 
   // Public and internal are different findings and must not look alike. Driven
