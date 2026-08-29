@@ -40,10 +40,16 @@ export function buildCard(title: string, subtitle: string, sections: CardSection
   ];
 
   for (const section of sections) {
-    body.push({
-      type: "TextBlock", text: section.heading, weight: "Bolder",
-      spacing: "Medium", separator: true, wrap: true,
-    });
+    // A blank heading is skipped rather than rendered: an empty bold TextBlock
+    // draws a separator rule with nothing above it, which reads as a rendering
+    // fault. Used by the plain-text path, which has a subject and a body and no
+    // section names.
+    if (section.heading) {
+      body.push({
+        type: "TextBlock", text: section.heading, weight: "Bolder",
+        spacing: "Medium", separator: true, wrap: true,
+      });
+    }
     if (section.links.length === 0) {
       body.push({ type: "TextBlock", text: section.emptyText ?? "Nothing.", isSubtle: true, wrap: true });
       continue;
@@ -81,7 +87,7 @@ export function buildCard(title: string, subtitle: string, sections: CardSection
  * Markdown characters that would break a link label.
  *
  * A title containing `]` ends the label early and leaves the rest of it as
- * loose text beside a broken link — and titles containing brackets are common
+ * loose text beside a broken link, and titles containing brackets are common
  * ("[WIP] Fix the thing").
  */
 export function escapeMd(text: string): string {
@@ -98,8 +104,8 @@ export interface SendResult {
  * Post a card, and say plainly whether it arrived.
  *
  * Never throws. A notification that fails must not take down the pass that
- * sent it — one person's stale webhook would otherwise stop everybody else's
- * digest — so the failure is returned and recorded against that person alone.
+ * sent it, one person's stale webhook would otherwise stop everybody else's
+ * digest, so the failure is returned and recorded against that person alone.
  */
 export async function sendCard(webhookUrl: string, card: any, timeoutMs = 8000): Promise<SendResult> {
   const controller = new AbortController();
@@ -117,7 +123,7 @@ export async function sendCard(webhookUrl: string, card: any, timeoutMs = 8000):
       return {
         ok: false,
         error: res.status === 404 || res.status === 410
-          ? "Teams no longer recognises this webhook. It was probably deleted or regenerated — create a new one and paste it again."
+          ? "Teams no longer recognises this webhook. It was probably deleted or regenerated, create a new one and paste it again."
           : `Teams refused the message (HTTP ${res.status}).`,
       };
     }

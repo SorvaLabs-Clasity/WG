@@ -11,7 +11,7 @@
  *
  *   | Reader | What a truncated read does |
  *   |---|---|
- *   | `listAlarms` | Alarms past the cut are never evaluated — they stop firing |
+ *   | `listAlarms` | Alarms past the cut are never evaluated. They stop firing |
  *   | `listGroups` | An email group reads as deleted: "group missing, nothing sent" |
  *   | pending notifications | Buffered Dependabot and Renovate emails are never sent |
  *   | `listPrStates` | **Mutes and pauses vanish**, so a muted person is reminded again |
@@ -170,12 +170,12 @@ function fakeTable(total: number, pageSize: number) {
   // ── a Limit is not a filter, and a filter is not a key ───────────────
   //
   // Every activity row shares one partition key, so "this repository's
-  // history" cannot be a key condition — it is a FilterExpression, and
+  // history" cannot be a key condition. It is a FilterExpression, and
   // DynamoDB applies `Limit` to rows **read**, before the filter runs. With
   // `Limit: 200` the query therefore asked "is this repository among the
   // newest two hundred rows in the whole organization?". On a busy org those
   // two hundred rows are often a single afternoon, so every repository except
-  // the two or three touched that afternoon returned an empty history — which
+  // the two or three touched that afternoon returned an empty history, which
   // reads as "nothing has ever happened here".
   {
     process.env.ACTIVITY_TABLE = "test-activity";
@@ -191,7 +191,7 @@ function fakeTable(total: number, pageSize: number) {
         const limit = input.Limit ?? total;
         const end = Math.min(total, start + limit);
         const wanted = input.ExpressionAttributeValues?.[":repo"];
-        // Scanned first, filtered second — the order that makes Limit a trap.
+        // Scanned first, filtered second, the order that makes Limit a trap.
         const scanned = [];
         for (let i = start; i < end; i++) {
           scanned.push({ id: `row-${i}`, repo: matchesAt.includes(i) ? wanted : "somewhere-else" });
@@ -244,9 +244,9 @@ function fakeTable(total: number, pageSize: number) {
   //
   // The mirror image of the reads above. `BatchWriteItem` does not throw when
   // it cannot keep up: it succeeds and hands back whatever it declined in
-  // `UnprocessedItems`. Four call sites read that response and discarded it —
+  // `UnprocessedItems`. Four call sites read that response and discarded it,
   // the graph aggregator's puts and deletes, the incremental edge writer, and
-  // the guardrail findings store — so a throttled batch was edges that never
+  // the guardrail findings store, so a throttled batch was edges that never
   // appeared and violations that were found, logged, and never stored.
   {
     const { batchWrite } = await import("./src/utils/dynamo");
@@ -261,7 +261,7 @@ function fakeTable(total: number, pageSize: number) {
         const items = input.RequestItems[table];
         attempts++;
         if (attempts <= declineFor) {
-          // Half through, half back — the ordinary partial-success shape.
+          // Half through, half back, the ordinary partial-success shape.
           const keep = items.slice(0, Math.floor(items.length / 2));
           written.push(...keep);
           return { UnprocessedItems: { [table]: items.slice(keep.length) } };

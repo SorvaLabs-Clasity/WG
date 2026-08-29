@@ -15,7 +15,7 @@ const router = Router();
  * Everything the organization configured, as one document.
  *
  * Scanners, widgets and guardrails live only in DynamoDB. Standing up a second
- * account — which the migration script does with a set of empty tables — meant
+ * account, which the migration script does with a set of empty tables, meant
  * rebuilding all of it by hand, each record retyped and each a chance to get it
  * subtly wrong.
  *
@@ -28,7 +28,7 @@ const router = Router();
  * 2 since the templates, ruleTemplates and exclusions sections were removed.
  *
  * Import only rejects `format > FORMAT`, so a format-1 bundle still imports and
- * its template sections are simply no longer iterated — harmless. The bump is
+ * its template sections are simply no longer iterated, harmless. The bump is
  * for the other direction: an older build reading a format-2 bundle would find
  * `bundle.templates` undefined, and this makes it say "written by a newer
  * version" instead of failing on the missing section.
@@ -63,14 +63,14 @@ const AWS_SECTIONS = ["awsGuardrails", "awsExclusions"] as const;
 /**
  * A bundle may not carry someone across the AWS boundary.
  *
- * The two admin teams are deliberately separate — `authorizationService` says
+ * The two admin teams are deliberately separate, `authorizationService` says
  * so in as many words: "Sharing one team would mean granting both to grant
  * either." Every route under /api/aws is gated on AWS_ADMIN_TEAM, because a
  * guardrail runs as the Lambda's role and can rewrite an S3 bucket policy in
  * the account.
  *
  * Import went round all of it. `putGuardrail` is one of this route's writers,
- * so a Control Hub admin — trusted with GitHub settings and nothing else —
+ * so a Control Hub admin, trusted with GitHub settings and nothing else,
  * could upload a bundle that created an enforcing guardrail, and the route that
  * exists to refuse them that never ran. It also skipped the two checks
  * POST /api/aws/guardrails performs: that the kind is one the catalog knows,
@@ -154,7 +154,7 @@ router.get("/export", async (req: Request, res: Response) => {
 export type BundleWriters = Record<string, (x: any) => Promise<unknown>>;
 
 /**
- * Anything without an id is reported rather than written — an id is what makes
+ * Anything without an id is reported rather than written, an id is what makes
  * an import idempotent, and inventing one would turn a re-import into a
  * duplicate rather than an update.
  */

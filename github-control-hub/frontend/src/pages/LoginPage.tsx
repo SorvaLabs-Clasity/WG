@@ -28,8 +28,8 @@ import { INTENT, TYPE, SURFACE, EASE, enter, COMPANY_NAME, type Intent, Button, 
  * Sign-in.
  *
  * Two credentials have to be turned before the app opens, and the old page
- * buried that: a 440px column of 11px text where every element — step pills,
- * status chips, action links — competed at the same weight, on a background
+ * buried that: a 440px column of 11px text where every element, step pills,
+ * status chips, action links, competed at the same weight, on a background
  * hardcoded dark so light mode did nothing.
  *
  * Here the count of what is connected is the largest thing on the page, and
@@ -82,7 +82,7 @@ export default function LoginPage() {
   /**
    * Where this app's own infrastructure is.
    *
-   * Not asked for when the build already knows — `VITE_AWS_REGION` is written by
+   * Not asked for when the build already knows, `VITE_AWS_REGION` is written by
    * the setup script for exactly this install, so asking is asking somebody to
    * retype a fact the app is holding. It stays editable for the case where the
    * build carries nothing.
@@ -113,8 +113,8 @@ export default function LoginPage() {
   const [switchingAccount, setSwitchingAccount] = useState(false);
 
   /**
-   * The account this machine last signed in with. Survives quitting the app —
-   * the token lives in sessionStorage and goes, the identity is kept — but is
+   * The account this machine last signed in with. Survives quitting the app,
+   * the token lives in sessionStorage and goes, the identity is kept, but is
    * cleared by an explicit sign-out, which is the difference between "you were
    * here a moment ago" and "you deliberately left".
    */
@@ -217,7 +217,7 @@ export default function LoginPage() {
    * Keep asking until GitHub OAuth reports itself configured.
    *
    * The backend loads its OAuth secrets from Secrets Manager asynchronously,
-   * after it has already started listening — so for the first half-second or so
+   * after it has already started listening, so for the first half-second or so
    * of every launch, /auth/status honestly answers "not configured". The window
    * opens inside that gap often enough that reading status once at mount is a
    * coin flip, and losing it left the page permanently claiming OAuth was
@@ -247,7 +247,7 @@ export default function LoginPage() {
     return () => clearInterval(id);
   }, [ghConfigured, loading, error, awsOk, checkStatus]);
 
-  // Re-read whenever AWS is not connected — on first load, and again the moment
+  // Re-read whenever AWS is not connected, on first load, and again the moment
   // Disconnect is pressed. The list was previously fetched once at mount, so a
   // disconnect showed whatever had been cached, and only relaunching the app
   // brought the SSO profiles back.
@@ -280,16 +280,16 @@ export default function LoginPage() {
    *
    * Takes the profile rather than reading `selectedProfile`, because the caller
    * sometimes knows better than the state does. Straight after creating a
-   * profile the selection has deliberately not moved — `loadProfiles` keeps
+   * profile the selection has deliberately not moved, `loadProfiles` keeps
    * whatever was chosen before, so a refresh does not yank people off their
-   * choice — so a button saying "sign in with work" was signing in with the
+   * choice, so a button saying "sign in with work" was signing in with the
    * previous profile, or with none, and AWS answered with a portal error naming
    * nothing.
    */
   const handleAwsSsoLogin = async (profile?: string) => {
     // Only a string is a profile name. Wired straight to a button's onClick this
     // would otherwise be handed a click event, and `setSelectedProfile(event)`
-    // puts an object where a name belongs — which does not fail here, it fails
+    // puts an object where a name belongs, which does not fail here, it fails
     // later when something renders it, as a blank screen with a minified error.
     const named = typeof profile === "string" ? profile : undefined;
     const target = named || selectedProfile || undefined;
@@ -308,7 +308,7 @@ export default function LoginPage() {
   };
 
   /**
-   * "Verify" — I have signed in over there, look again.
+   * "Verify", I have signed in over there, look again.
    *
    * The result used to be thrown away. The backend answers `reachable: false`
    * with the reason when it still cannot reach DynamoDB, and discarding that
@@ -339,7 +339,7 @@ export default function LoginPage() {
    * Start the sign-in, open the browser, and poll until they approve.
    *
    * Polling at the interval AWS asks for, and stopping when it says the code has
-   * expired — a loop that keeps asking after that is asking about something that
+   * expired, a loop that keeps asking after that is asking about something that
    * no longer exists.
    */
   const handleNewSsoStart = async () => {
@@ -376,7 +376,7 @@ export default function LoginPage() {
       //
       // Without it, any failure inside the loop became an unhandled rejection:
       // the recursion stopped, nothing was set, and the screen sat on "approve
-      // it in your browser" for ever — the one outcome that tells the person
+      // it in your browser" for ever, the one outcome that tells the person
       // nothing at all. A hang is worse than an error, because there is nothing
       // to act on and no reason to stop waiting.
       void poll().catch((e: any) => {
@@ -418,7 +418,7 @@ export default function LoginPage() {
     setRefreshing("aws");
     // The same reporting the account switcher already does. Discarding this
     // made "Use <profile>" silent for the ordinary case of an SSO profile whose
-    // session has expired — the switch did nothing and said nothing.
+    // session has expired, the switch did nothing and said nothing.
     const result = await useAwsProfile(selectedProfile);
     if (!result.reachable) {
       setNewError(result.error
@@ -633,12 +633,12 @@ export default function LoginPage() {
                     ["new", "New profile"] as [typeof awsMethod, string],
                   ]).filter(([id]) =>
                     // Access keys always work. SSO and Profile need a profile to
-                    // exist already — and "New profile" is the way out of having
+                    // exist already, and "New profile" is the way out of having
                     // none, so it is the one option that must never be hidden.
                     // SSO stays whether or not one exists yet: hiding it meant a
                     // machine with no SSO profile showed nothing mentioning SSO
                     // at all, and the way to make one was a tab called "New
-                    // profile" — so the people who most needed it were the only
+                    // profile", so the people who most needed it were the only
                     // ones who could not find it. Empty, the tab explains itself.
                     id === "keys" || id === "new" || id === "sso" ||
                     (id === "profile" && awsProfiles.length > 0)
@@ -981,7 +981,7 @@ export default function LoginPage() {
                     : status?.github.reason === "secret_missing"
                       ? "No GitHub credentials stored yet. Run scripts/migrate-to-account.sh"
                       : status?.github.reason === "secret_unreadable"
-                        ? "The credentials secret exists but could not be read, check this account's permissions"
+                        ? "The credentials secret exists but could not be read. Check this account's permissions"
                         : status?.github.reason === "secret_incomplete"
                           ? "The credentials secret is missing its OAuth keys"
                           : "OAuth is not configured on this build"

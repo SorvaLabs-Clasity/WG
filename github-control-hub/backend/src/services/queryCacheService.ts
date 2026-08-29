@@ -9,7 +9,7 @@ import {
  * `dormant-privileged-users` runs a commit search per privileged account, and
  * the two branch-protection checks read protection and merged pull requests per
  * repository. The cost is therefore the size of the organization, and the
- * budget it draws on is fixed — commit search allows thirty requests a *minute*.
+ * budget it draws on is fixed, commit search allows thirty requests a *minute*.
  *
  * Two facts make caching the right answer rather than a shortcut:
  *
@@ -64,7 +64,7 @@ export const VERDICT_TTL_HOURS = 24;
  * Subjects refreshed per pass, per check.
  *
  * Twenty-five leaves headroom under commit search's thirty-a-minute while still
- * covering three hundred accounts in twelve passes — an hour at the standard
+ * covering three hundred accounts in twelve passes, an hour at the standard
  * fifteen-minute interval, then continuous. Raising it buys a faster first
  * coverage and risks the limit; the limit is the thing that produces silent
  * wrong answers, so the headroom stays.
@@ -76,7 +76,7 @@ const cacheId = (queryId: string, subject: string) => `qcache#${queryId}#${subje
 /**
  * The shortest gap between two refreshes of the same check.
  *
- * Refreshing is driven by whoever asks — the scheduled evaluation every fifteen
+ * Refreshing is driven by whoever asks, the scheduled evaluation every fifteen
  * minutes, and *also* every page load. Without a floor, opening the tab twice
  * in a minute spends two batches, and two batches of twenty-five is fifty
  * commit searches against a limit of thirty a minute. The second one fails, and
@@ -127,7 +127,7 @@ export const MANUAL_REFRESH_BUDGET_MS = 45_000;
  *
  *   - **search** allows thirty requests a *minute*. A batch is twenty-five, so
  *     a second batch inside the same minute is over the line. Sixty-one seconds
- *     is the smallest gap that cannot be — which means a manual refresh cannot
+ *     is the smallest gap that cannot be, which means a manual refresh cannot
  *     meaningfully hurry this one, and says so rather than pretending.
  *   - **core** allows fifteen thousand an *hour*. A batch of twenty-five
  *     repositories costs about seventy-five, so batches can follow in seconds
@@ -187,7 +187,7 @@ let memStore: CachedVerdict[] = [];
 
 export async function listVerdicts(queryId: string): Promise<CachedVerdict[]> {
   // Paged and filtered to this check's own rows. A bare scan stops at 1MB, and
-  // this is the table most likely to reach it — three hundred subjects across
+  // this is the table most likely to reach it, three hundred subjects across
   // three checks is nine hundred rows on top of everything else living here.
   // Truncation would drop verdicts, so coverage would never complete and the
   // check would refuse forever while looking like it was still building.
@@ -204,8 +204,8 @@ export async function listVerdicts(queryId: string): Promise<CachedVerdict[]> {
     r.kind === "query-subject"
     && r.queryId === queryId
     // Expired locally as well as by the table's own TTL. DynamoDB deletes on
-    // its own schedule — usually within a couple of days, not at the moment the
-    // stamp passes — so a row can outlive its meaning by a wide margin. Reading
+    // its own schedule, usually within a couple of days, not at the moment the
+    // stamp passes, so a row can outlive its meaning by a wide margin. Reading
     // it as current is how a verdict from last week counts as coverage.
     && new Date(r.checkedAt).getTime() >= cutoff);
 }

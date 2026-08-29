@@ -5,14 +5,14 @@
  * bugs it locks down both told someone to go and fix the wrong thing.
  *
  * The OAuth secrets are read from Secrets Manager, so `ghConfigured` is false
- * whenever AWS is down — for a reason that has nothing to do with the build.
+ * whenever AWS is down, for a reason that has nothing to do with the build.
  * Checking that condition first produced "OAuth is not configured on this
  * build" on any machine that had not signed in to AWS yet, which is a sentence
  * about packaging pointing at a problem that is one card above it.
  *
  * The logic is mirrored here rather than imported, because it lives inside a
  * TSX subtitle expression. So the test also asserts the source still has the
- * branches in this order — a mirror that can drift silently is worse than no
+ * branches in this order, a mirror that can drift silently is worse than no
  * test.
  */
 import fs from "fs";
@@ -33,12 +33,12 @@ function githubSubtitle(s: {
   if (!s.awsOk) return "Unlocks once AWS is connected";
   if (!s.ghConfigured) {
     if (s.settling) return "Loading credentials…";
-    if (s.reason === "secret_missing") return "No GitHub credentials stored yet — run scripts/migrate-to-account.sh";
-    if (s.reason === "secret_unreadable") return "The credentials secret exists but could not be read — check this account's permissions";
+    if (s.reason === "secret_missing") return "No GitHub credentials stored yet, run scripts/migrate-to-account.sh";
+    if (s.reason === "secret_unreadable") return "The credentials secret exists but could not be read. Check this account's permissions";
     if (s.reason === "secret_incomplete") return "The credentials secret is missing its OAuth keys";
     return "OAuth is not configured on this build";
   }
-  return "Your own account — the app acts as you, never as someone else";
+  return "Your own account, the app acts as you, never as someone else";
 }
 
 const base = { ghAuthed: false, awsOk: false, ghConfigured: false, settling: true };
@@ -103,7 +103,7 @@ const base = { ghAuthed: false, awsOk: false, ghConfigured: false, settling: tru
   {
     const src = fs.readFileSync(
       path.join(__dirname, "../frontend/src/pages/LoginPage.tsx"), "utf8");
-    // The GitHub card only — the AWS card has a subtitle block too, and
+    // The GitHub card only, the AWS card has a subtitle block too, and
     // slicing loosely picked that one up instead.
     const start = src.indexOf("subtitle={", src.indexOf("ph-fill ph-github-logo"));
     const sub = src.slice(start, src.indexOf("never as someone else", start));

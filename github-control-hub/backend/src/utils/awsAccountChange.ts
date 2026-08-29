@@ -10,15 +10,15 @@
  * They are collected here rather than left at three call sites, because the
  * failure they produce is silent and directional: the AWS tab showed whichever
  * account was signed into *first*, in both directions, and no amount of
- * refreshing helped — every refresh asked the same stale client.
+ * refreshing helped, every refresh asked the same stale client.
  *
  * Deliberately not here: `utils/dynamo`'s client. Each switch endpoint already
  * resets it, and the access-key endpoint resets it with explicit credentials
  * this function does not have. Resetting it again here would replace that with
  * a client built from the default chain.
  *
- * When you add another module-level cache holding anything account-shaped — a
- * client, an account id, a region list, a secret — add it here too. There is a
+ * When you add another module-level cache holding anything account-shaped, a
+ * client, an account id, a region list, a secret, add it here too. There is a
  * test that fails when this list and the modules disagree.
  */
 export async function forgetAccountScopedCaches(): Promise<void> {

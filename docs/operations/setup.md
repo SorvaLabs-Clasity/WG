@@ -10,10 +10,10 @@ is.
 
 | Phase | Who | Roughly |
 |---|---|---|
-| [0 — Prerequisites](#phase-0--prerequisites) | operator | 5 min |
-| [1 — GitHub organization](#phase-1--github-organization) | org owner | 15 min |
-| [2 — The migration script](#phase-2--the-migration-script) | operator | 20 min |
-| [3 — The webhook](#phase-3--the-webhook) | org owner | 5 min |
+| [0, Prerequisites](#phase-0--prerequisites) | operator | 5 min |
+| [1, GitHub organization](#phase-1--github-organization) | org owner | 15 min |
+| [2, The migration script](#phase-2--the-migration-script) | operator | 20 min |
+| [3, The webhook](#phase-3--the-webhook) | org owner | 5 min |
 | [Verifying](#verifying) | operator | 5 min |
 
 ---
@@ -41,7 +41,7 @@ inventory of what lands in such an account.
 
 **It never asks for the GitHub App private key.** That key reads your entire
 organization, and keeping it out of the account is the whole exercise. Without
-it the app's GitHub tabs are refused — by the backend, not by hiding a button —
+it the app's GitHub tabs are refused, by the backend, not by hiding a button,
 and say why.
 
 **Sign-in still uses GitHub**, because that is how this app knows who you are
@@ -55,10 +55,10 @@ is their own.
 carrying both halves, and an account running guardrails needs the record of what
 they did.
 
-Use the same OAuth App as your main install — its callback is `localhost`, so
+Use the same OAuth App as your main install. Its callback is `localhost`, so
 one serves every account.
 
-## Phase 0 — Prerequisites
+## Phase 0: Prerequisites
 
 ### Tools
 
@@ -67,7 +67,7 @@ node -v                          # must be 24.x
 aws --version
 ```
 
-**Node 24, not 25.** Node's even releases are LTS and its odd ones never are —
+**Node 24, not 25.** Node's even releases are LTS and its odd ones never are,
 25 reached end of life in June 2026 and gets no further security patches. CI
 runs on 24, so building locally on anything else risks a build that works on
 your machine and fails in CI.
@@ -80,7 +80,7 @@ or `brew install node@24 && brew unlink node && brew link --overwrite --force no
 Nothing to export. The migration script asks which profile to use, signs in if
 that profile has no valid session, and asks which region to deploy into. It
 prints the account id and identity ARN it authenticated as before creating
-anything — read that line, it is the checkpoint.
+anything, read that line, it is the checkpoint.
 
 If you would rather not use a profile, the three exports from the AWS access
 portal work instead, and the script then asks nothing about credentials:
@@ -94,9 +94,9 @@ service in one region needs the deploy in another, and a stack built somewhere
 nobody chose is a stack you have to find before you can fix it. The script asks
 rather than defaulting, and rejects a region the account cannot see.
 
-## Phase 1 — GitHub organization
+## Phase 1: GitHub organization
 
-Needs organization settings access. If that is not you, hand this section over —
+Needs organization settings access. If that is not you, hand this section over,
 it produces five values the next phase asks for.
 
 > **Create both of these under the organization, not under your own account.**
@@ -122,7 +122,7 @@ it produces five values the next phase asks for.
 | Authorization callback URL | `http://localhost:4321/auth/callback` |
 
 > **The callback URL must match character for character.** Port `4321`, path
-> `/auth/callback` — not `/api/auth/callback`. A mismatch fails at sign-in with
+> `/auth/callback`, not `/api/auth/callback`. A mismatch fails at sign-in with
 > a GitHub error that names redirect URIs and points nowhere near the cause.
 
 `localhost` is correct and permanent. The desktop app runs its own backend on
@@ -139,12 +139,12 @@ Then **Generate a new client secret**. GitHub shows it once.
 
 | Field | Value |
 |---|---|
-| Name | `<company>-control-hub` — unique across all of GitHub |
+| Name | `<company>-control-hub`, unique across all of GitHub |
 | Homepage URL | `http://localhost:4321` |
-| Webhook → Active | **untick** — the org webhook in phase 3 does this |
+| Webhook → Active | **untick**, the org webhook in phase 3 does this |
 | Where can this app be installed | **Only on this account** |
 
-Do not tick "Request user authorization (OAuth) during installation" — the
+Do not tick "Request user authorization (OAuth) during installation", the
 separate OAuth App handles sign-in, and ticking it confuses the flow.
 
 **Repository permissions**
@@ -157,7 +157,7 @@ separate OAuth App handles sign-in, and ticking it confuses the flow.
 | Metadata | Read | Mandatory; listing repositories |
 | Dependabot alerts | Read | Vulnerability reporting |
 | Actions | Read | Listing workflows |
-| Checks | Read | `statusCheckRollup` on the pull request list — GitHub Actions results |
+| Checks | Read | `statusCheckRollup` on the pull request list, GitHub Actions results |
 | Commit statuses | Read | The same field, for CI that reports through the statuses API |
 | Issues | Read | Issue comments, for "who knows this" |
 | Environments | Read | Repository detail |
@@ -181,7 +181,7 @@ writes on a schedule:
 | Pull request comments | The stale-PR reminder, which is **off by default** |
 
 If you want the app read-only to start with, grant the three as **Read** and
-everything still works except those actions — the screens that need them fail
+everything still works except those actions, the screens that need them fail
 with GitHub's own permission error rather than silently doing nothing. Raising a
 permission later requires the org owner to approve the change; the app keeps
 running on the old grant until they do.
@@ -194,14 +194,14 @@ speculative.
 They are needed by a GraphQL *field*, `statusCheckRollup`, not by any REST call,
 so reading the Octokit calls does not reveal them. Without both, GitHub answers
 that one field with `Resource not accessible by integration` while returning
-everything else normally — check status shows as unknown on the pull request
+everything else normally, check status shows as unknown on the pull request
 list and nothing else changes. Granting them later is enough; the app tolerates
 their absence rather than failing.
 
 Then, in order:
 
 1. **Create GitHub App**
-2. **Generate a private key** — downloads a `.pem`
+2. **Generate a private key**, downloads a `.pem`
 3. **Install App** → this org → All repositories
 
 > After installing, the browser URL ends in a number. That is the
@@ -221,7 +221,7 @@ Then, in order:
 
 The dividing line is which account an action touches, not which screen it is on.
 Alarms are delivered by SNS, for instance, and are still a `control-hub-admins`
-matter, because what they watch and who they mail is a GitHub decision — being
+matter, because what they watch and who they mail is a GitHub decision, being
 trusted with GitHub settings should not require being trusted with the AWS
 account. `repro-authz` asserts that split against the routes as shipped, so a
 new admin gate copied from the wrong neighbour fails a test.
@@ -230,7 +230,7 @@ new admin gate copied from the wrong neighbour fails a test.
 safety net so a deleted or empty team cannot lock everyone out, but membership
 of the team is the intended path and is sufficient on its own.
 
-The slugs must be exactly these — membership is checked by slug, and both are
+The slugs must be exactly these, membership is checked by slug, and both are
 overridable only by environment variable. Anyone outside them gets a read-only
 app.
 
@@ -258,12 +258,12 @@ only credential this app has.
 There used to be a `SYSTEM_GITHUB_TOKEN` fallback for when the App's token could
 not be obtained. It is gone: a classic PAT with `admin:org` is broader than the
 App it was backing up, belongs to one person rather than the installation,
-usually never expires — and because it *worked*, a broken App could go unnoticed
+usually never expires, and because it *worked*, a broken App could go unnoticed
 for weeks. A failing App now looks like a failing App.
 
 ---
 
-## Phase 2 — The migration script
+## Phase 2: The migration script
 
 ```bash
 git pull
@@ -271,7 +271,7 @@ git pull
 ```
 
 Safe to re-run: every step checks for what it is about to create. Ctrl-C is safe
-at any prompt — nothing is written until the step it is in completes.
+at any prompt. Nothing is written until the step it is in completes.
 
 A re-run against an account that is already set up offers what is already stored
 as the default for every credential, so one field can be corrected without
@@ -288,7 +288,7 @@ Before writing anything, it asks GitHub whether the credentials actually work,
 then prints the account, region, org, App ID, installation ID and GitHub's answer
 together and asks to confirm. A private key belonging to a *different* App is
 accepted by AWS without complaint and only rejected by GitHub later, as
-`A JSON web token could not be decoded` at some subsequent startup — an error
+`A JSON web token could not be decoded` at some subsequent startup, an error
 that names no field and points at no account.
 
 The order matters for the second run in particular. An account already holding
@@ -296,7 +296,7 @@ another install's credentials offers those credentials back as the defaults, so
 pressing enter through the prompts re-confirms the values that were wrong. The
 check runs first so that run stops with the old secret still in place instead of
 rewriting it and reporting the problem afterwards. If GitHub rejects them you are
-still asked, in those words, whether to write them anyway — useful when you are
+still asked, in those words, whether to write them anyway, useful when you are
 setting up an App that has not been installed yet.
 
 ### What it asks first
@@ -311,27 +311,27 @@ setting up an App that has not been installed yet.
 
 The org login is the part in `github.com/<this>`, which is often not the
 display name. GitHub's API is case-insensitive here, but webhook payloads come
-back in the canonical casing — match the URL and there is nothing to think
+back in the canonical casing, match the URL and there is nothing to think
 about. `curl -s https://api.github.com/orgs/<org> | grep '"login"'` settles it.
 
 The prefix names every table, the Lambda, the secret and the stack. Change it
 only if your organization mandates a scheme, or you want two installs in one
 account. Use the same value everywhere afterwards.
 
-### Step 1 — DynamoDB tables
+### Step 1: DynamoDB tables
 
 Creates **11** tables, the activity table's two indexes, and TTL. All
-on-demand, so idle tables cost nothing — measured at about two cents a month in
+on-demand, so idle tables cost nothing, measured at about two cents a month in
 use.
 
 Delegates to `setup-aws-account.sh`. Existing tables are reported as `exists:`
-and left alone. A twelfth table — the webhook delivery dedup lock — is created
+and left alone. A twelfth table, the webhook delivery dedup lock, is created
 later, in [step 4](#step-4--api-gateway-lambda-and-event-rules), by `cdk
 deploy` rather than this script: it holds nothing but five-minute state, so it
 lives with the infrastructure that depends on it instead of the durable
 application data this script owns.
 
-### Step 2 — GitHub credentials
+### Step 2: GitHub credentials
 
 Pauses with links to create the OAuth App and GitHub App, then reads:
 
@@ -342,7 +342,7 @@ Pauses with links to create the OAuth App and GitHub App, then reads:
 | GitHub App ID | yes |
 | GitHub App installation ID | yes |
 | Path to the `.pem` | yes |
-| Personal access token | **no** — press enter to skip |
+| Personal access token | **no**, press enter to skip |
 
 > **The `.pem` prompt takes a path, not the file's contents.** Dragging the file
 > from Finder into the terminal is easiest; `~`, surrounding quotes and the
@@ -358,16 +358,16 @@ appears in the URL after installing.
 
 Secrets are read without echoing and written straight to Secrets Manager at
 `<prefix>/secrets`. They never touch disk. The webhook secret and JWT secret are
-generated here — `openssl rand -hex 32` and `-hex 48` — which is why phase 3
+generated here, `openssl rand -hex 32` and `-hex 48`, which is why phase 3
 cannot happen earlier.
 
-### Step 3 — CloudTrail
+### Step 3: CloudTrail
 
 Detects an existing trail and leaves it alone; a second trail is billed per
 event. Without any trail, guardrails run only on the 15-minute sweep instead of
 reacting within seconds of a resource changing. Optional.
 
-### Step 4 — API Gateway, Lambda and event rules
+### Step 4: API Gateway, Lambda and event rules
 
 Bootstraps CDK if needed, then deploys the stack: API Gateway, the webhook
 receiver and worker Lambdas, the guardrail Lambda, the SQS queue and its
@@ -384,22 +384,22 @@ of enforce mode.
 Prints the webhook URL (the stack's `WebhookUrl` output) among the other
 outputs. Takes a few minutes.
 
-### Step 5 — Org webhook
+### Step 5: Org webhook
 
-Prints everything the org owner needs and waits. **You cannot do this yet** —
+Prints everything the org owner needs and waits. **You cannot do this yet**,
 press enter and come back at [phase 3](#phase-3--the-webhook).
 
-### Step 6 — Guardrail rules
+### Step 6: Guardrail rules
 
 Seeds two rules, both in **report** mode:
 
-- **S3 — deny non-TLS requests**
-- **CloudWatch Logs — minimum retention** (365 days)
+- **S3, deny non-TLS requests**
+- **CloudWatch Logs, minimum retention** (365 days)
 
 Report mode on purpose. Enforce is a decision to make after seeing what a real
 account contains, not a default to inherit.
 
-### Step 7 — This install's identity
+### Step 7: This install's identity
 
 Writes the company name and region into
 `github-control-hub/frontend/.env.production`, replacing its own two lines and
@@ -411,21 +411,21 @@ fresh runner from what is committed. Until it lands on the branch the workflow
 builds from, released apps show no company name and their AWS console links go
 nowhere.
 
-Commit it however your organization requires — a branch and a pull request if
+Commit it however your organization requires, a branch and a pull request if
 main is protected.
 
 ---
 
-## Phase 3 — The webhook
+## Phase 3: The webhook
 
 Back to the org owner. The migration script already deployed a working
-endpoint in [step 4](#step-4--api-gateway-lambda-and-event-rules) — there is
+endpoint in [step 4](#step-4--api-gateway-lambda-and-event-rules). There is
 no separate step to ship application code, because `cdk deploy` bundled the
 Lambdas from source. This phase only points GitHub at the URL it printed.
 
 **Organization → Settings → Webhooks → Add webhook**
 
-Under **Code, planning, and automation** in the sidebar, well below Teams — or
+Under **Code, planning, and automation** in the sidebar, well below Teams, or
 go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 **owners** see it.
 
@@ -435,7 +435,7 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 | Content type | `application/json` |
 | Secret | from the migration script |
 
-> **If a webhook already exists here, edit its URL — do not add a second
+> **If a webhook already exists here, edit its URL, do not add a second
 > one.** GitHub gives each webhook its own delivery id for the same
 > underlying event, so two webhooks pointing at two receivers means two
 > unrelated deliveries, and the deduplication lock has no way to recognize
@@ -444,10 +444,10 @@ go straight to `https://github.com/organizations/<org>/settings/hooks`. Only org
 > a new deployment, but it is worth checking on a first setup too, in case a
 > teammate already ran phase 1 twice.
 
-**Events** — choose "Let me select individual events", then tick these twelve.
+**Events**: choose "Let me select individual events", then tick these twelve.
 
 The checkboxes are labelled in prose, not by event name, and several do not
-resemble the name at all — `member` is "Collaborator add, remove, or changed"
+resemble the name at all, `member` is "Collaborator add, remove, or changed"
 and `create`/`delete` are about branches and tags rather than repositories. The
 API name is given only so you can match it against a delivery later; it is not
 what you are looking for on the page.
@@ -464,19 +464,19 @@ what you are looking for on the page.
 | **Pushes** | `push` | The last-push time behind `stale-repos` |
 | **Repositories** | `repository` | Repository created or deleted, and the visibility and archival behind `public-repos` and `archived-repos-with-access` |
 | **Repository rulesets** | `repository_ruleset` | Ruleset changes, the modern form of branch protection |
-| **Membership** | `membership` | A person joining or leaving a team — what `empty-teams` and team membership in the access map read. Its description reads "Team membership added or removed"; do not confuse it with **Teams** below |
+| **Membership** | `membership` | A person joining or leaving a team, what `empty-teams` and team membership in the access map read. Its description reads "Team membership added or removed"; do not confuse it with **Teams** below |
 | **Teams** | `team` | Team access changes in the access map, and the ownership behind `unowned-repos` |
 
 > **Adding `membership` to an existing installation.** It is the only event here
 > that was added after the first release, so an App set up earlier will not have
 > it ticked. Without it `empty-teams` and team membership in the access map fall
-> back to the 30-minute refresh pass instead of updating in seconds — correct,
+> back to the 30-minute refresh pass instead of updating in seconds, correct,
 > just slower. Nothing breaks if you forget it.
 
 **`organization` was on this list and should not be.** The app subscribes to
 nothing for it and drops every delivery, so ticking it costs a webhook call per
 membership change and achieves nothing. Untick it if it is already on; the
-counterpart it looks like — a member joining or leaving a *repository* — is
+counterpart it looks like, a member joining or leaving a *repository*, is
 `member`, which is already above.
 
 Two that are easy to tick by mistake: **Branch protection configurations** is a
@@ -489,7 +489,7 @@ the event.
 vulnerability" toggle on the Vulnerabilities tab. Without it that toggle can be
 switched on and will never send anything: GitHub simply never delivers the
 event, so nothing errors and nothing arrives. The tab itself does not depend on
-it — it reads alerts from the API.
+it. It reads alerts from the API.
 
 Ticking it does not send anything for alerts that already exist. The event fires
 when an alert is *created*, so the first email arrives with the next new
@@ -510,7 +510,7 @@ aws secretsmanager get-secret-value --secret-id <prefix>/webhook-secret \
 
 The webhook secret lives in its own Secrets Manager entry, **not** in
 `<prefix>/secrets` with everything else, and rotating it means changing it
-here and in GitHub — nowhere else.
+here and in GitHub, nowhere else.
 
 The reason is blast radius. The receiver Lambda is the only part of this
 system reachable from the internet, and it has to handle bytes nobody has
@@ -519,14 +519,14 @@ held a key to `GITHUB_APP_PRIVATE_KEY` it never used, so any bug on that path
 gave up the whole organization instead of the ability to check signatures. Its
 IAM grants this secret and nothing else.
 
-These events record the changes nobody made through the app — someone disabling
+These events record the changes nobody made through the app. Someone disabling
 branch protection, a repository going public, a team gaining access. Without
 them the activity log shows only the app's own actions, which is the less useful
 half of an audit trail. See [webhooks](../github-api/webhooks.md).
 
 ---
 
-## Phase 4 — Detailed GitHub logging (optional)
+## Phase 4: Detailed GitHub logging (optional)
 
 Nothing to deploy and nothing to configure in AWS. This is a switch inside the
 app, and it works off webhook deliveries Phase 3 already set up.
@@ -594,10 +594,10 @@ webhook, guardrail rules and the desktop app. It calls
 It asks which account and region to act on rather than reading them from the
 environment and hoping: it prints the account ID and identity ARN it
 authenticated as, prompts for the region, and refuses one the account cannot
-see. Nothing is assumed — a stack deployed to the wrong region is a stack you
+see. Nothing is assumed, a stack deployed to the wrong region is a stack you
 have to find first.
 
-It asks which profile to use, with **no default** — on a machine with one
+It asks which profile to use, with **no default**, on a machine with one
 profile per environment, a pre-filled suggestion is wrong most of the time, and
 this creates tables, secrets and a stack before anyone reads the account id it
 prints. It signs in for you if that profile has no valid session.
@@ -615,7 +615,7 @@ exist at all.
 
 It creates **no guardrail rules**. Which rules an account runs is a decision
 about that account, and the S3 one rewrites bucket policies the moment it is
-switched to enforce — a rule that arrives with the install is an opinion nobody
+switched to enforce, a rule that arrives with the install is an opinion nobody
 stated, one toggle away from acting on real resources. Add them in the app,
 under the AWS tab.
 
@@ -632,7 +632,7 @@ Passing it now is silently ignored.
 ## Running more than one environment
 
 The stack carries no assumption that an organization has one deployment. Each
-AWS account runs its own copy — its own tables, secrets, queue and API Gateway —
+AWS account runs its own copy. Its own tables, secrets, queue and API Gateway,
 against the same GitHub organization, and the desktop app moves between them by
 switching AWS profile. Dev, UAT and production are the same deployment done
 three times, not three variants of it.
@@ -645,7 +645,7 @@ optionally the App and OAuth App.
   secret. Every hook receives every event; each account's worker writes to its
   own tables.
 - **A separate GitHub App per environment is optional but worth it.** Apps are
-  free and unlimited. The reason is not permission isolation — it is that the
+  free and unlimited. The reason is not permission isolation. It is that the
   12,500 requests an hour are *per installation*, so sharing one App means a
   busy afternoon in UAT spends production's budget.
 - **The OAuth App can be shared.** Every desktop app redirects to
@@ -666,13 +666,13 @@ way to tell which one shouted.
 
 **A guardrail engine watches only the account it is deployed in.** There is no
 monitored-account list and no way to point one environment's engine at another's
-resources, so this needs no discipline — it is a property of the IAM.
+resources, so this needs no discipline. It is a property of the IAM.
 
 ### What is not supported yet
 
 Two deployments in the **same account and region**. The stack name, table
 prefix and secret names are fixed, so a second copy beside the first would
-collide on all three — and two guardrail engines in one account would scan the
+collide on all three, and two guardrail engines in one account would scan the
 same resources and both try to remediate them. A separate account per
 environment is the supported shape.
 
@@ -682,14 +682,14 @@ environment is the supported shape.
    seconds. If not, the webhook secret or the event list is wrong.
 2. **Press Sync from GitHub on the Access tab** (or wait up to six hours for the
    scheduled sync), then open Access. It should list
-   people. This also populates Overview, Security and the rest — before the
+   people. This also populates Overview, Security and the rest, before the
    first sync they say they are stale rather than showing an empty organization.
 3. **Set a log group's retention to 1 day** and run a sweep from the AWS tab. It
    should be flagged. The rule starts in report mode, so it records the fix it
    would have made and changes nothing until you switch that rule to enforce.
 4. **Open the PR's tab.** Every open pull request should be listed, oldest idle
    first. Reminders are off by default; the list works without them.
-5. **Open a security check that reads GitHub per subject** — Dormant Privileged
+5. **Open a security check that reads GitHub per subject**, Dormant Privileged
    Access, Stale Branch Protection or Protection Rule Bypasses. On a large
    organization it will say *"building coverage, N of M checked"* for the first
    few evaluations and fill in on its own. That is correct, not a failure. See
@@ -712,8 +712,8 @@ reaches exactly one account. See
 
 **Letting it change things.** Every rule starts in report mode; switch the ones
 you want to enforce, in the AWS tab. The engine holds exactly three write
-actions — `s3:PutBucketPolicy`, `logs:PutRetentionPolicy`,
-`logs:DeleteRetentionPolicy` — and nothing else. See
+actions, `s3:PutBucketPolicy`, `logs:PutRetentionPolicy`,
+`logs:DeleteRetentionPolicy`, and nothing else. See
 [permissions](../aws-guardrails/permissions.md).
 
 **Gatekeeper.** macOS builds are ad-hoc signed, so the first open needs

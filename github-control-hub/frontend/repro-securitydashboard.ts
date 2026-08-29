@@ -4,8 +4,8 @@
  * The bug that caused the rebuild: the tab had two views behind a toggle. The
  * "Overview" summarised **every** alert, and "Every alert" listed only the
  * **unresolved** ones, because its filter defaulted to "active". On an
- * organization that had dealt with everything — seventeen alerts, all
- * resolved — the overview showed seventeen things and the list showed none.
+ * organization that had dealt with everything, seventeen alerts, all
+ * resolved, the overview showed seventeen things and the list showed none.
  * Both were behaving exactly as written.
  *
  * So the assertions below are mostly about that shape: one list, one filter

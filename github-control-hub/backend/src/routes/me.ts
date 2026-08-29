@@ -19,7 +19,7 @@ import { sendCard } from "../services/teamsClient";
  * The app, pointed at whoever is reading it.
  *
  * Everything else here answers a question about the organization. These answer
- * questions about you, out of the same data — which is the whole reason they
+ * questions about you, out of the same data, which is the whole reason they
  * can exist at all. Nothing below reads GitHub.
  */
 const router = Router();
@@ -35,7 +35,7 @@ const router = Router();
  *
  * No live fallback on purpose. If the snapshot has never been written the
  * honest answer is that we do not know yet, not a slow one produced by a walk
- * this route should not be paying for — and the PR tab, which owns that walk,
+ * this route should not be paying for, and the PR tab, which owns that walk,
  * is one click away.
  */
 router.get("/work", async (req: Request, res: Response) => {
@@ -68,7 +68,7 @@ router.get("/work", async (req: Request, res: Response) => {
  *
  * The access map already answers this about anybody; it is an auditor's screen
  * pointed at somebody else. Pointed at yourself it answers a question most
- * people cannot answer about their own account — which teams grant what, and
+ * people cannot answer about their own account, which teams grant what, and
  * whether anything is granted to them directly rather than through a team.
  *
  * Direct grants are called out because they are the ones that outlive the
@@ -80,7 +80,7 @@ router.get("/access", async (req: Request, res: Response) => {
     const me = await accessForUser(req.user!.login);
     const direct = me.repos.filter(r => r.paths.some(p => p.via === "direct"));
     // `role` is the strongest of all their paths, which is what they can
-    // actually do — not what any one team happens to grant.
+    // actually do, not what any one team happens to grant.
     const writable = me.repos.filter(r => r.role === "write" || r.role === "admin" || r.role === "maintain");
     res.json({
       login: me.login,
@@ -107,7 +107,7 @@ router.get("/access", async (req: Request, res: Response) => {
  *
  * A question people currently answer by trying it. The rules are already on
  * screen elsewhere as a settings form, which is the right shape for changing
- * them and the wrong one for "what happens if I try" — so this says the same
+ * them and the wrong one for "what happens if I try", so this says the same
  * facts as sentences about the person reading them.
  *
  * Read with the caller's own token. Protection is only visible to somebody with
@@ -124,7 +124,7 @@ router.get("/push-check", async (req: Request, res: Response) => {
     const me = await accessForUser(req.user!.login);
     const mine = me.repos.find(r => r.repo === repo);
     // Said outright rather than answered with an empty rule list, which reads
-    // as "nothing is stopping you" — the opposite of the truth.
+    // as "nothing is stopping you", the opposite of the truth.
     if (!mine && me.orgRole !== "owner") {
       return res.json({
         repo, branch, reachable: false,
@@ -179,7 +179,7 @@ router.get("/push-check", async (req: Request, res: Response) => {
  *
  * Two halves from two sources, because they are two different facts. What
  * shipped comes from the activity log, which only carries merges when detailed
- * logging is on — so when it is off this says so rather than showing an empty
+ * logging is on, so when it is off this says so rather than showing an empty
  * week, which would read as having shipped nothing.
  */
 router.get("/ship", async (req: Request, res: Response) => {

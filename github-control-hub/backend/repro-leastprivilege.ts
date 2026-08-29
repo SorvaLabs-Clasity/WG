@@ -1,7 +1,7 @@
 /**
  * Tests that this app cannot obtain broad AWS access.
  *
- * These are not tests of behavior — they read the IAM the project ships and
+ * These are not tests of behavior. They read the IAM the project ships and
  * assert what it does not contain. That is the point: every other test here
  * checks that the code does the right thing, and this one checks that the code
  * *could not* do the wrong thing even if it tried, because AWS would refuse.
@@ -51,7 +51,7 @@ const accountsCode = code(accountsTs);
   //
   // There used to be two sts:AssumeRole grants: the instance role's, so the app
   // could verify an account before storing it, and the engine's, so it could
-  // sweep one. Both are gone — the accounts registry was removed, and with it
+  // sweep one. Both are gone, the accounts registry was removed, and with it
   // the standing ability to become a role in *any* account and to read stored
   // credentials for accounts outside an organization.
   //
@@ -110,8 +110,8 @@ const accountsCode = code(accountsTs);
     }
 
     // GetObject used to appear once, on the instance role: the deploy script
-    // pulled a Docker image from a bucket this stack owns. That role — and
-    // the grant with it — is gone with the webhook-on-Lambda migration, so
+    // pulled a Docker image from a bucket this stack owns. That role, and
+    // the grant with it, is gone with the webhook-on-Lambda migration, so
     // there should be no s3:GetObject grant anywhere in the stack now.
     const getObjectGrants = [...cdkCode.matchAll(/["']s3:GetObject["'][\s\S]{0,300}?resources:\s*\[([^\]]*)\]/g)]
       .map(m => m[1].trim());
@@ -140,9 +140,9 @@ const accountsCode = code(accountsTs);
     check("  and cannot invoke anything",
       !/lambda:InvokeFunction/.test(receiverBlock));
 
-    // The receiver has to handle bytes nobody has authenticated yet — it
+    // The receiver has to handle bytes nobody has authenticated yet. It
     // base64-decodes and HMACs a body precisely to find out whether it is
-    // genuine — so the useful question is not whether that path can be broken
+    // genuine, so the useful question is not whether that path can be broken
     // but what breaking it yields. Pointed at the application bundle it
     // yielded GITHUB_APP_PRIVATE_KEY and the organization with it. Pointed
     // here it yields the ability to check signatures.
@@ -163,7 +163,7 @@ const accountsCode = code(accountsTs);
 
     // An IAM wildcard is a prefix match, so the two names are load-bearing:
     // a webhook secret called ".../secret" would make the receiver's own
-    // grant cover ".../secrets" — the bundle — and undo all of the above
+    // grant cover ".../secrets", the bundle, and undo all of the above
     // without changing a single line of policy.
     const bundleDefault = /props\.secretName \?\? "([^"]+)"/.exec(cdkCode)?.[1] ?? "";
     const webhookDefault = /props\.webhookSecretName \?\? "([^"]+)"/.exec(cdkCode)?.[1] ?? "";
@@ -174,7 +174,7 @@ const accountsCode = code(accountsTs);
 
     // GitHub publishes its hook ranges at api.github.com/meta and changes them.
     // The list here is a copy, and a copy drifts. An audit found the IPv6
-    // ranges missing entirely — every delivery over IPv6 would have been denied
+    // ranges missing entirely, every delivery over IPv6 would have been denied
     // with a 403 that reads exactly like a stale allow-list on an endpoint that
     // had been working.
     check("the allow-list covers IPv6 as well as IPv4",
@@ -202,7 +202,7 @@ const accountsCode = code(accountsTs);
     check("  and none of them reaches every topic in the account",
       snsGrants.every(r => !/:\*[`"']/.test(r) && !/["'`]\*["'`]/.test(r)), snsGrants);
     // The grants name a shared constant rather than repeating the ARN, so the
-    // constant is what has to be checked — asserting on the literal alone
+    // constant is what has to be checked, asserting on the literal alone
     // would pass for any value the variable happened to hold.
     const notifyTopicsDef = /const notifyTopics = ([`"'])([^`"']*)\1/.exec(cdkCode)?.[2] ?? "";
     check("  the shared topic ARN is scoped to this stack's notify topics",
@@ -259,7 +259,7 @@ const accountsCode = code(accountsTs);
   {
     // Creating an IAM role across an organization needs
     // cloudformation:CreateStackSet with CAPABILITY_NAMED_IAM. Whoever holds
-    // that can deploy an administrator role into every account — strictly
+    // that can deploy an administrator role into every account, strictly
     // worse than the administrator access this app was built without. So the
     // app builds the parameters and a human presses Create.
     for (const action of ["cloudformation:CreateStackSet", "cloudformation:CreateStackInstances",
@@ -297,7 +297,7 @@ const accountsCode = code(accountsTs);
     // installs them from there rather than resolving them: `overrides` has no
     // effect and `npm audit fix` has nothing to fix. GHSA-rgw5-rvv9-x895 in
     // brace-expansion is therefore only fixable by replacing the file, which a
-    // postinstall does — and which nothing would notice had stopped working.
+    // postinstall does, and which nothing would notice had stopped working.
     const infra = JSON.parse(fs.readFileSync(
       path.join(ROOT, "github-control-hub/infra/package.json"), "utf8"));
 
@@ -312,7 +312,7 @@ const accountsCode = code(accountsTs);
     check("  the script it names exists",
       fs.existsSync(path.join(ROOT, "github-control-hub/infra/scripts/patch-bundled-brace-expansion.mjs")));
 
-    // Only when installed — CI typechecks before it installs infra.
+    // Only when installed, CI typechecks before it installs infra.
     const bundledPkg = path.join(ROOT,
       "github-control-hub/infra/node_modules/aws-cdk-lib/node_modules/brace-expansion/package.json");
     if (fs.existsSync(bundledPkg)) {
@@ -329,7 +329,7 @@ const accountsCode = code(accountsTs);
   // first invocation. CloudFormation refuses to create a resource whose
   // physical name already exists, so declaring that name means the stack
   // deploys cleanly to an account that has never run these functions and fails
-  // the change set on every account that has — which is every account it is
+  // the change set on every account that has, which is every account it is
   // already deployed to. The error arrives at deploy time, from CloudFormation,
   // long after any test has passed.
   {
@@ -337,7 +337,7 @@ const accountsCode = code(accountsTs);
     const reserved = names.filter(n => n.startsWith("/aws/lambda/"));
     check("no log group claims Lambda's own /aws/lambda/ path",
       reserved.length === 0,
-      reserved.length ? `${reserved.join(", ")} — an account where the function has run cannot deploy this` : "");
+      reserved.length ? `${reserved.join(", ")}, an account where the function has run cannot deploy this` : "");
     check("  and the ones declared are namespaced under the stack prefix",
       names.length > 0 && names.every(n => n.includes("${stackPrefix}")), names);
   }

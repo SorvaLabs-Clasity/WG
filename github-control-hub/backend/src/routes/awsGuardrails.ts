@@ -23,8 +23,8 @@ const FUNCTION_NAME = process.env.GUARDRAIL_FUNCTION_NAME
 
 /**
  * Everything that changes or triggers a guardrail is restricted to the admin
- * team. Unlike the GitHub side — where a repo action is authorized by GitHub
- * itself, because the call is made with the user's own token — these calls run
+ * team. Unlike the GitHub side, where a repo action is authorized by GitHub
+ * itself, because the call is made with the user's own token. These calls run
  * as the Lambda's role, which holds account-wide write permissions. There is no
  * per-user AWS identity to delegate to, so the app has to decide.
  *
@@ -101,7 +101,7 @@ router.post("/guardrails", requireAdmin, async (req: Request, res: Response) => 
     //
     // The rule form fills these in and shows every field regardless of mode, so
     // a rule made in the app already carries them. One made through the API
-    // might not — and the fix parameters are exactly the ones a `report` rule
+    // might not, and the fix parameters are exactly the ones a `report` rule
     // looks like it does not need, right up until somebody presses Fix on a
     // single resource. Storing them means the rule describes its own fix rather
     // than leaning on a fallback inside the remediator that could drift from
@@ -131,7 +131,7 @@ router.put("/guardrails/:id", requireAdmin, async (req: Request<{ id: string }>,
 
     const { name, description, mode, enabled, applyOnCreate, params, exclusionLists, accounts } = req.body ?? {};
 
-    // Only a change INTO enforce is gated — an admin-set rule must stay editable
+    // Only a change INTO enforce is gated, an admin-set rule must stay editable
     // by others for its name or thresholds without silently losing its mode.
     if (mode && mode !== existing.mode && mode === "enforce") {
       if (!canRemediate(existing.kind)) {
@@ -197,7 +197,7 @@ router.get("/findings", async (_req: Request, res: Response) => {
 });
 
 /**
- * Run the engine. The app never evaluates or remediates itself — it invokes the
+ * Run the engine. The app never evaluates or remediates itself. It invokes the
  * same Lambda the schedule and the creation events use, so a manual run cannot
  * behave differently from an automatic one.
  */
@@ -217,18 +217,18 @@ async function invokeEngine(payload: Record<string, unknown>): Promise<any> {
  * Re-evaluate the rules whose exclusions have just changed.
  *
  * Synchronous on purpose. The alternative is returning a saved rule while the
- * findings behind it still say the opposite — which is precisely the bug this
+ * findings behind it still say the opposite, which is precisely the bug this
  * exists to close: a resource stays marked "skipped" after the list excluding
  * it has been taken away, and pressing refresh cannot fix it, because refresh
  * re-reads stored findings rather than producing new ones.
  *
  * Scoped to the affected rules, so this is one collector pass rather than a
- * whole sweep, and skipped entirely when nothing exclusion-related moved —
+ * whole sweep, and skipped entirely when nothing exclusion-related moved,
  * renaming a rule or toggling its mode stays instant.
  *
  * A failure here is not a failed save. The change is already stored and is
  * correct; only the re-check did not run. Rejecting the request would tell
- * somebody their edit had not taken, which is both worse and untrue — so the
+ * somebody their edit had not taken, which is both worse and untrue, so the
  * outcome is reported instead, and the caller can say the findings are still
  * from before rather than implying they are current.
  */
@@ -251,7 +251,7 @@ async function recheckRules(ruleIds: string[]): Promise<boolean> {
  *
  * Team membership says somebody may configure guardrails. It does not say they
  * may rewrite a production bucket policy, and remediation runs under the
- * engine's role rather than theirs — so without this, being in the admin team
+ * engine's role rather than theirs, so without this, being in the admin team
  * is enough to have a privileged Lambda perform a write AWS would refuse them
  * directly. See the note in permissions.ts.
  *
@@ -279,7 +279,7 @@ router.post("/run", requireAdmin, async (req: Request, res: Response) => {
     res.json(result);
   } catch (err) {
     // Logged on the way out too. Somebody pressed this, so the press is history
-    // whether or not the engine answered — and a sweep that failed is the more
+    // whether or not the engine answered, and a sweep that failed is the more
     // interesting of the two outcomes to be able to find later.
     await logActivity("aws.guardrail.run", req.user!.login, "*", scope,
       "AWS guardrail run failed", undefined, "app", undefined, undefined,
@@ -294,7 +294,7 @@ router.post("/run", requireAdmin, async (req: Request, res: Response) => {
  * The button beside a single failed item. Somebody has looked at this one thing
  * and decided to correct it; that is a different decision from deciding every
  * future violation should be corrected automatically, and this keeps them
- * separate — the rule's mode is not touched.
+ * separate, the rule's mode is not touched.
  *
  * So a setting changed back afterwards is reported again, not silently
  * re-corrected. Unless the rule is in `enforce` mode, where re-correcting is
@@ -327,7 +327,7 @@ router.post("/remediate", requireAdmin, async (req: Request, res: Response) => {
   // gate between "read-only in production" and a privileged Lambda rewriting
   // its bucket policy on request.
   // Region and account come off the finding, falling back to the request. A
-  // log-group ARN needs both, and a missing one refuses rather than guessing —
+  // log-group ARN needs both, and a missing one refuses rather than guessing,
   // simulating against a group in the wrong account would look like an answer.
   const found = (await listFindings()).find(
     f => f.ruleId === ruleId && f.resourceId === resourceId);

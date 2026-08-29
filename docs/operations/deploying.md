@@ -7,7 +7,7 @@ cd github-control-hub/desktop
 npm run dist:mac         # .dmg + .zip into release/
 ```
 
-Bump `version` in `desktop/package.json` first if anyone else will install it —
+Bump `version` in `desktop/package.json` first if anyone else will install it,
 that is what the auto-updater compares.
 
 Replace `/Applications/GitHub Control Hub.app` with the built one, or open the
@@ -29,7 +29,7 @@ npx cdk deploy                  # no required context
 ```
 
 This is the only deploy step for backend changes that affect webhook handling
-or guardrail evaluation — `cdk deploy` bundles all three Lambdas straight from
+or guardrail evaluation, `cdk deploy` bundles all three Lambdas straight from
 `backend/src`, so there is nothing to build or ship separately. A few minutes
 of deploy time, with no downtime for webhooks: API Gateway and the queue keep
 accepting deliveries while the functions behind them update.

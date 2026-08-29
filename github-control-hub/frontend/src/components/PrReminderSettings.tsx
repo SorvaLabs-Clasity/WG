@@ -18,7 +18,7 @@ const inputClass =
  * A muted person, with the way to undo it attached.
  *
  * Which list it sits in is what gives it its scope, so the chip does not repeat
- * it — inside a repository's panel every chip is a repository mute, and
+ * it, inside a repository's panel every chip is a repository mute, and
  * labelling each one would be noise.
  */
 function MuteChip({ login, avatarUrl, onRemove, busy }: {
@@ -46,7 +46,7 @@ function Nobody({ children }: { children: React.ReactNode }) {
 /**
  * Managing who never gets reminded, as a window rather than a panel on the page.
  *
- * Two scopes live here — everywhere, and per repository. The third, a single
+ * Two scopes live here, everywhere, and per repository. The third, a single
  * pull request, stays on the pull request itself, where the context that
  * justifies it is visible.
  */
@@ -84,7 +84,7 @@ export default function PrReminderSettings({
    *
    * A repository can carry a mute and then be renamed, archived or removed from
    * the installation, which drops it out of the list. Merging the mute keys back
-   * in keeps it reachable — otherwise the only way to lift that mute would be to
+   * in keeps it reachable, otherwise the only way to lift that mute would be to
    * edit the record by hand.
    */
   const all = useMemo(() => {

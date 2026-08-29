@@ -3,7 +3,7 @@
  *
  * The HMAC is computed over the exact bytes GitHub sent. API Gateway may hand
  * Lambda a base64-encoded body, and anything that parses and re-serialises the
- * payload before verification breaks every signature — while looking exactly
+ * payload before verification breaks every signature, while looking exactly
  * like a misconfigured secret, which is the wrong thing to go and check.
  */
 import crypto from "crypto";
@@ -207,7 +207,7 @@ const code = (src: string) => src
   const fs = await import("fs");
   const nodePath = await import("path");
   // Comments stripped. The implementation explains in prose why getSystemToken
-  // is absent, and that prose contains "getSystemToken()" — asserting against
+  // is absent, and that prose contains "getSystemToken()", asserting against
   // raw source would fail on the comment justifying the very absence it
   // asserts. Same trap, same fix, as repro-appsec.ts.
   const src = code(fs.readFileSync(
@@ -233,7 +233,7 @@ const code = (src: string) => src
 
   // A flaky scanner must not throw out of processDelivery: the worker would
   // release its claim, SQS would redeliver, and the activity rows and alerts
-  // already written would be written again — up to five times.
+  // already written would be written again, up to five times.
   let threw = false;
   try {
     await awaitBackground([Promise.reject(new Error("scanner exploded"))]);
@@ -306,8 +306,8 @@ const code = (src: string) => src
 // ── claimDelivery does not swallow errors that are not lock contention ──
 //
 // ConditionalCheckFailedException means "someone else holds it", and false is
-// the correct, quiet answer. Any other DynamoDB error — a throttle, for
-// instance — must not also collapse to false: the worker would skip the
+// the correct, quiet answer. Any other DynamoDB error, a throttle, for
+// instance, must not also collapse to false: the worker would skip the
 // delivery, return normally, and SQS would delete the message with the event
 // lost and no trace of it anywhere.
 {
@@ -374,7 +374,7 @@ const code = (src: string) => src
 // any one of them drifts, not agree with a stale copy of itself.
 //
 // The lease clock starts at claimDelivery, the visibility clock at
-// ReceiveMessage — one pre-claim latency δ earlier (cold start, bootstrapOnce,
+// ReceiveMessage, one pre-claim latency δ earlier (cold start, bootstrapOnce,
 // getSystemTokenAsync). A redelivery lands at receive + visibility, the lease
 // expires at receive + δ + lease, and re-claiming needs expiresAt < now. So
 // lease == visibility fails for every δ including zero, and a worker killed
@@ -408,12 +408,12 @@ const code = (src: string) => src
 
   check("  the lease outlives the worker's own timeout",
     workerTimeoutSec < leaseSec,
-    `worker timeout ${workerTimeoutSec}s, lease ${leaseSec}s — a lease at or under the ` +
+    `worker timeout ${workerTimeoutSec}s, lease ${leaseSec}s, a lease at or under the ` +
     `function timeout lets a second worker claim a delivery the first is still processing`);
 
   check("  and expires before the queue redelivers",
     leaseSec < visibilitySec,
-    `lease ${leaseSec}s, visibility timeout ${visibilitySec}s — a dead worker's claim is ` +
+    `lease ${leaseSec}s, visibility timeout ${visibilitySec}s, a dead worker's claim is ` +
     `still held when the redelivery lands, so the event is dropped with no DLQ entry`);
 
   check("  and the done marker outlives the visibility timeout",
@@ -504,7 +504,7 @@ const code = (src: string) => src
 // Not mocked: initTokenManager is called for real with a private key that
 // cannot be parsed, so this reproduces the actual failure instead of
 // simulating it (a monkey-patched getSystemTokenAsync was tried first and
-// discarded — esbuild's CJS output exposes named exports as getter-only
+// discarded, esbuild's CJS output exposes named exports as getter-only
 // accessors, so assigning over them is a silent no-op and the real function
 // keeps running underneath; see the require() vs import() note below).
 //
@@ -512,7 +512,7 @@ const code = (src: string) => src
 // before awaiting its own init(). Once init() throws here, a non-null
 // manager is left behind whose auth() was never wired up successfully.
 // getSystemTokenAsync() on that container then throws on every later
-// invocation, outside processDelivery's try/catch — which used to fail the
+// invocation, outside processDelivery's try/catch, which used to fail the
 // whole batch to the DLQ for as long as the container stayed warm. The
 // Express route this replaced called the synchronous getSystemToken(), which
 // degrades to SYSTEM_GITHUB_TOKEN and never throws; worker.ts now restores
@@ -539,7 +539,7 @@ const code = (src: string) => src
   // initTokenManager at all. require(), not the import() used elsewhere in
   // this file, because a dynamic import() of a CommonJS module hands back a
   // read-only synthetic namespace that require.cache invalidation does not
-  // reach the same way — require() is what worker.ts's own dependency
+  // reach the same way, require() is what worker.ts's own dependency
   // resolution actually goes through.
   for (const m of ["./src/webhooks/worker", "./src/github/client"]) {
     delete require.cache[require.resolve(m)];

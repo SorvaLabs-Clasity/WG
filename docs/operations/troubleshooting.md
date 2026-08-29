@@ -10,11 +10,11 @@ It says which of four things is wrong, and they need different answers:
 |---|---|
 | *Unlocks once AWS is connected* | AWS is the blocker. The OAuth secrets live in Secrets Manager, so nothing about GitHub can work first |
 | *Loading credentials…* | Secrets are still loading. They are read after the server starts listening, so there is a second or so where this is honest |
-| *No GitHub credentials stored yet* | The secret does not exist. Run [the setup](setup.md) — this is the ordinary state before it |
+| *No GitHub credentials stored yet* | The secret does not exist. Run [the setup](setup.md). This is the ordinary state before it |
 | *OAuth is not configured on this build* | The secret exists and has no OAuth keys in it. This one really is a build or configuration fault |
 
 There is also *could not be read*, which means the secret exists but this
-account cannot read it — an IAM problem rather than a setup one.
+account cannot read it, an IAM problem rather than a setup one.
 
 ## "A JSON web token could not be decoded" at startup
 
@@ -29,7 +29,7 @@ well-formed JWT was signed and sent, and GitHub could not verify it against the
 public key it holds for that App ID. Almost always the private key and the App ID
 are from **two different Apps**.
 
-That happens easily where an org runs more than one install — dev and UAT, say.
+That happens easily where an org runs more than one install, dev and UAT, say.
 Both `.pem` downloads are named `<app>.<date>.private-key.pem` and land in the
 same folder, and Secrets Manager accepts either one without complaint.
 
@@ -40,12 +40,12 @@ or the clock (skew produces an error that names the `iat` claim).
 Re-run `./scripts/migrate-to-account.sh` and correct the App ID, or supply the
 key generated on the App whose ID is stored. Step 2 checks the result against
 GitHub before it finishes, so a mismatch is reported there rather than at the
-next startup. Restart the app afterwards — the token manager initializes once,
+next startup. Restart the app afterwards, the token manager initializes once,
 at boot.
 
 ## The sign-in page asks which AWS profile every launch
 
-Fixed — the profile is remembered in `~/.github-control-hub/desktop.json`. If it
+Fixed, the profile is remembered in `~/.github-control-hub/desktop.json`. If it
 still asks, your SSO session has expired; the app cannot renew it.
 
 ## A page shows 0 and you expected hundreds
@@ -69,7 +69,7 @@ has no fallback to an administrator role, by design.
 
 The rule is in report mode, which is where every rule starts. Switch it to
 enforce in the AWS tab. A rule in report mode still finds every violation and
-records the exact fix it would have made — it just does not make it.
+records the exact fix it would have made. It just does not make it.
 
 ## Activity stopped recording changes made in GitHub
 
@@ -81,7 +81,7 @@ rather than vanishing. See [webhooks](../github-api/webhooks.md).
 
 ## GitHub's webhook IP ranges changed
 
-Nothing detects this automatically — it is the same position the security
+Nothing detects this automatically. It is the same position the security
 group held before this moved to Lambda. The symptom is 403s at the API
 Gateway and the Activity page reading **Stale** within 72 hours, because every
 delivery is being rejected before it reaches the receiver.
@@ -94,7 +94,7 @@ in `GITHUB_WEBHOOK_CIDRS` in `infra/cdk-stack.ts`. Update it there and
 
 More likely a rotated webhook secret than a bug in the signature logic. The
 receiver caches the secret for fifteen minutes and refetches once per
-verification failure, with a sixty-second floor between refetches — so a
+verification failure, with a sixty-second floor between refetches, so a
 single rotated secret costs roughly one lost delivery, not fifteen minutes of
 them. Give it a minute before investigating further; if 401s are still
 happening after that, the secret in Secrets Manager and the one configured on
@@ -108,6 +108,6 @@ answer. If you still get the generic one, the server log has the real error.
 
 ## The app opens in a second browser window instead of your real one
 
-Fixed — outbound links go to the system browser, sign-in flows stay inside. The
+Fixed, outbound links go to the system browser, sign-in flows stay inside. The
 distinction is fiddly because an OAuth redirect fires `will-redirect` rather
 than `will-navigate`.

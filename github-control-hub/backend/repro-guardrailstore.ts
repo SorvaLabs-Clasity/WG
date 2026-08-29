@@ -9,14 +9,14 @@
  *   RangeError: Maximum call stack size exceeded
  *       at send (dist/aws-guardrails/store.js:132:22)   ... and so on
  *
- * On screen that looked like two unrelated faults — the AWS tab listed no rules,
- * and adding a rule crashed — because a read that throws and an account with no
+ * On screen that looked like two unrelated faults, the AWS tab listed no rules,
+ * and adding a rule crashed, because a read that throws and an account with no
  * rules render identically. It was one line.
  *
  * The wrapper also carries the stale-credential retry, which is the reason it
  * exists: this module's client can sit an hour untouched while the rest of the
  * app keeps its own warm, so a laptop that slept wakes holding dead credentials.
- * That path is asserted here too — it was equally unexercised.
+ * That path is asserted here too. It was equally unexercised.
  */
 import {
   __setGuardrailClientForTests, resetGuardrailStore,

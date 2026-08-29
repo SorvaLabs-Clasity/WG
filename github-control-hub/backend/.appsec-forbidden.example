@@ -10,6 +10,6 @@
 # the thing the check exists to prevent. APPSEC_FORBIDDEN, a comma-separated
 # environment variable, does the same job in CI without a file on disk.
 #
-# Identifiers with a recognizable shape — AWS account ids, GitHub App client
-# ids, tokens, private keys — are matched without configuration and need no
+# Identifiers with a recognizable shape: AWS account ids, GitHub App client
+# ids, tokens, private keys: are matched without configuration and need no
 # entry here.

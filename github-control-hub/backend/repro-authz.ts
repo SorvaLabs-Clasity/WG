@@ -21,7 +21,7 @@ import { initTokenManager, __resetTokenManagerForTests } from "./src/github/clie
  * A GitHub App token, because that is now the only credential there is.
  *
  * This used to set SYSTEM_GITHUB_TOKEN and rely on getSystemToken() falling back
- * to it — convenient, and it quietly meant these tests never exercised the path
+ * to it, convenient, and it quietly meant these tests never exercised the path
  * the app actually takes. That fallback has been removed, so the token manager
  * is stubbed instead, which is both closer to production and the only thing that
  * works now.
@@ -149,7 +149,7 @@ globalThis.fetch = (async (input: any) => {
   //
   // The two teams exist so that trusting somebody with GitHub settings is not
   // the same act as trusting them with an AWS account. That separation only
-  // holds if the AWS check is used for AWS work — and it had spread to pull
+  // holds if the AWS check is used for AWS work, and it had spread to pull
   // request reminders, alarms, the dependency graph and the Renovate bot name,
   // so a member of the GitHub admin team could not change any of them without
   // also being an AWS admin. Nothing announced that; the buttons simply failed.
@@ -169,7 +169,7 @@ globalThis.fetch = (async (input: any) => {
     // router, whose detailed-logging settings are gated on it; and the config
     // import, whose bundle carries an `awsGuardrails` section that goes to the
     // same store the /api/aws routes own. That last one is the reason this set
-    // is a set rather than one name — an import was a way to create an
+    // is a set rather than one name, an import was a way to create an
     // enforcing guardrail while only ever proving membership of the *GitHub*
     // admin team, which is precisely the separation this block exists to keep.
     const MAY_USE_AWS_CHECK = new Set([
@@ -186,7 +186,7 @@ globalThis.fetch = (async (input: any) => {
       offenders.length ? `${offenders.join(", ")} gate GitHub work on aws-guardrail-admins` : "");
 
     // auth.ts reports both flags to the client and gates nothing, so it is
-    // allowed the import — but it must not be quietly gating a route either.
+    // allowed the import, but it must not be quietly gating a route either.
     const authSrc = fs.readFileSync(path.join(dir, "auth.ts"), "utf8");
     assert("  and auth.ts only reports the AWS flag rather than gating on it",
       !/if\s*\(\s*!\s*\(?\s*await\s+isAwsAdmin/.test(authSrc));
@@ -197,7 +197,7 @@ globalThis.fetch = (async (input: any) => {
   // Membership is read with the App's own token, so no token means no answer.
   // That used to be cached as a plain `false` for the full TTL: a credential
   // problem lasting a moment kept every admin screen shut for a minute after it
-  // healed, and told the person they were not an admin — which is a claim about
+  // healed, and told the person they were not an admin, which is a claim about
   // them rather than about the app.
   {
     const assert = (name: string, ok: boolean, got?: unknown) => {
@@ -213,7 +213,7 @@ globalThis.fetch = (async (input: any) => {
     assert("with no App token the check denies rather than throwing", duringOutage === false);
 
     // The token comes back. Without a cached denial in the way, the very next
-    // call is correct — no waiting out a TTL.
+    // call is correct, no waiting out a TTL.
     await initTokenManager("1", "key", "1", stubAppAuth as any);
     const afterRecovery = await isControlHubAdmin("owner-person");
     assert("  and the denial is not remembered once the token works",

@@ -4,12 +4,12 @@
  * The complaint was that a widget's table left "so much free space on the
  * right" while the repository name on the left "gets smudged because it's too
  * long". That was not a tuning problem. The last column carried `w-full`, which
- * in a table means `width: 100%` — so it claimed all the width and every other
+ * in a table means `width: 100%`, so it claimed all the width and every other
  * column collapsed to the narrowest thing it could render. The column people
  * were actually reading was the one that got nothing.
  *
  * Two things are asserted here. The arithmetic behind dragging, which is where
- * the fiddly mistakes live — a drag that inverts through its minimum, a stored
+ * the fiddly mistakes live, a drag that inverts through its minimum, a stored
  * layout for a table whose columns have since changed. And the structure: a
  * `<colgroup>` only works if it has exactly as many entries as the body has
  * cells, and the body's cells are still hand-written per widget type.
@@ -136,7 +136,7 @@ function check(name: string, ok: boolean, got?: unknown) {
     // ── the owning team column ────────────────────────────────────────
     //
     // Conditional on the rows carrying the field, so the column and the cell
-    // are gated separately and could drift apart — which does not throw, it
+    // are gated separately and could drift apart, which does not throw, it
     // shifts every width one column across.
     const withOwner = widgetColumns({ type: "query", hasStatus: false, hasOwner: true });
     check("  a check that reports an owner gets a column for it",
@@ -151,7 +151,7 @@ function check(name: string, ok: boolean, got?: unknown) {
     check("    the body renders a cell under exactly the same condition",
       ownerCell.test(page),
       "a column without its cell shifts every width one across");
-    // Four tiers, and the label is what tells them apart — a team slug, a
+    // Four tiers, and the label is what tells them apart, a team slug, a
     // username and a git author name all render identically otherwise.
     check("    an unregistered committer is labelled as having no account",
       /no account/.test(page),

@@ -8,11 +8,11 @@
  *   1. An alarm on a widget had been firing for days. Value 2, limit 2. Nothing
  *      about it changed and nobody expected another email about it.
  *   2. Somebody opened its email template, mistyped one character, saved.
- *   3. Minutes later the alarm emailed everyone — with the broken template, so
+ *   3. Minutes later the alarm emailed everyone, with the broken template, so
  *      the mistake was visible in the message that should never have been sent.
  *
  * The cause was not the template. `updateAlarm` resets an alarm's ALARM/OK state
- * when its *condition* changes, which is right — an alarm that starts watching
+ * when its *condition* changes, which is right, an alarm that starts watching
  * something else has to be able to fire for the new thing. It decided that with
  *
  *     JSON.stringify(data.condition) !== JSON.stringify(existing.condition)
@@ -20,8 +20,8 @@
  * and DynamoDB hands a map's keys back in its own order. The row on the live
  * table reads `{kind, threshold, metric, op}`; the form sends
  * `{kind, metric, op, threshold}`. Same condition. Different string. So the
- * comparison said "changed" on *every* save of *any* field — a rename, a
- * different email group, a typo fixed — reset the firing alarm to OK, and the
+ * comparison said "changed" on *every* save of *any* field, a rename, a
+ * different email group, a typo fixed, reset the firing alarm to OK, and the
  * next evaluation saw a fresh breach and sent the email.
  *
  * The key orders below are copied from the real stored row and the real form,
@@ -44,7 +44,7 @@ const FROM_FORM = { kind: "count", metric: "query.rows", op: "gte", threshold: 2
 
 // ── the comparison itself ─────────────────────────────────────────────
 {
-  check("the two orderings really are different strings — the bug was real",
+  check("the two orderings really are different strings, the bug was real",
     JSON.stringify(STORED) !== JSON.stringify(FROM_FORM),
     { stored: JSON.stringify(STORED), form: JSON.stringify(FROM_FORM) });
 
@@ -77,7 +77,7 @@ const FROM_FORM = { kind: "count", metric: "query.rows", op: "gte", threshold: 2
   check("a field present but undefined is not the same as absent",
     !sameValue({ a: 1 }, { a: 1, b: undefined }));
   // Same number of keys, different keys, both undefined. Counting keys is not
-  // enough here — the names have to be compared, or a renamed field reads as no
+  // enough here, the names have to be compared, or a renamed field reads as no
   // change at all.
   check("  and two different undefined fields are not each other",
     !sameValue({ a: 1, b: undefined }, { a: 1, c: undefined }));
@@ -165,8 +165,8 @@ const FROM_FORM = { kind: "count", metric: "query.rows", op: "gte", threshold: 2
 //
 // The fix above is one comparison. The rule it protects is broader: saving a
 // setting must never be able to make something send again. This reads the
-// source rather than trusting it, so a reset added to a different save — the
-// security toggle, a feed's template, the pull request switches — fails here
+// source rather than trusting it, so a reset added to a different save, the
+// security toggle, a feed's template, the pull request switches, fails here
 // instead of arriving as another surprise email.
 {
   const service = readFileSync("src/services/alarmService.ts", "utf8");
@@ -175,7 +175,7 @@ const FROM_FORM = { kind: "count", metric: "query.rows", op: "gte", threshold: 2
     .map((line, i) => ({ line: line.trim(), n: i + 1 }))
     // No trailing \b: `state = "OK";` ends on a quote followed by a semicolon,
     // which is not a word boundary, so requiring one silently matched only half
-    // the pattern — and the guard reported one reset where there are two.
+    // the pattern, and the guard reported one reset where there are two.
     .filter(l => /\b(state\s*=\s*"OK"|cleanStreak\s*=\s*0\b)/.test(l.line)
       && !l.line.startsWith("//") && !l.line.startsWith("*"));
 

@@ -5,7 +5,7 @@ import { SURFACE, TYPE } from "../design";
 /**
  * The shape of the feed, in whichever of two encodings answers the question.
  *
- * It was stacked areas only, and stacking answers *composition* — how a total
+ * It was stacked areas only, and stacking answers *composition*, how a total
  * is made up. Read as *comparison* it says things that are not true: with
  * GitHub at 132 and AWS at 2 on the same day, the AWS band begins at 132 and
  * its top edge sits at 134, so AWS looks as tall as GitHub. App on top of both
@@ -46,7 +46,7 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading }: {
    * The hit targets are full-height columns, which is right for the crosshair
    * and the tooltip: you should be able to read a bucket without aiming at a
    * two-pixel bar. But the dimming was tied to the same signal, so putting the
-   * pointer anywhere in the chart — high above every bar — faded all of them.
+   * pointer anywhere in the chart, high above every bar, faded all of them.
    * Dimming is a comparison between one bar and the rest, so it should only
    * happen once a bar is actually the thing being pointed at.
    */
@@ -106,7 +106,7 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading }: {
           </div>
           <div className="flex items-baseline gap-2.5">
             <span className="text-[38px] font-black tabular-nums leading-none tracking-[-0.03em] text-slate-900 dark:text-white">
-              {isLoading ? "—" : (pulse?.total ?? 0).toLocaleString()}
+              {isLoading ? " " : (pulse?.total ?? 0).toLocaleString()}
               {/* At least this many. The sentence underneath says why. */}
               {pulse && !pulse.exhausted && <span className="text-slate-400 dark:text-slate-500">+</span>}
             </span>

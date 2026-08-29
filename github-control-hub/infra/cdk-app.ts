@@ -16,7 +16,7 @@ function getAccount(): string {
 // Never a default.
 //
 // This used to fall back to us-east-1, so a deploy with CDK_DEFAULT_REGION
-// unset built the entire stack — instance, Lambda, elastic IP — in a region
+// unset built the entire stack, instance, Lambda, elastic IP, in a region
 // nobody had named, and said nothing. AWS_REGION does not help: cdk-app only
 // ever read CDK_DEFAULT_REGION, so exporting the one the CLI uses left this
 // silently wrong.
@@ -44,7 +44,7 @@ new GitHubControlHubStack(app, "GitHubControlHub", {
   // evaluator, no access graph, no audit-log pipeline. For an account that runs
   // the guardrails and holds nothing about the GitHub organization.
   //
-  // Compared against the string, because context arrives as one — `-c
+  // Compared against the string, because context arrives as one, `-c
   // awsOnly=false` is a non-empty string and would otherwise read as true,
   // which is the reverse of what anyone typing it means.
   awsOnly: String(app.node.tryGetContext("awsOnly") ?? "") === "true",

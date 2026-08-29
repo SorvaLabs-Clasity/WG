@@ -2,7 +2,7 @@
  * The GitHub App's installation token, and the fact that it is the only one.
  *
  * Installation tokens live one hour, and getToken() once returned
- * `this.cachedToken` with no expiry check — so ~25 synchronous call sites kept
+ * `this.cachedToken` with no expiry check, so ~25 synchronous call sites kept
  * using a dead token and every GitHub call failed with 401 until a restart. That
  * was fixed by falling back to a `SYSTEM_GITHUB_TOKEN` personal access token.
  *
@@ -50,7 +50,7 @@ Module._resolveFilename = function (req: string, ...rest: any[]) {
   await initTokenManager("1", "key", "1");
   const stale = getSystemToken();
   // The expired App token, not a PAT. GitHub answers 401 and the App looks
-  // broken — which it is. Quietly succeeding on a personal access token is the
+  // broken, which it is. Quietly succeeding on a personal access token is the
   // outcome this removal exists to prevent.
   const staleOk = stale === "ghs_app_expired";
   console.log("expired App token -> getSystemToken():", stale);

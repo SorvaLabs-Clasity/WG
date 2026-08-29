@@ -35,8 +35,8 @@ import { usePermissions } from "../hooks/usePermissions";
  *
  * They used to be stacked: every vulnerable repository, then the Dependabot
  * email settings, then Renovate, then the Renovate email settings. Reaching
- * Renovate meant scrolling past the whole of Dependabot — a page of repository
- * cards — which put the two halves of one question at opposite ends of a scroll
+ * Renovate meant scrolling past the whole of Dependabot, a page of repository
+ * cards, which put the two halves of one question at opposite ends of a scroll
  * bar and made the second half easy to forget existed.
  *
  * They are genuinely separate questions asked by the same person at different
@@ -64,7 +64,7 @@ export default function DependencyDashboardPage() {
   };
 
   // The same query key the panel uses, so this shares its cache rather than
-  // fetching a second time — it is here only to put a count on the tab.
+  // fetching a second time. It is here only to put a count on the tab.
   const { data: renovate, isFetching: renovateFetching, refetch: refetchRenovate } = useQuery({
     queryKey: ["renovate"],
     queryFn: fetchRenovate,
@@ -150,7 +150,7 @@ export default function DependencyDashboardPage() {
       total: (summary?.critical ?? 0) + (summary?.high ?? 0) + (summary?.medium ?? 0) + (summary?.low ?? 0),
       // Coverage, not cleanliness. The old figure was clean/all-repos, which
       // counted every switched-off repo against "clean" and read as "99% of
-      // your repos have vulnerabilities" when in fact none had been found —
+      // your repos have vulnerabilities" when in fact none had been found,
       // those repos are unscanned, which is a different thing and a different
       // problem. Coverage is the number that is both true and actionable.
       pct: repos ? Math.round((watched / repos) * 100) : 100,
@@ -159,7 +159,7 @@ export default function DependencyDashboardPage() {
 
   // Not an early return any more. Blocking the whole page on the Dependabot
   // fetch meant opening the Renovate view still waited for data it does not
-  // use — the loading equivalent of the scroll this split removed.
+  // use, the loading equivalent of the scroll this split removed.
   const alertsLoading = depsLoading || sumLoading;
 
   const rateLimited = depsError && (depsErrorObj as any)?.message?.includes("429");
@@ -224,7 +224,7 @@ export default function DependencyDashboardPage() {
       {view === "alerts" && (alertsLoading ? <Spinner /> : (
         <>
         <StatusSlab
-          /* An org where almost nothing is being scanned is not "all clear" —
+          /* An org where almost nothing is being scanned is not "all clear",
              it is unmeasured. Saying so is the difference between a dashboard
              that reports and one that reassures. */
           intent={counts.critical > 0 ? "danger" : counts.total > 0 || counts.off > 0 ? "warn" : "good"}

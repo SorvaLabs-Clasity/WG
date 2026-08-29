@@ -2,8 +2,8 @@
  * The dashboard opens with stored answers, not with a page of live checks.
  *
  * Every widget used to compute inside the request that drew it: a full scan of
- * the graph table, live GitHub calls for the dependency cards, and — for the
- * three subject-by-subject checks — up to twenty-five commit searches against a
+ * the graph table, live GitHub calls for the dependency cards, and, for the
+ * three subject-by-subject checks, up to twenty-five commit searches against a
  * budget of thirty a minute. All of it on a cold process, immediately after
  * launching the app, with somebody watching.
  *
@@ -13,7 +13,7 @@
  * What is asserted here is the part that would quietly rot: that a trimmed
  * snapshot still reports the true count, that a stored error is not served as
  * an answer, and that the live sources are switched *off* when a snapshot is
- * used — fetching them anyway would leave the cost where it was and only hide
+ * used, fetching them anyway would leave the cost where it was and only hide
  * it from the loading state.
  *
  * Run:  npx tsx repro-widgetsnapshots.ts   from github-control-hub/backend
@@ -57,7 +57,7 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
   // ── too large to store whole ────────────────────────────────────────
   //
   // DynamoDB refuses an item over 400KB. Refusing the snapshot would put the
-  // card back to computing live, which is the case this exists to remove — so
+  // card back to computing live, which is the case this exists to remove, so
   // it is trimmed, and the count stays true so the card is still right.
   {
     const many = Array.from({ length: 20_000 }, (_, i) => ({

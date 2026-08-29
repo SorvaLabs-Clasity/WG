@@ -117,10 +117,34 @@ export async function removeMember(subscriptionArn: string): Promise<void> {
 /**
  * Send. Returns false rather than throwing when the topic will not accept the
  * message, because a failed notification must not fail the thing that
- * triggered it — a security alert still has to be recorded even if nobody can
+ * triggered it, a security alert still has to be recorded even if nobody can
  * be emailed about it.
  */
+/**
+ * Tell everybody in this group, by every channel they have.
+ *
+ * The one seam every notification in the app passes through, widget alarms,
+ * important events, pull request reminders, the Renovate feed, so a delivery
+ * channel added here reaches all of them at once, and none of them has to know
+ * it exists.
+ *
+ * True when *anybody* was reached. A group with a working Teams webhook and a
+ * broken topic has still notified somebody, and reporting that as a failure
+ * would make the caller record an alarm as unsent when it was seen.
+ *
+ * The two are attempted independently and neither can fail the other: a stale
+ * Teams webhook must not stop the email, which is the channel people are more
+ * likely to be relying on.
+ */
 export async function publish(topicArn: string, subject: string, body: string): Promise<boolean> {
+  const [email, teams] = await Promise.all([
+    publishEmail(topicArn, subject, body),
+    publishTeams(topicArn, subject, body),
+  ]);
+  return email || teams;
+}
+
+async function publishEmail(topicArn: string, subject: string, body: string): Promise<boolean> {
   try {
     const { client, PublishCommand } = await sns();
     await client.send(new PublishCommand({
@@ -129,6 +153,44 @@ export async function publish(topicArn: string, subject: string, body: string): 
     return true;
   } catch (err) {
     console.error(`[Alarm] Could not publish to ${topicArn}:`, (err as Error).message);
+    return false;
+  }
+}
+
+/**
+ * The same message, as a Teams card.
+ *
+ * Imported lazily so that a deployment with no Teams webhooks anywhere never
+ * loads the card builder, and, more to the point, so this module does not
+ * take a static dependency on the alarm store, which imports plenty of its own.
+ *
+ * Returns false when the group has no webhooks, which is the ordinary case and
+ * not a failure. The caller's `email || teams` is what makes that harmless.
+ */
+async function publishTeams(topicArn: string, subject: string, body: string): Promise<boolean> {
+  try {
+    const { groupByTopic } = await import("./alarmService");
+    const group = await groupByTopic(topicArn);
+    const hooks = group?.teamsWebhooks ?? [];
+    if (hooks.length === 0) return false;
+
+    const { buildCard, sendCard } = await import("./teamsClient");
+    // Body first, because SNS subjects are short and the body carries the
+    // detail. Split into lines so a multi-line alarm body does not arrive as
+    // one unbroken paragraph.
+    const card = buildCard(subject, group!.name, [{
+      heading: "",
+      links: [],
+      emptyText: body,
+    }]);
+    const results = await Promise.all(hooks.map(url => sendCard(url, card)));
+    for (const [i, r] of results.entries()) {
+      if (!r.ok) console.warn(`[Notify] Teams webhook ${i + 1} for "${group!.name}": ${r.error}`);
+    }
+    return results.some(r => r.ok);
+  } catch (err) {
+    // Never allowed to take the email down with it.
+    console.warn("[Notify] Teams delivery failed:", (err as Error).message);
     return false;
   }
 }

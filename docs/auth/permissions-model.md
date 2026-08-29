@@ -43,7 +43,7 @@ separately fails if a route file with writes is neither guarded nor listed as
 deliberately exempt with a reason.
 
 The compliance rule set was the last thing to be caught by it. Its router was
-exempted as "read models over the graph" — true of everything in it except
+exempted as "read models over the graph", true of everything in it except
 `PUT /api/compliance/config`, which replaces the definition every repository in
 the organization is scored against. `{"rules": []}` scores everything 100.
 
@@ -51,13 +51,13 @@ the organization is scored against. `{"rules": []}` scores everything 100.
 
 Anyone signed in can see rules, findings, the access map and the activity log.
 Knowing who can write to which repository is not privileged information inside
-an organization — it is the thing people most often get wrong because nobody
+an organization. It is the thing people most often get wrong because nobody
 could see it.
 
 ## Undo is gated as hard as the original action
 
 Undoing something is doing something. Every undo is re-checked against what the
-person could do *now*, per repository — being on the admin team says nothing
+person could do *now*, per repository, being on the admin team says nothing
 about whether you may touch a particular repo. Actions with no safe reversal
 are refused rather than faked. See
 [activity and undo](../features/activity-and-undo.md).

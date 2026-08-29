@@ -134,7 +134,7 @@ router.post("/:repo/rulesets/import", validateParams("repo"), async (req: Reques
 router.delete("/:repo/rulesets/:rulesetId", validateParams("repo"), async (req: Request<{ repo: string; rulesetId: string }>, res: Response) => {
   try {
     // Checked rather than passed through. `parseInt("abc", 10)` is NaN, which
-    // Octokit puts in the path as the literal string "NaN" — GitHub answers
+    // Octokit puts in the path as the literal string "NaN", GitHub answers
     // 404 and the route reports "Failed to delete ruleset", which is a claim
     // about the ruleset rather than about the request.
     const rulesetId = Number(req.params.rulesetId);

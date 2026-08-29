@@ -28,7 +28,7 @@ has to handle bytes nobody has authenticated yet in order to authenticate
 them; sharing the bundle meant a bug on that path surrendered
 `GITHUB_APP_PRIVATE_KEY` rather than the ability to check signatures.
 
-Rotating it means changing it in GitHub and here. Nowhere else — nothing in
+Rotating it means changing it in GitHub and here. Nowhere else. Nothing in
 the desktop app or the worker reads it, because webhooks are authenticated at
 the edge before anything reaches the queue.
 
@@ -50,7 +50,7 @@ the edge before anything reaches the queue.
 
 ## Table names
 
-Derived from `STACK_NAME`, but each is individually overridable —
+Derived from `STACK_NAME`, but each is individually overridable,
 `ACTIVITY_TABLE`, `GRAPH_EDGES_TABLE`, `ORG_CONFIG_TABLE`
 and so on. Setting them by hand is only useful when sharing tables across
 installs, which is rarely what you want.
@@ -59,7 +59,7 @@ installs, which is rarely what you want.
 fixture: unset, the app reads `data/graph-edges.json` instead. That is what
 lets the test suites run with no AWS at all.
 
-## `GITHUB_ACCOUNT_ID` — confining GitHub to one AWS account
+## `GITHUB_ACCOUNT_ID`: confining GitHub to one AWS account
 
 Optional. The AWS account id where the GitHub half of this app belongs.
 
@@ -70,7 +70,7 @@ account's id means every GitHub route refuses anywhere else, naming both the
 account it wants and the one you are in.
 
 **The AWS tab is deliberately exempt.** Guardrails are usually the reason to run
-this app in production at all, and they carry no GitHub credentials — so the
+this app in production at all, and they carry no GitHub credentials, so the
 account keeps exactly the half it is meant to have.
 
 Unset means unrestricted, which is what every existing install is. A gate that
@@ -82,7 +82,7 @@ a hidden tab is a suggestion, and the routes are reachable by anything that can
 talk to the backend. `repro-githubgate.ts` asserts every GitHub router carries
 the gate, that the AWS one does not, and that all of them still authenticate.
 
-An account that cannot be read is refused rather than allowed — asking for
+An account that cannot be read is refused rather than allowed, asking for
 GitHub to be confined means "unsure" is not good enough.
 
 ## Frontend build-time

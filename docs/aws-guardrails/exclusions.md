@@ -11,7 +11,7 @@ A named set of resources every rule attached to it should skip.
 | `contains` | Substring of the resource id |
 | `tag_equals` | `Key=Value` on the resource's tags |
 
-Plus a **whitelist**, which wins over patterns — so `sandbox-*` can be excluded
+Plus a **whitelist**, which wins over patterns, so `sandbox-*` can be excluded
 while `sandbox-prod-mirror` is pulled back into scope, without unpicking the
 pattern.
 

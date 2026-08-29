@@ -5,12 +5,12 @@
  * outstanding", "No alarms yet", "Nobody matches". Somebody whose token had
  * expired, or whose laptop slept long enough for the credentials behind a tab
  * to go stale, was told in a calm voice that there was nothing to see. On a
- * security screen that is the worst available answer — it under-reports, and it
+ * security screen that is the worst available answer. It under-reports, and it
  * looks deliberate.
  *
  * The same shape on the write side is the one people report as "the button does
  * nothing": a result carrying `reachable: false` and the reason, discarded by
- * the caller. That is asserted here too, because it kept coming back — four
+ * the caller. That is asserted here too, because it kept coming back, four
  * separate handlers on the sign-in screen had it.
  *
  * Run:  npx tsx repro-failedreads.ts   from github-control-hub/frontend

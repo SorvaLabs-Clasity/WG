@@ -2,7 +2,7 @@
  * Whether a ruleset actually covers the branch it is asked about.
  *
  * Decided with
- * `refs.some(r => r.includes(branch))` — a substring test. A ruleset scoped to
+ * `refs.some(r => r.includes(branch))`, a substring test. A ruleset scoped to
  * `refs/heads/maintenance` therefore "covered" `main`, and the check that asks
  * whether the default branch is protected read a rule about a different branch
  * and said yes. The `~DEFAULT_BRANCH` clause had the mirror-image fault: it was
@@ -10,7 +10,7 @@
  * `master` had its default-branch ruleset ignored entirely.
  *
  * This began life alongside a set of fail-closed assertions about the compliance
- * scorer, which has since been removed — nothing displayed its scores. The ref
+ * scorer, which has since been removed. Nothing displayed its scores. The ref
  * matching stayed: `branchService` is what the scanners and the branch checks
  * ask, and a substring test there is wrong in exactly the same direction.
  */

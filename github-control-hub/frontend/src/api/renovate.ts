@@ -16,7 +16,7 @@ export interface RenovatePr {
 }
 
 export interface RenovateResponse {
-  /** False when no bot account has been named — not an error. */
+  /** False when no bot account has been named, not an error. */
   configured: boolean;
   prs: RenovatePr[];
   /** GitHub stops paging search at 1,000 results; this says the list is partial. */
@@ -24,7 +24,7 @@ export interface RenovateResponse {
   bot: string | null;
   /** The configured account does not exist or is not visible. */
   unknownBot?: boolean;
-  /** The login that actually matched — a GitHub App's carries a [bot] suffix. */
+  /** The login that actually matched, a GitHub App's carries a [bot] suffix. */
   resolvedBot?: string;
 }
 

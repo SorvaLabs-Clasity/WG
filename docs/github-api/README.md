@@ -14,7 +14,7 @@ URLs that accept and return JSON. It is language-agnostic. `curl` can call it.
 
 **Octokit** is a client library that runs in *this* codebase and makes those
 HTTP calls for you. It is GitHub's own, so it stays in step with the API, but
-it has no authority of its own — it is a convenience over the same requests.
+it has no authority of its own. It is a convenience over the same requests.
 
 The same operation, both ways:
 
@@ -37,7 +37,7 @@ Identical HTTP request on the wire. What differs is everything around it:
 whether a typo is caught at compile time, who assembles the auth header, what
 happens on page two of the results, and what a 403 looks like when it arrives.
 
-Removing Octokit would not remove a dependency on GitHub — it would mean
+Removing Octokit would not remove a dependency on GitHub. It would mean
 writing the parts below by hand.
 
 ```ts
@@ -69,7 +69,7 @@ throttle: { onRateLimit: () => false, onSecondaryRateLimit: () => false }
 ```
 
 One retry for transient failures. Both throttle handlers return `false`, which
-means **do not silently wait and retry** — surface the rate limit so the UI can
+means **do not silently wait and retry**, surface the rate limit so the UI can
 show a countdown. See [rate limits](rate-limits.md) for why that choice matters.
 
 **Error shape.** Failures arrive as objects with `.status`, so the code can
@@ -78,7 +78,7 @@ respond differently. Several handlers depend on that distinction.
 
 ## What goes through it, and what does not
 
-Everything that reads or changes the organization — repositories, branches,
+Everything that reads or changes the organization, repositories, branches,
 protection, rulesets, teams, members, workflows, Dependabot alerts. If a page in
 this app shows GitHub data, Octokit fetched it.
 
@@ -87,7 +87,7 @@ the organization:
 
 | Call | Why raw HTTP |
 |---|---|
-| `POST github.com/login/oauth/access_token` | Exchanges a sign-in code for a token. Not part of the REST API Octokit wraps — it lives on `github.com`, not `api.github.com`, and there is no token yet to construct a client with |
+| `POST github.com/login/oauth/access_token` | Exchanges a sign-in code for a token. Not part of the REST API Octokit wraps. It lives on `github.com`, not `api.github.com`, and there is no token yet to construct a client with |
 | `DELETE api.github.com/applications/{id}/grant` | Revokes the grant on sign-out. Authenticates with the app's client ID and secret as HTTP Basic, not with a user token, so it does not fit a client built around one |
 
 Both are single fixed requests with no pagination and no retry logic worth
@@ -104,7 +104,7 @@ learn and a different rate-limit model (points, not requests). The REST calls
 here are mostly bulk listings where the win would be small.
 
 **Raw `fetch`.** Would mean writing pagination, auth refresh, retry and error
-normalization ourselves — four things that are boring to write and unpleasant to
+normalization ourselves, four things that are boring to write and unpleasant to
 debug, and that fail in ways nobody notices until a page is quietly missing its
 second hundred results.
 

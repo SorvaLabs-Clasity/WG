@@ -64,6 +64,14 @@ export interface ShipEntry {
   target?: string;
   details?: string;
   timestamp: string;
+  /**
+   * The pull request this row is about, when it is about one.
+   *
+   * Recorded by the webhook that wrote the row. Absent on older rows and on
+   * pushes, which is why the view falls back to the repository rather than
+   * building a link to `/pull/undefined`.
+   */
+  prNumber?: number;
 }
 
 export interface Shipped {

@@ -9,11 +9,11 @@ Implemented as a DynamoDB TTL attribute stamped from **each row's own
 timestamp**, not from write time. DynamoDB only deletes items that carry the
 attribute, so:
 
-- rows written before TTL existed never expire — they are not silently lost
+- rows written before TTL existed never expire. They are not silently lost
 - a backdated row expires on its own schedule, not thirteen months from import
 
 The Lambda writes activity rows too, and stamps the same TTL. That value is
-inlined there rather than imported, because the handler is bundled on its own —
+inlined there rather than imported, because the handler is bundled on its own,
 and a row without the stamp is a row that never expires.
 
 ## Findings: overwritten, not accumulated

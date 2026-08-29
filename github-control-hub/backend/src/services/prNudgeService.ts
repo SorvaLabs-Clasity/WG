@@ -17,7 +17,7 @@
  * One constant, in the code, governing the scheduled pass and the manual one
  * alike. It was briefly an environment variable, which was wrong twice over:
  * the scheduled pass runs in a Lambda that never saw a value set locally, so
- * changing it moved the manual button and nothing else — and how often people
+ * changing it moved the manual button and nothing else, and how often people
  * are chased is a product decision, not a deployment detail.
  *
  * To exercise the behaviour in seconds rather than fortnights, set
@@ -79,7 +79,7 @@ export interface PullRequest {
    * From latestReviews, not latestOpinionatedReviews. The latter keeps an
    * approval after the author has re-requested review from that person, so
    * somebody asked to look again reads as having already approved and is never
-   * chased — which is exactly what happened the first time this ran for real.
+   * chased, which is exactly what happened the first time this ran for real.
    */
   reviews: Array<{ login: string; state: string }>;
   /** Rolled-up check state: SUCCESS, FAILURE, PENDING, null when no checks ran. */
@@ -114,7 +114,7 @@ export function isStale(pr: PullRequest, now = Date.now(), threshold = staleSeco
  *
  * "Currently" is the whole point. Re-requesting a review from somebody who has
  * already approved puts them back on the hook, and their old approval must stop
- * counting the moment that happens — otherwise the person being asked to look
+ * counting the moment that happens, otherwise the person being asked to look
  * again is the one person never reminded.
  *
  * This reads latestReviews, which GitHub empties on a re-request, rather than
@@ -129,8 +129,8 @@ export function hasApproved(pr: PullRequest, login: string): boolean {
  * Requested reviewers whose approval does not currently stand.
  *
  * Everyone still carrying a review request is included, whatever their approval
- * counts for. A reviewer whose approval cannot satisfy the rule — no write
- * access, wrong team — was still asked, and is still not answering.
+ * counts for. A reviewer whose approval cannot satisfy the rule, no write
+ * access, wrong team, was still asked, and is still not answering.
  */
 export function pendingReviewers(pr: PullRequest): string[] {
   return pr.requestedReviewers.filter(r => !hasApproved(pr, r));
@@ -142,7 +142,7 @@ export function pendingReviewers(pr: PullRequest): string[] {
  * The single source of truth for both the message and the targeting. They were
  * two functions computing the same thing independently, and seventeen
  * combinations of merge state, review decision and check state made them
- * disagree — the comment announcing "waiting on review" while deliberately
+ * disagree, the comment announcing "waiting on review" while deliberately
  * telling no reviewer anything, because a pending check had shielded them.
  *
  * Ordered so that everything the author alone can fix is decided before
@@ -188,7 +188,7 @@ const REVIEWERS_CAN_HELP: ReadonlySet<BlockReason> = new Set(["ready", "needs-ap
 /**
  * Whether something other than missing approvals is stopping the merge.
  *
- * If so, no amount of approving fixes it — the author has work to do, and
+ * If so, no amount of approving fixes it, the author has work to do, and
  * reminding six reviewers would send six people to look at a pull request they
  * cannot help with.
  */
@@ -235,7 +235,7 @@ export function mutedBy(login: string, rules: MuteRules): MuteScope | null {
  * something they could do about it.
  *
  * Beyond that there is one question: is anything other than approvals stopping
- * this? If so, only the author — reviewers cannot fix a failing check or a
+ * this? If so, only the author, reviewers cannot fix a failing check or a
  * conflict, and reminding them wastes the attention this feature spends. If
  * not, everyone still carrying a review request whose approval does not
  * currently stand.
@@ -288,8 +288,8 @@ export function nudgeTargets(
 /**
  * Whether this pull request is due a nudge right now.
  *
- * Two clocks have to agree. The pull request must be stale — no commit for
- * STALE_DAYS — and it must be STALE_DAYS since the last nudge, so a long-idle
+ * Two clocks have to agree. The pull request must be stale, no commit for
+ * STALE_DAYS, and it must be STALE_DAYS since the last nudge, so a long-idle
  * pull request is chased every seven days rather than on every pass.
  *
  * A commit resets both: `daysSinceLastCommit` drops below the threshold, so
@@ -328,7 +328,7 @@ export function sortByStaleness(prs: PullRequest[], now = Date.now()): PullReque
 // ── fetching ──────────────────────────────────────────────────────────
 //
 // One GraphQL query for everything, rather than the REST equivalent of a list
-// call plus three per pull request — reviews, commits and mergeability are
+// call plus three per pull request, reviews, commits and mergeability are
 // separate endpoints. At fifty open pull requests that is over a hundred and
 // fifty requests to answer one screen; this is one.
 
@@ -366,7 +366,7 @@ type GraphQlFn = (query: string, variables: Record<string, unknown>) => Promise<
 /**
  * Page sizes, largest first, stepped down when GitHub gives up on one.
  *
- * The cost of this query is in its nested connections — the last commit, the
+ * The cost of this query is in its nested connections, the last commit, the
  * requested reviewers and the latest reviews are resolved per pull request, and
  * fifty of them at once exceeded GitHub's own execution budget on a real org.
  * That arrives as an HTML 502 or 504 from the edge rather than a GraphQL error,
@@ -393,8 +393,8 @@ const REVIEW_PAGE = 10;
 /**
  * The page size that last worked, remembered across calls.
  *
- * Backing off costs a timeout per step — GitHub takes about eleven seconds to
- * give up on a page it cannot compute — and rediscovering the same answer on
+ * Backing off costs a timeout per step, GitHub takes about eleven seconds to
+ * give up on a page it cannot compute, and rediscovering the same answer on
  * every request meant every load of the pull request tab paid that tax again.
  * On an organization that needs the smallest page, opening the tab cost two
  * dead requests before the first useful one, which is most of the twenty
@@ -414,7 +414,7 @@ let loadedStored = false;
  * The size we believe is written down, so a save happens exactly when it changes.
  *
  * Compared against this rather than against `lastGoodSize`, which the walk
- * initialises itself from — on a fresh process the two were equal, so a first
+ * initialises itself from, on a fresh process the two were equal, so a first
  * attempt that simply *worked* was never recorded. Only an organization that had
  * to back off ever stored anything, and the ones that did not paid the discovery
  * again on every launch for a value nobody had saved.
@@ -467,7 +467,7 @@ async function loadStoredPageSize(): Promise<void> {
  * How long the walk took, and what it cost.
  *
  * Logged because the two reasons this is slow look identical from the outside.
- * Discovery — backing off from a page GitHub will not compute — costs about
+ * Discovery, backing off from a page GitHub will not compute, costs about
  * eleven seconds a step and is paid once per organization now that the answer is
  * stored. The walk itself costs a fixed overhead per request times the number of
  * pages, and no amount of remembering makes that smaller. This line says which
@@ -502,7 +502,7 @@ function rememberPageSize(index: number): void {
  * Calls since the page size last stepped down, so it can be tried larger again.
  *
  * Without this a single bad afternoon would pin the smallest page forever, and
- * the smallest page means the most requests — the opposite of what backing off
+ * the smallest page means the most requests, the opposite of what backing off
  * was for.
  */
 let sinceStepUp = 0;
@@ -533,11 +533,11 @@ const reportedRefusals = new Set<string>();
  * When the App lacks the permission for one field, GitHub returns every other
  * field normally and adds an error naming the refused path. Octokit treats any
  * `errors` array as a thrown request, which discards a response that was almost
- * entirely usable — so one unavailable field took out the whole pull request
+ * entirely usable, so one unavailable field took out the whole pull request
  * tab rather than blanking one column of it.
  *
- * The partial data is on the thrown error. Anything without data — a network
- * failure, a 502, a malformed query — still throws, because there is nothing to
+ * The partial data is on the thrown error. Anything without data, a network
+ * failure, a 502, a malformed query, still throws, because there is nothing to
  * carry on with.
  */
 async function graphqlAllowingPartial(
@@ -575,7 +575,7 @@ export async function fetchOpenPrs(
   let cursor: string | null = null;
   const truncated = false;
 
-  // Start where this organization ended up last time — in this process if it has
+  // Start where this organization ended up last time, in this process if it has
   // run before, otherwise from what the previous one stored.
   await loadStoredPageSize();
   const startedAt = Date.now();
@@ -614,7 +614,7 @@ export async function fetchOpenPrs(
       throw err;
     }
 
-    // This size answered, so it is where the next call should begin — and where
+    // This size answered, so it is where the next call should begin, and where
     // the next launch should begin too. Compared against what is stored, not
     // against where this walk started: those are equal on a fresh process, so
     // the working size was never written down.
@@ -657,7 +657,7 @@ export async function fetchOpenPrs(
         reviewDecision: n.reviewDecision ?? null,
         mergeable: n.mergeable ?? null,
         mergeStateStatus: n.mergeStateStatus ?? null,
-        // Teams can be requested as reviewers. Only individuals are nudged —
+        // Teams can be requested as reviewers. Only individuals are nudged,
         // there is no person behind a team handle to hold responsible, and
         // mentioning the team would notify people who were never asked.
         requestedReviewers: (n.reviewRequests?.nodes ?? [])
@@ -678,7 +678,7 @@ export async function fetchOpenPrs(
 
   // Every exit above is a complete walk. Falling out of the loop means the
   // request budget ran out with pages still to read, which is the one case the
-  // caller has to be told about — a short list that looks complete is worse
+  // caller has to be told about, a short list that looks complete is worse
   // than a short list that says it is short.
   return { prs, truncated: true };
 }
@@ -691,7 +691,7 @@ export async function fetchOpenPrs(
 //
 // Deleted and reposted rather than edited, because editing a comment notifies
 // nobody. The notification is the entire point, and GitHub only sends one for a
-// new comment — so an edit would leave a tidy thread that reaches no one.
+// new comment, so an edit would leave a tidy thread that reaches no one.
 
 const NUDGE_MARKER_VALUE = "<!-- github-control-hub:stale-pr -->";
 const MARKER = NUDGE_MARKER_VALUE;
@@ -701,7 +701,7 @@ const MARKER = NUDGE_MARKER_VALUE;
  *
  * Addressed to them specifically. The reviewers get their own line, because
  * "it just needs merging" sent to somebody who cannot merge reads as an
- * instruction they are unable to follow — which is what the first version did.
+ * instruction they are unable to follow, which is what the first version did.
  */
 const AUTHOR_TEXT: Record<BlockReason, string> = {
   "ready": "this is approved and green, so it just needs merging",
@@ -787,7 +787,7 @@ export interface NudgeDeps {
  * The old comment is found by marker rather than only by stored id: a stored id
  * is lost if the row expires or somebody deletes the comment by hand, and
  * without the marker the next nudge would add a second comment rather than
- * replacing the first — which is exactly the pile-up this design exists to
+ * replacing the first, which is exactly the pile-up this design exists to
  * avoid.
  *
  * Deleting first, then posting. The other order leaves two comments visible if
@@ -835,7 +835,7 @@ export interface NudgeRunDeps extends NudgeDeps {
    * Keep a paused pull request's stored state from expiring.
    *
    * Separate from `recordNudge` because it must not restart the reminder clock
-   * — see `touchPrState`. Optional so an existing caller keeps working.
+   * see `touchPrState`. Optional so an existing caller keeps working.
    */
   touchState?: (repo: string, number: number) => Promise<unknown>;
   now?: number;
@@ -851,7 +851,7 @@ export interface NudgeRunDeps extends NudgeDeps {
  * Re-evaluates from scratch each time rather than trusting what was decided
  * last cycle: a reviewer may have approved since, the conflict may be resolved,
  * the block may have moved from approvals to a failing check. The spec asks for
- * exactly this — rerun the logic, see who still has not reviewed — and it also
+ * exactly this, rerun the logic, see who still has not reviewed, and it also
  * means no state has to be kept beyond when we last posted.
  *
  * One pull request failing does not stop the rest. A repository the token
@@ -882,7 +882,7 @@ export async function runNudgePass(deps: NudgeRunDeps): Promise<{
     //
     // The stored row still has to be kept alive, though. Its expiry is only
     // ever re-stamped by a write, and this branch is the one case where no
-    // write happens — so a pause left alone was deleted after 180 days and
+    // write happens, so a pause left alone was deleted after 180 days and
     // reminders quietly resumed. Touching it moves the expiry without touching
     // the clock.
     if (targets.length === 0) {

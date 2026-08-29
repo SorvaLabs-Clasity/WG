@@ -6,7 +6,7 @@ repository data.
 
 It exists for the ordinary case where the guardrails are worth running in
 production while everything GitHub-shaped belongs somewhere quieter. Keeping
-GitHub out of an account is done by keeping GitHub's credentials out of it —
+GitHub out of an account is done by keeping GitHub's credentials out of it,
 there is no switch to set and none to forget.
 
 ```bash
@@ -39,17 +39,17 @@ public endpoint of any kind.
 
 | In the diagram | What it is |
 |---|---|
-| every 15 minutes | An EventBridge rule — an AWS timer pointed at the sweeper |
+| every 15 minutes | An EventBridge rule, an AWS timer pointed at the sweeper |
 | something just changed | A second EventBridge rule watching CloudTrail for six specific API calls: `CreateBucket`, `PutBucketPolicy`, `DeleteBucketPolicy`, `CreateLogGroup`, `PutRetentionPolicy`, `DeleteRetentionPolicy`. It runs the sweeper within seconds, scoped to the one resource |
 | the sweeper | A Lambda: `github-control-hub-guardrail-enforcer`, 512 MB, 10-minute limit |
-| what it found | `github-control-hub-aws-findings` — one row per rule-and-resource pair |
+| what it found | `github-control-hub-aws-findings`, one row per rule-and-resource pair |
 | the activity feed | `github-control-hub-activity` |
 
 Plus a dead-letter queue, `GuardrailDlq`, holding invocations that failed to
 start at all, and a CloudWatch log group with three months' retention.
 
-The full mechanism — how a sweep decides, why the findings table overwrites
-rather than appends, what report mode does — is in
+The full mechanism, how a sweep decides, why the findings table overwrites
+rather than appends, what report mode does, is in
 [HOW-IT-WORKS.md](HOW-IT-WORKS.md#aws-guardrails). Nothing about it differs
 here; this deployment is the same engine with the GitHub half absent.
 
@@ -61,12 +61,12 @@ Twelve are created. **Six are used; six are created empty and stay that way.**
 
 | Table | In this account |
 |---|---|
-| `aws-guardrails` | **used** — one row per rule you write |
-| `aws-exclusions` | **used** — one row per exclusion list |
-| `aws-findings` | **used** — every verdict from the last sweep |
-| `activity` | **used** — what the guardrails actually changed |
-| `org-config` | **used** — which regions to sweep |
-| `auth-codes` | **used** — the one-time ticket during sign-in |
+| `aws-guardrails` | **used**, one row per rule you write |
+| `aws-exclusions` | **used**, one row per exclusion list |
+| `aws-findings` | **used**, every verdict from the last sweep |
+| `activity` | **used**, what the guardrails actually changed |
+| `org-config` | **used**, which regions to sweep |
+| `auth-codes` | **used**, the one-time ticket during sign-in |
 | `alerts` | empty |
 | `widgets` | empty |
 | `alarms` | empty |
@@ -76,7 +76,7 @@ Twelve are created. **Six are used; six are created empty and stay that way.**
 
 The six empty ones are created deliberately rather than skipped. They are made
 by the same script the full install uses, so their schemas cannot drift from
-what the app expects — these are not uniform tables, and a hand-written subset
+what the app expects. These are not uniform tables, and a hand-written subset
 got three of them wrong in a way nothing noticed until sign-in failed with
 *"Missing the key id in the item"*, which names neither the table nor the cause.
 An idle on-demand table costs nothing. A second copy of twelve schemas kept in
@@ -113,8 +113,8 @@ holds no App credentials, and says why, rather than hiding a button.
 | The webhook receiver and worker Lambdas | Nothing reacts to GitHub events, because none arrive |
 | The alarm evaluator Lambda | No alarm emails, no SNS topics, no pull request walk |
 | The access graph rebuilder Lambda | No `graph-edges` data, so no access map and no security checks |
-| The webhook queue and its dead-letter queue | — |
-| The deliveries table | — |
+| The webhook queue and its dead-letter queue |, |
+| The deliveries table |, |
 
 Six Lambda functions become one.
 
@@ -125,7 +125,7 @@ Six Lambda functions become one.
 This is the part that surprises people, so it is worth stating plainly.
 
 **You sign in with GitHub even here.** That is how the app knows who you are and
-which team you are on — and `aws-guardrail-admins` membership is exactly what
+which team you are on, and `aws-guardrail-admins` membership is exactly what
 decides whether you may change a rule, switch one to enforce, or start a sweep.
 That question is worth asking in an account holding no GitHub data.
 
@@ -137,7 +137,7 @@ which is the credential that could read the organization.
 The **first** sign-in of a session needs an account that has GitHub credentials.
 You cannot launch the app cold, connect only this account, and get in. The way
 in is to connect the account where GitHub lives, sign in there, and then switch
-— your session is yours rather than the account's, so it survives the switch.
+your session is yours rather than the account's, so it survives the switch.
 See [switching accounts](HOW-IT-WORKS.md#sign-in-and-permissions).
 
 ---
@@ -146,8 +146,8 @@ See [switching accounts](HOW-IT-WORKS.md#sign-in-and-permissions).
 
 Two tabs: **AWS** and **Activity**.
 
-Everything else — Overview, Security, Alarms, Access, Vulnerabilities, Repos,
-PRs, Who knows — is gone, refused by the backend rather than hidden by the
+Everything else, Overview, Security, Alarms, Access, Vulnerabilities, Repos,
+PRs, Who knows, is gone, refused by the backend rather than hidden by the
 frontend. The Activity tab stays and filters itself to the AWS stream, because
 an account running the guardrails needs the record of what they did.
 
@@ -173,7 +173,7 @@ s3:PutBucketPolicy   logs:PutRetentionPolicy   logs:DeleteRetentionPolicy
 ```
 
 No `iam:` action of any kind. No `sts:AssumeRole`, so it cannot reach another
-account — this deployment reads the account it runs in, with the credentials it
+account. This deployment reads the account it runs in, with the credentials it
 already has, and nothing else. The stack says so out loud in an output named
 `CanChangeAnything`.
 
@@ -186,8 +186,8 @@ the flag produced an app that reported violations and quietly fixed nothing.
 
 ## CloudTrail
 
-The 15-minute sweep works with no trail at all. The fast path — reacting within
-seconds of a bucket or log group changing — needs CloudTrail to be recording,
+The 15-minute sweep works with no trail at all. The fast path, reacting within
+seconds of a bucket or log group changing, needs CloudTrail to be recording,
 because those events only exist if something is writing them.
 
 Setup offers to create a trail **only if the account has none**. The first
@@ -204,7 +204,7 @@ Roughly **50¢ a month**, and most of that is the secret.
 |---|---|
 | Secrets Manager, 1 secret | $0.40 |
 | DynamoDB, 12 tables on-demand (6 of them empty) | pennies |
-| Lambda | $0.00 — 2,880 sweeps a month is about 1% of the perpetual free tier |
+| Lambda | $0.00, 2,880 sweeps a month is about 1% of the perpetual free tier |
 | EventBridge, SQS, CloudWatch Logs | $0.00 – pennies |
 
 There is no WAF and no API Gateway here, which in the full install are the

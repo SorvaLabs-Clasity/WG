@@ -54,7 +54,7 @@ fi
 # CloudTrail needs to read the bucket ACL and write objects. SourceArn pins
 # both statements to this trail so no other account's trail can write here.
 # The SecureTransport deny is the same thing the s3_https_only guardrail
-# enforces — a bucket created by our own tooling should not be a finding.
+# enforces: a bucket created by our own tooling should not be a finding.
 cat > /tmp/ct-bucket-policy.json <<JSON
 {
   "Version": "2012-10-17",
@@ -118,4 +118,4 @@ aws cloudtrail start-logging --name "$TRAIL_NAME" --region "$REGION"
 echo
 aws cloudtrail get-trail-status --name "$TRAIL_NAME" --region "$REGION" \
   --query '{IsLogging:IsLogging,LatestDeliveryError:LatestDeliveryError}' --output table
-echo "done — EventBridge will now see CreateBucket / CreateLogGroup"
+echo "done, EventBridge will now see CreateBucket / CreateLogGroup"

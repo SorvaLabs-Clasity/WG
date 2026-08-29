@@ -6,7 +6,7 @@ import { Spinner } from "../design";
 /**
  * Where GitHub sends you back to after signing in.
  *
- * On screen for a fraction of a second, so it stays deliberately plain — this
+ * On screen for a fraction of a second, so it stays deliberately plain. This
  * used to be the only reason the app depended on a component library.
  */
 export default function AuthCallback() {

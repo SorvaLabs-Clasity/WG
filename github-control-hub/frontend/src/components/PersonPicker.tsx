@@ -6,7 +6,7 @@ import type { OrgMember } from "../api/org";
  * Choose a person from the organization. Typing narrows; it never submits.
  *
  * A plain text box is the thing this replaces. It accepts any string, and a
- * great many strings are real GitHub accounts belonging to strangers — so a
+ * great many strings are real GitHub accounts belonging to strangers, so a
  * mistyped name does not fail, it silently names somebody outside the
  * organization and renders their photograph next to it. Nothing about that
  * looks wrong, and the person who was meant to stop being reminded keeps being

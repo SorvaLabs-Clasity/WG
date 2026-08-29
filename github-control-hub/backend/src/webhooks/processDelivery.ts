@@ -19,7 +19,7 @@ export interface Delivery {
    * Resolved once per invocation by the worker rather than read from the
    * module singleton. Lambda freezes containers between invocations, so the
    * refresh timer behind the synchronous getSystemToken() does not fire on
-   * schedule — a warm container would serve a cached token until it expired
+   * schedule, a warm container would serve a cached token until it expired
    * and then have no token at all, stopping GitHub work with
    * "No GitHub token available" on some containers and not others.
    */
@@ -29,7 +29,7 @@ export interface Delivery {
    *
    * Used as the alert's timestamp instead of the worker's own clock. GitHub
    * delivers within a second or so of the event, whereas the worker runs
-   * whenever the queue reaches it — later after a retry, and much later for a
+   * whenever the queue reaches it, later after a retry, and much later for a
    * redelivery of an old event. A redelivery still reads as "now", because the
    * payload carries no original timestamp to recover; it is at least honest
    * about when the event was learned of.
@@ -51,7 +51,7 @@ const BACKGROUND_CEILING_MS = 4 * 60 * 1000;
  *
  * Both halves matter, and both protect the same thing. If a rejecting task
  * could throw out of processDelivery, the worker would release its claim, SQS
- * would redeliver, and the delivery would be reprocessed — writing a second set
+ * would redeliver, and the delivery would be reprocessed, writing a second set
  * of alerts and activity rows, up to five times. Promise.allSettled is what
  * prevents that, so it is not interchangeable with Promise.all however much
  * tidier that looks.
@@ -242,7 +242,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   //
   // Branch creation is deliberately not recorded either. GitHub fires `create`
   // for every branch anyone makes, including the ones this app made a moment
-  // earlier — which is where the duplicate rows came from. The app logs the
+  // earlier, which is where the duplicate rows came from. The app logs the
   // branches it creates itself, with the undo payload attached, and those are
   // the only branch creations worth a row.
   //
@@ -253,8 +253,8 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   // ── the two Vulnerabilities-tab feeds ────────────────────────────────
   //
   // Outside the repository-scoped block above, which is for events producing
-  // activity rows and alerts. These produce neither — they email and nothing
-  // else — so they do not depend on the repository being one this app tracks.
+  // activity rows and alerts. These produce neither. They email and nothing
+  // else, so they do not depend on the repository being one this app tracks.
   //
   // Both are wrapped and swallowed for the reason the security notify is: a
   // throw here fails the whole delivery, the worker releases its claim, and
@@ -465,9 +465,9 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
 /*
  * Auto-apply of templates to newly created repositories was removed here.
  *
- * It was the only GitHub *write* in the webhook path — createRef,
+ * It was the only GitHub *write* in the webhook path, createRef,
  * createOrUpdateFileContents, updateBranchProtection and createRepoRuleset all
- * lived inside it — along with a five-second provisioning wait and up to four
+ * lived inside it, along with a five-second provisioning wait and up to four
  * retries. What remains is the compliance refresh, the graph edges and the
  * scanner runs below, none of which write to GitHub.
  */
@@ -477,7 +477,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
   // In Lambda the container freezes when this function resolves, so an
   // unawaited promise may never settle and a one-second timer may never fire.
   // These are collected rather than awaited in place so that one failing does
-  // not prevent the others from running — which is what the bare .catch()
+  // not prevent the others from running, which is what the bare .catch()
   // handlers gave us before.
   const background: Promise<unknown>[] = [];
 
@@ -530,7 +530,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
     // ── the facts the rebuild used to be the only source of ──────────────
     //
     // Everything below arrives on an event this handler was already receiving
-    // and already acting on — it raised a security alert and then left the
+    // and already acting on. It raised a security alert and then left the
     // graph alone. So the Security tab knew a repository had gone public
     // within seconds while the widget that counts public repositories went on
     // showing the old number for up to six hours.
@@ -540,7 +540,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
     // empty-teams and repos-dependent-on.
 
     // Visibility and archival. `repo_meta` carries a dozen fields the rebuild
-    // collected, so this merges rather than replaces — see patchRepoMeta.
+    // collected, so this merges rather than replaces, see patchRepoMeta.
     if (event === "repository" && repoName) {
       const visibility =
         payload.action === "publicized" ? "public" :
@@ -609,7 +609,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
           await addVulnerableDependencyEdge(repoName, dep, severity, payload.alert.number);
         } else if (["fixed", "dismissed", "auto_dismissed"].includes(payload.action)) {
           // The edge only ever represents an *open* advisory, so a resolved one
-          // is removed rather than marked — the rebuild would not have written
+          // is removed rather than marked, the rebuild would not have written
           // it either, since it lists alerts with state=open.
           await removeVulnerableDependencyEdge(repoName, dep);
         }

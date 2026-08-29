@@ -1,4 +1,4 @@
-# GitHub Control Hub — documentation
+# GitHub Control Hub: documentation
 
 A desktop app that reports on a GitHub organization's security posture and
 enforces a small number of AWS guardrails. It reads far more than it writes,
@@ -10,17 +10,17 @@ Start here depending on what you need.
 
 | | |
 |---|---|
-| [How it works](HOW-IT-WORKS.md) | **Start here.** Every feature's mechanism — where its data lives, what writes it, how often, and how stale it can get |
+| [How it works](HOW-IT-WORKS.md) | **Start here.** Every feature's mechanism, where its data lives, what writes it, how often, and how stale it can get |
 | [Architecture](architecture/) | The processes, and which one does what |
 | [Authentication](auth/) | The two keys: AWS and GitHub, and why both |
 | [Data](data/) | The DynamoDB tables and the graph model |
 
 ## I want to understand a feature
 
-[Features](features/) — one page per tab in the app: what it answers, where the
+[Features](features/), one page per tab in the app: what it answers, where the
 data comes from, and what it deliberately does not do.
 
-One that cuts across tabs: [alarms and email](features/alarms.md) — thresholds
+One that cuts across tabs: [alarms and email](features/alarms.md), thresholds
 on widgets and security alerts by email.
 
 ## I want to run or change it
@@ -35,12 +35,12 @@ on widgets and security alerts by email.
 ## I want to know what it can do to my AWS account
 
 [AWS guardrails](aws-guardrails/), and specifically
-[permissions](aws-guardrails/permissions.md) — the full inventory, written to be
+[permissions](aws-guardrails/permissions.md), the full inventory, written to be
 handed to whoever approves the deployment.
 
 ## I want the guardrails without any of the GitHub half
 
-[The AWS-only setup](aws-only-setup.md) — exactly what lands in an account that
+[The AWS-only setup](aws-only-setup.md), exactly what lands in an account that
 runs the guardrails and holds nothing about your GitHub organization: one
 Lambda, two triggers, twelve tables of which six stay empty, and a secret with
 four keys in it.

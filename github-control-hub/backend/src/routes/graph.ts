@@ -269,7 +269,7 @@ router.get("/query/:q/freshness", async (req: Request<{ q: string }>, res: Respo
  * Batches back to back with a gap sized to the budget the check draws on, until
  * it is complete or the time budget runs out. Whatever is left is picked up by
  * the scheduled passes, so pressing it twice finishes a very large
- * organization — and the response says which happened rather than leaving the
+ * organization, and the response says which happened rather than leaving the
  * caller to guess.
  *
  * It cannot outrun GitHub and does not try. For a search-backed check that
@@ -422,7 +422,7 @@ router.post("/aggregate", async (req: Request, res: Response) => {
 
     // The stored record, not a claim of success. aggregateGraphData catches its
     // own fatal errors, so returning "triggered successfully" from here said
-    // nothing about whether anything was actually rebuilt — a failed run and a
+    // nothing about whether anything was actually rebuilt, a failed run and a
     // good one produced the same reply.
     const { graphAggregation } = await getOrgConfig();
     res.json({ aggregation: graphAggregation ?? null });

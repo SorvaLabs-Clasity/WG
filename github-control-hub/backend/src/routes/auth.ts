@@ -54,14 +54,14 @@ async function storeAuthCode(code: string, entry: AuthCodeEntry): Promise<void> 
  * Redeem a one-time code, once.
  *
  * The delete does the reading. A Get followed by a Delete is two operations,
- * and a code presented twice in the gap between them was returned twice —
+ * and a code presented twice in the gap between them was returned twice,
  * each time carrying a signed session for the account that logged in. Delete
  * with ALL_OLD is a single conditional write: whichever caller's delete
  * actually removed the row is handed the item, and every other caller gets
  * nothing back.
  *
  * The expiry is then checked here rather than left to DynamoDB. A `ttl`
- * attribute is a request, not a guarantee — AWS sweeps expired items within
+ * attribute is a request, not a guarantee, AWS sweeps expired items within
  * about 48 hours, so a code long past its five minutes is still sitting in the
  * table and still redeemable. The in-memory path always checked; the Dynamo
  * path, which is the one that runs in production, did not.
@@ -133,7 +133,7 @@ async function consumeOAuthState(state: string): Promise<boolean> {
  * lasts eight hours; the GitHub token it stands for lives in a Map in this
  * process, and is dropped when the backend restarts, when the user signs out,
  * and when authMiddleware finds they have left the organization. In every one
- * of those cases the signature still verifies, so this said "valid" — the
+ * of those cases the signature still verifies, so this said "valid", the
  * login page kept the session, sent the user into the app, and the first API
  * call 401'd them straight back to the login page it had just let them leave.
  *
@@ -202,7 +202,7 @@ router.get("/status", async (_req: Request, res: Response) => {
    *
    * "OAuth is not configured on this build" is the right sentence for a build
    * that genuinely shipped without credentials, and the wrong one for an
-   * install whose secret has never been created — which is every install until
+   * install whose secret has never been created, which is every install until
    * someone runs the migration script. It sends people to look at their
    * packaging instead of at the step they have not done yet.
    *
@@ -258,7 +258,7 @@ router.get("/status", async (_req: Request, res: Response) => {
   });
 });
 
-// Desktop-only endpoints — blocked on EC2/server deployments
+// Desktop-only endpoints, blocked on EC2/server deployments
 const serverModeGuard = (_req: Request, res: Response, next: Function) => {
   if (process.env.__SERVER_MODE__) {
     res.status(403).json({ error: "This endpoint is not available on server deployments" });
@@ -270,8 +270,8 @@ const serverModeGuard = (_req: Request, res: Response, next: Function) => {
 /**
  * Refuse state-changing requests that some other site caused the browser to make.
  *
- * These routes are reachable without a session by design — reconnecting AWS is
- * how you get a session back — so the usual token check is not available. That
+ * These routes are reachable without a session by design, reconnecting AWS is
+ * how you get a session back, so the usual token check is not available. That
  * left CSRF: any page the user happened to have open could POST to
  * http://localhost:4321/auth/invalidate-aws and disconnect their account. CORS
  * does not help, because it governs reading the response, not sending the
@@ -285,7 +285,7 @@ const serverModeGuard = (_req: Request, res: Response, next: Function) => {
  * anything short of `same-origin` would refuse every request in development
  * while adding nothing against a cross-origin attacker.
  *
- * `Origin` does the precise work — it carries the port, and is compared against
+ * `Origin` does the precise work. It carries the port, and is compared against
  * the URL this app actually serves. A request carrying neither header did not
  * come from a browser; after the listener moved to loopback that means a
  * process on this machine, which is already inside anything this can protect.
@@ -315,8 +315,8 @@ const sameOriginOnly = (req: Request, res: Response, next: NextFunction) => {
 // There is deliberately no route here that hands out the system token.
 //
 // There used to be: GET /auth/system-token, guarded only by serverModeGuard,
-// returning the GitHub App installation token — org-wide admin over every
-// repository — to anyone who asked. The desktop backend listens on a TCP port,
+// returning the GitHub App installation token, org-wide admin over every
+// repository, to anyone who asked. The desktop backend listens on a TCP port,
 // so "anyone who asked" included every other process on the machine and, until
 // the listener was moved to loopback, every device on the same network.
 //
@@ -340,7 +340,7 @@ const setupOrAuthMiddleware = async (req: Request, res: Response, next: NextFunc
   }
 
   // The same knot, retied. Once secrets had loaded, this demanded a GitHub
-  // session — but disconnecting AWS (or "Reset both connections", which also
+  // session, but disconnecting AWS (or "Reset both connections", which also
   // drops the session) left no way to list AWS profiles and so no way to
   // reconnect except by pasting access keys. Whenever AWS is not usable, these
   // endpoints are the only route back and must stay open.
@@ -375,8 +375,8 @@ const SECRET_KEYS = [
 /**
  * Everything that has to happen once the AWS credentials have changed.
  *
- * Three endpoints switch accounts — a profile, an SSO profile, and pasted
- * access keys — and each of them has to load the new account's secrets, make
+ * Three endpoints switch accounts, a profile, an SSO profile, and pasted
+ * access keys, and each of them has to load the new account's secrets, make
  * the GitHub gate look at the account again, and hand back a session the new
  * account can verify. Doing that in three places is how two of them end up
  * doing two of the three.
@@ -390,7 +390,7 @@ async function completeAwsSwitch(
 ): Promise<{ secretsLoaded: boolean; token?: string }> {
   const secretsLoaded = await reloadSecretsIfNeeded();
 
-  // Everything cached because it "could not change mid-process" — the gate's
+  // Everything cached because it "could not change mid-process", the gate's
   // account id, the guardrail store's own DynamoDB client, the home account id
   // stamped on every finding. All of those were true of an app that chose an
   // account at launch and kept it.
@@ -399,7 +399,7 @@ async function completeAwsSwitch(
 
   // Re-signed with whatever key is loaded now, keeping the original expiry.
   // Without this the session is checked against the wrong key on the very next
-  // request and reported as invalid — which is a logout, in the middle of an
+  // request and reported as invalid, which is a logout, in the middle of an
   // action the user thinks of as changing one setting.
   const token = carried ? reissueSession(carried) ?? undefined : undefined;
   return { secretsLoaded, ...(token ? { token } : {}) };
@@ -411,13 +411,13 @@ async function completeAwsSwitch(
  * This used to begin `if (process.env.GITHUB_CLIENT_ID) return`, which meant
  * the first account to load its secrets kept them for the life of the process.
  * Switching to another AWS account left the previous one's GitHub credentials
- * in the environment — its OAuth app, its organization, and its App private
+ * in the environment. Its OAuth app, its organization, and its App private
  * key. An account holding no GitHub credentials at all therefore behaved as
  * though it held the other account's, which is the exact opposite of what
  * keeping them apart is for.
  *
  * Keyed on the account instead. Same account, nothing to do; different account,
- * read again — and **clear** every key the new secret does not set, because a
+ * read again, and **clear** every key the new secret does not set, because a
  * stale value is worse than a missing one: missing is visible and says so,
  * stale silently belongs to somewhere else.
  */
@@ -463,7 +463,7 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
         // attributed to an organization this account is not supposed to touch.
         //
         // This used to null the reference and leave the refresh timer armed,
-        // which kept the old manager alive and refreshing — the reference was
+        // which kept the old manager alive and refreshing, the reference was
         // gone, so nothing could even see it happening.
         const { disposeTokenManager } = await import("../github/client");
         disposeTokenManager();
@@ -514,7 +514,7 @@ router.post("/reconnect-aws", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
     //
     // The AWS credential chain reads AWS_ACCESS_KEY_ID before it ever looks at
     // AWS_PROFILE, so keys left over from an earlier access-key sign-in kept
-    // winning — and this route went on reporting the profile it had just set.
+    // winning, and this route went on reporting the profile it had just set.
     // Every screen then named one account while every call went to another,
     // which is unfalsifiable from inside the app: it looked exactly like a
     // resource that was missing rather than an account that was wrong.
@@ -525,7 +525,7 @@ router.post("/reconnect-aws", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
     delete process.env.AWS_ACCESS_KEY_ID;
     delete process.env.AWS_SECRET_ACCESS_KEY;
     delete process.env.AWS_SESSION_TOKEN;
-    // The file may have changed since this process parsed it — a profile added
+    // The file may have changed since this process parsed it, a profile added
     // by this app, or one the person added in a terminal while it was running.
     const { refreshAwsConfigCache } = await import("../services/ssoSetupService");
     await refreshAwsConfigCache();
@@ -614,7 +614,7 @@ router.post("/aws-sso-poll", serverModeGuard, sameOriginOnly, setupOrAuthMiddlew
       const accounts = await listAccountsAndRoles(token, String(ssoRegion));
       // The access token is deliberately not returned. It would let the caller
       // reach every account this person has, and nothing on this screen needs
-      // it — the account and role names are the whole point.
+      // it, the account and role names are the whole point.
       res.json({ status: "ready", accounts });
     } catch (err: any) {
       res.status(502).json({ status: "failed", error: err?.message ?? String(err) });
@@ -638,7 +638,7 @@ router.post("/aws-sso-create-profile", serverModeGuard, sameOriginOnly, setupOrA
 
     // Every one of these is about to be written into a config file the AWS CLI
     // will parse. A value carrying a newline and a `[` would not corrupt the
-    // file — it would quietly define a second profile.
+    // file. It would quietly define a second profile.
     const problems: string[] = [];
     if (!isValidAwsProfile(profileName)) problems.push("the profile name may use letters, numbers, dots, dashes and underscores");
     if (!isValidStartUrl(startUrl)) problems.push("the sign-in URL is not an AWS one");
@@ -792,7 +792,7 @@ router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
   process.env.AWS_PROFILE = profile;
 
   // GUI-launched apps inherit a minimal PATH, so add the usual CLI install dirs.
-  // Join with the platform separator — using ":" on Windows corrupts the last
+  // Join with the platform separator, using ":" on Windows corrupts the last
   // real PATH entry and can leave "aws" unresolvable.
   const nodePath = await import("path");
   const extraPathDirs =
@@ -805,7 +805,7 @@ router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
   };
   // No shell. With shell:true the argument list is flattened into a command
   // string, so the only thing standing between a profile name and command
-  // execution is isValidAwsProfile — which is correct today and is the wrong
+  // execution is isValidAwsProfile, which is correct today and is the wrong
   // thing to be relying on. Windows needs the .cmd extension named explicitly
   // once the shell is gone.
   const command = process.platform === "win32" ? "aws.cmd" : "aws";
@@ -822,7 +822,7 @@ router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
   // This used to answer "login started, check your browser" the instant spawn
   // returned, which says nothing about whether anything ran. With stdio
   // ignored and no error listener, a missing AWS CLI produced no browser, no
-  // message, and an unhandled 'error' on the child — so the button did
+  // message, and an unhandled 'error' on the child, so the button did
   // nothing, twice over. `spawn` and `error` are the two events that settle
   // this, and one of them always fires.
   try {
@@ -978,7 +978,7 @@ router.get("/debug", authMiddleware, (_req: Request, res: Response) => {
  *
  * Wrapped, because this had no error handling and the sign-in button is a plain
  * link. `buildAuthorizationUrl` throws when GITHUB_CLIENT_ID is unset, and an
- * async route that throws in Express never answers — so the browser sat on a
+ * async route that throws in Express never answers, so the browser sat on a
  * request that would never complete. On screen that is *nothing at all*: no
  * error, no spinner, no navigation. The most common cause is the most invisible
  * one, which is an account whose secret has no OAuth credentials in it.

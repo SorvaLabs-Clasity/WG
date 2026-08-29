@@ -17,7 +17,7 @@ async function putEdgesBatch(edges: Array<{ pk: string; sk: string; type: string
   if (!hasTable("GRAPH_EDGES_TABLE") || edges.length === 0) return;
   // Deduplicated across the whole set rather than inside each batch of 25.
   // The same edge produced twice in different batches was written twice, and
-  // DynamoDB rejects a batch containing two writes to one key outright — so a
+  // DynamoDB rejects a batch containing two writes to one key outright, so a
   // duplicate straddling a boundary was a silent double write, and one landing
   // inside a batch was a hard failure.
   const unique = new Map<string, (typeof edges)[0]>();
@@ -54,8 +54,8 @@ export async function removeCollaboratorEdge(repo: string, user: string) {
  * Merge fields into a repository's `repo_meta` edge.
  *
  * Read-modify-write rather than a plain put, because this edge carries a dozen
- * fields the rebuild collected — visibility, archived, fork, last push, the
- * scanning switches — and a webhook only ever knows about one of them.
+ * fields the rebuild collected, visibility, archived, fork, last push, the
+ * scanning switches, and a webhook only ever knows about one of them.
  * Overwriting would drop the rest and leave every check that reads them
  * answering from a blank.
  *
@@ -80,7 +80,7 @@ export async function patchRepoMeta(repo: string, patch: Record<string, any>) {
  *
  * Both directions, because the graph is walked from either end: `owns_repo`
  * answers "what does this team have", `owned_by_team` answers "who owns this
- * repository" — which is the one `unowned-repos` reads.
+ * repository", which is the one `unowned-repos` reads.
  */
 export async function addTeamRepoEdge(team: string, repo: string, permission: string) {
   await putEdge(`TEAM#${team}`, `REPO#${repo}`, "owns_repo", { permission });
@@ -106,7 +106,7 @@ export async function removeTeamMemberEdge(team: string, user: string) {
 /**
  * A vulnerable dependency appearing or clearing on a repository.
  *
- * Keyed on the package name, matching the rebuild — so a second advisory for
+ * Keyed on the package name, matching the rebuild, so a second advisory for
  * the same package updates the edge rather than adding another. The severity
  * shown is whichever alert most recently arrived, which is also what the
  * rebuild would have written had it run at that moment.

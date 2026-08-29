@@ -36,7 +36,7 @@ export interface AccessMapSummary {
     twoFactorRequirementEnabled?: boolean | null;
   };
   repoCount: number;
-  /** True when the graph predates people being collected — an empty map, not an empty org. */
+  /** True when the graph predates people being collected, an empty map, not an empty org. */
   stale: boolean;
 }
 

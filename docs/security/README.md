@@ -35,7 +35,7 @@ test rather than as an incident.
 **No remote code.** Fonts and icons are bundled. Nothing in the page references
 another origin, and the policy forbids script from anywhere but this one.
 
-**No shell.** One process is ever spawned — `aws sso login` — with an
+**No shell.** One process is ever spawned, `aws sso login`, with an
 argument list, no shell, and an allow-listed profile name.
 
 **No credential in the repository.** Everything comes from Secrets Manager at
@@ -53,13 +53,13 @@ body, with replay rejection. No secret means no delivery is accepted.
 
 **The desktop app is not a network service.** Its backend binds loopback, so
 the administrative API it serves is reachable only from the machine it runs on.
-The webhook receiver is the deliberate exception — the only part of this
-system reachable from the internet — and it holds almost no privilege: one
+The webhook receiver is the deliberate exception, the only part of this
+system reachable from the internet, and it holds almost no privilege: one
 secret to read, one queue to write to. An API Gateway resource policy decides
 who reaches it at all, evaluated before any code runs.
 
 **No route hands out the system token.** The GitHub App token stays in the
-process that holds it. The only component that needs it — the updater — runs in
+process that holds it. The only component that needs it, the updater, runs in
 that same process and calls the function.
 
 **Org-wide settings need the admin team.** Every router that writes

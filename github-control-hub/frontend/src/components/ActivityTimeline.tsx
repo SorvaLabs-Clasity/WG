@@ -9,7 +9,7 @@ import { importantLabel } from "../lib/importantEvents";
  *
  * The table is the right shape for working: seven columns you can sort, resize
  * and read a diff out of. It is the wrong shape for the question people
- * actually open this tab with, which is "what happened last night" — because
+ * actually open this tab with, which is "what happened last night", because
  * answering that from a table means reading timestamps and doing the grouping
  * in your head.
  *

@@ -5,8 +5,8 @@ import { homeAccountId } from "../aws-guardrails/accounts";
  * Which AWS account the GitHub half of this app belongs to.
  *
  * An organization can reasonably want the AWS guardrails watching production
- * while everything to do with GitHub — the App's private key, the OAuth secrets,
- * the access graph, the activity log — lives only in a development account.
+ * while everything to do with GitHub, the App's private key, the OAuth secrets,
+ * the access graph, the activity log, lives only in a development account.
  * Nothing enforced that: the desktop app reads its secrets from whichever
  * account the operator signed into, so signing into production and opening the
  * Repos tab was a request for GitHub credentials in production.
@@ -54,7 +54,7 @@ export interface GateVerdict {
  *
  * This is the condition that needs no configuration, and it is the one most
  * organizations actually mean. An account holding no GitHub App key and no
- * OAuth secret cannot do anything with GitHub — so a Repos tab there is a set
+ * OAuth secret cannot do anything with GitHub, so a Repos tab there is a set
  * of screens that fail one at a time, each with its own error, none of which
  * says the real reason.
  *
@@ -103,7 +103,7 @@ export async function githubGate(): Promise<GateVerdict> {
  * Refuses every GitHub route when signed into the wrong account.
  *
  * Applied at the router level rather than left to the screens. A hidden tab is
- * a suggestion — the routes are reachable by anything that can talk to the
+ * a suggestion, the routes are reachable by anything that can talk to the
  * backend, and the point of confining GitHub to one account is not served by an
  * app that merely declines to draw the button.
  */

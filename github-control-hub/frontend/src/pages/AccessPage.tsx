@@ -19,8 +19,8 @@ import RecrawlButton from "../components/RecrawlButton";
  * synced. Without this line a snapshot taken before somebody joined, left or was
  * made an owner looked exactly like a current one.
  *
- * One button, not two. There were briefly two — a "Refresh" that re-read the
- * derived map from the stored snapshot, and a "Sync" that went back to GitHub —
+ * One button, not two. There were briefly two, a "Refresh" that re-read the
+ * derived map from the stored snapshot, and a "Sync" that went back to GitHub,
  * and the difference between them is invisible from the outside: the cheap one
  * looks like it should have picked up a change and never could. So whoever can
  * sync gets the button that actually goes to GitHub, and whoever cannot gets
@@ -418,7 +418,7 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
     return (data?.repos ?? [])
       .filter(r => showArchived || !r.archived)
       // Searching the routes too, so "platform" finds everything a team gives
-      // this person — which is the question behind most searches here.
+      // this person, which is the question behind most searches here.
       .filter(r => !q
         || r.repo.toLowerCase().includes(q)
         || r.role.toLowerCase().includes(q)
@@ -528,7 +528,7 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
  *
  * The repositories listed are what this team grants. A member may well reach
  * others by their own collaborator edge or by owning the organization, and
- * that is not this team's doing — so it is not counted here, and the person
+ * that is not this team's doing, so it is not counted here, and the person
  * view is where that whole picture lives.
  */
 function TeamDetail({ slug, onBack, onOpenPerson, onOpenRepo }: {

@@ -23,7 +23,7 @@ rest:
 
 Step 3 is not decoration. GitHub's "latest release" endpoint **ignores
 drafts**, so a run that stops at step 2 leaves every installed copy fetching a
-404 — with a message about authentication tokens that sends people looking
+404, with a message about authentication tokens that sends people looking
 nowhere near the cause.
 
 `owner` and `repo` are passed from the checkout rather than `package.json`, so
@@ -36,7 +36,7 @@ ones. If the version has not changed, `v<version>` already exists and the
 publish step fails.
 
 It is not harmful, but it puts a red cross on commits that only touched
-markdown — and a workflow that is normally red is a workflow whose real
+markdown, and a workflow that is normally red is a workflow whose real
 failures nobody notices. Either bump the version, or gate the workflow with a
 `paths-ignore` for `docs/**`.
 
@@ -44,7 +44,7 @@ failures nobody notices. Either bump the version, or gate the workflow with a
 
 On launch the app:
 
-1. Waits for AWS to connect — the GitHub token lives in Secrets Manager
+1. Waits for AWS to connect, the GitHub token lives in Secrets Manager
 2. Fetches that token from its own backend and hands it to `electron-updater`
 3. Asks GitHub for the latest **published** release
 4. Downloads and installs if the version is newer, then prompts to restart
@@ -65,7 +65,7 @@ npm run dist:mac     # .dmg + .zip into release/
 npm run pack         # unpacked .app, faster, for smoke tests
 ```
 
-Local builds do not publish — there is no `GH_TOKEN` in the environment.
+Local builds do not publish. There is no `GH_TOKEN` in the environment.
 
 ## Signing
 

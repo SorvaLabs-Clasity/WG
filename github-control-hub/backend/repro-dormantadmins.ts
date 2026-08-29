@@ -5,21 +5,21 @@
  *
  * `dormant-privileged-users` answers "who has admin on several repositories and
  * has not committed in six months". It costs one commit search per privileged
- * account, and commit search is the smallest budget GitHub gives out — thirty
+ * account, and commit search is the smallest budget GitHub gives out, thirty
  * requests a *minute*, against fifteen thousand an hour for everything else. An
  * organization with more privileged accounts than that cannot be read in one
  * pass.
  *
  * The original loop wrapped each search in `catch(e) {}`. Because a finding is
  * only recorded when the search returns zero commits, a dropped error removed
- * that person from the answer entirely — so the widget reported *fewer* dormant
+ * that person from the answer entirely, so the widget reported *fewer* dormant
  * admins than existed, with no error and no warning. Just a smaller number, on
  * exactly the check whose whole purpose is to make that number visible. A
  * smaller number reads as an improvement.
  *
  * The rule this pins: a reading that could not be completed is **no reading**,
- * not a short one. The alarm evaluator already treats no reading correctly — it
- * leaves the alarm's state alone rather than resolving it — so refusing here is
+ * not a short one. The alarm evaluator already treats no reading correctly. It
+ * leaves the alarm's state alone rather than resolving it, so refusing here is
  * what stops a rate limit from mailing out an all-clear.
  */
 import { readFileSync } from "fs";
@@ -71,7 +71,7 @@ async function refusing(users: Array<[string, number]>, search: Search) {
   return found;
 }
 
-/** Thirty answers, then the limit — what a real org past the budget does. */
+/** Thirty answers, then the limit, what a real org past the budget does. */
 function searchWithBudget(dormant: Set<string>, budget: number): Search {
   let spent = 0;
   return async (login: string) => {
@@ -134,7 +134,7 @@ function searchWithBudget(dormant: Set<string>, budget: number): Search {
     check("only accounts privileged on two or more repositories cost a request",
       asked === 2, asked);
 
-    // The cost is per account, not per repository — the point that decides
+    // The cost is per account, not per repository, the point that decides
     // whether this is affordable at all.
     asked = 0;
     await refusing([["a", 355]], counting);
@@ -147,7 +147,7 @@ function searchWithBudget(dormant: Set<string>, budget: number): Search {
   // is the exact spelling that caused this, and it is worth failing on by name.
   {
     // Comments stripped first. The scan is looking for a code shape, and this
-    // file now contains a comment *quoting* that shape to explain the bug — so
+    // file now contains a comment *quoting* that shape to explain the bug, so
     // reading the raw text finds the explanation and reports it as the offence.
     // A guard that matches its own documentation is a guard that can never pass.
     const strip = (t: string) =>
@@ -195,7 +195,7 @@ function searchWithBudget(dormant: Set<string>, budget: number): Search {
         /isAbsence\(e\)/.test(chunk));
     }
 
-    // Nowhere else either — this is a whole-file rule, not one case's.
+    // Nowhere else either. This is a whole-file rule, not one case's.
     check("no empty catch anywhere in the query evaluator",
       !/catch\s*\([^)]*\)\s*\{\s*\}/.test(src),
       src.split("\n").filter(l => /catch\s*\([^)]*\)\s*\{\s*\}/.test(l)));
@@ -204,7 +204,7 @@ function searchWithBudget(dormant: Set<string>, budget: number): Search {
   // ── absence versus failure ───────────────────────────────────────────
   //
   // The one distinction the whole fix rests on. If this ever answers "absent"
-  // to a rate limit, every swallow comes straight back — the error is caught,
+  // to a rate limit, every swallow comes straight back, the error is caught,
   // classified as "no protection", and the repository silently reads compliant.
   {
     check("a 404 is no protection, which is an answer", isAbsence({ status: 404 }));
@@ -241,7 +241,7 @@ function searchWithBudget(dormant: Set<string>, budget: number): Search {
     //
     // The env vars are set here rather than by whoever runs the suite: without
     // them `usesDynamo()` is false, the scan reads a local file, and the fake
-    // client is never called — so all of this would pass without testing
+    // client is never called, so all of this would pass without testing
     // anything. Restored afterwards so no later assertion inherits them.
     const priorActivity = process.env.ACTIVITY_TABLE;
     const priorEdges = process.env.GRAPH_EDGES_TABLE;

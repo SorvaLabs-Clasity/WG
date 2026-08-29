@@ -38,8 +38,8 @@ export function resetDynamoClient(credentials?: {
  *
  * The paging loop is the thing worth testing and it cannot be reached without
  * one: a scan either talks to DynamoDB or it does not run. Reassigning the
- * exported binding from a test does not work — `export let` compiles to a
- * getter — so the seam has to live in here, next to the binding it replaces.
+ * exported binding from a test does not work, `export let` compiles to a
+ * getter, so the seam has to live in here, next to the binding it replaces.
  */
 export function __setDocClientForTests(client: unknown): () => void {
   const previous = docClient;
@@ -86,7 +86,7 @@ export function usesDynamo(): boolean {
  * Every item in a table, following DynamoDB's paging to the end.
  *
  * A bare `ScanCommand` returns **at most 1MB** and then stops. It does not fail
- * and it does not warn — it hands back a short list and a `LastEvaluatedKey`
+ * and it does not warn. It hands back a short list and a `LastEvaluatedKey`
  * nobody read. Everything downstream then works perfectly on the wrong data:
  * alarms that vanish stop firing, email groups that vanish read as deleted,
  * buffered notifications are never sent, and pull request rows that vanish take
@@ -94,7 +94,7 @@ export function usesDynamo(): boolean {
  * again. Every one of those is silent, and none of them appears until the table
  * crosses a size nobody is watching.
  *
- * The `Limit: 1` health-check scans elsewhere are deliberately not this — they
+ * The `Limit: 1` health-check scans elsewhere are deliberately not this. They
  * ask "can I reach the table", and one item is the whole question.
  */
 export async function scanAll<T>(
@@ -133,7 +133,7 @@ export async function scanAll<T>(
  * A BatchWrite that actually writes everything it was given.
  *
  * `BatchWriteItem` does not throw when it cannot keep up. It succeeds, and
- * returns whatever it declined in `UnprocessedItems` — throttling, a hot
+ * returns whatever it declined in `UnprocessedItems`, throttling, a hot
  * partition, a burst past the on-demand ramp. Ignoring that field loses rows
  * silently, which for this application means a graph edge that never appears
  * and a guardrail finding that is never stored: a security report that is
@@ -142,7 +142,7 @@ export async function scanAll<T>(
  *
  * Requests are chunked to DynamoDB's limit of 25 here rather than by each
  * caller, and the backoff is exponential because the reason for a rejection is
- * almost always "too fast" — retrying immediately asks the same question again.
+ * almost always "too fast", retrying immediately asks the same question again.
  *
  * Throws when items remain after the retries. A caller that would rather log
  * and continue can catch it; one that silently dropped them could not.
@@ -176,7 +176,7 @@ export async function batchWrite(
           `would have been lost.`,
         );
       }
-      // 100ms, 200, 400, 800, 1600 — long enough to outlast an on-demand ramp,
+      // 100ms, 200, 400, 800, 1600, long enough to outlast an on-demand ramp,
       // short enough that a sweep does not stall on a transient dip.
       await sleep(100 * Math.pow(2, attempt));
       chunk = left;

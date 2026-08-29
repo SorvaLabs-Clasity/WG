@@ -2,7 +2,7 @@
   "name": "github-control-hub",
   "version": "1.0.0",
   "private": true,
-  "description": "Internal GitHub Control Hub — manage repos, branches, and protections via a web UI",
+  "description": "Internal GitHub Control Hub, manage repos, branches, and protections via a web UI",
   "workspaces": [
     "frontend",
     "backend"

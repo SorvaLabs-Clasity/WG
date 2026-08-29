@@ -84,7 +84,7 @@ function makeOctokit(opts: { commitLink?: string | null; breakEverythingOptional
   check("hasLicense true via license field even with no LICENSE file", ok.hygiene.hasLicense === true, ok.hygiene);
   check("hasReadme false when file missing", ok.hygiene.hasReadme === false, ok.hygiene);
 
-  // 2. Single page of commits — no Link header at all
+  // 2. Single page of commits, no Link header at all
   const onePage = await getRepoDetails(makeOctokit({ commitLink: undefined }), "api-gateway");
   check("no Link header -> counts the returned page", onePage.commitsLast30Days === 1, onePage.commitsLast30Days);
 
@@ -92,7 +92,7 @@ function makeOctokit(opts: { commitLink?: string | null; breakEverythingOptional
   const noCommits = await getRepoDetails(makeOctokit({ commitLink: null }), "api-gateway");
   check("empty commit list -> 0", noCommits.commitsLast30Days === 0, noCommits.commitsLast30Days);
 
-  // 4. Everything optional fails — panel must still render
+  // 4. Everything optional fails, panel must still render
   const degraded = await getRepoDetails(makeOctokit({ breakEverythingOptional: true, commitLink: null }), "api-gateway");
   check("core fields survive total optional failure", degraded.name === "api-gateway", degraded.name);
   check("languages degrade to null", degraded.languages === null, degraded.languages);

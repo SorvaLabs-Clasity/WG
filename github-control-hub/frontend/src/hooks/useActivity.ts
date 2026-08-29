@@ -26,7 +26,7 @@ export function useActivity(
   });
 }
 
-/** Undo/redo/retry can affect many domain entities — invalidate all relevant caches */
+/** Undo/redo/retry can affect many domain entities, invalidate all relevant caches */
 function invalidateAll(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: ["activity"] });
   qc.invalidateQueries({ queryKey: ["branches"] });

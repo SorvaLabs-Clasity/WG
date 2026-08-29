@@ -381,7 +381,7 @@ export interface ActivityPulse {
   /**
    * True when the whole window was walked. False means the budget ran out
    * before the window did, so these are counts of *what was read*, not of what
-   * happened — a different answer, and one the header has to say out loud.
+   * happened, a different answer, and one the header has to say out loud.
    */
   exhausted: boolean;
   /** Oldest row actually counted, so a truncated answer can name its own edge. */
@@ -408,7 +408,7 @@ export async function activityPulse(
   /**
    * Rows the caller is allowed to count, by action.
    *
-   * The chart is deliberately wider than the table it sits behind — narrowing
+   * The chart is deliberately wider than the table it sits behind, narrowing
    * it to the current filter would make it agree with the table and stop being
    * a comparison. That is a statement about *filters*, though, and an AWS-only
    * deployment is not a filter: the feed drops GitHub rows there because an
@@ -542,8 +542,8 @@ export async function activityPulse(
       // People, not the scheduler. See isPerson.
       if (isPerson(e.actor)) actors.set(e.actor, (actors.get(e.actor) ?? 0) + 1);
 
-      // `repo` on an AWS row is a resource path — "github-control-hub/lambda/
-      // alarm-evaluator" — because the guardrail engine reuses the field to say
+      // `repo` on an AWS row is a resource path, "github-control-hub/lambda/
+      // alarm-evaluator", because the guardrail engine reuses the field to say
       // what a finding is about. Counting those as repositories put four
       // Lambdas at the top of "busiest repositories", which is true of the
       // field and false of the question.

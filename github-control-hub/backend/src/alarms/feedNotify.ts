@@ -24,11 +24,11 @@ import { groupBurst, describeBurst, nameAndCount, worstSeverity, type Axis } fro
  *
  * GitHub calls the middle one "moderate"; every threshold here is written as
  * "medium", so an untranslated value ranks below low and clears no floor at
- * all — the alert is silently never emailed.
+ * all, the alert is silently never emailed.
  *
  * One function because there are two call sites, the buffered path and the
  * immediate one. They were separate copies, and a mutation removing the
- * translation from the buffered path — the default — left the test passing on
+ * translation from the buffered path, the default, left the test passing on
  * the strength of the other copy.
  */
 export function normalizeSeverity(raw: string | null | undefined): string {
@@ -75,7 +75,7 @@ export type FeedOutcome =
  * A GitHub App's deliveries carry the login with a `[bot]` suffix, while the
  * name a person types into the settings box is usually the one shown on the
  * pull request, without it. Comparing them raw matches nothing and the feature
- * looks broken with no error — the same mismatch that made the Renovate tab
+ * looks broken with no error, the same mismatch that made the Renovate tab
  * return 422 before it accepted both forms.
  */
 export function isConfiguredBot(author: string | undefined, bot: string | undefined): boolean {
@@ -150,7 +150,7 @@ export async function notifyDependabotAlert(
  * One message covering everything that arrived for a repository.
  *
  * The subject and body templates describe a single item, and a digest is not
- * one — so the templates are used for the *first* item and the rest are listed
+ * one, so the templates are used for the *first* item and the rest are listed
  * beneath it. That keeps a customised template meaningful without pretending it
  * can render a list, and keeps the most important line where a phone shows it.
  *

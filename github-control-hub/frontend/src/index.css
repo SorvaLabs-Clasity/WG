@@ -7,7 +7,7 @@
  *
  * A <select> is styled by CSS, but the list it opens is drawn by the operating
  * system. Without color-scheme, Windows draws that list light while the option
- * text inherits the dark theme's near-white — white on white, and the app looks
+ * text inherits the dark theme's near-white, white on white, and the app looks
  * like it lost its menu. macOS happens to guess right, which is why it went
  * unnoticed.
  *

@@ -4,7 +4,7 @@ A grid of cards, each running one check you chose, on data already collected.
 
 ## Where the numbers come from
 
-The **graph** — a table of edges rebuilt every six hours, and on demand. No card
+The **graph**, a table of edges rebuilt every six hours, and on demand. No card
 calls GitHub. That is why the page is fast and why it can be stale; the header
 says when the graph was last built.
 
@@ -21,7 +21,7 @@ A widget is a saved check with settings. Kinds available:
 | Visibility | Public and internal repositories |
 | Access | Repos an archived repo still grants access to |
 
-Severity is a **set**, not a threshold — "critical and high" is expressible, and
+Severity is a **set**, not a threshold, "critical and high" is expressible, and
 distinct from "everything low and above".
 
 ## Reading a card
@@ -40,5 +40,5 @@ Reporting zero findings you have not looked for is the worst thing a security
 dashboard can do, and this is guarded explicitly.
 
 **Guess at deploy targets.** Checks that would require knowing which repository
-deploys to production were removed — the data does not exist, so the answer was
+deploys to production were removed, the data does not exist, so the answer was
 invented.

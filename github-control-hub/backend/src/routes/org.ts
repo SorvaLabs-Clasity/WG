@@ -26,7 +26,7 @@ router.get("/webhook-health", async (_req: Request, res: Response) => {
  * Everyone in the organization, so a person can be picked rather than typed.
  *
  * Read as the caller. An installation token would list members the person
- * looking cannot otherwise see, and this exists to fill a name box — not to
+ * looking cannot otherwise see, and this exists to fill a name box, not to
  * widen what somebody knows about the org.
  */
 router.get("/members", async (req: Request, res: Response) => {

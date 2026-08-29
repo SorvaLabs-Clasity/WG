@@ -2,8 +2,8 @@
 #
 # One-time: tell existing activity rows which event they recorded.
 #
-# The Activity feed names the event on the chip — "Repository made public",
-# "Admin access granted" — by reading `importantKind` off the row. That field is
+# The Activity feed names the event on the chip: "Repository made public",
+# "Admin access granted": by reading `importantKind` off the row. That field is
 # written by `createAlert` and only exists on rows written since it was added.
 # Older rows fall back to the generic "Security event", which is honest but is
 # the label this whole change was meant to get rid of.

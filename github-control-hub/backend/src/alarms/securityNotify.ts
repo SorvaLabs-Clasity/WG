@@ -5,8 +5,8 @@ import { meetsMinimumSeverity } from "./evaluate";
  * The security-tab toggle: email when an alert is recorded.
  *
  * Event-driven rather than polled. createAlert already runs the moment the
- * webhook worker sees something worth alerting on — a repository going public,
- * branch protection disappearing — so hooking in here costs one SNS call and
+ * webhook worker sees something worth alerting on, a repository going public,
+ * branch protection disappearing, so hooking in here costs one SNS call and
  * arrives in seconds, where a scheduled sweep would arrive in minutes and cost
  * a GitHub read every time.
  */

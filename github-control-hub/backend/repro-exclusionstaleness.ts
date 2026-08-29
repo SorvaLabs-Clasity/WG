@@ -9,7 +9,7 @@
  *
  * The cause is that refresh and sweep are different operations and only one of
  * them produces findings. `GET /findings` reads what the last sweep stored, and
- * a stored finding carries the reason it was excluded as flat text — it has no
+ * a stored finding carries the reason it was excluded as flat text. It has no
  * way to notice that the list naming that reason is no longer attached to
  * anything. So the row was not stale, it was wrong, and the only thing that
  * could correct it was a full sweep over every rule in the account.

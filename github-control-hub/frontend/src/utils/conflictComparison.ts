@@ -1,7 +1,7 @@
 /**
  * Rendering a stored conflict as a before/after table.
  *
- * Templates are gone, so no new conflict can be created — this is pure display
+ * Templates are gone, so no new conflict can be created. This is pure display
  * logic for the conflict rows already in the activity log. It moved here from
  * api/templates.ts when that file was deleted, because losing the feature
  * should not mean losing the ability to read what it did.

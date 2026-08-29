@@ -13,7 +13,7 @@ import type { GuardrailKind } from "./types";
  * That is a privilege escalation waiting to happen. Somebody read-only in
  * production, but in the team that administers guardrails, could arm an enforce
  * rule and have a privileged Lambda perform a write they could not perform
- * themselves — and it would succeed, because the Lambda's role is what AWS
+ * themselves, and it would succeed, because the Lambda's role is what AWS
  * checks. Team membership answers "may they configure guardrails", which is a
  * different question from "may they change this bucket".
  *
@@ -47,7 +47,7 @@ export interface ResourceRef {
  *
  * Resource-level, not `"*"`. A policy may well allow `s3:PutBucketPolicy` on
  * the sandbox buckets and not the production one, and simulating against a
- * wildcard would answer a question nobody asked — reporting no as a blanket
+ * wildcard would answer a question nobody asked, reporting no as a blanket
  * denial where the truth is "not that one", or yes where it is only some.
  *
  * Returns null when the ARN cannot be built, which the caller must treat as a
@@ -59,7 +59,7 @@ export function resourceArnFor(kind: GuardrailKind, r: ResourceRef): string | nu
     // Bucket ARNs carry no account or region, by design.
     case "s3_https_only":
       return r.id ? `arn:aws:s3:::${r.id}` : null;
-    // Log groups do, and both have to be known — a guess would simulate against
+    // Log groups do, and both have to be known, a guess would simulate against
     // a group in the wrong account.
     case "log_retention_min":
       return r.id && r.region && r.accountId
@@ -76,7 +76,7 @@ export function resourceArnFor(kind: GuardrailKind, r: ResourceRef): string | nu
  * Arming enforce is not a decision about the resources failing today. It is a
  * standing instruction over everything the rule matches, now and in future, and
  * the engine will act on resources that do not exist yet. So the question at
- * authoring time is the wide one — may you write across this namespace — and
+ * authoring time is the wide one, may you write across this namespace, and
  * somebody who may rewrite the sandbox buckets but not the production ones is
  * correctly refused, because the rule they are arming does not distinguish
  * them either.
@@ -116,7 +116,7 @@ const WHAT: Record<WriteIntent, string> = {
 };
 
 /**
- * Both, when the cause blocks both — a missing permission to *check* is not
+ * Both, when the cause blocks both, a missing permission to *check* is not
  * about one control, and saying "you cannot set enforce" would leave somebody
  * to discover the Fix button separately.
  */
@@ -167,8 +167,8 @@ export function liveProbe(region?: string): PermissionProbe {
  *
  * `sts:GetCallerIdentity` returns `arn:aws:sts::123:assumed-role/Role/session`,
  * and SimulatePrincipalPolicy wants `arn:aws:iam::123:role/Role`. Passing the
- * session form straight through fails with a validation error, which — under a
- * fail-closed rule — would deny every SSO user in the product, which is all of
+ * session form straight through fails with a validation error, which, under a
+ * fail-closed rule, would deny every SSO user in the product, which is all of
  * them.
  */
 export function principalArn(callerArn: string): string {
@@ -207,7 +207,7 @@ export function decide(
 /**
  * Whether this caller may perform the writes this rule's remediation performs.
  *
- * Fails closed on every uncertainty — an unbuildable ARN, an unreachable IAM,
+ * Fails closed on every uncertainty, an unbuildable ARN, an unreachable IAM,
  * a principal that cannot be resolved. The alternative is granting a write on
  * the strength of not having been able to check, which is the failure this
  * exists to prevent. The message says which of those happened, so an
@@ -263,7 +263,7 @@ export async function callerMayRemediate(
       reason: `You cannot ${BOTH}: your AWS access is missing iam:SimulatePrincipalPolicy,`
         + " which the app uses to confirm you could make the change yourself before doing it"
         + ` for you (AWS said: ${err?.name ?? "the check failed"}).`
-        + " This is not the same as being denied the change — nobody has checked."
+        + " This is not the same as being denied the change. Nobody has checked."
         + " Ask whoever administers your AWS permissions to add it."
         + " Everything else still works: rules keep reporting, and findings keep collecting.",
     };

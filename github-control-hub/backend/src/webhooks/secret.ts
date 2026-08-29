@@ -3,15 +3,15 @@ import { awsRegion } from "../utils/region";
 /**
  * Two secrets, kept deliberately apart.
  *
- * The receiver needs exactly one value — the webhook HMAC secret — and it is
+ * The receiver needs exactly one value, the webhook HMAC secret, and it is
  * the only component in this system reachable from the internet. The worker
  * needs the whole application bundle, including the GitHub App private key,
  * and nothing outside the queue can reach it.
  *
  * These used to be one secret. That meant the internet-facing function held a
  * key to the App private key it never read, so any bug in the receiver's
- * pre-authentication path — the base64 decode and the HMAC, which necessarily
- * touch bytes nobody has verified yet — would have surrendered the whole
+ * pre-authentication path, the base64 decode and the HMAC, which necessarily
+ * touch bytes nobody has verified yet, would have surrendered the whole
  * organization rather than the ability to check signatures. Since no amount of
  * review proves that path bug-free, the containment has to be real: separate
  * secrets, separate grants, and two code paths below that never share a fetch.
@@ -30,7 +30,7 @@ const CACHE_TTL_MS = 15 * 60 * 1000;
 const REFETCH_FLOOR_MS = 60 * 1000;
 
 /**
- * Keys the worker expects in the bundle — the same list the old EC2 app read.
+ * Keys the worker expects in the bundle, the same list the old EC2 app read.
  *
  * GITHUB_WEBHOOK_SECRET is deliberately absent. It lives in its own secret
  * now, and the worker has no use for it: signatures are verified at the edge,
@@ -53,7 +53,7 @@ let lastRefetchAt = 0;
 /**
  * The stored form of the webhook secret.
  *
- * Normally the secret is the value on its own — that is what somebody
+ * Normally the secret is the value on its own, that is what somebody
  * rotating it in the console will paste into the box. A bundle-shaped
  * `{"GITHUB_WEBHOOK_SECRET": "..."}` is accepted too, so a rotation that
  * copies the old bundle's shape yields the secret rather than an empty string
@@ -165,7 +165,7 @@ export async function loadSecretsIntoEnv(): Promise<void> {
 
 /**
  * Installed by the reset seam. A test that forgets to inject a loader fails
- * loudly here rather than silently making a live Secrets Manager call — which
+ * loudly here rather than silently making a live Secrets Manager call, which
  * is what restoring the real loader would do, and which makes a test's result
  * depend on whose credentials are in the environment.
  */

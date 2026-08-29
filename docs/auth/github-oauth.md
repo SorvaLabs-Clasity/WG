@@ -13,13 +13,13 @@ Backend     →  exchanges the code for an access token
 ```
 
 The `login=` parameter matters. Without it, GitHub signs you in as whichever
-account its cookie currently holds — so "Continue with account A" could
+account its cookie currently holds, so "Continue with account A" could
 cheerfully authenticate you as account B. Naming the account fixes that.
 
 ## Why writes use your token
 
-Every repository write — creating a branch, changing protection, enabling
-Dependabot — is made with the token of the person who clicked.
+Every repository write, creating a branch, changing protection, enabling
+Dependabot, is made with the token of the person who clicked.
 
 The consequence is that **the app has no authority of its own.** If you cannot
 change branch protection on a repository, neither can the app on your behalf.
@@ -32,7 +32,7 @@ than naming a person.
 
 ## Session storage
 
-The app JWT lives in `sessionStorage`, not `localStorage` — closing the window
+The app JWT lives in `sessionStorage`, not `localStorage`, closing the window
 ends the session. Your login and avatar are kept in `localStorage` so the page
 can offer "Continue as …" without holding a credential.
 

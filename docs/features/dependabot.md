@@ -7,8 +7,8 @@ them.
 
 Two very different states look identical if you only count alerts:
 
-- a repository with Dependabot **on** and no alerts — genuinely clean
-- a repository with Dependabot **off** — nothing is known either way
+- a repository with Dependabot **on** and no alerts, genuinely clean
+- a repository with Dependabot **off**. Nothing is known either way
 
 The header refuses to call the second one "all clear". With a handful of hundreds
 scanned it reads *Mostly unscanned*, not *Nothing outstanding*, and says in
@@ -32,7 +32,7 @@ The change is made with your token, so GitHub decides whether you may enable it.
 
 Graph aggregation collects `has_vulnerable_dependency` edges per repository from
 GitHub's Dependabot alerts API. Repositories with Dependabot disabled return
-nothing — correctly, and indistinguishably from "no vulnerabilities", which is
+nothing, correctly, and indistinguishably from "no vulnerabilities", which is
 why the unwatched count is shown so prominently.
 
 ## No alerts is a legitimate answer
@@ -45,7 +45,7 @@ would be its own kind of wrong.
 ## Why the tab is cheap now
 
 Listing which repositories have alerts switched on used to cost one REST call
-per repository — 351 of them on a 355-repo organization, every time the tab was
+per repository, 351 of them on a 355-repo organization, every time the tab was
 opened, against the same rate-limit budget the graph sync and compliance sweep
 draw on. Forty page loads in an hour would have exhausted it.
 
@@ -54,11 +54,11 @@ organization: **4 requests instead of 347**, and GraphQL is metered separately
 from REST, so the cost moved off the shared budget rather than merely shrinking.
 
 The flag was checked against the REST endpoint it replaced before the swap, in
-both directions — on repositories with alerts on and off. A field that is
+both directions, on repositories with alerts on and off. A field that is
 always false would agree with a mostly-off organization and still be wrong.
 
 That same query returns the repository names, so the REST repository listing is
-not called here either — four more pages fetching names GraphQL had already
+not called here either, four more pages fetching names GraphQL had already
 handed over.
 
 A full load of the tab is now **5 requests** (1 REST + 4 GraphQL), against
@@ -76,7 +76,7 @@ every new moderate alert on a large dependency tree is a lot of mail and a feed
 people filter is a feed that is off.
 
 Driven by the `dependabot_alert` webhook, so it arrives within seconds and costs
-no GitHub requests. Only alerts raised from that point on — switching it on does
+no GitHub requests. Only alerts raised from that point on, switching it on does
 not send the backlog already in the table.
 
 **It needs one setup step this app cannot do.** The organization webhook has to
@@ -87,7 +87,7 @@ nothing will ever arrive, because GitHub never sends the event and there is no
 error to report.
 
 It is the organization webhook, not the GitHub App's own event list. The App
-subscribes to nothing — every delivery comes from that webhook — so an empty
+subscribes to nothing, every delivery comes from that webhook, so an empty
 `events` list on the App is expected. The panel says where to go, and
 [setup.md](../operations/setup.md) lists the full event set.
 
@@ -110,7 +110,7 @@ once, or Renovate running against a repository for the first time. One email
 each is a blast nobody reads, and a feed people filter is a feed that is off.
 
 The webhook writes the event into a buffer instead of publishing, and the alarm
-evaluator — which already ticks every five minutes — drains it, grouping by feed
+evaluator, which already ticks every five minutes, drains it, grouping by feed
 and repository. Buffered rows are marked sent rather than deleted and expire on
 their own after 24 hours.
 
@@ -126,5 +126,5 @@ buffer holding one item is sent exactly as the template rendered it, not as a
 digest of one.
 
 Turning a feed off, or switching it back to per-event, while events are buffered
-sends nothing — those rows are cleared rather than left to be reconsidered on
+sends nothing. Those rows are cleared rather than left to be reconsidered on
 every future tick.

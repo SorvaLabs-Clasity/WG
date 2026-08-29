@@ -119,7 +119,7 @@ function lastGoodIsForgotten(): void {
   {
     // The bug found in use. Re-requesting a review from somebody who has
     // already approved puts them back on the hook, and GitHub empties
-    // latestReviews to say so — while latestOpinionatedReviews keeps the old
+    // latestReviews to say so, while latestOpinionatedReviews keeps the old
     // approval forever. Reading the wrong one meant the person being asked to
     // look again was the one person never reminded.
     const reRequested = pr({
@@ -369,7 +369,7 @@ function lastGoodIsForgotten(): void {
   // GraphQL answers with data *and* errors when the App lacks the permission
   // for a single field: every other field arrives normally, and an error names
   // the refused path. Octokit raises that as a thrown request, so the partial
-  // data is on the error rather than returned — and treating it as a failure
+  // data is on the error rather than returned, and treating it as a failure
   // emptied the whole pull request tab because check status was unavailable.
   {
     const refusal: any = new Error("Resource not accessible by integration");
@@ -429,7 +429,7 @@ function lastGoodIsForgotten(): void {
   //
   // Backing off costs a timeout per step, and GitHub takes about eleven seconds
   // to abandon a page it cannot compute. Rediscovering the same answer on every
-  // request made every load of the tab pay that again — two dead requests before
+  // request made every load of the tab pay that again, two dead requests before
   // the first useful one, which is most of the twenty seconds people waited.
   {
     __resetPageSizeForTests();
@@ -454,7 +454,7 @@ function lastGoodIsForgotten(): void {
   // ── a size that worked first time is still written down ─────────────
   //
   // The save used to fire only when the size differed from where the walk
-  // started — and the walk starts *from* the last good size, so on a fresh
+  // started, and the walk starts *from* the last good size, so on a fresh
   // process the two were equal and a first attempt that simply worked was
   // never recorded. Only organizations that had to back off stored anything;
   // everyone else rediscovered from scratch on every launch, for a value that
@@ -507,7 +507,7 @@ function lastGoodIsForgotten(): void {
       seen.length === 1 && seen[0] === 12, seen);
 
     // A stored value that is no longer one of the sizes must not be trusted
-    // blindly — the ladder can change between releases.
+    // blindly, the ladder can change between releases.
     await savePrPageSize(999);
     lastGoodIsForgotten();
     const seen2: number[] = [];
@@ -522,7 +522,7 @@ function lastGoodIsForgotten(): void {
   // ── but it is not pinned there for ever ─────────────────────────────
   //
   // A single bad afternoon must not permanently choose the smallest page, since
-  // the smallest page means the most requests — the opposite of what backing off
+  // the smallest page means the most requests, the opposite of what backing off
   // was for. It is retried larger periodically.
   {
     __resetPageSizeForTests();
@@ -751,7 +751,7 @@ function lastGoodIsForgotten(): void {
       }, pr(), "body");
     } catch { threw = true; }
     // Caught here on purpose. An uncaught throw ends the process, which prints
-    // no failures at all and reads as a pass — a mutation removing the internal
+    // no failures at all and reads as a pass, a mutation removing the internal
     // try/catch scored zero until this was wrapped.
     check("  and a delete that fails does not stop the new one posting",
       postedAnyway && !threw, { postedAnyway, threw });
@@ -836,7 +836,7 @@ function lastGoodIsForgotten(): void {
       pr({ repo: "o/good", number: 9, lastCommitAt: daysAgo(10), reviewDecision: "APPROVED" }),
     ]);
     f.deps.postComment = async (repo, number, body) => {
-      if (repo === "o/bad") throw new Error("403 — cannot comment here");
+      if (repo === "o/bad") throw new Error("403, cannot comment here");
       f.posted.push({ repo, number, body });
       return 1;
     };
@@ -851,7 +851,7 @@ function lastGoodIsForgotten(): void {
   // a paused pull request is the one case where nothing writes it: the pass
   // skips it before any reminder is posted. So the row was deleted, the pause
   // went with it, and reminders resumed on a pull request somebody had
-  // deliberately silenced — with nothing anywhere to say why.
+  // deliberately silenced, with nothing anywhere to say why.
   //
   // It cannot be fixed by recording a nudge, which is the other thing that
   // writes: that restarts the seven-day clock, so lifting the pause would be
@@ -912,7 +912,7 @@ function lastGoodIsForgotten(): void {
       staleSeconds() === STALE_SECONDS, { staleSeconds: staleSeconds(), STALE_SECONDS });
 
     if (STALE_SECONDS !== SEVEN_DAYS) {
-      console.log(`  NOTE  threshold is ${STALE_SECONDS}s, not the usual ${SEVEN_DAYS}s — testing mode`);
+      console.log(`  NOTE  threshold is ${STALE_SECONDS}s, not the usual ${SEVEN_DAYS}s, testing mode`);
     }
   }
 
@@ -1009,7 +1009,7 @@ function lastGoodIsForgotten(): void {
 
     // ...but stops the posting only. The walk below it stores the snapshot the
     // tab opens on, so gating this guard on reminders as well left that branch
-    // unreachable — and unreachable is not something a source match notices:
+    // unreachable, and unreachable is not something a source match notices:
     // every check below still passed while the pass fetched nothing at all in
     // the shipped configuration.
     const earlyGuard = passBody.slice(passGate, passBody.indexOf("{", passGate));
@@ -1071,7 +1071,7 @@ function lastGoodIsForgotten(): void {
     check("  while a commit does reset it",
       daysSinceLastCommit({ ...base, lastCommitAt: daysAgo(1) }, NOW) < before);
 
-    // The clock reads committedDate, so a rebase or amend counts as a commit —
+    // The clock reads committedDate, so a rebase or amend counts as a commit,
     // the branch genuinely moved. Nothing else in the payload is consulted.
     const src = fs.readFileSync(path.join(__dirname, "src/services/prNudgeService.ts"), "utf8");
     check("  and the clock is fed only by the branch's last commit",
@@ -1084,7 +1084,7 @@ function lastGoodIsForgotten(): void {
   //
   // Closing a pull request removes it from the list, because the list is built
   // from what GitHub currently reports as open. If that were also what held the
-  // mute, reopening would come back unmuted — and the person who was
+  // mute, reopening would come back unmuted, and the person who was
   // deliberately left out would start being chased by a reminder nobody
   // reinstated. Nothing about closing touches the stored row; this asserts that
   // rather than assuming it.
@@ -1120,7 +1120,7 @@ function lastGoodIsForgotten(): void {
     check("  but its row is still stored",
       (await listPrStates()).some(r => r.id === prStateId(repo, number)));
 
-    // Reopened. Same repository, same number — GitHub never reissues one.
+    // Reopened. Same repository, same number, GitHub never reissues one.
     const after = nudgeTargets(pr, await rules());
     check("reopening it keeps the mute", !after.targets.includes("carol"), after);
     check("  and still names everybody else", after.targets.includes("dave"), after);
@@ -1175,7 +1175,7 @@ function lastGoodIsForgotten(): void {
   // ── the list is stored, so opening the tab does not wait for it ─────
   //
   // The walk is the slowest read this app makes, and it was being done in front
-  // of somebody on every load — while the five-minute pass fetched the same
+  // of somebody on every load, while the five-minute pass fetched the same
   // thing and discarded it. The failures worth guarding are the ones that make
   // a cache dishonest rather than merely absent.
   {

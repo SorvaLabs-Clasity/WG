@@ -31,7 +31,7 @@ export interface AuthStatus {
    * app is signed into.
    *
    * Distinct from `github.configured`, which is about whether credentials
-   * exist. This is about whether they are allowed to be used *here* — an
+   * exist. This is about whether they are allowed to be used *here*, an
    * organization can confine everything GitHub to one account and leave the AWS
    * guardrails running everywhere else.
    */
@@ -64,7 +64,7 @@ export interface UserPermissions {
   /** Governs GitHub auto-apply. */
   isControlHubAdmin: boolean;
   adminTeam: string;
-  /** Governs AWS guardrails — a separate team, usually owned by whoever
+  /** Governs AWS guardrails, a separate team, usually owned by whoever
    *  administers the AWS account rather than the repos. */
   isAwsAdmin: boolean;
   awsAdminTeam: string;
@@ -103,7 +103,7 @@ export async function reconnectAws(profile?: string): Promise<AwsSwitchResult> {
  * Start `aws sso login` for a profile.
  *
  * Throws when it could not be started. This used to discard the response
- * entirely — so a refused profile name, a missing AWS CLI, or a spawn that
+ * entirely, so a refused profile name, a missing AWS CLI, or a spawn that
  * failed all produced a button that did nothing at all, with the reason sitting
  * unread in a response nobody looked at.
  */
@@ -226,7 +226,7 @@ export async function startSsoSetup(startUrl: string, ssoRegion: string): Promis
  * Step two: has it been approved?
  *
  * `pending` is the ordinary answer while somebody is still in their browser, so
- * it is a status rather than an error — the caller keeps asking.
+ * it is a status rather than an error, the caller keeps asking.
  */
 export async function pollSsoSetup(auth: {
   clientId: string; clientSecret: string; deviceCode: string; ssoRegion: string;

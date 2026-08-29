@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { CheckCard, WidgetFormModal } from "../pages/AnalyticsPage";
+import { CheckCard, WidgetFormModal, CheckDetail } from "../pages/AnalyticsPage";
 import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget } from "../hooks/useWidgets";
 import { Button, Empty, Spinner, Note } from "../design";
 import type { WidgetConfig } from "../api/widgets";
@@ -35,6 +35,25 @@ export default function PersonalBoard() {
 
   const list = widgets ?? [];
 
+  // In place, the way the Overview does it, rather than a modal on top of a
+  // grid. The detail is the same component, so the table, the verdict and the
+  // freshness stamp cannot drift from the shared board's.
+  if (opened) {
+    return (
+      <CheckDetail
+        config={opened}
+        onBack={() => setOpened(null)}
+        onEdit={() => { setEditing(opened); setOpened(null); }}
+        canEdit
+        // Alarms notify a shared group and are an administrator's to set. A
+        // card on your own dashboard is not the place to arrange that.
+        onAlarm={() => { /* not offered on a personal board */ }}
+        canAlarm={false}
+        alarmCount={0}
+      />
+    );
+  }
+
   return (
     <>
       <div className="flex items-center justify-between gap-3 mb-4">
@@ -53,7 +72,7 @@ export default function PersonalBoard() {
       {list.length === 0 ? (
         <Empty
           title="Nothing here yet"
-          body="Add the checks you care about — the repositories you own, the vulnerabilities that reach you, a query you keep running by hand. Nobody else sees them, so nothing here needs to be worth everyone's attention."
+          body="Add the checks you care about, the repositories you own, the vulnerabilities that reach you, a query you keep running by hand. Nobody else sees them, so nothing here needs to be worth everyone's attention."
           action={<Button variant="primary" onClick={() => setAdding(true)}>Add your first card</Button>}
         />
       ) : (
@@ -97,24 +116,6 @@ export default function PersonalBoard() {
         />
       )}
 
-      {opened && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setOpened(null)} />
-          <div className="relative z-10 w-full max-w-3xl max-h-[85vh] overflow-auto rounded-2xl
-                          bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl p-6">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">{opened.title}</h3>
-              <button onClick={() => setOpened(null)}
-                className="text-slate-400 hover:text-slate-900 dark:hover:text-white">
-                <i className="ph ph-x text-lg"></i>
-              </button>
-            </div>
-            <p className="text-[13px] text-slate-500 dark:text-slate-400">
-              Open the Overview tab to see the full table for this check.
-            </p>
-          </div>
-        </div>
-      )}
     </>
   );
 }

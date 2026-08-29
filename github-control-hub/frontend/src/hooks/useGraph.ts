@@ -77,7 +77,7 @@ export function useSecurityQuery(q: string | null, param?: string, advanced?: an
     queryFn: () => fetchSecurityQuery(q!, param, advanced),
     enabled: !!q,
     // No polling. Every one of these is a full scan of the graph table, and
-    // several widgets on a page meant a scan every few seconds — visible as
+    // several widgets on a page meant a scan every few seconds, visible as
     // the cards re-animating, and as a stack trace per failing widget. The
     // graph only changes when aggregation runs, which is a button.
     staleTime: 5 * 60_000,
@@ -87,7 +87,7 @@ export function useSecurityQuery(q: string | null, param?: string, advanced?: an
     // The three subject-by-subject checks answer nothing until every account or
     // repository has been read, which takes a few passes on a large
     // organization. Without this the card would sit at "checked 25 of 250"
-    // until somebody reloaded — technically correct and indistinguishable from
+    // until somebody reloaded, technically correct and indistinguishable from
     // stuck. Every other state keeps the old behaviour of not polling at all,
     // because each of those calls is a scan of the graph table.
     refetchInterval: (q) => (q.state.error instanceof IncompleteQueryError ? 60_000 : false),
@@ -97,8 +97,8 @@ export function useSecurityQuery(q: string | null, param?: string, advanced?: an
 /**
  * How stale a batched check's stored answers are.
  *
- * Its own query rather than part of the result, because it is cheap — the cache
- * only — and the result it annotates is not. Held briefly so several cards
+ * Its own query rather than part of the result, because it is cheap, the cache
+ * only, and the result it annotates is not. Held briefly so several cards
  * asking at once cost one call each rather than one per render.
  */
 export function useQueryFreshness(q: string | null, enabled = true) {

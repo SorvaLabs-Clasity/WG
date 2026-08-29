@@ -12,11 +12,11 @@ a queue.
 | Switch | Default | Off means |
 |---|---|---|
 | **Monitor pull requests** | On | Nothing is fetched, listed or posted, and the scheduled pass does no work on its behalf |
-| **Post reminders** | **Off** | The list works — the scheduled pass still walks and stores it — and nothing is posted |
+| **Post reminders** | **Off** | The list works, the scheduled pass still walks and stores it, and nothing is posted |
 
 Admin only, and both stop the work rather than hiding its result. The list route
 refuses before it queries GitHub, the scheduled pass checks before fetching, and
-the page stops polling — otherwise "off" would still spend a sweep every time
+the page stops polling, otherwise "off" would still spend a sweep every time
 somebody opened the tab. Tests assert the guard sits before the fetch in both
 places.
 
@@ -26,7 +26,7 @@ a surprise nobody asked for.
 
 ## What "stale" means
 
-**Seven days with no commit** — not seven days since it was opened. That
+**Seven days with no commit**: not seven days since it was opened. That
 distinction is the whole feature: a branch opened two hundred days ago and
 pushed to this morning is alive, and a nine-day-old one nobody has touched is
 not. Measuring from the opening date flags the first and misses the second.
@@ -60,7 +60,7 @@ they cannot help with.
 
 **The message and the mentions come from one decision.** They used to be two
 functions computing the same thing, and seventeen combinations of merge state,
-review decision and check state made them disagree — the comment announcing
+review decision and check state made them disagree, the comment announcing
 "waiting on review" while deliberately naming no reviewer, because a pending
 check had shielded them. `blockReason` now decides, and who to chase is derived
 from it, so the two cannot drift. A test walks all 160 combinations.
@@ -72,7 +72,7 @@ shields the reviewers when it is actually blocking.
 
 Everyone carrying a review request is included, **whatever their approval counts
 for**. A reviewer without write access, or on the wrong team, cannot satisfy the
-rule — but they were asked, and they are not answering. Equally, having enough
+rule, but they were asked, and they are not answering. Equally, having enough
 approvals to merge does not stop the others being chased: the author may be
 waiting on them deliberately.
 
@@ -80,7 +80,7 @@ waiting on them deliberately.
 already approved puts them back on the hook, and their previous approval stops
 counting the moment it happens. This reads `latestReviews`, which GitHub empties
 on a re-request, rather than `latestOpinionatedReviews`, which keeps the stale
-approval forever — reading the wrong one meant the person asked to look again
+approval forever, reading the wrong one meant the person asked to look again
 was the one person never reminded.
 
 ## What the reminder says
@@ -90,11 +90,11 @@ addressed on separate lines:
 
 > **No commits for 9 days.**
 >
-> @alice — this is approved and green, so it just needs merging.
-> @dave @erin — a review was requested from you and is still outstanding.
+> @alice. This is approved and green, so it just needs merging.
+> @dave @erin, a review was requested from you and is still outstanding.
 
 A single sentence addressed to everyone tells at least one of them something
-they cannot act on — the first version said "it just needs merging" to
+they cannot act on, the first version said "it just needs merging" to
 reviewers who have no ability to merge.
 
 Where only the author is named, only their line appears.
@@ -102,7 +102,7 @@ Where only the author is named, only their line appears.
 ## One comment, not fifty-two
 
 The reminder is a single sticky comment that **replaces itself**. Fifty-two
-weekly cycles leave one comment, not fifty-two — asserted directly in the tests,
+weekly cycles leave one comment, not fifty-two, asserted directly in the tests,
 along with the human comments in the thread being untouched.
 
 It is deleted and reposted rather than edited, because editing notifies nobody
@@ -126,10 +126,10 @@ Admin only, and asked at four sizes because the reasons come at four sizes.
 somebody is decided when you notice it, which is usually while the pull request
 is still fresh; a panel that appeared only after seven days of silence meant the
 mute could not be set until the first reminder had already gone out. Anything not
-yet stale reads in the future tense — *would remind* — with how long is left.
+yet stale reads in the future tense, *would remind*, with how long is left.
 
 **A mute outlives the pull request being closed.** The list is built from what
-GitHub reports as open, so closing one removes it from view — but the row is
+GitHub reports as open, so closing one removes it from view, but the row is
 keyed by repository and number, which GitHub never reissues, and nothing about
 closing touches it. Reopening comes back with the same mutes, the same pause and
 the same count of reminders already sent. The row expires after 180 days
@@ -140,7 +140,7 @@ cannot lapse mid-review.
 | **Everywhere** | **Manage**, or the **Reminder mutes** window | Somebody on leave, or who has left |
 
 The two wide scopes open in a window rather than unfolding on the page, because
-setting one is a detour from reading the queue — the list should still be where
+setting one is a detour from reading the queue, the list should still be where
 it was on the way back.
 
 Its repository side lists **every repository in the organization**, not only the
@@ -148,16 +148,16 @@ ones with a pull request open today. Muting somebody on a quiet repository is
 the case worth supporting: it is set once, before the first pull request ever
 lands there. Repositories carrying a mute sort to the top with a count, and one
 that has since been renamed, archived or removed from the installation is still
-listed — otherwise the only way to lift its mute would be to edit the record by
+listed, otherwise the only way to lift its mute would be to edit the record by
 hand.
 
 The widest scope in effect is the one named, so a person muted both in a
-repository and everywhere reads as muted everywhere — the narrower rule would be
+repository and everywhere reads as muted everywhere, the narrower rule would be
 misleading, since removing it would change nothing.
 
 **People are chosen from the organization, never typed.** A free-text login box
 accepts any string, and a great many strings are real GitHub accounts belonging
-to strangers — so a typo does not fail, it names somebody outside the
+to strangers, so a typo does not fail, it names somebody outside the
 organization, renders their photograph beside it, and stores a mute that can
 never match anybody. Nothing looks wrong, and the person it was meant for keeps
 being reminded. The picker offers only members, and the route refuses a
@@ -178,7 +178,7 @@ the seven-day clock, so lifting the pause would be followed by a week of silence
 instead of the next reminder.
 
 Where every remaining person is muted, nothing is posted at all rather than a
-reminder addressed to nobody — and the list says so, naming who is muted and at
+reminder addressed to nobody, and the list says so, naming who is muted and at
 which scope, so a silent pull request is explained rather than looking like the
 feature failing.
 
@@ -187,12 +187,12 @@ feature failing.
 Measured against the live organization, not estimated.
 
 **GitHub API.** One GraphQL sweep costs **2 points**, and the allowance is
-**12,500 points an hour**. At a five-minute tick that is 24 points an hour —
+**12,500 points an hour**. At a five-minute tick that is 24 points an hour,
 **0.19%** of the budget. The REST allowance (15,000/hour) is touched only when a
 reminder is actually posted: one list, one delete, one create.
 
 The REST equivalent of that sweep would be a list call plus three requests per
-pull request — reviews, commits and mergeability are separate endpoints — so
+pull request, reviews, commits and mergeability are separate endpoints, so
 fifty open pull requests would cost over a hundred and fifty requests per tick
 rather than one query worth two points.
 
@@ -201,7 +201,7 @@ workflow, so nothing is billed against the Actions allowance.
 
 **AWS.** The evaluator averages **2.7 seconds** at 512 MB, using 150 MB. At a
 five-minute tick that is 8,640 invocations a month, roughly **$0.20**. The pass
-shares an existing Lambda and schedule, so it adds no new AWS resource — the
+shares an existing Lambda and schedule, so it adds no new AWS resource, the
 only marginal cost is the extra seconds those invocations run for.
 
 ## Testing it
@@ -216,7 +216,7 @@ request is stale ten seconds after its last commit and reminded again ten
 seconds later. Set it back to `SEVEN_DAYS` and deploy when finished.
 
 It is a constant rather than an environment variable on purpose. The scheduled
-pass runs in a Lambda, which never sees a value set on a developer machine — so
+pass runs in a Lambda, which never sees a value set on a developer machine, so
 an environment variable moved the manual button and nothing else, which is
 exactly the confusion it caused when it was one. The page shows a banner while
 the threshold is not seven days, and the test suite prints a note, so it cannot
@@ -224,7 +224,7 @@ be left turned down unnoticed.
 
 **Send reminders now.** An admin button on the page runs the pass immediately
 rather than waiting for the next five-minute tick. It posts as the app, not as
-whoever pressed it — the reminder has to come from the same account every cycle
+whoever pressed it, the reminder has to come from the same account every cycle
 or the next one cannot recognise its own comment to replace it.
 
 A full run-through: set `STALE_SECONDS` to 10, deploy, open a pull request, wait

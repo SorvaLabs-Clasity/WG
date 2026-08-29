@@ -6,7 +6,7 @@ import { docClient, tableName, hasTable, GetCommand, PutCommand, DeleteCommand, 
  * Everything else the app sends is organizational: an alarm the admins set, a
  * reminder the org configured. This is the first thing somebody sets for
  * themselves, about their own work, and that changes what the design has to get
- * right — nobody is watching it on anybody's behalf, so a delivery that fails
+ * right. Nobody is watching it on anybody's behalf, so a delivery that fails
  * silently is a person who simply stops being told and does not find out.
  *
  * Two ways to be told, because they answer different needs and people want
@@ -17,7 +17,7 @@ import { docClient, tableName, hasTable, GetCommand, PutCommand, DeleteCommand, 
  *
  * Stored in the org-config table under a prefixed key. That table is a
  * key-value store read only by exact key, so per-person rows sit beside the
- * organization's own row without either seeing the other — and it avoids a new
+ * organization's own row without either seeing the other, and it avoids a new
  * table, which would mean a stack deployment before anybody could try this.
  */
 
@@ -31,7 +31,7 @@ export const keyFor = (login: string) => `${KEY_PREFIX}${login.toLowerCase()}`;
 /**
  * Which moments are worth interrupting somebody for.
  *
- * Only two, and the limit is not taste — it is what a webhook can actually
+ * Only two, and the limit is not taste. It is what a webhook can actually
  * deliver. "One of yours became mergeable" and "your checks went red" are not
  * single events; they are conclusions drawn from several, and detecting them
  * would mean subscribing to check suites and re-deriving mergeability on every
@@ -180,7 +180,7 @@ export async function deleteDevAlerts(login: string): Promise<void> {
  *
  * A scan, and the only one this table has. It holds one row per person plus the
  * organization's own, so this is a single request on any realistic
- * organization — and the alternative, an index, would be a stack change for a
+ * organization, and the alternative, an index, would be a stack change for a
  * table with tens of rows in it.
  */
 export async function listDevAlerts(): Promise<DevAlerts[]> {

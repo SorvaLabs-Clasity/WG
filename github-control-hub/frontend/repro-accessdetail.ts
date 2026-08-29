@@ -2,7 +2,7 @@
  * Every clickable row in the access map opens something.
  *
  * The team list was clickable, `TeamDetail` was written in full, and the branch
- * that renders it was missing — so `setOpenTeam` set a piece of state nothing
+ * that renders it was missing, so `setOpenTeam` set a piece of state nothing
  * read, and clicking a team did nothing whatsoever. No error, no blank screen,
  * no clue: the click just had no effect.
  *
@@ -61,7 +61,7 @@ const page = fs.readFileSync("./src/pages/AccessPage.tsx", "utf8");
   // ── the team view says access, not ownership ────────────────────────
   //
   // GitHub returns every repository a team has been granted anything on, at
-  // whatever permission — the rows carry a permission pill saying so. Calling
+  // whatever permission, the rows carry a permission pill saying so. Calling
   // that "owns" overstates a read-only grant, and contradicts `unowned-repos`,
   // which counts any team grant as ownership precisely because it is a floor.
   {

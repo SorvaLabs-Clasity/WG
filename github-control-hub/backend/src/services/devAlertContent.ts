@@ -28,7 +28,7 @@ export interface Digest {
  *
  * Reviews other people are waiting on lead, always, because that is the only
  * section where somebody else is blocked. Your own work follows, and what can
- * be merged comes last — it is good news and does not need to be at the top.
+ * be merged comes last. It is good news and does not need to be at the top.
  */
 export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now()): Digest {
   const work = myWork(prs, prefs.login, now);
@@ -141,7 +141,7 @@ export function buildEventCard(event: DevEvent): any {
  * Whether this person asked to hear about this.
  *
  * Checked here rather than at the send site so that adding a new kind of event
- * cannot accidentally reach people who never opted into it — the default for an
+ * cannot accidentally reach people who never opted into it, the default for an
  * unknown key is no.
  */
 export function wants(prefs: DevAlerts, kind: EventKind): boolean {

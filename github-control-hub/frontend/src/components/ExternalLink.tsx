@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
  *
  * `target="_blank"` alone is not enough here. In Electron it depends on the main
  * process intercepting a window-open request, and that interception has a
- * branch — the one that keeps a sign-in inside the app window — which allows the
+ * branch, the one that keeps a sign-in inside the app window, which allows the
  * window instead of handing it to the browser. Whenever that branch is taken for
  * an ordinary link, the click does **nothing at all**: no navigation, no error,
  * no console message. It reads as the app being wrong about the link existing,

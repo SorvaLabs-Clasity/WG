@@ -11,14 +11,14 @@ import { hasGithubCredentials } from "./githubGate";
  * Every request re-asks GitHub whether the caller is still an org member, which
  * is the right question in the account where GitHub lives. Switching to an
  * account whose secret holds nothing GitHub-shaped leaves no organization
- * configured, and asking anyway throws inside the check — which
+ * configured, and asking anyway throws inside the check, which
  * `isStillOrgMember` reads as "could not ask" and degrades to *not a member*
  * once its cached yes ages out. The session then ended about an hour after the
  * switch, which reads as a random logout rather than as a consequence of it.
  *
  * So the check is skipped exactly where it cannot be answered. Nothing is
- * loosened by that: an account with no GitHub credentials has no GitHub half —
- * githubGateMiddleware refuses every route that touches it — and what remains
+ * loosened by that: an account with no GitHub credentials has no GitHub half,
+ * githubGateMiddleware refuses every route that touches it, and what remains
  * is the AWS tab, whose own permissions are read from GitHub with the caller's
  * token a moment later.
  */

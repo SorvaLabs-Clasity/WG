@@ -7,13 +7,13 @@ broken and the question is who to ask first.
 
 GitHub returns commits **one page at a time**, a hundred per page, with a link
 to the next. Asking for a hundred and getting a hundred means *at least* a
-hundred — so a repository with four thousand commits and one with a hundred and
+hundred, so a repository with four thousand commits and one with a hundred and
 one both read as exactly `100`.
 
 Where a page limit was hit, counts are shown as `100+` and the footnote says the
 ranking is from the most recent hundred commits. Paging to the end would be
 forty requests for a busy repository, for a number that changes nothing about
-the ranking — recent work is what the decay weights anyway.
+the ranking, recent work is what the decay weights anyway.
 
 This was reported from a real repository showing "100 commits" where the true
 number was higher.
@@ -35,15 +35,15 @@ it mattered.
 
 Three signals, weighted, because any one alone is misleading:
 
-- **commits** (1.0) — who changed it
-- **reviews** (0.7) — who read it. Close to a commit deliberately: during an
+- **commits** (1.0), who changed it
+- **reviews** (0.7), who read it. Close to a commit deliberately: during an
   incident the person who reviewed the change that broke it is often the fastest
   to recognise it
-- **comments** (0.25) — who discussed it, which catches the person who argued
+- **comments** (0.25), who discussed it, which catches the person who argued
   about the design without touching the file
 
 Each contribution decays with age, **halving every 90 days**. Ten commits last
-week therefore outrank two hundred from three years ago, which is the point —
+week therefore outrank two hundred from three years ago, which is the point,
 this ranks who is likely to *remember*, not who has done the most over all time.
 A year-old contribution still counts about a sixteenth, so a long-departed owner
 does not vanish from a list whose whole purpose is finding whoever knows it.
@@ -59,8 +59,8 @@ nothing. A bot at the top of the list is the one outcome that makes the feature
 useless.
 
 Matching the `[bot]` suffix is not enough. A commit with no linked GitHub account
-falls back to the git config *name* — a display name like "Acme Studios Bot", not
-a login — and the first live lookup ranked exactly such an account at 100. Any
+falls back to the git config *name*, a display name like "Acme Studios Bot", not
+a login, and the first live lookup ranked exactly such an account at 100. Any
 name carrying "bot" as a whole word is excluded, word-boundary matched so
 "Abbot", "Botha" and "Robotics" stay in.
 
@@ -81,8 +81,8 @@ a person, and the display-name fallback above means real names reach this check.
 so whoever last ran one would rank as the expert on every library in the
 project. Only manifests are read.
 
-The library search is scoped by filename — `filename:package.json` and its
-equivalents — rather than searching file contents. A plain content search for
+The library search is scoped by filename, `filename:package.json` and its
+equivalents, rather than searching file contents. A plain content search for
 "react" returned nearly five thousand hits on a real organization, none of them
 manifests on the first page, so the lookup answered empty while the library was
 in use in a dozen repositories. One search per ecosystem, stopping as soon as
@@ -96,12 +96,12 @@ never opened it.
 ## What it can and cannot see
 
 Lookups run with **your own GitHub token**, not the app's. You see exactly what
-you could see on github.com and nothing more — using the app's installation
+you could see on github.com and nothing more, using the app's installation
 token would let anyone signed in enumerate contributors on private repositories
 they have no access to.
 
-A partial answer says so. If one signal fails — issues disabled on a repository
-404s that endpoint — the ranking is built from the rest and the panel names what
+A partial answer says so. If one signal fails, issues disabled on a repository
+404s that endpoint, the ranking is built from the rest and the panel names what
 was lost, rather than presenting a thinner answer as complete.
 
 
@@ -110,9 +110,9 @@ was lost, rather than presenting a thinner answer as complete.
 They look identical as an empty list and mean different things, so the page says
 which:
 
-- **Only automated accounts** — the library or repository was found, and every
+- **Only automated accounts**, the library or repository was found, and every
   change to it was made by a bot. There is genuinely nobody to ask.
-- **Could not read X** — a signal failed. Likely permissions or visibility, not
+- **Could not read X**, a signal failed. Likely permissions or visibility, not
   an empty history.
-- **Nobody found** — nothing matched. This is the one where checking the name is
+- **Nobody found**. Nothing matched. This is the one where checking the name is
   the right next step.

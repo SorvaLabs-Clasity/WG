@@ -23,7 +23,7 @@ import { Construct } from "constructs";
 // deliveries would begin returning 403 and the app's Activity page would read
 // Stale within 72 hours. See docs/operations/troubleshooting.md.
 //
-// This is the API Gateway resource policy's IP allow-list — the only thing
+// This is the API Gateway resource policy's IP allow-list, the only thing
 // that still reads it now that there is no security group to share it with.
 const GITHUB_WEBHOOK_CIDRS = [
   "192.30.252.0/22",
@@ -54,7 +54,7 @@ interface GitHubControlHubProps extends cdk.StackProps {
    * Where the webhook HMAC secret lives, on its own.
    * Defaults to "github-control-hub/webhook-secret".
    *
-   * Separate from the bundle above on purpose — see the receiver's grant.
+   * Separate from the bundle above on purpose, see the receiver's grant.
    */
   webhookSecretName?: string;
   /** DynamoDB table prefix. Defaults to "github-control-hub" */
@@ -94,15 +94,15 @@ export class GitHubControlHubStack extends cdk.Stack {
     // Lambda log groups, created here rather than left to Lambda.
     //
     // A function that creates its own log group creates one that never expires,
-    // and nothing in the console says so — the cost simply grows for ever, which
+    // and nothing in the console says so, the cost simply grows for ever, which
     // is the shape of bill nobody notices. Three months is long enough to debug
     // an incident from and short enough to bound.
     //
     // **Not named `/aws/lambda/<function>`.** That is where Lambda puts a group
     // it makes itself, on the first invocation, and CloudFormation refuses to
     // create a resource whose physical name already exists. Any account where
-    // these functions had ever run — which is every account this has been
-    // deployed to — failed the change set with "already exists" and could not
+    // these functions had ever run, which is every account this has been
+    // deployed to, failed the change set with "already exists" and could not
     // be deployed at all.
     //
     // Renaming is the supported way out: CDK's own guidance on moving from the
@@ -113,7 +113,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     //
     // The old `/aws/lambda/*` groups are left where they are. Nothing writes to
     // them once this deploys, they still hold whatever history was there, and
-    // they can be deleted whenever convenient — see docs/operations/deploying.md.
+    // they can be deleted whenever convenient, see docs/operations/deploying.md.
     const logGroupFor = (id: string, fnName: string) =>
       new logs.LogGroup(this, `${id}Logs`, {
         // e.g. github-control-hub/lambda/alarm-evaluator
@@ -130,7 +130,7 @@ export class GitHubControlHubStack extends cdk.Stack {
       handler: "handler",
       // The entry lives in the backend, one level up from this stack. CDK
       // requires it to sit under projectRoot, so projectRoot is the workspace
-      // rather than infra/ — bundling from the app's own source tree is the
+      // rather than infra/, bundling from the app's own source tree is the
       // point, since it is what stops the deployed function drifting from the
       // code it was built from.
       projectRoot: path.join(__dirname, ".."),
@@ -152,7 +152,7 @@ export class GitHubControlHubStack extends cdk.Stack {
         // The SDK is bundled rather than taken from the runtime.
         //
         // Managed runtimes have shipped AWS SDK v3, and leaning on that keeps
-        // the artifact small — at the cost of running against whichever
+        // the artifact small, at the cost of running against whichever
         // version AWS happens to ship, which can change under you without any
         // deploy. Bundling removes that variable entirely and makes the
         // function correct on any runtime. It costs about two megabytes and a
@@ -189,7 +189,7 @@ export class GitHubControlHubStack extends cdk.Stack {
       //
       // Granted unconditionally. It used to sit behind `-c enforce=true`, so a
       // deploy that forgot the flag produced an app whose rules reported
-      // violations and never fixed them — the feature half-working, silently,
+      // violations and never fixed them, the feature half-working, silently,
       // until somebody noticed weeks later that nothing had changed.
       //
       // Whether a rule acts is already a decision, made per rule in the AWS
@@ -211,7 +211,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // Both existed for the accounts registry: the engine could assume a fixed
     // role name in any account, and read access keys for accounts that were not
     // in an organization. That registry is gone, and so is the standing
-    // capability it required — the engine now reads the account it runs in,
+    // capability it required, the engine now reads the account it runs in,
     // with the credentials it already has, and can reach nothing else.
 
     // Which account we are in. Findings are stamped with it, so without this
@@ -275,7 +275,7 @@ export class GitHubControlHubStack extends cdk.Stack {
     // endpoint and its queue, the alarm evaluator, and the access graph rebuild.
     //
     // An organization can reasonably want the guardrails watching a production
-    // account while nothing about its GitHub organization lives there — no App
+    // account while nothing about its GitHub organization lives there, no App
     // key, no access graph, no webhook. Deploy with `-c awsOnly=true` and none of
     // this is created, leaving the guardrail function, its schedule and its
     // tables. See scripts/setup-aws-only.sh.
@@ -329,7 +329,7 @@ export class GitHubControlHubStack extends cdk.Stack {
         // github/client.ts loads it through require.resolve() plus a dynamic
         // import built with `new Function`, which is how it dodges tsc rewriting
         // the import into a require for an ESM-only package. esbuild cannot see
-        // through that either, so it bundles nothing — and require.resolve then
+        // through that either, so it bundles nothing, and require.resolve then
         // fails at runtime with "Cannot find module '@octokit/auth-app'". The
         // symptom is quiet: the App token manager fails to initialise, every
         // invocation degrades to SYSTEM_GITHUB_TOKEN, and the app runs on a PAT's
@@ -341,8 +341,8 @@ export class GitHubControlHubStack extends cdk.Stack {
         // Marking it external is NOT the fix, and was tried: `octokit` itself
         // requires @octokit/auth-app internally, so leaving it external puts a
         // bare require() of an ESM-only package in the bundle and the whole
-        // function dies at init with ERR_REQUIRE_ESM. Bundling it — the setting
-        // below — at least keeps octokit working; only client.ts's
+        // function dies at init with ERR_REQUIRE_ESM. Bundling it, the setting
+        // below, at least keeps octokit working; only client.ts's
         // require.resolve path fails, and getSystemTokenAsync degrades to
         // SYSTEM_GITHUB_TOKEN. The real fix belongs in client.ts, not here.
       };
@@ -373,8 +373,8 @@ export class GitHubControlHubStack extends cdk.Stack {
       // here reachable from the internet.
       //
       // The grant is the webhook secret alone, not the application bundle. The
-      // receiver must touch unverified bytes to verify them — it base64-decodes
-      // and HMACs a body no one has authenticated yet — and no review proves
+      // receiver must touch unverified bytes to verify them. It base64-decodes
+      // and HMACs a body no one has authenticated yet, and no review proves
       // that path free of bugs forever. So the question that matters is not
       // whether it can be broken but what breaking it yields. Against the
       // bundle it yielded GITHUB_APP_PRIVATE_KEY and the whole organization
@@ -398,7 +398,7 @@ export class GitHubControlHubStack extends cdk.Stack {
         handler: "handler",
         projectRoot: path.join(__dirname, ".."),
         depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-        // A single invocation can chain graph edge updates and scanner runs —
+        // A single invocation can chain graph edge updates and scanner runs,
         // background work that used to be unbounded
         // on a long-lived server and now happens inside the invocation. Lambda
         // bills by duration actually used, so a high ceiling here costs nothing
@@ -412,7 +412,7 @@ export class GitHubControlHubStack extends cdk.Stack {
         // that a reservation be at least the event source's maximum concurrency.
         // But a reservation is carved out of the account's pool, and Lambda
         // refuses to leave fewer than 10 unreserved executions behind. An account
-        // on the default quota of 10 therefore cannot reserve anything at all —
+        // on the default quota of 10 therefore cannot reserve anything at all,
         // the deploy fails with "decreases account's UnreservedConcurrentExecution
         // below its minimum value of [10]".
         //
@@ -469,7 +469,7 @@ export class GitHubControlHubStack extends cdk.Stack {
 
       // Limited at the poller rather than at the function. Reserved concurrency
       // alone would let the event source keep scaling its polling and have the
-      // surplus invocations throttled — and a throttled invocation still
+      // surplus invocations throttled, and a throttled invocation still
       // increments the message's receive count, so the setting meant to protect
       // GitHub's rate limit would instead fill the dead-letter queue with
       // messages no worker ever saw.
@@ -526,7 +526,7 @@ export class GitHubControlHubStack extends cdk.Stack {
       // Evaluating an alarm means reading widgets and graph edges; the only
       // thing it ever writes is the alarm's own
       // runtime state. Granting writes across the prefix would have let a
-      // scheduled job with no user in front of it modify the activity log — the
+      // scheduled job with no user in front of it modify the activity log, the
       // record used to reconstruct what happened, including to itself.
       alarmFn.addToRolePolicy(new iam.PolicyStatement({
         sid: "AppTablesRead",
@@ -557,7 +557,7 @@ export class GitHubControlHubStack extends cdk.Stack {
       // return.
       //
       // It has to divide every interval in INTERVAL_MINUTES, because an alarm can
-      // only be evaluated on a tick — a ten-minute interval under a fifteen-minute
+      // only be evaluated on a tick, a ten-minute interval under a fifteen-minute
       // rule is a fifteen-minute alarm that reads as ten everywhere else.
       // backend/src/alarms/conditions.ts declares TICK_MINUTES, which this must
       // match, and repro-alarms.ts fails if the two disagree.
@@ -572,7 +572,7 @@ export class GitHubControlHubStack extends cdk.Stack {
       //
       // Every screen showing who can reach what reads a stored snapshot: teams,
       // members, collaborators, repository permissions. Nothing rebuilt it on a
-      // schedule — it happened only when somebody pressed a button — so a graph
+      // schedule. It happened only when somebody pressed a button, so a graph
       // built before a person joined, left, or was made an owner was
       // indistinguishable from a current one.
       const graphFn = new NodejsFunction(this, "GraphAggregator", {
@@ -606,7 +606,7 @@ export class GitHubControlHubStack extends cdk.Stack {
       // Writes are confined to the three tables it owns.
       //
       // This job clears and rewrites the edge table wholesale, which is exactly
-      // the capability that must not extend to the activity log — the record used
+      // the capability that must not extend to the activity log, the record used
       // to reconstruct what happened, including to itself.
       graphFn.addToRolePolicy(new iam.PolicyStatement({
         sid: "AppTablesRead",
@@ -695,14 +695,14 @@ export class GitHubControlHubStack extends cdk.Stack {
       // The cheap half, far more often.
       //
       // Six checks read edges the six-hourly walk is otherwise the only writer
-      // of — repository visibility, archival, last push, team ownership and
+      // of, repository visibility, archival, last push, team ownership and
       // team membership. None of that is per-repository work: the metadata
       // arrives with the repository listing at no extra cost, and team
       // composition is two calls per team. Under a hundred requests, against
       // an allowance of fifteen thousand an hour.
       //
-      // The expensive part of the rebuild — every repository's collaborators,
-      // branches, workflows and alerts, four requests each — stays on six
+      // The expensive part of the rebuild, every repository's collaborators,
+      // branches, workflows and alerts, four requests each, stays on six
       // hours. Running *that* every thirty minutes is what this deliberately
       // is not.
       //
@@ -760,7 +760,7 @@ export class GitHubControlHubStack extends cdk.Stack {
               resources: ["execute-api:/*"],
               // Both families in one list. An IPv6 request compared only against
               // IPv4 ranges matches nothing, so NotIpAddress evaluates true and
-              // the delivery is denied — a 403 indistinguishable from a stale
+              // the delivery is denied, a 403 indistinguishable from a stale
               // allow-list, on an endpoint that had been working until GitHub
               // resolved AAAA.
               conditions: {
@@ -816,8 +816,8 @@ export class GitHubControlHubStack extends cdk.Stack {
 
       new wafv2.CfnWebACLAssociation(this, "WebhookWafAssociation", {
         // Built as a string rather than with formatArn. An API Gateway stage ARN
-        // has a leading slash before the resource — arn:…:apigateway:region::/restapis/…
-        // — and formatArn joins account and resource with a single colon, which
+        // has a leading slash before the resource, arn:…:apigateway:region::/restapis/…
+        // and formatArn joins account and resource with a single colon, which
         // produces "::restapis/…" and is rejected as malformed.
         resourceArn: `arn:${cdk.Aws.PARTITION}:apigateway:${this.region}::/restapis/${webhookApi.restApiId}/stages/${webhookApi.deploymentStage.stageName}`,
         webAclArn: webhookWaf.attrArn,
@@ -831,7 +831,7 @@ export class GitHubControlHubStack extends cdk.Stack {
           // the request with 400 before the integration runs if either is
           // missing. GitHub sends both on every delivery.
           //
-          // This is not authentication and does not pretend to be — presence is
+          // This is not authentication and does not pretend to be, presence is
           // not validity, and the signature is still verified against the body in
           // the receiver. What it buys is that a request with no signature at all
           // never becomes a Lambda invocation.
@@ -888,7 +888,7 @@ export class GitHubControlHubStack extends cdk.Stack {
 
       new cdk.CfnOutput(this, "WebhookUrl", {
         value: `${webhookApi.url}webhooks/github`,
-        description: "GitHub webhook payload URL — set this in the org's webhook settings",
+        description: "GitHub webhook payload URL, set this in the org's webhook settings",
       });
 
       new cdk.CfnOutput(this, "WebhookQueueUrl", {

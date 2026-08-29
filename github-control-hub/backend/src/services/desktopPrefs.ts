@@ -7,7 +7,7 @@ import path from "path";
  *
  * Which AWS profile you signed in with lived only in process.env, and closing
  * the app takes the embedded backend with it. So every launch fell back to
- * "default" — which for anyone whose profile is not called default meant
+ * "default", which for anyone whose profile is not called default meant
  * picking from a dropdown again, every time, forever.
  *
  * Deliberately not in DynamoDB: this is a preference belonging to one person on
@@ -51,7 +51,7 @@ export function writeDesktopPrefs(update: Partial<DesktopPrefs>): void {
 /**
  * Restore the remembered profile, once, at startup.
  *
- * Only when nothing else has already said which profile to use — an explicit
+ * Only when nothing else has already said which profile to use, an explicit
  * AWS_PROFILE in the environment is someone being deliberate, and a remembered
  * click should not override that.
  *

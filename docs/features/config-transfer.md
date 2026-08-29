@@ -9,7 +9,7 @@ Lives on the Templates tab, restricted to the
 Templates, rule templates, exclusion lists, scanners, widgets and AWS guardrails
 live only in DynamoDB, and standing up a second account creates empty tables.
 Without this, moving to another account means retyping every branch rule and
-ruleset by hand — and there is no backup of any of it.
+ruleset by hand, and there is no backup of any of it.
 
 ## What is included
 
@@ -28,7 +28,7 @@ else's history as your own.
   The honest answer to "what will this do to my production account" is a list,
   not a promise.
 - **Overwrites by id, deletes nothing.** An import adds to an account rather
-  than replacing it — replacing would silently drop whatever the target had
+  than replacing it, replacing would silently drop whatever the target had
   that the source did not.
 - **Rule templates are written before templates**, since templates reference
   them.

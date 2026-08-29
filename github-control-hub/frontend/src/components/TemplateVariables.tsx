@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
  * Inserting a placeholder into an email template by clicking it.
  *
  * Typing `{{widget}}` by hand is how a `{{widget}]` got saved, and a template
- * only reports its mistakes by arriving in somebody's inbox looking wrong — by
+ * only reports its mistakes by arriving in somebody's inbox looking wrong, by
  * which point the email has been sent. Clicking cannot mistype.
  *
  * Two details that are the whole point of doing it properly:
@@ -14,8 +14,8 @@ import { useRef, useState } from "react";
  *   - the caret ends up after what was inserted, so clicking twice puts the
  *     second one after the first rather than back at the end.
  *
- * Shared by all three template editors — the alarm dialog, the security panel
- * and the vulnerability panel — because three copies of caret arithmetic is
+ * Shared by all three template editors, the alarm dialog, the security panel
+ * and the vulnerability panel, because three copies of caret arithmetic is
  * three chances to get it subtly different.
  */
 export function useTemplateInsert(

@@ -3,7 +3,7 @@ import { Response } from "express";
 /**
  * A GitHub 403/404 on a write means the signed-in user lacks the permission for
  * that action on that repository. Because those calls are made with the user's
- * own token, GitHub's answer IS the authorization decision — this only turns it
+ * own token, GitHub's answer IS the authorization decision. This only turns it
  * into something readable.
  *
  * GitHub returns 404 rather than 403 when the user cannot see the resource at

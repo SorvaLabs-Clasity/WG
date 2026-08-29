@@ -13,6 +13,7 @@ import {
 } from "../hooks/useAws";
 import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec, AwsAccount, AwsAccessMethod } from "../api/aws";
 import { awsConsoleUrl, consoleLinkLabel } from "../utils/awsConsole";
+import AlarmModal from "../components/AlarmModal";
 
 const KIND_LABELS: Record<string, string> = {
   s3_https_only: "S3, deny non-TLS requests",
@@ -21,7 +22,7 @@ const KIND_LABELS: Record<string, string> = {
 
 const label = (kind: string) => KIND_LABELS[kind] ?? kind;
 
-/** Violations first when sorting by verdict — alphabetically "compliant" wins, which is backwards. */
+/** Violations first when sorting by verdict, alphabetically "compliant" wins, which is backwards. */
 const VERDICT_ORDER: Record<string, number> = { violation: 0, not_applicable: 1, compliant: 2 };
 
 export default function AwsPage() {
@@ -205,7 +206,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
   /**
    * A failed read is not an empty account.
    *
-   * These rendered the same, and the empty one is reassuring — "No guardrails
+   * These rendered the same, and the empty one is reassuring, "No guardrails
    * yet", with a button to add the first. Somebody whose laptop had slept long
    * enough for the credentials behind this tab to go stale was told, in a calm
    * voice, that they had no rules. That is the worst available answer for a
@@ -233,7 +234,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
     );
   }
 
-  // Worst first — a failing rule must never sit below a passing one.
+  // Worst first, a failing rule must never sit below a passing one.
   const ordered = [...rules].map(r => {
     const f = byRule.get(r.id) ?? [];
     return {
@@ -318,9 +319,10 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
   // Deliberately per-resource: deciding to correct *this* bucket is a different
   // decision from deciding every future violation should be corrected, and the
   // rule's mode is what carries the second one. So a setting changed back after
-  // this is reported again rather than silently re-corrected — unless the rule
+  // this is reported again rather than silently re-corrected, unless the rule
   // is in enforce mode, where re-correcting is the point.
   const remediate = useRemediateResource();
+  const [alarmFor, setAlarmFor] = useState<string | null>(null);
   const [fixing, setFixing] = useState<string | null>(null);
   const [fixNote, setFixNote] = useState<{ id: string; text: string; ok: boolean } | null>(null);
 
@@ -398,6 +400,13 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
             <button onClick={onEdit} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">Edit</button>
             <button onClick={onToggleEnabled} className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:opacity-70">
               {rule.enabled ? "Pause" : "Resume"}
+            </button>
+            {/* In the row with the other actions rather than floating below the
+                findings. Guardrail results were reachable only by looking at
+                them; an alarm is how drift reaches somebody who is not. */}
+            <button onClick={() => setAlarmFor(rule.id)}
+              className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:opacity-70">
+              Add alarm
             </button>
             <button onClick={() => { if (confirm(`Delete "${rule.name}"? Its findings go too.`)) onDelete(); }}
               className="text-sm font-bold text-rose-600 dark:text-rose-400 hover:opacity-70 ml-auto">Delete</button>
@@ -539,6 +548,17 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
           )}
         </Block>
       </Sheet>
+
+      {/* The same modal the Overview widgets use. A guardrail's subject id is
+          synthesised rather than stored, so the alarm machinery needs nothing
+          new to watch one. */}
+      {alarmFor && (
+        <AlarmModal
+          isOpen
+          widgetId={`guardrail:${alarmFor}`}
+          onClose={() => setAlarmFor(null)}
+        />
+      )}
     </>
   );
 }
@@ -849,7 +869,7 @@ function Step({ n, title, children }: { n: number; title: string; children: Reac
  * How to grant this app access to an account, without opening a terminal.
  *
  * The app does not create the role itself, and that is a decision rather than
- * a gap — creating IAM roles across an organization needs permissions that
+ * a gap, creating IAM roles across an organization needs permissions that
  * would let whoever held them deploy an administrator role everywhere, which
  * is worse than the administrator access this app was built without. So it
  * does everything that costs nothing: works out every value, generates the

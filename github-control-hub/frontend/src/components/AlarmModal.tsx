@@ -18,7 +18,7 @@ const labelClass = "block text-sm font-semibold text-gh-textBase dark:text-slate
  * Configure one alarm on one widget.
  *
  * The condition list comes from the server rather than being hard-coded here,
- * so a widget only ever offers thresholds it can actually produce — and the
+ * so a widget only ever offers thresholds it can actually produce, and the
  * same catalogue is what the API validates against, which means the form
  * cannot construct a request the server will refuse.
  */

@@ -11,7 +11,7 @@
  * Three signals, because one is misleading on its own:
  *
  *   commits   who changed it. Strongest signal, and the one that goes stale
- *             fastest — somebody who owned a file two years ago may have
+ *             fastest. Somebody who owned a file two years ago may have
  *             forgotten it, and somebody with four commits last week has it in
  *             their head right now.
  *   reviews   who read it. A reviewer who never commits still knows the code,
@@ -61,7 +61,7 @@ export const SIGNAL_WEIGHT: Record<Signal, number> = {
  * Halving every 90 days.
  *
  * Chosen so a quarter-old contribution counts half, and a year-old one about a
- * sixteenth — still present, so a long-departed owner does not vanish entirely
+ * sixteenth, still present, so a long-departed owner does not vanish entirely
  * from a list whose whole purpose is finding whoever knows the thing.
  */
 export const HALF_LIFE_DAYS = 90;
@@ -113,7 +113,7 @@ export function isBot(login: string): boolean {
   // "Bot" as a whole word, anywhere.
   //
   // A commit with no linked GitHub account falls back to the git config name,
-  // which is a display name rather than a login — "Acme Studios Bot", not
+  // which is a display name rather than a login, "Acme Studios Bot", not
   // "acme-bot[bot]". Matching only the login forms let exactly that account
   // rank first on a live lookup, which is the one result that makes this
   // feature worse than useless.
@@ -207,11 +207,11 @@ export interface GithubReader {
  *
  * GitHub returns one page and a `next` link; asking for a hundred and getting a
  * hundred means "at least a hundred", not "a hundred". Reporting the page size
- * as a count is a number that is wrong in a way nobody can see — a repository
+ * as a count is a number that is wrong in a way nobody can see, a repository
  * with four thousand commits and one with a hundred and one both read as 100.
  *
- * Rather than paging to the end — forty requests for a busy repository, for a
- * number that changes nothing about the ranking — the count is reported as a
+ * Rather than paging to the end, forty requests for a busy repository, for a
+ * number that changes nothing about the ranking, the count is reported as a
  * floor and the answer says so.
  */
 export const COMMIT_PAGE = 100;
@@ -300,7 +300,7 @@ export async function expertsForLibrary(
   // Scoped by filename, not `in:file`.
   //
   // A bare `"react" org:X in:file` search returns every source file mentioning
-  // the word — nearly five thousand on a real organization, of which the first
+  // the word, nearly five thousand on a real organization, of which the first
   // page contained no manifests at all, so the whole lookup returned nothing.
   // `filename:package.json` returns only manifests and answers the question
   // actually being asked.

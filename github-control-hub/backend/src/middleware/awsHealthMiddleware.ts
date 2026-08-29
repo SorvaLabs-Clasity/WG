@@ -26,7 +26,7 @@ export function isAwsLocked(): boolean {
 /**
  * Drop the cached health verdict, because it was about a different account.
  *
- * `unlockAws()` happens to do this too, and every switch endpoint calls it — so
+ * `unlockAws()` happens to do this too, and every switch endpoint calls it, so
  * this is belt and braces today. It is here anyway because the next person to
  * change either of them should not have to notice that a lock and an account
  * change are the same thing by coincidence: an account switched into while the

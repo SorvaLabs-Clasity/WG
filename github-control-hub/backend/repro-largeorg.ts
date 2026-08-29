@@ -57,7 +57,7 @@ function gitHub(limitPerMinute = 30) {
  * One evaluation, as the check performs it.
  *
  * It refuses while coverage is incomplete, because that is what the shipped
- * check does — `if (!coverage.complete) throw new PartialQueryError(...)` sits
+ * check does, `if (!coverage.complete) throw new PartialQueryError(...)` sits
  * ahead of the line that pushes findings. A harness that returned the findings
  * anyway would report a failure that production does not have, and worse, would
  * pass if production ever started returning them.

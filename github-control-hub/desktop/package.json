@@ -1,7 +1,7 @@
 {
   "name": "github-control-hub-desktop",
-  "version": "1.0.51",
-  "description": "GitHub Control Hub — Desktop App (Electron)",
+  "version": "1.0.54",
+  "description": "GitHub Control Hub, Desktop App (Electron)",
   "author": "GitHub Control Hub",
   "private": true,
   "main": "dist/main.js",

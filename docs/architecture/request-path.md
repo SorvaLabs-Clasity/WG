@@ -11,7 +11,7 @@ One click, traced end to end. Example: enabling Dependabot on a repository.
    Verifies the JWT, attaches req.user = { login, accessToken }
 
 3. Route handler (routes/dependencies.ts)
-   Builds an Octokit client with req.user.accessToken — YOUR token
+   Builds an Octokit client with req.user.accessToken, YOUR token
 
 4. GitHub
    Accepts or refuses based on YOUR permissions on that repository
@@ -29,13 +29,13 @@ may write to a repository; GitHub does. See
 [the permissions model](../auth/permissions-model.md).
 
 **Step 5 records an undo payload**, not just a log line. What that payload is
-allowed to do is a separate decision — see
+allowed to do is a separate decision, see
 [activity and undo](../features/activity-and-undo.md).
 
 ## Reads are different
 
 Most read paths use the **system token** from the GitHub App rather than
-yours — listing hundreds of repositories with every user's token would burn through
+yours, listing hundreds of repositories with every user's token would burn through
 per-user rate limits immediately. The system token has a shared 12,500/hour
 budget. See [rate limits](../github-api/rate-limits.md).
 

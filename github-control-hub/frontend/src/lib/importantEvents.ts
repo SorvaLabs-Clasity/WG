@@ -7,7 +7,7 @@
  *
  * They all share one action, `security.alert`, which is how they are found and
  * filtered. What they do not share is what happened, and the feed used to show
- * every one of them as "Security Alert" — the name of the drawer rather than
+ * every one of them as "Security Alert", the name of the drawer rather than
  * the name of the thing in it.
  *
  * Kept in step with TYPE_LABELS in components/ImportantEvents.tsx, which labels

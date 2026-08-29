@@ -8,15 +8,15 @@
  *
  * Three streams, because three things write here:
  *
- *   github  changes to the organization — branches, protection, rulesets,
+ *   github  changes to the organization, branches, protection, rulesets,
  *           repositories, Dependabot. Some done through this app, some caught
  *           by webhook after somebody did them on github.com.
  *   aws     the guardrail engine, which runs in Lambda and writes `aws.guardrail`
- *           rows. Note that action is not in the ActivityAction union — the
+ *           rows. Note that action is not in the ActivityAction union, the
  *           Lambda writes the string directly.
  *   app     this application's own configuration: widgets, scanners, imports.
  *           Housekeeping. Real, and not why anyone opens an audit trail. Also
- *           the `sync.*` collection runs — when the app last went and looked,
+ *           the `sync.*` collection runs, when the app last went and looked,
  *           who asked it to, and what came back.
  *
  * Kept as data rather than a switch so repro-activitycategories.ts can assert
@@ -28,7 +28,7 @@ export type ActivityCategory = "github" | "aws" | "app";
 /**
  * "all" is a view, not a category.
  *
- * No row is ever classified as "all" — `categoryOf` still returns one of the
+ * No row is ever classified as "all", `categoryOf` still returns one of the
  * four. Keeping it out of ActivityCategory is what stops it becoming a fifth
  * bucket that rows could accidentally land in, and keeps the exhaustiveness
  * check in repro-activitycategories.ts meaningful.
@@ -59,7 +59,7 @@ export const CATEGORY_SOURCES: Record<ActivityCategory, Array<"app" | "github">>
 
 /**
  * Prefixes, longest-match-wins, so `template.apply` can differ from
- * `template.create` — applying a template changed repositories, creating one
+ * `template.create`, applying a template changed repositories, creating one
  * only changed a setting in this app.
  */
 const PREFIXES: Array<[string, ActivityCategory]> = [
@@ -67,7 +67,7 @@ const PREFIXES: Array<[string, ActivityCategory]> = [
   ["security.", "github"],
 
   // Collection runs: a sync, a sweep, a re-check. Housekeeping in the same sense
-  // the rest of this bucket is — the app going and looking, rather than anything
+  // the rest of this bucket is, the app going and looking, rather than anything
   // in GitHub or AWS changing. Without a prefix here they would fall through to
   // the organization stream, where a scheduled sync would sit between two
   // protection changes and push real events off the first page.

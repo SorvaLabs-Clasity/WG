@@ -21,7 +21,7 @@ export interface OrgConfig {
    * When the access graph was last rebuilt, and how it went.
    *
    * Kept here rather than beside the edges because the aggregator clears that
-   * table before rewriting it — a marker stored there would be deleted by the
+   * table before rewriting it, a marker stored there would be deleted by the
    * next run, including a run that then failed, leaving no record at all.
    *
    * The screens that read the graph are showing a snapshot. Without this they
@@ -56,13 +56,13 @@ export interface OrgConfig {
    * Pull requests fetched per GraphQL page, learned rather than configured.
    *
    * The query's cost scales with the page, and the size an organization can
-   * afford is a property of that organization — how many pull requests, how many
+   * afford is a property of that organization, how many pull requests, how many
    * reviewers, how much CI. It is discovered by asking for a large page and
    * stepping down when GitHub gives up, which costs about eleven seconds per
    * step because that is how long GitHub takes to abandon a page it cannot
    * compute.
    *
-   * Held in memory alone, that discovery ran once per process — so every launch
+   * Held in memory alone, that discovery ran once per process, so every launch
    * of the desktop app paid twenty to thirty seconds on the first load of the
    * pull request tab, and every Lambda cold start paid it again. Stored here, it
    * is paid once per organization, ever.
@@ -147,7 +147,7 @@ export async function updateRenovateBot(bot: string): Promise<OrgConfig> {
  * Records how the access graph rebuild went.
  *
  * Merged onto whatever is stored rather than replacing it, so recording a
- * failed attempt does not erase the timestamp of the last good one — "last
+ * failed attempt does not erase the timestamp of the last good one, "last
  * built four hours ago, last attempt failed ten minutes ago" is the state
  * somebody needs to see, and either field alone hides half of it.
  */

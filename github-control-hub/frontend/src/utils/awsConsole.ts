@@ -11,7 +11,7 @@
  * actually uses. Empty when nothing said.
  *
  * It used to fall back to "us-east-1", which for a link is worse than useless:
- * the console opens, in the wrong region, showing nothing — and reads as the
+ * the console opens, in the wrong region, showing nothing, and reads as the
  * resource having been deleted. Findings carry their own region now, so this
  * is only reached by something that has none, and the honest answer there is
  * no link at all.
@@ -20,7 +20,7 @@ const DEFAULT_REGION: string =
   (import.meta.env.VITE_AWS_REGION as string | undefined) || "";
 
 /**
- * CloudWatch's console encodes log group names twice — a `/` becomes `$252F`,
+ * CloudWatch's console encodes log group names twice, a `/` becomes `$252F`,
  * not `%2F`. Getting this wrong lands you on an empty page rather than an
  * obvious error, which is worse.
  */
@@ -47,7 +47,7 @@ export function awsConsoleUrl(resourceType: string | undefined, resourceId: stri
   }
 }
 
-/** What the link should say — "the bucket", "the log group", and so on. */
+/** What the link should say, "the bucket", "the log group", and so on. */
 export function consoleLinkLabel(resourceType: string | undefined): string {
   switch (resourceType) {
     case "s3:bucket": return "Open bucket";

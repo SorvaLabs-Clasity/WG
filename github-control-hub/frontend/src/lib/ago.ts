@@ -1,5 +1,5 @@
 /**
- * "4 hours ago", down to a minute — below that, "just now".
+ * "4 hours ago", down to a minute, below that, "just now".
  *
  * Shared rather than copied. Two screens report how old their data is, and a
  * dashboard that says "12 minutes ago" beside a page that says "12m" reads as

@@ -58,7 +58,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   }
 
   // When GitHub delivered this, recorded here rather than in the worker.
-  // The worker's clock is whenever the queue got round to it — seconds
+  // The worker's clock is whenever the queue got round to it, seconds
   // later normally, minutes after a retry, and days later for a redelivery
   // of an old event. Stamping at the edge keeps the alert's time close to
   // the thing it describes.
@@ -68,7 +68,7 @@ export async function handler(event: APIGatewayProxyEvent): Promise<APIGatewayPr
   });
 
   // SQS refuses a message over 256 KB, and the Express route this replaces
-  // accepted up to 1 MB — so a push on a busy default branch or a large
+  // accepted up to 1 MB, so a push on a busy default branch or a large
   // installation_repositories is a regression band rather than a theoretical
   // one. Without this the CloudWatch line is an opaque SendMessage failure and
   // GitHub shows a 502 with no cause; the byte count and delivery id are what

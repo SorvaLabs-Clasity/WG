@@ -4,7 +4,7 @@ function getPrefix(): string {
 
 function getRegion(): string {
   // No literal. An empty string leaves the AWS SDK to resolve the region from
-  // the signed-in profile, which is the only thing that knows it — naming one
+  // the signed-in profile, which is the only thing that knows it, naming one
   // here overrode the profile and read a different account's tables.
   return process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "";
 }
@@ -36,7 +36,7 @@ function resolveTableNames(): void {
  *
  * The early return is kept on purpose here: this runs once, before the window
  * exists, and re-reading on every boot would be the same read. What it must not
- * do is stand in for the reload that happens when somebody switches accounts —
+ * do is stand in for the reload that happens when somebody switches accounts,
  * that lives in routes/auth.ts and is keyed on the account, because the value
  * already in the environment says nothing about which account it came from.
  */
@@ -53,7 +53,7 @@ async function loadSecrets(): Promise<void> {
       //
       // No SYSTEM_GITHUB_TOKEN either. That fallback personal access token was
       // removed from client.ts, from the server's own startup load, from the
-      // webhook worker's bundle and from the alarm handler — this was the last
+      // webhook worker's bundle and from the alarm handler. This was the last
       // loader still copying it out of Secrets Manager, into the environment of
       // a long-lived desktop process, where every child it spawns inherits it.
       // `aws sso login` is spawned with `...process.env`, so a classic PAT with
@@ -71,7 +71,7 @@ async function loadSecrets(): Promise<void> {
 
 export async function bootstrap(): Promise<void> {
   // Only when there is something to set. Assigning the empty string getRegion()
-  // returns is what put `region: ""` into the SDK — and an empty region is
+  // returns is what put `region: ""` into the SDK, and an empty region is
   // worse than an absent one, because it overrides the resolver instead of
   // deferring to it. awsRegion() treats "" as absent, but nothing should have
   // to know that; the variable is simply left unset when nobody named a region.

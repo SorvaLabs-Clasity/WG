@@ -9,7 +9,7 @@ import {
  * Who can reach what.
  *
  * Read-only by design. This answers the access-review question and stops
- * there — removing someone's access is a decision with consequences that
+ * there, removing someone's access is a decision with consequences that
  * belongs where the consequences are visible, not behind a button on a map.
  *
  * Open to anyone signed in, like the rest of the reporting surface. Knowing
@@ -76,7 +76,7 @@ router.get("/repos", async (_req: Request, res: Response) => {
  *
  * Not a sync: it goes nowhere near GitHub, and it cannot pick up an access
  * change that has not been collected yet. Logged all the same, and worded so the
- * distinction is legible — somebody reading the feed to work out why a change is
+ * distinction is legible. Somebody reading the feed to work out why a change is
  * not showing needs to see that this ran and that it was not the thing that
  * would have helped.
  */

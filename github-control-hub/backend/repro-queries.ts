@@ -2,7 +2,7 @@
  * Tests for the four checks added on top of repository metadata.
  *
  * These drive evaluateSecurityQuery itself against a fixture, rather than
- * reimplementing the filtering in the test — a test that reimplements the code
+ * reimplementing the filtering in the test, a test that reimplements the code
  * only proves the two copies agree, which is exactly the failure it is supposed
  * to catch.
  *

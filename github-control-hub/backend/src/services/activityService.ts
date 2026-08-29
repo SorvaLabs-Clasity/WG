@@ -50,7 +50,7 @@ export type ActivityAction =
   | "github.ruleset_edited"
   | "config.import"
   | "config.updated"
-  // The AWS guardrail screens. `aws.guardrail` itself is absent on purpose —
+  // The AWS guardrail screens. `aws.guardrail` itself is absent on purpose,
   // the Lambda writes that string directly, from a bundle that does not import
   // this file.
   | "aws.guardrail.create"
@@ -58,7 +58,7 @@ export type ActivityAction =
   | "aws.guardrail.delete"
   | "aws.guardrail.run"
   | "aws.guardrail.preview"
-  // Collection runs. Not changes to anything in GitHub or AWS — a record that
+  // Collection runs. Not changes to anything in GitHub or AWS, a record that
   // the app went and looked, who asked it to, and what came back. Without them
   // "the page says 0" and "nothing has been collected since Tuesday" were the
   // same observation.
@@ -133,7 +133,7 @@ const memoryLog: ActivityEntry[] = [];
  * rather than one that ends mid-period.
  *
  * The consequence worth knowing is that undo stops working on anything past
- * this age — the row carrying the payload is gone. Undoing a year-old change
+ * this age, the row carrying the payload is gone. Undoing a year-old change
  * is not something anyone should be doing, but it is a real edge and not a
  * side effect anybody would guess at.
  *
@@ -179,7 +179,7 @@ export const SCHEDULE_ACTOR = "system (schedule)";
  *
  * Separate from logActivity because these rows answer a different question. The
  * rest of the feed is "what changed"; these are "when did we last look, and did
- * it work" — the question behind every report of a page showing zero, and one
+ * it work", the question behind every report of a page showing zero, and one
  * the feed could not answer at all because no collection run wrote anything.
  *
  * Never throws. A run that did its work and then failed to write a log line has
@@ -192,7 +192,7 @@ export async function logSync(
   opts: {
     /** What was synced: a repository, a check name, or "*" for everything. */
     target?: string;
-    /** What came back. Numbers, not adjectives — this is read to compare runs. */
+    /** What came back. Numbers, not adjectives. This is read to compare runs. */
     details: string;
     failed?: boolean;
     error?: string;
@@ -308,8 +308,8 @@ export async function getActivity(limit = 50, offset = 0): Promise<ActivityEntry
 /**
  * When GitHub last reached us, and how long that has been.
  *
- * If the org webhook breaks — a rotated secret, a changed address, the instance
- * down — nothing about the app looks wrong. Auto-apply simply stops happening,
+ * If the org webhook breaks, a rotated secret, a changed address, the instance
+ * down. Nothing about the app looks wrong. Auto-apply simply stops happening,
  * and the way you find out is noticing weeks later that a repository never got
  * its template. There is no backfill, so whatever arrived in the meantime is
  * gone.
@@ -401,7 +401,7 @@ const REPO_ACTIVITY_MAX_EXAMINED = 3000;
  * One repository's activity.
  *
  * `Limit` on a Query applies to rows **read**, not to rows that survive the
- * filter — the same trap that getActivityById and getChildActivities were
+ * filter, the same trap that getActivityById and getChildActivities were
  * moved off indexes to escape, still sitting here. With `Limit: 200` this
  * asked "is this repository among the newest 200 rows in the organization?",
  * which is a different question from the one it appears to answer and gets
@@ -436,7 +436,7 @@ export async function getActivityForRepo(repo: string, limit = 50): Promise<Acti
       );
       items.push(...((result.Items || []) as ActivityEntry[]));
       // ScannedCount, not Count: the budget is about how much was read, and
-      // Count is only what survived the filter — spending it would make a
+      // Count is only what survived the filter, spending it would make a
       // repository with no rows cost the most.
       examined += result.ScannedCount ?? 0;
       lastKey = result.LastEvaluatedKey;
@@ -479,10 +479,10 @@ export async function getActivityMerged(limit: number, offset: number): Promise<
 /**
  * Every row shares one partition key, so neither of the lookups below can be
  * expressed as a key condition on the base table. They used to scan the newest
- * rows and filter — and in DynamoDB a Limit applies BEFORE the filter, so both
+ * rows and filter, and in DynamoDB a Limit applies BEFORE the filter, so both
  * were really asking "is it among the most recent N?" rather than "does it
  * exist?". That answer changes as the log grows: correct at 170 rows, wrong at
- * 200, and wrong silently — an empty result is indistinguishable from a parent
+ * 200, and wrong silently, an empty result is indistinguishable from a parent
  * that genuinely has no children.
  *
  * Both now go through sparse indexes keyed on the attribute being looked up.

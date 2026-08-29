@@ -4,7 +4,7 @@
  * A fix can be committed, pushed, and built, and still not be in the app you
  * are running. The release workflow publishes on the version in
  * `desktop/package.json`, and a push that does not move it builds fine and then
- * fails to publish — because the tag already exists. The download stays the
+ * fails to publish, because the tag already exists. The download stays the
  * previous build, the build log is green, and nothing on screen disagrees.
  *
  * That is exactly how a declared-but-unshipped dependency survived a merge:
@@ -12,7 +12,7 @@
  * app, and the only way to tell was listing the bundle's node_modules by hand.
  *
  * So the version is shown in two places, and it is asked of the running
- * application rather than compiled in — a constant baked at build time is the
+ * application rather than compiled in, a constant baked at build time is the
  * version at *compile* time, which is the number that misleads.
  *
  * Run:  npx tsx repro-appversion.ts   from github-control-hub/backend
@@ -75,7 +75,7 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/../${p}`, "utf8");
       typeof desktop.version === "string" && /^\d+\.\d+\.\d+$/.test(desktop.version),
       desktop.version);
 
-    // Not a specific number — that would fail on every release. What matters is
+    // Not a specific number, that would fail on every release. What matters is
     // that the workflow keys on this file, so it is the thing to move.
     const workflow = fs.readFileSync(`${__dirname}/../../.github/workflows/release.yml`, "utf8");
     check("  and the release workflow builds off a push to main",

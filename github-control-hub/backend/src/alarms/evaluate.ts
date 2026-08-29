@@ -8,8 +8,8 @@ import type { WidgetLike, WidgetRows } from "./widgetValues";
 /**
  * One pass over every alarm.
  *
- * Everything it touches is injected, so the whole decision — due, read,
- * compare, transition, send — can be driven from a test with no AWS, no
+ * Everything it touches is injected, so the whole decision, due, read,
+ * compare, transition, send, can be driven from a test with no AWS, no
  * GitHub and no clock.
  */
 
@@ -86,7 +86,7 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
     const widget = await deps.getWidget(alarm.widgetId);
     if (!widget) {
       // The widget was deleted and the alarm outlived it. Recorded so the UI
-      // can say so, and deliberately not fired — an alarm about nothing is
+      // can say so, and deliberately not fired, an alarm about nothing is
       // not an emergency.
       summary.unreadable++;
       await deps.saveRuntime(alarm.id, {

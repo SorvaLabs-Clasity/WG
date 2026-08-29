@@ -16,8 +16,8 @@
  * the credentials the process already has, against the account those
  * credentials belong to, and can reach nothing else.
  *
- * The account is still discovered rather than configured — `sts:GetCallerIdentity`
- * answers it — because every finding is stamped with the account it came from,
+ * The account is still discovered rather than configured, `sts:GetCallerIdentity`
+ * answers it, because every finding is stamped with the account it came from,
  * and a hardcoded id would label somebody else's estate with our name.
  */
 import { awsRegion, resolveAwsRegion } from "../utils/region";
@@ -78,7 +78,7 @@ export async function homeAccountId(): Promise<string> {
 /**
  * Forget which account this is.
  *
- * Cached because it is a network call whose answer could not change — which
+ * Cached because it is a network call whose answer could not change, which
  * stopped being true when the app learned to switch accounts. Every finding is
  * stamped with this, so a stale one files the account you moved to under the
  * name of the one you left.
@@ -115,7 +115,7 @@ export async function resolveAccounts(): Promise<AwsAccount[]> {
  *
  * Undefined means "use the credential chain the process already has", which is
  * the only thing this app can do now. There is no role to assume and no key
- * pair to fetch, which is the point — a compromise of the engine cannot reach
+ * pair to fetch, which is the point, a compromise of the engine cannot reach
  * an account other than the one it already runs in.
  */
 export async function credentialsFor(_account: AwsAccount): Promise<undefined> {
@@ -125,7 +125,7 @@ export async function credentialsFor(_account: AwsAccount): Promise<undefined> {
 /**
  * Where to sweep.
  *
- * An account with no regions is swept nowhere, and that is the honest outcome —
+ * An account with no regions is swept nowhere, and that is the honest outcome,
  * a region invented here would be one nobody chose, and the sweep would report
  * a clean bill of health for somewhere it never looked.
  */

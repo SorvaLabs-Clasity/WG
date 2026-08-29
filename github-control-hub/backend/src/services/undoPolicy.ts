@@ -18,7 +18,7 @@ import type { RepoLevel } from "../github/permissions";
  * where they can see what they are discarding and the reflog can get it back.
  * A button in an audit UI is the wrong instrument, whatever permissions sit in
  * front of it, so these are refused at the policy layer rather than left
- * un-implemented — un-implemented is a state someone can change by accident.
+ * un-implemented, un-implemented is a state someone can change by accident.
  */
 const CODE_HISTORY_ACTIONS = new Set<string>([
   "github.push",
@@ -46,7 +46,7 @@ export const ALLOWED_UNDO_ACTIONS = new Set<string>([
  *
  * Rows carrying these payloads are still in the activity log, and the Undo
  * button is offered on the strength of a payload existing rather than a list of
- * known actions — so pressing it on a template row is something a user can
+ * known actions, so pressing it on a template row is something a user can
  * still do. It has to fail, and it has to say why: "not supported" reads like a
  * bug, and a silent success would put a lie in the audit trail.
  *
@@ -76,12 +76,12 @@ export function unsupportedUndoReason(action: string): string {
  * What each undo operation requires of the person asking for it.
  *
  * Undoing something is doing something. If a person could not have performed
- * the original action, they must not be able to reverse it either — and the
+ * the original action, they must not be able to reverse it either, and the
  * check has to be per-repository, because being on the admin team says nothing
  * about whether you can touch a particular repo.
  *
  * Keyed on the operation rather than on the entry's `repo` field, because that
- * field is overloaded — AWS guardrail rows put a log group name or "*" in it.
+ * field is overloaded, AWS guardrail rows put a log group name or "*" in it.
  *
  * `repo` mirrors what GitHub demands of the forward call: creating a branch
  * needs push, while protection, rulesets and Dependabot need admin. `adminTeam`
@@ -115,7 +115,7 @@ const UNDO_REQUIREMENTS: Record<string, UndoRequirement> = {
   restore_scanner:          { adminTeam: true },
   revert_scanner:           { adminTeam: true },
 
-  // One dashboard, shared by everyone — listWidgets does not scope by user —
+  // One dashboard, shared by everyone, listWidgets does not scope by user,
   // so a widget is shared configuration, not a personal preference.
   delete_widget:            { adminTeam: true },
   restore_widget:           { adminTeam: true },
@@ -126,7 +126,7 @@ const UNDO_REQUIREMENTS: Record<string, UndoRequirement> = {
  * The same question for retrying a failed action.
  *
  * Retry re-runs the original operation, so it needs exactly what the original
- * needed — and it was reachable with no check at all, which made it a way
+ * needed, and it was reachable with no check at all, which made it a way
  * around every gate on this page.
  */
 const RETRY_REQUIREMENTS: Record<string, UndoRequirement> = {
@@ -182,7 +182,7 @@ export function isReversible(entry: ActivityEntry): boolean {
  * Why this entry cannot be undone, or null if it can be. The string is shown
  * to the user, so it says what to do instead rather than just refusing.
  *
- * `descendants` matters because a parent often carries no payload of its own —
+ * `descendants` matters because a parent often carries no payload of its own,
  * applying a template records the parent and does the work in its children.
  * Judging the parent alone would refuse the most common undo in the app.
  */

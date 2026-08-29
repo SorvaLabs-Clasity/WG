@@ -271,7 +271,7 @@ export function buildPushRulesetRules(push: PushProtection): any[] {
  * means. A ruleset scoped to `refs/heads/maintenance` "covers" `main`, because
  * "maintenance" contains "main". So the check that asks whether the default
  * branch is protected reads a rule about a different branch entirely and says
- * yes — a security check reporting protection that is not there, which is the
+ * yes, a security check reporting protection that is not there, which is the
  * one direction it must never be wrong in.
  *
  * The third clause has its own version of the same fault: `~DEFAULT_BRANCH`
@@ -282,7 +282,7 @@ export function buildPushRulesetRules(push: PushProtection): any[] {
  *
  * GitHub's own semantics instead. `~ALL` and `~DEFAULT_BRANCH` are the two
  * special values; everything else is a full ref with fnmatch wildcards, where
- * `*` stops at a path separator and `**` crosses it — so `refs/heads/release/*`
+ * `*` stops at a path separator and `**` crosses it, so `refs/heads/release/*`
  * covers `release/1.0` and not `release/1.0/hotfix`.
  */
 export function refMatchesBranch(
@@ -409,7 +409,7 @@ export function branchWasTouched(w: BranchWork): boolean {
  *
  * Two questions, because they are not the same one. `movedSinceCreation`
  * answers "has anyone committed here" and needs the SHA recorded at creation.
- * `unmergedCommits` answers "would deleting lose those commits" — a branch
+ * `unmergedCommits` answers "would deleting lose those commits", a branch
  * whose work has since been merged is safe to delete even though it moved.
  *
  * Returns null when the branch is already gone, which makes deleting it a

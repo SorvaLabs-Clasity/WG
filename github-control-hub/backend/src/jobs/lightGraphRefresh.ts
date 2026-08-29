@@ -6,14 +6,14 @@ import { buildRepoMeta } from "./repoMeta";
 /**
  * The cheap half of the access graph, refreshed far more often than the rest.
  *
- * Six checks read edge types the full rebuild is the only writer of —
+ * Six checks read edge types the full rebuild is the only writer of,
  * `public-repos`, `archived-repos-with-access`, `stale-repos`, `unowned-repos`,
  * `empty-teams` and `repos-dependent-on`. Webhooks now patch those as changes
  * arrive, but a webhook can be missed, arrive out of order, or not be sent at
  * all, and until this existed the only correction was six hours away.
  *
  * The striking part is the cost. The full rebuild is about four requests per
- * *repository* — twelve hundred for three hundred repos — and almost none of
+ * *repository*, twelve hundred for three hundred repos, and almost none of
  * that is what these six read:
  *
  *   repo_meta      already returned by the repository listing. No extra call.
@@ -21,8 +21,8 @@ import { buildRepoMeta } from "./repoMeta";
  *   has_member     included in those two.
  *
  * So a few hundred repositories and a few dozen teams costs under a hundred
- * requests, against fifteen thousand an hour. The expensive walk — every
- * repository's collaborators, branches, workflows and alerts — stays on six
+ * requests, against fifteen thousand an hour. The expensive walk, every
+ * repository's collaborators, branches, workflows and alerts, stays on six
  * hours, where it belongs.
  *
  * **This never clears the table.** The full rebuild does, and running that
@@ -75,7 +75,7 @@ export async function refreshLightEdges(fallbackToken?: string): Promise<LightRe
   // `usesDynamo()` reports whether ACTIVITY_TABLE is set. This runs in the
   // aggregator's Lambda, which is given GRAPH_EDGES_TABLE and never that one,
   // so the answer was always no and every thirty-minute pass returned here
-  // having done nothing — in about fifty milliseconds, which is what the logs
+  // having done nothing, in about fifty milliseconds, which is what the logs
   // showed and what nobody read as a failure.
   if (!process.env.GRAPH_EDGES_TABLE) {
     if (process.env.AWS_LAMBDA_FUNCTION_NAME) {
@@ -197,7 +197,7 @@ for (const repo of repos) {
     //
     // A partial read looks identical to a team that lost every repository and
     // every member, and acting on it would delete the edges rather than report
-    // that they could not be checked — the same failure as showing an empty
+    // that they could not be checked, the same failure as showing an empty
     // result for a check that could not run.
     if (readTeam) {
       for (const existing of await edgesUnder(teamId)) {

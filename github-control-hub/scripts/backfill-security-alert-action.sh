@@ -3,7 +3,7 @@
 # One-time: relabel security alerts that were logged as "Issue Opened".
 #
 # `createAlert` used to write its activity row as `"github.issue_opened" as any`
-# — and the cast is the tell, because nothing there opens an issue. The Activity
+#: and the cast is the tell, because nothing there opens an issue. The Activity
 # tab therefore showed every security alert under a green "Issue Opened" chip:
 # a different event, on a different part of GitHub, and the one row somebody
 # scanning for a security alert would skip past.

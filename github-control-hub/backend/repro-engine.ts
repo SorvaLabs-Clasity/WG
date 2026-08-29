@@ -29,7 +29,7 @@ function fakeCollectors(resources: ResourceSnapshot[]) {
 }
 
 /**
- * One account, reached with ambient credentials — the shape every installation
+ * One account, reached with ambient credentials, the shape every installation
  * has before anyone adds a second one. Injected because the real resolver asks
  * STS which account it is in, and these tests are about the engine, not AWS.
  */

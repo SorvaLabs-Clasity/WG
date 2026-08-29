@@ -10,7 +10,7 @@ Two budgets, and they behave very differently.
 ## Why that split drives the design
 
 Reads use the App token because bulk work is expensive. A full graph sync across
-500 repositories costs roughly 1,500 requests — repos, branches, collaborators,
+500 repositories costs roughly 1,500 requests, repos, branches, collaborators,
 workflows, Dependabot alerts. Run that on a user's own budget and two syncs lock
 that person out of GitHub entirely, not just out of this app.
 
@@ -42,7 +42,7 @@ Silently sleeping would turn a rate limit into "the app is mysteriously slow".
 Instead the error surfaces, the backend responds `429` with the reset time, and
 the UI shows a banner counting down to the minute the budget returns.
 
-Secondary rate limits — GitHub's protection against bursts of writes — are
+Secondary rate limits, GitHub's protection against bursts of writes, are
 reported separately, because the advice differs: primary means wait, secondary
 means slow down.
 

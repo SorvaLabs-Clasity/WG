@@ -3,7 +3,7 @@
  *
  * The feed mixed a widget being renamed with branch protection being removed,
  * so it was split four ways. The risk in splitting is that a row lands in a tab
- * nobody watches — which is worse than the mess, because at least the mess was
+ * nobody watches, which is worse than the mess, because at least the mess was
  * visible.
  *
  * So this asserts the classification of every action the backend can write,
@@ -59,7 +59,7 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
   ["template.create", "app"], ["template.update", "app"], ["template.delete", "app"],
   ["activity.undo", "app"], ["activity.redo", "app"], ["activity.retry", "app"],
 
-  // Collection runs. Not changes to anything — the app going and looking.
+  // Collection runs. Not changes to anything, the app going and looking.
   // Classified as housekeeping so a six-hourly sync cannot push a protection
   // change off the first page of the organization stream.
   ["sync.graph", "app"], ["sync.compliance", "app"], ["sync.query", "app"],
@@ -85,7 +85,7 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
 //
 // ActivityAction is declared twice: once in the backend service that writes the
 // rows, once in the frontend types that render them. Nothing links them, so a
-// new action added on one side alone produces rows the feed cannot label — and
+// new action added on one side alone produces rows the feed cannot label, and
 // because ACTION_CONFIG is a total Record over the frontend union, the failure
 // shows up as an unlabelled badge rather than as a build error.
 {
@@ -93,7 +93,7 @@ const EXPECTED: Array<[string, ActivityCategory]> = [
   // same as every other one here.
   const actionsIn = (file: string): string[] => {
     // Comments come off first. Both declarations carry explanatory comments, and
-    // one of them mentions a filename ending in ".ts;" — which ended the parse
+    // one of them mentions a filename ending in ".ts;", which ended the parse
     // early and made the two unions look different when they were not. Reading
     // the quoted members after stripping comments has no such hazard.
     const src = fs.readFileSync(file, "utf8").replace(/\/\/[^\n]*/g, "");

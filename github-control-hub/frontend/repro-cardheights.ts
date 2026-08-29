@@ -2,15 +2,15 @@
  * Overview cards line up.
  *
  * The grid carried `items-start`, which tells every cell to shrink to its own
- * content. Each card's height then followed whatever it happened to hold — a
+ * content. Each card's height then followed whatever it happened to hold, a
  * check naming three repositories stood taller than one naming a single
- * repository, and one with a percentage bar taller than one without — so a row
+ * repository, and one with a percentage bar taller than one without, so a row
  * of cards read as ragged rather than as a set.
  *
  * Equal height needs both halves: the row must be allowed to stretch, and the
  * card must fill the cell it is given. Removing `items-start` alone does
  * nothing visible, because the card still sizes to its content inside a taller
- * cell — which is the version of this that looks unfixed.
+ * cell, which is the version of this that looks unfixed.
  *
  * Run:  npx tsx repro-cardheights.ts   from github-control-hub/frontend
  */
@@ -37,14 +37,14 @@ const page = fs.readFileSync("./src/pages/AnalyticsPage.tsx", "utf8");
   // ── every card the grid can render fills its cell ───────────────────
   //
   // Four, and a miss on any one of them is a single ragged card in an
-  // otherwise even row — which reads as a rendering bug rather than a state.
+  // otherwise even row, which reads as a rendering bug rather than a state.
   {
     const card = page.slice(page.indexOf("function CheckCard"));
     const body = card.slice(0, card.indexOf("\nfunction "));
 
     // Split on the returns rather than pattern-matching the tag: one root
     // carries an `onKeyDown` arrow, and a `[^>]*` tag matcher stops dead at the
-    // `=>` inside it. Only the returns that open an element are renders — the
+    // `=>` inside it. Only the returns that open an element are renders, the
     // others are a useEffect cleanup.
     const roots = body.split(/\n\s*return \(/).slice(1)
       .filter(r => /^\s*</.test(r))

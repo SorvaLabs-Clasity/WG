@@ -22,20 +22,20 @@ function passesThrough(env: { clientId?: string; activityTable?: string }, locke
 const CONFIGURED = { clientId: "Iv1.abc", activityTable: "github-control-hub-activity" };
 
 (async () => {
-  check("first run, nothing configured — open",
+  check("first run, nothing configured, open",
     passesThrough({}, false));
 
-  check("fully connected and signed in — requires auth",
+  check("fully connected and signed in, requires auth",
     !passesThrough(CONFIGURED, false));
 
   // The reported bug: Reset both drops the GitHub token AND locks AWS.
-  check("after Reset both connections — open, so profiles can be listed",
+  check("after Reset both connections, open, so profiles can be listed",
     passesThrough(CONFIGURED, true));
 
-  check("after disconnecting AWS alone — open",
+  check("after disconnecting AWS alone, open",
     passesThrough(CONFIGURED, true));
 
-  check("secrets loaded but AWS never connected — open",
+  check("secrets loaded but AWS never connected, open",
     passesThrough({ clientId: "Iv1.abc" }, false));
 
   // The property that matters: there is no state where the app is unusable.
@@ -57,7 +57,7 @@ const CONFIGURED = { clientId: "Iv1.abc", activityTable: "github-control-hub-act
   //
   // Being open is the point above, which leaves cross-site request forgery as
   // the whole exposure: these endpoints took a POST from any page the user had
-  // open and acted on it. CORS does not help — it governs reading the response,
+  // open and acted on it. CORS does not help. It governs reading the response,
   // not sending the request.
   //
   // The guard is read out of the shipped source rather than reimplemented, so

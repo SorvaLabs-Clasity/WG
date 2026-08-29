@@ -12,7 +12,7 @@ import { sendCard } from "../services/teamsClient";
  *
  * Only a handful of moments qualify. Everything else somebody might want to
  * know belongs in the digest, and the line between them is whether it is worth
- * interrupting for — a message that is not worth reading immediately teaches
+ * interrupting for, a message that is not worth reading immediately teaches
  * people to stop reading the ones that are.
  */
 
@@ -55,7 +55,7 @@ export function recipientsFor(event: string, payload: any): Array<{ login: strin
  * Deliver, and record a failure against the person it belongs to.
  *
  * Never throws. This runs inside webhook delivery, where an exception releases
- * the claim and re-runs every other effect of the same event — so one stale
+ * the claim and re-runs every other effect of the same event, so one stale
  * webhook would turn into duplicated activity rows for everybody.
  */
 export async function notifyDevEvents(event: string, payload: any): Promise<number> {

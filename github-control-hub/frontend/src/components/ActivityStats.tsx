@@ -7,7 +7,7 @@ import { actionLabel } from "../lib/activityActions";
  * Statistics: the organization's activity as a picture rather than a list.
  *
  * Everything here is unfiltered and organization-wide. That is the whole point
- * of a separate view — the Events tab is for finding one row, and this is for
+ * of a separate view, the Events tab is for finding one row, and this is for
  * seeing the shape all of them make, which are different jobs that were sharing
  * one screen and getting in each other's way.
  *

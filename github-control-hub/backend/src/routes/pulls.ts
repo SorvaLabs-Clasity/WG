@@ -74,7 +74,7 @@ router.get("/", async (req: Request, res: Response) => {
     const settings = await getPrSettings();
 
     // Returned before the query, not after. Switching monitoring off has to
-    // stop the work, not hide its result — otherwise "off" still spends a
+    // stop the work, not hide its result, otherwise "off" still spends a
     // GraphQL sweep every time somebody opens the page.
     if (!settings.monitoringEnabled) {
       return res.json({
@@ -85,8 +85,8 @@ router.get("/", async (req: Request, res: Response) => {
 
     // Served from the stored snapshot when there is one.
     //
-    // The walk is the slowest read this app makes — GitHub's search API a page
-    // at a time, several seconds a page on a large organization — and it was
+    // The walk is the slowest read this app makes, GitHub's search API a page
+    // at a time, several seconds a page on a large organization, and it was
     // being done on every load, in front of somebody waiting. Meanwhile the
     // scheduled pass fetched the same thing every five minutes and threw it
     // away.
@@ -112,7 +112,7 @@ router.get("/", async (req: Request, res: Response) => {
         ? Promise.resolve({ prs: snapshot!.prs, truncated: snapshot!.truncated })
         : fetchOpenPrs(graphqlFor(token), org()).then(async r => {
             // Stored on the way past, so the next open is instant even if the
-            // scheduled pass has not run yet — which is every first launch.
+            // scheduled pass has not run yet, which is every first launch.
             await savePrSnapshot(r).catch(() => { /* a cache miss is not a failure */ });
             return r;
           }),
@@ -155,7 +155,7 @@ router.get("/", async (req: Request, res: Response) => {
       staleSeconds: staleSeconds(),
       truncated,
       // Null when this walk was live. The page shows it, so "as of" is visible
-      // rather than implied — a cache nobody can see the age of is the kind
+      // rather than implied, a cache nobody can see the age of is the kind
       // people stop trusting.
       cachedAt: useSnapshot ? snapshot!.cachedAt : null,
       open: rows.length,
@@ -172,7 +172,7 @@ router.get("/", async (req: Request, res: Response) => {
  * Pausing, admin only.
  *
  * The repository is in the body rather than the path because it contains a
- * slash — `org/repo` in a path segment is two segments, and encoding it is a
+ * slash, `org/repo` in a path segment is two segments, and encoding it is a
  * trap the next person maintaining this would fall into.
  */
 router.put("/pause", async (req: Request, res: Response) => {
@@ -225,7 +225,7 @@ router.put("/pause", async (req: Request, res: Response) => {
  *
  * Posts as the app, not as the caller. The reminder has to come from the same
  * account every time or the next cycle cannot recognise its own comment to
- * replace it — and a reminder appearing to come from whoever pressed the button
+ * replace it, and a reminder appearing to come from whoever pressed the button
  * would be misleading about who is chasing whom.
  */
 router.post("/run", async (req: Request, res: Response) => {
@@ -333,7 +333,7 @@ router.put("/mute", async (req: Request, res: Response) => {
 
   // Checked when adding, never when removing.
   //
-  // A mute on somebody outside the organization is not dangerous, it is inert —
+  // A mute on somebody outside the organization is not dangerous, it is inert,
   // and inert is the problem: it looks set, so the person actually being chased
   // goes on being reminded. Removal skips the check because a login that is no
   // longer a member is exactly the one that most needs clearing out.

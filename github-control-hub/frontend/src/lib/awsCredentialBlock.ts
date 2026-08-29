@@ -2,7 +2,7 @@
  * The credentials block, in whichever shape AWS handed it over.
  *
  * The access portal's "Command line or programmatic access" dialog offers
- * four, and this used to require the literal word `export` — so the bash one
+ * four, and this used to require the literal word `export`, so the bash one
  * worked and the other three parsed to nothing at all. Combined with a button
  * that returned silently when nothing parsed, pasting the wrong-but-perfectly-
  * valid format did nothing whatsoever and said nothing about why:

@@ -47,7 +47,7 @@ and nothing replaced them, because nothing needed to.
 
 ### The guardrail engine (Lambda role)
 
-Reads — six actions, all `Describe`/`List`/`Get` on **settings**:
+Reads, six actions, all `Describe`/`List`/`Get` on **settings**:
 
 ```
 s3:ListAllMyBuckets      s3:GetBucketLocation
@@ -55,15 +55,15 @@ s3:GetBucketPolicy       s3:GetBucketTagging
 logs:DescribeLogGroups   logs:ListTagsForResource
 ```
 
-Writes — **exactly three, always granted.** Whether a rule uses them is decided
+Writes, **exactly three, always granted.** Whether a rule uses them is decided
 per rule, in the app:
 
 ```
 s3:PutBucketPolicy   logs:PutRetentionPolicy   logs:DeleteRetentionPolicy
 ```
 
-Plus `sts:GetCallerIdentity` — so a finding can say which account it came from
-— and DynamoDB on `github-control-hub-*`. No `sts:AssumeRole`, and no read of
+Plus `sts:GetCallerIdentity`, so a finding can say which account it came from
+and DynamoDB on `github-control-hub-*`. No `sts:AssumeRole`, and no read of
 credentials for any other account.
 
 `"*"` appears as a resource only where IAM offers no alternative:
@@ -76,8 +76,8 @@ credentials for any other account.
 
 The engine reads the account it runs in, with the credentials it already has.
 
-It used to do more. An organisation could register other accounts — reached by a
-role each one deployed, or by an access key pair kept in Secrets Manager — and
+It used to do more. An organisation could register other accounts, reached by a
+role each one deployed, or by an access key pair kept in Secrets Manager, and
 the sweep ran across all of them. That worked, and it cost a permission the app
 had to hold permanently: `sts:AssumeRole` on a fixed role name in **any**
 account, plus `secretsmanager:CreateSecret`/`PutSecretValue`/`GetSecretValue` on
@@ -103,9 +103,9 @@ runs in.
 ## 3. What it deliberately cannot do
 
 **It cannot become anything.** There is no `sts:AssumeRole` in the stack at
-all, so the roles AWS puts in every organisation member account —
+all, so the roles AWS puts in every organisation member account,
 `OrganizationAccountAccessRole` and `AWSControlTowerExecution`, both carrying
-`AdministratorAccess` — are unreachable, along with every other role. The engine
+`AdministratorAccess`, are unreachable, along with every other role. The engine
 runs as itself and nothing else.
 
 **It cannot read your data.** No `s3:GetObject` anywhere in the engine, no
@@ -129,7 +129,7 @@ the write and the finding says so in those words.
 
 Everything it reads is a setting, and every call it makes appears in this
 account's own CloudTrail under the guardrail function's role. There is no other
-account involved and no cross-account session to audit — the engine reads where
+account involved and no cross-account session to audit, the engine reads where
 it runs.
 
 ---

@@ -15,7 +15,7 @@ on it.** The two lists sit in the same panel and are easy to confuse:
 
 | Section | Answers | Source |
 | --- | --- | --- |
-| **People with access** | who *can* open it | `has_collaborator` edges — GitHub's collaborator list |
+| **People with access** | who *can* open it | `has_collaborator` edges, GitHub's collaborator list |
 | **Top contributors** | who *has committed* | commit counts, from the repository detail call |
 
 They routinely disagree, and the usual reason is that **an organization owner
@@ -31,8 +31,8 @@ Each person therefore carries **how** they got in:
 | `via team` | inherited from a team that owns it |
 | `org owner` | blanket admin from running the organization |
 
-Blanket access sorts **last** whatever its role — an owner outranks everyone on
-paper and tells you the least about this repository — and the **With access**
+Blanket access sorts **last** whatever its role, an owner outranks everyone on
+paper and tells you the least about this repository, and the **With access**
 count on the tile row excludes it, so the number reflects people given access to
 *this* repository rather than repeating the owner count on every one.
 
@@ -44,7 +44,7 @@ all.
 
 The graph rebuilds itself every six hours. **Sync from GitHub**, on the Access
 tab, does it on demand for members of `control-hub-admins`, for when six hours is
-too long to wait — usually right after somebody's access has changed.
+too long to wait, usually right after somebody's access has changed.
 
 Either way it walks the organization through the GitHub App token and writes
 edges to DynamoDB:
@@ -62,7 +62,7 @@ edges to DynamoDB:
 | `team_meta` | team names |
 | `org_meta` | default repository permission, member count |
 
-Roughly 1,500 API calls for 500 repositories. It **is** scheduled — every six
+Roughly 1,500 API calls for 500 repositories. It **is** scheduled, every six
 hours, with a lighter pass every thirty minutes; the button is for when six
 hours is too long to wait. See [the graph model](../data/graph-model.md) and
 [HOW-IT-WORKS](../HOW-IT-WORKS.md) for what each pass writes.

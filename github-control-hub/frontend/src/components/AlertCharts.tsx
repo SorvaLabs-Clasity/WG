@@ -3,8 +3,8 @@ import { SEVERITIES, type Severity, type WeekBucket } from "../lib/alertSituatio
 /**
  * The small charts on the Security tab.
  *
- * No chart library. These are two shapes — a stacked column and a row of
- * bars — and both are a handful of divs. Pulling in a charting dependency to
+ * No chart library. These are two shapes, a stacked column and a row of
+ * bars, and both are a handful of divs. Pulling in a charting dependency to
  * draw them would cost more than it explains.
  *
  * **The severity ramp is one ramp, not four colours.** Critical and high stay

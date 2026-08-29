@@ -9,8 +9,8 @@ export type { Column, SortDir };
  * Holds the state; the arithmetic lives in lib/tableControls.ts, which
  * repro-tablecontrols.ts tests directly.
  *
- * A page tells this what its rows mean — what a search should match, and which
- * columns can be sorted — and nothing else. It does not need to know how any of
+ * A page tells this what its rows mean, what a search should match, and which
+ * columns can be sorted, and nothing else. It does not need to know how any of
  * it works.
  */
 export function useTableControls<T>(

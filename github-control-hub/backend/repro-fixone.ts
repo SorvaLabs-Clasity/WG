@@ -3,13 +3,13 @@
  *
  * Deciding to correct *this* bucket is a different decision from deciding that
  * every future violation of the rule should be corrected automatically. The
- * rule's `mode` carries the second one, and this must not touch it — so a
+ * rule's `mode` carries the second one, and this must not touch it, so a
  * setting changed back after a one-off fix is reported again rather than
  * silently re-corrected. A rule already in `enforce` re-corrects, because that
  * is what enforce means.
  *
  * The dangerous shape here is scope. `forceRemediate` without `resourceIds`
- * would quietly mean "enforce this whole rule" — one absent field turning a
+ * would quietly mean "enforce this whole rule", one absent field turning a
  * button beside a single row into a policy change. That is refused outright.
  *
  * Run:  npx tsx repro-fixone.ts   from github-control-hub/backend
@@ -38,9 +38,9 @@ function harness() {
   return {
     fixed,
     deps: {
-      // Keyed by resource type, as the engine keys them — not by rule kind.
+      // Keyed by resource type, as the engine keys them, not by rule kind.
       collectors: {
-        // `{ resources, unswept }`, not a bare array — a collector reports what
+        // `{ resources, unswept }`, not a bare array, a collector reports what
         // it could not reach as well as what it found.
         "logs:log-group": async () => ({
           resources: [

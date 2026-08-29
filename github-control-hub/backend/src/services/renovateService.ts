@@ -53,7 +53,7 @@ function isoDate(d: Date): string {
  * The two queries.
  *
  * Every open PR regardless of age, and closed ones only inside the retention
- * window — which is what makes "closed PRs disappear after three months" a
+ * window, which is what makes "closed PRs disappear after three months" a
  * filter rather than a stored expiry. GitHub keeps the PR forever; the app
  * simply stops asking for it.
  */
@@ -91,7 +91,7 @@ export function normalizePr(item: any): RenovatePr {
     title: String(item?.title ?? "").slice(0, 300),
     repo,
     // html_url is the browser address. The app never merges or comments; this
-    // link is the whole of its write story — it hands you to GitHub.
+    // link is the whole of its write story. It hands you to GitHub.
     url: String(item?.html_url ?? ""),
     state,
     // Search does not return a merged flag. A closed PR with a merge commit
@@ -110,7 +110,7 @@ const PER_PAGE = 100;
 /**
  * Search refuses to page past 1,000 results, so ten pages is the real ceiling
  * rather than a limit chosen here. Hitting it is reported instead of silently
- * returning a partial list — a truncated count read as a total is how "we have
+ * returning a partial list, a truncated count read as a total is how "we have
  * 1,000 open PRs" becomes "we have exactly 1,000 open PRs" forever.
  */
 const MAX_PAGES = 10;
@@ -156,7 +156,7 @@ export interface RenovateResult {
  * The candidate logins for a name somebody typed.
  *
  * `author:` wants the exact login. A GitHub App's is `<name>[bot]`, and that
- * suffix is invisible in the GitHub UI — it shows the display name with a
+ * suffix is invisible in the GitHub UI. It shows the display name with a
  * separate "Bot" label beside it. So both are tried, App form first, because
  * an App is what raises these.
  */
@@ -212,7 +212,7 @@ async function fetchForExactLogin(
   return { prs, truncated: o.truncated || c.truncated, bot };
 }
 
-/** Just the open ones — what the widget counts and the alarm watches. */
+/** Just the open ones, what the widget counts and the alarm watches. */
 export function openPrs(prs: RenovatePr[]): RenovatePr[] {
   return prs.filter(p => p.state === "open");
 }

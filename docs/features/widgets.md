@@ -7,8 +7,8 @@ A widget is a saved row holding a check id and a title. It stores no data of its
 own. There is **one dashboard shared by the organization**, which is why only
 admins can add or remove cards.
 
-For the machinery behind all of them — the 5-minute snapshot pass, the refresh
-button, the storage — see [HOW-IT-WORKS.md](../HOW-IT-WORKS.md). This file is
+For the machinery behind all of them, the 5-minute snapshot pass, the refresh
+button, the storage, see [HOW-IT-WORKS.md](../HOW-IT-WORKS.md). This file is
 about the checks themselves.
 
 ---
@@ -82,7 +82,7 @@ recomputed them: `public-repos`, `archived-repos-with-access`, `stale-repos`,
 
 They read edge types **nothing but the full rebuild wrote**. So re-running them
 every five minutes produced a byte-identical answer roughly seventy-one times out
-of seventy-two — the check was fine, the data underneath it simply could not
+of seventy-two, the check was fine, the data underneath it simply could not
 change.
 
 That was a gap rather than a decision. Every one of those facts arrives on a
@@ -92,20 +92,20 @@ counting public repositories showed the old number for hours.
 
 Two changes closed it:
 
-**The worker now patches the graph** on those same deliveries — visibility,
+**The worker now patches the graph** on those same deliveries, visibility,
 archival, last push, team ownership, team membership, vulnerable dependencies.
 Same events, no extra requests; it simply writes the edge as well as raising the
 alert. Those six moved from *≤6 hours* to *seconds*.
 
 **A light refresh pass runs every 30 minutes** as a backstop, because a webhook
-can be missed, arrive out of order, or not be sent at all — and nothing else
+can be missed, arrive out of order, or not be sent at all, and nothing else
 would have corrected it before the next rebuild. It refreshes only the cheap
 edges: repository metadata, which arrives free with the repository listing, and
 team composition at two calls per team. Under a hundred requests, against an
 allowance of fifteen thousand an hour.
 
-The expensive walk — every repository's collaborators, branches, workflows and
-alerts, four requests each — stays on six hours. Running *that* every half hour
+The expensive walk, every repository's collaborators, branches, workflows and
+alerts, four requests each, stays on six hours. Running *that* every half hour
 is what this deliberately is not.
 
 | | **Light** (30 min) | **Full** (6 hours) |
@@ -145,7 +145,7 @@ and would let an alarm resolve itself because GitHub answered 403.
 
 **Asks:** which repositories have an alert at or above chosen severities.
 
-Same source as above — adding this card alongside the Dependabot one costs **no
+Same source as above, adding this card alongside the Dependabot one costs **no
 extra requests**, because both read the same memoised sweep.
 
 **Freshness:** live.
@@ -164,7 +164,7 @@ subject-by-subject checks: 50 repositories per pass.
 **Asks:** how many update pull requests Renovate has open.
 
 There is no Renovate API. Its pull requests are found by **the bot account's
-authorship** — a live GitHub search for `is:pr org:<org> author:<bot>` — which
+authorship**, a live GitHub search for `is:pr org:<org> author:<bot>`, which
 is why the bot's name is a setting.
 
 **Freshness:** live.
@@ -185,13 +185,13 @@ changes teams or leaves; direct grants are not. These are also the repositories
 with no obvious reviewer, no CODEOWNERS, and nobody to ask when an alert opens.
 
 Flags a repository with **no `owned_by_team` edge at all**. A team with read-only
-permission counts as owned — this is a floor ("somebody claims this"), not a
+permission counts as owned. This is a floor ("somebody claims this"), not a
 judgement about whether the permission is right.
 
 | | |
 | --- | --- |
 | Reads | `owned_by_team` |
-| Freshness | **seconds** — `team` added/removed webhook, backed by the 30-minute pass |
+| Freshness | **seconds**, `team` added/removed webhook, backed by the 30-minute pass |
 | Parameter | none |
 
 ## Repos with admins outside the owning team
@@ -199,25 +199,25 @@ judgement about whether the permission is right.
 **Asks:** who holds admin on a repository without being in a team that owns it.
 
 The combination that access reviews are meant to catch: the permission is real,
-and the usual revocation path — changing teams — will never remove it.
+and the usual revocation path, changing teams, will never remove it.
 
 | | |
 | --- | --- |
 | Reads | `has_collaborator`, `owned_by_team` |
-| Freshness | **seconds** — `member` webhook |
+| Freshness | **seconds**, `member` webhook |
 
 ## Highly privileged users
 
 **Asks:** which people hold write or admin on more than N repositories.
 
-Blast radius, per person. Not wrong on its own — a platform engineer legitimately
-has broad access — but it is the list to check against your leavers.
+Blast radius, per person. Not wrong on its own, a platform engineer legitimately
+has broad access, but it is the list to check against your leavers.
 
 | | |
 | --- | --- |
 | Reads | `collaborates_on` |
 | Parameter | minimum repository count, default **5** |
-| Freshness | **seconds** — `member` webhook |
+| Freshness | **seconds**, `member` webhook |
 
 ## Dormant privileged access
 
@@ -228,8 +228,8 @@ The single most expensive check in the app, and the one whose pacing is most
 visible.
 
 It finds candidates from the graph, then asks GitHub **one commit search per
-person**. Commit search allows **30 requests a minute** — not the 15,000 an hour
-everything else draws on — so answers are cached per person with the date they
+person**. Commit search allows **30 requests a minute**, not the 15,000 an hour
+everything else draws on, so answers are cached per person with the date they
 were taken, and each pass refreshes the **25 least-recently-checked**. Coverage
 builds over several passes.
 
@@ -240,7 +240,7 @@ Two rules make it trustworthy:
   could never complete.
 - **A partial answer is refused.** If any candidate could not be read, the check
   reports incomplete rather than returning a smaller list. "Twenty of forty-five
-  admins are dormant" is not a smaller finding, it is an unreliable one — and it
+  admins are dormant" is not a smaller finding, it is an unreliable one, and it
   would read as an improvement.
 
 Organization owners are included deliberately: a dormant account with admin
@@ -261,7 +261,7 @@ repositories is worse than no team: it looks like ownership and answers nothing.
 | | |
 | --- | --- |
 | Reads | `has_member` |
-| Freshness | **seconds** — `membership` webhook (must be subscribed on the App) |
+| Freshness | **seconds**, `membership` webhook (must be subscribed on the App) |
 
 ---
 
@@ -302,7 +302,7 @@ row says `public`, that one is.
 | | |
 | --- | --- |
 | Reads | `repo_meta.visibility` |
-| Freshness | **seconds** — `repository` publicized/privatized webhook |
+| Freshness | **seconds**, `repository` publicized/privatized webhook |
 
 ## Archived repos people still have access to
 
@@ -314,7 +314,7 @@ decision to stop using it.
 | | |
 | --- | --- |
 | Reads | `repo_meta.archived`, `has_collaborator` |
-| Freshness | **seconds** — `repository` archived webhook |
+| Freshness | **seconds**, `repository` archived webhook |
 
 ## Repos with no push in N months
 
@@ -340,11 +340,11 @@ Rows carry an **Owner** column, answered in four tiers, in this order:
 
 | | Shows | Labelled |
 | --- | --- | --- |
-| 1 | the **owning team** — all of them, if several | `team` |
+| 1 | the **owning team**, all of them, if several | `team` |
 | 2 | a person holding admin **directly** on that repository | `admin` |
 | 3 | the GitHub account with the **most commits** | `top committer` |
 | 4 | the **git author name** with the most commits, where that author has no GitHub account | `top committer · no account` |
-| — | nothing found at all | *"No owner found"* |
+|, | nothing found at all | *"No owner found"* |
 
 **The order is the meaning.** A team answers "who is responsible" formally; a
 direct admin answers it less formally; a committer is only a lead. Presenting a
@@ -355,7 +355,7 @@ attributed to a GitHub account when the author's email is registered to one.
 Commits pushed by CI, by a bot, or from a laptop signing with an unregistered
 address come back as *anonymous* contributors with a name and no login. In an
 organization whose pushes come from automation that is every contributor there
-is, and asking GitHub to exclude them returns an empty list — indistinguishable,
+is, and asking GitHub to exclude them returns an empty list, indistinguishable,
 at the call site, from a repository nobody has ever touched. The name is still
 the true answer to "who pushes here", so it is shown, and the `· no account`
 label is what stops it being read as a GitHub user you could go and message. The
@@ -363,7 +363,7 @@ email that came with it is deliberately **not** stored: a column about who to as
 is not a place addresses should leak out of.
 
 **Every answer carries its kind**, because a team slug and a username render
-identically — without the label, "who owns this" gets a different answer
+identically, without the label, "who owns this" gets a different answer
 depending on which you assumed.
 
 Tier 2 depends on `source`, which the rebuild records on every collaborator edge
@@ -373,7 +373,7 @@ people on every unowned repository; and a team member with admin is a case where
 the *team* is the answer.
 
 Tiers 3 and 4 come from one request, made during the full rebuild and **only for
-repositories no team owns** — an owned repository already has an answer, and
+repositories no team owns**, an owned repository already has an answer, and
 asking anyway would be one request per repository for a column that would not
 show it. The request includes anonymous authors and the choice between the two
 tiers is made locally, so covering tier 4 costs nothing extra. A newly unowned
@@ -399,13 +399,13 @@ The blunt version of the protection question, and the one worth alarming on.
 | | |
 | --- | --- |
 | Reads | `has_branch` |
-| Freshness | **seconds** — branch and protection webhooks |
+| Freshness | **seconds**, branch and protection webhooks |
 
 ## Repos missing a specific branch
 
 **Asks:** which repositories do not have a named branch. Accepts several.
 
-For conventions — every repository should have `develop`, or a `release` branch.
+For conventions, every repository should have `develop`, or a `release` branch.
 
 | | |
 | --- | --- |
@@ -426,7 +426,7 @@ exposed**, which is usually the more urgent finding.
 
 ## Repos that have a specific branch
 
-**Asks:** which repositories have the named branch. **Informational** — it makes
+**Asks:** which repositories have the named branch. **Informational**. It makes
 no claim that having it is right or wrong, so it is not a finding and does not
 colour as one.
 
@@ -437,7 +437,7 @@ colour as one.
 
 ## Repos matching specific branch rules
 
-**Asks:** which repositories' branch protection matches a set of conditions —
+**Asks:** which repositories' branch protection matches a set of conditions,
 required reviews, dismiss stale approvals, and so on.
 
 The configurable one. Everything above is a fixed question; this is the one to
@@ -454,7 +454,7 @@ reach for when your policy is specific.
 exists**.
 
 Protection on a deleted branch protects nothing while looking exactly like
-protection that works. Paced like the other subject-by-subject checks — 50
+protection that works. Paced like the other subject-by-subject checks, 50
 repositories per pass on the ordinary rate limit, not the search one.
 
 | | |
@@ -470,7 +470,7 @@ repositories per pass on the ordinary rate limit, not the search one.
 
 **Asks:** which repositories depend on named package(s).
 
-**Informational** — it reports exposure, not a policy breach. Written for the
+**Informational**: it reports exposure, not a policy breach. Written for the
 morning an advisory lands and the question is "where are we affected".
 
 Accepts several packages, comma-separated.
@@ -496,10 +496,10 @@ feature, not a setting.
 | --- | --- |
 | Reads | `has_vulnerable_dependency` |
 | Parameter | package name(s) |
-| Freshness | **seconds** — `dependabot_alert` webhook |
+| Freshness | **seconds**, `dependabot_alert` webhook |
 
-Unlike the other checks, an empty result here is a **legitimate answer** — an
-organization with no open advisories genuinely has none — so this one does not
+Unlike the other checks, an empty result here is a **legitimate answer**, an
+organization with no open advisories genuinely has none, so this one does not
 refuse when the edge type is absent.
 
 ---

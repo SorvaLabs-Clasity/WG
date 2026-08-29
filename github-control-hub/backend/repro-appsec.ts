@@ -4,7 +4,7 @@
  * A sibling to repro-leastprivilege.ts, which does the same for IAM. Both
  * exist because these properties are invisible: nothing fails, no test goes
  * red, and a regression is only discovered by someone reading the code a year
- * later — or not at all.
+ * later, or not at all.
  *
  * The finding that prompted most of this: index.html loaded
  * `<script src="https://unpkg.com/@phosphor-icons/web">`, unpinned and with no
@@ -36,7 +36,7 @@ const read = (p: string) => fs.readFileSync(path.join(ROOT, p), "utf8");
  * `l.replace(/\s*\/\/.*$/, "")` is the obvious version and it is wrong: the
  * `//` in a URL is not a comment. Any line holding `http://` was cut at the
  * scheme, so `if (url.startsWith("http://localhost"))` reached the assertions
- * as `if (url.startsWith("http:` — and every check looking for something after
+ * as `if (url.startsWith("http:`, and every check looking for something after
  * that point silently could not see it. That is the worst shape for a guard:
  * it does not fail, it just stops looking, and a mutation planted past the
  * scheme survives while the suite reports ALL PASS.
@@ -160,8 +160,8 @@ const electron = read("github-control-hub/desktop/src/main.ts");
   // http://localhost.example.com satisfies it, and so does
   // http://localhost:4321@example.com, where everything before the "@" is
   // userinfo rather than a host. Either one was allowed to load *inside* this
-  // BrowserWindow — a remote page sharing the signed-in session, with the
-  // preload bridge attached — instead of being handed to the browser.
+  // BrowserWindow, a remote page sharing the signed-in session, with the
+  // preload bridge attached, instead of being handed to the browser.
   {
     check("the app's own origin is parsed, not prefix-matched",
       !/startsWith\(\s*["'`]http:\/\/localhost/.test(code(electron)),
@@ -232,19 +232,19 @@ const electron = read("github-control-hub/desktop/src/main.ts");
       "a re-serialised body is a different sequence of bytes");
 
     // A verified payload is authentic, not trustworthy. GitHub really sent it,
-    // but its contents are whatever a person typed — and anyone who can push a
+    // but its contents are whatever a person typed, and anyone who can push a
     // branch chooses that string. Git's ref rules forbid spaces and ~^:?*[\
     // and allow < > " ' &, so a branch name is the field here most able to
     // carry markup into a row the UI later renders.
     //
     // Nothing renders raw HTML today, so this is depth rather than a live
-    // hole. It is pinned because the day something does — an HTML export, a
-    // dangerouslySetInnerHTML — the gap would already be in the stored data.
+    // hole. It is pinned because the day something does, an HTML export, a
+    // dangerouslySetInnerHTML, the gap would already be in the stored data.
     const deliveryCode = code(read("github-control-hub/backend/src/webhooks/processDelivery.ts"));
 
     // Only the calls that *store* something are checked. Comparing
     // payload.ref against a default-branch name, or testing ref_type, keeps
-    // nothing and needs no sanitizing — an earlier version of this check
+    // nothing and needs no sanitizing, an earlier version of this check
     // flagged those too and failed against correct code.
     const STORING = /\b(logActivity|createAlert|addBranchEdge|removeBranchEdge)\s*\(/;
     const rawStores = deliveryCode
@@ -266,8 +266,8 @@ const electron = read("github-control-hub/desktop/src/main.ts");
 
   // ── the org-wide token is never served over a socket ───────────────
   //
-  // GET /auth/system-token returned the GitHub App installation token —
-  // admin over every repository in the organization — to anyone who could
+  // GET /auth/system-token returned the GitHub App installation token,
+  // admin over every repository in the organization, to anyone who could
   // reach the port, with no authentication of any kind. Its only caller runs
   // in the same process as the backend and now calls the function directly.
   {
@@ -319,7 +319,7 @@ const electron = read("github-control-hub/desktop/src/main.ts");
   //
   // Get-then-Delete returned the same code to two callers racing through the
   // gap, and a DynamoDB `ttl` is swept within ~48 hours rather than at the
-  // moment it expires — so neither single use nor the five-minute window was
+  // moment it expires, so neither single use nor the five-minute window was
   // being enforced where it mattered.
   {
     check("auth codes are redeemed by the delete itself",
@@ -437,7 +437,7 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     // is therefore always a mistake, and it is one that survives a clone.
     //
     // Identifiers with a recognizable shape are matched directly below. Names
-    // have no shape, so they come from outside the repo — APPSEC_FORBIDDEN, or
+    // have no shape, so they come from outside the repo, APPSEC_FORBIDDEN, or
     // a gitignored .appsec-forbidden, one term per line. Listing them here
     // would put the very strings this is meant to keep out into the repo.
     const forbiddenFile = path.join(__dirname, ".appsec-forbidden");
@@ -499,7 +499,7 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     };
     // The whole repository, not a list of source directories. The account ids
     // that got through were in docs/, which no such list had any reason to
-    // name — so the default is everything, minus what is generated or vendored.
+    // name, so the default is everything, minus what is generated or vendored.
     scanNames("");
     for (const dir of alsoScan) {
       for (const e of fs.readdirSync(path.join(ROOT, dir))) {
@@ -513,9 +513,9 @@ const electron = read("github-control-hub/desktop/src/main.ts");
      * The guard proves its own teeth before its silence is believed.
      *
      * A clean repository passes this check however weak the check is, so
-     * "no findings" says nothing on its own. Mutating the scanner — narrowing
+     * "no findings" says nothing on its own. Mutating the scanner, narrowing
      * it back to .ts only, emptying the shape pattern, pointing it at a single
-     * directory — left every assertion above green, because there was nothing
+     * directory, left every assertion above green, because there was nothing
      * there to miss either way.
      *
      * So a canary is planted in each file type the scanner claims to read, in a
@@ -526,7 +526,7 @@ const electron = read("github-control-hub/desktop/src/main.ts");
     const canaryDir = path.join(ROOT, "docs", ".appsec-canary");
 
     // Assembled at runtime, never written out whole. A canary spelled as a
-    // literal is an identifier in this file, and this file is scanned — the
+    // literal is an identifier in this file, and this file is scanned, the
     // first version of this made the guard report itself. The same reason the
     // pattern descriptions above avoid spelling a match.
     const acct = ["9876", "5432", "1098"].join("");

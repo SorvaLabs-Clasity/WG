@@ -14,7 +14,7 @@ import { sendCard } from "../services/teamsClient";
  * Reads the stored pull request snapshot rather than walking GitHub. That walk
  * has already happened earlier in the same pass, and a digest that paid for its
  * own would multiply the organization's request cost by the number of people
- * who turned it on — which is exactly backwards, since the feature getting more
+ * who turned it on, which is exactly backwards, since the feature getting more
  * popular should not make it more expensive.
  */
 export interface DigestSummary {
@@ -37,7 +37,7 @@ export async function runDigestPass(now = Date.now()): Promise<DigestSummary> {
 
   const snapshot = await readPrSnapshot().catch(() => null);
   if (!snapshot) {
-    // Nothing to summarise, and nothing recorded as sent — so the next tick
+    // Nothing to summarise, and nothing recorded as sent, so the next tick
     // inside the same hour tries again rather than skipping the day.
     console.warn("[DevDigest] No pull request snapshot; skipping this tick");
     return { ...out, skipped: due.length };

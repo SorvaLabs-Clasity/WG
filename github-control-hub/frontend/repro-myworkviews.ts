@@ -53,15 +53,29 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
   {
     check("no access to the repo is stated, not left blank",
       /data\.message/.test(page));
-    check("  an unreadable rule set is a warning, not a clear result",
-      /data\.unreadable \? "warn" : "danger"/.test(page),
+    check("  an unreadable rule set is its own verdict",
+      /const unknown = !!data\.unreadable \|\| !data\.reachable/.test(page),
       "reporting it as green tells somebody they can push to a protected branch");
-    check("  and only an actually unprotected branch says you can push",
-      /data\.protected === false/.test(page) && /push\s*\n?\s*straight to it/.test(page.replace(/\s+/g, " ")),
-      page.match(/protected === false[\s\S]{0,160}/)?.[0]);
+
+    // Order is the assertion. Whatever the wording, "we could not read the
+    // rules" has to be decided before "nothing protects it", or an unreadable
+    // ruleset renders as the green all-clear.
+    const verdict = page.slice(page.indexOf("const look = unknown"), page.indexOf("return (", page.indexOf("const look = unknown")));
+    check("    and is decided before any all-clear",
+      verdict.indexOf("unknown") < verdict.indexOf("protected === false"),
+      verdict.slice(0, 120));
+    check("    drawn as a warning, never as success",
+      /unknown[\s\S]{0,120}bg-amber/.test(verdict), verdict.slice(0, 200));
+
+    check("  only an actually unprotected branch says you can push",
+      /data\.protected === false[\s\S]{0,200}"You can push"/.test(verdict),
+      verdict.match(/protected === false[\s\S]{0,160}/)?.[0]);
     check("  a protected branch with no blockers says that separately",
-      /nothing currently blocks you/.test(page),
+      /Nothing blocks you/.test(page) && /is protected, but not against you/.test(page),
       "it is a different fact from being unprotected");
+    check("  and being exempt is a third answer again",
+      /canBypass[\s\S]{0,160}You can push anyway/.test(verdict),
+      "an admin who bypasses is not the same as a branch nothing protects");
   }
 
   // ── the queue's own arithmetic is not re-done in the view ───────────
@@ -96,6 +110,35 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
       "a short list from a failed read looks identical to a short list");
     check("  nobody ranking is said outright",
       /Nobody has committed, reviewed or commented/.test(repos));
+  }
+
+  // ── every pull request opens on github.com ──────────────────────────
+  //
+  // Electron routes target="_blank" and any outbound navigation to the system
+  // browser, so an anchor is all that is needed. What is worth asserting is
+  // that all four surfaces have one, and that the one built from an activity
+  // row refuses to guess.
+  {
+    check("the queue rows are links",
+      /href=\{pr\.url\} target="_blank"/.test(page));
+    check("  as are the still-open ones",
+      (page.match(/href=\{pr\.url\} target="_blank"/g) ?? []).length >= 2);
+    check("  and the merged ones",
+      /href=\{href\} target="_blank"/.test(page));
+    check("  every one of them opens outside the app",
+      (page.match(/rel="noreferrer noopener"/g) ?? []).length >= 3,
+      "an outbound link without noopener hands the opener to the page it opens");
+
+    // A merged row is an activity row, not a pull request record, so it may
+    // carry no number at all.
+    check("a merged row links to the pull request when it knows the number",
+      /\/pull\/\$\{entry\.prNumber\}/.test(page));
+    check("  falls back to the repository when it does not",
+      /: `https:\/\/github\.com\/\$\{org\}\/\$\{entry\.repo\}`/.test(page));
+    check("  and renders plain text rather than a link that 404s",
+      /if \(!org \|\| !entry\.repo\) return null;/.test(page)
+      && /href \? \(/.test(page),
+      "something that looks clickable and lands on a 404 is worse than plain text");
   }
 
   // ── polling that matches what actually changes ──────────────────────

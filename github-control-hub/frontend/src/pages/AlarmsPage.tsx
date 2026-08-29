@@ -1,6 +1,9 @@
 import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { Page, PageHeader, Empty, Spinner, LoadFailed, RefreshButton } from "../design";
+import {
+  Page, PageHeader, Empty, Spinner, LoadFailed, RefreshButton, Segmented,
+  SURFACE, TYPE, Button,
+} from "../design";
 import { usePermissions } from "../hooks/usePermissions";
 import { useAuth } from "../App";
 import { useWidgets } from "../hooks/useWidgets";
@@ -11,13 +14,160 @@ import { describeCondition, describeInterval, type WidgetAlarm } from "../api/al
 import { ALL_METRIC_SPECS } from "../lib/alarmSpecs";
 
 /**
- * Everything about alarms in one place: what is watching what, what state each
- * one is in, and the groups they email.
+ * Everything watching a number, and everyone it tells.
  *
- * The individual alarm is still created from its widget — that is where you
- * know what you want to be told about — but managing them one widget at a time
- * meant there was no way to answer "what is currently watching anything?".
+ * The page it replaces was a flat list of grey rectangles: every alarm the same
+ * size, in the same order, whether it was firing or paused or had not been read
+ * for a week. A list where nothing stands out is a list nobody scans, and the
+ * one question this page exists to answer, *is anything wrong right now*, was
+ * the one thing you had to read every row to find out.
+ *
+ * So the count of what is firing leads, the firing ones are lifted out of the
+ * list entirely, and the rest are grouped by what they watch rather than by the
+ * order they happen to be stored in.
+ *
+ * The two halves, alarms and the groups they notify, are separate views
+ * rather than one scrolling page. Managing recipients is a different task from
+ * checking whether anything is on fire, and doing them on one screen meant the
+ * second was always below the fold.
  */
+
+type Lens = "alarms" | "groups";
+
+/** Firing first, then paused, then the quiet ones, each newest first. */
+function rank(a: WidgetAlarm): number {
+  if (a.state === "ALARM" && a.enabled) return 0;
+  if (!a.enabled) return 2;
+  return 1;
+}
+
+/** What an alarm is pointed at, whichever kind it is. */
+function subjectOf(a: WidgetAlarm, widgetTitle?: string): { label: string; guardrail: boolean; missing: boolean } {
+  if (a.widgetId.startsWith("guardrail:")) {
+    const rule = a.widgetId.slice("guardrail:".length);
+    return {
+      label: rule === "*" ? "All AWS guardrails" : `Guardrail rule ${rule}`,
+      guardrail: true, missing: false,
+    };
+  }
+  return { label: widgetTitle ?? "", guardrail: false, missing: !widgetTitle };
+}
+
+function StatusDot({ alarm }: { alarm: WidgetAlarm }) {
+  const firing = alarm.state === "ALARM" && alarm.enabled;
+  return (
+    <span className="relative flex w-2.5 h-2.5 shrink-0 mt-[7px]" aria-hidden="true">
+      {firing && (
+        <span className="absolute inline-flex w-full h-full rounded-full bg-rose-400 opacity-70 animate-ping" />
+      )}
+      <span className={`relative inline-flex w-2.5 h-2.5 rounded-full ${
+        !alarm.enabled ? "bg-slate-300 dark:bg-slate-600"
+          : firing ? "bg-rose-500" : "bg-emerald-500"}`} />
+    </span>
+  );
+}
+
+function AlarmRow({ alarm, subject, groupName, interval, onEdit, onToggle, onDelete }: {
+  alarm: WidgetAlarm;
+  subject: ReturnType<typeof subjectOf>;
+  groupName?: string;
+  interval: number;
+  onEdit: () => void; onToggle: () => void; onDelete: () => void;
+}) {
+  const firing = alarm.state === "ALARM" && alarm.enabled;
+
+  return (
+    <div className={`group relative flex items-start gap-3.5 pl-5 pr-4 py-4
+                     hover:bg-slate-50/80 dark:hover:bg-white/[0.035] transition-colors
+                     ${alarm.enabled ? "" : "opacity-60"}`}>
+      <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${
+        !alarm.enabled ? "bg-slate-200 dark:bg-slate-700"
+          : firing ? "bg-rose-500" : "bg-emerald-500/70"}`} aria-hidden="true" />
+
+      <StatusDot alarm={alarm} />
+
+      <div className="min-w-0 flex-1">
+        <div className="flex items-baseline gap-2 flex-wrap">
+          <span className="text-[13.5px] font-semibold text-slate-900 dark:text-slate-100">{alarm.name}</span>
+          {subject.guardrail && (
+            <span className="text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded
+                             bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400">AWS</span>
+          )}
+          {!alarm.enabled && (
+            <span className="text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded
+                             bg-slate-100 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">paused</span>
+          )}
+        </div>
+
+        <div className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
+          {subject.missing
+            // Said plainly. An alarm whose subject is gone reads zero for ever,
+            // which looks exactly like nothing being wrong.
+            ? <span className="text-amber-700 dark:text-amber-400">its widget was deleted</span>
+            : <>on <span className="font-medium text-slate-700 dark:text-slate-300">{subject.label}</span>
+                {" "}· {describeCondition(alarm.condition, ALL_METRIC_SPECS)}</>}
+        </div>
+
+        <div className="flex items-center gap-2 mt-1.5 text-[11.5px] text-slate-400 dark:text-slate-500 flex-wrap">
+          <span className="inline-flex items-center gap-1">
+            <i className="ph-fill ph-users-three text-[12px]" aria-hidden="true" />
+            {groupName ?? <span className="text-amber-600 dark:text-amber-500">group deleted</span>}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span>checked {describeInterval(interval)}</span>
+          {alarm.lastCheckedAt && (
+            <>
+              <span aria-hidden="true">·</span>
+              <span>last {new Date(alarm.lastCheckedAt).toLocaleString()}</span>
+            </>
+          )}
+        </div>
+
+        {/* A check that could not take a reading is not a passing check, and
+            the difference is the whole reason this line exists. */}
+        {alarm.lastError && (
+          <div className="mt-2 text-[11.5px] text-amber-700 dark:text-amber-400
+                          bg-amber-50 dark:bg-amber-500/10 rounded-lg px-2.5 py-1.5">
+            Could not read a value: {alarm.lastError}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 text-right">
+        {alarm.lastValue !== undefined && alarm.lastValue !== null && (
+          <div className={`text-[20px] font-black tabular-nums leading-none
+            ${firing ? "text-rose-600 dark:text-rose-400" : "text-slate-300 dark:text-slate-600"}`}>
+            {alarm.lastValue}
+          </div>
+        )}
+        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-1">
+          {alarm.lastValue !== undefined && alarm.lastValue !== null ? "last read" : "no reading"}
+        </div>
+      </div>
+
+      {/* Revealed on hover, so a list of twelve alarms is not also a list of
+          thirty-six buttons. Kept reachable from the keyboard regardless. */}
+      <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+        <button onClick={onToggle} title={alarm.enabled ? "Pause" : "Resume"}
+          className="w-8 h-8 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
+                     hover:bg-slate-100 dark:hover:bg-white/[0.08]">
+          <i className={`ph-bold ${alarm.enabled ? "ph-pause" : "ph-play"} text-[13px]`} />
+        </button>
+        <button onClick={onEdit} title="Edit"
+          className="w-8 h-8 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
+                     hover:bg-slate-100 dark:hover:bg-white/[0.08]">
+          <i className="ph-bold ph-pencil-simple text-[13px]" />
+        </button>
+        <button onClick={onDelete} title="Delete"
+          className="w-8 h-8 grid place-items-center rounded-lg text-slate-400
+                     hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400">
+          <i className="ph-bold ph-trash text-[13px]" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function AlarmsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -31,112 +181,150 @@ export default function AlarmsPage() {
   const deleteAlarm = useDeleteAlarm();
 
   const [editing, setEditing] = useState<WidgetAlarm | null>(null);
+  const [lens, setLens] = useState<Lens>("alarms");
 
-  const widgetById = useMemo(
-    () => new Map((widgets ?? []).map(w => [w.id, w])),
-    [widgets]);
-  const groupById = useMemo(
-    () => new Map((groups ?? []).map(g => [g.id, g])),
-    [groups]);
+  const widgetById = useMemo(() => new Map((widgets ?? []).map(w => [w.id, w])), [widgets]);
+  const groupById = useMemo(() => new Map((groups ?? []).map(g => [g.id, g])), [groups]);
+
+  const rows = useMemo(
+    () => [...(alarms ?? [])].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)),
+    [alarms]);
+
+  const firing = rows.filter(a => a.state === "ALARM" && a.enabled);
+  const paused = rows.filter(a => !a.enabled);
+  const unreadable = rows.filter(a => a.enabled && a.lastError);
 
   if (!isAdmin) {
     return (
       <Page user={user}>
-        <PageHeader title="Alarms" subtitle="Thresholds on widgets, and who hears about them." />
+        <PageHeader title="Alarms" subtitle="Thresholds on widgets and AWS guardrails, and who hears about them." />
         <Empty
           title="Admins only"
-          body={`Alarms send mail on behalf of the whole organization, so they are managed by ` +
+          body={`Alarms notify the whole organization, so they are managed by ` +
             `members of the "${permissions?.awsAdminTeam ?? "admin"}" team and organization owners.`}
         />
       </Page>
     );
   }
 
-  const rows = alarms ?? [];
-
   return (
     <Page user={user}>
       <PageHeader
         title="Alarms"
-        subtitle="Thresholds on widgets, and the email groups they notify."
+        subtitle="Thresholds on widgets and AWS guardrails, and who hears about them."
         actions={<RefreshButton busy={isFetching} onRefresh={() => refetch()} />}
       />
 
-      {isLoading ? <Spinner /> : isError ? (
+      <div className="mb-5">
+        <Segmented value={lens} onChange={v => setLens(v as Lens)}
+          options={[["alarms", `Alarms${rows.length ? ` (${rows.length})` : ""}`],
+                    ["groups", "Groups"]]} />
+      </div>
+
+      {lens === "groups" ? <EmailGroupsPanel /> : isLoading ? (
+        <div className="py-20 flex justify-center"><Spinner /></div>
+      ) : isError ? (
         <LoadFailed what="your alarms" error={error} onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
         <Empty
-          title="No alarms yet"
-          body="Open a widget on the Overview page and choose “Add alarm” to watch it."
-          action={<button onClick={() => navigate("/analytics")}
-            className="px-4 py-2 text-sm font-semibold rounded-md bg-gh-blue text-white hover:opacity-90">
-            Go to Overview
-          </button>}
+          title="Nothing is being watched"
+          body="Open a widget on the Overview page, or an AWS guardrail rule, and add an alarm to it. Alarms check on their own schedule and tell a group when a number crosses a line."
+          action={<Button variant="primary" onClick={() => navigate("/analytics")}>Go to Overview</Button>}
         />
       ) : (
-        <div className="space-y-3 mb-10">
-          {rows.map(a => {
-            const widget = widgetById.get(a.widgetId);
-            const firing = a.state === "ALARM";
-            return (
-              <div key={a.id}
-                className="bg-white dark:bg-slate-900 rounded-[12px] border border-gh-border dark:border-slate-700 p-4 flex flex-wrap items-start gap-4">
-                <span className={`mt-1 shrink-0 w-2.5 h-2.5 rounded-full ${
-                  !a.enabled ? "bg-gray-300 dark:bg-slate-600"
-                    : firing ? "bg-red-500" : "bg-green-500"}`}
-                  title={!a.enabled ? "Paused" : firing ? "Firing" : "Normal"} />
+        <div className="grid gap-4">
+          {/* ── the one question this page exists to answer ───────────
+              A flat list makes you read every row to find out whether
+              anything is wrong. This says it before the list starts. */}
+          <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+            <div className={`${SURFACE.card} relative overflow-hidden px-6 py-5`}>
+              <div aria-hidden="true"
+                className={`pointer-events-none absolute -right-16 -top-16 w-56 h-56 rounded-full blur-2xl opacity-[0.16]
+                  ${firing.length ? "bg-rose-500" : "bg-emerald-500"}`} />
+              <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Currently firing</div>
+              <div className="flex items-end gap-3 mt-2.5">
+                <span className={`text-[52px] font-black tabular-nums leading-[0.85] tracking-[-0.04em]
+                  ${firing.length ? "text-rose-600 dark:text-rose-400" : "text-slate-300 dark:text-slate-600"}`}>
+                  {firing.length}
+                </span>
+                {firing.length === 0 && (
+                  <span className="mb-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold
+                                   bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                    <i className="ph-bold ph-check text-[12px]" aria-hidden="true" />all clear
+                  </span>
+                )}
+              </div>
+              <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-2.5">
+                {firing.length === 0
+                  ? `${rows.length - paused.length} watching, nothing over its threshold.`
+                  : `${firing.length === 1 ? "One alarm is" : `${firing.length} alarms are`} over their threshold.`}
+              </p>
+            </div>
 
-                <div className="min-w-[16rem] flex-1">
-                  <div className="font-bold text-gh-textBase dark:text-slate-100">{a.name}</div>
-                  <div className="text-sm text-gray-600 dark:text-slate-400">
-                    {widget
-                      ? <>on <span className="font-semibold">{widget.title}</span>: {describeCondition(a.condition, ALL_METRIC_SPECS)}</>
-                      : <span className="text-amber-700 dark:text-amber-400">its widget was deleted</span>}
+            <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-white/[0.07]`}>
+              <div className="bg-white dark:bg-[#151a23] px-5 py-4 flex items-center gap-4">
+                <i className={`ph-fill ph-pause-circle text-[19px] ${paused.length ? "text-slate-500" : "text-slate-300 dark:text-slate-600"}`} aria-hidden="true" />
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-[22px] font-black tabular-nums leading-none ${paused.length ? "text-slate-900 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}>{paused.length}</span>
+                    <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">Paused</span>
                   </div>
-                  <div className="mt-1 text-xs text-gray-500 dark:text-slate-400">
-                    emails {groupById.get(a.groupId)?.name ?? "a group that no longer exists"}
-                    {widget && <> · checked {describeInterval(
-                      widget.type === "preset" && (widget.presetId === "dependabot" || widget.presetId === "vuln-repos") ? 60 : 15)}</>}
-                    {a.lastCheckedAt && <> · last checked {new Date(a.lastCheckedAt).toLocaleString()}</>}
-                  </div>
-                  {a.lastError && (
-                    <div className="mt-1 text-xs text-amber-700 dark:text-amber-400">
-                      last check could not read a value: {a.lastError}
-                    </div>
-                  )}
-                </div>
-
-                <div className="text-right shrink-0">
-                  <div className={`text-sm font-bold ${firing ? "text-red-600 dark:text-red-400" : "text-gray-500 dark:text-slate-400"}`}>
-                    {!a.enabled ? "Paused" : firing ? "FIRING" : "Normal"}
-                  </div>
-                  {a.lastValue !== undefined && a.lastValue !== null && (
-                    <div className="text-xs text-gray-500 dark:text-slate-400">last value {a.lastValue}</div>
-                  )}
-                </div>
-
-                <div className="flex gap-2 shrink-0">
-                  <button
-                    onClick={() => updateAlarm.mutate({ id: a.id, data: { enabled: !a.enabled } })}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-md border border-gh-border dark:border-slate-600 hover:bg-black/5 dark:hover:bg-white/5 text-gh-textBase dark:text-slate-200">
-                    {a.enabled ? "Pause" : "Resume"}
-                  </button>
-                  <button onClick={() => setEditing(a)}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-md border border-gh-border dark:border-slate-600 hover:bg-black/5 dark:hover:bg-white/5 text-gh-textBase dark:text-slate-200">
-                    Edit
-                  </button>
-                  <button onClick={() => deleteAlarm.mutate(a.id)}
-                    className="px-3 py-1.5 text-xs font-semibold rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/40">
-                    Delete
-                  </button>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">watching nothing while paused</p>
                 </div>
               </div>
-            );
-          })}
+              {/* Its own number, because an alarm that cannot take a reading is
+                  not a passing alarm and does not belong in either count above. */}
+              <div className="bg-white dark:bg-[#151a23] px-5 py-4 flex items-center gap-4">
+                <i className={`ph-fill ph-warning-circle text-[19px] ${unreadable.length ? "text-amber-500" : "text-slate-300 dark:text-slate-600"}`} aria-hidden="true" />
+                <div>
+                  <div className="flex items-baseline gap-2">
+                    <span className={`text-[22px] font-black tabular-nums leading-none ${unreadable.length ? "text-slate-900 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}>{unreadable.length}</span>
+                    <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">Cannot read</span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                    {unreadable.length ? "not the same as passing" : "every check took a reading"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <section className={`${SURFACE.card} overflow-hidden`}>
+            <div className="px-5 pt-4">
+              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+                Everything being watched
+              </h3>
+              <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+                Firing first, then paused. Hover a row for its controls.
+              </p>
+              <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+            </div>
+            <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+              {rows.map(a => {
+                const guardrail = a.widgetId.startsWith("guardrail:");
+                const widget = guardrail ? undefined : widgetById.get(a.widgetId);
+                return (
+                  <AlarmRow
+                    key={a.id}
+                    alarm={a}
+                    subject={subjectOf(a, widget?.title)}
+                    groupName={groupById.get(a.groupId)?.name}
+                    interval={guardrail ? 60
+                      : widget?.type === "preset" && (widget.presetId === "dependabot" || widget.presetId === "vuln-repos") ? 60 : 15}
+                    onEdit={() => setEditing(a)}
+                    onToggle={() => updateAlarm.mutate({ id: a.id, data: { enabled: !a.enabled } })}
+                    onDelete={() => {
+                      if (confirm(`Delete "${a.name}"? Nothing will be watching that number.`)) {
+                        deleteAlarm.mutate(a.id);
+                      }
+                    }}
+                  />
+                );
+              })}
+            </div>
+          </section>
         </div>
       )}
-
-      <EmailGroupsPanel />
 
       {editing && (
         <AlarmModal isOpen widgetId={editing.widgetId} existing={editing}

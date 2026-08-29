@@ -2,7 +2,7 @@
  * What an alarm can watch, and when it fires.
  *
  * Everything here is a pure function of values passed in. Nothing reads a
- * table, calls GitHub or publishes to SNS — that belongs to the evaluator, and
+ * table, calls GitHub or publishes to SNS, that belongs to the evaluator, and
  * keeping it out of here is what makes the firing rules testable without any
  * of it.
  *
@@ -16,7 +16,7 @@ export type Severity = "critical" | "high" | "medium" | "low";
 
 /**
  * GitHub says "moderate" where the rest of the app says "medium". Both appear
- * in live payloads, so both rank here — an unranked severity would sort below
+ * in live payloads, so both rank here, an unranked severity would sort below
  * "low" and quietly never satisfy a threshold.
  */
 const SEVERITY_RANK: Record<string, number> = {
@@ -38,7 +38,9 @@ export type CountMetric =
   | "bypasses.total"
   | "bypasses.repos"
   | "query.rows"
-  | "renovatePrs.open";
+  | "renovatePrs.open"
+  | "guardrail.violations"
+  | "guardrail.excluded";
 
 export type AlarmCondition =
   | { kind: "count"; metric: CountMetric; op: "gte" | "lte"; threshold: number }
@@ -57,11 +59,40 @@ export interface MetricSpec {
  * Which conditions a given widget may use.
  *
  * Also the validator. The UI builds its form from this, and the API checks
- * against it before saving — a client is free to post any metric it likes, and
+ * against it before saving, a client is free to post any metric it likes, and
  * an alarm on a metric its widget cannot produce would evaluate to null
  * forever and never fire, which looks identical to "nothing is wrong".
  */
+/**
+ * The subject id a guardrail alarm carries in place of a widget's.
+ *
+ * `guardrail:*` watches every rule; `guardrail:<id>` watches one. Encoded in
+ * the id rather than added as a second field so the evaluator, which resolves a
+ * subject and then knows nothing about what kind it is, needs no changes at all.
+ */
+export const GUARDRAIL_PREFIX = "guardrail:";
+
+export const guardrailSubjectId = (ruleId?: string) => `${GUARDRAIL_PREFIX}${ruleId || "*"}`;
+
+/** The rule a guardrail subject watches, or null for every rule. */
+export function guardrailRuleOf(subjectId: string): string | null {
+  if (!subjectId.startsWith(GUARDRAIL_PREFIX)) return null;
+  const rest = subjectId.slice(GUARDRAIL_PREFIX.length);
+  return rest === "*" ? null : rest;
+}
+
 export function conditionsFor(widget: { type: string; presetId?: string }): MetricSpec[] {
+  // Findings, not widget rows. A guardrail alarm answers "is the account
+  // drifting", which the dashboard has no widget for, the findings table is
+  // its own thing and was reachable only by looking at it.
+  if (widget.type === "guardrail") {
+    return [
+      { metric: "guardrail.violations", kind: "count", label: "Failing resources", unit: "resources",
+        hint: "Every resource currently breaking the rule, across accounts and regions." },
+      { metric: "guardrail.excluded", kind: "count", label: "Resources being skipped", unit: "resources",
+        hint: "Deliberately excluded. Worth an alarm when an exclusion list quietly grows." },
+    ];
+  }
   if (widget.type === "query") {
     return [
       { metric: "query.rows", kind: "count", label: "Matching rows", unit: "rows",
@@ -148,6 +179,12 @@ export function metricValue(metric: MetricSpec["metric"], rows: any[] | null | u
     case "bypasses.total": return sum(rows, "bypasses");
     case "bypasses.repos": return rows.length;
     case "query.rows": return rows.length;
+    // Findings carry their own verdict, so the count is of the ones that are
+    // actually failing rather than of every row the sweep wrote.
+    case "guardrail.violations":
+      return rows.filter(r => r?.verdict === "violation" && !r?.excluded).length;
+    case "guardrail.excluded":
+      return rows.filter(r => r?.excluded).length;
     case "renovatePrs.open": return rows.length;
     default: return null;
   }
@@ -176,7 +213,7 @@ export interface AlarmRuntime {
  * Asymmetric on purpose. Firing waits for nothing, because the first breach is
  * the whole point. Recovery waits for two, because a value resting exactly on
  * its threshold otherwise flips OK-ALARM-OK-ALARM and sends an email every
- * cycle — which trains people to filter the alarm that mattered.
+ * cycle, which trains people to filter the alarm that mattered.
  */
 export const RECOVERY_CHECKS = 2;
 
@@ -209,7 +246,7 @@ export const TICK_MINUTES = 5;
 /**
  * Minutes between evaluations, by what the widget actually reads.
  *
- * Dependabot alarms cost one org-wide sweep per run — paginated at 100 alerts
+ * Dependabot alarms cost one org-wide sweep per run, paginated at 100 alerts
  * per request, and memoised in the handler so that however many alarms read it,
  * the run fetches once. The cost therefore tracks how many alerts are open, not
  * how many repositories, widgets or alarms exist, which is what makes a short
@@ -225,6 +262,9 @@ export const TICK_MINUTES = 5;
 export const INTERVAL_MINUTES = { dependabot: 10, standard: 15 } as const;
 
 export function intervalFor(widget: { type: string; presetId?: string }): number {
+  // The sweep that produces findings runs hourly, so checking more often is
+  // twelve reads of the same answer and eleven chances to look busy.
+  if (widget.type === "guardrail") return 60;
   const dependabotBacked = widget.type === "preset"
     && (widget.presetId === "dependabot" || widget.presetId === "vuln-repos");
   return dependabotBacked ? INTERVAL_MINUTES.dependabot : INTERVAL_MINUTES.standard;
@@ -237,7 +277,7 @@ export function intervalFor(widget: { type: string; presetId?: string }): number
  *
  * EventBridge fires within about a minute either side of the scheduled time.
  * Without slack, a tick arriving at 59m50s reads "not yet an hour" and defers
- * to the next one — so an hourly alarm quietly becomes a 75-minute alarm, and
+ * to the next one, so an hourly alarm quietly becomes a 75-minute alarm, and
  * the drift compounds. Two minutes is longer than the jitter and far shorter
  * than the shortest interval, so it can only ever pull a check slightly early.
  */

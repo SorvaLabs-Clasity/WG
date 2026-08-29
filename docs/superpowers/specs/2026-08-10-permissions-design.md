@@ -1,4 +1,4 @@
-# Permissions — design
+# Permissions: design
 
 **Date:** 2026-08-10
 
@@ -10,7 +10,7 @@ everything.
 
 Worse, write routes ran as `getSystemToken() || req.user.accessToken`. With the
 App token present, writes executed with org-admin privilege regardless of who
-asked — so a member with read-only access to one repository could strip branch
+asked, so a member with read-only access to one repository could strip branch
 protection from every repository.
 
 ## The rule
@@ -27,7 +27,7 @@ permissions it would apply had they used github.com directly.
 This is deliberate. A permission model of our own would be a second source of
 truth: it could be wrong, it would drift as people change teams, and it would
 need its own tests and audits. Delegating to GitHub cannot drift, because it is
-not a copy — it is the same authority.
+not a copy. It is the same authority.
 
 The OAuth app already requests `scope: "repo read:org"` (`github/oauth.ts:20`),
 and an OAuth scope never grants permission the user lacks. `repo` means "act on
@@ -37,9 +37,9 @@ repos you can reach, at your existing level."
 
 | Action | Runs as | Why |
 |---|---|---|
-| User-initiated repo writes — apply template, edit/delete protection, create branch, toggle Dependabot | the user's token | GitHub authorizes natively |
-| System-initiated writes — auto-apply on repo creation, scheduled scans | App token | No user exists behind a webhook |
-| Reads — dashboards, compliance, knowledge center | App token | Full org visibility, and the 12,500/hr limit |
+| User-initiated repo writes, apply template, edit/delete protection, create branch, toggle Dependabot | the user's token | GitHub authorizes natively |
+| System-initiated writes, auto-apply on repo creation, scheduled scans | App token | No user exists behind a webhook |
+| Reads, dashboards, compliance, knowledge center | App token | Full org visibility, and the 12,500/hr limit |
 
 Reads are deliberately unrestricted: anyone who can sign in can see the whole
 org. This is an internal transparency tool.
@@ -47,7 +47,7 @@ org. This is an internal transparency tool.
 ### The one thing GitHub cannot answer
 
 Auto-apply on new repositories is not a GitHub action, so there is nothing to
-ask GitHub about — and it is the highest-stakes setting in the app, because
+ask GitHub about, and it is the highest-stakes setting in the app, because
 turning it on changes every repository created from that moment.
 
 It is therefore gated on membership of a GitHub team, `control-hub-admins`
@@ -65,7 +65,7 @@ resends the existing value, and that must keep working.
 
 ## Errors
 
-GitHub answers 403, or 404 when the user cannot see the resource at all —
+GitHub answers 403, or 404 when the user cannot see the resource at all,
 distinguishing them would leak whether a private repo exists, so both map to
 one message naming the user, the action and the repo.
 

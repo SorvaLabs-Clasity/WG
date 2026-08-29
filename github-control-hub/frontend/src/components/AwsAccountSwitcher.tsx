@@ -7,7 +7,7 @@ import { fetchAwsProfiles, useAwsProfile, triggerAwsSsoLogin, AwsProfile } from 
  *
  * The app used to be signed into one account for the life of a launch. Reaching
  * another meant going back to the login screen, and the switch invalidated the
- * session on the way — `JWT_SECRET` is read from each account's secret, so the
+ * session on the way, `JWT_SECRET` is read from each account's secret, so the
  * token minted under the last account stopped verifying the moment the new
  * one's secrets loaded. Changing which AWS account you were looking at
  * therefore signed you out of GitHub, which is not a thing anybody asked for.
@@ -62,8 +62,8 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
       // Reload, rather than invalidate.
       //
       // Clearing the query cache was the first attempt and it was not enough:
-      // every mounted page also holds state of its own — a selected stream, an
-      // expanded row, a filter, a page number — and all of it describes the
+      // every mounted page also holds state of its own, a selected stream, an
+      // expanded row, a filter, a page number, and all of it describes the
       // account being left. The Activity tab kept its GitHub stream selected
       // until it was navigated away from and back, which is the same bug
       // wearing a different hat.

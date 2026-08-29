@@ -5,7 +5,7 @@ of this app that touches AWS resources rather than GitHub.
 
 ## How it runs
 
-A Lambda, invoked three ways — a 15-minute schedule, a CloudTrail event on a
+A Lambda, invoked three ways, a 15-minute schedule, a CloudTrail event on a
 covered resource, or a manual sweep from the app. All three run the same
 function, so a manual run cannot behave differently from an automatic one.
 
@@ -32,18 +32,18 @@ AWS.
 
 Enforce needs two independent things: the rule set to enforce, **and** the
 deployment granted write permissions. A read-only deployment still finds every
-violation and still records the exact fix — AWS refuses the write, and the
+violation and still records the exact fix, AWS refuses the write, and the
 finding says so in those words rather than surfacing a raw `AccessDenied`.
 
 ## Pages
 
-- [Rules](rules.md) — the catalog, and what each one checks
-- [Exclusions](exclusions.md) — skipping resources deliberately left alone
-- [Permissions](permissions.md) — the complete IAM inventory
+- [Rules](rules.md), the catalog, and what each one checks
+- [Exclusions](exclusions.md), skipping resources deliberately left alone
+- [Permissions](permissions.md), the complete IAM inventory
 
 ## What it cannot do
 
 It cannot read the contents of any bucket or any log line, cannot delete
 anything, cannot grant anyone access to anything, and cannot become an
 administrator of any account. Those are properties of IAM, not promises made by
-this code — see [permissions](permissions.md).
+this code, see [permissions](permissions.md).

@@ -6,7 +6,7 @@
  * a question about who can reach the repository. An organization owner holds
  * admin on every repository in the organization without ever having opened one,
  * and appeared there identically to somebody deliberately given write access to
- * this repository in particular — which is why the list was full of people who
+ * this repository in particular, which is why the list was full of people who
  * had never committed anything.
  *
  * The `source` that distinguishes them (`direct`, `team`, `org_owner`) was

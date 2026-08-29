@@ -30,7 +30,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
    * Open a link in the user's own browser.
    *
    * Asked for explicitly rather than left to `target="_blank"`. That route
-   * depends on the main process intercepting a window-open it may decline —
+   * depends on the main process intercepting a window-open it may decline,
    * during a sign-in it deliberately allows one instead, and any such branch
    * turns a click into nothing at all, with no error anywhere. A click that
    * silently does nothing is the worst kind of broken: it reads as the app

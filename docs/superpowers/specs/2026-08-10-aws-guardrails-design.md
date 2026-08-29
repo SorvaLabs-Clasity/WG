@@ -1,11 +1,11 @@
-# AWS Guardrails — Phase 1 design
+# AWS Guardrails: Phase 1 design
 
 **Date:** 2026-08-10
 
 ## Goal
 
 Rules that say what an AWS resource must look like, applied to resources as they
-are created and runnable on demand against existing ones, with exclusion lists —
+are created and runnable on demand against existing ones, with exclusion lists,
 the shape of the GitHub template system, pointed at AWS.
 
 Single account: the production account. Other environments are out of scope.
@@ -76,8 +76,8 @@ survives a sweep.
 
 ### Exclusions
 
-Mirrors the GitHub model — explicit names, `starts_with`, `contains`, a
-whitelist that wins over patterns — plus `tag_equals`, the AWS equivalent of
+Mirrors the GitHub model, explicit names, `starts_with`, `contains`, a
+whitelist that wins over patterns, plus `tag_equals`, the AWS equivalent of
 the CODEOWNERS pattern.
 
 ## Catalog
@@ -88,20 +88,20 @@ Safe to auto-remediate:
 |---|---|
 | `s3_https_only` | `sid` |
 | `log_retention_min` | `minDays`, `leaveLongerAlone`, `neverExpireIsCompliant` |
-| `s3_block_public_access` | — |
+| `s3_block_public_access` |, |
 | `s3_default_encryption` | `algorithm` |
-| `s3_versioning` | — |
-| `ebs_encryption_default` | — (account-level) |
+| `s3_versioning` |, |
+| `ebs_encryption_default` |, (account-level) |
 | `rds_backup_retention_min` | `minDays` |
 | `iam_password_policy` | `minLength`, `maxAgeDays`, `reusePrevention` |
 
-Report-only by default — remediation can cut live access:
+Report-only by default, remediation can cut live access:
 
 | kind | params |
 |---|---|
 | `sg_no_public_admin_ingress` | `ports` |
-| `rds_no_public_access` | — |
-| `ec2_imdsv2_required` | — |
+| `rds_no_public_access` |, |
+| `ec2_imdsv2_required` |, |
 | `cloudtrail_enabled` | `requireMultiRegion` |
 
 ## Safety
