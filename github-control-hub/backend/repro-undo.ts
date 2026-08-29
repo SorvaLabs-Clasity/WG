@@ -32,7 +32,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     check(`${action} cannot be undone`, !!reason && reason.includes("git operation"), reason);
   }
 
-  // A payload arriving on one of these — a bug, or a tampered row — must not
+  // A payload arriving on one of these, a bug, or a tampered row, must not
   // buy its way past the rule.
   const forged = at({
     action: "github.push" as any, source: "github",
@@ -84,7 +84,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
 {
   // Templates and exclusion lists are gone. Their rows are still in the log and
   // still carry undo payloads, and canUndo in the frontend offers the button on
-  // the strength of a payload existing — so this path is reachable by pressing
+  // the strength of a payload existing, so this path is reachable by pressing
   // Undo on a template row, and it has to fail rather than report success.
   const { REMOVED_UNDO_ACTIONS, undoRequirement: reqFor } = require("./src/services/undoPolicy");
 
@@ -295,7 +295,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
   const GUARDED: [string, RegExp, RegExp][] = [
     ["scanners.ts",      /router\.(post|put|delete)\(/g, /refusedScannerChange/],
     // Two gates since personal dashboards existed. Creating still asks
-    // `refusedWidgetChange` — admin, for the one board everybody sees — while
+    // `refusedWidgetChange`, admin, for the one board everybody sees, while
     // editing and deleting ask `refusedWidgetEdit`, which reads the stored
     // owner first and is the stricter of the two: it refuses somebody else's
     // personal widget outright rather than falling back to the admin gate.
@@ -306,7 +306,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // review, which is why it was the one org-wide config router shipping with
     // no authorization at all. It has since been deleted along with the rest of
     // the templates feature, but the lesson stands: a file that is not listed
-    // here is not checked, so the list itself is the thing to keep honest — see
+    // here is not checked, so the list itself is the thing to keep honest, see
     // the completeness assertion below.
     ["awsGuardrails.ts", /router\.(post|put|delete)\(/g, /requireAdmin/],
     // Two gates, because the routes ask different questions. Undo and retry
@@ -321,7 +321,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     ["pulls.ts",         /router\.(post|put|delete)\(/g, /isControlHubAdmin/],
     // Exempted as "read models over the graph" until it was read carefully.
     // PUT /config replaces the rule set the entire organization is scored
-    // against, and `{"rules": []}` scores everything 100 — an org-wide
+    // against, and `{"rules": []}` scores everything 100, an org-wide
     // configuration write sitting in a router nobody was checking, which is
     // exactly the failure the completeness assertion below exists to catch and
     // did not, because an inaccurate exemption reads the same as a correct one.
@@ -335,7 +335,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
      * A router-wide `router.use(guard)` gates everything declared after it.
      *
      * Accepted as an alternative to naming the guard on each route, and only
-     * when it precedes the first route — a gate installed halfway down the
+     * when it precedes the first route, a gate installed halfway down the
      * file leaves everything above it open, which is the same bug as
      * forgetting it. This is the stronger of the two patterns, because a route
      * added later inherits it instead of having to remember it.
@@ -368,10 +368,10 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
    */
   const NOT_ORG_WIDE: Record<string, string> = {
     "auth.ts": "session and local AWS setup; guarded by authMiddleware/serverModeGuard, not by team",
-    "branches.ts": "acts on one repo with the caller's own token — GitHub authorizes",
+    "branches.ts": "acts on one repo with the caller's own token, GitHub authorizes",
     "protection.ts": "same: per-repo, the caller's token",
     "repos.ts": "same: per-repo, the caller's token",
-    "webhooks.ts": "not a user route — HMAC-verified GitHub deliveries",
+    "webhooks.ts": "not a user route, HMAC-verified GitHub deliveries",
     "graph.ts": "derived cache rebuilt from GitHub; holds no authority of its own",
     "access.ts": "read models over the graph",
     "dependencies.ts": "reads advisories; its two writes enable and disable Dependabot on one repo with the caller's own token",

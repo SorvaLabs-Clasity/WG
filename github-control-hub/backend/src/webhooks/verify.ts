@@ -4,7 +4,7 @@ import crypto from "crypto";
  * The bytes GitHub signed, whatever encoding API Gateway wrapped them in.
  *
  * The signature covers the request body exactly as sent. API Gateway may
- * base64-encode it, so the flag decides the decoding — and nothing may parse
+ * base64-encode it, so the flag decides the decoding, and nothing may parse
  * and re-serialise the payload before this runs, because a re-serialised body
  * is a different sequence of bytes and every signature fails.
  */

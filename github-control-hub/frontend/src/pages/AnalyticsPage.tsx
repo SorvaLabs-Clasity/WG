@@ -61,7 +61,7 @@ type PresetId = "dependabot" | "bypasses" | "vuln-repos" | "renovate-open";
 /**
  * Which severities the "repositories with vulnerabilities" preset counts.
  *
- * A threshold — "high and above" — cannot express "critical and medium, but
+ * A threshold, "high and above", cannot express "critical and medium, but
  * not high", and there is no reason it should not be askable. So the setting is
  * a set, stored comma-separated in queryParam so it survives a reload with the
  * rest of the widget's configuration.
@@ -112,7 +112,7 @@ export function parseSeverities(param: string | undefined): Severity[] {
   return picked.length ? picked : [...SEVERITIES];
 }
 
-/** "Critical and high", "all severities" — the label the card and form share. */
+/** "Critical and high", "all severities", the label the card and form share. */
 export function describeSeverities(picked: Severity[]): string {
   if (picked.length === SEVERITIES.length) return "all severities";
   const ordered = SEVERITIES.filter(s => picked.includes(s));
@@ -123,8 +123,8 @@ export function describeSeverities(picked: Severity[]): string {
 /**
  * The checks, as cards with weight.
  *
- * The page began as a grid of cards and three redesigns walked away from it —
- * bands, then a ledger, then a bar chart — each one flatter and more austere
+ * The page began as a grid of cards and three redesigns walked away from it,
+ * bands, then a ledger, then a bar chart, each one flatter and more austere
  * than the last. That was the wrong direction: /.impeccable.md asks for
  * saturated colour, depth and layering, and names Vanta's control dashboard as
  * the reference. A grid was never the problem; a grid of thin grey boxes with a
@@ -132,7 +132,7 @@ export function describeSeverities(picked: Severity[]): string {
  *
  * So: cards again, built the way the notes actually describe. Each carries a
  * ring showing how much of the organization it concerns, a bar repeating that
- * at full width, and the first few affected repositories by name — because a
+ * at full width, and the first few affected repositories by name, because a
  * count tells you the size of a problem and a name tells you where it is.
  *
  * Severity drives saturation, elevation and the header wash together, so a card
@@ -146,7 +146,7 @@ interface Verdict {
   level: Level;
   value: number;
   denominator: number | null;
-  /** 0..1 — how much of what was checked this concerns. */
+  /** 0..1, how much of what was checked this concerns. */
   share: number | null;
   caption: string;
   eyebrow: string;
@@ -246,7 +246,7 @@ const RANK: Record<Level, number> = { danger: 0, warn: 1, info: 2, clear: 3 };
  *
  * Long enough for the cards to finish and be looked at, short enough that
  * leaving the tab open does not quietly return it to running every check on
- * every render — which is the behaviour the snapshots exist to remove.
+ * every render, which is the behaviour the snapshots exist to remove.
  */
 const LIVE_WINDOW_MS = 90_000;
 
@@ -259,7 +259,7 @@ export default function AnalyticsPage() {
   const { data: widgets = [], isLoading: widgetsLoading, isFetching: widgetsFetching, refetch: refetchWidgets } = useWidgets();
   const { data: snapshots } = useWidgetSnapshots();
 
-  /** The oldest snapshot on screen — what the page can honestly claim. */
+  /** The oldest snapshot on screen, what the page can honestly claim. */
   const oldestComputedAt = useMemo(() => {
     const times = (snapshots ?? [])
       .filter(sn => widgets.some(w => w.id === sn.widgetId))
@@ -663,7 +663,7 @@ function Ring({ share, tone, children }: { share: number; tone: typeof TONE[Leve
  * One check, on its own.
  *
  * Detail used to unroll inside the card, which meant a seven-column table in a
- * third of a row, and then — when the card was widened to fit it — a grid that
+ * third of a row, and then, when the card was widened to fit it, a grid that
  * reflowed around whatever was open. Both were the same mistake: making the
  * board carry something the board is the wrong shape for.
  *
@@ -671,7 +671,14 @@ function Ring({ share, tone, children }: { share: number; tone: typeof TONE[Leve
  * uses, and the table gets the whole width without anything moving underneath
  * it.
  */
-function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName,
+/**
+ * Exported so the personal board shows the same detail view.
+ *
+ * It used to open a modal saying "go and look at the Overview tab", which is a
+ * screen apologising for not being the other screen. The table, the verdict and
+ * the freshness stamp all live here already.
+ */
+export function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName,
                       onAlarm, canAlarm, alarmCount, live }: {
   config: WidgetConfig; onBack: () => void; onEdit: () => void;
   onAlarm: () => void; canAlarm: boolean; alarmCount: number;
@@ -681,7 +688,7 @@ function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName,
 }) {
   // `live` as well as `needAllRows`: pressing Refresh has to reach here too.
   // Without it the Overview went live and the detail table kept reading the
-  // stored snapshot — so a check that had started reporting a new field showed
+  // stored snapshot, so a check that had started reporting a new field showed
   // the old shape until the next scheduled pass wrote one.
   const { items, isLoading, total, entity } = useWidgetData(config, { needAllRows: true, live });
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
@@ -745,7 +752,7 @@ type Entity = "repository" | "user" | "team";
  * What a check counts.
  *
  * Declared on the query rather than inferred: an empty result has no rows to
- * read, and the id is not a description — inferring from a "repos-" prefix is
+ * read, and the id is not a description, inferring from a "repos-" prefix is
  * what gave "unowned-repos" no denominator while its neighbour had one.
  */
 function entityForConfig(config: WidgetConfig): Entity {
@@ -899,7 +906,7 @@ function CheckRow({
 /**
  * Exported so the personal dashboard can render the same card.
  *
- * The alternative was a second card that looked nearly the same and drifted —
+ * The alternative was a second card that looked nearly the same and drifted,
  * and the verdict logic, the freshness stamp and the failure states inside this
  * are exactly the parts that must not be reimplemented twice.
  */
@@ -945,8 +952,8 @@ export function CheckCard({
   //
   // The three subject-by-subject checks read a batch per pass and answer
   // nothing until every subject is covered, which takes a few passes on a large
-  // organization. Rendering that as the amber "Not running" warning below — with
-  // a Remove button — tells somebody their check is broken at the one moment it
+  // organization. Rendering that as the amber "Not running" warning below, with
+  // a Remove button, tells somebody their check is broken at the one moment it
   // is doing exactly what it should, and invites them to delete it.
   if (error instanceof IncompleteQueryError) {
     const pctDone = error.total > 0 ? Math.round((error.covered / error.total) * 100) : 0;
@@ -1059,8 +1066,8 @@ export function CheckCard({
       <div className={`${tone.wash} px-5 pt-5 pb-4`}>
         <div className="flex items-start gap-4">
           {pct === null ? (
-            // Nothing to take a share of — a check about people or teams has no
-            // repository count behind it, so a ring reading "—" was a chart of
+            // Nothing to take a share of, a check about people or teams has no
+            // repository count behind it, so a ring reading " " was a chart of
             // nothing. A marked disc says what kind of thing was counted
             // instead, and keeps the header the same height either way.
             <Emblem kind={entity} tone={tone} />
@@ -1190,7 +1197,7 @@ export function CheckCard({
 /**
  * A card's rows, from the schedule where possible and live where not.
  *
- * Every check used to run inside the request that drew the card — a scan of the
+ * Every check used to run inside the request that drew the card, a scan of the
  * graph table, live GitHub calls for the dependency widgets, and up to
  * twenty-five commit searches for the subject-by-subject ones, all while the
  * page waited. The scheduled pass now computes and stores the same rows, and
@@ -1212,7 +1219,7 @@ function useWidgetData(
     /**
      * The caller needs every row, not just the count and a preview. A snapshot
      * trimmed to fit the item limit is not enough for the detail table, so it
-     * falls through to a live read — a card can be served from a short list,
+     * falls through to a live read, a card can be served from a short list,
      * a table listing them cannot.
      */
     needAllRows?: boolean;
@@ -1274,7 +1281,7 @@ function useWidgetData(
         rawItems = Array.from(map.values()).sort((a, b) => b.critical !== a.critical ? b.critical - a.critical : b.high !== a.high ? b.high - a.high : b.total - a.total);
       } else if (config.presetId === "vuln-repos") {
         // Reads the same ["dependencies"] query the Dependabot tab uses, so
-        // adding this widget costs no additional GitHub requests — the list is
+        // adding this widget costs no additional GitHub requests, the list is
         // one request per repository and must not be fetched twice.
         loading = depsLoading;
         const wanted = new Set<string>(parseSeverities(config.queryParam));
@@ -1349,7 +1356,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
   //
   // Rows are shaped by whichever query produced them, so search covers the
   // subject (repo/user/team) plus every scalar field the row happens to carry
-  // rather than a fixed list. Objects are skipped — stringifying them matches
+  // rather than a fixed list. Objects are skipped, stringifying them matches
   // punctuation nobody typed.
   // Above the early return, because these are hooks and that return is
   // conditional. `hasStatus` is recomputed here rather than reused, because the
@@ -1358,7 +1365,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
     type: config.type,
     presetId: config.presetId,
     hasStatus: items.some((i: any) => i.status),
-    // Any row carrying the field, including one where it is null — null is the
+    // Any row carrying the field, including one where it is null, null is the
     // answer "no team owns this", which is exactly what the column is for.
     hasOwner: items.some((i: any) => "owner" in i),
     hasVisibility: items.some((i: any) => "visibility" in i),
@@ -1765,8 +1772,8 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
    *
    * A widget used to render either as a big number or as a table depending on
    * it; it now renders as a card that carries both, so the setting was a form
-   * control that changed nothing about what you got. The field itself stays —
-   * the API still requires one and every stored widget still has one — so it is
+   * control that changed nothing about what you got. The field itself stays,
+   * the API still requires one and every stored widget still has one, so it is
    * sent as a constant rather than removed from the payload, which keeps widgets
    * created before and after this change identical on disk.
    */

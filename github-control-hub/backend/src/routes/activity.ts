@@ -56,8 +56,8 @@ const router = Router();
  * Undoing is doing. Someone who cannot edit a template must not be able to
  * revert an edit to it, and someone who cannot administer a repository must
  * not be able to strip its protection by pressing undo on the row that added
- * it. Being on the admin team is not enough on its own — it says nothing about
- * whether you can touch a particular repo — so both are checked.
+ * it. Being on the admin team is not enough on its own. It says nothing about
+ * whether you can touch a particular repo, so both are checked.
  *
  * Returns a response body to send, or null when the caller may proceed.
  */
@@ -126,7 +126,7 @@ function addSignatures(entry: ActivityEntry, sigs: Set<string>) {
  *
  * This router is deliberately not behind the GitHub gate: it is the one place
  * guardrail findings are recorded, and taking the feed away in the accounts that
- * run guardrails would remove the record of what they did — most of the reason
+ * run guardrails would remove the record of what they did, most of the reason
  * to run them. So it stays reachable and drops the rows that do not belong here.
  *
  * Filtered on the server, not hidden in the page. The rows are the history of a
@@ -293,8 +293,8 @@ router.post("/:id/undo", async (req: Request<{ id: string }>, res: Response) => 
       }
     }
 
-    // A parent stands for its children. If any of them was refused — a branch
-    // holding commits, most likely — the group was not undone, and saying it
+    // A parent stands for its children. If any of them was refused, a branch
+    // holding commits, most likely, the group was not undone, and saying it
     // was would hide exactly the thing the user needs to see.
     if (errors.length > 0) {
       res.status(502).json({ error: errors[0], undone, errors });
@@ -374,7 +374,7 @@ router.post("/:id/redo", async (req: Request<{ id: string }>, res: Response) => 
     for (const target of descendants) {
       if (!target.undoPayload) {
         // Rows the old undo path flagged without touching anything. Clearing
-        // the flag is the repair, not a redo — there is nothing to reapply.
+        // the flag is the repair, not a redo. There is nothing to reapply.
         await markActivityRedone(target.id);
         redone.push(target.id);
         continue;
@@ -433,7 +433,7 @@ router.post("/:id/retry", async (req: Request<{ id: string }>, res: Response) =>
     // gate on this page: fail an action you were refused, then press Retry.
     //
     // The whole tree is gathered first because retry does not stop at this
-    // entry — a failed template application retries every repository under it,
+    // entry, a failed template application retries every repository under it,
     // and checking only the parent would mean attempting five repos having
     // verified one.
     const retryTargets: ActivityEntry[] = [entry];
@@ -674,8 +674,8 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
 
       if (work && branchWasTouched(work)) {
         // Named precisely where we can be: unmerged commits are the case where
-        // deleting definitely destroys work. Otherwise the branch moved — a
-        // merge, a squash, a rebase, a force-push — and we say so rather than
+        // deleting definitely destroys work. Otherwise the branch moved, a
+        // merge, a squash, a rebase, a force-push, and we say so rather than
         // guessing which.
         const detail = work.unmergedCommits > 0
           ? `${work.unmergedCommits} commit${work.unmergedCommits === 1 ? "" : "s"} that ${work.unmergedCommits === 1 ? "is" : "are"} not in "${params.baseBranch}"`
@@ -1057,7 +1057,7 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
 /**
  * The shape of the feed, for the header above it.
  *
- * Ungated like the feed itself, and deliberately unfiltered by the *view* — it
+ * Ungated like the feed itself, and deliberately unfiltered by the *view*. It
  * is the backdrop the filtered table sits in front of, so narrowing it to
  * whatever category somebody has selected would make the chart agree with the
  * table and stop being a comparison.

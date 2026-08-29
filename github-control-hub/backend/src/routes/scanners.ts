@@ -20,7 +20,7 @@ const router = Router();
  * Scanners are org-wide and run with elevated credentials.
  *
  * Defining one decides what gets searched for across every repository, and
- * /:id/run executes it with the system token rather than the caller's — so an
+ * /:id/run executes it with the system token rather than the caller's, so an
  * ordinary member could have used a scan to read repositories GitHub would
  * never have shown them directly. Reading definitions and past results stays
  * open; creating, editing, deleting and running do not.

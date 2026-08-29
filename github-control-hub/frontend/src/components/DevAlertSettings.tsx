@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useDevAlerts, useSaveDevAlerts, useTestDevAlerts } from "../hooks/useMe";
 import { Note, Button, Spinner, SURFACE } from "../design";
 import type { DigestPrefs, EventPrefs } from "../api/me";
+import TeamsSetupHelp from "./TeamsSetupHelp";
 
 /**
  * A developer's own notifications, to their own Teams.
@@ -94,8 +95,7 @@ export default function DevAlertSettings() {
             Your Teams channel
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
-            In Teams, add a <span className="font-semibold">Workflows</span> connector to a channel or
-            chat, choose “Post to a channel when a webhook request is received”, and copy the URL it gives you.
+            These are your own notifications, so a chat with yourself is usually the right place.
           </p>
           <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
         </div>
@@ -103,8 +103,8 @@ export default function DevAlertSettings() {
         <div className="p-5">
           {data.webhookConfigured && !webhook && (
             <Note intent="good">
-              A webhook is set. It is not shown here — anybody who can read it could post
-              into that channel — so paste a new one to replace it.
+              A webhook is set. It is not shown here: anybody who can read it could post
+              into that channel. Paste a new one to replace it.
             </Note>
           )}
 
@@ -144,7 +144,7 @@ export default function DevAlertSettings() {
             </Button>
             {test.isSuccess && (
               <span className="text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400">
-                Sent — check Teams.
+                Sent. Check Teams.
               </span>
             )}
             {test.isError && (
@@ -164,6 +164,8 @@ export default function DevAlertSettings() {
               Nothing is sent until a webhook is saved, whatever is ticked below.
             </p>
           )}
+
+          <div className="mt-3"><TeamsSetupHelp scope="chat" /></div>
         </div>
       </section>
 
@@ -174,7 +176,7 @@ export default function DevAlertSettings() {
             Tell me straight away
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
-            Arrives within seconds. Kept short on purpose — a message that is not worth
+            Arrives within seconds. Kept short on purpose. A message that is not worth
             reading immediately teaches you to ignore the ones that are.
           </p>
           <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
@@ -193,8 +195,8 @@ export default function DevAlertSettings() {
             onChange={v => patchEvents({ changesRequested: v })}
           />
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-2">
-            “Ready to merge” and “checks went red” are not single events — they are conclusions
-            drawn from several — so they live in the summary below rather than as switches here
+            “Ready to merge” and “checks went red” are not single events. They are conclusions
+            drawn from several, so they live in the summary below rather than as switches here
             that would never quite fire.
           </p>
         </div>

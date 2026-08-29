@@ -51,6 +51,13 @@ export interface EmailGroup {
   topicArn: string;
   members: GroupMember[];
   membersError?: string;
+  /**
+   * How many Teams channels this group posts to.
+   *
+   * A count, never the URLs. Each one is effectively a password for posting
+   * into that channel, so they stay on the server.
+   */
+  teamsCount?: number;
 }
 
 export interface SecurityNotifySettings {
@@ -80,6 +87,13 @@ export const deleteAlarmApi = (id: string) =>
   apiDelete<{ message: string }>(`/alarms/${id}`);
 
 export const fetchGroups = () => apiGet<EmailGroup[]>("/alarms/groups");
+
+export const addGroupTeams = (id: string, webhookUrl: string) =>
+  apiPost<{ teamsCount: number }>(`/alarms/groups/${id}/teams`, { webhookUrl });
+
+/** By position: the URLs are never sent to the browser, so there is no other handle. */
+export const removeGroupTeams = (id: string, index: number) =>
+  apiDelete<{ teamsCount: number }>(`/alarms/groups/${id}/teams/${index}`);
 export const createGroupApi = (name: string) =>
   apiPost<EmailGroup>("/alarms/groups", { name });
 /** `force` deletes even when alarms still point at the group. */

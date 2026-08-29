@@ -4,7 +4,7 @@ import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authoriza
 import { getWidget } from "../services/widgetService";
 import {
   listAlarms, getAlarm, createAlarm, updateAlarm, deleteAlarm,
-  listGroups, getGroup, createGroupRecord, deleteGroupRecord, alarmsUsingGroup,
+  listGroups, getGroup, saveGroup, createGroupRecord, deleteGroupRecord, alarmsUsingGroup,
   getSecuritySettings, saveSecuritySettings,
   getFeedSettings, saveFeedSettings, type NotifyFeed,
 } from "../services/alarmService";
@@ -17,14 +17,17 @@ import {
   DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY,
 } from "../alarms/message";
 import { sanitizeError } from "../utils/errorSanitizer";
+import { logActivity } from "../services/activityService";
+import { GUARDRAIL_PREFIX, guardrailRuleOf } from "../alarms/conditions";
+import { listGuardrails } from "../aws-guardrails/store";
 
 const router = Router();
 
 /**
  * Everything here is admin-only, reads included.
  *
- * Unlike a repository action — authorized by GitHub itself, because the call
- * carries the user's own token — these calls are not scoped to what the caller
+ * Unlike a repository action, authorized by GitHub itself, because the call
+ * carries the user's own token. These calls are not scoped to what the caller
  * can personally reach. Subscribing an address to a topic means this app can
  * send email to anyone. Reads are gated too because a group's member list is a
  * list of people's email addresses.
@@ -73,8 +76,29 @@ router.get("/variables", (_req: Request, res: Response) => {
   res.json(TEMPLATE_VARIABLES);
 });
 
+/**
+ * The thing an alarm watches, which is not always a widget.
+ *
+ * A guardrail alarm's subject is synthesised from its id rather than stored:
+ * there is no record to look up, because "the S3 rules" is not an object
+ * somebody created. It is a view over the findings table. Resolving it here
+ * means every route that validates an alarm handles both kinds without knowing
+ * there are two.
+ */
+async function subjectFor(id: string): Promise<{ id: string; title?: string; type: string } | undefined> {
+  if (id.startsWith(GUARDRAIL_PREFIX)) {
+    const rule = guardrailRuleOf(id);
+    if (!rule) return { id, type: "guardrail", title: "AWS guardrails" };
+    const found = (await listGuardrails()).find(r => r.id === rule);
+    // A rule that no longer exists is refused rather than watched: an alarm on
+    // a deleted rule reads zero for ever, which looks exactly like compliance.
+    return found ? { id, type: "guardrail", title: `Guardrail: ${found.name}` } : undefined;
+  }
+  return (await getWidget(id)) as any;
+}
+
 router.get("/widgets/:widgetId/conditions", async (req: Request, res: Response) => {
-  const widget = await getWidget(String(req.params.widgetId));
+  const widget = await subjectFor(String(req.params.widgetId));
   if (!widget) return res.status(404).json({ error: "Widget not found" });
   res.json({
     widgetId: widget.id,
@@ -106,7 +130,7 @@ router.post("/", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "widgetId, condition and groupId are required" });
     }
 
-    const widget = await getWidget(widgetId);
+    const widget = await subjectFor(widgetId);
     if (!widget) return res.status(404).json({ error: "Widget not found" });
 
     // The load-bearing check. A condition its widget cannot produce would
@@ -138,6 +162,18 @@ router.post("/", async (req: Request, res: Response) => {
 
 // ── email groups ──────────────────────────────────────────────────────
 
+/**
+ * A group as the browser may see it.
+ *
+ * The Teams URLs never leave the server. Each one is effectively a password for
+ * posting into that channel, anybody holding it can post there indefinitely,
+ * and the screen only needs to know how many are set, not what they are.
+ */
+function withoutHooks(g: any) {
+  const { teamsWebhooks, ...rest } = g;
+  return { ...rest, teamsCount: (teamsWebhooks ?? []).length };
+}
+
 router.get("/groups", async (_req: Request, res: Response) => {
   try {
     const groups = await listGroups();
@@ -146,9 +182,9 @@ router.get("/groups", async (_req: Request, res: Response) => {
     // and would otherwise look like a working recipient.
     const withMembers = await Promise.all(groups.map(async g => {
       try {
-        return { ...g, members: await listMembers(g.topicArn) };
+        return { ...withoutHooks(g), members: await listMembers(g.topicArn) };
       } catch (err) {
-        return { ...g, members: [], membersError: (err as Error).message };
+        return { ...withoutHooks(g), members: [], membersError: (err as Error).message };
       }
     }));
     res.json(withMembers);
@@ -224,6 +260,64 @@ router.delete("/groups/:id/members", async (req: Request, res: Response) => {
 });
 
 /** Sends a real email, so a group can be proven to work before it is relied on. */
+/**
+ * Add a Teams channel to a group.
+ *
+ * The same allow-list as the personal notifications, and for the same reason: a
+ * Lambda posts to whatever is stored here with no further checks, so anything
+ * accepted is somewhere the app will send alarm text.
+ */
+router.post("/groups/:id/teams", async (req: Request, res: Response) => {
+  try {
+    const group = await getGroup(String(req.params.id));
+    if (!group) return res.status(404).json({ error: "No such group" });
+
+    const url = String(req.body?.webhookUrl ?? "").trim();
+    const { badWebhook } = await import("../services/devAlertService");
+    const bad = badWebhook(url);
+    if (bad) return res.status(400).json({ error: bad });
+
+    const hooks = group.teamsWebhooks ?? [];
+    // Silently ignoring a duplicate rather than erroring: adding the same
+    // channel twice is a person being unsure whether it took, and the answer
+    // they want is "it is there", not a complaint.
+    if (!hooks.includes(url)) {
+      await saveGroup({ ...group, teamsWebhooks: [...hooks, url], updatedAt: new Date().toISOString() });
+    }
+    await logActivity("config.updated" as any, req.user!.login, "", "alarm group",
+      `Added a Teams channel to "${group.name}"`);
+    res.json({ teamsCount: hooks.includes(url) ? hooks.length : hooks.length + 1 });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "alarm groups") });
+  }
+});
+
+/**
+ * Remove one, by position.
+ *
+ * By index because the URLs are never sent to the browser, so there is nothing
+ * else for it to name one by.
+ */
+router.delete("/groups/:id/teams/:index", async (req: Request, res: Response) => {
+  try {
+    const group = await getGroup(String(req.params.id));
+    if (!group) return res.status(404).json({ error: "No such group" });
+
+    const hooks = [...(group.teamsWebhooks ?? [])];
+    const i = Number(String(req.params.index));
+    if (!Number.isInteger(i) || i < 0 || i >= hooks.length) {
+      return res.status(400).json({ error: "No channel at that position" });
+    }
+    hooks.splice(i, 1);
+    await saveGroup({ ...group, teamsWebhooks: hooks, updatedAt: new Date().toISOString() });
+    await logActivity("config.updated" as any, req.user!.login, "", "alarm group",
+      `Removed a Teams channel from "${group.name}"`);
+    res.json({ teamsCount: hooks.length });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "alarm groups") });
+  }
+});
+
 router.post("/groups/:id/test", async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
@@ -350,7 +444,7 @@ router.put("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response)
 // ── parameterised routes last ────────────────────────────────────────
 //
 // Express matches in registration order, so `/:id` registered above would
-// swallow `/security` — a PUT to the security toggle would arrive here as an
+// swallow `/security`, a PUT to the security toggle would arrive here as an
 // alarm with id "security" and 404, which reads as the toggle being broken.
 // `/feeds/:feed` is two segments and cannot collide, but it is registered above
 // anyway: the rule that keeps this working is position, not path shape.

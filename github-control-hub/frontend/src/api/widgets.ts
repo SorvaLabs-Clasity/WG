@@ -41,8 +41,8 @@ export interface WidgetSnapshot {
 /**
  * What every widget last worked out, computed on the schedule rather than now.
  *
- * One request for the whole dashboard. Empty is a normal answer — the scheduled
- * pass may not have run yet — and the caller falls back to computing live.
+ * One request for the whole dashboard. Empty is a normal answer, the scheduled
+ * pass may not have run yet, and the caller falls back to computing live.
  */
 export function fetchWidgetSnapshots(): Promise<WidgetSnapshot[]> {
   if (DEMO_MODE) return Promise.resolve([]);

@@ -1,6 +1,6 @@
 # GitHub Control Hub
 
-A self-hosted GitHub governance platform for managing repository protections, compliance scoring, security alerting, and audit trails across your organization — with full undo/redo support.
+A self-hosted GitHub governance platform for managing repository protections, compliance scoring, security alerting, and audit trails across your organization, with full undo/redo support.
 
 ## Features
 
@@ -31,8 +31,8 @@ A self-hosted GitHub governance platform for managing repository protections, co
 
 ### Security Graph & Blast Radius Analysis
 - Directed graph of org relationships: repos, teams, users, workflows, dependencies
-- Blast radius analysis — what's affected if a repo is compromised
-- User impact analysis — what repos/workflows can a user reach
+- Blast radius analysis, what's affected if a repo is compromised
+- User impact analysis, what repos/workflows can a user reach
 - Risk ranking of all repos (based on workflows, vulnerabilities, access patterns)
 - Advanced query engine for security investigations
 
@@ -72,14 +72,14 @@ A self-hosted GitHub governance platform for managing repository protections, co
 | Database       | AWS DynamoDB (13 tables)                               |
 | Secrets        | AWS Secrets Manager                                    |
 | Infrastructure | AWS CDK (API Gateway, Lambda, SQS, SNS, EventBridge, S3, IAM) |
-| Deployment     | `cdk deploy` — bundles and deploys the Lambdas directly from source |
+| Deployment     | `cdk deploy`, bundles and deploys the Lambdas directly from source |
 | Desktop        | Electron (runs the backend locally, talking to AWS directly) |
 
 ## Deployment Modes
 
 ### 1. Webhook Pipeline (AWS, always on)
 
-GitHub webhook events are the only part of the backend that runs continuously in AWS. There is no long-lived server: API Gateway terminates HTTPS with a valid ACM certificate, a receiver Lambda verifies the HMAC signature and enqueues the event to SQS, and a worker Lambda drains the queue — writing activity rows, generating alerts, and updating the compliance cache and security graph. Failed deliveries land in a dead-letter queue after five attempts. A separate scheduled Lambda sweeps AWS accounts for the guardrails feature.
+GitHub webhook events are the only part of the backend that runs continuously in AWS. There is no long-lived server: API Gateway terminates HTTPS with a valid ACM certificate, a receiver Lambda verifies the HMAC signature and enqueues the event to SQS, and a worker Lambda drains the queue, writing activity rows, generating alerts, and updating the compliance cache and security graph. Failed deliveries land in a dead-letter queue after five attempts. A separate scheduled Lambda sweeps AWS accounts for the guardrails feature.
 
 **Infrastructure** is provisioned via AWS CDK (`infra/cdk-stack.ts`):
 - API Gateway REST API, restricted by resource policy to GitHub's published webhook IP ranges
@@ -88,20 +88,20 @@ GitHub webhook events are the only part of the backend that runs continuously in
 - A scheduled Lambda evaluating widget alarms, publishing to SNS when one crosses its threshold
 - An S3-triggered Lambda ingesting the enterprise audit log stream
 - SNS topics (`{prefix}-notify-*`) for alarm and security-alert email; the Lambdas may publish to
-  them and nothing else — no Subscribe, no CreateTopic
+  them and nothing else, no Subscribe, no CreateTopic
 - IAM role scoped to Secrets Manager, DynamoDB, and (for guardrails) read-only AWS config APIs
-- No inbound network surface beyond API Gateway — there is no EC2 instance, no security group, no SSH
+- No inbound network surface beyond API Gateway. There is no EC2 instance, no security group, no SSH
 
 **Deploy:**
 ```bash
 cd infra && npx cdk deploy
 ```
 
-This is the entire deployment step. There is no separate build-and-upload — CDK bundles the Lambdas straight from `backend/src` and deploys them along with the rest of the stack.
+This is the entire deployment step. There is no separate build-and-upload, CDK bundles the Lambdas straight from `backend/src` and deploys them along with the rest of the stack.
 
 ### 2. Desktop App (REST API + UI, local or production use)
 
-The REST API (repos, compliance, scanners, graph, activity, etc.) and the frontend SPA are not deployed anywhere in AWS — they run inside an Electron app (`github-control-hub/desktop/`), which starts the same Express backend locally on port 4321 and talks to DynamoDB and Secrets Manager directly using the operator's AWS credentials. This is true both for local development and for day-to-day production use: everyone who needs to use the app runs the desktop client with credentials for the target AWS account. Includes AWS credential management UI (profiles, SSO login, access keys) and auto-updates.
+The REST API (repos, compliance, scanners, graph, activity, etc.) and the frontend SPA are not deployed anywhere in AWS. They run inside an Electron app (`github-control-hub/desktop/`), which starts the same Express backend locally on port 4321 and talks to DynamoDB and Secrets Manager directly using the operator's AWS credentials. This is true both for local development and for day-to-day production use: everyone who needs to use the app runs the desktop client with credentials for the target AWS account. Includes AWS credential management UI (profiles, SSO login, access keys) and auto-updates.
 
 ## GitHub App Setup
 
@@ -120,7 +120,7 @@ The backend authenticates to GitHub using a **GitHub App** (not a personal acces
 | Members | Read | Org member visibility |
 | Organization administration | Read | Org config and audit logs |
 
-**Required webhook events:** `push`, `pull_request`, `create`, `delete`, `repository`, `branch_protection_rule`, `repository_ruleset`, `member`, `team`, `organization`, `dependabot_alert` for Dependabot alert emails, and `pull_request_review` for the "changes requested" developer notification. Without the last one that notification never fires, and nothing else is affected. The checkboxes in GitHub's UI are labelled in prose rather than by event name — see [setup.md](../docs/operations/setup.md) for which box each one is.
+**Required webhook events:** `push`, `pull_request`, `create`, `delete`, `repository`, `branch_protection_rule`, `repository_ruleset`, `member`, `team`, `organization`, `dependabot_alert` for Dependabot alert emails, and `pull_request_review` for the "changes requested" developer notification. Without the last one that notification never fires, and nothing else is affected. The checkboxes in GitHub's UI are labelled in prose rather than by event name, see [setup.md](../docs/operations/setup.md) for which box each one is.
 
 ## Environment Variables
 
@@ -153,7 +153,7 @@ the repository the auto-updater checks for new releases:
 | `UPDATE_REPO_NAME` | Repository under that owner |
 
 Set both before `npm run dist`. Leaving them unset produces an installer whose
-updater points nowhere — it will build and run, and only fail when it looks for
+updater points nowhere. It will build and run, and only fail when it looks for
 an update. They are not committed, so a fork or an internal copy publishes to its
 own releases rather than to whichever repository the source was taken from.
 
@@ -179,7 +179,7 @@ All tables are prefixed with the stack name (default: `github-control-hub`):
 
 An account set up before the Templates feature was removed may still hold `{prefix}-templates`,
 `{prefix}-rule-templates` and `{prefix}-exclusions`. Nothing reads them. They are left in place
-rather than dropped — an unread table costs nothing at `PAY_PER_REQUEST`, and a deletion cannot be
+rather than dropped, an unread table costs nothing at `PAY_PER_REQUEST`, and a deletion cannot be
 undone.
 
 ## Local Development
@@ -196,7 +196,7 @@ npm run dev
 
 No `.env` file is needed. The backend reads its configuration from AWS Secrets Manager at startup
 using whatever AWS credentials are active, which is the same path the desktop app and the Lambdas
-take — so there is one place credentials live and one way they are loaded.
+take, so there is one place credentials live and one way they are loaded.
 
 ## Project Structure
 
@@ -222,7 +222,7 @@ github-control-hub/
 │       ├── jobs/            # Background jobs (graph aggregator)
 │       └── utils/           # Shared utilities
 └── infra/                   # AWS CDK stack (API Gateway, Lambda, SQS, DynamoDB, IAM)
-github-control-hub/desktop/   # Electron app — runs the backend locally against AWS
+github-control-hub/desktop/   # Electron app, runs the backend locally against AWS
 scripts/                      # Account setup and migration scripts (repo root, not github-control-hub/)
 ```
 
@@ -248,8 +248,8 @@ scripts/                      # Account setup and migration scripts (repo root, 
 
 All `/api/*` endpoints require `Authorization: Bearer <jwt>`.
 
-GitHub webhook deliveries do not go through this Express API at all — they land on the API Gateway URL from the CDK stack's `WebhookUrl` output, handled entirely by the receiver/worker Lambdas described above.
+GitHub webhook deliveries do not go through this Express API at all. They land on the API Gateway URL from the CDK stack's `WebhookUrl` output, handled entirely by the receiver/worker Lambdas described above.
 
 ## License
 
-Private — internal use only.
+Private, internal use only.

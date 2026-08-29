@@ -2,7 +2,7 @@
  * Everyone in the organization, for choosing a person rather than typing one.
  *
  * A free-text login box accepts anything, and "anything" includes real GitHub
- * accounts belonging to strangers — a typo does not fail, it silently names
+ * accounts belonging to strangers, a typo does not fail, it silently names
  * somebody outside the organization who then shows up with their photograph
  * next to it. Muting a stranger is harmless but meaningless: it looks like the
  * mute was set, and the person actually being chased keeps getting reminded.
@@ -20,7 +20,7 @@ const PER_PAGE = 100;
 
 /**
  * A ceiling, so an unexpected paging loop cannot spin forever. Fifty pages is
- * five thousand people — far past any organization this runs against, and
+ * five thousand people, far past any organization this runs against, and
  * reached only if something is wrong.
  */
 const MAX_PAGES = 50;

@@ -20,7 +20,7 @@ const LOGIN_RE = /^[A-Za-z0-9](?:[A-Za-z0-9]|-(?=[A-Za-z0-9])){0,38}$/;
  * `login` names the account to sign in as.
  *
  * Without it GitHub uses whatever session the browser already holds, which is
- * not necessarily the account this app last used — so a button reading
+ * not necessarily the account this app last used, so a button reading
  * "Continue with alice" could sign you in as bob, silently, because GitHub was
  * never told which was meant. With it, GitHub switches accounts or asks,
  * instead of quietly answering a different question.

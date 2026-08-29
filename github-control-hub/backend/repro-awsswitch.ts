@@ -1,7 +1,7 @@
 /**
  * Switching AWS accounts without being signed out of GitHub.
  *
- * You sign in once — AWS credentials for one account, then GitHub — and from
+ * You sign in once, AWS credentials for one account, then GitHub, and from
  * then on you can move between accounts from inside the app: dev, where the
  * GitHub half lives, and uat, which holds no GitHub credentials at all and
  * shows only the AWS and Activity tabs. Your GitHub identity is *yours*, not
@@ -14,7 +14,7 @@
  *   1. **The signing key is per account.** `JWT_SECRET` is read out of each
  *      account's secret, so a session minted under dev stops verifying the
  *      instant uat's secrets load. The token is not tampered with and the user
- *      is not gone — it is being checked against the wrong key, and the app
+ *      is not gone. It is being checked against the wrong key, and the app
  *      reports that as "invalid or expired token".
  *
  *   2. **The organization membership check has nothing to check against.**
@@ -149,7 +149,7 @@ function verifies(token: string): boolean {
   // ── what the account you left must stop answering for ───────────────
   //
   // The switch endpoint reloading secrets is not the whole of a switch. Three
-  // things in this process were cached because they "could not change" — a
+  // things in this process were cached because they "could not change", a
   // DynamoDB client of the guardrail store's own, the home account id stamped
   // on every finding, and the gate's idea of which account this is. Each was
   // true only of an app that picked an account at launch.
@@ -223,7 +223,7 @@ function verifies(token: string): boolean {
     // The credential chain reads AWS_ACCESS_KEY_ID before it ever looks at
     // AWS_PROFILE, so keys left over from an access-key sign-in kept winning
     // while the app went on reporting the profile it had just set. Every screen
-    // named one account and every call went to another — which reads, from
+    // named one account and every call went to another, which reads, from
     // inside the app, as a resource that is missing rather than an account that
     // is wrong. It cost an afternoon on a working audit-log stream.
     for (const route of ["reconnect-aws", "aws-use-profile"]) {

@@ -11,7 +11,7 @@ import {
  *
  * Pointer events rather than mouse events, so a drag works with a trackpad, a
  * stylus and a touchscreen from one code path. `setPointerCapture` is what
- * makes a drag survive the pointer leaving the handle — without it, moving
+ * makes a drag survive the pointer leaving the handle, without it, moving
  * faster than React re-renders drops the drag, which feels like the handle
  * "sticking" every few pixels.
  */

@@ -29,7 +29,7 @@ differently for different reasons.
 ## Why split this way
 
 **Desktop** is the product. It runs its own backend on `localhost:4321` so that
-GitHub calls carry *your* OAuth token — see [authentication](../auth/).
+GitHub calls carry *your* OAuth token, see [authentication](../auth/).
 
 **The webhook receiver and worker** exist for one reason: GitHub webhooks need
 a public HTTPS endpoint and a laptop does not have one. Splitting receiving
@@ -51,5 +51,5 @@ permissions it needs are unrelated to anything GitHub-facing.
 
 ## Read next
 
-- [Where code runs](where-code-runs.md) — what breaks if each piece is down
-- [Request path](request-path.md) — a click, traced to the end
+- [Where code runs](where-code-runs.md), what breaks if each piece is down
+- [Request path](request-path.md), a click, traced to the end

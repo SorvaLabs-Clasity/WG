@@ -2,7 +2,7 @@
  * Design tokens.
  *
  * The app was styled as a GitHub clone, which is deliberately quiet and is why
- * every page read as flat. See /.impeccable.md — the agreed direction is
+ * every page read as flat. See /.impeccable.md, the agreed direction is
  * saturated colour, depth and motion, with colour only ever carrying meaning.
  *
  * Everything is a Tailwind class string rather than a CSS variable so the
@@ -10,7 +10,7 @@
  *
  * Dark mode is specified explicitly rather than leaning on Tailwind's slate
  * ramp. slate-900 cards on a slate-950 page differ by about 4% luminance,
- * which reads as one flat sheet — the surfaces below step far enough apart to
+ * which reads as one flat sheet, the surfaces below step far enough apart to
  * be legible, and status colours are brightened so they survive a dark ground.
  */
 
@@ -18,7 +18,7 @@
 export type Intent = "danger" | "warn" | "good" | "info" | "neutral";
 
 interface IntentStyle {
-  /** Solid fill for hero surfaces — white text sits on these. */
+  /** Solid fill for hero surfaces, white text sits on these. */
   solid: string;
   /** Tinted surface for inline notes and chips. */
   soft: string;
@@ -82,7 +82,7 @@ export const INTENT: Record<Intent, IntentStyle> = {
 };
 
 /**
- * Type scale. Deliberately wide gaps — the previous design sat everything
+ * Type scale. Deliberately wide gaps, the previous design sat everything
  * between 12px and 16px, which is why nothing had presence.
  */
 export const TYPE = {

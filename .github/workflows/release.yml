@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     # A release is an app build. A push that only touches documentation has
-    # nothing new to package, and the version in package.json has not moved —
+    # nothing new to package, and the version in package.json has not moved,
     # so publishing would fail on a release tag that already exists. Left
     # unfiltered, main collects red crosses on markdown commits, and a workflow
     # that is normally red is one whose real failures nobody reads.
@@ -27,7 +27,7 @@ jobs:
   #
   # Letting electron-builder publish from both runners is what broke every
   # release before this. Each one creates its own draft when it cannot find
-  # the other's — GitHub permits several drafts on a single tag — so the repo
+  # the other's: GitHub permits several drafts on a single tag, so the repo
   # ended up with two v1.0.42 releases, one holding the macOS build and one
   # the Windows build, and the publish step promoted whichever it resolved
   # first. The run went green having shipped half a release.
@@ -86,14 +86,14 @@ jobs:
           UPDATE_REPO_OWNER: ${{ github.repository_owner }}
           UPDATE_REPO_NAME: ${{ github.event.repository.name }}
         # onTag, and no GH_TOKEN. Two belts, because on CI electron-builder's
-        # default policy is `always` — it will try to publish and then fail on
+        # default policy is `always`: it will try to publish and then fail on
         # the missing token, which is exactly what it did. onTag only fires
         # when the ref is a tag, and this workflow runs on a branch.
         #
         # `--publish never` would say it more plainly, but electron-builder 26
         # nulls the publish config and then crashes dereferencing it while
         # writing the update manifests. onTag leaves the config intact, so
-        # latest-mac.yml and latest.yml are still produced — which is the whole
+        # latest-mac.yml and latest.yml are still produced: which is the whole
         # reason the build needs a publish config at all.
         run: |
           npx tsc -p tsconfig.json
@@ -139,7 +139,7 @@ jobs:
           # electron-builder names files with spaces and then writes the
           # hyphenated form into the manifests. Uploading the spaced names
           # lets GitHub substitute dots instead, so every url in the manifest
-          # points at a file that does not exist and updating 404s — on a
+          # points at a file that does not exist and updating 404s: on a
           # release that looks perfectly complete.
           cd installers
           for f in *\ *; do [ -e "$f" ] && mv -- "$f" "${f// /-}"; done
@@ -153,7 +153,7 @@ jobs:
           # that platform.
           for f in latest-mac.yml latest.yml; do
             test -f "installers/$f" || {
-              echo "::error::$f is missing — refusing to publish half a release"
+              echo "::error::$f is missing, refusing to publish half a release"
               exit 1
             }
           done

@@ -34,7 +34,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   // ── a run records what it did, and who asked ────────────────────────
   {
     await logSync("graph", "alice", {
-      details: "Synced from GitHub — 1,200 connections",
+      details: "Synced from GitHub, 1,200 connections",
       startedAt: Date.now() - 4200,
     });
     const rows = await getActivity();
@@ -61,7 +61,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 
   // ── a scheduled run is attributed, not left blank ───────────────────
   {
-    await logSync("alarms", SCHEDULE_ACTOR, { details: "3 alarms evaluated — 1 fired" });
+    await logSync("alarms", SCHEDULE_ACTOR, { details: "3 alarms evaluated, 1 fired" });
     const row = (await getActivity()).find(r => r.action === "sync.alarms");
     check("a run nobody triggered names the schedule as the actor",
       row?.actor === SCHEDULE_ACTOR, row?.actor);
@@ -128,7 +128,7 @@ function check(name: string, ok: boolean, got?: unknown) {
     }
 
     // The guardrail sweep is the exception, and writes its own rows directly
-    // from the Lambda rather than through logSync — findings, not ticks.
+    // from the Lambda rather than through logSync, findings, not ticks.
     const gr = fs.readFileSync(`${__dirname}/src/aws-guardrails/handler.ts`, "utf8");
     check('  the guardrail Lambda still writes its own "aws.guardrail" rows',
       /action: "aws.guardrail"/.test(gr));
@@ -138,7 +138,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   //
   // The gating that keeps the five-minute jobs quiet must never reach a button.
   // Somebody pressing refresh is history even when the answer is "nothing
-  // changed" — that is frequently the fact they are trying to establish, and an
+  // changed", that is frequently the fact they are trying to establish, and an
   // unlogged press is indistinguishable from nobody having tried.
   {
     const MANUAL: Array<[string, RegExp, string]> = [

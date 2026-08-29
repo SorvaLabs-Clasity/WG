@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# GitHub Control Hub — the AWS guardrails, and nothing about GitHub.
+# GitHub Control Hub: the AWS guardrails, and nothing about GitHub.
 #
 # For an account that should run the guardrails while holding nothing about your
 # GitHub organization: no App private key, no access graph, no webhook, no
@@ -24,7 +24,7 @@
 #     pipeline. `cdk deploy -c awsOnly=true` creates none of them.
 #
 # Sign-in still uses GitHub, because that is how this app knows who you are and
-# which team you are on. That needs the OAuth App's client id and secret — an
+# which team you are on. That needs the OAuth App's client id and secret: an
 # identity check against github.com, carrying no access to your repositories
 # beyond what the person signing in already has.
 #
@@ -79,13 +79,13 @@ if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && aws sts get-caller-identity >/dev/null 2>&
   echo "  using credentials from the environment"
 else
   if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
-    echo "  the credentials exported in this shell are expired — ignoring them"
+    echo "  the credentials exported in this shell are expired, ignoring them"
     unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
   fi
   ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-}"
   export AWS_PROFILE="$AWS_PROFILE_IN"
   if ! aws sts get-caller-identity >/dev/null 2>&1; then
-    echo "  no valid session for $AWS_PROFILE — signing in"
+    echo "  no valid session for $AWS_PROFILE, signing in"
     aws sso login --profile "$AWS_PROFILE" \
       || die "Could not sign in to '$AWS_PROFILE'."
   fi
@@ -147,7 +147,7 @@ step "1/4  DynamoDB tables"
 
 # Delegated, not duplicated.
 #
-# These schemas are not uniform — auth-codes is keyed on `code`, findings and
+# These schemas are not uniform: auth-codes is keyed on `code`, findings and
 # activity on pk/sk, and activity carries two secondary indexes without which
 # looking a row up by id degrades into scanning the newest ones. Writing a
 # subset out again here got three of them wrong, and the failures were invisible
@@ -155,8 +155,8 @@ step "1/4  DynamoDB tables"
 # in the item", which names neither the table nor the cause.
 #
 # So the same script the full install uses creates them. It also creates the six
-# tables only the GitHub half writes to. They stay empty here — nothing in this
-# account writes to them, and an empty on-demand table costs nothing — and that
+# tables only the GitHub half writes to. They stay empty here: nothing in this
+# account writes to them, and an empty on-demand table costs nothing: and that
 # is a better trade than a second copy of twelve schemas that has to be kept in
 # step by hand.
 AWS_PROFILE="${AWS_PROFILE:-}" AWS_REGION="$REGION" STACK_NAME="$PREFIX" \
@@ -168,24 +168,24 @@ ok "tables present (on-demand billing; the unused ones cost nothing)"
 # ── 2. the secret ─────────────────────────────────────────────────────
 step "2/4  Sign-in credentials"
 echo "  Only what sign-in needs. The GitHub App's private key is deliberately"
-echo "  not asked for and must not be put here — it is the credential that can"
+echo "  not asked for and must not be put here. It is the credential that can"
 echo "  read your organization, and keeping it out of this account is the point."
 echo
 
 # $EXISTING and cur() were read above, before the org prompt that needs them.
 
 if [ -n "$EXISTING" ]; then
-  ok "Secret exists — enter keeps what it already holds"
+  ok "Secret exists, enter keeps what it already holds"
   if [ -n "$(cur GITHUB_APP_PRIVATE_KEY)" ]; then
     warn "This secret already holds a GitHub App private key."
     warn "That is exactly what this account is meant not to have. It is left"
-    warn "alone here — remove it deliberately, once you are sure nothing in"
+    warn "alone here, remove it deliberately, once you are sure nothing in"
     warn "this account still depends on it."
   fi
 else
   echo "  The OAuth App is at:"
   echo "    https://github.com/organizations/$GH_ORG/settings/applications"
-  echo "  Use the same one as your other install — its callback is localhost,"
+  echo "  Use the same one as your other install. Its callback is localhost,"
   echo "  so one OAuth App serves every account."
   echo
 fi
@@ -218,7 +218,7 @@ if [ -n "$EXISTING" ]; then
     --secret-string "$SECRET_JSON" >/dev/null || die "Could not write $SECRET_NAME."
 else
   aws secretsmanager create-secret --name "$SECRET_NAME" \
-    --description "GitHub Control Hub — sign-in only. No GitHub App key in this account." \
+    --description "GitHub Control Hub, sign-in only. No GitHub App key in this account." \
     --secret-string "$SECRET_JSON" >/dev/null || die "Could not create $SECRET_NAME."
 fi
 ok "Stored $SECRET_NAME"
@@ -228,14 +228,14 @@ unset SECRET_JSON GH_CLIENT_SECRET EXISTING
 step "3/4  CloudTrail"
 TRAILS=$(aws cloudtrail describe-trails --query 'length(trailList)' --output text 2>/dev/null || echo 0)
 if [ "$TRAILS" != "0" ]; then
-  ok "$TRAILS trail(s) already here — guardrails will see creation events"
+  ok "$TRAILS trail(s) already here, guardrails will see creation events"
   skip "Not creating another (a second trail is billed per event)"
 else
   warn "No trail. Guardrails will still run every fifteen minutes; they just"
   warn "will not react within seconds of a resource being created."
   if confirm "Create one?"; then
     AWS_REGION="$REGION" TRAIL_NAME="${PREFIX}-trail" bash "$HERE/setup-cloudtrail.sh" \
-      || warn "Trail creation failed — the sweep still covers everything."
+      || warn "Trail creation failed, the sweep still covers everything."
   else
     skip "Skipped"
   fi

@@ -11,7 +11,7 @@ import { fetchAllCursorPages } from "../utils/cursorPages";
  *
  * This is the org-wide sweep only. The route additionally walks every
  * repository to mark the ones that are clean or have Dependabot switched off,
- * which costs a request per repository — the alarm aggregations discard those
+ * which costs a request per repository, the alarm aggregations discard those
  * marker rows anyway, so the evaluator does not pay for them.
  */
 
@@ -53,8 +53,8 @@ export function mapAlert(alert: any, repoName: string, orgName: string): Depende
  * Every open alert in the organization.
  *
  * Throws only on errors that mean the answer is unknown. 400, 403 and 404 are
- * tolerated the same way the route tolerates them — an organization without
- * Dependabot, or a token without the scope, is a real state and not a failure —
+ * tolerated the same way the route tolerates them, an organization without
+ * Dependabot, or a token without the scope, is a real state and not a failure,
  * but the caller is told, because an alarm must not read "no alerts" off a
  * sweep that never ran.
  */
@@ -87,14 +87,14 @@ export async function fetchOrgDependencyAlerts(
 /**
  * Which repositories have Dependabot alerts switched on.
  *
- * The route used to answer this with one REST call per repository —
- * `checkVulnerabilityAlerts`, 204 for on and 404 for off — one request per
+ * The route used to answer this with one REST call per repository,
+ * `checkVulnerabilityAlerts`, 204 for on and 404 for off, one request per
  * repository every time the tab was opened, against the same core budget the
  * graph sync and compliance sweep draw on.
  *
  * GraphQL exposes the flag directly, 100 repositories at a time. That turns
  * hundreds of requests into a handful, and the answers agree
- * in both directions — verified on repositories with alerts on and off, since
+ * in both directions, verified on repositories with alerts on and off, since
  * a field that is always false would agree with a mostly-off organization and
  * still be wrong.
  *
@@ -102,7 +102,7 @@ export async function fetchOrgDependencyAlerts(
  * budget everything else competes for rather than merely reducing it.
  *
  * Returns null if the query fails. The caller lists repositories without the
- * on/off marker rather than falling back to hundreds of requests — a slow page
+ * on/off marker rather than falling back to hundreds of requests, a slow page
  * is worse than a page missing one column, and the fallback is the thing being
  * removed.
  */

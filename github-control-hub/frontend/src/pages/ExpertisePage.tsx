@@ -155,7 +155,7 @@ export default function ExpertisePage() {
    * Built by a plain call, not rendered as a nested component.
    *
    * A component declared inside a render is a new type on every render, so React
-   * unmounts and remounts it rather than updating it — which for a controlled
+   * unmounts and remounts it rather than updating it, which for a controlled
    * text box means the caret is lost after each character typed.
    */
   const repoInput = () => (

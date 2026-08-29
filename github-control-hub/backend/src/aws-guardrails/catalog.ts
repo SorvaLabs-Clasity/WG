@@ -18,7 +18,7 @@ const bad = (summary: string, fix?: Evaluation["fix"]): Evaluation => ({ verdict
 /**
  * Does this statement's Resource cover both the bucket and its objects?
  *
- * A bucket has two addressable halves — "arn:aws:s3:::b" for operations on the
+ * A bucket has two addressable halves, "arn:aws:s3:::b" for operations on the
  * bucket (ListBucket, GetBucketPolicy) and "arn:aws:s3:::b/*" for the objects
  * in it. A deny naming only the objects still leaves filenames listable over
  * plain HTTP, so a statement that covers one half is not protection.
@@ -69,7 +69,7 @@ const s3HttpsOnly: RuleKind = {
     const policy = resource.state.policy as { Statement?: any[] } | null;
     const statements: any[] = policy?.Statement ?? [];
 
-    // Any statement denying non-TLS traffic satisfies this, however it is named —
+    // Any statement denying non-TLS traffic satisfies this, however it is named,
     // we should not flag a bucket that is already correct just because someone
     // else wrote the rule.
     //
@@ -88,7 +88,7 @@ const s3HttpsOnly: RuleKind = {
     if (already) return ok("Denies non-TLS requests");
 
     // Distinguish "no protection at all" from "protection that misses half the
-    // bucket" — the second is easy to look at and believe is fine.
+    // bucket", the second is easy to look at and believe is fine.
     const partial = statements.some(s =>
       s?.Effect === "Deny"
       && (s?.Condition?.Bool?.["aws:SecureTransport"] === "false" || s?.Condition?.Bool?.["aws:SecureTransport"] === false)

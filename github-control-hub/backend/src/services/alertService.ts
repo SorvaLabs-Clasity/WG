@@ -436,7 +436,7 @@ export async function autoResolveAlerts(
   let resolved = 0;
   for (const alert of matching) {
     // A marker the page reads, not a person. `resolved` no longer means
-    // "somebody looked at it" — there is no button any more — so the only
+    // "somebody looked at it". There is no button any more, so the only
     // thing it still records is that the change was undone, which is worth
     // showing beside the original event.
     await resolveAlert(alert.id, REVERTED_BY);

@@ -7,7 +7,7 @@ import { INTENT } from "../design";
  * Says that GitHub is rate-limiting us, and for how much longer.
  *
  * A rate limit is unlike every other error here: nothing the user did caused
- * it, nothing they can do fixes it, and it affects every page at once — so a
+ * it, nothing they can do fixes it, and it affects every page at once, so a
  * per-request message in the corner of one tab is the wrong shape. It also
  * used to arrive as a generic 500, which reads as "the app is broken" rather
  * than "wait four minutes".
@@ -15,8 +15,8 @@ import { INTENT } from "../design";
  * The countdown is the point. "Rate limited, try again later" leaves someone
  * refreshing to find out; a number that reaches zero does not.
  *
- * Watches both caches, because queries are what usually exhaust the budget —
- * a page load costs one request per repository — while mutations are what the
+ * Watches both caches, because queries are what usually exhaust the budget,
+ * a page load costs one request per repository, while mutations are what the
  * user is actively waiting on.
  */
 /** A limit, with the moment it clears fixed at the time it was seen. */
@@ -34,7 +34,7 @@ export default function RateLimitBanner() {
     const note = (error: unknown) => {
       if (!(error instanceof RateLimitError)) return;
       // Fixed once, here. Deriving it on every render made the fallback case
-      // a moving target — Date.now() + 60s, recomputed each tick, so the
+      // a moving target, Date.now() + 60s, recomputed each tick, so the
       // countdown never advanced and the banner never cleared.
       const pending: Pending = { error, endsAt: deadlineFor(error) };
       // Keep whichever clears last: two endpoints can report different waits,
@@ -102,7 +102,7 @@ export default function RateLimitBanner() {
 }
 
 /**
- * When this limit clears, in epoch ms. Called once, when the error arrives —
+ * When this limit clears, in epoch ms. Called once, when the error arrives,
  * the last branch reads the clock, so calling it repeatedly would keep pushing
  * the deadline away.
  */

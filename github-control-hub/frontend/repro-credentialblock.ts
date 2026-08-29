@@ -2,7 +2,7 @@
  * Pasting the credentials block from the AWS access portal.
  *
  * That dialog offers the same credentials in four shapes, and the parser used
- * to require the literal word `export` — so one of the four worked and three
+ * to require the literal word `export`, so one of the four worked and three
  * parsed to nothing. The button then returned silently when nothing parsed, so
  * pasting a perfectly valid block did nothing at all and explained nothing:
  * indistinguishable from a dead button, which is how it was reported.
@@ -22,7 +22,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 
 const ID = "ASIAIOSFODNN7EXAMPLE";
 const SECRET = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY";
-// Base64, and so routinely ends in `=` — which is why the split is on the first.
+// Base64, and so routinely ends in `=`, which is why the split is on the first.
 const TOKEN = "IQoJb3JpZ2luX2VjEHoaCXVzLWVhc3QtMSJHMEUCIQD//w==";
 
 const shapes: Record<string, string> = {

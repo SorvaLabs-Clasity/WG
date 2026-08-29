@@ -3,7 +3,7 @@
  *
  * The Overview is one board seen by everybody, which is why changing it needs
  * an administrator. A personal board is not that, so the same gate would be
- * asking permission to arrange your own screen — and the same gate reversed
+ * asking permission to arrange your own screen, and the same gate reversed
  * would let an administrator rearrange somebody else's.
  *
  * Three things therefore have to hold, and each fails in a different direction:
@@ -94,9 +94,18 @@ function handler(marker: string): string {
   // ── the front end reuses rather than reimplements ───────────────────
   {
     const board = fs.readFileSync("../frontend/src/components/PersonalBoard.tsx", "utf8");
-    check("the personal board renders the shared board's own card",
-      /import \{ CheckCard, WidgetFormModal \} from "\.\.\/pages\/AnalyticsPage"/.test(board),
-      "a second card would drift from the verdicts and freshness stamps in the first");
+    // Every piece, not just the card. The detail view is the one that used to
+    // be a placeholder saying "go and look at the Overview tab", which is a
+    // screen apologising for not being the other screen.
+    const imported = /import \{([^}]*)\} from "\.\.\/pages\/AnalyticsPage"/.exec(board)?.[1] ?? "";
+    for (const piece of ["CheckCard", "WidgetFormModal", "CheckDetail"]) {
+      check(`the personal board reuses ${piece} rather than its own`,
+        imported.includes(piece),
+        "a second one drifts from the verdicts and freshness stamps in the first");
+    }
+    check("  and opening a card shows the real table, not a pointer to another tab",
+      !/Open the Overview tab/.test(board),
+      "a modal telling somebody to go elsewhere is not a detail view");
     check("  and marks what it creates as personal",
       /personal: true/.test(board));
 

@@ -2,13 +2,13 @@
  * How wide each column of a table is, and what happens when you drag one.
  *
  * Kept out of the component because the part that goes wrong is the
- * arithmetic and the bookkeeping — a drag that inverts past the minimum, a
+ * arithmetic and the bookkeeping, a drag that inverts past the minimum, a
  * stored width for a column that no longer exists, a saved layout from a
  * widget that has since changed shape. None of that needs React to test.
  *
  * **Widths are independent.** Dragging one column changes that column and
  * nothing else; the table grows or shrinks and its container scrolls. The
- * alternative — taking the space from the neighbour — keeps the total fixed but
+ * alternative, taking the space from the neighbour, keeps the total fixed but
  * means every drag moves two columns, and the one you were not dragging is the
  * one you were reading.
  */
@@ -39,7 +39,7 @@ export function clampWidth(px: number): number {
  * Deliberately computed from the *start* width and the total delta rather than
  * accumulated per pointer event: accumulating drifts, and it also means a drag
  * that pushes past the minimum and comes back does not return to where it
- * started — the clamp would have eaten the difference on the way down.
+ * started, the clamp would have eaten the difference on the way down.
  */
 export function widthAfterDrag(startPx: number, deltaPx: number): number {
   return clampWidth(startPx + deltaPx);
@@ -48,8 +48,8 @@ export function widthAfterDrag(startPx: number, deltaPx: number): number {
 /**
  * Stored widths laid over the defaults for the columns actually on screen.
  *
- * Both halves matter. A widget's columns change — a preset is edited, a query
- * starts returning a status where it did not before — so a stored layout is
+ * Both halves matter. A widget's columns change, a preset is edited, a query
+ * starts returning a status where it did not before, so a stored layout is
  * always a guess about a table that may no longer have those columns. Unknown
  * ids are dropped rather than kept, and a column with nothing stored takes its
  * default rather than disappearing or collapsing to zero.

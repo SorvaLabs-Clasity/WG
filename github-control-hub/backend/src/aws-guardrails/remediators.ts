@@ -14,7 +14,7 @@ import { snapRetention } from "./types";
  *
  * Each takes the scope it is writing in. Reading the region from the
  * environment here would mean a fix computed against prod being applied in
- * whichever account the app runs in — the one failure mode of multi-account
+ * whichever account the app runs in, the one failure mode of multi-account
  * enforcement that cannot be walked back.
  */
 

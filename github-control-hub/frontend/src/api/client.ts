@@ -36,7 +36,7 @@ export function isAuthenticated(): boolean {
 }
 
 /**
- * A rate limit is not a failure of the thing you asked for — it is the whole
+ * A rate limit is not a failure of the thing you asked for. It is the whole
  * app being unable to read GitHub for a while. Carrying the reset time on the
  * error lets the banner count down instead of just saying "try again".
  */
@@ -94,7 +94,7 @@ async function handleResponse<T>(res: Response): Promise<T> {
       throw new Error("AWS session expired");
     }
     // A check still building its coverage is not a failure, and the card that
-    // renders it needs to know the difference — an amber "not running" warning
+    // renders it needs to know the difference, an amber "not running" warning
     // with a Remove button is the wrong thing to show somebody whose check is
     // working exactly as intended and will have an answer shortly.
     if (body.code === "QUERY_INCOMPLETE") {

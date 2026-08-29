@@ -37,7 +37,7 @@ export function useAuth() {
 
 function parseJwt(token: string): Record<string, unknown> | null {
   try {
-    // JWTs are base64url — "-" and "_" instead of "+" and "/", padding dropped.
+    // JWTs are base64url, "-" and "_" instead of "+" and "/", padding dropped.
     // atob rejects both, so decoding worked only for payloads that happened to
     // produce neither character.
     const part = token.split(".")[1];
@@ -60,7 +60,7 @@ function parseJwt(token: string): Record<string, unknown> | null {
  * that when the tab is *clicked* meant every launch had one long wait in it,
  * always at the moment somebody was waiting.
  *
- * Nothing about the data changes — the query, its cache key and its polling are
+ * Nothing about the data changes, the query, its cache key and its polling are
  * the same. It simply starts while the app is being read rather than after a
  * click, so the answer is usually already there. If it is not, the tab shows its
  * ordinary loading state.
@@ -97,7 +97,7 @@ export default function App() {
     if (DEMO_MODE) return DEMO_USER;
     // Read through getToken rather than reaching into storage directly. This
     // used to call localStorage.getItem("gh_hub_token") while setToken wrote to
-    // sessionStorage — same key, different store — so isAuthenticated() said
+    // sessionStorage, same key, different store, so isAuthenticated() said
     // yes and this said no. The navbar's whole account block is gated on the
     // result, which is why the avatar and sign-out never appeared.
     const token = getToken();
@@ -123,7 +123,7 @@ export default function App() {
           window.location.href = "/login";
         }
       } catch {
-        // Backend unreachable — redirect to login
+        // Backend unreachable, redirect to login
         clearToken();
         window.location.href = "/login";
       }

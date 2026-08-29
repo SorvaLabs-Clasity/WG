@@ -98,7 +98,7 @@ function Stat({ n, label, tone }: { n: number; label: string; tone?: string }) {
   );
 }
 
-/** "4 minutes ago", down to a minute — below that, "just now". */
+/** "4 minutes ago", down to a minute, below that, "just now". */
 function ago(iso: string): string {
   const ms = Date.now() - Date.parse(iso);
   if (!Number.isFinite(ms)) return "unknown";
@@ -118,7 +118,7 @@ export default function PullRequestsPage() {
 
   // Every repository in the organization, not only the ones with a pull request
   // open right now. Muting somebody on a quiet repository is the case worth
-  // supporting — it is set once, before the first pull request lands there.
+  // supporting. It is set once, before the first pull request lands there.
   const { data: allRepos, isLoading: reposLoading } = useRepos();
 
   const [notice, setNotice] = useState("");
@@ -152,7 +152,7 @@ export default function PullRequestsPage() {
    * The two switches, applied to the cache the moment the save returns.
    *
    * These read their position from the `pulls` query, and the ordinary success
-   * path invalidates it — which refetches the whole pull request list, several
+   * path invalidates it, which refetches the whole pull request list, several
    * seconds of GitHub work. So the switch sat visibly still until a list nobody
    * was waiting for came back, and pressing it again in the meantime sent a
    * second save. The server already returns the saved settings; writing them
@@ -240,8 +240,8 @@ export default function PullRequestsPage() {
    * Built by plain calls rather than declared as components here.
    *
    * A component declared inside a render is a new type on every render, so React
-   * discards the rows and rebuilds them each time — on every poll, and on every
-   * keystroke in the search box — instead of updating them in place.
+   * discards the rows and rebuilds them each time, on every poll, and on every
+   * keystroke in the search box, instead of updating them in place.
    */
   const card = (p: Pull) => {
     const b = BLOCK[p.blockReason] ?? BLOCK.blocked;

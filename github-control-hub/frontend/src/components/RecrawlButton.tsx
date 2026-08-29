@@ -11,7 +11,7 @@ import { useGraphAggregation, useTriggerAggregation } from "../hooks/useGraph";
  *
  * Three things it gets from the server rather than from local state:
  *
- * **Whether a walk is running** — anybody's walk, including the nightly one.
+ * **Whether a walk is running**, anybody's walk, including the nightly one.
  * This used to be `mutation.isPending`, which lives in one component on one
  * machine: switching tabs and back cleared it, and nobody else ever saw it. A
  * recrawl is an organization-wide event and now reads as one.

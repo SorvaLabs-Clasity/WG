@@ -4,25 +4,25 @@ Twelve tables. This explains what's in each one, who puts it there, who reads it
 and when it disappears.
 
 If you're comparing against AWS, every name below is prefixed with your stack
-name — `github-control-hub-activity`, and so on. That prefix comes from
+name, `github-control-hub-activity`, and so on. That prefix comes from
 `STACK_NAME`, so a different environment has a different set.
 
 ---
 
 ## The words first
 
-**Table** — a place to save things, like a spreadsheet in the cloud. Each row is
+**Table**: a place to save things, like a spreadsheet in the cloud. Each row is
 one saved thing.
 
-**Key** — the label you look a row up by. Like a filing cabinet where each folder
+**Key**: the label you look a row up by. Like a filing cabinet where each folder
 has a name on the tab: if you know the name you get the folder instantly. If you
 don't, you have to flip through every folder one at a time. That's called a
 **scan**, and it's slower and costs more.
 
-**TTL** — a "throw this away on" date stamped onto a row when it's written. Later,
+**TTL**: a "throw this away on" date stamped onto a row when it's written. Later,
 the database deletes it for you. Nothing has to remember to clean up.
 
-**Webhook** — GitHub phoning the app to say *"something just changed"* — someone
+**Webhook**: GitHub phoning the app to say *"something just changed"*. Someone
 was added to a repo, a pull request opened. The opposite of the app asking.
 
 **"Rebuilt every 6 hours, with webhook corrections in between"** means: the app
@@ -35,7 +35,7 @@ about one small change, it fixes just that row instead of rebuilding everything.
 
 | Table | Holds | Goes away |
 | --- | --- | --- |
-| `activity` | the audit trail — every action | after 13 months |
+| `activity` | the audit trail, every action | after 13 months |
 | `alarms` | ten different kinds of row (see below) | varies by kind |
 | `alerts` | security alerts | when resolved |
 | `auth-codes` | sign-in codes | 5–10 minutes |
@@ -53,7 +53,7 @@ alphabetical order.
 
 ---
 
-## Group 1 — Settings you typed in
+## Group 1: Settings you typed in
 
 `widgets` · `scanners` · `org-config` · `aws-guardrails` · `aws-exclusions`
 
@@ -71,19 +71,19 @@ alphabetical order.
 
 **There is one dashboard, shared by everyone.** The app records who created each
 widget but never uses that to hide anything, so your widgets are everyone's
-widgets. That's why only admins can edit them — otherwise anyone could delete a
+widgets. That's why only admins can edit them, otherwise anyone could delete a
 card the whole team relies on.
 
 **`org-config` is a single row** holding the feature flags, the Renovate bot
 name, and the record of when the access graph was last rebuilt. That last part
 sounds like it belongs beside the graph itself, but it can't be: the rebuild
 *wipes* the graph table before refilling it, so a note stored there would be
-destroyed by the next run — including a run that then crashed, leaving no record
+destroyed by the next run, including a run that then crashed, leaving no record
 that anything happened.
 
 ---
 
-## Group 2 — `alarms`, the busy one
+## Group 2: `alarms`, the busy one
 
 Keyed by `id` alone, but eleven different *kinds* of row live in it, each tagged
 with what it is:
@@ -106,27 +106,27 @@ with what it is:
 `widget-snapshot#<widgetId>` with no timestamp in the key, so each 5-minute pass
 overwrites the one before it in place. Eleven widgets means eleven rows today
 and eleven rows a year from now; only `computedAt` moves. It carries a 24-hour
-TTL, but that is never what removes it — a snapshot is replaced roughly 288
+TTL, but that is never what removes it, a snapshot is replaced roughly 288
 times before it could expire. The TTL is there for rows that *stop* being
 rewritten: deleting a widget removes its snapshot immediately, and if that is
 ever missed, the TTL clears it within a day instead of leaving it forever.
 
 Nothing reads a previous snapshot, which is why none is kept. A snapshot is a
-cache of the current answer, not a record of what was true earlier — history
+cache of the current answer, not a record of what was true earlier, history
 that is worth keeping is kept deliberately elsewhere, in `activity` (what
 changed) and in alarm rows (what fired).
 
 **`query-subject`** is how the expensive widget checks stay affordable. The
 dormant-admin check needs one GitHub commit search per privileged account, and
-that search allows only **30 requests a minute** — so answers are saved per
+that search allows only **30 requests a minute**, so answers are saved per
 account and refreshed 25 at a time. "Checked and active" is saved too, not just
 findings: otherwise a clean account would be indistinguishable from one nobody
 had got to yet, and the check could never finish.
 
 **`pr-state`'s 180 days is measured from the last write, not from creation.** An
-active pull request keeps renewing itself. A *paused* one is the exception —
+active pull request keeps renewing itself. A *paused* one is the exception,
 nothing writes it, because paused pull requests are skipped before any reminder
-is posted — so the app explicitly pushes its expiry out. Without that, a pause
+is posted, so the app explicitly pushes its expiry out. Without that, a pause
 left alone for 180 days was deleted and reminders quietly resumed on a pull
 request somebody had deliberately silenced.
 
@@ -142,12 +142,12 @@ table and filtering. And:
 Ignore it and everything downstream works perfectly on incomplete data. Alarms
 that seem to have vanished stop firing. Email groups look deleted. Buffered
 emails never send. Muted people start getting reminders again. Nothing appears
-broken — it's just answering from half the data. `utils/dynamo.ts` has a helper
+broken. It's just answering from half the data. `utils/dynamo.ts` has a helper
 that always reads to the end, and every caller here uses it.
 
 ---
 
-## Group 3 — Copies of GitHub and AWS data
+## Group 3: Copies of GitHub and AWS data
 
 Not settings. Copies the app keeps so it doesn't have to keep asking GitHub,
 which limits how often you can ask.
@@ -161,11 +161,11 @@ which limits how often you can ask.
 
 **`graph-edges`** holds rows that read like *"alice → api-repo, role: admin."*
 This is what most widget checks actually read. "Repos without an owning team"
-never calls GitHub at all — it's counting rows here, which is why it's instant.
+never calls GitHub at all. It's counting rows here, which is why it's instant.
 
 The rebuild costs roughly **four GitHub requests per repository**, plus two per
 team and about a dozen for the organization. Three hundred repositories works out
-around 1,300 requests, against an allowance of 15,000 an hour — which is why it
+around 1,300 requests, against an allowance of 15,000 an hour, which is why it
 runs every six hours rather than every few minutes.
 
 **`aws-findings`** uses `sk = "<accountId>#<region>#<ruleId>#<resourceId>"`.
@@ -176,9 +176,9 @@ times with backoff before giving up loudly.
 
 ---
 
-## Group 4 — The record, and the scratch notes
+## Group 4: The record, and the scratch notes
 
-### `activity` — the audit trail
+### `activity`: the audit trail
 
 Kept for **13 calendar months** (not 30-day approximations, so "13 months" means
 what a person reading a retention policy thinks it means). DynamoDB deletes
@@ -230,7 +230,7 @@ Older, which is exactly what the store can do.
 Free-text search has a **read budget of 3,000 rows per request**, because a
 filter is applied after reading and a rare term would otherwise walk thirteen
 months in one request. Running out is reported as *unfinished*, with a cursor to
-carry on from, rather than as "no results" — those are different answers, and
+carry on from, rather than as "no results". Those are different answers, and
 saying the second when you mean the first is how somebody concludes a change was
 never recorded. Filtering by an exact repository name skips the budget entirely
 by using `repo-index`.
@@ -244,7 +244,7 @@ lives in `org-config` as `detailedLogging`.
 ### `alerts`
 
 Security alerts, keyed by `id`. Created by `services/alertService.ts`, almost
-always triggered from `webhooks/processDelivery.ts` — a repo made public, an
+always triggered from `webhooks/processDelivery.ts`, a repo made public, an
 admin added, a team added or removed. **No expiry**, because an unresolved alert
 shouldn't quietly disappear; rows go when somebody resolves them.
 
@@ -266,7 +266,7 @@ Eleven are created by **`scripts/setup-aws-account.sh`**. Only
 `webhook-deliveries` is created by the CDK stack.
 
 That split matters. When the AWS-only setup script tried to write the table
-definitions itself instead of delegating, three came out wrong — including
+definitions itself instead of delegating, three came out wrong, including
 `auth-codes`, which got labelled by the wrong field and broke sign-in entirely.
 
 **A wrong key doesn't produce an error.** It produces a filing cabinet where
@@ -279,7 +279,7 @@ nothing is ever found. That's why `setup-aws-only.sh` now hands table creation t
 
 `compliance-cache` held a compliance score per repository. The scoring ran on
 every graph rebuild and on webhooks, costing roughly seven to ten GitHub requests
-per repository — often more than the graph rebuild itself — and **no screen in
+per repository, often more than the graph rebuild itself, and **no screen in
 the app ever displayed it.** The route and the frontend hooks existed; nothing
 imported them.
 
@@ -292,5 +292,5 @@ aws dynamodb delete-table --table-name "${STACK_NAME:-github-control-hub}-compli
 
 ---
 
-For how each *feature* uses these tables — the triggers, the staleness, what a
-screen is actually showing you — see [HOW-IT-WORKS.md](HOW-IT-WORKS.md).
+For how each *feature* uses these tables, the triggers, the staleness, what a
+screen is actually showing you, see [HOW-IT-WORKS.md](HOW-IT-WORKS.md).

@@ -4,7 +4,7 @@
  * Every screen showing who can reach what reads a stored snapshot of the
  * organization. Nothing rebuilt that snapshot on a schedule and nothing recorded
  * when it was last built, so a graph assembled before somebody joined, left or
- * was made an owner was indistinguishable on screen from a current one — and the
+ * was made an owner was indistinguishable on screen from a current one, and the
  * Refresh button on that page re-reads the derived map from the same stale
  * edges, so pressing it looked like it should have helped and could not.
  *
@@ -70,7 +70,7 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   //
   // Asserted against the source: the success stamp has to sit after the write
   // and inside the try, or a run that threw half way would date a snapshot
-  // nobody replaced. The failure is invisible — the page would show a fresh
+  // nobody replaced. The failure is invisible, the page would show a fresh
   // timestamp over stale data, which is worse than showing a stale one.
   {
     const fs = await import("node:fs");
@@ -93,7 +93,7 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   // ── the schedule exists at all ──────────────────────────────────────
   //
   // The comment in the aggregator claimed "this runs every 6 hours" while
-  // nothing scheduled it — the only trigger was a button. A stale comment is
+  // nothing scheduled it, the only trigger was a button. A stale comment is
   // how that went unnoticed, so the rule is asserted rather than described.
   {
     const fs = await import("node:fs");
@@ -113,7 +113,7 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
   //
   // It deleted every row and rewrote every row on each run. What it describes
   // barely moves between syncs, so nearly every write replaced a row with an
-  // identical row — and on-demand DynamoDB bills per write, four times a day,
+  // identical row, and on-demand DynamoDB bills per write, four times a day,
   // for ever. The scan to find deletable rows was already happening; reading
   // the whole item rather than its key alone is what makes a comparison
   // possible, and reads cost a fraction of writes.
@@ -161,7 +161,7 @@ const iso = (msAgo: number) => new Date(Date.now() - msAgo).toISOString();
 
     {
       // Duplicates used to be removed per batch of 25, so the same edge produced
-      // twice in different batches was written twice — paid for twice, for one
+      // twice in different batches was written twice, paid for twice, for one
       // row.
       const dup = [edge("USER#a", "REPO#x"), edge("USER#a", "REPO#x")];
       const { puts } = plan([], dup);

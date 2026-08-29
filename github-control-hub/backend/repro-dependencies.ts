@@ -6,11 +6,11 @@
  * The first: all three calls in routes/dependencies.ts asked GitHub for
  * `per_page: 100` and used the single page they got back. An organization with
  * more than a hundred open alerts under-counted every severity and under-listed
- * every affected repository — no error, no warning, in the direction that looks
+ * every affected repository, no error, no warning, in the direction that looks
  * like good news.
  *
  * The second was the fix for the first. It walked pages with `?page=N`, which
- * is how every other paginated call in this codebase works — and which the
+ * is how every other paginated call in this codebase works, and which the
  * Dependabot alerts endpoints reject outright:
  *
  *     400  Pagination using the `page` parameter is not supported.
@@ -125,7 +125,7 @@ function githubWith(total: number) {
     check("every size boundary round-trips exactly", true);
   }
 
-  // The bug was not in the loop — it was in what the callers handed it. A
+  // The bug was not in the loop. It was in what the callers handed it. A
   // behavioral test of the helper cannot see that, so this reads the source.
   {
     // Both files, because the org-wide sweep moved into the service so the

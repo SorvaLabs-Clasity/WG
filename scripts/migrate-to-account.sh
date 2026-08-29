@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #
-# GitHub Control Hub — stand the app up in a new AWS account and GitHub org.
+# GitHub Control Hub: stand the app up in a new AWS account and GitHub org.
 #
 # Asks for everything that differs between installs, then runs the same steps
 # in the same order they were run by hand. Nothing here is specific to the
-# account it was first built in — region, org and company name are all asked
+# account it was first built in: region, org and company name are all asked
 # for rather than assumed.
 #
 # Safe to re-run. Every step checks for what it is about to create and says so
@@ -60,7 +60,7 @@ ask_secret_keep() {  # ask_secret_keep <var> <prompt> <current>
 }
 
 # Anything that reads as yes counts. This matched a single `y` and nothing else,
-# so typing the whole word answered no — and the one place that mattered most
+# so typing the whole word answered no: and the one place that mattered most
 # treated no as "keep whatever is already stored", silently.
 confirm() { local r; read -r -p "  $1 [y/N] " r; [[ "$r" =~ ^([yY]|[yY][eE][sS])$ ]]; }
 
@@ -71,7 +71,7 @@ command -v node >/dev/null || die "node not found."
 step "Target account"
 
 # Credentials pasted into the environment beat any profile, so asking for one
-# would be asking a question with no effect — and answering it "default" reads
+# would be asking a question with no effect: and answering it "default" reads
 # as though the default account is the target when it is not.
 #
 # This is the shape the AWS access portal hands you: three exports, good for a
@@ -79,7 +79,7 @@ step "Target account"
 # Which account, asked with no default.
 #
 # It used to offer "default", so pressing enter targeted whatever that happened
-# to be — on a machine with one profile per environment, the wrong account most
+# to be: on a machine with one profile per environment, the wrong account most
 # of the time, and this creates tables, secrets and a stack before anyone reads
 # the id it prints. Removing the default is the fix; removing the question just
 # moved the work to an export nobody should have to remember.
@@ -88,7 +88,7 @@ step "Target account"
 # press by mistake.
 # Which way credentials arrived, remembered so the failure below can give advice
 # that matches. Without it the error names $AWS_PROFILE, which is never set on
-# this branch — so the script died on an unbound variable while trying to print
+# this branch: so the script died on an unbound variable while trying to print
 # why it was dying, and the person running it saw neither reason.
 # Credentials, whichever way they arrived.
 #
@@ -96,20 +96,20 @@ step "Target account"
 # the environment branch, failed, and asked for fresh exports while the person
 # was already signed in with a working SSO profile.
 #
-# They have to be *unset* to fall back, not merely ignored — AWS's credential
+# They have to be *unset* to fall back, not merely ignored: AWS's credential
 # chain puts AWS_ACCESS_KEY_ID ahead of AWS_PROFILE, so a stale key silently
 # overrides the profile that would have worked.
 if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && aws sts get-caller-identity >/dev/null 2>&1; then
   echo "  using credentials from the environment"
 else
   if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
-    echo "  the credentials exported in this shell are expired — ignoring them"
+    echo "  the credentials exported in this shell are expired, ignoring them"
     unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
   fi
   ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-}"
   export AWS_PROFILE="$AWS_PROFILE_IN"
   if ! aws sts get-caller-identity >/dev/null 2>&1; then
-    echo "  no valid session for $AWS_PROFILE — signing in"
+    echo "  no valid session for $AWS_PROFILE, signing in"
     aws sso login --profile "$AWS_PROFILE" \
       || die "Could not sign in to '$AWS_PROFILE'. Check the profile name in ~/.aws/config."
   fi
@@ -167,7 +167,7 @@ AWS_PROFILE="$AWS_PROFILE" AWS_REGION="$REGION" STACK_NAME="$PREFIX" \
   bash "$HERE/setup-aws-account.sh" </dev/null \
   || die "Table creation failed. The output above says why."
 # Counted rather than stated. This line has claimed 13 and 14 at various points,
-# each time going stale the moment a table was added or removed — so it now asks
+# each time going stale the moment a table was added or removed: so it now asks
 # the script that just ran how many it creates.
 TABLE_COUNT=$(( $(sed -n '/^TABLES=(/,/^)/p' "$HERE/setup-aws-account.sh" | grep -cE '^[[:space:]]+[a-z-]+')
                 + $(grep -cE 'create_table "\$\{PREFIX\}-[a-z-]+"' "$HERE/setup-aws-account.sh") ))
@@ -180,7 +180,7 @@ echo "  script. Secret values are read without echoing."
 echo
 
 # What is stored now, so a re-run can correct one field without retyping the
-# rest — and so keys this script does not know about survive the write.
+# rest: and so keys this script does not know about survive the write.
 #
 # This used to ask "replace its contents?" and, on anything but a bare `y`, skip
 # the entire step in silence. Two installs sharing a GitHub org therefore ended
@@ -195,7 +195,7 @@ if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1
   EXISTING=$(aws secretsmanager get-secret-value --secret-id "$SECRET_NAME" \
     --query SecretString --output text 2>/dev/null || echo "")
   if [ -n "$EXISTING" ]; then
-    ok "Secret $SECRET_NAME exists — enter keeps what it already holds"
+    ok "Secret $SECRET_NAME exists, enter keeps what it already holds"
   else
     warn "Secret $SECRET_NAME exists but its value could not be read"
     warn "Every field below has to be entered."
@@ -203,7 +203,7 @@ if aws secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&1
 fi
 
 # One field out of the stored JSON; empty if absent, or if the value is not JSON
-# at all. Never fails the run — a secret written by hand is still something to
+# at all. Never fails the run: a secret written by hand is still something to
 # offer defaults from where it can.
 cur() {
   [ -n "$EXISTING" ] || return 0
@@ -224,14 +224,14 @@ if [ -z "$EXISTING" ]; then
   echo "    OAuth App   https://github.com/organizations/$GH_ORG/settings/applications"
   echo "                Callback URL: ${bold}http://localhost:4321/auth/callback${off}"
   echo "                (the desktop app serves its own backend on 4321, and the"
-  echo "                 route is /auth/callback — not /api/auth/callback)"
+  echo "                 route is /auth/callback, not /api/auth/callback)"
   echo "    GitHub App  https://github.com/organizations/$GH_ORG/settings/apps"
   echo "                Then install it on the org and note the installation id"
   echo "                (it is the number at the end of the install URL)."
   echo
   echo "  The client id and secret come from the ${bold}OAuth App${off} page. The GitHub"
   echo "  App page has fields with those names too, and they are not the ones"
-  echo "  wanted here — the App authenticates with its private key instead."
+  echo "  wanted here, the App authenticates with its private key instead."
   echo
   read -r -p "  Press enter once both exist… " _
 fi
@@ -246,14 +246,14 @@ ask             GH_INSTALL_ID    "GitHub App installation ID" "$(cur GITHUB_APP_
 # beside it looks like a credential and is the wrong one; stored here it yields
 # a JWT with an `iss` GitHub cannot resolve, and the error names neither field.
 case "$GH_APP_ID" in
-  ''|*[!0-9]*) die "'$GH_APP_ID' is not a GitHub App ID. That is the short numeric id on the App's General page — not the Client ID, which starts with Iv or Ov." ;;
+  ''|*[!0-9]*) die "'$GH_APP_ID' is not a GitHub App ID. That is the short numeric id on the App's General page, not the Client ID, which starts with Iv or Ov." ;;
 esac
 case "$GH_INSTALL_ID" in
   ''|*[!0-9]*) die "'$GH_INSTALL_ID' is not an installation ID. It is the number at the end of the install URL." ;;
 esac
 
 STORED_PEM="$(cur GITHUB_APP_PRIVATE_KEY)"
-# Initialised, because `read` leaves it unset on EOF and `set -u` is on — the
+# Initialised, because `read` leaves it unset on EOF and `set -u` is on: the
 # next test would then abort the run instead of the prompt simply being empty.
 GH_PEM_PATH=""
 if [ -n "$STORED_PEM" ]; then
@@ -263,7 +263,7 @@ else
 fi
 
 if [ -n "$GH_PEM_PATH" ]; then
-  # A tilde typed at a prompt arrives as a literal character — the shell expands
+  # A tilde typed at a prompt arrives as a literal character: the shell expands
   # ~ before a variable ever holds it, so `[ -f "~/key.pem" ]` looks for a
   # directory actually named "~". Expanding it here is the difference between
   # the obvious thing working and a "No file at ~/key.pem" that reads like the
@@ -272,7 +272,7 @@ if [ -n "$GH_PEM_PATH" ]; then
   # Dragging a file into a terminal quotes anything awkward and leaves a
   # trailing space. Whitespace comes off first: with the quote stripped first,
   # a path arriving as  'x.pem'␣  still ends in a space, so nothing matches the
-  # trailing quote and both quotes survive — which is the exact shape dragging
+  # trailing quote and both quotes survive: which is the exact shape dragging
   # produces.
   GH_PEM_PATH="${GH_PEM_PATH#"${GH_PEM_PATH%%[![:space:]]*}"}"
   GH_PEM_PATH="${GH_PEM_PATH%"${GH_PEM_PATH##*[![:space:]]}"}"
@@ -280,7 +280,7 @@ if [ -n "$GH_PEM_PATH" ]; then
   GH_PEM_PATH="${GH_PEM_PATH%\"}"; GH_PEM_PATH="${GH_PEM_PATH#\"}"
   [ -f "$GH_PEM_PATH" ] || die "No file at $GH_PEM_PATH"
   # And that it is the key, not merely a file. Pointing at the wrong download
-  # is easy — GitHub hands you a .pem beside a dozen other things — and an
+  # is easy: GitHub hands you a .pem beside a dozen other things, and an
   # unchecked path uploads whatever it found. The app would then fail much
   # later, at a token refresh, complaining about a key rather than about the
   # file someone chose an hour earlier.
@@ -304,16 +304,16 @@ WEBHOOK_IS_NEW=""
 if [ -z "$WEBHOOK_SECRET" ]; then
   WEBHOOK_SECRET=$(openssl rand -hex 32)
   WEBHOOK_IS_NEW=1
-  WEBHOOK_DESC="generating a new one — the org webhook must be updated to match"
+  WEBHOOK_DESC="generating a new one, the org webhook must be updated to match"
 else
-  WEBHOOK_DESC="keeping the existing one — the org webhook stays as it is"
+  WEBHOOK_DESC="keeping the existing one, the org webhook stays as it is"
 fi
 # Rotating this signs everyone out, so it is preserved on the same terms.
 [ -n "$JWT_SECRET" ] || JWT_SECRET=$(openssl rand -hex 48)
 
 
 # Merged onto what is already there, so a key this script does not know about is
-# not deleted by a run that only meant to correct one field — the previous write
+# not deleted by a run that only meant to correct one field: the previous write
 # replaced the whole document with the seven fields below and dropped the rest.
 # Built with node so the private key's newlines survive JSON encoding, and so no
 # secret ever appears in an argument list or the shell history.
@@ -341,7 +341,7 @@ SECRET_JSON=$(EXISTING="$EXISTING" GH_PEM_PATH="$GH_PEM_PATH" \
 # the internet-facing receiver never holds a key to GITHUB_APP_PRIVATE_KEY.
 
 # This script runs without `set -e`, so a node that threw would leave
-# SECRET_JSON empty and the upload would carry on and store nothing —
+# SECRET_JSON empty and the upload would carry on and store nothing,
 # producing an install that looks configured and has no credentials in it.
 case "$SECRET_JSON" in
   *GITHUB_APP_PRIVATE_KEY*) ;;
@@ -396,15 +396,15 @@ check_github() {
 echo "  Checking these credentials with GitHub…"
 VERDICT="$(check_github)" || VERDICT="SKIP the check could not run"
 case "$VERDICT" in
-  OK*)         GH_DESC="accepted — App is \"${VERDICT#OK }\"" ;;
-  MISMATCH*)   GH_DESC="${bold}REJECTED${off} — ${VERDICT#MISMATCH }" ;;
-  BADINSTALL*) GH_DESC="${bold}wrong installation id${off} — ${VERDICT#BADINSTALL }" ;;
-  BADKEY*)     GH_DESC="${bold}unusable key${off} — ${VERDICT#BADKEY }" ;;
+  OK*)         GH_DESC="accepted, App is \"${VERDICT#OK }\"" ;;
+  MISMATCH*)   GH_DESC="${bold}REJECTED${off}, ${VERDICT#MISMATCH }" ;;
+  BADINSTALL*) GH_DESC="${bold}wrong installation id${off}, ${VERDICT#BADINSTALL }" ;;
+  BADKEY*)     GH_DESC="${bold}unusable key${off}, ${VERDICT#BADKEY }" ;;
   *)           GH_DESC="not checked (${VERDICT#SKIP })" ;;
 esac
 
 # Nothing about which account this is going to was on screen at this point. The
-# account was printed once, before the tables, and never again — so a run that
+# account was printed once, before the tables, and never again: so a run that
 # put one environment's App credentials into another environment's account had
 # no moment where that was visible.
 echo
@@ -445,7 +445,7 @@ case "$VERDICT" in
       || die "Aborted. The secret was not changed." ;;
   MISMATCH*|BADINSTALL*|BADKEY*)
     confirm "GitHub rejected these. Write them anyway?" \
-      || die "Aborted. The secret was not changed — nothing is worse than before." ;;
+      || die "Aborted. The secret was not changed. Nothing is worse than before." ;;
   *)
     confirm "Credentials could not be checked. Write them unverified?" \
       || die "Aborted. The secret was not changed." ;;
@@ -456,7 +456,7 @@ if [ -n "$EXISTING" ] || aws secretsmanager describe-secret --secret-id "$SECRET
     --secret-string "$SECRET_JSON" >/dev/null || die "Could not write $SECRET_NAME."
 else
   aws secretsmanager create-secret --name "$SECRET_NAME" \
-    --description "GitHub Control Hub — GitHub credentials" \
+    --description "GitHub Control Hub, GitHub credentials" \
     --secret-string "$SECRET_JSON" >/dev/null || die "Could not create $SECRET_NAME."
 fi
 ok "Stored $SECRET_NAME"
@@ -476,16 +476,16 @@ if [ -n "$WEBHOOK_IS_NEW" ]; then
       --description "GitHub webhook HMAC secret. Read only by the internet-facing receiver Lambda." \
       --secret-string "$WEBHOOK_SECRET" >/dev/null || die "Could not create $WEBHOOK_SECRET_NAME."
   fi
-  ok "Stored $WEBHOOK_SECRET_NAME (new — update the org webhook in step 5)"
+  ok "Stored $WEBHOOK_SECRET_NAME (new, update the org webhook in step 5)"
 else
-  skip "$WEBHOOK_SECRET_NAME unchanged — the org webhook keeps working"
+  skip "$WEBHOOK_SECRET_NAME unchanged, the org webhook keeps working"
 fi
 
 unset SECRET_JSON GH_CLIENT_SECRET WEBHOOK_SECRET EXISTING EXISTING_WEBHOOK STORED_PEM
 
 if [ -n "$GH_PEM_PATH" ]; then
   echo
-  warn "Delete the private key now — the app reads it from Secrets Manager:"
+  warn "Delete the private key now, the app reads it from Secrets Manager:"
   echo "      rm '$GH_PEM_PATH'"
 fi
 
@@ -493,14 +493,14 @@ fi
 step "3/7  CloudTrail"
 TRAILS=$(aws cloudtrail describe-trails --query 'length(trailList)' --output text 2>/dev/null || echo 0)
 if [ "$TRAILS" != "0" ]; then
-  ok "$TRAILS trail(s) already in this account — guardrails will see creation events"
+  ok "$TRAILS trail(s) already in this account, guardrails will see creation events"
   skip "Not creating another (a second trail is billed per event)"
 else
   warn "No trail. Without one, guardrails only run on the 15-minute sweep"
   warn "rather than seconds after a resource is created or changed."
   if confirm "Create one?"; then
     AWS_REGION="$REGION" TRAIL_NAME="${PREFIX}-trail" bash "$HERE/setup-cloudtrail.sh" \
-      || warn "Trail creation failed — the sweep still covers everything."
+      || warn "Trail creation failed, the sweep still covers everything."
   else
     skip "Skipped"
   fi
@@ -511,7 +511,7 @@ step "4/7  API Gateway, Lambda, SQS and event rules"
 # The workspace root, not only infra.
 #
 # The Lambda is bundled from backend/src, so its projectRoot is the workspace
-# root and CDK runs `npx --no-install esbuild` from there — meaning esbuild has
+# root and CDK runs `npx --no-install esbuild` from there: meaning esbuild has
 # to resolve against github-control-hub/node_modules, which a fresh clone does
 # not have. Installing only infra left the deploy failing on a machine that had
 # never built the app, and passing on any machine that had.
@@ -558,16 +558,16 @@ echo "    Content type: application/json"
 echo "    Secret      : the webhook secret generated in step 2"
 echo "                  (read it back with the command below if needed)"
 # The ten the code actually handles, by the labels GitHub puts on the checkboxes
-# — the API names are not what the page shows. `organization` and `issues` were
+#: the API names are not what the page shows. `organization` and `issues` were
 # on this list and are handled by nothing: every delivery for them is fetched,
 # queued and dropped. See docs/operations/setup.md for the full table.
-echo "    Events      : \"Let me select individual events\", then tick ten —"
+echo "    Events      : \"Let me select individual events\", then tick ten "
 echo "                  Branch or tag creation, Branch or tag deletion,"
 echo "                  Branch protection rules, Collaborator add remove or changed,"
 echo "                  Dependabot alerts, Pull requests, Pushes, Repositories,"
 echo "                  Repository rulesets, Teams"
-echo "                  (leave Organization unticked — nothing reads it)"
-echo "    SSL         : leave verification enabled — API Gateway serves a valid"
+echo "                  (leave Organization unticked. Nothing reads it)"
+echo "    SSL         : leave verification enabled, API Gateway serves a valid"
 echo "                  ACM certificate, so there is nothing to disable it for"
 echo
 echo "  ${dim}aws secretsmanager get-secret-value --secret-id $WEBHOOK_SECRET_NAME \\"
@@ -588,20 +588,20 @@ step "6/7  Guardrail rules"
 #
 # They are added in the app, under the AWS tab, where the catalogue explains
 # what each one does and what it would change.
-skip "None created — add them in the app, under the AWS tab"
+skip "None created, add them in the app, under the AWS tab"
 
 # ── 7. build ──────────────────────────────────────────────────────────
 step "7/7  Desktop app"
 # The committed file, not .env.production.local.
 #
 # These two are compiled into the JavaScript at build time, and the release
-# workflow builds on a fresh runner that has only what is in the repository —
+# workflow builds on a fresh runner that has only what is in the repository,
 # so a value written to a gitignored file reached local builds and nothing
 # else, and every release shipped with no company name and dead console links.
 ENV_FILE="$ROOT/github-control-hub/frontend/.env.production"
 # Rewrite the two this script owns and leave the rest alone. The file already
 # carries VITE_API_URL and VITE_BACKEND_URL, which the app needs to reach its
-# own backend — overwriting it wholesale produced a build that could not call
+# own backend: overwriting it wholesale produced a build that could not call
 # anything.
 {
   # Drop the previous pair and their heading, so re-running replaces rather
@@ -615,12 +615,12 @@ ok "Wrote $(basename "$ENV_FILE") (company name, console-link region)"
 # Tell, do not do.
 #
 # Forgetting this leaves the release workflow building without a company name,
-# and nothing fails to say so — the app simply ships blank. But committing on
+# and nothing fails to say so: the app simply ships blank. But committing on
 # someone's behalf assumes their branch will accept it, and main is often
 # protected, which would strand a commit somewhere it cannot be pushed from.
 # So this names the file and the branch, and stops.
 if git -C "$ROOT" diff --quiet -- "$ENV_FILE" 2>/dev/null; then
-  skip "No change to $(basename "$ENV_FILE") — already committed"
+  skip "No change to $(basename "$ENV_FILE"), already committed"
 else
   BRANCH="$(git -C "$ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "unknown")"
   echo
@@ -629,7 +629,7 @@ else
   warn "and their AWS console links go nowhere."
   echo
   echo "    ${bold}Commit${off}  github-control-hub/frontend/.env.production"
-  echo "    ${bold}On${off}      $BRANCH — or a branch off it, if $BRANCH is protected"
+  echo "    ${bold}On${off}      $BRANCH, or a branch off it, if $BRANCH is protected"
   echo "    ${bold}Then${off}    push it, so the release workflow can see it"
 fi
 

@@ -10,7 +10,7 @@ import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
  * The scheduled rebuild of the access graph.
  *
  * Every screen showing who can reach what reads a stored snapshot of the
- * organization — teams, members, collaborators, repository permissions. That
+ * organization, teams, members, collaborators, repository permissions. That
  * snapshot was only ever rebuilt when somebody pressed a button, so a graph
  * built before a person joined, left, or was made an owner looked exactly like
  * a current one, and nothing on screen said how old it was.
@@ -60,7 +60,7 @@ function bootstrapOnce(): Promise<void> {
  * Two schedules, one function.
  *
  * `light` refreshes only the edges the expensive walk is otherwise the sole
- * writer of — repository metadata and team composition — for well under a
+ * writer of, repository metadata and team composition, for well under a
  * hundred requests. It runs often. The full rebuild stays on six hours.
  *
  * A second Lambda would have meant a second bundle, a second bootstrap and a
@@ -99,7 +99,7 @@ export async function handler(event?: { mode?: "light" | "full" }): Promise<{ ok
   const startedAt = Date.now();
 
   // aggregateGraphData catches its own fatal errors and records them, so this
-  // resolving is not a claim that the rebuild succeeded — the stored record is
+  // resolving is not a claim that the rebuild succeeded, the stored record is
   // where that is written, and the UI reads it from there.
   await aggregateGraphData();
 
@@ -110,7 +110,7 @@ export async function handler(event?: { mode?: "light" | "full" }): Promise<{ ok
   // so "when did this last happen and did it work" is the question behind almost
   // every report of a page showing stale or zero.
   //
-  // Read back rather than assumed, because the walk swallows its own errors —
+  // Read back rather than assumed, because the walk swallows its own errors,
   // a row claiming success over a failed sync is worse than no row.
   const after = (await getOrgConfig()).graphAggregation;
   const failed = !!after?.lastError && (!after?.lastSuccessAt || !after.lastAttemptAt

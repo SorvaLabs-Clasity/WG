@@ -25,7 +25,7 @@ reads off that queue, claims the delivery against a DynamoDB dedup lock, and
 does the actual processing.
 
 Splitting them means the only function reachable from the internet
-(`webhook-receiver`) can read one secret and send one queue message — nothing
+(`webhook-receiver`) can read one secret and send one queue message. Nothing
 else. `webhook-worker`, which holds every table and the GitHub App token, is
 reachable only from that queue.
 
@@ -38,7 +38,7 @@ app:
 - someone added to or removed from the organization
 - a team gaining or losing access to a repository
 
-**If a delivery is rejected at the gateway, it is lost, same as before** —
+**If a delivery is rejected at the gateway, it is lost, same as before**,
 GitHub retries for a while against the same endpoint, then gives up. A
 delivery that reaches the queue is different: if it fails, SQS redelivers it,
 and only after five failed attempts does it land in the dead-letter queue,
@@ -62,7 +62,7 @@ behave differently from an automatic one.
 
 `github-control-hub-alarm-evaluator`, on an EventBridge schedule every **five
 minutes**. That is the tick, not the interval: each alarm carries its own and is
-evaluated on the first tick after it comes due — Dependabot-backed widgets every
+evaluated on the first tick after it comes due, Dependabot-backed widgets every
 10 minutes, everything else every 15. Ticks with nothing due read the alarms
 table and return.
 
@@ -78,8 +78,8 @@ something to read.
 ## Graph aggregator
 
 `github-control-hub-graph-aggregator`, on an EventBridge schedule every **six
-hours**. It walks the organization — repositories, teams, members, collaborators,
-branches, workflows — and stores the edges every access and security screen reads.
+hours**. It walks the organization, repositories, teams, members, collaborators,
+branches, workflows, and stores the edges every access and security screen reads.
 
 Six hours rather than minutes because the walk is the most GitHub-expensive thing
 this app does: roughly four requests per repository for the walk itself and about
@@ -94,6 +94,6 @@ Access tab when six hours is too long to wait. See
 
 ## What runs nowhere on a schedule
 
-Nothing, now. Graph aggregation was the last of it — it rebuilt only when someone
+Nothing, now. Graph aggregation was the last of it. It rebuilt only when someone
 pressed a button, which is why a fresh feature adding new edge types showed
 nothing until somebody happened to sync.

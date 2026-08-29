@@ -25,8 +25,8 @@ let cached: any;
  * was harmless while an AWS account was chosen once at launch. Switching
  * accounts from inside the app made it the reason the AWS tab kept showing the
  * first account's guardrails for the life of the process: the credentials in
- * the environment changed, and this client — already constructed, holding
- * resolved credentials of its own — never heard about it. Neither direction of
+ * the environment changed, and this client, already constructed, holding
+ * resolved credentials of its own, never heard about it. Neither direction of
  * the switch worked, and refreshing could not help, because every refresh asked
  * the same client the same question.
  */
@@ -37,7 +37,7 @@ export function resetGuardrailStore(): void {
 /**
  * Test seam. `send()` is the only path to DynamoDB in this module and had no
  * coverage at all, which is how it shipped calling itself instead of the
- * client — a recursion that took out reading and writing guardrails alike.
+ * client, a recursion that took out reading and writing guardrails alike.
  * Standing in a recording client is the only way to assert what it really does.
  */
 export function __setGuardrailClientForTests(client: any): void {
@@ -59,7 +59,7 @@ async function docClient() {
  * rather than "DynamoDB said no".
  *
  * Matched by name where the SDK gives a useful one, and by message where it
- * does not — the SSO and credential-chain failures are the ones that arrive as
+ * does not, the SSO and credential-chain failures are the ones that arrive as
  * a generic Error with the reason only in the text.
  */
 const STALE_CREDENTIALS = new Set([
@@ -79,7 +79,7 @@ function credentialsWentStale(err: any): boolean {
 /**
  * One send, with a second attempt on fresh credentials.
  *
- * This module's client is built once and then held, which is ordinary — except
+ * This module's client is built once and then held, which is ordinary, except
  * that it is used only when somebody opens the AWS tab. The rest of the app's
  * DynamoDB traffic keeps its own client warm every thirty seconds through the
  * health check, so its credentials are refreshed continuously and never sit
@@ -87,8 +87,8 @@ function credentialsWentStale(err: any): boolean {
  * that hour wakes with a client holding credentials that are long gone.
  *
  * The symptom was specific and misleading: every other tab worked, the AWS tab
- * showed no rules — not an error, because a failed load and an account with no
- * rules render the same — and switching tabs could not help, because every
+ * showed no rules, not an error, because a failed load and an account with no
+ * rules render the same, and switching tabs could not help, because every
  * attempt asked the same client. Restarting the app fixed it, which is what
  * building a new client does.
  *
@@ -99,7 +99,7 @@ function credentialsWentStale(err: any): boolean {
 async function send<T = any>(command: any): Promise<T> {
   try {
     // The cached client, not this function. Calling `send` here recursed until
-    // the stack ran out, on every guardrail read and write alike — so the tab
+    // the stack ran out, on every guardrail read and write alike, so the tab
     // showed no rules and adding one crashed, which look like two faults and
     // were one. Building the client is inside the try because it resolves
     // credentials, and that is one of the ways they turn out to be stale.
@@ -134,7 +134,7 @@ async function scanAll<T>(table: string): Promise<T[]> {
  * A BatchWrite that actually writes everything it was given.
  *
  * BatchWriteItem does not throw when it cannot keep up. It succeeds, and hands
- * back whatever it declined in `UnprocessedItems` — throttling, a hot
+ * back whatever it declined in `UnprocessedItems`, throttling, a hot
  * partition, a burst past the on-demand ramp. Every call here used to discard
  * that field, so a throttled batch was a set of violations the engine found,
  * logged, and never stored: the AWS tab shows fewer findings than exist, and
@@ -212,7 +212,7 @@ export async function deleteAwsExclusion(id: string): Promise<void> {
 
 /**
  * Findings are keyed by account, region, rule and resource so a re-run
- * overwrites in place rather than accumulating history — the table answers
+ * overwrites in place rather than accumulating history, the table answers
  * "what is true now", and the activity log carries the history of what changed.
  *
  * Account and region are in the key because names are not unique across an
@@ -221,7 +221,7 @@ export async function deleteAwsExclusion(id: string): Promise<void> {
  * dev's overwrite each other on alternate sweeps.
  *
  * Findings written before accounts existed have no accountId and use the old
- * two-part key. They are not migrated — they are deleted on the next sweep by
+ * two-part key. They are not migrated. They are deleted on the next sweep by
  * dropLegacyFindings, because the sweep rewrites the same facts under the new
  * key within the same run.
  */
@@ -234,7 +234,7 @@ export function findingKey(f: Finding): string {
 /**
  * Write a sweep's findings, all of them.
  *
- * BatchWriteItem does not throw when it cannot keep up — it returns what it
+ * BatchWriteItem does not throw when it cannot keep up. It returns what it
  * declined in `UnprocessedItems`, and this loop used to discard that. A
  * throttled batch was therefore a set of violations the engine found, reported
  * in its logs, and never stored: the AWS tab shows fewer findings than exist,
@@ -242,8 +242,8 @@ export function findingKey(f: Finding): string {
  * sweep that could not record what it found fails loudly instead.
  *
  * Deduplicated first, because two rules of the same kind can produce a finding
- * for the same resource within one sweep — findingKey does not include the
- * rule for the legacy form — and DynamoDB rejects a batch containing two writes
+ * for the same resource within one sweep, findingKey does not include the
+ * rule for the legacy form, and DynamoDB rejects a batch containing two writes
  * to one key outright.
  */
 export async function putFindings(findings: Finding[]): Promise<void> {
@@ -259,7 +259,7 @@ export async function putFindings(findings: Finding[]): Promise<void> {
  * Remove findings from before accounts existed.
  *
  * Run at the end of a full sweep, once the same resources have been written
- * under their account-qualified keys — otherwise the UI shows every finding
+ * under their account-qualified keys, otherwise the UI shows every finding
  * twice, once with an account and once without, and the one without looks like
  * a resource nobody can place.
  */
@@ -293,7 +293,7 @@ export async function listFindings(): Promise<Finding[]> {
 /** Drop findings for a rule that no longer exists, so the UI does not show ghosts. */
 export async function deleteFindingsForRule(ruleId: string): Promise<void> {
   const stale = (await listFindings()).filter(f => f.ruleId === ruleId);
-  // findingKey, not the literal, so rows written per-account are removed too —
+  // findingKey, not the literal, so rows written per-account are removed too,
   // computing the old key here would leave every account's copy behind as a
   // ghost of a rule that no longer exists.
   const keys = new Set(stale.map(findingKey));

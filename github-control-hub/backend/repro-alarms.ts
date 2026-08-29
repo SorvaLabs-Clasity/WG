@@ -10,7 +10,7 @@
  *     people to filter the alarm.
  *   - an hourly alarm drifting to 75 minutes because the scheduler's jitter
  *     lands just short of the interval.
- *   - a subject line SNS refuses, which turns a firing alarm into silence —
+ *   - a subject line SNS refuses, which turns a firing alarm into silence,
  *     and silence already means "all clear".
  */
 import fs from "fs";
@@ -548,7 +548,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   // ── a new table has to be registered in three places ────────────────
   {
     // The alarms table was created, named in the CDK for the Lambdas, and
-    // missed in the desktop app's own list — so every Lambda could reach it
+    // missed in the desktop app's own list, so every Lambda could reach it
     // and the app itself answered "Missing required DynamoDB table env var".
     // Three lists that must agree, and nothing compared them.
     const root = path.join(__dirname, "../..");
@@ -587,7 +587,7 @@ function check(name: string, ok: boolean, got?: unknown) {
       .filter(t => !new RegExp(`\\b${t}\\s*:`).test(bootstrap));
     check("every table the code reads is resolved by the desktop app",
       required.size > 0 && missingFromApp.length === 0,
-      missingFromApp.length ? missingFromApp : "no tableName() calls found — wrong directory");
+      missingFromApp.length ? missingFromApp : "no tableName() calls found, wrong directory");
 
     // And the table has to exist for the name to be worth anything.
     const suffixes = [...required]
@@ -601,8 +601,8 @@ function check(name: string, ok: boolean, got?: unknown) {
   // ── the UI's label mirror must cover the real catalogue ─────────────
   {
     // The alarm list names a condition without asking the server, so the
-    // labels are duplicated in the frontend. Only the words — never the rules
-    // about which widget may use which metric — and this is what stops a new
+    // labels are duplicated in the frontend. Only the words, never the rules
+    // about which widget may use which metric, and this is what stops a new
     // metric shipping with its raw identifier showing in the UI.
     const mirror = fs.readFileSync(
       path.join(__dirname, "../frontend/src/lib/alarmSpecs.ts"), "utf8");
@@ -620,7 +620,7 @@ function check(name: string, ok: boolean, got?: unknown) {
     const missing = [...everyMetric].filter(m => !mirror.includes(`"${m}"`));
     check("the frontend knows a label for every metric the backend offers",
       everyMetric.size > 0 && missing.length === 0,
-      missing.length ? missing : "no metrics found — the catalogue is empty");
+      missing.length ? missing : "no metrics found, the catalogue is empty");
   }
 
   // ── the tick has to divide every interval ──────────────────────────
@@ -643,7 +643,7 @@ function check(name: string, ok: boolean, got?: unknown) {
       DUE_TOLERANCE_MS < TICK_MINUTES * 60_000,
       `${DUE_TOLERANCE_MS / 60_000}m tolerance against a ${TICK_MINUTES}m tick`);
 
-    // CDK owns the rule and cannot import this constant — infra/ compiles with
+    // CDK owns the rule and cannot import this constant, infra/ compiles with
     // rootDir "." and does not include backend/. So the two are asserted equal
     // here rather than shared, which is the only thing keeping them together.
     const stack = fs.readFileSync(
@@ -657,7 +657,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 
   // ── one sweep per run, however many alarms read it ──────────────────
   {
-    // Several Dependabot alarms are the normal case — one for criticals, one
+    // Several Dependabot alarms are the normal case, one for criticals, one
     // for highs, one per team. Each doing its own org-wide sweep would multiply
     // the request cost by the number of alarms for identical data, and nothing
     // else would notice: every alarm still reports the right number.
@@ -707,7 +707,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 
     // Sharing only holds while every preset goes through the injected source.
     // A preset that imported the service and called it directly would still
-    // return the right rows — and would add one org-wide sweep per alarm, which
+    // return the right rows, and would add one org-wide sweep per alarm, which
     // the counts above cannot see because they only observe the injected one.
     const wv = fs.readFileSync(
       path.join(__dirname, "src", "alarms", "widgetValues.ts"), "utf8");
@@ -732,7 +732,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   {
     // Exercised rather than grepped. The first version of this checked the
     // source for `describeChanges(` and for the phrase it produces, and passed
-    // with the call rewired to `false ?` — the patterns were all still present,
+    // with the call rewired to `false ?`, the patterns were all still present,
     // just no longer reachable. Two mutations proved it before this was rewritten.
     delete process.env.ACTIVITY_TABLE;
     delete process.env.ALARMS_TABLE;
@@ -793,7 +793,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   //
   // Alarms, email groups, the security toggle, the feed settings and the pull
   // request state share one table keyed on `id`. PUT /api/alarms/:id handed
-  // req.body straight to updateAlarm, which copied every key it found — so a
+  // req.body straight to updateAlarm, which copied every key it found, so a
   // body carrying its own `id` wrote the edited alarm over whatever else held
   // that id. `{"id": "security-settings"}` replaces the organization's
   // security-alert configuration; an email group's id replaces the group and

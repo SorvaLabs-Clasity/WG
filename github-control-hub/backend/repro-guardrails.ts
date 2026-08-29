@@ -264,8 +264,8 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
     kindsForEvent("DeleteRetentionPolicy").some(k => k.kind === "log_retention_min"));
 
   // The EventBridge pattern lives in CDK, so a rule can declare a trigger the
-  // infrastructure never delivers. That failure is silent — the rule simply
-  // never runs early — so assert the two lists agree.
+  // infrastructure never delivers. That failure is silent, the rule simply
+  // never runs early, so assert the two lists agree.
   {
     const cdk = readFileSync(join(__dirname, "../infra/cdk-stack.ts"), "utf8");
     const block = cdk.match(/eventName: \[([\s\S]*?)\]/)?.[1] ?? "";
@@ -288,7 +288,7 @@ const res = (id: string, state: Record<string, any>, tags: Record<string, string
 //
 // The sweep listed buckets with `ListBuckets({})`. AWS returns `BucketRegion`
 // only "if the request contains at least one valid parameter", and an empty
-// request has none — so the field came back undefined on every bucket and the
+// request has none, so the field came back undefined on every bucket and the
 // collector's fallback decided the whole account lived in us-east-1.
 //
 // The way that fails is quiet and wrong in both directions: a sweep of any

@@ -49,7 +49,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       // No alerts means one of two things, and the caller has to be able to
       // tell them apart: alerts are switched off, or they are on and the repo
       // is clean. Returning an empty list for both made a clean repo look like
-      // one that had vanished, so each case gets its marker — the same
+      // one that had vanished, so each case gets its marker, the same
       // contract the org-wide branch below returns.
       if (allAlerts.length === 0) {
         try {
@@ -64,7 +64,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
     } else {
       // The alert sweep failing should cost the alerts, not the page. Every
       // repository below is still listed with its Dependabot state, which is
-      // most of what this screen is for — so a degraded sweep is tolerated
+      // most of what this screen is for, so a degraded sweep is tolerated
       // here, and reported rather than thrown. The alarm evaluator reads the
       // same function and treats `degraded` as "no reading", because an alarm
       // must not resolve itself off a sweep that never ran.
@@ -74,12 +74,12 @@ router.get("/dependencies", async (req: Request, res: Response) => {
 
       // Every repository's alert setting in a handful of requests.
       //
-      // This was one REST call per repository — 351 of them on this
+      // This was one REST call per repository, 351 of them on this
       // organization, every time the tab was opened. GraphQL carries the same
       // flag 100 repositories at a time, and on a different rate-limit budget
       // from everything else here.
       // The same query returns the repository list, so listRepos is not called
-      // here at all — it would be four more REST pages fetching names GraphQL
+      // here at all. It would be four more REST pages fetching names GraphQL
       // has already handed over.
       const reposWithAlerts = new Set(allAlerts.map(a => a.repo));
       const alertStatus = await fetchRepoAlertStatus(
@@ -108,7 +108,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
 
 router.post("/dependencies/enable", async (req: Request, res: Response) => {
   try {
-    // A write against a specific repo — act as the user so GitHub authorizes it.
+    // A write against a specific repo, act as the user so GitHub authorizes it.
     const token = req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
@@ -145,7 +145,7 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
 
 router.post("/dependencies/disable", async (req: Request, res: Response) => {
   try {
-    // A write against a specific repo — act as the user so GitHub authorizes it.
+    // A write against a specific repo, act as the user so GitHub authorizes it.
     const token = req.user?.accessToken;
     if (!token) {
       return res.status(401).json({ error: "No GitHub token provided" });
@@ -192,7 +192,7 @@ router.get("/summary", async (req: Request, res: Response) => {
 
     // Shares the sweep with the tab above and with the alarm evaluator, which
     // also brings the 400 tolerance here. This endpoint caught 403 and 404 but
-    // not 400 — the same rejected-pagination failure that blanked the
+    // not 400, the same rejected-pagination failure that blanked the
     // Dependabot tab would have turned this summary into a 500.
     const sweep = await fetchOrgDependencyAlerts(octokit, org);
     if (sweep.degraded) {
@@ -205,7 +205,7 @@ router.get("/summary", async (req: Request, res: Response) => {
     for (const alert of sweep.alerts) {
       // GitHub says "moderate" where this app says "medium". Counting only the
       // app's spelling meant every moderate alert fell through `severity in
-      // counts` and was reported in no severity at all — the org's totals were
+      // counts` and was reported in no severity at all, the org's totals were
       // short by however many moderates it had, in the reassuring direction.
       const severity = alert.severity === "moderate" ? "medium" : alert.severity;
       if (severity in counts) {

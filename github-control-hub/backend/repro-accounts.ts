@@ -1,7 +1,7 @@
 /**
  * The account the guardrail engine runs against, and the regions inside it.
  *
- * This file used to test running across several AWS accounts — a registry, a
+ * This file used to test running across several AWS accounts, a registry, a
  * role assumed in each one, access keys in Secrets Manager for accounts outside
  * an organization. That feature is gone, and the standing permissions it needed
  * went with it: `sts:AssumeRole` on a role name in any account, the ability to
@@ -10,7 +10,7 @@
  * What survives is the part that was never about multiple accounts: the engine
  * still sweeps several **regions**, an unreachable region must not silently
  * shrink the estate, and a region nobody configured has to be reported as
- * unlooked-at rather than as clean. Those are the failures worth guarding —
+ * unlooked-at rather than as clean. Those are the failures worth guarding,
  * a tool that reports a healthy account because it stopped looking at half of
  * it.
  *
@@ -142,7 +142,7 @@ const group = (id: string): ResourceSnapshot => ({
   // ── a region nobody configured is a blind spot, not a pass ──────────
   //
   // S3 is global while the sweep is per-region, so a bucket in a region the
-  // account does not list is never examined — and on screen an unexamined
+  // account does not list is never examined, and on screen an unexamined
   // bucket looks exactly like a compliant one.
   {
     const result = await run([rule({ kind: "s3_https_only", params: { sid: "x" } })], [], {}, undefined, {

@@ -8,6 +8,8 @@ import { evaluateSecurityQuery } from "../services/graphService";
 import { fetchRenovatePrs, openPrs } from "../services/renovateService";
 import { flushPending } from "./feedNotify";
 import { runNudgePass } from "../services/prNudgeService";
+import { GUARDRAIL_PREFIX, guardrailRuleOf } from "./conditions";
+import { listGuardrails } from "../aws-guardrails/store";
 import { getOrgConfig } from "../services/orgConfigService";
 import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
 import {
@@ -66,8 +68,8 @@ export async function handler(): Promise<void> {
   await bootstrapOnce();
 
   // No fallback. This used to degrade to a SYSTEM_GITHUB_TOKEN personal access
-  // token, which meant a broken App produced alarm runs that quietly worked —
-  // on a credential nobody remembered configuring — until that expired too.
+  // token, which meant a broken App produced alarm runs that quietly worked,
+  // on a credential nobody remembered configuring, until that expired too.
   //
   // The App is the only credential now, so a run that cannot get a token fails
   // and says why. A failed scheduled run is visible in the function's logs and
@@ -80,7 +82,7 @@ export async function handler(): Promise<void> {
   /**
    * Fetched at most once per run, however many alarms read it.
    *
-   * Several Dependabot alarms are normal — one for criticals, one for highs —
+   * Several Dependabot alarms are normal, one for criticals, one for highs,
    * and each doing its own org-wide sweep would multiply the request cost by
    * the number of alarms for identical data. Memoised on the promise so
    * concurrent reads share one call rather than racing.
@@ -132,7 +134,7 @@ export async function handler(): Promise<void> {
    * against the smallest budget in the app.
    *
    * The promise is cached, not the result, so concurrent callers wait on the
-   * same request rather than starting a second one. Rejections are cached too —
+   * same request rather than starting a second one. Rejections are cached too,
    * deliberately: a failed read should be reported once per pass, not retried
    * once per alarm watching it.
    */
@@ -156,7 +158,22 @@ export async function handler(): Promise<void> {
     org,
     timezone: (await getSecuritySettings()).timezone,
     listAlarms,
-    getWidget: (id: string) => getWidget(id) as any,
+    // A guardrail alarm has no widget. Its subject is synthesised from the id
+    // it carries, which is what lets the evaluator stay entirely ignorant of
+    // there being more than one kind of thing to watch.
+    getWidget: async (id: string) => {
+      if (id.startsWith(GUARDRAIL_PREFIX)) {
+        const rule = guardrailRuleOf(id);
+        const name = rule
+          ? (await listGuardrails()).find(r => r.id === rule)?.name
+          : undefined;
+        return {
+          id, type: "guardrail",
+          title: rule ? `Guardrail: ${name ?? rule}` : "AWS guardrails",
+        } as any;
+      }
+      return (await getWidget(id)) as any;
+    },
     topicArnFor: async (groupId: string) => (await getGroup(groupId))?.topicArn,
     computeRows: (widget) => computeWidgetRows(widget, sources),
     publish,
@@ -174,7 +191,7 @@ export async function handler(): Promise<void> {
   //
   // Every widget, not only the ones an alarm watches. This is the same
   // `computeWidgetRows` the alarm evaluation just used, drawing on the same
-  // memoised sources — so a widget that already ran above is served from the
+  // memoised sources, so a widget that already ran above is served from the
   // cached promise rather than run twice, and only the unwatched ones cost
   // anything extra.
   //
@@ -221,7 +238,7 @@ export async function handler(): Promise<void> {
 
   // Written only when the pass did something.
   //
-  // This runs every five minutes — 288 times a day — and the overwhelming
+  // This runs every five minutes, 288 times a day, and the overwhelming
   // majority of ticks evaluate nothing, because each alarm carries its own
   // interval. Recording those would add a hundred thousand rows a year saying
   // "nothing was due", and an audit trail nobody can read is not one.
@@ -246,7 +263,7 @@ export async function handler(): Promise<void> {
 
   // Deliberately not thrown. A publish failure is already logged and counted,
   // and failing the invocation would only make EventBridge retry the whole
-  // pass — re-reading every widget and re-sending whatever did succeed.
+  // pass, re-reading every widget and re-sending whatever did succeed.
 
   // ── the grouped feeds ──
   //
@@ -302,9 +319,9 @@ export async function handler(): Promise<void> {
     // nothing on the tick, not fetch the world and then decline to act on it.
     //
     // Only monitoring is checked here. Reminders being off stops the posting,
-    // not the walk — the branch below still stores the snapshot the tab opens
+    // not the walk, the branch below still stores the snapshot the tab opens
     // on. Gating the fetch on reminders as well was the same line for a while,
-    // and it made the common configuration — monitoring on, reminders off —
+    // and it made the common configuration, monitoring on, reminders off,
     // the one where nothing kept the stored list warm, so every first open of
     // the day paid for a live walk.
     const prSettings = await getPrSettings();
@@ -400,7 +417,7 @@ export async function handler(): Promise<void> {
   //
   // Last, and outside the block above, deliberately. It reads the stored
   // snapshot rather than the walk, so it still works on a tick where the pull
-  // request pass was switched off or failed — and a failure of somebody's
+  // request pass was switched off or failed, and a failure of somebody's
   // webhook must not be able to take down the reminders that ran before it.
   try {
     const { runDigestPass } = await import("./devDigest");

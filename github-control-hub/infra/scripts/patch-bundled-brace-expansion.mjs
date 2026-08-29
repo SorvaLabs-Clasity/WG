@@ -2,13 +2,13 @@
  * Replace the brace-expansion that aws-cdk-lib ships inside its own tarball.
  *
  * CDK bundles its dependencies, so npm installs them from the tarball rather
- * than resolving them — which means `overrides` cannot reach them and
+ * than resolving them, which means `overrides` cannot reach them and
  * `npm audit fix` has nothing to fix. The copy on disk stays vulnerable until
  * AWS republishes.
  *
  * GHSA-rgw5-rvv9-x895: expand() can be driven to exhaust memory or block the
  * event loop. CDK reaches it through minimatch, for ignore patterns and stack
- * selectors, on inputs that are our own file paths — so this is remote from
+ * selectors, on inputs that are our own file paths, so this is remote from
  * anything an attacker touches. It is patched anyway, because "not reachable
  * today" is an argument that has to be re-made every time the code around it
  * changes, and copying a directory is cheaper than making it again.
@@ -30,7 +30,7 @@ const version = (p) => {
 };
 
 if (!existsSync(bundled)) {
-  console.log("[patch] aws-cdk-lib no longer bundles brace-expansion — nothing to do");
+  console.log("[patch] aws-cdk-lib no longer bundles brace-expansion. Nothing to do");
   process.exit(0);
 }
 
@@ -50,7 +50,7 @@ const older = (a, b) => {
 };
 
 if (!older(have, "5.0.9")) {
-  console.log(`[patch] bundled brace-expansion is ${have} — already patched`);
+  console.log(`[patch] bundled brace-expansion is ${have}, already patched`);
   process.exit(0);
 }
 

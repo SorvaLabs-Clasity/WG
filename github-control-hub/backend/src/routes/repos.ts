@@ -17,7 +17,7 @@ router.get("/", async (req: Request, res: Response) => {
   }
 });
 
-/** Full detail for one repo — powers the Knowledge Center panel. */
+/** Full detail for one repo, powers the Knowledge Center panel. */
 router.get("/:repo/details", async (req: Request<{ repo: string }>, res: Response) => {
   const { repo } = req.params;
   if (!isValidRepoName(repo)) {

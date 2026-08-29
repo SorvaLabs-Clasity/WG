@@ -1,5 +1,5 @@
 /**
- * "Who knows this?" — ranking people by what they have touched.
+ * "Who knows this?", ranking people by what they have touched.
  *
  * The failure modes here are all plausible-looking answers, which is worse than
  * an error: somebody reads the list during an incident and pages the wrong
@@ -77,7 +77,7 @@ const c = (login: string, signal: Contribution["signal"], days: number): Contrib
     // A commit with no linked GitHub account falls back to the git config
     // *name*, which is a display name and not a login. A live lookup ranked
     // "Acme Studios Bot" first because nothing here matched a name shaped like
-    // that — the exact outcome the exclusion exists to prevent.
+    // that, the exact outcome the exclusion exists to prevent.
     for (const bot of ["Acme Studios Bot", "CI Bot", "build bot", "Release Bot"]) {
       check(`  "${bot}" is too, being a display name rather than a login`, isBot(bot));
     }
@@ -299,7 +299,7 @@ const c = (login: string, signal: Contribution["signal"], days: number): Contrib
 // Reported from a real repository: "100 commits". GitHub returns one page and a
 // `next` link, so asking for a hundred and getting a hundred means "at least a
 // hundred". A repository with four thousand commits and one with a hundred and
-// one both came back as exactly 100 — a number wrong in a way nobody looking at
+// one both came back as exactly 100, a number wrong in a way nobody looking at
 // it could possibly see, on the panel whose entire job is to be trusted.
 //
 // Paging to the end would be forty requests for a busy repository, for a number
@@ -330,7 +330,7 @@ const c = (login: string, signal: Contribution["signal"], days: number): Contrib
     const path = await expertsForPath(reader(full), "api", "src/x.ts", NOW);
     check("a path lookup is marked the same way", path.sampled === true, path.sampled);
 
-    // The count itself is still the page size, and is meant to be — it is a
+    // The count itself is still the page size, and is meant to be. It is a
     // floor, and the flag is what makes it readable as one.
     check("  and the count is the floor, not a guess at the total",
       capped.experts[0].commits === COMMIT_PAGE, capped.experts[0].commits);

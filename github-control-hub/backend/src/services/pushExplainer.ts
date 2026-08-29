@@ -3,7 +3,7 @@ import type { BranchProtection } from "./branchService";
 /**
  * Why a push or a merge will be refused, before it is refused.
  *
- * The rules are already stored, in full, and are already shown — as a settings
+ * The rules are already stored, in full, and are already shown, as a settings
  * form, which is the right shape for changing them and the wrong shape for the
  * question people actually have, which is "what will happen if I try". A form
  * says `requireCodeOwnerReviews: true`. It does not say "somebody listed in

@@ -2,8 +2,8 @@
  * Search, sort and paging for a list of rows already in memory.
  *
  * Kept separate from the hook that holds the state, because the part that goes
- * wrong is the arithmetic — an off-by-one at a page boundary, a filter that
- * leaves you stranded on page 7 of 2 — and none of that needs React to test.
+ * wrong is the arithmetic, an off-by-one at a page boundary, a filter that
+ * leaves you stranded on page 7 of 2, and none of that needs React to test.
  * `repro-tablecontrols.ts` exercises this module directly.
  *
  * Everything here works on rows the caller already has. Nothing fetches.
@@ -36,7 +36,7 @@ export interface TableControlsResult<T> {
   /** How many rows matched the search, before paging. */
   matchCount: number;
   totalPages: number;
-  /** The page actually shown — clamped, so a stale page number cannot blank the view. */
+  /** The page actually shown, clamped, so a stale page number cannot blank the view. */
   safePage: number;
 }
 
@@ -51,7 +51,7 @@ export function matchesSearch(text: string, search: string): boolean {
  * Compare two sort values.
  *
  * Blanks sort last in both directions. A row with no value for the column is
- * not "smallest" — it is unknown, and burying unknowns at the bottom is what
+ * not "smallest". It is unknown, and burying unknowns at the bottom is what
  * someone sorting a column actually wants.
  */
 export function compareValues(a: string | number | null | undefined, b: string | number | null | undefined, dir: SortDir): number {
@@ -83,7 +83,7 @@ export function applyTableControls<T>(input: TableControlsInput<T>): TableContro
     // Sorting a copy: the caller's array is React state elsewhere, and sorting
     // in place would mutate it.
     //
-    // Stable, because Array.prototype.sort is required to be since ES2019 —
+    // Stable, because Array.prototype.sort is required to be since ES2019,
     // so re-sorting by a column full of ties leaves the previous order intact
     // rather than reshuffling rows under the reader.
     ordered = [...matched].sort((x, y) => compareValues(column.value(x), column.value(y), sortDir));

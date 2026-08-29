@@ -1,13 +1,13 @@
 # Features
 
 One page per tab. Each says what the tab answers, where the data comes from,
-and — usually the most useful part — what it deliberately does not tell you.
+and, usually the most useful part, what it deliberately does not tell you.
 
 In the order the tabs appear:
 
 | Tab | Page | Answers |
 |---|---|---|
-| Overview | [overview.md](overview.md) · [widgets.md](widgets.md) | How is the org doing, on checks I chose — and every card, one by one |
+| Overview | [overview.md](overview.md) · [widgets.md](widgets.md) | How is the org doing, on checks I chose, and every card, one by one |
 | AWS | [../aws-guardrails/](../aws-guardrails/) | What is wrong in our AWS accounts |
 | Security | [security-checks.md](security-checks.md) | Which repos fail which check |
 | Alarms | [alarms.md](alarms.md) | Email me when a number crosses a line |
@@ -20,4 +20,4 @@ In the order the tabs appear:
 
 Not a tab:
 
-- [Config transfer](config-transfer.md) — export and import the app's own setup
+- [Config transfer](config-transfer.md), export and import the app's own setup

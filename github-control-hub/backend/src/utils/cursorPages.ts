@@ -12,18 +12,18 @@ function nextCursor(link: string | undefined): string | undefined {
 }
 
 /**
- * Every open alert, not the first hundred — walked the way these endpoints
+ * Every open alert, not the first hundred, walked the way these endpoints
  * actually paginate.
  *
  * Two bugs live here. Originally all three Dependabot calls asked for
  * `per_page: 100` and used the single page they got back, so past a hundred
  * open alerts an organization under-counted every severity and under-listed
- * every repository — silently, in the direction that reads as good news.
+ * every repository, silently, in the direction that reads as good news.
  *
  * The fix for that walked pages with `?page=N`, shaped like listRepos' loop
  * because that is the pattern everywhere else here. But listRepos calls an
  * endpoint that supports page numbers and the Dependabot alerts endpoints do
- * not — organization-level and repository-level alike answer:
+ * not, organization-level and repository-level alike answer:
  *
  *     400  Pagination using the `page` parameter is not supported.
  *

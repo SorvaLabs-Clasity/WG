@@ -5,10 +5,10 @@ import { Response } from "express";
  *
  * GitHub reports two different things through the same 403:
  *
- *   Primary   — the hourly budget is spent. `x-ratelimit-remaining: 0`, and
+ *   Primary, the hourly budget is spent. `x-ratelimit-remaining: 0`, and
  *               `x-ratelimit-reset` says when it refills. Nothing helps but
  *               waiting, so the time is the only useful thing to show.
- *   Secondary — too much too fast, or too many concurrent requests. Carries
+ *   Secondary, too much too fast, or too many concurrent requests. Carries
  *               `retry-after` in seconds and clears in well under a minute.
  *
  * Both used to surface as a generic 500, which reads as "the app is broken"

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────
-# GitHub Control Hub — Provision a fresh AWS account
+# GitHub Control Hub: Provision a fresh AWS account
 #
 # Creates every resource the app expects in whichever account
 # your credentials currently point at:
@@ -38,7 +38,7 @@ set -euo pipefail
 # Asked for, not exported.
 #
 # This script began as a subroutine of migrate-to-account.sh, which resolves the
-# profile and region itself and passes them in — so run directly it demanded
+# profile and region itself and passes them in: so run directly it demanded
 # exports, and told you to set an environment variable rather than asking. That
 # is the opposite of how the other script behaves, and the reason it asks is
 # that a script inventing a region creates tables somewhere nobody named, whose
@@ -64,7 +64,7 @@ ask() {
 #
 # Three cases, and the middle one is the one that used to stop the script dead:
 # exports in the shell that have since expired. It took the environment branch,
-# failed, and told the person to go and find fresh exports — while they were
+# failed, and told the person to go and find fresh exports: while they were
 # already signed in with a perfectly good SSO profile.
 #
 # The env vars have to be *unset* to fall back, not merely ignored: AWS's
@@ -74,13 +74,13 @@ if [ -n "${AWS_ACCESS_KEY_ID:-}" ] && aws sts get-caller-identity >/dev/null 2>&
   echo "  using credentials from the environment" >&2
 else
   if [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
-    echo "  the credentials exported in this shell are expired — ignoring them" >&2
+    echo "  the credentials exported in this shell are expired, ignoring them" >&2
     unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
   fi
   ask AWS_PROFILE_IN "AWS profile" "${AWS_PROFILE:-}"
   export AWS_PROFILE="$AWS_PROFILE_IN"
   if ! aws sts get-caller-identity >/dev/null 2>&1; then
-    echo "  no valid session for $AWS_PROFILE — signing in" >&2
+    echo "  no valid session for $AWS_PROFILE, signing in" >&2
     aws sso login --profile "$AWS_PROFILE" || {
       echo "Could not sign in to '$AWS_PROFILE'. Check the name in ~/.aws/config." >&2; exit 1; }
   fi
@@ -111,7 +111,7 @@ echo
 #
 # migrate-to-account.sh asks its own "proceed against account N?" and then runs
 # this with stdin closed, so `read` returned EOF, `confirm` was empty, and this
-# aborted every time — reported one frame up as "Table creation failed", which
+# aborted every time: reported one frame up as "Table creation failed", which
 # describes a DynamoDB problem that was never there. A script driving another
 # script has to be able to say it has consent.
 if [ "${SKIP_CONFIRM:-}" = "1" ] || [ ! -t 0 ]; then
@@ -123,7 +123,7 @@ else
 fi
 
 # ── 1. DynamoDB tables ──
-# Key schemas are taken from the service layer, NOT from README.md — the
+# Key schemas are taken from the service layer, NOT from README.md: the
 # README's table list is out of date and claims everything is keyed on `id`.
 # Source of truth for each table is noted beside it below.
 #
@@ -154,7 +154,7 @@ for t in "${TABLES[@]}"; do
     --key-schema AttributeName=id,KeyType=HASH
 done
 
-# alerts — keyed on { id }, plus one index the Security tab reads through.
+# alerts: keyed on { id }, plus one index the Security tab reads through.
 #
 #   feed-index   every alert carries feed="ALERT" and its own timestamp, so the
 #                index is one partition ordered by time. That is what makes
@@ -201,15 +201,15 @@ enable_ttl() {
   esac
 }
 
-# activity — single-partition time series: pk="ACTIVITY", sk="<timestamp>#<id>"
+# activity: single-partition time series: pk="ACTIVITY", sk="<timestamp>#<id>"
 # activityService.ts:135 (write) and :150 (Query on pk)
 #
 # Two sparse indexes, because one partition key means neither lookup below can
 # be a key condition on the base table. Without them both fall back to reading
 # the newest rows and filtering, which answers "is it recent?" instead of "does
-# it exist?" — correct on a small log, silently wrong on a large one.
-#   id-index        getActivityById   — every row has an id
-#   parentId-index  getChildActivities — only child rows have a parentId, so
+# it exist?": correct on a small log, silently wrong on a large one.
+#   id-index        getActivityById: every row has an id
+#   parentId-index  getChildActivities: only child rows have a parentId, so
 #                                        the index holds exactly those
 #   repo-index      filtering the feed by repository. Keyed on repo with the
 #                   timestamp as its sort key, so "everything that happened to
@@ -232,17 +232,17 @@ create_table "${PREFIX}-activity" \
       'IndexName=parentId-index,KeySchema=[{AttributeName=parentId,KeyType=HASH}],Projection={ProjectionType=ALL}' \
       'IndexName=repo-index,KeySchema=[{AttributeName=repo,KeyType=HASH},{AttributeName=sk,KeyType=RANGE}],Projection={ProjectionType=ALL}' 
 
-# scanners — pk="SCANNER", sk=<scanner id>   scannerService.ts:88
+# scanners: pk="SCANNER", sk=<scanner id>   scannerService.ts:88
 create_table "${PREFIX}-scanners" \
   --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
   --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE
 
-# graph-edges — graphEdgeService.ts:13
+# graph-edges: graphEdgeService.ts:13
 create_table "${PREFIX}-graph-edges" \
   --attribute-definitions AttributeName=pk,AttributeType=S AttributeName=sk,AttributeType=S \
   --key-schema AttributeName=pk,KeyType=HASH AttributeName=sk,KeyType=RANGE
 
-# org-config — keyed on `org`. Holds the org feature flags (org=<org name>) and
+# org-config: keyed on `org`. Holds the org feature flags (org=<org name>) and
 # the registry of AWS accounts the guardrails sweep reads (org="aws-accounts").
 # orgConfigService.ts:29, aws-guardrails/accounts.ts
 create_table "${PREFIX}-org-config" \
@@ -274,7 +274,7 @@ create_table "${PREFIX}-aws-findings" \
 
 # ── 1b. Indexes on an activity table that already existed ──
 # create_table leaves existing tables alone, so a re-run against an account
-# provisioned before these indexes existed would silently skip them — and the
+# provisioned before these indexes existed would silently skip them: and the
 # lookups they support fail by returning nothing rather than erroring.
 echo "==> Checking activity table indexes"
 $AWS dynamodb wait table-exists --table-name "${PREFIX}-activity"
@@ -407,7 +407,7 @@ fi
 
 echo
 echo "==> GitHub credentials for $SECRET_NAME"
-echo "    These are GitHub values, not AWS — they carry over from the old account."
+echo "    These are GitHub values, not AWS. They carry over from the old account."
 echo "    The OAuth app callback URL must be http://localhost:4321/auth/callback"
 echo
 # What the account already holds, so an update does not demand credentials it
@@ -439,7 +439,7 @@ ask_visible() {  # ask_visible VAR_NAME "prompt" existing
 ask_secret() {   # ask_secret VAR_NAME "prompt" existing
   local __var="$1" __prompt="$2" __cur="$3" __in
   if [ -n "$__cur" ]; then
-    read -r -s -p "  $__prompt [set — enter to keep]: " __in; echo
+    read -r -s -p "  $__prompt [set, enter to keep]: " __in; echo
     printf -v "$__var" '%s' "${__in:-$__cur}"
   else
     read -r -s -p "  $__prompt: " __in; echo
@@ -452,7 +452,7 @@ ask_visible GITHUB_CLIENT_ID  "GITHUB_CLIENT_ID (OAuth app)"   "$(existing_val G
 ask_secret  GITHUB_CLIENT_SECRET "GITHUB_CLIENT_SECRET"        "$(existing_val GITHUB_CLIENT_SECRET)"
 
 # The webhook secret moved out of the bundle into its own secret. On an account
-# set up before that, the bundle still holds it — offered here so the move needs
+# set up before that, the bundle still holds it: offered here so the move needs
 # no retyping and cannot end up with the two copies disagreeing.
 WEBHOOK_CURRENT=$($AWS secretsmanager get-secret-value --secret-id "$WEBHOOK_SECRET_NAME" \
   --query SecretString --output text 2>/dev/null || existing_val GITHUB_WEBHOOK_SECRET)
@@ -492,7 +492,7 @@ if $AWS secretsmanager describe-secret --secret-id "$SECRET_NAME" >/dev/null 2>&
   # put-secret-value overwrites the whole document, and this script only asks
   # for four of the values in it. Re-running it on a configured account used to
   # delete GITHUB_APP_ID, GITHUB_APP_PRIVATE_KEY, GITHUB_APP_INSTALLATION_ID
-  # and JWT_SECRET — App auth would fail and every call would quietly drop to
+  # and JWT_SECRET: App auth would fail and every call would quietly drop to
   # the PAT's lower rate limit, which looks like the app getting slower rather
   # than like a wiped credential.
   EXISTING=$($AWS secretsmanager get-secret-value --secret-id "$SECRET_NAME" \
@@ -517,7 +517,7 @@ else
     --name "$SECRET_NAME" --secret-string "$SECRET_JSON" >/dev/null
 fi
 
-# Written separately, and stored as the bare value rather than as JSON — the
+# Written separately, and stored as the bare value rather than as JSON: the
 # receiver reads this secret and nothing else, so there is nothing to wrap.
 # Skipped rather than blanked when empty: an empty webhook secret would make
 # the receiver fail closed and reject every delivery, which reads exactly like

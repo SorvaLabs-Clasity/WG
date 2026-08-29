@@ -19,7 +19,7 @@ restored at startup, so a still-valid SSO session simply connects.
 What is remembered, and what is not:
 
 - **Only profiles that worked.** Written after DynamoDB actually answered, not
-  when the name was typed — otherwise a typo becomes the suggestion forever.
+  when the name was typed, otherwise a typo becomes the suggestion forever.
 - **Forgotten on sign-out**, so the next launch does not silently reconnect to
   an account you deliberately left.
 - **Never any secret.** A profile name is the name of a section in a file you
@@ -29,15 +29,15 @@ What is remembered, and what is not:
 
 ## Lambda
 
-No profiles. Each function — `webhook-receiver`, `webhook-worker`, the
-guardrail engine — gets its own execution role and reads its own credentials
+No profiles. Each function, `webhook-receiver`, `webhook-worker`, the
+guardrail engine, gets its own execution role and reads its own credentials
 from the Lambda runtime, scoped to exactly what that function needs. See
 [Lambda](../infrastructure/lambda.md).
 
 ## What AWS access buys
 
 Reading DynamoDB (the app's own tables) and Secrets Manager (GitHub secrets).
-It is *not* how the AWS guardrails reach other accounts — those assume a role.
+It is *not* how the AWS guardrails reach other accounts. Those assume a role.
 See [AWS guardrails](../aws-guardrails/).
 
 ## When the session expires

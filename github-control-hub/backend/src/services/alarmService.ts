@@ -15,8 +15,8 @@ import { sameValue } from "../utils/sameValue";
  * Alarms, the email groups they notify, and the security-alert toggle.
  *
  * All three live in one table keyed by id and told apart by `kind`, the same
- * shape the alerts and widgets tables use. Alarm runtime state — whether it is
- * currently firing, how many clean checks it has seen — is stored on the alarm
+ * shape the alerts and widgets tables use. Alarm runtime state, whether it is
+ * currently firing, how many clean checks it has seen, is stored on the alarm
  * itself rather than beside it, because an alarm and its state are read and
  * written together on every evaluation and splitting them would buy a second
  * round trip and a chance to disagree.
@@ -57,6 +57,18 @@ export interface EmailGroup {
   name: string;
   /** The SNS topic behind this group. */
   topicArn: string;
+  /**
+   * Microsoft Teams webhooks this group also posts to.
+   *
+   * A group is a list of people to tell, and email was only ever the one way
+   * the app knew how to tell them. Adding the channel here rather than to each
+   * feature means every notification the app already sends, widget alarms,
+   * important events, pull request reminders, reaches Teams without any of
+   * them knowing Teams exists.
+   *
+   * Optional, so every group created before this behaves exactly as it did.
+   */
+  teamsWebhooks?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -89,7 +101,7 @@ export interface SecurityNotifySettings {
  *
  * The list is the slowest read this app makes: GitHub's search API is walked a
  * page at a time and a large organization is several seconds per page. It was
- * fetched fresh on every load, so every launch had that wait in it — and the
+ * fetched fresh on every load, so every launch had that wait in it, and the
  * scheduled pass was already fetching the same thing every five minutes and
  * discarding it.
  *
@@ -210,7 +222,7 @@ export async function createAlarm(
  * The fields a person may change on an alarm.
  *
  * Enforced at run time, not only in the type. The route hands `req.body`
- * straight to this function, and the loop below copied every key it found —
+ * straight to this function, and the loop below copied every key it found,
  * so the type said "these seven fields" and the code said "anything you send".
  *
  * That is not only untidy. Alarms, email groups, the security toggle, the feed
@@ -218,7 +230,7 @@ export async function createAlarm(
  * one table keyed on `id`, told apart by `kind`. A body carrying its own `id`
  * therefore wrote the *edited alarm* over whatever else held that id: sending
  * `{"id": "security-settings"}` replaces the organization's security-alert
- * configuration, and sending an email group's id replaces the group — including
+ * configuration, and sending an email group's id replaces the group, including
  * its `topicArn`, which is the address every alarm publishes to.
  *
  * `saveSecuritySettings` and `saveFeedSettings` in this same file already got
@@ -268,7 +280,7 @@ export async function updateAlarm(
   //
   // Compared structurally, never as JSON text. DynamoDB returns a map's keys in
   // its own order, so the condition read back was `{kind, threshold, metric,
-  // op}` where the form sends `{kind, metric, op, threshold}` — identical
+  // op}` where the form sends `{kind, metric, op, threshold}`, identical
   // conditions, different strings. Every save of any field therefore looked
   // like a condition change, reset a firing alarm to OK, and made the next
   // evaluation a fresh breach that emailed everybody again. Renaming an alarm
@@ -336,6 +348,17 @@ export async function listGroups(): Promise<EmailGroup[]> {
   return (await allRecords()).filter(r => r.kind === "group") as EmailGroup[];
 }
 
+/**
+ * The group behind an SNS topic.
+ *
+ * `publish` is handed a topic ARN and nothing else. It is the seam every
+ * notification in the app passes through, and it predates there being more than
+ * one way to deliver. This is how it finds the rest of the group's channels.
+ */
+export async function groupByTopic(topicArn: string): Promise<EmailGroup | undefined> {
+  return (await listGroups()).find(g => g.topicArn === topicArn);
+}
+
 export async function getGroup(id: string): Promise<EmailGroup | undefined> {
   const found = await getById<EmailGroup>(id);
   return found?.kind === "group" ? found : undefined;
@@ -398,8 +421,8 @@ export const DEFAULT_SECURITY_SETTINGS: SecurityNotifySettings = {
 /**
  * What actually changed, for the activity row.
  *
- * Every save wrote the same sentence — "Security alert emails enabled (high and
- * above)" — whether somebody toggled it, moved the severity floor or rewrote the
+ * Every save wrote the same sentence, "Security alert emails enabled (high and
+ * above)", whether somebody toggled it, moved the severity floor or rewrote the
  * email body. Editing a template produced a row indistinguishable from the row
  * before it, which reads as the change not having been recorded at all.
  *
@@ -509,7 +532,7 @@ export interface FeedNotifySettings {
    * How many emails an event storm produces.
    *
    * `per-repository` holds events briefly and sends one message per repository,
-   * because the common case is not one alert arriving — it is Dependabot being
+   * because the common case is not one alert arriving. It is Dependabot being
    * switched on and raising every alert a repository has at once.
    * `per-alert` sends immediately, which is faster and much louder.
    */
@@ -596,7 +619,7 @@ export async function saveFeedSettings(
 //
 // Grouping needs somewhere to hold an event until its neighbours arrive.
 // Enabling Dependabot on one repository raises every alert it has at once, and
-// one email each is a blast nobody reads — so events land here and the alarm
+// one email each is a blast nobody reads, so events land here and the alarm
 // evaluator, which already runs on a tick, sends one message per repository.
 //
 // Rows are marked sent rather than deleted, and expire on their own. Deleting
@@ -671,7 +694,7 @@ export async function markPendingSent(ids: string[]): Promise<void> {
 // Two, not one. Monitoring off means the whole feature is dormant: no GitHub
 // query, no list, no reminders, nothing scheduled doing work on its behalf.
 // Reminders off leaves the list working and stops anything being posted, which
-// is the common case — people want to see the queue without the app talking to
+// is the common case, people want to see the queue without the app talking to
 // anyone.
 
 export const PR_SETTINGS_ID = "pr-settings";
@@ -917,7 +940,7 @@ export async function readPrSnapshot(): Promise<
  *
  * Every check used to run inside the request that drew the card, so opening the
  * Overview meant a full scan of the graph table, live GitHub calls for the
- * dependency widgets, and — for the three subject-by-subject checks — up to
+ * dependency widgets, and, for the three subject-by-subject checks, up to
  * twenty-five commit searches against a budget of thirty a minute. All of it in
  * the page load, on a cold process, immediately after launching the app.
  *
@@ -1078,7 +1101,7 @@ const PR_STATE_TOUCH_WITHIN_SEC = 30 * 86_400;
 export async function touchPrState(repo: string, number: number): Promise<boolean> {
   const existing = await getPrState(repo, number);
   if (!existing) return false;
-  // An unpaused row holds nothing worth preserving — the next nudge rebuilds it.
+  // An unpaused row holds nothing worth preserving, the next nudge rebuilds it.
   if (!existing.paused && !existing.pausedLogins?.length) return false;
   const now = Math.floor(Date.now() / 1000);
   if (existing.ttl - now > PR_STATE_TOUCH_WITHIN_SEC) return false;

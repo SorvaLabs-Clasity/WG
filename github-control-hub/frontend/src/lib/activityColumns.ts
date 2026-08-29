@@ -31,8 +31,8 @@ export interface ActivityColumn {
 export function activityColumns(wide: boolean, merged = false): ActivityColumn[] {
   const columns: ActivityColumn[] = [
     // Source and action were two columns, and the first held one icon in
-    // 116px. They describe the same thing — what happened and where it came
-    // from — so they are one cell with the stream carried by a colour rather
+    // 116px. They describe the same thing, what happened and where it came
+    // from, so they are one cell with the stream carried by a colour rather
     // than by a column of its own.
     //
     // Wider than the label needs, because the cell holds more than the label:

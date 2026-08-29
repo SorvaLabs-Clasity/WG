@@ -19,7 +19,7 @@ import type { Octokit } from "octokit";
  * What a repository operation needs.
  *
  * "push" is enough to create or delete an ordinary branch. Branch protection,
- * rulesets and Dependabot settings all require "admin" — GitHub will reject a
+ * rulesets and Dependabot settings all require "admin", GitHub will reject a
  * pusher, so asking for less here only moves the refusal later and makes it
  * harder to explain.
  */
@@ -46,7 +46,7 @@ export async function findUnwritable(
       return has ? null : repo;
     } catch (err) {
       // 404 is GitHub declining to confirm a private repo exists. Treated the
-      // same as 403 on purpose — distinguishing them would leak its existence.
+      // same as 403 on purpose, distinguishing them would leak its existence.
       const status = (err as { status?: number })?.status;
       if (status === 403 || status === 404) return repo;
       throw err;

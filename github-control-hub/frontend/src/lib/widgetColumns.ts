@@ -3,16 +3,16 @@
  *
  * These were four sets of conditional `<th>`s. Turning them into a list is what
  * lets the same definition drive the `<colgroup>` the widths live on, the
- * headers, and the resize handles — three things that have to agree about how
+ * headers, and the resize handles, three things that have to agree about how
  * many columns there are and in what order, and that previously agreed only
  * because someone kept them in step by hand.
  *
  * **The last column is the flexible one.** Every other column is an exact pixel
  * width; the last takes whatever is left over. That is what stops the table
- * having a ragged right edge without any column having to claim `width: 100%` —
+ * having a ragged right edge without any column having to claim `width: 100%`,
  * which is what went wrong before. `w-full` on the Details column meant it
  * claimed *all* the width and every other column collapsed to the narrowest
- * thing it could render, so the repository name — the one people were reading —
+ * thing it could render, so the repository name, the one people were reading,
  * was squeezed to nothing while the empty column beside it took half the screen.
  */
 
@@ -101,7 +101,7 @@ export function widgetColumns(opts: {
   // that set would throw away the widths somebody had already dragged on a
   // widget created under the old form.
   //
-  // Only the count needs a column here — the shared Details column below
+  // Only the count needs a column here, the shared Details column below
   // already renders the row's reason, which is what the preset's second column
   // held.
   if (type === "query" && hasBypasses) {
@@ -123,7 +123,7 @@ export function widgetColumns(opts: {
   // name rather than after the explanation of what is wrong with it.
   //
   // Labelled "Owner" rather than "Owning team" because it falls back to the
-  // person who has committed most where no team owns the repository — the
+  // person who has committed most where no team owns the repository, the
   // column answers one question with two kinds of answer.
   if (type === "query" && hasOwner) {
     columns.push({ id: "owner", label: "Owner", width: 220 });

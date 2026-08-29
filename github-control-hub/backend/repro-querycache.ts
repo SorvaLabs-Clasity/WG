@@ -3,7 +3,7 @@
  *
  * Run from github-control-hub/backend:  npx tsx repro-querycache.ts
  *
- * Three security checks cost one GitHub request per subject — a commit search
+ * Three security checks cost one GitHub request per subject, a commit search
  * per privileged account, or a protection read per repository. That is fine for
  * two accounts and impossible for three hundred, because commit search allows
  * thirty requests a *minute*. The two ways this had been dealt with were both
@@ -62,7 +62,7 @@ const verdict = (subject: string, hoursAgo: number, finding: any = null): Cached
   // ── it converges rather than circling ────────────────────────────────
   //
   // The failure this rules out: a plan that keeps picking the same subjects
-  // leaves some never reached, and coverage never completes — the check would
+  // leaves some never reached, and coverage never completes, the check would
   // refuse forever rather than for a few passes.
   {
     const subjects = Array.from({ length: 300 }, (_, i) => `s${String(i).padStart(3, "0")}`);
@@ -138,7 +138,7 @@ const verdict = (subject: string, hoursAgo: number, finding: any = null): Cached
   }
   {
     // The age rule, run rather than read. A verdict an hour past its life must
-    // stop counting even though the row is still sitting in the table — the
+    // stop counting even though the row is still sitting in the table, the
     // table's own expiry runs on its own schedule, often days late.
     __resetQueryCacheForTests();
     __seedVerdictForTests(verdict("tooOld", VERDICT_TTL_HOURS + 1, { user: "tooOld" }));
@@ -190,7 +190,7 @@ const verdict = (subject: string, hoursAgo: number, finding: any = null): Cached
   // Refreshing is driven by whoever asks: the scheduled evaluation every
   // fifteen minutes, and every page load. Opening the tab twice would otherwise
   // spend two batches of twenty-five inside one minute, against a limit of
-  // thirty — so the second batch fails, which is the failure this design exists
+  // thirty, so the second batch fails, which is the failure this design exists
   // to prevent.
   {
     __resetQueryCacheForTests();
@@ -301,7 +301,7 @@ const verdict = (subject: string, hoursAgo: number, finding: any = null): Cached
   // The old code capped the two protection checks at 20 and 30 repositories.
   // Holding them to the search-shaped batch of 25 would have made an
   // organization with, say, thirty protected repositories wait an extra pass
-  // for an answer the capped version returned at once — a regression for
+  // for an answer the capped version returned at once, a regression for
   // exactly the middle-sized case, introduced while fixing the large one.
   {
     check("the search-backed check keeps the small batch",

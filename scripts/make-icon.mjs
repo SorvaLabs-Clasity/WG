@@ -1,5 +1,5 @@
 /**
- * Generates the app icon — the navbar mark, at every size the installers want.
+ * Generates the app icon, the navbar mark, at every size the installers want.
  *
  * Drawn in code rather than exported from a design tool because there is no SVG
  * rasteriser on a stock macOS box, and because an icon that regenerates from
@@ -49,8 +49,8 @@ function insideShield(x, y) {
     const t = (y - yStraight) / (1 - yStraight);
     // Two things have to be true at once, which rules out the obvious curves.
     // At the shoulder the slope must be zero or the straight side meets the
-    // taper in a visible kink — that rules out sqrt(1 - t). At the tip it must
-    // converge steeply or the shield bottoms out flat and reads as a pocket —
+    // taper in a visible kink, that rules out sqrt(1 - t). At the tip it must
+    // converge steeply or the shield bottoms out flat and reads as a pocket,
     // that rules out the quarter-ellipse sqrt(1 - t*t). Raising the ellipse to
     // a power under 1 keeps its flat shoulder and sharpens its tip.
     hw = Math.pow(Math.max(0, 1 - t * t), 0.72);
@@ -222,5 +222,5 @@ try {
 } catch {
   // iconutil is macOS-only. The iconset is left in place so it can be
   // converted on a Mac; electron-builder can also fall back to icon.png.
-  console.log("  icon.icns  SKIPPED (iconutil unavailable) — icon.iconset kept");
+  console.log("  icon.icns  SKIPPED (iconutil unavailable), icon.iconset kept");
 }

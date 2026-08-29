@@ -5,7 +5,7 @@ import type { DependencyAlert } from "../services/dependencyService";
  * A widget's rows, computed on the server.
  *
  * The Analytics page derives these in the browser. The evaluator cannot, so
- * the same aggregations are written here — and pinned by tests against the
+ * the same aggregations are written here, and pinned by tests against the
  * same inputs, because the number in the email and the number on the card
  * disagreeing is worse than either being wrong on its own.
  *
@@ -69,7 +69,7 @@ export interface WidgetDataSources {
 }
 
 export interface WidgetRows {
-  /** null means the value could not be read — never treat it as zero. */
+  /** null means the value could not be read, never treat it as zero. */
   rows: any[] | null;
   error?: string;
 }
@@ -120,6 +120,18 @@ export async function computeWidgetRows(
   sources: WidgetDataSources,
 ): Promise<WidgetRows> {
   try {
+    // A guardrail alarm reads the findings table, which the hourly sweep already
+    // wrote. Nothing is evaluated here: firing an alarm must not be able to
+    // change what it is measuring, and a sweep started by an alarm would make
+    // the reading a consequence of the check.
+    if (widget.type === "guardrail") {
+      const { listFindings } = await import("../aws-guardrails/store");
+      const { guardrailRuleOf } = await import("./conditions");
+      const all = await listFindings();
+      const rule = guardrailRuleOf(widget.id);
+      return { rows: rule ? all.filter(f => f.ruleId === rule) : all };
+    }
+
     if (widget.type === "query") {
       if (!widget.queryId) return { rows: null, error: "Widget has no query" };
       return { rows: await sources.runQuery(widget.queryId, widget.queryParam, widget.queryAdvanced) };
@@ -143,7 +155,7 @@ export async function computeWidgetRows(
         return { rows: await sources.runQuery("protection-bypasses-ranking") };
       case "renovate-open": {
         const prs = await sources.renovateOpenPrs();
-        // null, not an empty list, when no bot is configured — an alarm must
+        // null, not an empty list, when no bot is configured, an alarm must
         // not read "zero open PRs" off an organization nobody told us how to
         // look at, and quietly report all clear.
         return prs === null

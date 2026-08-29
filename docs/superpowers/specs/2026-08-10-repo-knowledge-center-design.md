@@ -1,4 +1,4 @@
-# Repo Knowledge Center — design
+# Repo Knowledge Center: design
 
 **Date:** 2026-08-10
 **Replaces:** the risk heat map in the Knowledge Map tab (`KnowledgeGraphPage.tsx`)
@@ -7,7 +7,7 @@
 
 Turn the Knowledge Map tab into a browsable reference for every repo in the org.
 Pick a repo, see everything worth knowing about it. No risk scoring, no security
-framing — that material already lives on the Security and Compliance pages.
+framing, that material already lives on the Security and Compliance pages.
 
 ## What is removed
 
@@ -21,7 +21,7 @@ framing — that material already lives on the Security and Compliance pages.
 | Vulnerable Dependencies section and the "Vulns" stat tile | `:285-297`, `:337` |
 
 `useBlastRadius` and `useBlastRadiusRanking` are no longer called from this page.
-The endpoints stay — the Analytics page still uses them.
+The endpoints stay, the Analytics page still uses them.
 
 ## What replaces it
 
@@ -37,23 +37,23 @@ sends in `listForOrg` and that `repoService.listRepos` currently discards.
 Loads on demand for the selected repo only. This is what makes the richer stats
 affordable: roughly a dozen API calls for one repo, not for every repo.
 
-- **Header** — description, visibility, primary language, license, size, topics,
+- **Header**, description, visibility, primary language, license, size, topics,
   archived/fork/template badges, link to GitHub
-- **Stat tiles** — branches, people, open PRs, open issues, teams, workflows
-- **Overview** — created / last pushed / last updated, age, default branch,
+- **Stat tiles**, branches, people, open PRs, open issues, teams, workflows
+- **Overview**, created / last pushed / last updated, age, default branch,
   homepage, enabled features (issues, wiki, projects, pages)
-- **Languages** — full breakdown with percentages
-- **Activity** — open PR count and oldest open PR, commits in the last 30 days,
+- **Languages**, full breakdown with percentages
+- **Activity**, open PR count and oldest open PR, commits in the last 30 days,
   latest release and total release count, stars / watchers / forks
-- **People** — collaborators with roles, teams with permissions, top contributors
+- **People**, collaborators with roles, teams with permissions, top contributors
   by commit count
-- **Branches** — every branch, default and protected flags
-- **Workflows** — name, state, path
-- **Repo hygiene** — presence of README, LICENSE, CODEOWNERS, description,
+- **Branches**, every branch, default and protected flags
+- **Workflows**, name, state, path
+- **Repo hygiene**, presence of README, LICENSE, CODEOWNERS, description,
   topics. Descriptive only, no score or grade.
-- **Merge settings** — squash / merge commit / rebase allowed, auto-merge,
+- **Merge settings**, squash / merge commit / rebase allowed, auto-merge,
   delete branch on merge
-- **Environments** — deployment environment names
+- **Environments**, deployment environment names
 
 ## Backend
 

@@ -34,7 +34,7 @@ export function useDependencySummary() {
  * The full list costs one request per repository, because GitHub has no
  * org-wide endpoint for whether alerts are switched on. Refetching it after
  * every toggle made enabling a few hundred repositories cost a few hundred
- * full sweeps. Debouncing bounded a burst of clicks but not the total — anyone
+ * full sweeps. Debouncing bounded a burst of clicks but not the total, anyone
  * pausing to read each result before the next click paid full price every
  * time.
  *

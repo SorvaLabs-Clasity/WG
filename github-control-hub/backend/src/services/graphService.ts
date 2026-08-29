@@ -29,8 +29,8 @@ function loadLocalEdges() {
  *
  * The graph is rebuilt on a six-hour job, so within any few seconds every reader
  * is looking at identical bytes. Six seconds is long enough to cover one
- * evaluation pass and one page load — the two places several checks run
- * back-to-back — and short enough that a rebuild is picked up almost at once.
+ * evaluation pass and one page load, the two places several checks run
+ * back-to-back, and short enough that a rebuild is picked up almost at once.
  */
 const EDGE_CACHE_MS = 6_000;
 let edgeCache: { at: number; edges: any[] } | null = null;
@@ -41,7 +41,7 @@ let edgeCacheInFlight: Promise<any[]> | null = null;
  *
  * Held for a moment rather than re-read per caller. Each security check starts
  * by reading the whole graph, so a pass evaluating six query widgets scanned the
- * same table six times for the same bytes — and at a hundred members across a
+ * same table six times for the same bytes, and at a hundred members across a
  * few hundred repositories that scan is about a megabyte. It was the single
  * largest line in the DynamoDB bill, and none of the six reads could differ.
  *
@@ -92,7 +92,7 @@ export function invalidateEdgeCache(): void {
  * The check works, but the data it reads has never been collected.
  *
  * Without this, a query over an edge type the graph does not yet contain
- * returns nothing and the card reads it as a clean result — "0 repositories
+ * returns nothing and the card reads it as a clean result, "0 repositories
  * with no push in 2 months" when the real answer is 345 and the graph simply
  * has not been rebuilt since that edge type existed. Reporting zero findings
  * you have not looked for is the worst thing a security dashboard can do.
@@ -109,7 +109,7 @@ export class MissingGraphDataError extends Error {
  * than "nothing found".
  *
  * Deliberately not listed: has_vulnerable_dependency, where no edges is a
- * legitimate answer — an organization with no open advisories genuinely has
+ * legitimate answer, an organization with no open advisories genuinely has
  * none, and claiming missing data would be its own kind of wrong.
  */
 const REQUIRES: Record<string, string> = {
@@ -155,7 +155,7 @@ export class PartialQueryError extends Error {
  * Whether an error means "there is none" rather than "we could not look".
  *
  * Asking for branch protection on a branch that has none answers 404, and that
- * is a real answer — the branch is unprotected. A 403 or a 502 is not: it means
+ * is a real answer, the branch is unprotected. A 403 or a 502 is not: it means
  * the question went unanswered, and treating it as "unprotected" invents a
  * finding, while treating it as "protected" hides one.
  *
@@ -188,7 +188,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       // package with no open advisory has no edge, so this answers "who is
       // exposed through this package", not "who uses it". The label says so.
       //
-      // Matched case-insensitively — package names are lower case by
+      // Matched case-insensitively, package names are lower case by
       // convention but nobody types them that way reliably.
       const wanted = new Set(param.split(",").map(x => x.trim().toLowerCase()).filter(Boolean));
       if (wanted.size === 0) throw new Error("Missing 'param' for dependency name");
@@ -236,7 +236,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         if (edge.type !== "has_collaborator" || edge.metadata?.role !== "admin") continue;
         // Admin an org owner holds by virtue of the role is not a grant anybody
         // made, and reporting it would name them on every repository the moment
-        // teams are assigned — burying the access this check exists to find.
+        // teams are assigned, burying the access this check exists to find.
         if (edge.metadata?.source === "org_owner") continue;
         // Access through the owning team is the arrangement working, not a
         // finding; team access to a repo the team does not own still is one.
@@ -258,7 +258,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     case "highly-privileged-users":
       // Org owners are shown, not hidden. They are admin on everything by
       // virtue of the role, which makes them the most privileged accounts in
-      // the organization — omitting them would leave the question "who has the
+      // the organization, omitting them would leave the question "who has the
       // most access" answered by everyone except the people who have the most.
       // How the access was obtained goes in the result instead, so a grant
       // somebody made is distinguishable from one the role confers.
@@ -508,7 +508,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
             for (const rsDetails of repoRulesetsCache) {
               // GitHub's own ref semantics. `refs.some(r => r.includes(branch))`
               // is a substring test, so a ruleset on refs/heads/maintenance
-              // "covered" main — this check reported protection that was not
+              // "covered" main. This check reported protection that was not
               // there, on the branch it most matters for.
               const applies = rulesetCoversBranch(
                 rsDetails.conditions?.ref_name?.include, branch, defaultBranchOf.get(repo));
@@ -621,7 +621,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       // Every protected repository, not the first 20.
       //
       // This used to be `.slice(0, 20)`, which kept the cost down by looking at
-      // 20 repositories and saying nothing about the rest — so on an organization
+      // 20 repositories and saying nothing about the rest, so on an organization
       // with three hundred protected repositories the check was a sample
       // presented as a survey. The cost is now spread instead: each pass reads a
       // batch, the verdicts are kept per repository, and the answer is withheld
@@ -651,7 +651,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         } catch (e) {
           // 404 is the branch simply having no classic protection, which is an
           // answer. Anything else left requiredReviews at zero for a reason we
-          // never saw — and zero means "no requirement to bypass", so the
+          // never saw, and zero means "no requirement to bypass", so the
           // repository drops out of the findings looking compliant.
           if (!isAbsence(e)) readable = false;
         }
@@ -757,7 +757,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       // Every protected repository, not the first 30.
       //
       // This used to be `.slice(0, 30)`, which kept the cost down by looking at
-      // 30 repositories and saying nothing about the rest — so on an organization
+      // 30 repositories and saying nothing about the rest, so on an organization
       // with three hundred protected repositories the check was a sample
       // presented as a survey. The cost is now spread instead: each pass reads a
       // batch, the verdicts are kept per repository, and the answer is withheld
@@ -787,7 +787,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         } catch (e) {
           // 404 is the branch simply having no classic protection, which is an
           // answer. Anything else left requiredReviews at zero for a reason we
-          // never saw — and zero means "no requirement to bypass", so the
+          // never saw, and zero means "no requirement to bypass", so the
           // repository drops out of the findings looking compliant.
           if (!isAbsence(e)) readable = false;
         }
@@ -936,7 +936,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         // That phrase was accurate when the graph only recorded write and
         // above. It records triage, custom roles and an outside collaborator's
         // read now, so the sentence became a claim about the data rather than a
-        // reading of it — and "still has write or admin" over a row that is
+        // reading of it, and "still has write or admin" over a row that is
         // actually a read grant is the kind of wrong that gets acted on.
         const RANK: Record<string, number> = {
           admin: 5, maintain: 4, write: 3, push: 3, triage: 2, read: 1, pull: 1,
@@ -966,8 +966,8 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       // where this check returns hundreds.
       //
       // Several teams can own one repository, so this is a list. Not every
-      // repository has any — that state is what `unowned-repos` exists to
-      // report — and an absent owner is left null here so the column can say
+      // repository has any, that state is what `unowned-repos` exists to
+      // report, and an absent owner is left null here so the column can say
       // so rather than showing an empty cell that reads as unknown.
       // Who to ask about it, in three tiers, because "owner" is not one thing.
       //
@@ -1011,8 +1011,8 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
       for (const edge of allEdges) {
         if (edge.type !== "repo_meta") continue;
-        // An archived repository is stale by definition — archiving is the act
-        // of retiring it — so reporting it here says only that somebody did
+        // An archived repository is stale by definition, archiving is the act
+        // of retiring it, so reporting it here says only that somebody did
         // what they meant to. The archived check covers what is still worth
         // knowing about those.
         if (edge.metadata?.archived) continue;
@@ -1038,7 +1038,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
           ? Math.floor((Date.now() - when.getTime()) / 86_400_000)
           : null;
         // One field and a kind, rather than three fields the caller has to
-        // work through in the right order — the order is the meaning, and it
+        // work through in the right order, the order is the meaning, and it
         // belongs here rather than repeated in whatever renders it.
         const teams = staleOwners.get(edge.pk);
         const admins = staleAdmins.get(edge.pk);
@@ -1167,7 +1167,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
 
       // Cached per account rather than re-read every pass. One commit search
       // each, against a limit of thirty a minute, for a question whose answer
-      // moves on the scale of months — so a few hundred accounts are covered a
+      // moves on the scale of months, so a few hundred accounts are covered a
       // batch at a time instead of needing a budget nobody has.
       const dormCached = await listVerdicts("dormant-privileged-users");
       // Zero budget when another caller refreshed moments ago: read what is
@@ -1178,7 +1178,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       if (dormMay) markRefreshed("dormant-privileged-users");
       const dormRepos = new Map(candidates.map(([u, repos]) => [dormKey(u), repos] as const));
 
-      // One search per candidate, and search is the small budget — 30 requests
+      // One search per candidate, and search is the small budget, 30 requests
       // a *minute*, not the 15,000 an hour the rest of the app draws on. An
       // organization with more privileged users than that cannot be checked in
       // one pass, and finding that out request by request means finding it out
@@ -1210,7 +1210,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
           //
           // A result is only recorded when the search comes back with zero
           // commits, so an error that is caught and dropped removes that person
-          // from the answer entirely — and the widget reports *fewer* dormant
+          // from the answer entirely, and the widget reports *fewer* dormant
           // admins than exist. No error, no warning, just a smaller number: the
           // one failure mode a security check must never have. It was written
           // as `catch(e) {}` and would have started under-reporting silently the

@@ -9,7 +9,7 @@ const router = Router();
 
 /**
  * Resolving an alert is the org's record that a security finding was dealt
- * with — a public repository, an admin added, protection removed. Anyone could
+ * with, a public repository, an admin added, protection removed. Anyone could
  * clear that record, or reopen a closed one, which makes the whole security
  * view something no one can rely on. Reading stays open; changing state does
  * not.

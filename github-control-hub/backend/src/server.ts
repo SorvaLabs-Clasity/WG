@@ -43,7 +43,7 @@ app.use(
 // The policy was off because the page pulled fonts and icons from three CDNs,
 // one of them an unpinned <script> from unpkg. Those are bundled now, so
 // everything the app loads comes from its own origin and the policy can say
-// so — which is what turns "we do not load remote script" from a habit into
+// so, which is what turns "we do not load remote script" from a habit into
 // something the browser enforces.
 app.use(helmet({
   contentSecurityPolicy: {
@@ -51,7 +51,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       // No remote script, and no inline script: Vite emits a module tag, never
-      // inline code. This is the directive that matters most here — it is the
+      // inline code. This is the directive that matters most here. It is the
       // one that would have stopped a compromised CDN.
       scriptSrc: ["'self'"],
       // React writes style attributes, which this covers. Stylesheets
@@ -76,7 +76,7 @@ app.use(helmet({
   hsts: false,
 }));
 
-// Rate limiting — strict for auth, moderate for API
+// Rate limiting, strict for auth, moderate for API
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -106,7 +106,7 @@ app.use("/api", apiLimiter, awsHealthMiddleware);
 
 // Everything below except /api/aws is the GitHub half of the app, and is
 // refused when signed into an account GitHub does not belong to. See
-// middleware/githubGate.ts — unset means unrestricted, which is every install
+// middleware/githubGate.ts, unset means unrestricted, which is every install
 // that has not asked for the split.
 app.use("/api/repos", authMiddleware, githubGateMiddleware, repoRoutes);
 app.use("/api/repos", authMiddleware, githubGateMiddleware, branchRoutes);
@@ -116,7 +116,7 @@ app.use("/api/repos", authMiddleware, githubGateMiddleware, protectionRoutes);
 // It is the only feed carrying both halves: guardrail findings sit beside
 // branch protection changes. Locking it in an account that runs guardrails
 // would take away the record of what they did, which is most of the reason to
-// run them — so the router stays reachable and drops the GitHub rows itself.
+// run them, so the router stays reachable and drops the GitHub rows itself.
 // See awsOnlyActivityMiddleware.
 app.use("/api/activity", authMiddleware, activityRoutes);
 app.use("/api/scanners", authMiddleware, githubGateMiddleware, scannerRoutes);
@@ -140,7 +140,7 @@ app.use("/api/alarms", authMiddleware, githubGateMiddleware, alarmRoutes);
 (async () => {
   // Before anything reaches for credentials. The desktop app's AWS profile
   // lived only in process.env, so closing the window forgot it and every
-  // launch fell back to "default" — a sign-in you had already done, asked for
+  // launch fell back to "default", a sign-in you had already done, asked for
   // again. Restored first so the secrets load below uses the right account.
   try {
     const { restoreAwsProfile } = await import("./services/desktopPrefs");
@@ -159,7 +159,7 @@ app.use("/api/alarms", authMiddleware, githubGateMiddleware, alarmRoutes);
         const secrets = JSON.parse(result.SecretString) as Record<string, string>;
         // GITHUB_WEBHOOK_SECRET is deliberately not here. It lives in its own
         // secret, read only by the receiver Lambda, and nothing in this
-        // process verifies signatures — webhooks are authenticated at the edge.
+        // process verifies signatures, webhooks are authenticated at the edge.
         for (const key of [
           "GITHUB_CLIENT_ID", "GITHUB_CLIENT_SECRET",
           "GITHUB_ORG", "JWT_SECRET",
@@ -185,7 +185,7 @@ app.use("/api/alarms", authMiddleware, githubGateMiddleware, alarmRoutes);
   }
 })();
 
-// When imported by the desktop app, skip auto-listen — it calls listen() itself
+// When imported by the desktop app, skip auto-listen. It calls listen() itself
 if (!process.env.__STANDALONE__) {
   // Loopback. This branch is the developer's local server, whose only client is
   // Vite on the same machine; binding every interface published an unfinished

@@ -3,8 +3,8 @@
  *
  * `public-repos`, `archived-repos-with-access`, `stale-repos`, `unowned-repos`,
  * `empty-teams` and `repos-dependent-on` read edge types no webhook wrote. The
- * app was *told* the moment a repository went public — it raised a critical
- * security alert on that exact delivery — and then left the widget showing the
+ * app was *told* the moment a repository went public. It raised a critical
+ * security alert on that exact delivery, and then left the widget showing the
  * old number for up to six hours. That was a gap, not a decision.
  *
  * Two things close it, and both are asserted here:
@@ -16,7 +16,7 @@
  *
  * The light pass is the one worth guarding carefully. It must never clear the
  * table the way the full rebuild does, and it must never prune from a partial
- * read — a team whose members could not be listed looks exactly like a team
+ * read, a team whose members could not be listed looks exactly like a team
  * that lost all of them.
  *
  * Run:  npx tsx repro-freshedges.ts   from github-control-hub/backend
@@ -144,7 +144,7 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
   // Three separate files tell somebody which boxes to tick, and the worker is
   // the only one that decides. A doc listing one fewer than the code handles
   // produces an installation that works except for the one feature nobody
-  // thought to check — which is how `membership` would have been missed.
+  // thought to check, which is how `membership` would have been missed.
   {
     const wh = read("src/webhooks/processDelivery.ts");
     const handled = [...new Set([...wh.matchAll(/event === "([a-z_]+)"/g)].map(m => m[1]))].sort();
@@ -186,7 +186,7 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
     // out every author whose email is not attached to an account before the
     // aggregator ever saw them. In an organisation whose pushes come from CI or
     // from laptops signing with an unregistered address, that is *every*
-    // contributor — 342 of 354 unowned repositories came back with an empty
+    // contributor, 342 of 354 unowned repositories came back with an empty
     // list and the column read "No owner found" on repositories that plainly
     // had somebody pushing to them. The filtering has to happen here, where a
     // registered account can be preferred and an unregistered one still kept.
@@ -214,13 +214,13 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
       "a second call for the repos that missed would be one per repo again");
     check("  a repository GitHub has no statistics for yet is not an error",
       /err\.status !== 202 && err\.status !== 204/.test(agg),
-      "204 is empty, 202 is still computing — neither should cost the repo its other edges");
+      "204 is empty, 202 is still computing, neither should cost the repo its other edges");
 
     // ── the rebuild writes where it was told to ───────────────────────
     //
     // What went wrong: the write branch asked `usesDynamo()`, which reports
     // whether ACTIVITY_TABLE is set. The aggregator's Lambda is never given
-    // that variable — it gets GRAPH_EDGES_TABLE and ORG_CONFIG_TABLE — so the
+    // that variable. It gets GRAPH_EDGES_TABLE and ORG_CONFIG_TABLE, so the
     // answer was always no. Every scheduled run walked the whole organisation
     // for five minutes, generated the edges, then took the local-development
     // branch and died on `mkdir /data`. Not one edge was ever written by the

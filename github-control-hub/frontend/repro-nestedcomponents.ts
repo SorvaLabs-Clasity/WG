@@ -4,7 +4,7 @@
  * Run from github-control-hub/frontend:  npx tsx repro-nestedcomponents.ts
  *
  * React reconciles by element type, and a component declared inside a render is
- * a brand new function — so a new type — on every render. React therefore
+ * a brand new function, so a new type, on every render. React therefore
  * unmounts the old tree and mounts a fresh one instead of updating in place.
  * The visible consequences, in order of how long they take to notice:
  *
@@ -21,7 +21,7 @@
  * read straight off the file, and reading it catches the next one before it is
  * ever rendered.
  *
- * A helper that returns JSX is fine and is the fix — `const row = (p) => <li/>`
+ * A helper that returns JSX is fine and is the fix, `const row = (p) => <li/>`
  * called as `row(p)` produces the same elements with no new component type.
  * Only capitalised declarations are components, so only those are flagged.
  */

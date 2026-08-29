@@ -5,7 +5,7 @@ import { DEMO_MODE } from "../api/client";
 /**
  * Whether the signed-in user may change org-wide Control Hub settings.
  *
- * Only gates settings with no GitHub equivalent — currently auto-apply on new
+ * Only gates settings with no GitHub equivalent, currently auto-apply on new
  * repositories. Repo actions need no check here: they run with the user's own
  * token and GitHub refuses them directly.
  */

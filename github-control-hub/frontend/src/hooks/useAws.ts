@@ -16,7 +16,7 @@ export function useCatalog() {
 /**
  * Refetched when the window regains focus, unlike the rest of the app.
  *
- * `refetchOnWindowFocus` is off globally, and for most tabs that is right — the
+ * `refetchOnWindowFocus` is off globally, and for most tabs that is right, the
  * pull request walk alone is twenty-odd seconds of GitHub's rate limit, and
  * firing it every time somebody alt-tabs is not a refresh, it is a leak.
  *
@@ -86,7 +86,7 @@ export function useRunGuardrails() {
 /**
  * Fix a single failing resource.
  *
- * Invalidates findings on success so the row updates in place — a button that
+ * Invalidates findings on success so the row updates in place, a button that
  * fixes something and leaves it looking broken is one people press twice.
  */
 export function useRemediateResource() {

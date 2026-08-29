@@ -1,7 +1,7 @@
 /**
  * Search, sort and paging arithmetic for result tables.
  *
- * The first frontend suite in this repo — everything else under repro-*.ts is
+ * The first frontend suite in this repo. Everything else under repro-*.ts is
  * backend. Run it the same way:  npx tsx repro-tablecontrols.ts  from
  * github-control-hub/frontend.
  *

@@ -63,13 +63,13 @@ async function runAggregation(fallbackToken?: string) {
   const edges: GraphEdge[] = [];
   // Keyed to the table this job actually writes.
   //
-  // This asked `usesDynamo()`, which reports whether ACTIVITY_TABLE is set —
+  // This asked `usesDynamo()`, which reports whether ACTIVITY_TABLE is set,
   // a table this job never touches. The aggregator's Lambda is not given that
   // variable, so the answer was always no: every scheduled run walked the whole
   // organisation, built the edges, then took the local-development branch and
   // died trying to `mkdir /data` on a read-only filesystem. Nothing was ever
   // written. The graph only ever moved when somebody pressed Sync in the app,
-  // whose process does have ACTIVITY_TABLE set — which is why the table was
+  // whose process does have ACTIVITY_TABLE set, which is why the table was
   // never empty and the failure stayed invisible.
   const edgesTable = process.env.GRAPH_EDGES_TABLE ? tableName("GRAPH_EDGES_TABLE") : "";
 
@@ -119,7 +119,7 @@ async function runAggregation(fallbackToken?: string) {
       for (const m of data) if (m?.login) orgOwners.add(m.login);
     } catch {
       // Without this the worst case is a grant recorded as direct rather than
-      // as ownership — a wrong label, not a missing edge.
+      // as ownership, a wrong label, not a missing edge.
     }
 
     // Everyone in the organization, whether or not they can write anywhere.
@@ -178,7 +178,7 @@ async function runAggregation(fallbackToken?: string) {
 
     // What every member can do without being granted anything.
     //
-    // The access map's headline claim — "everyone can read every repository" —
+    // The access map's headline claim, "everyone can read every repository",
     // is only true when the organization's default says so. Asserting it
     // without checking would be the map's biggest statement resting on an
     // assumption.
@@ -316,8 +316,8 @@ async function runAggregation(fallbackToken?: string) {
       // Who can write to this repository, and how they came by it.
       //
       // This asked for affiliation "direct", meaning only people granted access
-      // to the repository individually. Almost nobody gets access that way —
-      // it arrives through org membership or a team — so the graph recorded
+      // to the repository individually. Almost nobody gets access that way,
+      // it arrives through org membership or a team, so the graph recorded
       // one collaborator across the whole organization and every question
       // about people returned nothing.
       //
@@ -335,22 +335,22 @@ async function runAggregation(fallbackToken?: string) {
         // This was a fixed list of admin, write and maintain, which dropped
         // three things people expect to see:
         //
-        //   triage — never an organization default, so it is always an explicit
+        //   triage, never an organization default, so it is always an explicit
         //   grant, and an access review wants explicit grants above all.
         //
-        //   custom repository roles — the name is whatever the organization
+        //   custom repository roles, the name is whatever the organization
         //   called it, so it matched nothing in the list and anybody holding one
         //   vanished from the map entirely.
         //
-        //   read held by an outside collaborator — the person who is not in the
+        //   read held by an outside collaborator, the person who is not in the
         //   organization and can nevertheless see the code, which is the row an
         //   access review exists to find.
         //
         // The one exclusion that survives is the one the volume argument was
         // really about: a *member's* plain read, where the organization already
         // grants read or better to everyone. listCollaborators reports those,
-        // so recording them would add an edge per member per repository —
-        // hundreds of thousands at a real company — to say something the
+        // so recording them would add an edge per member per repository,
+        // hundreds of thousands at a real company, to say something the
         // organization default already says once, on screen, at the top of the
         // page. When the default is `none`, that same read is an explicit grant
         // and is recorded like any other.
@@ -405,8 +405,8 @@ async function runAggregation(fallbackToken?: string) {
       // is every contributor there is. Excluding them left the column reading
       // "No owner found" on repositories that plainly had somebody pushing.
       //
-      // A registered account still wins when there is one — it is a person you
-      // can actually reach — and the anonymous name is the last resort. One
+      // A registered account still wins when there is one. It is a person you
+      // can actually reach, and the anonymous name is the last resort. One
       // request either way; the window is wide enough that a real account
       // ranked below it is, by contributions, genuinely not the top committer.
       if (!ownedRepoNames.has(repo.name)) {
@@ -507,7 +507,7 @@ async function runAggregation(fallbackToken?: string) {
       // Only what changed.
       //
       // This deleted every row and rewrote every row on every run. The data it
-      // describes — who is in which team, who can reach which repository —
+      // describes, who is in which team, who can reach which repository,
       // barely moves between one sync and the next, so almost all of those
       // writes replaced a row with an identical row. On-demand DynamoDB bills
       // per write, and a graph of thirty thousand edges rewritten four times a
@@ -527,14 +527,14 @@ async function runAggregation(fallbackToken?: string) {
        *
        * This used to join pk and sk with "::" and split the pair back out of
        * the string when deciding what to delete. A workflow named "Build ::
-       * Test" — or a Dependabot advisory summary, which is free text and ends
-       * up in a DEPENDENCY# key — split into three parts, so the delete was
+       * Test", or a Dependabot advisory summary, which is free text and ends
+       * up in a DEPENDENCY# key, split into three parts, so the delete was
        * issued against a truncated sort key that matches nothing. The row it
        * meant to remove stayed: an edge for a workflow or a package that no
        * longer exists, which every security check reads as current.
        *
        * NUL cannot appear in a DynamoDB string attribute, so it cannot appear
-       * in a pk or an sk either — and the pair is kept alongside the key now
+       * in a pk or an sk either, and the pair is kept alongside the key now
        * rather than reconstructed from it, so nothing depends on that.
        */
       const keyOf = (e: { pk: string; sk: string }) => `${e.pk}\u0000${e.sk}`;
@@ -552,7 +552,7 @@ async function runAggregation(fallbackToken?: string) {
         // Not survivable, and not something to write through.
         //
         // Without the stored set there is no way to know which rows have gone,
-        // and writing anyway would leave orphans — rows for repositories and
+        // and writing anyway would leave orphans, rows for repositories and
         // people that no longer exist, which the security checks read as
         // current. Failing leaves the previous sync's data in place, which is
         // merely old.
@@ -605,8 +605,8 @@ async function runAggregation(fallbackToken?: string) {
       // report should never be the second.
       //
       // batchWrite retries whatever DynamoDB declines. The loops this replaces
-      // read the response and discarded it, so a throttled batch — ordinary on
-      // a table this size the moment on-demand capacity has to ramp — was
+      // read the response and discarded it, so a throttled batch, ordinary on
+      // a table this size the moment on-demand capacity has to ramp, was
       // thirty thousand edges of which an unknown number were never written,
       // reported as a successful sync.
       try {
@@ -614,7 +614,7 @@ async function runAggregation(fallbackToken?: string) {
       } catch (e) {
         // Rethrown rather than logged. A partial write is a graph that
         // disagrees with GitHub, and the success stamp below must not be
-        // reached — a snapshot dated now is worse than one dated six hours ago,
+        // reached, a snapshot dated now is worse than one dated six hours ago,
         // because only one of them looks wrong.
         throw new Error(`Writing graph edges failed: ${(e as Error).message}`);
       }
@@ -643,7 +643,7 @@ async function runAggregation(fallbackToken?: string) {
     }
 
     // Only here. Reaching this line means edges were written, so this is the
-    // one point at which the snapshot on screen is genuinely this fresh —
+    // one point at which the snapshot on screen is genuinely this fresh,
     // stamping it earlier would date a graph that was never replaced.
     await recordGraphAggregation({
       lastSuccessAt: new Date().toISOString(),
@@ -665,8 +665,8 @@ async function runAggregation(fallbackToken?: string) {
   invalidateEdgeCache();
 
   // The compliance score sweep used to run here, costing roughly seven to ten
-  // GitHub requests per repository on top of this rebuild — often more than the
-  // rebuild itself — for scores no screen in the app has ever displayed. The
+  // GitHub requests per repository on top of this rebuild, often more than the
+  // rebuild itself, for scores no screen in the app has ever displayed. The
   // hooks and the route existed; nothing imported them. Removed rather than
   // left running: an unread number is not worth a rate limit.
 }

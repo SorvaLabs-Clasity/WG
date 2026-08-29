@@ -16,7 +16,7 @@ export interface ParamSpec {
 
 export interface CatalogEntry {
   kind: string;
-  /** Human title — `kind` is an internal identifier and should not be shown. */
+  /** Human title, `kind` is an internal identifier and should not be shown. */
   title: string;
   summary: string;
   paramSchema: ParamSpec[];
@@ -24,7 +24,7 @@ export interface CatalogEntry {
   defaultMode: GuardrailMode;
   defaultParams: Record<string, any>;
   triggerEvents: string[];
-  /** False for kinds whose remediation could cut live access — report-only. */
+  /** False for kinds whose remediation could cut live access, report-only. */
   canRemediate: boolean;
 }
 
@@ -83,7 +83,7 @@ export interface RunResult {
   excluded: number;
   errors: string[];
   accountsChecked?: { accountId: string; name: string; regions: string[] }[];
-  /** Resources in regions the account does not sweep — never looked at, not clean. */
+  /** Resources in regions the account does not sweep, never looked at, not clean. */
   unswept?: { accountId: string; accountName: string; region: string; count: number }[];
 }
 
@@ -94,7 +94,7 @@ export interface AwsAccount {
   name: string;
   /** How the app gets in. "organization" needs nothing deployed in the target. */
   access?: AwsAccessMethod;
-  /** Absent on the account the app itself runs in — it needs no role. */
+  /** Absent on the account the app itself runs in. It needs no role. */
   roleArn?: string;
   externalId?: string;
   /** Last four characters of a stored access key. The keys never leave the server. */
@@ -124,7 +124,7 @@ export const previewGuardrails = (body: { ruleIds?: string[]; resourceIds?: stri
 /**
  * Fix one failing resource now, without changing what the rule does next time.
  *
- * `resourceId` is required by the server — omitting it would be a request to
+ * `resourceId` is required by the server, omitting it would be a request to
  * enforce the whole rule, which this is deliberately not.
  */
 export const remediateResource = (body: { ruleId: string; resourceId: string; accountId?: string }) =>

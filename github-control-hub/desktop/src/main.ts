@@ -38,7 +38,7 @@ function getBackendNodeModules(): string {
  *
  * Every one of these checks used to be `url.startsWith("http://localhost")`,
  * and a prefix is not an origin. `http://localhost.example.com/` starts with
- * that string, and so does `http://localhost:4321@example.com/` — the part
+ * that string, and so does `http://localhost:4321@example.com/`, the part
  * before the `@` is userinfo, not a host, so a link can name this app's exact
  * origin and still resolve somewhere else entirely. Either one satisfied the
  * window-open handler, which then loaded the page *inside* this window rather
@@ -47,7 +47,7 @@ function getBackendNodeModules(): string {
  *
  * Parsed and compared instead. `URL` puts the host in `hostname` and refuses
  * to let userinfo or a path masquerade as one, so there is nothing left to
- * spoof. The port is checked too — nothing but this backend is the app.
+ * spoof. The port is checked too. Nothing but this backend is the app.
  */
 function isAppUrl(url: string): boolean {
   let parsed: URL;
@@ -103,7 +103,7 @@ function createWindow(): void {
   // Sign-in stays in this window; ordinary outbound links go to the browser.
   //
   // The distinction cannot be drawn by listing hosts. GitHub hands off to
-  // whichever identity provider the organization uses — Google, Entra, Okta —
+  // whichever identity provider the organization uses, Google, Entra, Okta,
   // and often to an MFA host after that. Allowing only github.com meant the
   // hop to accounts.google.com was pushed into the system browser, which then
   // received half of a flow whose state belonged to this window: Google
@@ -122,7 +122,7 @@ function createWindow(): void {
     }
     // github.com is not allowed outright. During sign-in oauthInFlight covers
     // it, and outside sign-in a GitHub link is an ordinary outbound link that
-    // belongs in the user's own browser — allowing it here is what put
+    // belongs in the user's own browser, allowing it here is what put
     // github.com inside the app window.
     if (oauthInFlight) return;
 
@@ -223,7 +223,7 @@ async function main(): Promise<void> {
  *
  * Signing out used to open the next OAuth attempt in a window with a throwaway
  * partition instead. That did produce a cookie-free login page, but an Electron
- * partition without a "persist:" prefix lives in memory only — so the session
+ * partition without a "persist:" prefix lives in memory only, so the session
  * created by that login was discarded when the window closed. GitHub then had
  * no record of the account on the next launch, and "Continue with <account>"
  * asked for a password every time even though nothing had been switched.
@@ -275,9 +275,9 @@ function setupAutoUpdater(): void {
 
   // The error is reported, not swallowed.
   //
-  // This discarded its argument, so every failure — a 404 from the wrong
+  // This discarded its argument, so every failure, a 404 from the wrong
   // repository, a 401 from a token without access, a network refusal, a
-  // malformed latest.yml — arrived on screen as the single word "error" and in
+  // malformed latest.yml, arrived on screen as the single word "error" and in
   // the log as nothing at all. There was no way to tell "there is no update"
   // from "the check could not run", which is the difference that matters.
   autoUpdater.on("error", (err) => {
@@ -347,7 +347,7 @@ const AUTH_WAIT_MS = 5 * 60_000;
  * Check for an update, once the credentials to do it exist.
  *
  * The token comes from Secrets Manager, so AWS has to be reachable before
- * GitHub can be asked anything — that coupling is structural and cannot be
+ * GitHub can be asked anything, that coupling is structural and cannot be
  * removed here. What can be removed is the part that made it permanent: this
  * polled for five minutes and then cleared its interval for the lifetime of the
  * process. Signing in to AWS after that window meant no update check until the

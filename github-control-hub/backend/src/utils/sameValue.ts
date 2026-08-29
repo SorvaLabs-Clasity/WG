@@ -12,12 +12,12 @@
  *
  *     { kind, threshold, metric, op }
  *
- * — the same condition, a different string. Anything asking "did this change?"
+ * the same condition, a different string. Anything asking "did this change?"
  * by comparing those two strings answers yes, every time, forever.
  *
  * That is not a cosmetic bug. An alarm's condition is compared this way to
- * decide whether to reset its ALARM/OK state, so every save of any field — a
- * rename, a typo fixed in the email body — looked like the condition had
+ * decide whether to reset its ALARM/OK state, so every save of any field, a
+ * rename, a typo fixed in the email body, looked like the condition had
  * changed, reset a firing alarm to OK, and made the next evaluation a fresh
  * breach that emailed everyone again.
  *
@@ -40,8 +40,8 @@ export function sameValue(a: unknown, b: unknown): boolean {
 
   if (aIsArray) {
     const x = a as unknown[], y = b as unknown[];
-    // Order *is* information in an array — a list of reviewers is not the same
-    // list reversed — so this one is compared position by position.
+    // Order *is* information in an array, a list of reviewers is not the same
+    // list reversed, so this one is compared position by position.
     return x.length === y.length && x.every((v, i) => sameValue(v, y[i]));
   }
 

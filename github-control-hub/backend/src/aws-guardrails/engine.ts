@@ -43,7 +43,7 @@ export interface RunResult {
   accountsChecked?: { accountId: string; name: string; regions: string[] }[];
   /**
    * Resources in regions nobody added to the account. Not violations and not
-   * errors — things that were never looked at, which a compliance report has to
+   * errors, things that were never looked at, which a compliance report has to
    * say out loud or it is quietly claiming they are fine.
    */
   unswept?: { accountId: string; accountName: string; region: string; count: number }[];
@@ -85,13 +85,13 @@ export function ruleAppliesTo(rule: Guardrail, accountId: string): boolean {
 /**
  * Evaluate rules against live AWS state, remediating where the rule says to.
  *
- * This is the single implementation behind all three triggers — creation event,
+ * This is the single implementation behind all three triggers, creation event,
  * scheduled sweep, and manual run. They differ only in the options passed in.
  * Keeping one path is deliberate: the GitHub side showed what happens when the
  * automatic and manual routes drift apart.
  *
- * The outer loop is accounts. An account that cannot be reached — a role
- * deleted, a trust policy rewritten — is reported and the sweep carries on:
+ * The outer loop is accounts. An account that cannot be reached, a role
+ * deleted, a trust policy rewritten, is reported and the sweep carries on:
  * losing sight of dev is not a reason to stop checking prod, and one broken
  * role silently ending every sweep is exactly how a tool comes to report a
  * clean estate it stopped looking at months ago.
@@ -108,7 +108,7 @@ export async function run(
   deps: RunDeps = {}
 ): Promise<RunResult> {
   // Named resources or nothing. Without this a caller that forgot
-  // `resourceIds` would turn a one-off fix into enforcing the whole rule — in
+  // `resourceIds` would turn a one-off fix into enforcing the whole rule, in
   // a single absent field nobody would notice.
   if (options.forceRemediate && !options.resourceIds?.length) {
     throw new Error(
@@ -190,7 +190,7 @@ async function runScope(
   );
   if (active.length === 0) return;
 
-  // One collect per resource type, shared by every rule of that type — otherwise
+  // One collect per resource type, shared by every rule of that type, otherwise
   // eight S3 rules would mean eight full passes over every bucket. Scoped to
   // this account and region, since a snapshot from one says nothing about another.
   const snapshots = new Map<string, ResourceSnapshot[]>();
@@ -213,7 +213,7 @@ async function runScope(
           snapshots.set(kind.resourceType, collected.resources);
           for (const u of collected.unswept ?? []) {
             // A collector reports everything outside the region it was asked
-            // about. Regions the account already sweeps are not blind spots —
+            // about. Regions the account already sweeps are not blind spots,
             // their own pass covers them.
             if (account.regions.includes(u.region)) continue;
             const already = result.unswept!.find(x =>

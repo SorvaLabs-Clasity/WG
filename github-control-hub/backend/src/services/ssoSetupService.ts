@@ -2,8 +2,8 @@
  * Creating an AWS SSO profile from the app, without a terminal.
  *
  * `aws configure sso` already does this, and it is a wizard in a terminal. The
- * people most likely to be handed this app — somebody asked to look after an
- * organization's GitHub settings — are not necessarily the people comfortable
+ * people most likely to be handed this app. Somebody asked to look after an
+ * organization's GitHub settings, are not necessarily the people comfortable
  * editing `~/.aws/config` by hand, and getting one line of it wrong produces an
  * error that names none of what is wrong.
  *
@@ -17,7 +17,7 @@
  * browser to approve it, and then read back the accounts and roles they actually
  * have. They pick from a list rather than typing an account number.
  *
- * **No SDK.** These are plain REST endpoints — the OIDC ones are unauthenticated
+ * **No SDK.** These are plain REST endpoints, the OIDC ones are unauthenticated
  * by design, because they run before anybody has credentials, and the portal
  * ones take a bearer token rather than a signed request. `fetch` covers all of
  * it, which keeps two more packages out of a bundle that ships to desktops.
@@ -26,7 +26,7 @@
 /**
  * "Keep waiting", in both spellings AWS uses.
  *
- * This endpoint is RFC 8628 — the OAuth device flow — so over the wire it
+ * This endpoint is RFC 8628, the OAuth device flow, so over the wire it
  * answers with OAuth's own codes: `authorization_pending`, `slow_down`. The
  * AWS SDK surfaces those as exception classes named
  * `AuthorizationPendingException` and `SlowDownException`, and the API
@@ -34,8 +34,8 @@
  * from. Only the SDK ever sees those names; calling the endpoint directly gets
  * the snake_case form.
  *
- * Matching the class names alone meant "the person has not clicked yet" — the
- * ordinary answer to the first several polls — was treated as a failure, and
+ * Matching the class names alone meant "the person has not clicked yet", the
+ * ordinary answer to the first several polls, was treated as a failure, and
  * the screen waited for ever for a poll that had already given up.
  *
  * Both are accepted rather than one, because being wrong here is invisible:
@@ -46,7 +46,7 @@ const KEEP_WAITING = new Set([
   "slow_down", "SlowDownException",
 ]);
 
-/** "That request is too old to finish" — a real failure, and a specific one. */
+/** "That request is too old to finish", a real failure, and a specific one. */
 const EXPIRED = new Set(["expired_token", "ExpiredTokenException"]);
 
 export interface DeviceAuthorization {
@@ -130,7 +130,7 @@ async function post(url: string, body: unknown): Promise<any> {
 /**
  * Step one: ask AWS to start an authorization, and get a URL to send them to.
  *
- * The client registration is anonymous and throwaway — it identifies this
+ * The client registration is anonymous and throwaway. It identifies this
  * installation to AWS for the duration of one sign-in and is not stored.
  */
 export async function startDeviceAuthorization(
@@ -163,7 +163,7 @@ export async function startDeviceAuthorization(
  * Step two: has the person approved it yet?
  *
  * Returns null while they have not, which is the ordinary case for the first
- * several calls — this is a person switching to a browser, reading a page and
+ * several calls. This is a person switching to a browser, reading a page and
  * clicking a button. Only a real failure throws.
  */
 export async function pollForToken(auth: {
@@ -200,7 +200,7 @@ async function getJson(url: string, token: string): Promise<any> {
  * Step three: what can this person actually reach?
  *
  * Every account, and within each the roles they hold. This is the whole reason
- * the flow exists — it is the part somebody cannot answer from memory, and the
+ * the flow exists. It is the part somebody cannot answer from memory, and the
  * part they would otherwise have to find in the AWS console and copy by hand.
  *
  * Paged, because an organization with more than a screenful of accounts is
@@ -282,14 +282,14 @@ export function alreadyDefined(config: string, header: string): boolean {
  * Make the AWS SDK re-read `~/.aws/config`.
  *
  * The SDK parses that file once per process and keeps the result in a
- * module-level cache keyed by path — `filePromises` in `@smithy/core/config`.
+ * module-level cache keyed by path, `filePromises` in `@smithy/core/config`.
  * Nothing invalidates it, because nothing normally needs to: a config file is
  * not expected to change underneath a running program.
  *
  * This app changes it. A profile written by the step above lands on disk, the
  * AWS CLI signs in against it perfectly well from its own process, and the
  * running app goes on resolving credentials from a parse taken before the
- * profile existed — so `AWS_PROFILE=<new>` resolves to a profile the SDK
+ * profile existed, so `AWS_PROFILE=<new>` resolves to a profile the SDK
  * believes is not there. That is the whole of the "created it, signed in, and
  * Verify does nothing, but it works after a restart" report: restarting was
  * clearing this cache.
@@ -300,7 +300,7 @@ export function alreadyDefined(config: string, header: string): boolean {
  * Failure is deliberately not fatal. The profile is already written and correct
  * by the time this runs; if the SDK ever moves this module (it has moved once,
  * from `@smithy/shared-ini-file-loader`) the cost is a restart, which is what
- * people did before this existed — not a lost profile.
+ * people did before this existed, not a lost profile.
  */
 export async function refreshAwsConfigCache(): Promise<boolean> {
   try {

@@ -2,7 +2,7 @@
 
 /**
  * Two rules, both of which can fix what they find. Anything that could only
- * report was removed — Vanta already does that, and duplicating it here only
+ * report was removed, Vanta already does that, and duplicating it here only
  * created noise nobody acted on.
  */
 export type GuardrailKind =
@@ -24,7 +24,7 @@ export interface Guardrail {
   exclusionLists: string[];
   /**
    * Which accounts this rule runs in. Empty or absent means all of them, which
-   * is what every rule written before accounts existed means — and the reading
+   * is what every rule written before accounts existed means, and the reading
    * that keeps a rule from silently stopping when a second account is added.
    *
    * Naming accounts is for rules that genuinely differ by environment: a
@@ -50,7 +50,7 @@ export interface AwsExclusionList {
   id: string;
   name: string;
   description: string;
-  /** Exact resource identifiers — bucket names, log group names, and so on. */
+  /** Exact resource identifiers, bucket names, log group names, and so on. */
   resources: string[];
   patterns: AwsExclusionPattern[];
   /** Wins over patterns, so one resource can be pulled back in. */
@@ -129,7 +129,7 @@ export interface ParamSpec {
 /**
  * One rule kind.
  *
- * `evaluate` is pure — state and params in, verdict out — which is what makes
+ * `evaluate` is pure, state and params in, verdict out, which is what makes
  * the catalog testable without touching AWS. `remediate` is the only part that
  * writes, and it is never called in report mode.
  */
@@ -148,7 +148,7 @@ export interface RuleKind {
   /**
    * CloudTrail event names that should run this rule immediately. Covers
    * both creating a resource and changing the setting the rule cares about
-   * — drift is the more common way an account goes wrong.
+   * drift is the more common way an account goes wrong.
    */
   triggerEvents: string[];
   evaluate(resource: ResourceSnapshot, params: Record<string, any>): Evaluation;
@@ -169,8 +169,8 @@ export function snapRetention(days: number): number {
 /**
  * One AWS account the guardrails run against.
  *
- * An organization is rarely one account. The rules that matter — retention
- * floors, TLS-only buckets — matter most in the accounts nobody logs into
+ * An organization is rarely one account. The rules that matter, retention
+ * floors, TLS-only buckets, matter most in the accounts nobody logs into
  * daily, and a tool that can only see the account it happens to be deployed in
  * reports a clean bill of health for an estate it has never looked at.
  *
@@ -189,7 +189,7 @@ export interface AwsAccount {
    * How to get into it.
    *
    *   home          the account the app runs in; ambient credentials, no setup
-   *   organization  a role AWS Organizations already put there — nothing to
+   *   organization  a role AWS Organizations already put there. Nothing to
    *                 create, nothing to deploy in the target account
    *   role          a role someone made deliberately, named by ARN
    *   keys          an access key pair, kept in Secrets Manager
@@ -235,7 +235,7 @@ export interface Scope {
   accountId: string;
   accountName: string;
   region: string;
-  /** Absent means the ambient role — the account the app runs in. */
+  /** Absent means the ambient role, the account the app runs in. */
   credentials?: AwsCredentials;
 }
 

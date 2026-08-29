@@ -2,7 +2,7 @@ import { Octokit } from "octokit";
 
 // ── GitHub App Token Manager ──
 
-/** Normalize PEM key — Secrets Manager's key/value editor strips newlines. */
+/** Normalize PEM key, Secrets Manager's key/value editor strips newlines. */
 function normalizePemKey(key: string): string {
   // Replace literal \n strings with actual newlines
   let normalized = key.replace(/\\n/g, "\n").trim();
@@ -10,7 +10,7 @@ function normalizePemKey(key: string): string {
   // If the key already has proper newlines, return as-is
   if (normalized.split("\n").length > 3) return normalized;
 
-  // Key is a single line (newlines stripped by Secrets Manager UI) — reconstruct PEM format
+  // Key is a single line (newlines stripped by Secrets Manager UI), reconstruct PEM format
   const match = normalized.match(/-----BEGIN (.+?)-----(.+?)-----END (.+?)-----/);
   if (match) {
     const type = match[1];
@@ -51,7 +51,7 @@ export function __armedRefreshTimers(): number {
  * When the next background refresh should run.
  *
  * Normally: shortly before the token expires, never sooner than a minute. After
- * a failure: soon, and again after that — the alternative is the app deciding,
+ * a failure: soon, and again after that, the alternative is the app deciding,
  * on one bad network moment, that it will never hold a live token again.
  */
 export function refreshDelayMs(expiresAt: number, now: number, afterFailure: boolean): number {
@@ -70,7 +70,7 @@ class GitHubTokenManager {
     // Two ways in, because two builds load this file.
     //
     // The desktop runs tsc's CommonJS output, where a plain `await import()`
-    // would be rewritten to require() — fatal for an ESM-only package. Hence
+    // would be rewritten to require(), fatal for an ESM-only package. Hence
     // require.resolve plus a dynamic import built with `new Function`, which
     // tsc cannot see through.
     //
@@ -100,7 +100,7 @@ class GitHubTokenManager {
     if (this.isFresh()) return this.cachedToken;
 
     // Stale is not the same as expired, and this used to hand back a personal
-    // access token instead — a second, broader credential kept permanently for
+    // access token instead, a second, broader credential kept permanently for
     // a case that should be rare.
     //
     // isFresh() goes false for the last five minutes of a token's hour, and a
@@ -109,7 +109,7 @@ class GitHubTokenManager {
     // replacement, and this call succeeds meanwhile.
     //
     // Past real expiry it returns the expired token, GitHub answers 401, and
-    // that is the honest outcome — the App is the only credential, so a
+    // that is the honest outcome, the App is the only credential, so a
     // broken App should look broken rather than quietly running on a fallback
     // nobody remembers configuring.
     //
@@ -156,7 +156,7 @@ class GitHubTokenManager {
   /**
    * Stop refreshing, for good.
    *
-   * Called when this manager is replaced — every AWS account switch does that,
+   * Called when this manager is replaced, every AWS account switch does that,
    * either re-initialising for the account moved into or dropping the manager
    * for one that holds no GitHub App. Reassigning the module-level reference is
    * not enough on its own: an armed timer holds a reference to the object that
@@ -209,7 +209,7 @@ class GitHubTokenManager {
  * import; omitted, the manager resolves it from disk itself.
  *
  * The manager is published only once it works. Assigning it first left a
- * half-built object behind on failure — `auth` undefined — so every later
+ * half-built object behind on failure, `auth` undefined, so every later
  * getTokenAsync() threw "this.auth is not a function" instead of the clear
  * error the caller could act on.
  */
@@ -246,7 +246,7 @@ export function disposeTokenManager(): void {
  * There used to be a fallback to a `SYSTEM_GITHUB_TOKEN` personal access token,
  * held permanently against the chance that the App failed. It has been removed:
  * a classic PAT with `admin:org` is broader than the App it was backing up,
- * belongs to one person, usually never expires, and — because it worked — meant
+ * belongs to one person, usually never expires, and, because it worked, meant
  * a broken App could go unnoticed for weeks.
  *
  * Empty means the App is not configured or not working, which is a thing to fix
@@ -259,14 +259,14 @@ export function getSystemToken(): string {
 /**
  * Drops the token manager, so `getSystemToken()` reads empty again.
  *
- * Exists for the tests that cover what the app does with no App credentials —
+ * Exists for the tests that cover what the app does with no App credentials,
  * a state that is otherwise only reachable by breaking the real ones.
  */
 export function __resetTokenManagerForTests(): void {
   disposeTokenManager();
 }
 
-/** Async getter — refreshes the App token if it has expired. */
+/** Async getter, refreshes the App token if it has expired. */
 export async function getSystemTokenAsync(): Promise<string> {
   if (!tokenManager) {
     throw new Error(

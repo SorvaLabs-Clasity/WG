@@ -7,7 +7,8 @@ import {
   SURFACE, TYPE, RefreshButton, LoadFailed,
 } from "../design";
 import UserAvatar from "../components/UserAvatar";
-import type { MyPull, Waiting } from "../api/me";
+import type { MyPull, Waiting, PushRule, PushCheck as PushCheckData, ShipEntry } from "../api/me";
+import { useOrgConfig } from "../hooks/useOrgConfig";
 import DevAlertSettings from "../components/DevAlertSettings";
 import PersonalBoard from "../components/PersonalBoard";
 
@@ -105,7 +106,7 @@ function PullRow({ pr, showAuthor }: { pr: MyPull; showAuthor?: boolean }) {
  *
  * The generic Block gave a heading and nothing else, so eight of them read as
  * eight identical grey rectangles. This is the treatment the Activity cards
- * already use — a rule under the heading rather than a tinted title bar, which
+ * already use, a rule under the heading rather than a tinted title bar, which
  * was chrome doing the work a line does.
  */
 function Panel({ title, count, note, children }: {
@@ -144,7 +145,7 @@ function Quiet({ children }: { children: React.ReactNode }) {
  *
  * Three equal boxes said all three mattered equally, which is how a dashboard
  * ends up with nothing to look at first. What other people are waiting on you
- * for leads — it is the only one where somebody else is blocked — and the other
+ * for leads. It is the only one where somebody else is blocked, and the other
  * two are supporting facts at supporting size, on one surface divided by
  * hairlines rather than floating apart as peers.
  */
@@ -270,27 +271,111 @@ function Queue() {
   );
 }
 
-function RuleList({ title, rules, intent }: {
-  title: string; rules: { label: string; detail: string }[]; intent: "danger" | "info";
-}) {
-  if (rules.length === 0) return null;
-  const bar = intent === "danger" ? "bg-rose-400 dark:bg-rose-500" : "bg-sky-400 dark:bg-sky-500";
+/**
+ * The answer to "why can't I push", as a verdict rather than a form.
+ *
+ * The first attempt was a pair of inputs above two bulleted lists, which is a
+ * settings screen wearing a question's clothes. What somebody wants here is the
+ * shape of an answer: can I or can't I, what is in the way, and who can move
+ * it. So the verdict is the largest thing on screen, the rules read as gates
+ * rather than as prose, and the people who can let you through have faces.
+ */
+
+const GATE_ICON: Record<string, string> = {
+  "Pull request required": "ph-git-pull-request",
+  "Pushes are restricted": "ph-lock-key",
+  "No force pushing": "ph-arrow-u-up-left",
+  "Commits must be signed": "ph-seal-check",
+  "Linear history": "ph-line-segments",
+};
+
+const NEED_ICON: Record<string, string> = {
+  "Code owner review": "ph-user-check",
+  "Conversations resolved": "ph-chats-circle",
+  "Merge method": "ph-git-merge",
+  "Deployed first": "ph-rocket-launch",
+  "Someone else must approve last": "ph-users-three",
+  "No approval required": "ph-lock-simple-open",
+};
+
+function iconFor(label: string, gate: "push" | "merge"): string {
+  if (GATE_ICON[label]) return GATE_ICON[label];
+  if (NEED_ICON[label]) return NEED_ICON[label];
+  if (/approval/i.test(label)) return "ph-thumbs-up";
+  if (/check/i.test(label)) return "ph-check-square";
+  return gate === "push" ? "ph-prohibit" : "ph-arrow-fat-line-right";
+}
+
+/** One rule, as a gate you have to get through. */
+function GateRow({ rule, tone }: { rule: PushRule; tone: "block" | "need" }) {
+  const block = tone === "block";
   return (
-    <div className="mt-4">
-      <h4 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400 mb-2">
-        {title}
-      </h4>
-      <div className="grid gap-2">
-        {rules.map(r => (
-          <div key={r.label} className="flex gap-3 px-3.5 py-3 rounded-lg bg-slate-50 dark:bg-white/[0.04]
-                                        border border-slate-200/70 dark:border-white/10">
-            <span className={`w-[3px] rounded-full shrink-0 ${bar}`} aria-hidden="true" />
-            <div>
-              <div className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">{r.label}</div>
-              <div className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">{r.detail}</div>
-            </div>
+    <div className="flex items-start gap-3.5 px-5 py-3.5">
+      <span className={`mt-[1px] w-8 h-8 rounded-xl shrink-0 grid place-items-center ${
+        block
+          ? "bg-rose-50 dark:bg-rose-500/10 text-rose-500 dark:text-rose-400"
+          : "bg-sky-50 dark:bg-sky-500/10 text-sky-500 dark:text-sky-400"}`}>
+        <i className={`ph-bold ${iconFor(rule.label, rule.gate)} text-[15px]`} aria-hidden="true" />
+      </span>
+      <div className="min-w-0">
+        <div className="text-[13.5px] font-semibold text-slate-900 dark:text-slate-100">{rule.label}</div>
+        <div className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{rule.detail}</div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The headline, which is the whole point of the screen.
+ *
+ * Four states, and they are genuinely different answers rather than shades of
+ * one: nothing protects it, you are exempt, you cannot push but can open a
+ * pull request, and the rules could not be read at all. The last is the one
+ * that must never look like the first.
+ */
+function Verdict({ data }: { data: PushCheckData }) {
+  const blocked = (data.cannotPushBecause?.length ?? 0) > 0;
+  const unknown = !!data.unreadable || !data.reachable;
+
+  const look = unknown
+    ? { wash: "bg-amber-400", icon: "ph-question", tint: "text-amber-600 dark:text-amber-400",
+        title: "Cannot say", sub: data.message ?? "The rules could not be read." }
+    : data.protected === false
+      ? { wash: "bg-emerald-500", icon: "ph-lock-simple-open", tint: "text-emerald-600 dark:text-emerald-400",
+          title: "You can push", sub: `Nothing protects ${data.branch}.` }
+      : data.canBypass
+        ? { wash: "bg-amber-400", icon: "ph-shield-star", tint: "text-amber-600 dark:text-amber-400",
+            title: "You can push anyway", sub: data.bypassNote ?? "" }
+        : blocked
+          ? { wash: "bg-rose-500", icon: "ph-prohibit", tint: "text-rose-600 dark:text-rose-400",
+              title: "You cannot push directly", sub: `Open a pull request into ${data.branch} instead.` }
+          : { wash: "bg-emerald-500", icon: "ph-check-circle", tint: "text-emerald-600 dark:text-emerald-400",
+              title: "Nothing blocks you", sub: `${data.branch} is protected, but not against you.` };
+
+  return (
+    <div className={`${SURFACE.card} relative overflow-hidden px-6 py-6`}>
+      <div aria-hidden="true"
+        className={`pointer-events-none absolute -right-20 -top-24 w-64 h-64 rounded-full blur-3xl opacity-[0.15] ${look.wash}`} />
+      <div className="flex items-start gap-4">
+        <span className={`w-12 h-12 rounded-2xl grid place-items-center shrink-0
+                          bg-white dark:bg-white/[0.06] border border-slate-200/80 dark:border-white/10 ${look.tint}`}>
+          <i className={`ph-fill ${look.icon} text-[22px]`} aria-hidden="true" />
+        </span>
+        <div className="min-w-0 pt-0.5">
+          <h2 className="text-[22px] font-black tracking-[-0.02em] text-slate-900 dark:text-white leading-tight">
+            {look.title}
+          </h2>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1 max-w-[62ch] leading-relaxed">
+            {look.sub}
+          </p>
+          <div className="flex items-center gap-1.5 mt-3">
+            <span className="text-[11px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/[0.07]
+                             text-slate-600 dark:text-slate-300">{data.repo}</span>
+            <i className="ph-bold ph-caret-right text-[10px] text-slate-300 dark:text-slate-600" aria-hidden="true" />
+            <span className="text-[11px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/[0.07]
+                             text-slate-600 dark:text-slate-300">{data.branch}</span>
           </div>
-        ))}
+        </div>
       </div>
     </div>
   );
@@ -303,194 +388,267 @@ function PushCheck() {
   const { data, isFetching, isError, error } = usePushCheck(repo, branch);
 
   const names = useMemo(() => (repos ?? []).map(r => r.name).sort(), [repos]);
+  const blocks = data?.cannotPushBecause ?? [];
+  const needs = data?.mergeNeeds ?? [];
 
   return (
-    <Panel title="Why can't I push?"
-      note="What will happen before you try it, and who can approve if you cannot.">
-      <div className="p-5">
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-              Repository
-            </label>
-            <input
-              list="mywork-repos" value={repo} onChange={e => setRepo(e.target.value)}
-              placeholder="Start typing a name" className={SURFACE.input}
-            />
-            <datalist id="mywork-repos">
-              {names.map(n => <option key={n} value={n} />)}
-            </datalist>
-          </div>
-          <div>
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
-              Branch
-            </label>
-            <input value={branch} onChange={e => setBranch(e.target.value)}
-              placeholder="main" className={SURFACE.input} />
-          </div>
+    <div className="grid gap-4">
+      {/* The question, kept to one line so it does not read as a settings form. */}
+      <div className={`${SURFACE.card} p-4 flex flex-wrap items-end gap-3`}>
+        <div className="flex-1 min-w-[220px]">
+          <label className="block text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 mb-1.5">
+            Repository
+          </label>
+          <input list="mywork-repos" value={repo} onChange={e => setRepo(e.target.value)}
+            placeholder="Start typing a name" className={SURFACE.input} />
+          <datalist id="mywork-repos">{names.map(n => <option key={n} value={n} />)}</datalist>
         </div>
-
-        {!repo && (
-          <p className="mt-4 text-[13px] text-slate-500 dark:text-slate-400">
-            Pick a repository and a branch, and this says exactly what will happen
-            when you push or try to merge — and who can approve it if you cannot.
-          </p>
-        )}
-
-        {repo && isFetching && <div className="py-10 flex justify-center"><Spinner /></div>}
-
-        {repo && isError && (
-          <Note intent="danger">{(error as Error)?.message ?? "Could not read the rules."}</Note>
-        )}
-
-        {data && !isFetching && (
-          <div className="mt-5">
-            {/* Every one of these is a case where an empty rule list would read
-                as "nothing is stopping you", which is the opposite of true. */}
-            {data.message && <Note intent={data.unreadable ? "warn" : "danger"}>{data.message}</Note>}
-
-            {data.reachable && !data.message && data.protected === false && (
-              <Note intent="good">
-                Nothing protects <span className="font-mono">{data.branch}</span>. You can push
-                straight to it.
-              </Note>
-            )}
-
-            {data.reachable && !data.message && data.protected && (
-              <>
-                {data.cannotPushBecause?.length === 0 && data.mergeNeeds?.length === 0 && (
-                  <Note intent="good">
-                    It is protected, but nothing currently blocks you.
-                  </Note>
-                )}
-                <RuleList title="Why a direct push is refused" rules={data.cannotPushBecause ?? []} intent="danger" />
-                <RuleList title="What a pull request will need" rules={data.mergeNeeds ?? []} intent="info" />
-
-                {data.bypassNote && (
-                  <div className="mt-4">
-                    <Note intent={data.canBypass ? "warn" : "info"}>{data.bypassNote}</Note>
-                  </div>
-                )}
-
-                {(data.approvers?.length ?? 0) > 0 && (
-                  <div className="mt-5">
-                    <h4 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400 mb-2">
-                      Who can approve
-                    </h4>
-                    <div className="flex flex-wrap gap-2">
-                      {data.approvers!.map(p => (
-                        <span key={p.login}
-                          className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 rounded-full
-                                     bg-slate-100 dark:bg-white/[0.06] border border-slate-200 dark:border-white/10">
-                          <UserAvatar login={p.login} size={18} />
-                          <span className="text-[12.5px] font-medium text-slate-700 dark:text-slate-200">{p.login}</span>
-                          {/* Admins can change the rule as well as satisfy it,
-                              which is a different favour to ask for. */}
-                          {p.role === "admin" && (
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
-                              admin
-                            </span>
-                          )}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
+        <div className="w-[180px]">
+          <label className="block text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 mb-1.5">
+            Branch
+          </label>
+          <input value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" className={SURFACE.input} />
+        </div>
       </div>
-    </Panel>
+
+      {!repo && (
+        <div className={`${SURFACE.card} px-6 py-14 text-center`}>
+          <i className="ph-duotone ph-git-branch text-[34px] text-slate-300 dark:text-slate-600" aria-hidden="true" />
+          <p className="text-[13.5px] text-slate-500 dark:text-slate-400 mt-3 max-w-[46ch] mx-auto leading-relaxed">
+            Pick a repository and branch. This says what will happen before you try it,
+            and who can let you through if something is in the way.
+          </p>
+        </div>
+      )}
+
+      {repo && isFetching && <div className="py-20 flex justify-center"><Spinner /></div>}
+      {repo && isError && <Note intent="danger">{(error as Error)?.message ?? "Could not read the rules."}</Note>}
+
+      {data && !isFetching && (
+        <>
+          <Verdict data={data} />
+
+          {data.reachable && !data.unreadable && data.protected && (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {blocks.length > 0 && (
+                <Panel title="In the way of a direct push" count={blocks.length}>
+                  <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+                    {blocks.map(r => <GateRow key={r.label} rule={r} tone="block" />)}
+                  </div>
+                </Panel>
+              )}
+
+              <Panel title="What a pull request will need" count={needs.length}
+                note={needs.length === 0 ? undefined : "Every one of these, before it can merge."}>
+                {needs.length === 0
+                  ? <Quiet>Nothing beyond opening it.</Quiet>
+                  : <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+                      {needs.map(r => <GateRow key={r.label} rule={r} tone="need" />)}
+                    </div>}
+              </Panel>
+            </div>
+          )}
+
+          {(data.approvers?.length ?? 0) > 0 && (
+            <Panel title="Who can let you through" count={data.approvers!.length}
+              note="Admins can change the rule as well as satisfy it.">
+              <div className="flex flex-wrap gap-2 p-5">
+                {data.approvers!.map(p => (
+                  <span key={p.login}
+                    className="inline-flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full
+                               bg-slate-50 dark:bg-white/[0.05] border border-slate-200/80 dark:border-white/10">
+                    <UserAvatar login={p.login} size={20} />
+                    <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">{p.login}</span>
+                    {p.role === "admin" && (
+                      <span className="text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded
+                                       bg-slate-900 dark:bg-white text-white dark:text-slate-900">admin</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            </Panel>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
+/**
+ * What went out, as a record of output rather than two lists.
+ *
+ * The number leads, because "eleven things in thirty days" is the answer and
+ * the rows are the evidence. Merges are grouped by day so the shape of a
+ * fortnight is visible without reading a single title, and what is still open
+ * sits beside it rather than below. Those are two halves of one question, not
+ * a list and an appendix.
+ */
+/**
+ * Where a merged row points on github.com.
+ *
+ * Null rather than a guess. A row written before the pull request number was
+ * recorded, or one that is about a push rather than a pull request, has nothing
+ * to link to, and `/pull/undefined` is a worse outcome than plain text: it
+ * looks clickable, and lands on a 404.
+ */
+function githubLinkFor(entry: ShipEntry, org: string): string | null {
+  if (!org || !entry.repo) return null;
+  return entry.prNumber
+    ? `https://github.com/${org}/${entry.repo}/pull/${entry.prNumber}`
+    : `https://github.com/${org}/${entry.repo}`;
+}
+
 function Shipped() {
+  const { data: orgConfig } = useOrgConfig();
+  const org = orgConfig?.org || "";
   const [days, setDays] = useState(7);
   const { data, isLoading, isError, error, refetch } = useShipped(days);
 
+  /** Merges grouped by calendar day, newest first. */
+  const byDay = useMemo(() => {
+    const out: { label: string; rows: typeof data extends undefined ? never : any[] }[] = [];
+    for (const e of data?.merged ?? []) {
+      const d = new Date(e.timestamp);
+      const label = d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+      const last = out[out.length - 1];
+      if (last?.label === label) last.rows.push(e);
+      else out.push({ label, rows: [e] });
+    }
+    return out;
+  }, [data]);
+
   return (
-    <>
-      <div className="flex justify-end mb-4">
-        <Segmented
-          value={String(days)}
-          onChange={v => setDays(Number(v))}
-          options={[["7", "7 days"], ["30", "30 days"], ["90", "90 days"]]}
-        />
+    <div className="grid gap-4">
+      <div className="flex justify-end">
+        <Segmented value={String(days)} onChange={v => setDays(Number(v))}
+          options={[["7", "7 days"], ["30", "30 days"], ["90", "90 days"]]} />
       </div>
 
-      {isLoading && <div className="py-16 flex justify-center"><Spinner /></div>}
+      {isLoading && <div className="py-20 flex justify-center"><Spinner /></div>}
       {isError && <LoadFailed what="your shipping history" error={error as Error} onRetry={() => refetch()} />}
 
       {data && (
         <>
-          {/* The one reason this list is empty that is not "you shipped
-              nothing". Said before the list, not after it. */}
+          {/* Said before the list, not after it: an explanation below the rows is
+              read after somebody has already drawn the wrong conclusion. */}
           {!data.detailedLogging && (
             <Note intent="warn">
-              Merges are not being recorded. Detailed logging is off for this
-              organization, so nothing below can show what went out — turn it on
-              in Activity settings and it starts from then, not retroactively.
+              Merges are not being recorded. Detailed logging is off for this organization,
+              so nothing below can show what went out. Turning it on starts from then,
+              not retroactively.
             </Note>
           )}
 
-          <div className="grid gap-5 lg:grid-cols-2 mt-4">
-            <Panel title={`Merged in the last ${data.days} days`} count={data.merged.length}
-              note="From the activity log, so it needs detailed logging on.">
-              {data.merged.length === 0
-                ? <p className="text-[13px] text-slate-500 dark:text-slate-400 px-1 py-2">
-                    {data.detailedLogging ? "Nothing merged in this window." : "Nothing recorded."}
-                  </p>
-                : <div className="grid gap-2">
-                    {data.merged.map(e => (
-                      <div key={e.id} className="px-4 py-3 rounded-xl border border-slate-200/80 dark:border-white/10
-                                                 bg-white dark:bg-white/[0.03]">
-                        <div className="flex items-baseline gap-2 flex-wrap">
-                          <span className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">
-                            {e.target || e.details}
+          <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+            <div className={`${SURFACE.card} relative overflow-hidden px-6 py-5`}>
+              <div aria-hidden="true"
+                className={`pointer-events-none absolute -right-16 -top-16 w-56 h-56 rounded-full blur-2xl opacity-[0.16]
+                  ${data.merged.length > 0 ? "bg-emerald-500" : "bg-slate-400"}`} />
+              <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
+                Merged in {data.days} days
+              </div>
+              <div className="flex items-end gap-3 mt-2.5">
+                <span className={`text-[52px] font-black tabular-nums leading-[0.85] tracking-[-0.04em]
+                  ${data.merged.length === 0 ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-white"}`}>
+                  {data.merged.length}
+                </span>
+                {data.pushes > 0 && (
+                  <span className="mb-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold
+                                   bg-slate-100 dark:bg-white/[0.07] text-slate-500 dark:text-slate-400">
+                    <i className="ph-bold ph-arrow-fat-line-up text-[12px]" aria-hidden="true" />
+                    {data.pushes} direct
+                  </span>
+                )}
+              </div>
+              <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-2.5">
+                {data.merged.length === 0
+                  ? (data.detailedLogging ? "Nothing merged in this window." : "Nothing recorded.")
+                  : `Across ${byDay.length} ${byDay.length === 1 ? "day" : "days"}.`}
+              </p>
+            </div>
+
+            <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-white/[0.07]`}>
+              <MiniStat icon="ph-git-pull-request" tone="text-sky-600 dark:text-sky-400"
+                label="Still open" value={data.waiting.length}
+                foot={data.waiting.length ? "yours, not yet out" : "nothing of yours is open"} />
+              <MiniStat icon="ph-calendar-check" tone="text-violet-600 dark:text-violet-400"
+                label="Active days" value={byDay.length}
+                foot={byDay.length ? "days you shipped something" : "no merges in the window"} />
+            </div>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+            <Panel title="What went out" count={data.merged.length} note="Grouped by the day it merged.">
+              {byDay.length === 0
+                ? <Quiet>{data.detailedLogging ? "Nothing merged in this window." : "Nothing recorded."}</Quiet>
+                : <div className="p-5 grid gap-4">
+                    {byDay.map(day => (
+                      <div key={day.label}>
+                        <div className="flex items-center gap-3 mb-2">
+                          <span className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                            {day.label}
                           </span>
-                          <span className="text-[11.5px] font-mono text-slate-400 dark:text-slate-500">{e.repo}</span>
-                          <span className="ml-auto text-[11.5px] tabular-nums text-slate-400 dark:text-slate-500">
-                            {new Date(e.timestamp).toLocaleDateString()}
+                          <span className="flex-1 h-px bg-slate-200/70 dark:bg-white/[0.07]" />
+                          <span className="text-[11px] tabular-nums text-slate-300 dark:text-slate-600">
+                            {day.rows.length}
                           </span>
+                        </div>
+                        <div className="grid gap-1.5">
+                          {day.rows.map((e: ShipEntry) => {
+                            const href = githubLinkFor(e, org);
+                            const inner = (
+                              <>
+                                <span className="text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">
+                                  {e.target || e.details}
+                                </span>
+                                <span className="ml-auto text-[11px] font-mono text-slate-400 dark:text-slate-500 shrink-0">
+                                  {e.repo}{e.prNumber ? `#${e.prNumber}` : ""}
+                                </span>
+                              </>
+                            );
+                            const shape = "flex items-baseline gap-2.5 pl-3 border-l-2 border-emerald-400/70";
+                            // Plain text when there is nowhere to go. Something
+                            // that looks clickable and lands on a 404 is worse
+                            // than something that does not look clickable.
+                            return href ? (
+                              <a key={e.id} href={href} target="_blank" rel="noreferrer noopener"
+                                className={`${shape} group/ship rounded-r hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors`}>
+                                {inner}
+                                <i className="ph-bold ph-arrow-square-out text-[11px] text-slate-300 dark:text-slate-600
+                                              opacity-0 group-hover/ship:opacity-100 transition-opacity shrink-0"
+                                   aria-hidden="true" />
+                              </a>
+                            ) : (
+                              <div key={e.id} className={shape}>{inner}</div>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
                   </div>}
-              {data.pushes > 0 && (
-                <p className="mt-3 text-[12px] text-slate-400 dark:text-slate-500">
-                  Plus {data.pushes} direct {data.pushes === 1 ? "push" : "pushes"} in the same window.
-                </p>
-              )}
             </Panel>
 
-            <Panel title="Still waiting" count={data.waiting.length}
-              note="Yours that are open and not yet out.">
+            <Panel title="Still waiting" count={data.waiting.length} note="Open, and not out yet.">
               {data.waiting.length === 0
-                ? <p className="text-[13px] text-slate-500 dark:text-slate-400 px-1 py-2">
-                    Nothing of yours is open.
-                  </p>
-                : <div className="grid gap-2">
+                ? <Quiet>Nothing of yours is open.</Quiet>
+                : <Rows>
                     {data.waiting.map(pr => (
                       <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer noopener"
-                        className="block px-4 py-3 rounded-xl border border-slate-200/80 dark:border-white/10
-                                   bg-white dark:bg-white/[0.03] hover:border-slate-300 dark:hover:border-white/20 transition-colors">
-                        <div className="flex items-baseline gap-2">
-                          <span className="text-[13.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">
-                            {pr.title}
-                          </span>
-                          <span className="text-[11.5px] font-mono text-slate-400 dark:text-slate-500 shrink-0">
-                            {pr.repo}#{pr.number}
-                          </span>
+                        className="block px-5 py-3.5 hover:bg-slate-50/80 dark:hover:bg-white/[0.035] transition-colors">
+                        <div className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+                          {pr.title}
+                        </div>
+                        <div className="text-[11.5px] font-mono text-slate-400 dark:text-slate-500 mt-1">
+                          {pr.repo}#{pr.number}
                         </div>
                       </a>
                     ))}
-                  </div>}
+                  </Rows>}
             </Panel>
           </div>
         </>
       )}
-    </>
+    </div>
   );
 }
 
@@ -515,7 +673,7 @@ export default function MyWorkPage() {
             ["queue", "Queue"],
             ["push", "Why can't I push?"],
             ["shipped", "What did I ship?"],
-            ["board", "My cards"],
+            ["board", "My widgets"],
             ["alerts", "Notifications"],
           ]}
         />

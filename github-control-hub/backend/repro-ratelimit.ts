@@ -6,7 +6,7 @@
  * "wait twenty seconds". Getting it wrong tells someone to wait an hour for
  * something that clears immediately, or the reverse.
  *
- * A plain 403 must NOT be read as a rate limit — that is a permission refusal
+ * A plain 403 must NOT be read as a rate limit, that is a permission refusal
  * and has its own message.
  */
 import { parseRateLimit } from "./src/utils/rateLimit";

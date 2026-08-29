@@ -14,7 +14,7 @@ const inputClass =
  * Renovate's pull requests.
  *
  * Deliberately read-only. Every row links out to GitHub, and there is no merge
- * control anywhere — merging is GitHub's job, where GitHub authorizes the
+ * control anywhere, merging is GitHub's job, where GitHub authorizes the
  * person doing it against the repository.
  */
 export default function RenovatePanel() {
@@ -88,7 +88,7 @@ export default function RenovatePanel() {
     return <Empty title="Could not read Renovate pull requests" body={(error as Error).message} />;
   }
 
-  // Not configured is a normal state, not a failure — most orgs run no Renovate.
+  // Not configured is a normal state, not a failure, most orgs run no Renovate.
   if (!data?.configured) {
     return (
       <div className="bg-white dark:bg-slate-900 rounded-[12px] border border-gh-border dark:border-slate-700 p-5">

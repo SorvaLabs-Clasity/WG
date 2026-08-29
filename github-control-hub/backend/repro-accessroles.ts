@@ -10,7 +10,7 @@
  *     whatever the organization called it and matched nothing in the list.
  *   - anyone with triage, which is never an organization default and is
  *     therefore always an explicit grant.
- *   - an outside collaborator with read — the person who is not in the
+ *   - an outside collaborator with read, the person who is not in the
  *     organization and can nevertheless see the code.
  *
  * The one exclusion worth keeping is a member's plain read where the
@@ -84,7 +84,7 @@ function worthRecording(role: string, orgRole: OrgRole, orgDefault: string): boo
     check("an outside collaborator's read is always recorded",
       worthRecording("read", "outside_collaborator", "read")
         && worthRecording("read", "outside_collaborator", "none"),
-      "not in the org, so no org default covers them — the row a review exists to find");
+      "not in the org, so no org default covers them, the row a review exists to find");
     check("  including GitHub's other spelling of it",
       worthRecording("pull", "outside_collaborator", "read"));
   }

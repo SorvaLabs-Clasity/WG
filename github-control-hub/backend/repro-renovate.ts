@@ -35,7 +35,7 @@ const NOW = new Date("2026-08-14T12:00:00Z");
       && q.closed.includes("org:Acme-Org") && q.closed.includes("author:acme-renovate"), q);
 
   check("  open asks only for open", q.open.includes("is:open") && !q.open.includes("is:closed"), q.open);
-  check("  and restricts nothing else — an old open PR still counts",
+  check("  and restricts nothing else, an old open PR still counts",
     !/closed:|created:|updated:/.test(q.open), q.open);
 
   // The retention rule lives here, as a filter on closed_at. Filtering on
@@ -174,7 +174,7 @@ const NOW = new Date("2026-08-14T12:00:00Z");
   {
     // Verified against live GitHub: `author:renovate[bot]` returns results,
     // `author:renovate` answers 422. The suffix is invisible in the UI, which
-    // shows the App's display name with a separate "Bot" label — so the
+    // shows the App's display name with a separate "Bot" label, so the
     // obvious thing to type is the thing search rejects.
     check("the App form is tried first",
       botCandidates("acme-renovate")[0] === "acme-renovate[bot]", botCandidates("acme-renovate"));

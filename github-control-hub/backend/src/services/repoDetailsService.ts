@@ -78,7 +78,7 @@ async function section<T>(label: string, repo: string, fn: () => Promise<T>): Pr
 /**
  * Total commits since a date.
  *
- * Uses per_page=1 and reads the last page number off the Link header — that page
+ * Uses per_page=1 and reads the last page number off the Link header, that page
  * count IS the commit count. The /stats/* endpoints would be the obvious choice
  * but they return 202 and compute asynchronously on first request, which cannot
  * back a UI panel.
@@ -105,7 +105,7 @@ async function fileExists(octokit: Octokit, org: string, repo: string, path: str
 export async function getRepoDetails(octokit: Octokit, repo: string): Promise<RepoDetails> {
   const org = getOrg();
 
-  // The only call that must succeed — everything else decorates it.
+  // The only call that must succeed. Everything else decorates it.
   const { data: r } = await octokit.rest.repos.get({ owner: org, repo });
 
   const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();

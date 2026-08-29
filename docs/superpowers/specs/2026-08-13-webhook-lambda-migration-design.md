@@ -1,4 +1,4 @@
-# Webhooks on API Gateway and Lambda — design
+# Webhooks on API Gateway and Lambda: design
 
 **Date:** 2026-08-13
 
@@ -9,7 +9,7 @@ Receive GitHub webhooks without an EC2 instance, and then delete the instance.
 An instance in a VPC with no internet gateway cannot receive deliveries. Where
 the default route goes to a NAT or transit gateway, egress works and inbound
 from the internet is impossible; GitHub's deliveries fail with "failed to
-connect to host", and no amount of security-group work fixes that — the security
+connect to host", and no amount of security-group work fixes that, the security
 group is already correct. API Gateway is public by nature and needs no VPC ingress, which removes
 the problem rather than working around it.
 
@@ -24,7 +24,7 @@ changes.
 
 The desktop app. It runs its own backend on `localhost:4321` via
 `desktop/src/bootstrap.ts` and `desktop/src/server.ts`, which are independent of
-`backend/src/standalone.ts` — the only reference between them is a code comment.
+`backend/src/standalone.ts`, the only reference between them is a code comment.
 The OAuth callback stays `http://localhost:4321/auth/callback`.
 
 ## Architecture
@@ -82,7 +82,7 @@ against an instance costing roughly fifteen dollars, so cost is not a factor
 either way.
 
 The endpoint type is **Regional**, not edge-optimised. There is no global
-audience to accelerate — GitHub posts from four known ranges — and edge-optimised
+audience to accelerate, GitHub posts from four known ranges, and edge-optimised
 adds a CloudFront layer for nothing.
 
 [cmp]: https://docs.aws.amazon.com/apigateway/latest/developerguide/http-api-vs-rest.html
@@ -96,7 +96,7 @@ The resource policy carries the same four CIDRs the security group has today:
 ```
 
 This is strictly better than the security group, because API Gateway evaluates
-the policy before the integration is invoked — the code never runs for a request
+the policy before the integration is invoked, the code never runs for a request
 from elsewhere, so it cannot be bypassed by a routing mistake.
 
 It carries the same maintenance burden the security group already had: the list
@@ -112,7 +112,7 @@ The route body becomes a module the two handlers share:
 
 | File | Contains |
 |---|---|
-| `backend/src/webhooks/verify.ts` | `verifyGitHubSignature(rawBody, sigHeader, secret)` — pure, no Express, no Lambda |
+| `backend/src/webhooks/verify.ts` | `verifyGitHubSignature(rawBody, sigHeader, secret)`, pure, no Express, no Lambda |
 | `backend/src/webhooks/secret.ts` | Module-scope cached fetch of the webhook secret |
 | `backend/src/webhooks/deliveryLock.ts` | Claim / complete / release against DynamoDB |
 | `backend/src/webhooks/processDelivery.ts` | The route body, with the token passed in and its background work awaited |
@@ -120,7 +120,7 @@ The route body becomes a module the two handlers share:
 | `backend/src/webhooks/worker.ts` | SQS handler |
 
 **Deleted:** `backend/src/routes/webhooks.ts` and its mount at `server.ts:98`.
-It is imported in exactly one place and called by nothing else — the frontend's
+It is imported in exactly one place and called by nothing else, the frontend's
 webhook health comes from `/org/webhook-health`, which reads the activity table.
 
 `processDelivery` takes the token as a parameter rather than calling
@@ -136,13 +136,13 @@ deliberately not awaited, because on Express the process outlives the request:
 
 | | |
 |---|---|
-| `webhooks.ts:279` | `refreshRepo(...).catch(...)` — compliance cache |
-| `webhooks.ts:301` | `addRepoEdges(...).catch(...)` — graph edges for a new repo |
-| `webhooks.ts:335` | `setTimeout(async () => { runScan… }, 1000)` — background scans |
+| `webhooks.ts:279` | `refreshRepo(...).catch(...)`, compliance cache |
+| `webhooks.ts:301` | `addRepoEdges(...).catch(...)`, graph edges for a new repo |
+| `webhooks.ts:335` | `setTimeout(async () => { runScan… }, 1000)`, background scans |
 
 In Lambda the container freezes the moment the handler resolves. An unawaited
 promise may never settle and a one-second timer may never fire. Activity rows
-and template auto-apply would keep working, because those *are* awaited — so
+and template auto-apply would keep working, because those *are* awaited, so
 compliance refresh, new-repo graph edges and scanner runs would stop while
 everything else looked healthy. A partial success is a worse failure than an
 outage, because nothing reports it.
@@ -154,7 +154,7 @@ they are what turns a rejection into a logged line rather than a thrown error.
 **Awaiting them must not let them fail the delivery.** All three swallow their
 own errors today, and that property has to survive. If a flaky scanner could
 throw out of `processDelivery`, the worker would release its claim, SQS would
-redeliver, and the whole delivery would be reprocessed — re-applying templates
+redeliver, and the whole delivery would be reprocessed, re-applying templates
 and writing a second set of `template.apply` rows, up to five times.
 `Promise.allSettled` never rejects, which is why it is the right primitive here
 rather than `Promise.all`.
@@ -173,7 +173,7 @@ failure the one that happens.
 
 This is the direct cost of awaiting the work at all: what was unbounded
 background time on a long-lived server is now inside a bounded invocation.
-Awaiting it was still right — silently dropping it was worse — but bounded work
+Awaiting it was still right, silently dropping it was worse, but bounded work
 needs a bound.
 
 The `setTimeout` wrapper is dropped rather than awaited. Its one-second delay
@@ -181,7 +181,7 @@ existed to let the HTTP response go out first, and in the worker there is no
 response to get out of the way of.
 
 This is the same class of problem as the `res.status(202)` split that motivated
-the queue, just less visible — the response boundary was never the only place
+the queue, just less visible, the response boundary was never the only place
 work escaped the request.
 
 ## The three things most likely to go wrong
@@ -198,7 +198,7 @@ const raw = Buffer.from(event.body ?? "", event.isBase64Encoded ? "base64" : "ut
 
 The HMAC is computed over `raw`, and nothing calls `JSON.parse` until the
 signature has passed. After that the parsed object is what goes onto the queue,
-so the raw bytes never need to survive a second hop — the worker never verifies
+so the raw bytes never need to survive a second hop, the worker never verifies
 anything and never sees them.
 
 Rejecting the direct API Gateway → SQS integration was mostly about this. That
@@ -259,14 +259,14 @@ delivery the first had not released.
 
 Below 660, because the two clocks do not start together. The lease starts at
 `claimDelivery`; the visibility timeout starts at `ReceiveMessage`, one
-pre-claim latency δ earlier — cold start, `bootstrapOnce`,
+pre-claim latency δ earlier, cold start, `bootstrapOnce`,
 `getSystemTokenAsync`. So the redelivery lands at `receive + 660` while the
 lease expires at `receive + δ + LEASE_SEC`, and re-claiming requires
 `expiresAt < now`, which is `δ + LEASE_SEC < 660`. Matching the lease to the
 visibility timeout makes that false for *every* δ, including δ = 0, because the
 comparison is strict. A worker hard-killed by its timeout, by OOM, or by a
 `releaseDelivery` that itself threw would then leave a claim the redelivery
-cannot re-take: the worker logs "already handled — skipping", returns success,
+cannot re-take: the worker logs "already handled, skipping", returns success,
 SQS deletes the message, and the event is lost with no DLQ entry and no alarm.
 Silent loss is the one failure mode this design is meant to exclude, so the
 lease must be under the visibility timeout, not equal to it. 630 leaves thirty
@@ -278,7 +278,7 @@ obvious value is 300 seconds, matching the replay window the in-memory `Map`
 used. That is wrong under SQS: a worker can process a delivery successfully and
 have the subsequent message deletion not register, which is ordinary
 at-least-once behavior. The redelivery then arrives one visibility timeout
-later — 660 seconds — and a 300-second marker has already expired, so the
+later, 660 seconds, and a 300-second marker has already expired, so the
 delivery is claimed again and processed a second time. Templates applied twice.
 
 The marker therefore has to outlive the visibility timeout, not the replay
@@ -288,9 +288,9 @@ behavior and the right way round: an ignored redelivery is a person waiting and
 retrying, while a duplicated one rewrites a repository.
 
 The condition treats a logically expired row as absent. This is the same
-reasoning as the one-time auth codes in `routes/auth.ts` — DynamoDB's TTL sweep
+reasoning as the one-time auth codes in `routes/auth.ts`, DynamoDB's TTL sweep
 is lazy, so expiry is checked in the condition rather than trusted to the
-sweeper — expressed for a conditional put instead of a delete.
+sweeper, expressed for a conditional put instead of a delete.
 
 The lease is what makes a killed worker recoverable. Without it, a Lambda that
 times out mid-delivery leaves a claim nothing will ever release, and that event
@@ -302,14 +302,14 @@ The `done` marker is fifteen minutes, not the five of today's
 before the queue's redelivery lands, so a delivery that succeeded but whose
 message deletion did not register would be processed a second time. The
 consequence is that a manual redelivery from GitHub's UI is ignored for fifteen
-minutes rather than five — the reasoning is set out with the constants above.
+minutes rather than five, the reasoning is set out with the constants above.
 
 ### 3. The GitHub App token
 
 `getSystemToken()` is synchronous and returns a module-singleton cache kept warm
 by a `setTimeout`. Lambda freezes the container between invocations, so that
 timer does not fire on schedule. A warm container would keep serving the cached
-token until it expired, then silently fall back to `SYSTEM_GITHUB_TOKEN` —
+token until it expired, then silently fall back to `SYSTEM_GITHUB_TOKEN`,
 auto-apply would stop with "No GitHub token available", intermittently, only on
 warm containers.
 
@@ -331,7 +331,7 @@ handles concurrent requests, and the handler is `async` with roughly twenty
 there is one box" was never true.
 
 The race worth checking is `repository.created` running `addRepoEdges` while the
-template's own branch creations fire `addBranchEdge`. It is benign —
+template's own branch creations fire `addBranchEdge`. It is benign,
 `addRepoEdges` ends in `putEdgesBatch` with no delete-first, so it is an upsert
 and both orderings converge on the same edge set.
 
@@ -363,14 +363,14 @@ response.
 | `maxReceiveCount` | 5 |
 | Batch size | 1 |
 | Event source `maxConcurrency` | 5 |
-| Worker reserved concurrency | none — see below |
+| Worker reserved concurrency | none, see below |
 
-The receiver's eight seconds is a ceiling, not a target — warm invocations are
+The receiver's eight seconds is a ceiling, not a target, warm invocations are
 tens of milliseconds, and a cold start plus the secret fetch is one to two
 seconds. It sits below GitHub's ten-second timeout deliberately: past that point
 nobody is listening for the response, so there is no value in still working.
 
-The worker gets ten minutes — Lambda's maximum, and what `guardrailFn` already
+The worker gets ten minutes, Lambda's maximum, and what `guardrailFn` already
 uses. Five would have been enough for the five-second provisioning wait and four
 `applyTemplate` attempts with 4s/8s/12s backoff, but awaiting the scanner runs
 moves work that was previously unbounded background time on a long-lived server
@@ -381,14 +381,14 @@ seconds.
 ### Concurrency is limited at the poller, not at the function
 
 `createOctokit` sets `onRateLimit: () => false`. A throttled call does not
-retry, it fails. A burst — bulk repository creation, a redelivery storm — would
+retry, it fails. A burst, bulk repository creation, a redelivery storm, would
 otherwise spawn parallel workers that collectively exhaust the installation's
 rate limit and fail rather than slow down.
 
 The control for that is **maximum concurrency on the event source mapping**, not
 reserved concurrency on the function. They are not interchangeable. Reserved
 concurrency caps invocations, but the event source mapping would still scale its
-polling toward the account default and have the surplus invocations throttled —
+polling toward the account default and have the surplus invocations throttled,
 and a throttled invocation still increments the message's receive count. Left
 that way, reserved concurrency would *cause* the DLQ problem it was meant to
 prevent, sending messages to the dead-letter queue that no worker ever saw.
@@ -401,7 +401,7 @@ maximum concurrency, so the first version of this design set both to 5. **That
 version cannot be deployed**, and the first real deploy is what found it: a
 reservation is carved out of the account's pool, and Lambda refuses to leave
 fewer than ten unreserved executions behind. An account on the default quota of
-ten can therefore reserve nothing at all — the stack fails with *"decreases
+ten can therefore reserve nothing at all, the stack fails with *"decreases
 account's UnreservedConcurrentExecution below its minimum value of [10]"* and
 rolls back.
 
@@ -410,7 +410,7 @@ doing the same job: `maxConcurrency` limits the poller, which is what keeps a
 burst out of the dead-letter queue, while a reservation would only have
 guaranteed this function a share of a pool it is already the main consumer of.
 
-Worth raising the account's concurrency quota regardless — ten is the un-raised
+Worth raising the account's concurrency quota regardless, ten is the un-raised
 default, and it is shared with the guardrail function and the receiver.
 
 `maxReceiveCount` is 5 rather than 3 for the same reason, and AWS's own
@@ -425,7 +425,7 @@ latency against GitHub's ten-second budget, cost a call per invocation, and make
 every webhook depend on an API a service control policy may restrict.
 
 A cache that long would ordinarily mean up to fifteen minutes of rejected
-deliveries after the webhook secret is rotated — and rejected deliveries are
+deliveries after the webhook secret is rotated, and rejected deliveries are
 lost, not queued. So a verification failure invalidates the cache and retries
 once, with a sixty-second floor between refetches. That bounds a rotation to
 roughly one lost delivery instead of fifteen minutes of them, and the floor plus
@@ -455,7 +455,7 @@ the new deliveries table needs no policy change.
 
 Today a failed auto-apply writes a failed activity row through
 `updateActivityOutcome(..., failed: true)`, which surfaces in the app. That is
-preserved exactly — it is inside `processDelivery` and moves with it.
+preserved exactly. It is inside `processDelivery` and moves with it.
 
 What is new is the DLQ, and a queue nobody watches is a queue that quietly fills
 up. `grep -n "Alarm" infra/*.ts` currently returns nothing, so the existing
@@ -506,7 +506,7 @@ New suite `repro-webhookdelivery.ts`:
 The last three guard the fire-and-forget problem above, and the last two matter
 more than they look. A future edit swapping `Promise.allSettled` for
 `Promise.all` would arm a redelivery loop that re-applies templates up to five
-times, and nothing else in the suite would notice — the change reads like a
+times, and nothing else in the suite would notice, the change reads like a
 simplification. Removing the ceiling fails the same way through a timeout
 instead of a rejection.
 
@@ -542,8 +542,8 @@ The end state is one stack with no EC2 in any account.
 
 ### Repoint the webhook, do not add a second one
 
-The obvious instinct for a safe cutover — leave the existing webhook pointing at
-the instance and add a second one pointing at API Gateway — is wrong here, and
+The obvious instinct for a safe cutover, leave the existing webhook pointing at
+the instance and add a second one pointing at API Gateway, is wrong here, and
 would do real damage.
 
 GitHub treats them as two independent webhooks and gives each delivery its own
@@ -564,7 +564,7 @@ means an activity row was written in the last 24 hours by whatever is now
 handling webhooks.
 
 The `ping` GitHub sends on saving the URL confirms only reachability and the
-signature — it writes no activity row. Creating a test repository is what
+signature. It writes no activity row. Creating a test repository is what
 exercises the whole path.
 
 ## Out of scope

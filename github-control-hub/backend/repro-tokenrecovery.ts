@@ -3,19 +3,19 @@
  *
  * The installation token lives an hour and is refreshed by a timer set shortly
  * before it expires. Two things then went wrong together, and the symptom was
- * an app that had been open a while — typically across a laptop sleeping —
+ * an app that had been open a while, typically across a laptop sleeping,
  * where the AWS tab showed nothing, the Vulnerabilities tab said "authorization
  * failed, check your permissions", and restarting fixed all of it.
  *
  *   1. **The timer was re-armed only on success.** `scheduleRefresh()` ran from
- *      the end of `_refresh()`, so a refresh that threw — a machine waking with
- *      the network not yet up is precisely one of those — logged a line and
+ *      the end of `_refresh()`, so a refresh that threw, a machine waking with
+ *      the network not yet up is precisely one of those, logged a line and
  *      left no timer behind. Nothing would ever try again.
  *
  *   2. **The synchronous getter never asked for a new one.** It hands back the
  *      cached token because it cannot await, which is right, but past real
- *      expiry that token only produces 401s. Roughly twenty call sites use it —
- *      the Vulnerabilities tab, the repository list, the security checks — so
+ *      expiry that token only produces 401s. Roughly twenty call sites use it,
+ *      the Vulnerabilities tab, the repository list, the security checks, so
  *      the whole GitHub half failed in a way that reads as a permissions
  *      problem rather than an expired credential.
  *
@@ -42,7 +42,7 @@ function check(name: string, ok: boolean, got?: unknown) {
 const dir = __dirname;
 const stub = path.join(dir, "stub-recovering.cjs");
 
-// First call hands back a token that is already dead — the state the app wakes
+// First call hands back a token that is already dead, the state the app wakes
 // up in. Every call after it succeeds, which is what a network coming back
 // looks like. `calls` is exported so the test can prove the refresh happened
 // once rather than once per caller.
@@ -115,7 +115,7 @@ Module._resolveFilename = function (req: string, ...rest: any[]) {
   // Every AWS account switch reloads the secrets, and that either re-initialises
   // the token manager for the account moved into or drops it when that account
   // holds no GitHub App. Both replaced the module-level reference and neither
-  // touched the outgoing manager's refresh timer — and an armed timer holds a
+  // touched the outgoing manager's refresh timer, and an armed timer holds a
   // reference to the object that armed it, so nothing was collected.
   //
   // The result: one orphan per switch, each still minting installation tokens

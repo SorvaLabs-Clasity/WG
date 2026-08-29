@@ -67,7 +67,7 @@ const HOUR = 3_600_000;
     // ruleTemplates and exclusions were deleted and FORMAT moved off 1. The
     // backward-compatibility guarantee this pins: an *older* bundle must
     // still import cleanly, its now-unknown sections simply ignored rather
-    // than erroring. (FORMAT only rejects the other direction — a bundle
+    // than erroring. (FORMAT only rejects the other direction, a bundle
     // newer than this app reads.)
     const oldBundle = {
       format: 1,
@@ -121,7 +121,7 @@ const HOUR = 3_600_000;
 
     const bundle = {
       format: FORMAT,
-      // Listed out of SECTION_ORDER on purpose — sections are written in the
+      // Listed out of SECTION_ORDER on purpose, sections are written in the
       // order the app decides, not the order the file happens to list them.
       widgets: [{ id: "w1" }],
       scanners: [{ id: "s1" }, { id: "s2" }],

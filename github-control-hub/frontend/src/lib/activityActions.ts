@@ -7,7 +7,7 @@ import { importantLabel } from "./importantEvents";
  * Lived inside ActivityPage, which meant anything else wanting to name an
  * action invented its own answer. The Statistics view did exactly that,
  * stripping the prefix and title-casing the rest, and produced a list reading
- * "Create 49, Updated 40, Protect 34, Update 34, Apply 21, Apply repo 21" —
+ * "Create 49, Updated 40, Protect 34, Update 34, Apply 21, Apply repo 21",
  * words that are not the names of anything, with two different actions
  * collapsing onto the same one.
  *

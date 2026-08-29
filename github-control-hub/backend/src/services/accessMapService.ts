@@ -3,7 +3,7 @@ import { scanGraphEdges } from "./graphService";
 /**
  * Who can reach what, and by which route.
  *
- * The question an access review actually asks is not "who has admin" — it is
+ * The question an access review actually asks is not "who has admin". It is
  * "if this person left tomorrow, what would they still be able to touch, and
  * where does each of those come from". Answering it needs the paths, not just
  * the outcome: revoking a direct grant does nothing if the person is also in a
@@ -15,14 +15,14 @@ import { scanGraphEdges } from "./graphService";
  *
  * One deliberate limit, stated everywhere it matters: a *member's* plain read
  * is not in the graph when the organization already grants read or better to
- * everyone. That would be one edge per member per repository — hundreds of
- * thousands of rows saying what the organization default says once — so the
+ * everyone. That would be one edge per member per repository, hundreds of
+ * thousands of rows saying what the organization default says once, so the
  * default is reported separately and the omission is visible rather than
  * silent.
  *
  * Everything else is here: admin, maintain, write and triage, any custom
  * repository role by whatever name the organization gave it, and read held by
- * an outside collaborator — the person who is not in the organization and can
+ * an outside collaborator, the person who is not in the organization and can
  * nevertheless see the code, which is the row an access review exists to find.
  * Where the default is `none`, a member's read is an explicit grant and is
  * recorded like any other.
@@ -42,7 +42,7 @@ export interface AccessPath {
 
 export interface RepoAccess {
   repo: string;
-  /** What GitHub says they can actually do — the strongest of all their paths. */
+  /** What GitHub says they can actually do, the strongest of all their paths. */
   role: string;
   paths: AccessPath[];
   archived?: boolean;
@@ -194,8 +194,8 @@ export function invalidateAccessMap(): void {
  * Every repository one person can reach, with the route to each.
  *
  * Paths are derived rather than stored. GitHub's collaborator list reports one
- * effective permission per person per repository — the strongest thing they
- * can do — and says nothing about how many separate grants produce it. Team
+ * effective permission per person per repository, the strongest thing they
+ * can do, and says nothing about how many separate grants produce it. Team
  * membership and org ownership we know independently, so those paths are
  * reconstructed; anything the effective role has beyond what they explain can
  * only have come from a grant made to that person, which is what "direct"
@@ -336,7 +336,7 @@ export interface TeamSummary {
  * count here and the team shown on a person's access path cannot disagree.
  *
  * Teams with no members and no repositories are included rather than filtered.
- * An empty team is not noise — it is a team somebody made and never used, or
+ * An empty team is not noise. It is a team somebody made and never used, or
  * one whose members left, and both are worth seeing on a page about who can
  * reach what.
  */
@@ -362,8 +362,8 @@ export async function teamSummary(): Promise<TeamSummary[]> {
  * One team: who is in it, and what it opens.
  *
  * The repository list is what the team grants directly. A member may reach a
- * repository by another route entirely — their own collaborator edge, or
- * organization ownership — and that is not this team's doing, so it is not
+ * repository by another route entirely, their own collaborator edge, or
+ * organization ownership, and that is not this team's doing, so it is not
  * counted here.
  */
 export async function accessForTeam(slug: string): Promise<{
@@ -401,7 +401,7 @@ export async function accessSummary(): Promise<AccessMapSummary> {
   const g = await load();
 
   // Everyone the graph knows about, including people who appear only as a
-  // collaborator or a team member — the member list can be incomplete, and a
+  // collaborator or a team member, the member list can be incomplete, and a
   // person missing from an access review is the failure this exists to avoid.
   const logins = new Set<string>([
     ...g.people.keys(),

@@ -13,7 +13,7 @@
  *     at .../backend/dist/services/auditStreamService.js
  *
  * Two of the three found this way were lazy `await import(...)` inside a branch
- * that rarely runs — so the app started, the page rendered, and the failure came
+ * that rarely runs, so the app started, the page rendered, and the failure came
  * only when somebody used that one feature. The audit-log one had never worked
  * in a packaged build at all: its status check threw, the panel read that as
  * "not connected", and it offered to set up a stream that had been running for
@@ -113,7 +113,7 @@ function packageOf(spec: string): string {
   // ── declared in both lists is the same as not declared ──────────────
   //
   // `npm install --omit=dev` drops a package that appears in *both*
-  // `dependencies` and `devDependencies` — the dev entry decides, and the
+  // `dependencies` and `devDependencies`, the dev entry decides, and the
   // dependency entry does not save it. So a package can be correctly listed as
   // a runtime dependency and still be absent from the packaged app.
   //

@@ -17,7 +17,7 @@ import { docClient, tableName, PutCommand, DeleteCommand } from "../utils/dynamo
  * lease equal to the function timeout would expire at the moment a maximally
  * slow worker was still running.
  *
- * Below 660 — and this is the half that is easy to get wrong — because the two
+ * Below 660, and this is the half that is easy to get wrong, because the two
  * clocks do not start together. The lease starts at claimDelivery; the
  * visibility timeout starts at ReceiveMessage, one pre-claim latency δ earlier
  * (cold start, bootstrapOnce, getSystemTokenAsync). So a redelivery lands at
@@ -36,7 +36,7 @@ const LEASE_SEC = 630;
  * How long a completed delivery is remembered.
  *
  * Longer than the lease, which is the counter-intuitive part. The obvious value
- * is 300 — the replay window the in-memory Map used — and it is wrong here: a
+ * is 300, the replay window the in-memory Map used, and it is wrong here: a
  * worker can succeed and have the message deletion not register, which is
  * ordinary at-least-once behavior, and the redelivery arrives one visibility
  * timeout later at 660 seconds. A 300-second marker has expired by then, so the

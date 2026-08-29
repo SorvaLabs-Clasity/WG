@@ -34,7 +34,7 @@ function bootstrapOnce(): Promise<void> {
       await loadSecretsIntoEnv();
 
       // Reset before throwing, not after: memoising the rejected promise is the
-      // same trap in a different shape — the next invocation would await the
+      // same trap in a different shape, the next invocation would await the
       // cached rejection instead of retrying the load.
       if (!process.env.GITHUB_ORG) {
         bootstrapped = null;
@@ -73,15 +73,15 @@ export async function handler(event: SQSEvent): Promise<void> {
   // outside processDelivery's try/catch, failing the whole batch to the DLQ for
   // as long as the container stays warm.
   //
-  // So the throw is still caught — but there is nothing to fall back *to*. This
+  // So the throw is still caught, but there is nothing to fall back *to*. This
   // used to reach for a SYSTEM_GITHUB_TOKEN personal access token, a second and
   // broader credential kept permanently against this case; it is gone, because
   // an App failure that keeps working on someone's PAT is an App failure nobody
   // notices.
   //
   // An empty token is already understood downstream as "skip GitHub work", so
-  // the delivery still records its activity and alerts — which are DynamoDB
-  // writes and need no GitHub — and only the parts that call GitHub are missed.
+  // the delivery still records its activity and alerts, which are DynamoDB
+  // writes and need no GitHub, and only the parts that call GitHub are missed.
   // Logged loudly, because that is the signal something needs fixing.
   let token = "";
   try {
@@ -114,7 +114,7 @@ export async function handler(event: SQSEvent): Promise<void> {
 
     // Deliberately not in the try above, and deliberately swallowed.
     //
-    // By here the work is done — activity rows written, alerts generated. A
+    // By here the work is done, activity rows written, alerts generated. A
     // release-and-rethrow would hand the message back to SQS and guarantee it
     // is processed a second time, duplicating exactly that work. Leaving the
     // claim in place instead means the redelivery (if any) is refused by the

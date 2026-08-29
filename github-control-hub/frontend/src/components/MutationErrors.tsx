@@ -7,7 +7,7 @@ import { INTENT } from "../design";
  * Shows the reason a write was refused.
  *
  * Every mutation in the app relied on its call site to report failures, and
- * most call sites did not — some awaited without a catch, which turns a
+ * most call sites did not, some awaited without a catch, which turns a
  * rejection into an unhandled promise and nothing on screen. A refusal then
  * looked exactly like a button that did nothing.
  *

@@ -2,8 +2,8 @@
  * Confining the GitHub half of the app to one AWS account.
  *
  * An organization can reasonably want the AWS guardrails watching production
- * while everything to do with GitHub — the App's private key, the OAuth
- * secrets, the access graph, the activity log — exists only in a development
+ * while everything to do with GitHub, the App's private key, the OAuth
+ * secrets, the access graph, the activity log, exists only in a development
  * account. The desktop app reads its secrets from whichever account the
  * operator signed into, so nothing stopped somebody signing into production and
  * opening the Repos tab, which is a request for GitHub credentials in
@@ -69,7 +69,7 @@ function verdict(configured: string, actual: string | null) {
 
     // Activity is the one deliberate exception: it carries both halves, and
     // locking it would remove the record of what the guardrails did in the very
-    // accounts that run them. It filters itself instead — asserted below.
+    // accounts that run them. It filters itself instead, asserted below.
     const EXEMPT = new Set(["/api/aws", "/api", "/api/activity"]);
     const github = mounts.filter(m => !EXEMPT.has(m.path));
     const ungated = github.filter(m => !m.mw.includes("githubGateMiddleware"));
@@ -133,7 +133,7 @@ function verdict(configured: string, actual: string | null) {
   //
   // The condition that needs no configuration, and the one most organizations
   // mean. Keeping GitHub out of an account is done by keeping GitHub's
-  // credentials out of it — there is nothing to switch on, and so nothing to
+  // credentials out of it. There is nothing to switch on, and so nothing to
   // forget to switch on.
   {
     const src = fs.readFileSync(`${__dirname}/src/middleware/githubGate.ts`, "utf8");
@@ -166,7 +166,7 @@ function verdict(configured: string, actual: string | null) {
     // Tables are created by the same script the full install uses, never
     // written out again here.
     //
-    // The schemas are not uniform — auth-codes is keyed on `code`, findings and
+    // The schemas are not uniform, auth-codes is keyed on `code`, findings and
     // activity on pk/sk, and activity carries two secondary indexes. A
     // hand-written subset got three of them wrong, and nothing noticed until
     // sign-in failed with "Missing the key id in the item", which names neither
@@ -180,7 +180,7 @@ function verdict(configured: string, actual: string | null) {
     // And the one credential that must not be here.
     check("the script never asks for the GitHub App private key",
       !/GH_PEM_PATH|GITHUB_APP_PRIVATE_KEY:/.test(script),
-      "that key reads the whole organization — keeping it out is the point");
+      "that key reads the whole organization, keeping it out is the point");
     check("  but it does warn when one is already stored",
       /already holds a GitHub App private key/.test(script));
     check("  and it does ask for what sign-in needs",
@@ -192,7 +192,7 @@ function verdict(configured: string, actual: string | null) {
   //
   // Sign-in is GitHub OAuth and the AWS tab is gated on GitHub team membership,
   // so an account with no App token would authenticate people and then refuse
-  // all of them — an install that looks configured and can change nothing.
+  // all of them, an install that looks configured and can change nothing.
   {
     const src = fs.readFileSync(`${__dirname}/src/services/authorizationService.ts`, "utf8");
     check("team membership falls back to the caller's own token",
@@ -209,7 +209,7 @@ function verdict(configured: string, actual: string | null) {
   //
   // The desktop reads its secrets from whichever AWS account the operator is
   // signed into, and the loader began `if (process.env.GITHUB_CLIENT_ID) return`
-  // — so the first account to load kept the environment for the life of the
+  // so the first account to load kept the environment for the life of the
   // process. Switching to another left the previous account's OAuth app, its
   // organization and its App private key in place, which meant an account
   // holding no GitHub credentials behaved exactly as though it held someone
@@ -224,7 +224,7 @@ function verdict(configured: string, actual: string | null) {
 
     check("  a key the new account does not set is cleared, not left behind",
       /else delete process\.env\[key\];/.test(src),
-      "a stale value is worse than a missing one — missing says so, stale points elsewhere");
+      "a stale value is worse than a missing one, missing says so, stale points elsewhere");
 
     check("  and the App token manager is dropped when the new account has no App",
       /disposeTokenManager\(\)/.test(src)
@@ -234,7 +234,7 @@ function verdict(configured: string, actual: string | null) {
 
     // Dropping the reference is not dropping the manager. Its refresh timer
     // holds a reference back, so a manager whose reference was merely nulled
-    // stayed alive and went on refreshing — invisibly, because nothing could
+    // stayed alive and went on refreshing, invisibly, because nothing could
     // reach it any more. `dispose` is the part that stops it.
     const client = fs.readFileSync(`${__dirname}/src/github/client.ts`, "utf8");
     check("    and dropping it stops its refresh timer, not just the reference",
@@ -252,7 +252,7 @@ function verdict(configured: string, actual: string | null) {
   // ── sign-in fails loudly, not silently ──────────────────────────────
   //
   // The button is a plain link. An async route that throws never answers, so
-  // the browser sat on a request that would never complete — no error, no
+  // the browser sat on a request that would never complete, no error, no
   // spinner, no navigation. Nothing at all is the hardest symptom to diagnose.
   {
     const src = fs.readFileSync(`${__dirname}/src/routes/auth.ts`, "utf8");

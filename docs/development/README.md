@@ -34,7 +34,7 @@ Builds the backend and frontend, then opens Electron against the local backend.
 
 **Design system first.** `frontend/src/design/` holds `Page`, `StatusSlab`,
 `Block`, `InsetRow`, `Note`, `Pill`, `Empty`, `Spinner`. Reach for these before
-writing new Tailwind — and never hardcode a dark background, which breaks light
+writing new Tailwind, and never hardcode a dark background, which breaks light
 mode.
 
 **Comments say why, not what.** The code says what it does. Comments exist to

@@ -15,7 +15,7 @@ export interface WidgetConfig {
    * Whose personal dashboard this belongs to, if anybody's.
    *
    * Absent means the shared organization dashboard, which is what every widget
-   * created before this existed is — so the default is the old behaviour and no
+   * created before this existed is, so the default is the old behaviour and no
    * migration is needed. Set means it appears on that one person's My work and
    * nowhere else, and only they can change it.
    *

@@ -62,7 +62,7 @@ const EDGES = [
   repoMeta("legacy", { visibility: "private", archived: true }),
   repoMeta("secret-thing", { visibility: "private", archived: false }),
 
-  // Dan's effective role on api is admin — the payments team explains it.
+  // Dan's effective role on api is admin, the payments team explains it.
   collab("dev-dan", "api", "admin", "team"),
   collab("dev-dan", "infra", "admin", "team"),
   // On legacy he has admin with no team owning it: that is a personal grant.

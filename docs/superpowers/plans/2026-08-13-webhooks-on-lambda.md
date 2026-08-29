@@ -1,4 +1,4 @@
-# Webhooks on API Gateway and Lambda — Implementation Plan
+# Webhooks on API Gateway and Lambda: Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -6,7 +6,7 @@
 
 **Architecture:** A REST API (chosen over HTTP API because only REST supports resource policies, which is how the GitHub IP allow-list survives) invokes a receiver Lambda that verifies the HMAC and enqueues to SQS. A worker Lambda drains the queue and runs the processing logic that today lives in the Express route. The split exists so the internet-facing function holds nothing but one secret and one queue.
 
-**Tech Stack:** TypeScript, AWS CDK v2 (`aws-cdk-lib` ^2.170.0), Lambda `NODEJS_24_X`, SQS, DynamoDB, API Gateway REST v1. Tests are standalone `repro-*.ts` scripts run with `tsx` — no framework.
+**Tech Stack:** TypeScript, AWS CDK v2 (`aws-cdk-lib` ^2.170.0), Lambda `NODEJS_24_X`, SQS, DynamoDB, API Gateway REST v1. Tests are standalone `repro-*.ts` scripts run with `tsx`, no framework.
 
 **Spec:** `docs/superpowers/specs/2026-08-13-webhook-lambda-migration-design.md`
 
@@ -14,7 +14,7 @@
 
 ## Global Constraints
 
-- Webhook HMAC verification fails closed. No secret means accept nothing. `if (!secret) return false` must survive verbatim — `repro-appsec.ts` asserts on that exact string.
+- Webhook HMAC verification fails closed. No secret means accept nothing. `if (!secret) return false` must survive verbatim, `repro-appsec.ts` asserts on that exact string.
 - Signature comparison uses `crypto.timingSafeEqual`, never `===`.
 - The HMAC is computed over raw bytes. Nothing may `JSON.parse` and re-serialise before verification.
 - Secrets are never Lambda environment variables. Table names are.
@@ -22,7 +22,7 @@
 - Same DynamoDB tables, same Secrets Manager secret, same activity rows.
 - `repro-appsec.ts` and `repro-leastprivilege.ts` may be repointed and strengthened, never weakened.
 - Path is `/webhooks/github` (no `/api` prefix).
-- Worker timeout 600s, queue visibility 660s, lease 660s, done-marker TTL 900s, `maxReceiveCount` 5, event source `maxConcurrency` 5, worker reserved concurrency 5, batch size 1. The done-marker is longer than the lease on purpose — see Task 3.
+- Worker timeout 600s, queue visibility 660s, lease 660s, done-marker TTL 900s, `maxReceiveCount` 5, event source `maxConcurrency` 5, worker reserved concurrency 5, batch size 1. The done-marker is longer than the lease on purpose, see Task 3.
 - Verification bar before any milestone is claimed done: every `repro-*.ts` exits 0, plus `npx tsc --noEmit` in `backend`, `frontend`, `desktop`, `infra`.
 - Commit messages are declarative sentences explaining *why*. End with `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`.
 - Do not push to `main`. Do not deploy. Deploys and GitHub webhook changes are run by the user, who pastes back output.
@@ -77,7 +77,7 @@ Create `github-control-hub/backend/repro-webhookdelivery.ts`:
  *
  * The HMAC is computed over the exact bytes GitHub sent. API Gateway may hand
  * Lambda a base64-encoded body, and anything that parses and re-serialises the
- * payload before verification breaks every signature — while looking exactly
+ * payload before verification breaks every signature, while looking exactly
  * like a misconfigured secret, which is the wrong thing to go and check.
  */
 import crypto from "crypto";
@@ -156,7 +156,7 @@ process.exit(failures === 0 ? 0 : 1);
 })();
 ```
 
-The `code` helper is unused in this task — Task 4 is its first consumer. Leave
+The `code` helper is unused in this task, Task 4 is its first consumer. Leave
 it in place rather than deleting and re-adding it.
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -165,7 +165,7 @@ it in place rather than deleting and re-adding it.
 cd github-control-hub/backend && npx tsx repro-webhookdelivery.ts
 ```
 
-Expected: FAIL — `Cannot find module './src/webhooks/verify'`.
+Expected: FAIL, `Cannot find module './src/webhooks/verify'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -178,7 +178,7 @@ import crypto from "crypto";
  * The bytes GitHub signed, whatever encoding API Gateway wrapped them in.
  *
  * The signature covers the request body exactly as sent. API Gateway may
- * base64-encode it, so the flag decides the decoding — and nothing may parse
+ * base64-encode it, so the flag decides the decoding, and nothing may parse
  * and re-serialise the payload before this runs, because a re-serialised body
  * is a different sequence of bytes and every signature fails.
  */
@@ -297,7 +297,7 @@ Append to `github-control-hub/backend/repro-webhookdelivery.ts`, immediately **b
 ```
 
 The file is already wrapped in an async IIFE from Task 1, so `await import` is
-legal here. No restructuring is needed — append inside the IIFE, above the
+legal here. No restructuring is needed, append inside the IIFE, above the
 `console.log`.
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -306,7 +306,7 @@ legal here. No restructuring is needed — append inside the IIFE, above the
 cd github-control-hub/backend && npx tsx repro-webhookdelivery.ts
 ```
 
-Expected: FAIL — `Cannot find module './src/webhooks/secret'`.
+Expected: FAIL, `Cannot find module './src/webhooks/secret'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -429,7 +429,7 @@ Bound a webhook secret rotation to one lost delivery instead of fifteen minutes
 
 Caching the secret per container is what keeps the receiver off Secrets Manager
 on the hot path, but a cache that long would silently reject every delivery
-until it expired — and rejected deliveries are lost, not queued. Refetching
+until it expired, and rejected deliveries are lost, not queued. Refetching
 once after a verification failure, with a floor so bad signatures cannot
 amplify into API calls, gets both.
 
@@ -520,7 +520,7 @@ Append inside the async IIFE of `repro-webhookdelivery.ts`, before the final `co
 cd github-control-hub/backend && npx tsx repro-webhookdelivery.ts
 ```
 
-Expected: FAIL — `Cannot find module './src/webhooks/deliveryLock'`.
+Expected: FAIL, `Cannot find module './src/webhooks/deliveryLock'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
@@ -539,7 +539,7 @@ import { docClient, tableName, PutCommand, DeleteCommand } from "../utils/dynamo
 
 /**
  * How long a claim is held. Matches the queue's visibility timeout, so it
- * outlives the worker's own 600-second timeout — a lease equal to the function
+ * outlives the worker's own 600-second timeout, a lease equal to the function
  * timeout would expire at the moment a maximally slow invocation was still
  * running, letting a second worker claim a delivery the first had not released.
  */
@@ -549,7 +549,7 @@ const LEASE_SEC = 660;
  * How long a completed delivery is remembered.
  *
  * Longer than the lease, which is the counter-intuitive part. The obvious value
- * is 300 — the replay window the in-memory Map used — and it is wrong here: a
+ * is 300, the replay window the in-memory Map used, and it is wrong here: a
  * worker can succeed and have the message deletion not register, which is
  * ordinary at-least-once behavior, and the redelivery arrives one visibility
  * timeout later at 660 seconds. A 300-second marker has expired by then, so the
@@ -653,12 +653,12 @@ EOF
   `awaitBackground` is exported for the test in Step 1, not because anything
   else calls it.
 
-This is a move, not a rewrite. Copy `routes/webhooks.ts` lines 62–361 (the router callback body) and apply exactly the changes below. Do not restructure the event handling — every `createAlert`, `logActivity` and `applyTemplate` call keeps its current arguments and order.
+This is a move, not a rewrite. Copy `routes/webhooks.ts` lines 62–361 (the router callback body) and apply exactly the changes below. Do not restructure the event handling, every `createAlert`, `logActivity` and `applyTemplate` call keeps its current arguments and order.
 
 **The changes, in full:**
 
 1. Drop the imports of `Router`, `Request`, `Response`, `crypto`, and `getSystemToken`. Keep every service import. Add `getOrg` (still used).
-2. Delete lines 15–60 entirely — `sanitizeField` moves across unchanged, but `getWebhookSecret`, `verifySignature`, `DELIVERY_TTL_MS`, `processedDeliveries` and `isDuplicateDelivery` do not. **Keep `sanitizeField`.**
+2. Delete lines 15–60 entirely, `sanitizeField` moves across unchanged, but `getWebhookSecret`, `verifySignature`, `DELIVERY_TTL_MS`, `processedDeliveries` and `isDuplicateDelivery` do not. **Keep `sanitizeField`.**
 3. Replace the handler signature:
    ```ts
    // was: router.post("/github", async (req: Request, res: Response) => {
@@ -667,7 +667,7 @@ This is a move, not a rewrite. Copy `routes/webhooks.ts` lines 62–361 (the rou
 4. Delete the signature check (lines 63–66), the delivery-id check (lines 69–72), and the two lines reading `event` and `payload` off the request (74–75).
 5. Delete `res.status(202).send("Accepted");` (line 178).
 6. Replace every `getSystemToken()` with `token`. Occurrences: lines 182, 183, 277, 279, 337, 342.
-7. Line 298 becomes `token` directly — there is no `req.user` in Lambda:
+7. Line 298 becomes `token` directly. There is no `req.user` in Lambda:
    ```ts
    // was: const token = getSystemToken() || (req as any).user?.accessToken;
    //      (and the `if (token)` guard around addRepoEdges)
@@ -692,7 +692,7 @@ Append inside the async IIFE of `repro-webhookdelivery.ts`, before the final `co
   const fs = await import("fs");
   const nodePath = await import("path");
   // Comments stripped. The implementation explains in prose why getSystemToken
-  // is absent, and that prose contains "getSystemToken()" — asserting against
+  // is absent, and that prose contains "getSystemToken()", asserting against
   // raw source would fail on the comment justifying the very absence it
   // asserts. Same trap, same fix, as repro-appsec.ts.
   const src = code(fs.readFileSync(
@@ -718,7 +718,7 @@ Append inside the async IIFE of `repro-webhookdelivery.ts`, before the final `co
 
   // A flaky scanner must not throw out of processDelivery: the worker would
   // release its claim, SQS would redeliver, and templates would be applied
-  // again — up to five times.
+  // again, up to five times.
   let threw = false;
   try {
     await awaitBackground([Promise.reject(new Error("scanner exploded"))]);
@@ -740,7 +740,7 @@ Append inside the async IIFE of `repro-webhookdelivery.ts`, before the final `co
 cd github-control-hub/backend && npx tsx repro-webhookdelivery.ts
 ```
 
-Expected: FAIL — module not found.
+Expected: FAIL, module not found.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -768,7 +768,7 @@ export interface Delivery {
    * Resolved once per invocation by the worker rather than read from the
    * module singleton. Lambda freezes containers between invocations, so the
    * refresh timer behind the synchronous getSystemToken() does not fire on
-   * schedule — a warm container would serve a cached token until it expired
+   * schedule, a warm container would serve a cached token until it expired
    * and then fall back to SYSTEM_GITHUB_TOKEN, stopping auto-apply with
    * "No GitHub token available" on some containers and not others.
    */
@@ -789,7 +789,7 @@ const BACKGROUND_CEILING_MS = 4 * 60 * 1000;
  *
  * Both halves matter, and both protect the same thing. If a rejecting task
  * could throw out of processDelivery, the worker would release its claim, SQS
- * would redeliver, and the delivery would be reprocessed — re-applying
+ * would redeliver, and the delivery would be reprocessed, re-applying
  * templates and writing a second set of template.apply rows, up to five times.
  * Promise.allSettled is what prevents that, so it is not interchangeable with
  * Promise.all however much tidier that looks.
@@ -811,7 +811,7 @@ export async function awaitBackground(
   let timer: NodeJS.Timeout | undefined;
   const ceiling = new Promise<void>((resolve) => {
     timer = setTimeout(() => {
-      console.warn(`[Webhook] Background work exceeded ${ceilingMs}ms — abandoning it so the delivery can be marked done`);
+      console.warn(`[Webhook] Background work exceeded ${ceilingMs}ms, abandoning it so the delivery can be marked done`);
       resolve();
     }, ceilingMs);
   });
@@ -838,7 +838,7 @@ and the tail that replaces lines 270–361:
   // In Lambda the container freezes when this function resolves, so an
   // unawaited promise may never settle and a one-second timer may never fire.
   // These are collected rather than awaited in place so that one failing does
-  // not prevent the others from running — which is what the bare .catch()
+  // not prevent the others from running, which is what the bare .catch()
   // handlers gave us before.
   const background: Promise<unknown>[] = [];
 
@@ -951,7 +951,7 @@ Await the webhook work that used to outlive the HTTP response
 Three calls were deliberately unawaited because on Express the process outlives
 the request. A Lambda container freezes the moment the handler resolves, so
 compliance refresh, new-repo graph edges and scanner runs would have stopped
-while activity rows and template auto-apply kept working — a partial success
+while activity rows and template auto-apply kept working, a partial success
 that reports nothing.
 
 Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
@@ -1049,7 +1049,7 @@ Append inside the async IIFE, before the final `console.log`:
 cd github-control-hub/backend && npx tsx repro-webhookdelivery.ts
 ```
 
-Expected: FAIL — `Cannot find module './src/webhooks/receiver'`.
+Expected: FAIL, `Cannot find module './src/webhooks/receiver'`.
 
 - [ ] **Step 4: Write the implementation**
 
@@ -1141,7 +1141,7 @@ git add github-control-hub/backend/src/webhooks/receiver.ts github-control-hub/b
 git commit -m "$(cat <<'EOF'
 Give the internet-facing function one secret and one queue and nothing else
 
-Splitting reception from processing is not about Lambda's execution model — it
+Splitting reception from processing is not about Lambda's execution model. It
 is about what the reachable half is allowed to do. This half can read the
 webhook secret and write to a queue. The half holding eleven tables, the GitHub
 App token and the ability to rewrite repositories has no path from the internet.
@@ -1196,7 +1196,7 @@ Append inside the async IIFE, before the final `console.log`:
 cd github-control-hub/backend && npx tsx repro-webhookdelivery.ts
 ```
 
-Expected: FAIL — file does not exist.
+Expected: FAIL, file does not exist.
 
 - [ ] **Step 3: Write the implementation**
 
@@ -1252,7 +1252,7 @@ export async function handler(event: SQSEvent): Promise<void> {
     const { deliveryId, event: githubEvent, payload } = JSON.parse(record.body);
 
     if (!(await claimDelivery(deliveryId))) {
-      console.log(`[Webhook] Delivery ${deliveryId} is already handled — skipping`);
+      console.log(`[Webhook] Delivery ${deliveryId} is already handled, skipping`);
       continue;
     }
 
@@ -1469,7 +1469,7 @@ Insert after the guardrail section, before `// ── Outputs ──`:
 
     // Limited at the poller rather than at the function. Reserved concurrency
     // alone would let the event source keep scaling its polling and have the
-    // surplus invocations throttled — and a throttled invocation still
+    // surplus invocations throttled, and a throttled invocation still
     // increments the message's receive count, so the setting meant to protect
     // GitHub's rate limit would instead fill the dead-letter queue with
     // messages no worker ever saw.
@@ -1570,7 +1570,7 @@ Replace the existing `WebhookUrl` output (`cdk-stack.ts:409-412`) and add two mo
 ```ts
     new cdk.CfnOutput(this, "WebhookUrl", {
       value: `${webhookApi.url}webhooks/github`,
-      description: "GitHub webhook payload URL — set this in the org's webhook settings",
+      description: "GitHub webhook payload URL, set this in the org's webhook settings",
     });
 
     new cdk.CfnOutput(this, "WebhookQueueUrl", {
@@ -1590,9 +1590,9 @@ Replace the existing `WebhookUrl` output (`cdk-stack.ts:409-412`) and add two mo
 cd github-control-hub/infra && npx tsc --noEmit && npx cdk synth --quiet
 ```
 
-Expected: no type errors; synth succeeds. If `maxConcurrency` is rejected as an unknown property on `SqsEventSourceProps`, the pinned `aws-cdk-lib` is older than the feature — report this rather than removing the property, because dropping it reintroduces the DLQ problem it exists to prevent.
+Expected: no type errors; synth succeeds. If `maxConcurrency` is rejected as an unknown property on `SqsEventSourceProps`, the pinned `aws-cdk-lib` is older than the feature, report this rather than removing the property, because dropping it reintroduces the DLQ problem it exists to prevent.
 
-`cdk synth` may require AWS credentials for the `Vpc.fromLookup`; if it fails on that alone, note it and move on — the user runs the real deploy.
+`cdk synth` may require AWS credentials for the `Vpc.fromLookup`; if it fails on that alone, note it and move on, the user runs the real deploy.
 
 - [ ] **Step 6: Commit**
 
@@ -1603,7 +1603,7 @@ Put the webhook endpoint somewhere reachable from the internet
 
 REST rather than HTTP API because only REST supports resource policies, and the
 resource policy is how the GitHub IP allow-list survives the move off the
-security group — enforced now before the integration runs rather than at the
+security group, enforced now before the integration runs rather than at the
 instance.
 
 Concurrency is capped at the poller rather than the function, because a
@@ -1707,7 +1707,7 @@ cd ../desktop  && npx tsc --noEmit
 cd ../infra    && npx tsc --noEmit
 ```
 
-Expected: 21 suites PASS, four clean type-checks. `routes/webhooks.ts` still exists and is still mounted — nothing is broken yet.
+Expected: 21 suites PASS, four clean type-checks. `routes/webhooks.ts` still exists and is still mounted. Nothing is broken yet.
 
 - [ ] **Step 5: Commit**
 
@@ -1717,7 +1717,7 @@ git commit -m "$(cat <<'EOF'
 Assert the webhook receiver stays the smallest thing in the stack
 
 The privilege split is the reason reception is a separate function, and nothing
-would notice a grant creeping into it — no test goes red, and the property is
+would notice a grant creeping into it, no test goes red, and the property is
 only visible to someone reading the IAM a year later. Same reason these two
 suites exist at all.
 
@@ -1728,7 +1728,7 @@ EOF
 
 ---
 
-## MILESTONE A — the user deploys and verifies
+## MILESTONE A: the user deploys and verifies
 
 **Stop here. Do not proceed to Task 9 until the user confirms.**
 
@@ -1742,13 +1742,13 @@ Report to the user, and ask them to run these and paste the output:
 
 2. Take `WebhookUrl` from the stack outputs.
 
-3. In your organization → Settings → Webhooks, **edit the existing webhook's URL**. Do not add a second one — GitHub issues a separate delivery id per webhook, so the lock cannot dedupe across them and templates would be applied twice.
+3. In your organization → Settings → Webhooks, **edit the existing webhook's URL**. Do not add a second one, GitHub issues a separate delivery id per webhook, so the lock cannot dedupe across them and templates would be applied twice.
 
 4. Confirm the `ping` shows a green tick with a 202.
 
 5. Create a test repository. Confirm: the activity row appears, any auto-apply template was applied, and the Activity page reads **Receiving events**.
 
-If a delivery returns 401, the likely cause is the base64 branch, not the secret — check the receiver's CloudWatch logs before touching Secrets Manager.
+If a delivery returns 401, the likely cause is the base64 branch, not the secret, check the receiver's CloudWatch logs before touching Secrets Manager.
 
 ---
 
@@ -1772,7 +1772,7 @@ app.use("/api/webhooks", express.json({
 }), webhookRoutes);
 ```
 
-Leave `app.use(express.json({ limit: "1mb" }));` — it is now the only body parser.
+Leave `app.use(express.json({ limit: "1mb" }));`. It is now the only body parser.
 
 - [ ] **Step 2: Delete the files**
 
@@ -1826,11 +1826,11 @@ EOF
 
 Remove, in order: the `ec2.Vpc.fromLookup` (`DefaultVpc`), the `SecurityGroup` and its CIDR loop, the `InstanceRole` and all six of its `addToPolicy` calls, the `ec2.Instance`, its `addUserData` block, the `cdk.Tags.of(instance)` line, and the `CfnEIP`.
 
-Keep `GITHUB_WEBHOOK_CIDRS` — the resource policy uses it now.
+Keep `GITHUB_WEBHOOK_CIDRS`, the resource policy uses it now.
 
 - [ ] **Step 2: Re-home the two grants that were not about the instance**
 
-`guardrailFn.grantInvoke(role)` and the `ReadOwnEngineRole` policy granted the *instance role* the ability to invoke the guardrail Lambda and read its configuration. That role is gone, but the capability was for the desktop app, which uses the signed-in user's own AWS credentials — so both simply disappear. Delete them.
+`guardrailFn.grantInvoke(role)` and the `ReadOwnEngineRole` policy granted the *instance role* the ability to invoke the guardrail Lambda and read its configuration. That role is gone, but the capability was for the desktop app, which uses the signed-in user's own AWS credentials, so both simply disappear. Delete them.
 
 Verify by grepping for other uses of `role`:
 
@@ -1846,7 +1846,7 @@ Remove `InstanceId`, `PublicIp` and `ConnectCommand`. Keep every guardrail outpu
 
 - [ ] **Step 4: Remove the now-unused imports**
 
-`import * as ec2 from "aws-cdk-lib/aws-ec2";` — confirm nothing else uses it before deleting.
+`import * as ec2 from "aws-cdk-lib/aws-ec2";`, confirm nothing else uses it before deleting.
 
 - [ ] **Step 5: Verify**
 
@@ -1855,7 +1855,7 @@ cd github-control-hub/infra && npx tsc --noEmit && npx cdk synth --quiet
 cd ../backend && npx tsx repro-leastprivilege.ts
 ```
 
-Expected: clean type-check, successful synth, `ALL PASS`. `cdk synth` should now work without credentials, because `Vpc.fromLookup` is gone — that is a small bonus of the deletion.
+Expected: clean type-check, successful synth, `ALL PASS`. `cdk synth` should now work without credentials, because `Vpc.fromLookup` is gone, that is a small bonus of the deletion.
 
 If `repro-leastprivilege` fails, read the failure before changing it: it may be correctly reporting that an assertion referenced the instance role. Repoint it; do not delete the assertion.
 
@@ -1883,7 +1883,7 @@ EOF
 
 - [ ] **Step 1: Rewrite `docs/architecture/where-code-runs.md`**
 
-Replace the `## EC2 instance` section with `## Webhook receiver and worker`, describing the API Gateway → receiver → SQS → worker path. Keep the list of events it records verbatim. Update the intro: the backend is now started **two** ways, not three, plus three Lambda entry points. Correct the closing line of the desktop section — "Turn off the EC2 and the app still works" needs rewording.
+Replace the `## EC2 instance` section with `## Webhook receiver and worker`, describing the API Gateway → receiver → SQS → worker path. Keep the list of events it records verbatim. Update the intro: the backend is now started **two** ways, not three, plus three Lambda entry points. Correct the closing line of the desktop section, "Turn off the EC2 and the app still works" needs rewording.
 
 Keep the sentence about deliveries being lost when the receiver is down, but note the DLQ now holds anything that reached the queue and failed.
 
@@ -1895,7 +1895,7 @@ git rm docs/infrastructure/ec2.md
 
 - [ ] **Step 3: Rewrite `docs/infrastructure/lambda.md`**
 
-It currently describes one function. It now describes three. Add a table row per function, and replace the "Why it is separate from the EC2" section — the reasoning ("it needs no inbound connectivity") is now the reasoning for the whole design rather than a contrast. Note the runtime is `nodejs24.x`; the file currently says `nodejs22.x`, which was already stale.
+It currently describes one function. It now describes three. Add a table row per function, and replace the "Why it is separate from the EC2" section, the reasoning ("it needs no inbound connectivity") is now the reasoning for the whole design rather than a contrast. Note the runtime is `nodejs24.x`; the file currently says `nodejs22.x`, which was already stale.
 
 - [ ] **Step 4: Update `docs/infrastructure/README.md` and `docs/infrastructure/cost.md`**
 
@@ -1905,7 +1905,7 @@ Remove the EC2 and Elastic IP lines. Add API Gateway (REST, $3.50/M), the two La
 
 - The URL is now the API Gateway one, not `https://<ec2>/api/webhooks/github`.
 - Under Security, replace the security-group line with the resource policy, and say it is evaluated before the integration runs.
-- Replace "responds 202 before doing slow work" — the receiver responds 202 because the work happens in another function off a queue.
+- Replace "responds 202 before doing slow work", the receiver responds 202 because the work happens in another function off a queue.
 - Under "If the EC2 is down", rewrite for the new failure modes: a delivery rejected at the gateway is lost as before; a delivery that reached the queue and failed five times is in the DLQ and can be redriven.
 - Keep the health table unchanged; it still works.
 
@@ -1927,7 +1927,7 @@ The header says "Seventeen suites" and the table lists 17, but there were alread
 | `repro-webhookdelivery` | Signature verification over raw bytes, and the delivery lock |
 ```
 
-Add it to the "Two unusual ones" section or leave that alone — but the count must be right.
+Add it to the "Two unusual ones" section or leave that alone, but the count must be right.
 
 - [ ] **Step 9: Check `docs/architecture/request-path.md`**
 
@@ -1961,7 +1961,7 @@ EOF
 
 ---
 
-## MILESTONE B — the user deploys the deletion
+## MILESTONE B: the user deploys the deletion
 
 **Stop. Report to the user and ask them to run:**
 
@@ -1969,7 +1969,7 @@ EOF
    ```bash
    cd github-control-hub/infra && npx cdk deploy
    ```
-   This destroys the instance, security group and Elastic IP. Confirm webhooks still arrive afterwards — create another test repository.
+   This destroys the instance, security group and Elastic IP. Confirm webhooks still arrive afterwards, create another test repository.
 
 2. Each remaining account. Region matters: a service control policy may deny `secretsmanager:GetSecretValue` in some regions.
    ```bash

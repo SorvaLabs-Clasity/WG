@@ -23,8 +23,8 @@ either end without a scan.
 | `has_branch` | `REPO#x` → `BRANCH#main` | protected, default |
 | `has_collaborator` | `REPO#x` → `USER#y` | role, source |
 | `collaborates_on` | `USER#y` → `REPO#x` | role, source |
-| `member_of` | `USER#y` → `TEAM#t` | — |
-| `has_member` | `TEAM#t` → `USER#y` | — |
+| `member_of` | `USER#y` → `TEAM#t` |, |
+| `has_member` | `TEAM#t` → `USER#y` |, |
 | `owns_repo` | `TEAM#t` → `REPO#x` | permission |
 | `owned_by_team` | `REPO#x` → `TEAM#t` | permission |
 | `uses_workflow` | `REPO#x` → `WORKFLOW#n` | path, state |
@@ -36,11 +36,11 @@ either end without a scan.
 ## Two deliberate narrowings
 
 **Only admin, write and maintain are recorded as collaborators.** Read is what
-the org default grants everyone on everything — recording it would be one edge
+the org default grants everyone on everything, recording it would be one edge
 per member per repository, hundreds of thousands of rows saying the same thing,
 and no query asks about it.
 
-**Every collaborator edge carries `source`** — `org_owner`, `team` or `direct`.
+**Every collaborator edge carries `source`**: `org_owner`, `team` or `direct`.
 Without it, an organization owner is admin on every repository and floods
 every result. With it, a query can ask the useful question: who has admin that
 ownership and team membership do not already explain.

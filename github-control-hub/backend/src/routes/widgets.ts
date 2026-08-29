@@ -9,7 +9,7 @@ const router = Router();
  * There is one dashboard, not one per person.
  *
  * listWidgets scans the table with no user filter, so every widget is on
- * everyone's dashboard — `createdBy` is recorded but never used to scope
+ * everyone's dashboard, `createdBy` is recorded but never used to scope
  * anything. That makes a widget shared configuration rather than a personal
  * preference, and left ungated it meant any member could delete a panel the
  * whole team reads, or undo someone else's.
@@ -32,7 +32,7 @@ async function refusedWidgetChange(res: Response, login: string, verb: string, u
  * The shared dashboard, or your own.
  *
  * Two boards out of one table. Without a scope this returns exactly what it
- * always did — the widgets with no owner — so the Overview tab is untouched by
+ * always did, the widgets with no owner, so the Overview tab is untouched by
  * the existence of personal ones.
  *
  * Filtered on the server. A personal widget is not secret, but it is nobody
@@ -53,7 +53,7 @@ router.get("/", async (req: Request, res: Response) => {
  *
  * The dashboard opens with these rather than running each check while somebody
  * waits. `computedAt` travels with them so the page can say how old the number
- * is instead of implying it is current — a stale figure presented as live is
+ * is instead of implying it is current, a stale figure presented as live is
  * the failure this is meant to avoid, not one to introduce.
  *
  * An empty list is a normal answer: the scheduled pass may not have run yet, or
@@ -72,7 +72,7 @@ router.post("/", async (req: Request, res: Response) => {
   // on your own page is not that, and asking an administrator for permission to
   // arrange your own screen would be the wrong shape entirely.
   //
-  // The owner is taken from the session, never from the body — otherwise this
+  // The owner is taken from the session, never from the body, otherwise this
   // would be a way to put a widget on somebody else's dashboard.
   const owner = personal ? req.user!.login : undefined;
   if (!owner && await refusedWidgetChange(res, req.user!.login, "create", req.user!.accessToken)) return;

@@ -7,7 +7,7 @@
  * on a schedule, and acts under the Lambda's role.
  *
  * So membership of the guardrail admin team was, on its own, enough to arm an
- * enforce rule — and the privileged Lambda would then perform a write AWS would
+ * enforce rule, and the privileged Lambda would then perform a write AWS would
  * have refused the person who armed it, successfully, because the Lambda's role
  * is what gets checked. Read-only in production meant nothing. The same held
  * for the per-resource fix button.

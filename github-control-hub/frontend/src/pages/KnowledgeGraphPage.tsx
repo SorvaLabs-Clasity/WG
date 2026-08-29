@@ -412,7 +412,7 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
         </Section>
 
         {people.collaborators.length > 0 && (
-          /* "People with access", not "Collaborators" — the list answers who
+          /* "People with access", not "Collaborators", the list answers who
              can reach this repository, and the old heading was read as who
              worked on it. */
           <Section label="People with access" icon="ph-key" color="violet" count={people.collaborators.length} defaultOpen={people.collaborators.length <= 8}>
@@ -560,13 +560,13 @@ function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
 /**
  * Who to ask about this repository, in the panel rather than in its own tab.
  *
- * The scoring already exists and is already reachable — from a separate screen
+ * The scoring already exists and is already reachable, from a separate screen
  * you have to think to go to, which makes it something people use during an
  * incident and never otherwise. The question "who do I ask about this" arrives
  * while you are looking at the repository, so the answer belongs here.
  *
- * Collapsed by default and only fetched when opened. It reads GitHub live —
- * three requests for commits, review comments and issue comments — and paying
+ * Collapsed by default and only fetched when opened. It reads GitHub live,
+ * three requests for commits, review comments and issue comments, and paying
  * that on every repository somebody clicks would make the panel slow for a
  * question most opens do not have.
  */

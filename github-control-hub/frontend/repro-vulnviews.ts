@@ -3,14 +3,14 @@
  *
  * It used to be one column: every vulnerable repository, then the Dependabot
  * email settings, then Renovate, then the Renovate email settings. Reaching
- * Renovate meant scrolling past the whole of Dependabot — a page of repository
- * cards, fifteen at a time — which put the two halves of one question at
+ * Renovate meant scrolling past the whole of Dependabot, a page of repository
+ * cards, fifteen at a time, which put the two halves of one question at
  * opposite ends of a scroll bar and made the second half easy to miss entirely.
  *
  * What is asserted here is the part that would quietly rot: that each view
  * still renders exactly once and in one place, that the URL carries the choice,
  * and that nothing on one view waits for data belonging to another. That last
- * one is the same fault as the scroll, wearing a different hat — an early
+ * one is the same fault as the scroll, wearing a different hat, an early
  * return on the Dependabot fetch made opening Renovate wait for a list it does
  * not use.
  *
@@ -32,7 +32,7 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
   {
     check("Renovate is rendered on its own view",
       /\{view === "updates" && <RenovatePanel \/>\}/.test(page));
-    check("  and only there — not also stacked under the alerts",
+    check("  and only there, not also stacked under the alerts",
       count(/<RenovatePanel \/>/g) === 1, count(/<RenovatePanel \/>/g));
 
     check("both notification panels sit together on one view",
@@ -74,7 +74,7 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
 
   // ── the tabs say how much is behind them ────────────────────────────
   {
-    // Labelled by tool rather than by noun — what people call them.
+    // Labelled by tool rather than by noun, what people call them.
     check("the alert count is on the Dependabot tab",
       /counts\.total > 0 \? `Dependabot \$\{counts\.total\}`/.test(page));
     check("  and the open pull request count on the Renovate one",

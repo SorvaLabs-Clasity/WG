@@ -8,7 +8,7 @@ import {
  *
  * Every screen in this app so far answers an auditor's question: who can reach
  * what, which rules are not being followed, what changed last night. The people
- * whose work those questions are about get nothing — and the app already holds
+ * whose work those questions are about get nothing, and the app already holds
  * the answers to what they would ask.
  *
  * Nothing here reads GitHub. It is composition over what the pull request pass
@@ -55,7 +55,7 @@ export interface MyPull {
  * Kept separate from `blockReason` rather than folded into it: that answers
  * "what is wrong", which is a property of the pull request, and this answers
  * "whose problem is it", which is the same fact read from one side. A conflict
- * and a failing check are different problems and the same answer — yours.
+ * and a failing check are different problems and the same answer, yours.
  */
 export function waitingOn(reason: BlockReason): Waiting {
   switch (reason) {
@@ -103,7 +103,7 @@ export interface MyWork {
   mine: MyPull[];
   /** Open pull requests waiting for this person's review. */
   toReview: MyPull[];
-  /** Of `mine`, the ones nobody is blocking — they can be merged now. */
+  /** Of `mine`, the ones nobody is blocking. They can be merged now. */
   mergeable: number;
   /** Of `mine`, the ones where the next action is the author's own. */
   onYou: number;
@@ -114,7 +114,7 @@ export interface MyWork {
  *
  * Both halves are wanted, and they are different questions. "What am I blocked
  * on" is answered by `mine`; "who is blocked on me" by `toReview`, which is the
- * one GitHub reports worst — a review request is a notification that scrolls
+ * one GitHub reports worst, a review request is a notification that scrolls
  * away, and after that the only record is on a page nobody opens.
  *
  * Drafts are kept in `mine` and excluded from `toReview`. A draft is the
@@ -133,7 +133,7 @@ export function myWork(prs: PullRequest[], login: string, now = Date.now()): MyW
     if (pr.isDraft) continue;
     // Asked, and has not answered yet. Somebody who already approved is not
     // still on the hook, and listing them there is how a queue stops being
-    // trusted — a list with nothing to do in it gets closed and not reopened.
+    // trusted, a list with nothing to do in it gets closed and not reopened.
     if (row.pending.some(p => same(p, login)) && !hasApproved(pr, login)) {
       toReview.push(row);
     }

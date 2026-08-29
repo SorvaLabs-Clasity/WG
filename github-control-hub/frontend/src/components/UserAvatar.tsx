@@ -28,7 +28,7 @@ function colorForLogin(login: string): string {
  * Names that stand for "no person", which must never be looked up on GitHub.
  *
  * `https://github.com/<login>.png` resolves for any account that exists, and
- * `unknown` is a real GitHub user — so every row with no attributable actor was
+ * `unknown` is a real GitHub user, so every row with no attributable actor was
  * showing a stranger's photograph, on an audit screen, next to changes they had
  * nothing to do with. `github[system]` is what this app now records for audit
  * events GitHub raises itself; the rest are older placeholders still in the feed.

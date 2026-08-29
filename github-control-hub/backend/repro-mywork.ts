@@ -3,7 +3,7 @@
  *
  * Every screen in this app answers an auditor's question. This one answers
  * "what do I do next", out of exactly the same rows, and the interesting part
- * is not the filtering — it is that a queue nobody trusts is worse than no
+ * is not the filtering. It is that a queue nobody trusts is worse than no
  * queue. Two ways that happens, both asserted here:
  *
  *   Listing something with nothing to do in it. A reviewer who already approved

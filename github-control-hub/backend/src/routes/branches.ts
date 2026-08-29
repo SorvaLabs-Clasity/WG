@@ -32,7 +32,7 @@ router.post("/:repo/branches", validateParams("repo"), async (req: Request<{ rep
 
   // Validated like the ones in the path are. `validateParams("repo")` covers
   // the URL and nothing covered the body, so the two names that decide which
-  // ref is read and which is created went to GitHub unchecked — and a name git
+  // ref is read and which is created went to GitHub unchecked, and a name git
   // will not accept comes back as an opaque 422 that the activity log then
   // records as a failed branch creation with no cause.
   for (const [field, value] of [["branchName", branchName], ["baseBranch", baseBranch]] as const) {

@@ -134,8 +134,8 @@ function allChildrenUndone(entry: Activity): boolean {
 /**
  * Whether GitHub is still reaching us.
  *
- * A broken webhook looks exactly like a quiet week — the feed simply stops
- * growing — and there is no backfill, so anything that happened in the meantime
+ * A broken webhook looks exactly like a quiet week, the feed simply stops
+ * growing, and there is no backfill, so anything that happened in the meantime
  * is gone rather than late. Saying when GitHub last got through is what makes
  * the two distinguishable.
  */
@@ -181,7 +181,7 @@ function WebhookPulse() {
 /**
  * How an actor reads in the table.
  *
- * Audit events GitHub raises itself carry no actor — a vulnerability alert being
+ * Audit events GitHub raises itself carry no actor, a vulnerability alert being
  * created is not something a person did. Older rows say "unknown", which claims
  * the actor could not be identified rather than that there was none.
  */
@@ -195,7 +195,7 @@ function actorLabel(actor: string): string {
  * What each stream holds, said plainly, because the tab label cannot.
  *
  * A row lands in a stream by what its action *changed*, not by where the change
- * came from — which is the part that reads as arbitrary until it is stated.
+ * came from, which is the part that reads as arbitrary until it is stated.
  * Removing branch protection is an Organization row whether somebody did it in
  * this app or on github.com, because the same thing changed either way.
  */
@@ -244,7 +244,7 @@ export default function ActivityPage() {
    * An account holding no GitHub credentials has no GitHub half: no webhooks
    * arrive, no audit log is streamed, and the app's own GitHub-side settings
    * cannot be reached. Offering those streams there is offering three empty
-   * lists, and defaulting to one of them opens the tab on nothing at all —
+   * lists, and defaulting to one of them opens the tab on nothing at all,
    * which reads as "the activity feed is broken" rather than as "this account
    * only does AWS".
    */
@@ -261,7 +261,7 @@ export default function ActivityPage() {
 
   // Defaults to the organization stream rather than to Everything. That is what
   // this app exists to record, and opening on a merged feed puts dashboard
-  // housekeeping beside branch protection disappearing — which is the mixing
+  // housekeeping beside branch protection disappearing, which is the mixing
   // the streams were introduced to undo. Everything is one click away.
   const [category, setCategory] = useState<ActivityView>("github");
 
@@ -277,7 +277,7 @@ export default function ActivityPage() {
    *
    * Two readings of the same events. The table answers "what happened,
    * exactly", down to a single row and its diff. Important events answers
-   * "what has been happening, and is any of it unusual" — the same material
+   * "what has been happening, and is any of it unusual", the same material
    * as a shape rather than as a list.
    *
    * Held apart from `category` on purpose. It is not a fifth stream: the
@@ -311,7 +311,7 @@ export default function ActivityPage() {
    *
    * The table is the right shape for working, with resizable columns, diffs and
    * the undo controls. The timeline is the right shape for the question people
-   * open this tab with, which is "what happened last night" — a question a
+   * open this tab with, which is "what happened last night", a question a
    * table answers only after you have done the grouping in your head.
    */
   const [shape, setShape] = useState<"table" | "timeline">(() => {
@@ -453,7 +453,7 @@ export default function ActivityPage() {
   const handleUndoFromPopup = useCallback((entry: Activity) => {
     undoMutation.mutate(entry.id, {
       onSuccess: (result) => {
-        // The reason matters more than the count — a refusal here is usually
+        // The reason matters more than the count, a refusal here is usually
         // "that branch has commits on it", which the user has to act on.
         setSnack(result.errors.length > 0
           ? { msg: result.errors[0], severity: "error" }
@@ -597,8 +597,8 @@ export default function ActivityPage() {
 
     const isHold = entry.action === "conflict.pending" && !entry.conflictResolution && !entry.undone;
     const containsHold = !isHold && hasUnresolvedHold(entry);
-    // A hold on this row itself is a historical, unresolvable state — the
-    // templates feature that could act on it is gone — so it gets an
+    // A hold on this row itself is a historical, unresolvable state, the
+    // templates feature that could act on it is gone, so it gets an
     // identifying badge below but not the amber "needs attention" row
     // treatment. Collapsed rows that merely contain one still get it, since
     // expanding them is an action a user can still take.

@@ -51,7 +51,7 @@ export async function collectBuckets(scope: Scope, only?: string[]): Promise<Col
 
     // ListBuckets is global: every bucket in the account comes back whatever
     // region was asked for. Without this filter a two-region account would
-    // report every bucket twice and remediate each of them twice — and reading
+    // report every bucket twice and remediate each of them twice, and reading
     // a bucket from the wrong region's endpoint fails outright with a redirect.
     // Genuinely absent only for very old us-east-1 buckets, whose location
     // constraint AWS has always returned as null. Every other bucket carries
@@ -94,7 +94,7 @@ export async function collectBuckets(scope: Scope, only?: string[]): Promise<Col
  *
  * `ListBuckets({})` does not do this, and the way it fails is silent. AWS
  * documents `BucketRegion` as returned only "if the request contains at least
- * one valid parameter" — an empty request has none, so the field comes back
+ * one valid parameter", an empty request has none, so the field comes back
  * undefined on every bucket. The caller's `b.BucketRegion || "us-east-1"` then
  * decides that the entire account lives in us-east-1: a sweep of any other
  * region scans nothing and reports every bucket as unswept *in us-east-1*, and
@@ -149,7 +149,7 @@ export async function collectLogGroups(scope: Scope, only?: string[]): Promise<C
       id: g.logGroupName,
       type: "logs:log-group",
       tags: tags as Record<string, string>,
-      // Absent retentionInDays means "never expire" — the rule relies on that.
+      // Absent retentionInDays means "never expire", the rule relies on that.
       state: { retentionInDays: g.retentionInDays, arn: g.arn },
     });
   }

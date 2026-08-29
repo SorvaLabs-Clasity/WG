@@ -6,7 +6,7 @@
  * for every command that machine runs. The failures worth guarding are all
  * about what ends up in that file:
  *
- *   - a value carrying a newline and a `[`, which does not corrupt the file —
+ *   - a value carrying a newline and a `[`, which does not corrupt the file,
  *     it quietly defines a *second* profile the person never asked for.
  *   - overwriting or rewriting it, when the only safe edit is one that appends.
  *   - a duplicate profile or session name, which gives the CLI two definitions
@@ -29,7 +29,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   // ── nothing hostile reaches the file ────────────────────────────────
   {
     // The one that matters. `\n[profile admin]\n...` appended to a role name is
-    // not a syntax error — it is a working profile pointing wherever the
+    // not a syntax error. It is a working profile pointing wherever the
     // attacker chose.
     const injections = [
       "Admin\n[profile evil]\nsso_role_name = Root",
@@ -143,7 +143,7 @@ function check(name: string, ok: boolean, got?: unknown) {
     const src = fs.readFileSync(`${__dirname}/src/routes/auth.ts`, "utf8");
     const poll = src.slice(src.indexOf('router.post("/aws-sso-poll"'));
     const body = poll.slice(0, poll.indexOf("\n/** Step three"));
-    // Checked against what is *responded*, not against the whole handler — the
+    // Checked against what is *responded*, not against the whole handler, the
     // token is legitimately passed to listAccountsAndRoles a line earlier, and
     // a naive search for it flags that as a leak.
     const responses = [...body.matchAll(/res\.json\(([^;]*)\)/g)].map(m => m[1]);
@@ -156,8 +156,8 @@ function check(name: string, ok: boolean, got?: unknown) {
 
   // ── "not approved yet" is not a failure ─────────────────────────────
   //
-  // This endpoint is RFC 8628, so over the wire it answers with OAuth's codes —
-  // `authorization_pending`, `slow_down` — while the AWS API reference lists the
+  // This endpoint is RFC 8628, so over the wire it answers with OAuth's codes,
+  // `authorization_pending`, `slow_down`, while the AWS API reference lists the
   // SDK's exception class names. Matching only the class names meant the
   // ordinary answer to the first several polls was treated as an error: the
   // loop stopped and the screen waited for ever for something that had already
@@ -248,7 +248,7 @@ function check(name: string, ok: boolean, got?: unknown) {
     // React calls it with the click event, so `handleAwsSsoLogin` received a
     // synthetic event as its `profile` and stored the object in state. Nothing
     // failed at that point; it failed one line later when the button rendered
-    // `Sign in as {selectedProfile}` and React was asked to render an object —
+    // `Sign in as {selectedProfile}` and React was asked to render an object,
     // a blank screen and a minified error, on every click, for every profile.
     //
     // The compiler could not see it: Button declared `onClick?: () => void`, and
@@ -276,7 +276,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   // is no invalidation because a config file is not normally expected to change
   // under a running program. This app changes it. Until it was refreshed, a
   // profile created here was written correctly, signed into successfully by the
-  // AWS CLI, and invisible to the app that had just made it — "Verify does
+  // AWS CLI, and invisible to the app that had just made it, "Verify does
   // nothing, but it works after I restart", which was this cache being dropped.
   //
   // Exercised against the real SDK rather than by reading source, because the
@@ -337,7 +337,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   // ── the way in is visible to the people who need it ─────────────────
   //
   // The tab list is filtered by what already exists, and SSO was hidden unless
-  // an SSO profile was already there — so a machine with none showed nothing
+  // an SSO profile was already there, so a machine with none showed nothing
   // mentioning SSO at all, and the only route to making one was a tab called
   // "New profile". The people who most needed it were the only ones who could
   // not find it.

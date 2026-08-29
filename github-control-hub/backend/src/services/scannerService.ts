@@ -229,8 +229,8 @@ const isQueryRow = (v: ComplianceViolation) => v.branch === "-";
 /**
  * Fold a scoped re-scan into the stored org-wide result.
  *
- * The webhook path calls runScan with a single repository — the one an event
- * touched — and the result used to be written straight over the stored row.
+ * The webhook path calls runScan with a single repository, the one an event
+ * touched, and the result used to be written straight over the stored row.
  * So one push replaced "347 scanned, 42 in violation" with "1 scanned, 0 in
  * violation", and every finding for the other 346 repositories vanished from
  * the page until somebody pressed Run again. A compliance screen that reports
@@ -715,7 +715,7 @@ export async function runScan(octokit: Octokit, scannerId: string, overrideRepos
     }
   }
 
-  // The caller is told what this run found, not what is now on file — the
+  // The caller is told what this run found, not what is now on file, the
   // route logs "scanned N repositories" from it, and that has to be this run.
   return result;
 }

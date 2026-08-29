@@ -1,8 +1,8 @@
 /**
  * Turning an alarm into the email that gets sent.
  *
- * Pure string work, kept away from the SNS client so the awkward parts — the
- * subject rules in particular — can be tested without publishing anything.
+ * Pure string work, kept away from the SNS client so the awkward parts, the
+ * subject rules in particular, can be tested without publishing anything.
  */
 
 /** Every variable a template may use, with what it means. The UI lists these. */
@@ -36,7 +36,7 @@ const VARIABLE_NAMES = new Set(TEMPLATE_VARIABLES.map(v => v.name));
  *
  * An unknown name is left exactly as written rather than blanked. A template
  * reading "{{critical}} found" would otherwise send " found", which looks like
- * a bug in the alarm rather than a typo in the template — and the typo is
+ * a bug in the alarm rather than a typo in the template, and the typo is
  * reported separately at save time by unknownVariables() below, which is when
  * somebody can still fix it.
  */
@@ -176,7 +176,7 @@ export const DEFAULT_DEPENDABOT_BODY =
 /**
  * A timestamp a person can read, and cannot misread.
  *
- * {{time}} used to render the raw ISO string. It is correct, but it is UTC —
+ * {{time}} used to render the raw ISO string. It is correct, but it is UTC,
  * so to anyone not on UTC it looks like the alarm fired hours in the future or
  * the past, and the only thing saying otherwise is a trailing "Z" that is easy
  * to miss among the milliseconds.

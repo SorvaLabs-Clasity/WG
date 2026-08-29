@@ -188,14 +188,14 @@ function deps(over: Partial<{
     //
     // Comments stripped first. The prose above names "moderate" in order to
     // explain the translation, so a loose match against the raw file passes on
-    // the strength of the comment even after the code is deleted — which is
+    // the strength of the comment even after the code is deleted, which is
     // what it did until a mutation proved it.
     const code = src.split("\n")
       .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
       .map(l => l.replace(/\s*\/\/.*$/, ""))
       .join("\n");
     // Exercised, not grepped. The pattern used to be asserted as text, which
-    // passed while the buffered path — the default — had lost it, because an
+    // passed while the buffered path, the default, had lost it, because an
     // identical copy still existed on the immediate path.
     check("  GitHub's \"moderate\" becomes this app's \"medium\"",
       normalizeSeverity("moderate") === "medium", normalizeSeverity("moderate"));
@@ -238,7 +238,7 @@ function deps(over: Partial<{
       "a floor that filters nothing would read as one that does");
 
     // Registration order, not path shape, is what keeps /:id from swallowing
-    // these — the same failure that made the security toggle 404.
+    // these, the same failure that made the security toggle 404.
     const feedsAt = routes.indexOf('router.get("/feeds/:feed"');
     const idAt = routes.indexOf('router.put("/:id"');
     check("  the feed routes are registered before /:id",
@@ -396,7 +396,7 @@ function deps(over: Partial<{
     // The digest builds its own subject instead of rendering a template, so it
     // bypassed the sanitiser every other subject goes through. SNS rejects a
     // subject over 99 characters outright, and a rejected publish leaves the
-    // rows pending by design — so the effect is a digest retried every tick
+    // rows pending by design, so the effect is a digest retried every tick
     // forever and never delivered. Silent, and permanent.
     const label = { singular: "alert", plural: "alerts" };
     const rendered = { subject: "s", body: "b" };
@@ -406,7 +406,7 @@ function deps(over: Partial<{
 
     // Long enough that the unsanitised subject is over the limit rather than
     // merely near it. The first version of this used a 79-character name and a
-    // six-character label, which totalled 95 — under the cap, so it passed with
+    // six-character label, which totalled 95, under the cap, so it passed with
     // the sanitiser removed and proved nothing.
     const longRepo =
       "a-fairly-long-organization-name/an-unusually-long-repository-name-for-one-small-service";

@@ -4,7 +4,7 @@
  *
  * Its own module so it can be read without the page, which drags in the React
  * tree and Vite's env. Two lists rather than one because they answer different
- * questions — what a stored widget is named, and what a new one may be.
+ * questions, what a stored widget is named, and what a new one may be.
  */
 /**
  * What each preset is called, in one place.

@@ -25,7 +25,7 @@ the wrong place.
 | Suite | Guards |
 |---|---|
 | `repro-queries` | The graph-backed security checks |
-| `repro-engine` | Guardrail engine safety — report never writes |
+| `repro-engine` | Guardrail engine safety, report never writes |
 | `repro-guardrails` | Rule evaluation |
 | `repro-accounts` | Multi-account sweeps, credential chain, deploy scoping |
 | `repro-leastprivilege` | **What the IAM does not contain** |
@@ -48,16 +48,16 @@ the wrong place.
 | `repro-setupauth` | Setup-time auth |
 | `repro-repodetails` | Repository detail assembly |
 | `repro-alarms` | Widget alarm conditions, templates and delivery |
-| `repro-appsec` | Source-level security controls — CSP, no-shell, fail-closed webhooks |
-| `repro-dependencies` | Dependabot alert paging — counts every alert, not the first hundred |
+| `repro-appsec` | Source-level security controls, CSP, no-shell, fail-closed webhooks |
+| `repro-dependencies` | Dependabot alert paging, counts every alert, not the first hundred |
 | `repro-renovate` | Renovate pull request classification |
-| `repro-feednotify` | Per-event email batching — one message per repository, not per finding |
+| `repro-feednotify` | Per-event email batching, one message per repository, not per finding |
 | `repro-expertise` | Ranking who knows a repository, path or library |
-| `repro-prnudge` | Stale pull requests — who is reminded, who is muted, and the sticky comment |
+| `repro-prnudge` | Stale pull requests, who is reminded, who is muted, and the sticky comment |
 | `repro-orgmembers` | Org member paging, and refusing a mute on somebody outside the org |
 | `repro-alarmrefire` | **Saving a setting must never make something send again** |
 | `repro-dormantadmins` | **A security check must never report fewer findings than exist** |
-| `repro-querycache` | Per-subject verdict caching — covering a large org a batch at a time |
+| `repro-querycache` | Per-subject verdict caching, covering a large org a batch at a time |
 | `repro-scanpaging` | **A table scan must read the whole table** |
 | `repro-largeorg` | The whole path at 300 accounts, against a rate-limited GitHub |
 | `repro-loginstates` | What the sign-in page says in each state, and in what order |
@@ -76,7 +76,7 @@ Frontend, run from `github-control-hub/frontend`:
 ## Four unusual ones
 
 **`repro-leastprivilege`** reads the shipped CDK and CloudFormation and asserts
-what they do *not* contain — no `iam:` action, no wildcard `AssumeRole`, no
+what they do *not* contain, no `iam:` action, no wildcard `AssumeRole`, no
 administrator role, no unconditional write grant. It is the only test whose
 failure means "someone widened the blast radius".
 
@@ -85,14 +85,14 @@ authorization guard. Adding a route without one fails the suite.
 
 **`repro-scanpaging`** covers both halves of "a read must read enough": a `Scan`
 that stops at 1MB, and a `Query` whose `Limit` is applied *before* its filter.
-The second is the subtler one — `getActivityForRepo` filtered on `repo` with
+The second is the subtler one, `getActivityForRepo` filtered on `repo` with
 `Limit: 200`, which asks "is this repository among the newest two hundred rows
 in the organization?" rather than "what is this repository's history?".
 
 **`repro-nestedcomponents`** reads every `.tsx` file for a capitalised
 declaration indented inside another. React reconciles by element type, so a
 component declared inside a render is a new type each time and gets rebuilt
-rather than updated — which drops the caret out of any text box inside it after
+rather than updated, which drops the caret out of any text box inside it after
 every character. This shipped once, in the "Who knows this?" repository box, and
 the scan then found three more that had been there longer.
 
@@ -107,7 +107,7 @@ Plus `npx tsc --noEmit` in `backend`, `frontend`, `desktop` and `infra`.
 ## Mutation testing: a crash is a catch
 
 Mutations are verified by breaking the code on purpose and checking the suite
-notices. The obvious way to count that — how many FAIL lines were printed — is
+notices. The obvious way to count that, how many FAIL lines were printed, is
 wrong, and was wrong three separate times in one afternoon.
 
 An uncaught exception ends the process. No FAIL lines are printed, the count
@@ -117,9 +117,9 @@ reaching the assertion aimed at it, and scored zero.
 
 Count the verdict, not the failures:
 
-- **caught** — the run does not end in ALL PASS, whether it reported failures or
+- **caught**, the run does not end in ALL PASS, whether it reported failures or
   crashed
-- **survived** — the run ends in ALL PASS
+- **survived**, the run ends in ALL PASS
 
 A shell harness for that:
 
@@ -132,14 +132,14 @@ A shell harness for that:
 The same trap appears inside a test. An assertion that awaits something which
 throws takes the whole file with it, so the remaining assertions never run and
 the summary is silence rather than a failure. Where behaviour *under* failure is
-what is being asserted — a delete that 404s, a repository that cannot be
-commented on — catch it explicitly and assert on the outcome, so a throw becomes
+what is being asserted, a delete that 404s, a repository that cannot be
+commented on, catch it explicitly and assert on the outcome, so a throw becomes
 a readable failure instead of a silent exit.
 
 ## A source-scanning guard can be blinded by its own tidying
 
 repro-appsec reads the shipped source and asserts things about it, so it first
-strips comments — otherwise prose explaining why something is absent contains
+strips comments, otherwise prose explaining why something is absent contains
 the thing, and the check fails on its own documentation.
 
 The stripper was `line.replace(/\s*\/\/.*$/, "")`, and the `//` in a URL is
@@ -156,14 +156,14 @@ failed. The guard simply stopped looking, which is the worst way for a guard to
 break: a mutation planted beyond the scheme survives while the suite reports ALL
 PASS, and the only symptom is a test that has always been green.
 
-It is quote-aware now — only a `//` outside a string starts a comment. The
+It is quote-aware now, only a `//` outside a string starts a comment. The
 general lesson is that a mutation test proves the assertion *and* the machinery
 underneath it, and the machinery is the part nobody thinks to break.
 
 ## A guard cannot prove itself on clean input
 
 repro-appsec scans the repository for leaked identifiers. On a clean repository
-it passes — and it passes just as happily with the scanner narrowed to one file
+it passes, and it passes just as happily with the scanner narrowed to one file
 type, pointed at one directory, or with its pattern emptied. Three mutations
 doing exactly that changed nothing, because there was nothing there to miss
 either way.

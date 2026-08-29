@@ -1,6 +1,6 @@
 # Activity and undo
 
-Everything that changed, who changed it, and — where it is safe — a way back.
+Everything that changed, who changed it, and, where it is safe, a way back.
 
 ## Four streams
 
@@ -10,9 +10,9 @@ so the page is split by what changed:
 
 | Stream | Holds |
 |---|---|
-| **Organization** | Branches, protection, rulesets, repositories, Dependabot — anything that changed GitHub |
+| **Organization** | Branches, protection, rulesets, repositories, Dependabot. Anything that changed GitHub |
 | **AWS** | The guardrail engine's findings and remediations (`aws.guardrail`) |
-| **App settings** | Widgets, scanners, imports, undo history, and every sync (`sync.*`) — housekeeping |
+| **App settings** | Widgets, scanners, imports, undo history, and every sync (`sync.*`), housekeeping |
 
 A fourth tab, **Everything**, sits first and merges all three. It is for when you
 know roughly when something happened but not which stream recorded it. Rows there
@@ -61,7 +61,7 @@ is off by default and lives at the top of the Organization tab, for members of
 `aws-guardrail-admins`. Each kind can be unchecked individually.
 
 **The toggle governs collection, never display.** Turning it off stops new
-detailed rows and deletes nothing — everything collected while it was on stays
+detailed rows and deletes nothing. Everything collected while it was on stays
 for its full 13 months, and unchecked kinds are remembered for next time.
 
 Rows collected this way carry a `detailed` label, and **Detailed rows:
@@ -84,8 +84,8 @@ backend can write lands somewhere deliberate. An unrecognized action falls back
 to Organization on purpose: hiding something new in a tab nobody watches is the
 failure worth avoiding.
 
-`ActivityAction` is declared twice — once in the backend service that writes the
-rows, once in the frontend types that render them — with nothing linking them.
+`ActivityAction` is declared twice, once in the backend service that writes the
+rows, once in the frontend types that render them, with nothing linking them.
 The same suite compares the two lists, because an action added to one side alone
 produces rows the feed cannot label, and the frontend's label map is a total
 record over its own union, so the gap shows as an unlabelled badge rather than a
@@ -104,7 +104,7 @@ took:
 
 | Action | Written by |
 |---|---|
-| `sync.graph` | The access graph walk — six-hourly, and **Sync from GitHub** |
+| `sync.graph` | The access graph walk, six-hourly, and **Sync from GitHub** |
 | `sync.compliance` | Compliance scores, all repositories or one |
 | `sync.query` | A security check's coverage being re-run |
 | `sync.access` | The access map recomputed from stored edges |
@@ -120,7 +120,7 @@ trade.
 
 **The frequent jobs are logged only when they did something.** The alarm
 evaluator runs every five minutes and the great majority of ticks evaluate
-nothing, because each alarm carries its own interval — recording those would add
+nothing, because each alarm carries its own interval, recording those would add
 a hundred thousand rows a year saying "nothing was due", and an audit trail
 nobody can read is not one. The reminder pass is gated the same way. Full
 per-tick detail still goes to CloudWatch, where volume is free and nobody is
@@ -129,7 +129,7 @@ reading a history.
 The six-hourly graph sync is **not** gated: four rows a day is history rather
 than noise, and it is the run people ask about. The guardrail sweep keeps its own
 arrangement, writing a row per finding rather than per sweep, which is the same
-principle — outcomes, not ticks.
+principle, outcomes, not ticks.
 
 The `sync.access` row is worth reading carefully if you are chasing a change that
 is not showing. It says *no GitHub read* because that refresh recomputes from
@@ -143,14 +143,14 @@ Independently of the stream, every row records where it came from:
 | Source | Comes from |
 |---|---|
 | `app` | Something done through this app |
-| `github` | A [webhook](../github-api/webhooks.md) — someone acting in GitHub directly |
+| `github` | A [webhook](../github-api/webhooks.md). Someone acting in GitHub directly |
 | `audit` | The enterprise audit log |
 
 The second is the half that makes it an audit trail rather than a command log.
 
 Only the Organization stream is written from more than one direction, so it is
 the only one where filtering by source can change what you see. The filter is
-therefore offered there and in Everything, and hidden in the other three — it
+therefore offered there and in Everything, and hidden in the other three. It
 used to appear in all four while listing only `app` and `github`, which meant
 that in the audit stream, where every row is `audit`, either choice emptied the
 table and nothing explained why.
@@ -160,8 +160,8 @@ table and nothing explained why.
 Rows are stored in one partition ordered by timestamp, so the feed is a single
 query. Two sparse indexes support lookups that would otherwise scan:
 
-- `id-index` — fetch one entry
-- `parentId-index` — fetch an entry's children
+- `id-index`, fetch one entry
+- `parentId-index`, fetch an entry's children
 
 Sparse matters: only rows that *have* a `parentId` appear in that index, so the
 index stays small. The earlier version applied a `Limit` before a filter, which
@@ -169,7 +169,7 @@ silently returned nothing once the feed grew past the limit.
 
 ## Retention
 
-Thirteen months, via a DynamoDB TTL stamped from each row's own timestamp — a
+Thirteen months, via a DynamoDB TTL stamped from each row's own timestamp, a
 year of history plus a month of slack, so an auditor looking back twelve months
 finds a complete record.
 
@@ -182,7 +182,7 @@ expiry they were given.
 Two things nearby expire on their own schedule and are not this:
 
 - the raw audit-log objects in S3, which a lifecycle rule expires after 400 days
-  — the archive outlives the indexed rows on purpose
+  the archive outlives the indexed rows on purpose
 - closed Renovate pull requests, which are not stored at all; they are filtered
   out of a live search three months after closing
 
@@ -196,7 +196,7 @@ generic inverse:
 - **Re-checked at the time you press it**, per repository, against what you can
   do *now*
 - **Refused where no honest reversal exists.** AWS guardrail actions record a
-  payload but are not in the allowed set — the app will not pretend to reverse
+  payload but are not in the allowed set, the app will not pretend to reverse
   something it cannot verify
 - **Reads live state first.** Undoing a branch operation asks GitHub for the
   branch's current state, so commits and merges made since are respected rather

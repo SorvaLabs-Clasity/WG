@@ -12,7 +12,7 @@ Two ways to be told something happened, deliberately built differently.
 
 Everything here is admin-only, including reads. These calls run with the app's
 AWS credentials rather than the caller's GitHub token, and subscribing an
-address to a topic means the app can send mail to anyone — so it is gated to
+address to a topic means the app can send mail to anyone, so it is gated to
 the same team that can change guardrails. A group's member list is also a list
 of people's email addresses.
 
@@ -22,7 +22,7 @@ A toggle, an email group, and a severity floor.
 
 It hooks into `createAlert`, which the webhook worker already calls when it
 sees a repository go public, branch protection disappear, a team's permissions
-change. So the email goes out at the moment the alert is recorded — typically
+change. So the email goes out at the moment the alert is recorded, typically
 five to thirty seconds after the event itself, most of which is GitHub's
 webhook delivery and your mail provider.
 
@@ -38,7 +38,7 @@ retry and duplicate every activity row and alert it had just created.
 
 The Vulnerabilities tab carries two more toggles of the same shape: one per new
 Renovate pull request, one per new Dependabot alert. They are documented with
-the features they belong to — [renovate.md](renovate.md) and
+the features they belong to, [renovate.md](renovate.md) and
 [dependabot.md](dependabot.md).
 
 They are not alarms and deliberately do not appear on this page. An alarm
@@ -60,12 +60,12 @@ Each widget offers only the conditions it can actually answer:
 The catalogue lives in `backend/src/alarms/conditions.ts` and is both what the
 form is built from and what the API validates against. A condition its widget
 cannot produce is refused, because it would evaluate to nothing on every pass
-and never fire — which is indistinguishable from an alarm that simply is not
+and never fire, which is indistinguishable from an alarm that simply is not
 triggering.
 
 ### How often they run
 
-One schedule — the *tick* — every **five minutes**. Each alarm carries its own
+One schedule, the *tick*, every **five minutes**. Each alarm carries its own
 interval and is evaluated on the first tick after it comes due:
 
 | Widget reads | Interval | Ticks |
@@ -75,13 +75,13 @@ interval and is evaluated on the first tick after it comes due:
 
 The tick has to divide every interval, because an alarm can only be evaluated
 when the rule fires. A ten-minute interval under a fifteen-minute tick is a
-fifteen-minute alarm that still reads as ten everywhere — nothing fails, the
+fifteen-minute alarm that still reads as ten everywhere. Nothing fails, the
 value is just older than it claims. A test asserts the tick divides both
 intervals and that the deployed rule matches the constant.
 
 Dependabot alarms were hourly when that data cost one API request per
 repository. It is now a single org-wide sweep, paginated at 100 alerts per
-request and fetched once per run however many alarms read it — so the cost
+request and fetched once per run however many alarms read it, so the cost
 tracks how many alerts are open, not how many repositories, widgets or alarms
 exist. Ten minutes is affordable where sixty was not.
 
@@ -114,18 +114,18 @@ failures sending an all-clear about a value nobody looked at.
 
 **Saving an alarm does not make it fire.** Renaming one, changing its email
 group, or fixing a typo in its template leaves its ALARM/OK state exactly where
-it was, so nothing is sent. Only a change to the *condition* resets it — an
+it was, so nothing is sent. Only a change to the *condition* resets it, an
 alarm that starts watching something else has to be able to fire for the new
 thing, and the first breach of a new condition is not a transition unless the
 state is cleared first.
 
 That reset used to trigger on every save. It compared conditions with
-`JSON.stringify`, and DynamoDB returns a map's keys in its own order — the
+`JSON.stringify`, and DynamoDB returns a map's keys in its own order, the
 stored condition read back as `{kind, threshold, metric, op}` where the form
 sends `{kind, metric, op, threshold}`. Identical conditions, different strings,
 so *any* save looked like a condition change, reset a firing alarm to OK, and
 made the next evaluation a fresh breach that emailed everybody. It was found
-when a one-character typo in a template arrived by email minutes later — in the
+when a one-character typo in a template arrived by email minutes later, in the
 message that should never have been sent. Conditions are now compared
 structurally, and a test walks the exact sequence rather than only the
 comparison.
@@ -160,16 +160,16 @@ relied on.
 
 Placeholders are inserted by clicking them, into whichever box was last focused,
 at the cursor. Typing `{{widget}}` by hand is how a `{{widget}]` reached a live
-template — and a template reports its mistakes by arriving in somebody's inbox
-looking wrong, which is after the email has been sent. All three editors — the
-alarm dialog, the security panel and the vulnerability panel — share one
+template, and a template reports its mistakes by arriving in somebody's inbox
+looking wrong, which is after the email has been sent. All three editors, the
+alarm dialog, the security panel and the vulnerability panel, share one
 implementation, because three copies of caret arithmetic is three chances to get
 it subtly different.
 
 Subject and body are templates using `{{widget}} {{metric}} {{value}}
 {{threshold}} {{state}} {{severity}} {{repo}} {{message}} {{org}} {{time}}`.
 
-`{{time}}` is rendered as `2026-08-14 09:15 EDT` — readable, and explicit about
+`{{time}}` is rendered as `2026-08-14 09:15 EDT`, readable, and explicit about
 the clock. The zone is set on the Security tab and applies to both alarm and
 security emails; it defaults to UTC, which is the safe answer when recipients
 are spread out, and every email names its zone either way. An unknown zone
@@ -179,18 +179,18 @@ the whole email with it.
 For security alerts the time is **when the receiver took the delivery from
 GitHub**, not when the worker got round to processing it. Those are seconds
 apart normally, minutes after a retry, and arbitrarily far apart for a
-redelivery of an old event — which used to produce an alert dated today for
+redelivery of an old event, which used to produce an alert dated today for
 something that happened last week. A redelivery still reads as the moment it
 was redelivered, because the payload carries no original timestamp to recover.
 
 A name that is not a real variable is rejected when you save, and left
-literally in the output if it ever reaches rendering — blanking it would make
+literally in the output if it ever reaches rendering, blanking it would make
 the email look broken rather than the template look wrong.
 
 Subjects are flattened to one line, stripped to printable ASCII and cut to 99
 characters before sending. SNS rejects a subject that breaks any of those rules
 rather than trimming it, and a rejected publish is an alarm that fires into
-silence — where silence already means "all clear".
+silence, where silence already means "all clear".
 
 This is SNS, so mail is plain text and AWS appends its own unsubscribe footer.
 HTML would mean SES, which cannot send to unverified addresses until AWS grants
@@ -204,7 +204,7 @@ rows. Under 10¢/month at any realistic volume.
 
 ## What it is not
 
-Not monitoring. Nothing here watches a metric continuously — the widget alarms
+Not monitoring. Nothing here watches a metric continuously, the widget alarms
 sample on a schedule, and a value that breaches and recovers between two checks
 is never seen. For "tell me the instant this happens", the security-alert path
 is the one that is event-driven.

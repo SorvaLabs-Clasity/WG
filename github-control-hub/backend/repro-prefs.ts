@@ -4,7 +4,7 @@
  * The bug was quiet and daily: the choice lived in process.env, the embedded
  * backend dies with the window, and so every launch fell back to "default" and
  * asked again. The tests that matter here are the ones about *when* something
- * is remembered — storing a profile that never worked, or keeping one after
+ * is remembered, storing a profile that never worked, or keeping one after
  * someone deliberately signed out, are both worse than forgetting.
  */
 import fs from "fs";
@@ -50,7 +50,7 @@ const previous = had ? fs.readFileSync(FILE, "utf8") : null;
       process.env.AWS_PROFILE = "explicit";
       check("  an explicit AWS_PROFILE wins over the remembered one",
         process.env.AWS_PROFILE === "explicit", process.env.AWS_PROFILE);
-      // Nothing was restored, so nothing is reported as restored — otherwise
+      // Nothing was restored, so nothing is reported as restored, otherwise
       // startup logs "using remembered profile X" about a file it never read.
       check("  and is not reported as having been restored",
         prefs.restoreAwsProfile() === undefined, prefs.restoreAwsProfile());

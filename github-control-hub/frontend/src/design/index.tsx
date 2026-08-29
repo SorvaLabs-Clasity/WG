@@ -15,7 +15,7 @@ export * from "./tokens";
 
 /**
  * Root wrapper. The navbar is `fixed h-14`, so pages must reserve that space
- * themselves — two pages shipped without it and slid underneath. Doing it here
+ * themselves, two pages shipped without it and slid underneath. Doing it here
  * means no page has to remember.
  */
 export function Page({ user, width = "wide", children }: {
@@ -51,8 +51,8 @@ export function PageHeader({ title, subtitle, actions }: {
  * Re-fetches a page's data on demand.
  *
  * Queries here have long stale times and window-focus refetching is off, so a
- * page can sit on data that changed elsewhere — in GitHub, in AWS, or by
- * someone else in the app — with no way to say "look again" short of a
+ * page can sit on data that changed elsewhere, in GitHub, in AWS, or by
+ * someone else in the app, with no way to say "look again" short of a
  * restart. The spin is held for a moment past the response: an instant that
  * looks identical to nothing happening does not read as success.
  */
@@ -368,13 +368,13 @@ export function Empty({ title, body, action }: { title: string; body?: string; a
 }
 
 /**
- * A read that failed, said plainly — never as an empty result.
+ * A read that failed, said plainly, never as an empty result.
  *
  * The two render identically otherwise, and the empty one is *reassuring*:
  * "Nothing outstanding", "No alarms yet", "No open pull requests". Somebody
  * whose token had expired, or whose laptop had slept through the credentials
  * behind a tab going stale, was told in a calm voice that there was nothing to
- * see. On a security or compliance screen that is the worst available answer —
+ * see. On a security or compliance screen that is the worst available answer,
  * it under-reports, and it looks deliberate.
  *
  * `what` names the thing that could not be read, because "Something went wrong"
@@ -400,7 +400,7 @@ export function LoadFailed({ what, error, onRetry }: {
  * than it looks: a 1px line is honest about where the boundary is and horrible
  * to hit, so the hit area is 9px and only the middle of it is ever painted.
  *
- * `touch-none` matters on a trackpad and a touchscreen — without it the browser
+ * `touch-none` matters on a trackpad and a touchscreen, without it the browser
  * claims the gesture for scrolling and the drag never starts.
  */
 export function ColumnResizeHandle({ active, onPointerDown, onPointerMove, onPointerUp, onDoubleClick, label }: {
@@ -479,7 +479,7 @@ export function SortHeader({ label, columnKey, sortKey, sortDir, onSort, align =
 /**
  * Page navigation, and the count of what is being shown.
  *
- * Renders nothing when there is one page and no search — a pager under six rows
+ * Renders nothing when there is one page and no search, a pager under six rows
  * is furniture. When a search is active it stays, because "3 of 357" is the
  * answer to "did my search work".
  */

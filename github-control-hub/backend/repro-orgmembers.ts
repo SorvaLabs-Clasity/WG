@@ -5,7 +5,7 @@
  *
  * The failure this exists for is not an exception, it is a silence. A free-text
  * login box accepts any string, and plenty of strings are real GitHub accounts
- * belonging to strangers — so a typo does not fail, it names somebody outside
+ * belonging to strangers, so a typo does not fail, it names somebody outside
  * the organization, renders their photograph beside it, and stores a mute that
  * can never match anybody. The mute looks set. The person it was meant for goes
  * on being reminded.

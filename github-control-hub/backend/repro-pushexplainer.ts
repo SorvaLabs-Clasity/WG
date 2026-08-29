@@ -1,7 +1,7 @@
 /**
  * "Why can't I push?", answered before somebody tries.
  *
- * The rules were already stored in full and already on screen — as a settings
+ * The rules were already stored in full and already on screen, as a settings
  * form, which is the right shape for changing them and the wrong shape for the
  * question people actually have. A form says `requireCodeOwnerReviews: true`.
  * It does not say that somebody in CODEOWNERS has to approve.

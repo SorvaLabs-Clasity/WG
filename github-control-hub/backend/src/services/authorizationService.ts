@@ -4,7 +4,7 @@ import { createOctokit, getSystemToken, getOrg } from "../github/client";
 /**
  * Who may change org-wide Control Hub settings.
  *
- * Everything a user does to a *repository* is authorized by GitHub itself —
+ * Everything a user does to a *repository* is authorized by GitHub itself,
  * those calls are made with the user's own token, so GitHub allows exactly what
  * it would allow had they used github.com directly, and there is nothing for us
  * to decide. See routes/branches.ts.
@@ -32,7 +32,7 @@ interface CacheEntry { value: boolean; expires: number }
 const cache = new Map<string, CacheEntry>();
 const CACHE_TTL_MS = 60_000;
 
-/** Drop cached answers — call after membership could have changed. */
+/** Drop cached answers, call after membership could have changed. */
 export function invalidateAdminCache(login?: string): void {
   if (!login) { cache.clear(); return; }
   const suffix = `:${login.toLowerCase()}`;
@@ -71,7 +71,7 @@ async function isTeamMember(login: string, team: string, userToken?: string): Pr
     //
     // A denial from a broken App token used to be stored for the full TTL, so a
     // credential problem lasting a second locked the caller out of every admin
-    // screen for a minute after it healed — and gave them a plain "you are not
+    // screen for a minute after it healed, and gave them a plain "you are not
     // an admin", which is a claim about them rather than about the app.
     if (err instanceof Unanswerable) return false;
     throw err;
@@ -93,7 +93,7 @@ async function resolve(login: string, team: string, userToken?: string): Promise
    * But an account can legitimately have no App at all: an installation that
    * runs the AWS guardrails and deliberately holds no GitHub App key, so that
    * nothing about the GitHub organization lives there. Sign-in still happens
-   * through the OAuth App, and its token carries `read:org` — enough to answer
+   * through the OAuth App, and its token carries `read:org`, enough to answer
    * this one question, because every caller here is asking about *themselves*.
    *
    * That narrowing is what makes the fallback safe: with the caller's token the
@@ -110,7 +110,7 @@ async function resolve(login: string, team: string, userToken?: string): Promise
   }
   const octokit: Octokit = createOctokit(token);
 
-  // Org owners always qualify — otherwise an empty or deleted team could lock
+  // Org owners always qualify, otherwise an empty or deleted team could lock
   // everyone out of their own settings.
   try {
     const { data } = await octokit.rest.orgs.getMembershipForUser({ org, username: login });

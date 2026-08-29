@@ -11,10 +11,10 @@ rebuilt since Tuesday.
 
 Every feature below is written twice, on purpose:
 
-- **The path** — what actually happens, in plain English, as a diagram plus a
+- **The path**, what actually happens, in plain English, as a diagram plus a
   table saying what each box in it really is. Read this. Most questions are
   answered by working out which step you are on the wrong side of.
-- **The infrastructure** — table names, row shapes and which file does what.
+- **The infrastructure**, table names, row shapes and which file does what.
   This is for whoever is about to change the code. Skip it otherwise; nothing in
   the path depends on reading it.
 
@@ -56,12 +56,12 @@ account, check each against each rule, write down what it found. Described in
 full under [AWS guardrails](#aws-guardrails).
 
 **A walk.** One complete read of the open pull requests from GitHub. It is called
-a walk because GitHub will not hand over the whole list at once — you ask for a
+a walk because GitHub will not hand over the whole list at once. You ask for a
 page, get a cursor, ask for the next, and keep going. Described in full under
 [Pull requests](#pull-requests).
 
 **An expiry (TTL).** A time stamped on a row, after which DynamoDB deletes it
-for you. Nothing has to run to clean up — but it is also not punctual: DynamoDB
+for you. Nothing has to run to clean up, but it is also not punctual: DynamoDB
 often deletes hours or days after the stamp passes, which is why anything that
 must be *ignored* on time is checked when it is read rather than trusted to
 disappear.
@@ -73,12 +73,12 @@ at write level, by way of that team. Your organization has 1,849 of them.
 
 The app says "connections" and so does this file. The code and the table call
 them **edges**, which is the usual word for a link between two things in a
-graph, and is why the table is named `github-control-hub-graph-edges` — worth
+graph, and is why the table is named `github-control-hub-graph-edges`, worth
 knowing only when you are looking at the table itself.
 
 ### How to read the diagrams
 
-Each feature has a **path** — a diagram written in plain English, followed by a
+Each feature has a **path**, a diagram written in plain English, followed by a
 table saying what each box in it really is. Read the diagram to understand what
 happens; read the table only if you are about to change something.
 
@@ -88,16 +88,16 @@ The things the tables name:
 |---|---|
 | **Lambda** | Code AWS runs for you when something triggers it. No server, nothing running between triggers, billed by the millisecond. Each one has a memory size and a time limit |
 | **EventBridge rule** | AWS's timer. "Every 5 minutes, run that Lambda." It can also watch for a specific thing happening rather than a clock |
-| **DynamoDB table** | The database. Every table here is a pile of rows looked up by a key — there are no joins and no queries across tables |
+| **DynamoDB table** | The database. Every table here is a pile of rows looked up by a key. There are no joins and no queries across tables |
 | **SQS queue** | A waiting line for work. Something puts a job in, something else takes it out later. The point is that the taker can be slow or broken without the putter caring |
 | **SNS topic** | AWS's mailing list. The app publishes one message; AWS delivers it to everyone subscribed |
 | **S3 bucket** | File storage |
 | **API Gateway** | The public front door. The only address anything outside your account can reach |
 | **Secrets Manager** | Where the GitHub credentials are kept |
-| **app code** | Ordinary code with no infrastructure of its own. When you click something, this runs on **your own machine** — the desktop app contains the whole backend |
+| **app code** | Ordinary code with no infrastructure of its own. When you click something, this runs on **your own machine**, the desktop app contains the whole backend |
 
 Where a box names a file, it is `like/this.ts`, and it is there for whoever
-edits the code — you can ignore it otherwise.
+edits the code. You can ignore it otherwise.
 
 ---
 
@@ -106,7 +106,7 @@ edits the code — you can ignore it otherwise.
 A screen has three states, not two, and the third is easy to lose: **loading**,
 **there is nothing**, and **we could not find out**. The last two render
 identically unless something makes them differ, and the empty one is
-*reassuring* — "Nothing outstanding", "No alarms yet", "Nobody matches". A
+*reassuring*, "Nothing outstanding", "No alarms yet", "Nobody matches". A
 person whose token had expired was being told, in a calm voice, that there was
 nothing to see. On a security or compliance screen that is the worst available
 answer: it under-reports, and it looks deliberate.
@@ -114,11 +114,11 @@ answer: it under-reports, and it looks deliberate.
 | Kind of failure | Where it is announced |
 | --- | --- |
 | a **read** (query) that failed | `LoadFailed` from `design/index.tsx`, on the screen, naming what could not be read and offering a retry |
-| a **write** (mutation) that was refused | `components/MutationErrors.tsx` — one subscription to the mutation cache, so every mutation is covered including ones added later |
+| a **write** (mutation) that was refused | `components/MutationErrors.tsx`, one subscription to the mutation cache, so every mutation is covered including ones added later |
 | a **sign-in** action on the login screen | inline, above the tabs, because it happens before any of the above is mounted |
 
 The write side is the one that keeps coming back. These endpoints answer `200`
-with `{ reachable: false, error }` when they reached the server but not AWS — so
+with `{ reachable: false, error }` when they reached the server but not AWS, so
 a caller that ignores the result gets no exception and shows nothing, and the
 button looks dead rather than refused. Four handlers on the sign-in screen had
 exactly that. `repro-failedreads` pins all of them, plus the read side.
@@ -141,7 +141,7 @@ because a person clicked, or GitHub sent a webhook.
 | Developer Teams digests | checked every 5 minutes, sent once per person per day at their own hour | `github-control-hub-alarm-evaluator` |
 
 The schedules are EventBridge rules created by the CDK stack. Changing one means
-editing `infra/cdk-stack.ts` and redeploying — they are not settings in the app.
+editing `infra/cdk-stack.ts` and redeploying. They are not settings in the app.
 
 ---
 
@@ -181,18 +181,18 @@ Two of them, and they write the same DynamoDB row.
 | In the diagram | What it is |
 |---|---|
 | every 5 minutes | An EventBridge rule, `github-control-hub-alarm-schedule` |
-| the ticker | A Lambda: `github-control-hub-alarm-evaluator`, 512 MB, 5-minute limit. The same one that checks alarms — this rides along rather than having a timer of its own |
+| the ticker | A Lambda: `github-control-hub-alarm-evaluator`, 512 MB, 5-minute limit. The same one that checks alarms. This rides along rather than having a timer of its own |
 | ask GitHub | GitHub's search, a page at a time, following a cursor (`services/prNudgeService.ts`) |
 | the saved row | **One** row in the `github-control-hub-alarms` table, holding the entire list as text, under the name `pr-snapshot` |
 | you open it | The Pull requests tab's backend (`routes/pulls.ts`), running on your machine |
 | re-checks every 30 s | The page itself polling, and it stops polling entirely if you switch the feature off |
 
-1. **One Lambda does three jobs on the same timer** — checks alarms, sends
+1. **One Lambda does three jobs on the same timer**, checks alarms, sends
    buffered notifications, and this. Adding a second timer would mean two clocks
    to keep in step, so the pull request walk rides on the existing one. It fires
    288 times a day whether or not anybody is signed in.
 2. **The first thing it does is check whether the feature is on**, which is a
-   single row read. Switched off, the walk never starts — the check sits
+   single row read. Switched off, the walk never starts, the check sits
    deliberately *before* the fetch, so "off" costs nothing rather than fetching
    the world and then declining to use it.
 3. **Asking GitHub is the slow part, and it comes back a page at a time.** You
@@ -202,19 +202,19 @@ Two of them, and they write the same DynamoDB row.
    unit here, not a request.
 4. **How many fit in a page is learned, not configured.** GitHub gives up on a
    page it finds too expensive and returns an error after about eleven seconds.
-   So the walk starts at 30 per page and, on that error, steps down — 24, 18,
-   12, 6 — retrying **from the same bookmark** so nothing is skipped, and
+   So the walk starts at 30 per page and, on that error, steps down, 24, 18,
+   12, 6, retrying **from the same bookmark** so nothing is skipped, and
    remembers the size that worked for next time. Every twentieth walk it tries
    one size bigger, so a bad afternoon does not pin you to the smallest page for
    ever.
-5. **The whole list is saved as one row, not a row per pull request** — the list
+5. **The whole list is saved as one row, not a row per pull request**, the list
    as a block of text, plus when the walk finished. If that block exceeds
    300 KB it drops the last fifth and tries again, and flags the result as
    trimmed. The reason for the cap: a row over 400 KB is rejected outright, and
    a rejected save looks exactly like a cache that is quietly working and merely
    old.
 6. **Opening the tab reads that one row and looks at its age.** Fresh enough, it
-   paints immediately and starts a walk behind you — one walk however many tabs
+   paints immediately and starts a walk behind you, one walk however many tabs
    are open, because a flag in memory stops a second one starting. Too old, it
    walks in front of you and saves the result on the way past, so the *next*
    open is instant even if the timer has never run.
@@ -229,7 +229,7 @@ gap is three ticks of tolerance for a missed one.
 ### Why there is a stored copy at all
 
 Reading open pull requests from GitHub is the slowest thing this app does. There
-is no single call that returns them — you ask GitHub's search API for a page, it
+is no single call that returns them. You ask GitHub's search API for a page, it
 returns some results and a cursor, you ask for the next page, and so on until
 there are none left. That is the **walk**.
 
@@ -248,8 +248,8 @@ every five minutes and saves the result. This is what keeps the stored copy
 fresh without anybody opening the app.
 
 It walks whenever **Monitor pull requests** is on, whether or not reminders are.
-The walk feeds two things — the stored copy, and the decision about who to
-remind — and only the second one is what the reminders switch governs. That
+The walk feeds two things, the stored copy, and the decision about who to
+remind, and only the second one is what the reminders switch governs. That
 distinction was wrong in the code until 2026-08-20: the tick returned early when
 reminders were off, which is the default, so in the shipped configuration
 nothing kept the stored copy warm and the first open of the day always paid for
@@ -257,7 +257,7 @@ a live walk. Switching monitoring off still stops the walk entirely, and that is
 the switch to use if you want the tick to stop looking.
 
 **2. Any walk the app itself does.** If the tab is opened and there is no stored
-copy — first ever launch, or the stored one has expired — the app walks GitHub
+copy, first ever launch, or the stored one has expired, the app walks GitHub
 itself, shows the result, *and saves it on the way past*. That is what "on its
 way past" meant: it was already fetching, so it writes it down before returning,
 and the next open is instant.
@@ -270,7 +270,7 @@ and the next open is instant.
    background. The page polls every 30 seconds, so the new result appears
    shortly.
 3. **If it is missing or older than 15 minutes**, the route walks GitHub and you
-   wait — but that walk is then stored, so the next open is fast.
+   wait, but that walk is then stored, so the next open is fast.
 
 The **refresh button** requests `/api/pulls?refresh=1`, which skips step 2
 entirely and walks GitHub. Without that parameter it would re-read the same
@@ -286,7 +286,7 @@ stored copy: the button would spin, finish, and change nothing.
 | Expires | 24 hours (DynamoDB TTL) |
 
 The size guard matters because a DynamoDB item stops at 400KB. Exceeding it is
-not a graceful failure — the write is rejected and the stored copy silently stops
+not a graceful failure, the write is rejected and the stored copy silently stops
 updating, which looks exactly like a cache that works and is merely old.
 
 ### The infrastructure
@@ -303,22 +303,22 @@ ttl       <epoch seconds, +24h>
 ```
 
 Stored as one JSON string rather than as separate attributes, because the shape
-is exactly the route's response — pinning it as columns would create a second
+is exactly the route's response, pinning it as columns would create a second
 definition of the same rows, free to drift from the first.
 
 **Which code touches it:**
 
 | File | Role |
 |---|---|
-| `services/prNudgeService.ts` | `fetchOpenPrs` — the walk itself, the page-size ladder, the reminder logic |
-| `services/alarmService.ts` | `savePrSnapshot` / `readPrSnapshot` — **the only reader and writer of the row** |
+| `services/prNudgeService.ts` | `fetchOpenPrs`, the walk itself, the page-size ladder, the reminder logic |
+| `services/alarmService.ts` | `savePrSnapshot` / `readPrSnapshot`, **the only reader and writer of the row** |
 | `routes/pulls.ts` | the tab: serve the snapshot, refresh behind it, honour `?refresh=1` |
 | `alarms/handler.ts` | the 5-minute tick that walks and saves |
-| `services/orgConfigService.ts` | `savePrPageSize` — the learned page size, in a different table |
+| `services/orgConfigService.ts` | `savePrPageSize`, the learned page size, in a different table |
 
 **Two tables, not one.** The list lives in `alarms`; the learned page size lives
 in `org-config` alongside the graph's freshness. They are separated because the
-list expires after a day and the page size should not — an organization's
+list expires after a day and the page size should not, an organization's
 workable page size is a property of the organization, not of the last walk.
 
 ### The page size is learned, not configured
@@ -336,9 +336,9 @@ smallest page for ever.
 
 ### Reminders are a separate switch from monitoring
 
-- **Monitoring on** — the walk happens and the list is stored. This is what the
+- **Monitoring on**, the walk happens and the list is stored. This is what the
   tab shows.
-- **Reminders on** — additionally, people are messaged about what the walk found.
+- **Reminders on**, additionally, people are messaged about what the walk found.
 
 They used to be one condition, which meant turning reminders off also stopped the
 stored copy being refreshed, and the tab went back to being slow.
@@ -390,13 +390,13 @@ Three writers and one reader, and only the first of them is a Lambda.
 |---|---|
 | nightly at 10pm Eastern | An EventBridge **Scheduler** schedule, `github-control-hub-graph-aggregation`. A Scheduler schedule rather than an EventBridge rule because only Scheduler understands a named timezone: a rule's cron is UTC, which would be 10pm in winter and 11pm after the clocks change. |
 | the rebuilder | A Lambda: `github-control-hub-graph-aggregator`, 1024 MB, 15-minute limit (`jobs/graphAggregator.ts`) |
-| ask GitHub | Ordinary GitHub API calls with the app's own credentials — about four per repository |
+| ask GitHub | Ordinary GitHub API calls with the app's own credentials, about four per repository |
 | the connections table | A DynamoDB table, `github-control-hub-graph-edges` |
 | GitHub tells us | A webhook arriving, handled by `github-control-hub-webhook-worker` (`services/graphEdgeService.ts` does the updating) |
 | press "Sync from GitHub" | The same rebuild code, run inside the desktop app on your machine, using **your** GitHub login rather than the app's |
 | work out every route | `services/accessMapService.ts`, holding its answer in memory for 60 seconds |
 
-One more thing the rebuild writes on its way past: a note of when it finished —
+One more thing the rebuild writes on its way past: a note of when it finished,
 which is what the Access page header reads to tell you how old the picture is.
 
 It used to also score every repository for compliance, at roughly seven to ten
@@ -415,10 +415,10 @@ them. That sweep has been removed.
    who can reach it and at what level, plus its branches, workflows and open
    Dependabot alerts. Roughly four requests per repository.
 3. **"Compare and write only what changed" means this, concretely.** It is done
-   in the Lambda's own memory — DynamoDB has no such feature:
-   - It reads every connection already stored — the whole row, not just its
+   in the Lambda's own memory, DynamoDB has no such feature:
+   - It reads every connection already stored, the whole row, not just its
      identifier, because it needs the contents to compare them.
-   - It gives each one a short summary of its contents — a **fingerprint** —
+   - It gives each one a short summary of its contents, a **fingerprint**,
      and files it under its identifier.
    - It does the same for the connections it has just built from GitHub. This
      also removes duplicates across the whole run rather than just within each
@@ -430,7 +430,7 @@ them. That sweep has been removed.
    - The identifier joins the two halves of the key with an invisible NUL
      character, which is the one character DynamoDB will not allow inside a
      name, so it cannot collide with the data. It used to join them with `::`,
-     and a workflow genuinely named `Build :: Test` split into three parts — the
+     and a workflow genuinely named `Build :: Test` split into three parts, the
      delete then went out against a name that matched nothing, and the dead row
      stayed for ever.
    - The writes go out in batches that **retry whatever DynamoDB refuses**. The
@@ -446,7 +446,7 @@ them. That sweep has been removed.
    is no way to know what has gone, and writing anyway would leave orphan rows
    that every security check reads as current. A failed sync leaves the previous
    one in place, which is merely old. A failed *write* is rethrown so the
-   freshness stamp is never reached — a snapshot dated now is worse than one
+   freshness stamp is never reached, a snapshot dated now is worse than one
    dated last night, because only one of them looks wrong.
 6. **Sync from GitHub calls the same function in-process**, not the Lambda:
    `routes/graph.ts` imports `aggregateGraphData` and runs it in the desktop
@@ -456,7 +456,7 @@ them. That sweep has been removed.
 7. **The read path never touches GitHub.** `accessMapService.load()` scans
    `graph-edges` once, derives every route by which each person reaches each
    repository into a set of `Map`s, and keeps that derived object in a
-   module-level variable for **60 seconds** — a plain `let cache` in the
+   module-level variable for **60 seconds**, a plain `let cache` in the
    process, not DynamoDB and not Redis. The aggregator calls
    `invalidateAccessMap()` when it finishes, so a completed sync is visible
    immediately rather than up to a minute later.
@@ -467,7 +467,7 @@ The full walk runs once a night. A **light pass runs every 30 minutes** and
 refreshes only the edges that walk is otherwise the sole writer of.
 
 The split exists because the cost is wildly uneven. The expensive part is
-per-repository — collaborators, branches, workflows, alerts, four requests each,
+per-repository, collaborators, branches, workflows, alerts, four requests each,
 about 1,200 for 300 repositories. The parts six checks depend on cost almost
 nothing:
 
@@ -479,7 +479,7 @@ nothing:
 
 So a light pass over 300 repositories and 40 teams is **under 100 requests**,
 against an allowance of 15,000 an hour. Both schedules invoke the *same* Lambda
-with `{ mode: "light" }` or `{ mode: "full" }` — a second function would have
+with `{ mode: "light" }` or `{ mode: "full" }`, a second function would have
 meant a second bundle, bootstrap and permission set for a job reading the same
 API with the same token.
 
@@ -492,7 +492,7 @@ API with the same token.
 | Payload | `{ mode: "light" }` | `{ mode: "full" }` |
 | Lambda | `graph-aggregator` | **the same function** |
 | GitHub requests | **~85** | **~1,300** |
-| Per repository | **0 extra** — metadata arrives with the listing | **4** — collaborators, branches, workflows, alerts |
+| Per repository | **0 extra**, metadata arrives with the listing | **4**, collaborators, branches, workflows, alerts |
 | Per team | 2 | 2 |
 | Edge types written | **5** | **14** |
 | Clears the table first | **no** | **yes** |
@@ -512,7 +512,7 @@ API with the same token.
 Five edge types, from three kinds of GitHub call. Every field below is written
 on every light pass; nothing else in the row is touched.
 
-**`repo_meta`** — one row per repository, `pk: REPO#<name>`, `sk: META#repo`.
+**`repo_meta`**: one row per repository, `pk: REPO#<name>`, `sk: META#repo`.
 Built entirely from the organization repository listing
 (`GET /orgs/{org}/repos`, 100 per page), which is why the whole set costs three
 or four requests rather than one per repository.
@@ -528,7 +528,7 @@ or four requests rather than one per repository.
 | `secretScanning` | `"enabled"` · `"disabled"` · `"unknown"` | `repo.security_and_analysis.secret_scanning.status` | `"unknown"` when the field is absent, which is not the same as disabled |
 | `pushProtection` | `"enabled"` · `"disabled"` · `"unknown"` | `repo.security_and_analysis.secret_scanning_push_protection.status` | same |
 
-**`owns_repo`** and **`owned_by_team`** — the same fact stored from both ends so
+**`owns_repo`** and **`owned_by_team`**, the same fact stored from both ends so
 either can be looked up without a scan. From `GET /orgs/{org}/teams/{slug}/repos`,
 one call per team per page.
 
@@ -537,10 +537,10 @@ one call per team per page.
 | `owns_repo` | `TEAM#<slug>` | `REPO#<name>` | `{ permission }` |
 | `owned_by_team` | `REPO#<name>` | `TEAM#<slug>` | `{ permission }` |
 
-`permission` is GitHub's `role_name` — `admin`, `maintain`, `push`, `triage`,
-`pull` — and falls back to `"read"` when the listing does not carry one.
+`permission` is GitHub's `role_name`, `admin`, `maintain`, `push`, `triage`,
+`pull`, and falls back to `"read"` when the listing does not carry one.
 
-**`has_member`** and **`member_of`** — again both directions, from
+**`has_member`** and **`member_of`**, again both directions, from
 `GET /orgs/{org}/teams/{slug}/members`, one call per team per page.
 
 | Edge | `pk` | `sk` | Metadata |
@@ -554,14 +554,14 @@ own role for that person is not read on the light pass, and a member with no
 
 **What the light pass does not store:** anything needing a per-repository call.
 No collaborators, no branch protection, no workflows, no vulnerability edges,
-and no `top_contributor` — so the dormant-repository Owner column does not move
+and no `top_contributor`, so the dormant-repository Owner column does not move
 between full rebuilds. Nor does it write `org_meta`, `team_meta` or `user_meta`.
 
 **Pruning is per team and conditional.** Rows under a team are removed only when
 *both* that team's repository list and its member list were read without error.
 A half-read team is indistinguishable from a team that lost everything, and
 deleting on that basis would turn a failed read into a confident wrong answer.
-A repository that disappears entirely is not pruned here — that waits for the
+A repository that disappears entirely is not pruned here, that waits for the
 full rebuild, which clears the table.
 
 `top_contributor` carries one of two shapes: a GitHub `login` where the top
@@ -571,8 +571,8 @@ is somebody who can be messaged, and the dormant-repository Owner column labels
 them apart. See [features/widgets.md](features/widgets.md) for the full tier
 order.
 
-So the light pass covers **repository facts and team composition** — precisely
-what the six otherwise-stale checks read — and touches nothing else. Branch
+So the light pass covers **repository facts and team composition**, precisely
+what the six otherwise-stale checks read, and touches nothing else. Branch
 protection, collaborators, workflows and dependency edges are all patched by
 webhooks as they change and otherwise wait for the full walk.
 
@@ -614,7 +614,7 @@ The worker now patches the graph on those same deliveries:
 | `empty-teams` | `membership` added / removed | `has_member` |
 | `repos-dependent-on` | `dependabot_alert` | `has_vulnerable_dependency` |
 
-`repo_meta` is **merged, not replaced** — that edge carries a dozen fields the
+`repo_meta` is **merged, not replaced**, that edge carries a dozen fields the
 rebuild collected and a webhook knows about one. A repository the rebuild has
 never seen is skipped rather than created from a single field, because a partial
 `repo_meta` reads as "collected and empty" where the checks need "not collected".
@@ -624,25 +624,25 @@ rebuild, which lists alerts with `state=open` and so would never have written it
 
 ### What the rebuild does
 
-The rebuild — the nightly tick, or **Full GitHub recrawl** on the Access tab — walks
+The rebuild, the nightly tick, or **Full GitHub recrawl** on the Access tab, walks
 the whole organization and turns it into *connections*: small rows saying "this
 person reaches this repository, at this level, by this route".
 
 1. **List every repository**, every team, every member, and every outside
    collaborator.
 2. **Read the organization's default permission**, because the map's biggest
-   claim — "everyone can already read everything" — is only true if the default
+   claim, "everyone can already read everything", is only true if the default
    says so.
 3. **For each team**, list its repositories and its members. That is where "Bob
    can write to payments-api because he is in platform-eng" comes from.
 4. **For each repository**, list its collaborators with the level each has, plus
    its branches, workflows and open Dependabot alerts.
-5. **Turn all of that into connections** — roughly `USER#bob → REPO#payments-api`,
+5. **Turn all of that into connections**, roughly `USER#bob → REPO#payments-api`,
    carrying the level and how it was obtained.
 6. **Compare against what is already stored**, and write only the difference.
 
 Step 6 is why this is cheap to run often. A rebuild where nobody joined, left or
-changed team writes **nothing at all** — it reads the stored connections, finds
+changed team writes **nothing at all**. It reads the stored connections, finds
 them identical, and stops. Before that comparison existed it deleted and rewrote every
 row every time, which was the single most expensive thing in the app.
 
@@ -650,7 +650,7 @@ row every time, which was the single most expensive thing in the app.
 
 Roughly **four GitHub requests per repository**, plus two per team and about a
 dozen for the organization overall. Three hundred repositories works out at
-around 1,300 requests — under a tenth of one hour's allowance of 15,000. Cost is not
+around 1,300 requests, under a tenth of one hour's allowance of 15,000. Cost is not
 why it runs nightly rather than every few minutes: webhooks and the 30-minute light
 pass already keep the graph current, so all this walk still does is reconcile. See
 "Why nightly, and why 10pm" below.
@@ -719,7 +719,7 @@ only one thing in the stack asks for `mode: "full"`.
 
 Every explicit grant: admin, maintain, write, triage, and custom repository roles
 under whatever name your organization gave them. Outside collaborators always,
-including at read — the person who is not in your organization and can still see
+including at read, the person who is not in your organization and can still see
 the code is the row an access review exists to find.
 
 The one exclusion is a **member's plain read, where the organization already
@@ -747,8 +747,8 @@ Thirteen connection types are written: `user_meta`, `team_meta`, `org_meta`,
 `collaborates_on` / `has_collaborator`, `has_branch`, `uses_workflow`,
 `has_vulnerable_dependency`.
 
-Most are written in both directions — `USER#alice → REPO#api` *and*
-`REPO#api → USER#alice` — because DynamoDB can only query by partition key. One
+Most are written in both directions, `USER#alice → REPO#api` *and*
+`REPO#api → USER#alice`, because DynamoDB can only query by partition key. One
 direction answers "what can Alice reach", the other answers "who can reach this
 repository", and without both one of those questions would need a full scan.
 
@@ -757,9 +757,9 @@ repository", and without both one of those questions would need a full scan.
 | File | What it does |
 |---|---|
 | `jobs/graphAggregator.ts` | **the only full writer.** Rebuilds everything: reads all edges, diffs, writes the difference |
-| `services/graphEdgeService.ts` | **patches single edges** between rebuilds — `addBranchEdge`, `removeBranchEdge`, `addCollaboratorEdge`, `removeCollaboratorEdge`, `addRepoEdges`, `updateBranchProtection` |
-| `services/graphService.ts` | reads for the security checks — `scanGraphEdges`, `evaluateSecurityQuery` |
-| `services/accessMapService.ts` | reads and derives the access map — `accessSummary`, `accessForUser`, `accessForRepo`, `accessForTeam` |
+| `services/graphEdgeService.ts` | **patches single edges** between rebuilds, `addBranchEdge`, `removeBranchEdge`, `addCollaboratorEdge`, `removeCollaboratorEdge`, `addRepoEdges`, `updateBranchProtection` |
+| `services/graphService.ts` | reads for the security checks, `scanGraphEdges`, `evaluateSecurityQuery` |
+| `services/accessMapService.ts` | reads and derives the access map, `accessSummary`, `accessForUser`, `accessForRepo`, `accessForTeam` |
 
 ### Webhooks patch it between rebuilds
 
@@ -779,7 +779,7 @@ a branch deletion puts its connection back rather than waiting for a rebuild.
 ### Reading it back
 
 The Access tab does not read connections directly. `accessMapService` derives the
-answer — for each person, every route by which they reach each repository — and
+answer, for each person, every route by which they reach each repository, and
 holds that derivation for **60 seconds** in a module-level variable, because
 deriving it walks every connection. `invalidateAccessMap()` drops it, and the
 aggregator calls that at the end of every sync.
@@ -803,7 +803,7 @@ The header shows when the last rebuild finished, read from
 
 ### The path
 
-Three different things can start a sweep. All three run **the same code** — the
+Three different things can start a sweep. All three run **the same code**, the
 app has no checking logic of its own, which is what makes a sweep you started
 identical to one the clock started.
 
@@ -815,12 +815,12 @@ identical to one the clock started.
                                 │        │                                  │
   you press "Run" in the app ───┘        │  1. read your rules              │
                                          │  2. list what is really in the   │
-                                         │     account — buckets, log       │
+                                         │     account, buckets, log       │
                                          │     groups, and so on            │
                                          │  3. judge each thing against     │
                                          │     each rule                    │
                                          │  4. write down every verdict     │
-                                         │  5. fix it — only if that rule   │
+                                         │  5. fix it, only if that rule   │
                                          │     is set to "enforce"          │
                                          └──────────────────────────────────┘
                                                    │              │
@@ -834,12 +834,12 @@ identical to one the clock started.
 
 | In the diagram | What it is |
 |---|---|
-| every 15 minutes | An EventBridge rule — an AWS timer pointed at the sweeper |
-| something just changed | CloudTrail (AWS's own record of who did what) noticing one of six specific API calls — creating a bucket, changing a bucket policy, changing log retention — and firing the sweeper within seconds, for just that one thing |
+| every 15 minutes | An EventBridge rule, an AWS timer pointed at the sweeper |
+| something just changed | CloudTrail (AWS's own record of who did what) noticing one of six specific API calls, creating a bucket, changing a bucket policy, changing log retention, and firing the sweeper within seconds, for just that one thing |
 | you press "Run" | The AWS tab's backend asking AWS to run the sweeper and waiting for the answer (`routes/awsGuardrails.ts`) |
 | the sweeper | A Lambda: `github-control-hub-guardrail-enforcer`, 512 MB, 10-minute limit (`aws-guardrails/engine.ts` is the judging part) |
-| your rules | A DynamoDB table, `github-control-hub-aws-guardrails` — one row per rule |
-| every verdict | A DynamoDB table, `github-control-hub-aws-findings` — one row per rule-and-resource pair |
+| your rules | A DynamoDB table, `github-control-hub-aws-guardrails`, one row per rule |
+| every verdict | A DynamoDB table, `github-control-hub-aws-findings`, one row per rule-and-resource pair |
 | the activity feed | A DynamoDB table, `github-control-hub-activity` |
 
 1. **What differs between the three triggers is how much they look at, not what
@@ -856,13 +856,13 @@ identical to one the clock started.
    skip, and the ones that do not apply to this AWS account.
 4. **It looks at each kind of resource once, not once per rule.** If you have
    eight rules about S3 buckets, it lists your buckets **once** and all eight
-   rules read that one list — the ninth rule costs nothing extra. The list is
+   rules read that one list, the ninth rule costs nothing extra. The list is
    kept per account *and* per region, because buckets in one region tell you
    nothing about another.
 5. **Each resource is then judged twice.** First: is it on one of this rule's
    exclusion lists, by name or by tag? If so it is recorded as *not applicable*
    and skipped. Otherwise: does it pass the rule? The answer comes back as a
-   verdict, a one-line summary, and — where a fix exists — a description of
+   verdict, a one-line summary, and, where a fix exists, a description of
    exactly what would be changed.
 6. **Everything that passed is written down too, not just the failures.** Each
    verdict is stored under a key built from account, region, rule and resource,
@@ -872,8 +872,8 @@ identical to one the clock started.
 7. **Report mode does everything except the fix.** It lists, excludes, judges,
    and writes down the fix it *would* have made. It just never makes it. Across
    your entire AWS account the sweeper can perform exactly three write
-   operations — set a bucket policy, set a log retention, delete a log retention
-   — and no IAM action of any kind.
+   operations, set a bucket policy, set a log retention, delete a log retention
+   and no IAM action of any kind.
 8. **Old verdicts are cleaned up only after a sweep of everything.** A run
    scoped to one resource has not refreshed the rows it would be comparing
    against, so cleaning up there would delete real findings and put nothing in
@@ -890,18 +890,18 @@ also within seconds of a covered resource changing. Step by step:
 1. **Read the rules** from the `aws-guardrails` table, and drop any that are
    disabled or that this run was told to skip.
 2. **List the resources**, once per resource *type* rather than once per rule.
-   Eight S3 rules do not mean eight passes over every bucket — the buckets are
+   Eight S3 rules do not mean eight passes over every bucket, the buckets are
    listed once and all eight rules read that one list. This is a `ListBuckets`
    or `DescribeLogGroups` call and the `Get*` calls needed to see each one's
    configuration. Nothing reads the contents of anything.
 3. **For each rule, for each resource, decide one of four verdicts:**
-   - *excluded* — the resource is on one of the rule's exclusion lists, so it is
+   - *excluded*, the resource is on one of the rule's exclusion lists, so it is
      recorded as not applicable and skipped
-   - *compliant* — nothing to do
-   - *violation, rule in report mode* — recorded, including the exact fix it
+   - *compliant*. Nothing to do
+   - *violation, rule in report mode*, recorded, including the exact fix it
      would have made, and **nothing is changed**
-   - *violation, rule in enforce mode* — the fix is applied
-4. **Write every verdict** — compliant ones too — to the `aws-findings` table as
+   - *violation, rule in enforce mode*, the fix is applied
+4. **Write every verdict**, compliant ones too, to the `aws-findings` table as
    one row per rule-and-resource pair. This is what the AWS tab reads.
 5. **After a full sweep only**, delete findings whose rule or resource no longer
    exists, so the tab does not show results about things that are gone.
@@ -925,7 +925,7 @@ sk   "123456789012#us-east-2#rule-abc#my-bucket"  account # region # rule # reso
 
 That `sk` is deterministic, so the next sweep writing the same rule-and-resource
 pair **overwrites** the previous verdict rather than adding a second one. The
-table holds the current state of the account, not a history — a bucket that was
+table holds the current state of the account, not a history, a bucket that was
 in violation and is now compliant has one row, saying compliant.
 
 History is the activity feed's job, and only real changes go there.
@@ -935,7 +935,7 @@ History is the activity feed's job, and only real changes go there.
 | File | Role |
 |---|---|
 | `aws-guardrails/handler.ts` | the Lambda. Loads rules, runs the engine, persists the result |
-| `aws-guardrails/engine.ts` | the sweep itself — collect, evaluate, remediate |
+| `aws-guardrails/engine.ts` | the sweep itself, collect, evaluate, remediate |
 | `aws-guardrails/store.ts` | **the only file that reads or writes the three tables** |
 | `routes/awsGuardrails.ts` | the AWS tab: create, edit, delete rules; run or preview a sweep |
 
@@ -944,7 +944,7 @@ both reach these tables, and one file owning the key format is what stops the tw
 disagreeing about what a finding's `sk` looks like.
 
 **After a full sweep**, `store.ts` also deletes findings whose rule or resource no
-longer exists. That runs only after a *full* sweep — a run scoped to one resource
+longer exists. That runs only after a *full* sweep, a run scoped to one resource
 has not rewritten the rows it would be deleting, so doing it there would erase
 findings and replace them with nothing.
 
@@ -953,11 +953,11 @@ findings and replace them with nothing.
 **Fixing one resource, without enforcing the rule.** Every failing resource a
 fix exists for carries a **Fix** button, whatever mode its rule is in. Deciding
 to correct *this* bucket is a different decision from deciding that every future
-violation should be corrected automatically — and the rule's `mode` is what
+violation should be corrected automatically, and the rule's `mode` is what
 carries the second one.
 
 So the button does not touch the mode. A setting changed back afterwards is
-**reported again, not silently re-corrected** — unless the rule is in `enforce`,
+**reported again, not silently re-corrected**: unless the rule is in `enforce`,
 where re-correcting is the whole point.
 
 It works on a `report` rule because such a rule already carries the parameters a
@@ -966,12 +966,12 @@ every field regardless of mode. What `report` withholds is *doing it
 automatically*, not the knowledge of how.
 
 Under the hood this is `forceRemediate` on the engine, and it is **refused
-unless `resourceIds` names what to act on** — one absent field would otherwise
+unless `resourceIds` names what to act on**, one absent field would otherwise
 turn a button beside a single row into enforcing an entire rule.
 
 
 Every rule starts in report mode and is switched to enforce individually. A
-report-mode rule is not a dry run of a switched-off feature — it does the full
+report-mode rule is not a dry run of a switched-off feature. It does the full
 check, records the violation, and writes down the fix it would have made. The
 only thing it does not do is make it.
 
@@ -988,9 +988,9 @@ see what is in either, and cannot grant anyone access to anything.
 ### Why CloudTrail is involved
 
 Without it, the only trigger is the 15-minute tick. With it, an EventBridge rule
-watches for six specific API calls — `CreateBucket`, `PutBucketPolicy`,
+watches for six specific API calls, `CreateBucket`, `PutBucketPolicy`,
 `DeleteBucketPolicy`, `CreateLogGroup`, `PutRetentionPolicy`,
-`DeleteRetentionPolicy` — and invokes the same function within seconds, scoped to
+`DeleteRetentionPolicy`, and invokes the same function within seconds, scoped to
 just the resource that changed.
 
 Those events only exist if CloudTrail is recording. No trail means no fast path;
@@ -1047,11 +1047,11 @@ From the timer to somebody's inbox, with the state machine in between.
 | the ticker | A Lambda: `github-control-hub-alarm-evaluator`, 512 MB, 5-minute limit |
 | all the alarms | Rows in the `github-control-hub-alarms` table. One alarm is one row, and its current state lives on that same row |
 | what its number is | Depends on the widget: usually a read of the stored connections; for the Dependabot and Renovate ones, a live GitHub call |
-| send the email | The app publishes one message to an **SNS topic** — AWS's mailing list, one per email group — and AWS delivers it to everyone who confirmed their address |
+| send the email | The app publishes one message to an **SNS topic**, AWS's mailing list, one per email group, and AWS delivers it to everyone who confirmed their address |
 
 1. **Five minutes is how often it *looks*, not how often each alarm is
-   checked.** Every alarm carries its own interval — 10 minutes for the
-   Dependabot-backed ones, 15 for everything else — and is checked on the first
+   checked.** Every alarm carries its own interval, 10 minutes for the
+   Dependabot-backed ones, 15 for everything else, and is checked on the first
    look after it comes due. One timer therefore serves every alarm, and changing
    those intervals is a code change rather than a redeploy of AWS. An alarm that
    is not due costs one row read.
@@ -1074,15 +1074,15 @@ From the timer to somebody's inbox, with the state machine in between.
    clicked the confirmation link in their first email is not subscribed and gets
    nothing, which is why the page asks AWS who is really on the list rather than
    trusting its own records.
-6. **Where an alarm stands is stored on the alarm itself**, in the same write —
+6. **Where an alarm stands is stored on the alarm itself**, in the same write,
    its state, how many clean checks in a row, when it was last checked, what the
    value was. There is no separate state table, so there is no way for an alarm
    and its state to disagree.
 
 ### Setting one up
 
-1. **You create an email group.** The app calls SNS to create a *topic* — AWS's
-   fan-out mechanism — and writes a row to the `alarms` table with
+1. **You create an email group.** The app calls SNS to create a *topic*, AWS's
+   fan-out mechanism, and writes a row to the `alarms` table with
    `kind: "group"` holding the group's name and the topic's ARN.
 2. **You add addresses to it.** Each is subscribed to that SNS topic, and AWS
    emails the person a confirmation link. **Until they click it they receive
@@ -1091,26 +1091,26 @@ From the timer to somebody's inbox, with the state machine in between.
    like a working recipient.
 3. **You create the alarm.** A row in the same table with `kind: "alarm"`,
    holding the widget it watches, the condition, the group to notify, the email
-   templates, and its starting state — always `OK`, so creating an alarm never
+   templates, and its starting state, always `OK`, so creating an alarm never
    emails everyone the first time it runs.
 
 ### What the 5-minute tick does
 
 The evaluator Lambda wakes every five minutes and, for each enabled alarm:
 
-1. **Decides whether it is due.** Five minutes is the *tick*, not the interval —
+1. **Decides whether it is due.** Five minutes is the *tick*, not the interval,
    each alarm carries its own (10 minutes for Dependabot-backed widgets, 15 for
    everything else) and is evaluated on the first tick after it comes due. One
    rule serves every tiering, and a not-due alarm costs one row read.
 2. **Computes the widget's current value**, which may mean a GitHub call or a
    read of the stored graph, depending on the widget.
-3. **Compares it to the condition** — breaching, or not.
+3. **Compares it to the condition**, breaching, or not.
 4. **Steps the state machine** and writes the result back:
 
    | Now | Was | Result |
    |---|---|---|
    | breaching | `OK` | → `ALARM`, **send the email** |
-   | breaching | `ALARM` | stays `ALARM`, sends nothing — it already told you |
+   | breaching | `ALARM` | stays `ALARM`, sends nothing. It already told you |
    | not breaching | `ALARM` | clean streak +1; at **2** clean checks → `OK`, send the recovery email |
    | not breaching | `OK` | nothing |
 
@@ -1120,8 +1120,8 @@ The evaluator Lambda wakes every five minutes and, for each enabled alarm:
    to filter the alarm that mattered.
 5. **Publishes to the group's SNS topic** if the state changed, and SNS delivers
    to every confirmed address on it.
-6. **Writes the runtime back** — state, clean streak, last checked time, last
-   value — onto the same alarm row. There is no separate state table: an alarm
+6. **Writes the runtime back**, state, clean streak, last checked time, last
+   value, onto the same alarm row. There is no separate state table: an alarm
    and its state are read and written together on every evaluation, and splitting
    them would buy a second round trip and a chance for the two to disagree.
 
@@ -1134,12 +1134,12 @@ transition.
 
 That comparison is structural, not string equality. DynamoDB returns a map's keys
 in its own order, so comparing the stored condition as JSON text made *every*
-save look like a condition change — renaming an alarm was enough to reset a
+save look like a condition change, renaming an alarm was enough to reset a
 firing one and re-email everybody.
 
 Only seven fields can be edited through the API. The table is shared by alarms,
 groups, PR state and the security toggle, all keyed on `id`, so a request body
-passed through wholesale could overwrite a *different kind of row* — an email
+passed through wholesale could overwrite a *different kind of row*, an email
 group's `topicArn`, or the organization's security settings.
 
 ### The infrastructure
@@ -1170,7 +1170,7 @@ a way for the two to disagree.
 
 | File | Role |
 |---|---|
-| `services/alarmService.ts` | reads and writes five of the six kinds — alarms, groups, PR state, the snapshot, security settings |
+| `services/alarmService.ts` | reads and writes five of the six kinds, alarms, groups, PR state, the snapshot, security settings |
 | `services/queryCacheService.ts` | owns the sixth, `query-subject`, and nothing else touches those rows |
 | `alarms/handler.ts` | the Lambda: the 5-minute tick |
 | `alarms/evaluate.ts` | decides due, breaching, and what state to move to |
@@ -1191,7 +1191,7 @@ believes in.
 
 They are fast for one reason: they ask narrow questions with direct answers.
 "List the repositories in this org" is one paginated call. "Who is in this team"
-is one call. There is nothing to precompute because there is no walk — GitHub
+is one call. There is nothing to precompute because there is no walk, GitHub
 answers in one round trip, and storing it would only create a copy that can be
 wrong.
 
@@ -1205,17 +1205,17 @@ wrong.
 ```
 
 1. **There is no server hop.** The desktop app runs the backend in-process on
-   `localhost:4321`, so "live" here means exactly one network call — your
+   `localhost:4321`, so "live" here means exactly one network call, your
    machine to GitHub and back.
 2. **Which token depends on the verb, not the route.** Reads use the GitHub
    App's installation token so everyone sees the same organization-wide picture;
-   writes — enabling Dependabot, changing protection, creating a branch — use
+   writes, enabling Dependabot, changing protection, creating a branch, use
    *your* OAuth token, so GitHub authorizes precisely what it would have
    authorized on github.com. The app never decides you may change a repository.
 3. **Nothing is written down**, so there is no table, no expiry, and no staleness
    to reason about. The failure mode here is a slow page, never a wrong one.
 4. **Vulnerabilities is the one with a trick in it.** Dependabot alerts are read
-   **org-wide in a single paginated call** rather than per repository — one
+   **org-wide in a single paginated call** rather than per repository, one
    request instead of 350. Two consequences: a repository with no alerts is
    recorded as *alerts off* or *on and clean*, never collapsed into one number;
    and a sweep that could only read part of the organization returns `degraded`
@@ -1224,7 +1224,7 @@ wrong.
 
 ### The infrastructure
 
-There isn't any, and that is the point — no table, no cache, no scheduled job.
+There isn't any, and that is the point, no table, no cache, no scheduled job.
 The route builds an Octokit client from a token and returns what GitHub says.
 
 | Page | Route | Reads |
@@ -1235,8 +1235,8 @@ The route builds an Octokit client from a token and returns what GitHub says.
 | Who knows | `routes/expertise.ts` | commit and comment history |
 
 **Which token** depends on what is being done. Reading uses the GitHub App's
-token, so everyone sees the same organization-wide picture. **Writing** — enabling
-Dependabot, changing protection, creating a branch — uses *your* token, so GitHub
+token, so everyone sees the same organization-wide picture. **Writing**, enabling
+Dependabot, changing protection, creating a branch, uses *your* token, so GitHub
 authorizes exactly what it would have authorized had you done it on github.com.
 The app never decides you may change a repository; it asks GitHub, as you.
 
@@ -1244,7 +1244,7 @@ The app never decides you may change a repository; it asks GitHub, as you.
 **org-wide in a single call** rather than per repository, which is the difference
 between one request and 350. Two details follow from that:
 
-- A repository with no alerts is ambiguous — alerts might be switched off, or on
+- A repository with no alerts is ambiguous, alerts might be switched off, or on
   and clean. Those are recorded as different things, so a clean repository never
   looks like a vanished one.
 - If the sweep can only read part of the organization, it reports `degraded`
@@ -1257,11 +1257,11 @@ between one request and 350. Two details follow from that:
 The tab answers three questions, and they are three views rather than one
 column: **Dependabot** (what is vulnerable), **Renovate** (what has been raised
 to fix it), and **Notifications** (who gets told). The view is a URL parameter,
-so it survives a refresh and can be linked to — the ids behind them are still
+so it survives a refresh and can be linked to, the ids behind them are still
 `alerts` and `updates`, which is why a link made before the tabs were renamed
 still works.
 
-They were stacked before — every vulnerable repository, then the Dependabot
+They were stacked before, every vulnerable repository, then the Dependabot
 email settings, then Renovate, then the Renovate email settings. Reaching
 Renovate meant scrolling past a page of repository cards, which put the two
 halves of one question at opposite ends of a scroll bar.
@@ -1270,7 +1270,7 @@ Two consequences worth keeping:
 
 - **No view waits for another view's data.** The Dependabot fetch used to be an
   early return for the whole page, so opening Renovate waited for an alert list
-  it does not use — the same fault as the scroll, wearing a different hat. The
+  it does not use, the same fault as the scroll, wearing a different hat. The
   spinner belongs to the Dependabot view now.
 - **Refresh refreshes the view you are on.** Refetching all three would spend
   GitHub's rate limit on two views nobody has open.
@@ -1283,13 +1283,13 @@ fetching twice. `repro-vulnviews` pins all of this.
 
 ## Security checks (the widget queries)
 
-**Shape: two kinds — some answer instantly, some are built up over time.**
+**Shape: two kinds, some answer instantly, some are built up over time.**
 
 A widget on the Overview page runs a *check*: "repositories with no branch
 protection", "people with admin nobody explains", and so on.
 
 **Most read the stored graph** and answer immediately. The graph is already in
-DynamoDB, so this is one scan and some filtering — no GitHub call, and no waiting.
+DynamoDB, so this is one scan and some filtering, no GitHub call, and no waiting.
 
 **Some cannot be answered in one go.** A check like "which accounts have committed
 in the last 90 days" needs one GitHub search *per subject*, and GitHub allows
@@ -1301,7 +1301,7 @@ Those work differently:
 1. Each pass checks as many subjects as the rate limit allows.
 2. Each answer is stored as its own row in the `alarms` table
    (`kind: "query-subject"`), expiring after 24 hours.
-3. The check reports its coverage — *"checked 25 of 250"* — rather than a number
+3. The check reports its coverage, *"checked 25 of 250"*, rather than a number
    that is only partly true.
 4. Later passes fill in the rest, and the card completes over several minutes.
 
@@ -1310,12 +1310,12 @@ Those work differently:
 Two, and the card tells you which one it is on.
 
 ```
-  MOST CHECKS — answered immediately
+  MOST CHECKS, answered immediately
 
   the widget ──▶ read the stored connections ──▶ filter them ──▶ the answer
                  (no GitHub call at all)
 
-  THREE CHECKS — built up over several minutes
+  THREE CHECKS, built up over several minutes
 
   the widget ──▶ show what has been answered so far, and say how far along
                      │
@@ -1335,10 +1335,10 @@ Two, and the card tells you which one it is on.
 | the stored connections | The `github-control-hub-graph-edges` table |
 | ask GitHub about each one | One search per person for "who has not committed lately"; one read per repository for the two branch-protection checks |
 | file each answer | A row per subject in the `github-control-hub-alarms` table, thrown away after 24 hours |
-| a batch | 25 subjects for the search-based check, 50 for the others — sized to GitHub's limits, which are 30 searches a **minute** but 15,000 ordinary calls an **hour** |
+| a batch | 25 subjects for the search-based check, 50 for the others, sized to GitHub's limits, which are 30 searches a **minute** but 15,000 ordinary calls an **hour** |
 
 1. **Most checks never leave your own database.** The connections are already
-   stored, so the check is one read of them and some filtering — no GitHub call
+   stored, so the check is one read of them and some filtering, no GitHub call
    and nothing to wait for.
 2. **Three checks cost one GitHub call per subject**, which is what makes them
    different: `dormant-privileged-users` runs a commit search per privileged
@@ -1346,7 +1346,7 @@ Two, and the card tells you which one it is on.
    protection and merged pull requests per repository.
 3. **The batch size is the rate-limit budget, declared per check.**
    `dormant-privileged-users` is `{ budget: "search", gapMs: 61_000, perPass: 25 }`
-   — search allows thirty requests a *minute*, so twenty-five is one batch and a
+   search allows thirty requests a *minute*, so twenty-five is one batch and a
    second inside the same minute would be over the line, hence the 61-second
    gap. The two protection checks spend the core allowance (15,000 an hour) and
    run 50 a pass, seconds apart.
@@ -1356,11 +1356,11 @@ Two, and the card tells you which one it is on.
    clean subject would be indistinguishable from one never reached and coverage
    could never reach 100%.
 6. **Nothing is reported until coverage is complete.** While it builds, the card
-   says *"checked 25 of 250"* rather than a number that is only partly true —
+   says *"checked 25 of 250"* rather than a number that is only partly true,
    the only place in the app that deliberately shows an incomplete answer, and
    it says so.
 7. **An answer counts for 24 hours, and that is checked when it is read** rather
-   than trusted to the expiry. DynamoDB deletes late — often days late — and a
+   than trusted to the expiry. DynamoDB deletes late, often days late, and a
    row still sitting there is not the same as an answer still worth having.
 
 ### The dashboard opens from stored answers
@@ -1370,8 +1370,8 @@ row per widget in the `alarms` table (`kind: "widget-snapshot"`, 24-hour TTL).
 The Overview reads those and renders immediately.
 
 **Each pass overwrites the last. No history is kept.** The row's key is
-`widget-snapshot#<widgetId>` — derived from the widget alone, with no timestamp
-in it — so writing the new snapshot replaces the old one in place. There is
+`widget-snapshot#<widgetId>`, derived from the widget alone, with no timestamp
+in it, so writing the new snapshot replaces the old one in place. There is
 exactly one row per widget at any moment, however long the app has been running:
 eleven widgets means eleven rows, this month and next. What changes is
 `computedAt`, not the number of rows.
@@ -1380,17 +1380,17 @@ This is deliberate. A snapshot is a cache of *the current answer*, not a record
 of what was true at 3pm; nothing in the app reads yesterday's snapshot, and
 keeping them would grow the table by 288 rows per widget per day to store
 answers nobody asks for. History that is worth keeping is kept elsewhere and on
-purpose — the `activity` table records what changed, and alarm rows record what
+purpose, the `activity` table records what changed, and alarm rows record what
 fired.
 
-The 24-hour TTL is therefore not a retention policy — a snapshot is replaced
+The 24-hour TTL is therefore not a retention policy, a snapshot is replaced
 long before it can expire. It is a cleanup for rows that stop being rewritten:
 delete a widget and its snapshot is removed immediately, but if that delete is
 missed, the TTL removes it within a day rather than leaving it forever.
 
 Before this, each card ran its check inside the request that drew it: a full
-scan of the graph table, live GitHub calls for the dependency cards, and — for
-the three subject-by-subject checks — up to twenty-five commit searches against
+scan of the graph table, live GitHub calls for the dependency cards, and, for
+the three subject-by-subject checks, up to twenty-five commit searches against
 a budget of thirty a minute, on a cold process, right after launching the app.
 
 | | |
@@ -1398,7 +1398,7 @@ a budget of thirty a minute, on a cold process, right after launching the app.
 | Written by | `alarms/handler.ts`, after the alarm evaluation |
 | Cost | Reuses the memoised sources the alarms already built, so a widget an alarm watches is not computed twice |
 | Order | Sequential, because running them at once would fire every live GitHub call in the same instant |
-| Read by | `GET /api/widgets/snapshots` — one request for the whole dashboard |
+| Read by | `GET /api/widgets/snapshots`, one request for the whole dashboard |
 
 Four rules make it safe to serve a stored answer:
 
@@ -1409,7 +1409,7 @@ Four rules make it safe to serve a stored answer:
   a live read, so the card shows the real failure rather than a stale number.
 - **A trimmed snapshot is enough for a card, not for the table.** Results are
   trimmed to 300KB to fit the item limit, and `total` still reports the true
-  count — so the card is right. The detail view asks with `needAllRows`, which
+  count, so the card is right. The detail view asks with `needAllRows`, which
   rejects a trimmed snapshot and reads live.
 - **The age is on screen.** "Checked 4 minutes ago · refresh to run them now",
   under the headline. A figure shown as current when it is twenty minutes old is
@@ -1438,7 +1438,7 @@ Two things follow from putting them there rather than in their own table. A
 verdict expires by itself after 24 hours, so a check that stops running fades out
 rather than reporting last week's answer for ever. And because `alarmService`
 reads that table for alarms and groups, its scan **filters these out
-server-side** — on a large organization there are hundreds of them, and every
+server-side**, on a large organization there are hundreds of them, and every
 alarm pass would otherwise page through a cache it never reads.
 
 **Which code touches it:**
@@ -1446,7 +1446,7 @@ alarm pass would otherwise page through a cache it never reads.
 | File | Role |
 |---|---|
 | `services/queryCacheService.ts` | verdict storage, the per-check budgets, the throttle |
-| `services/graphService.ts` | `evaluateSecurityQuery` — runs a check, cached or direct |
+| `services/graphService.ts` | `evaluateSecurityQuery`, runs a check, cached or direct |
 | `routes/graph.ts` | the card, and `POST /query/:q/refresh-all` |
 
 Each slow check declares its own budget in `queryCacheService`: whether it spends
@@ -1465,7 +1465,7 @@ rather than rounding up.
 
 Clicking a widget opens a table whose columns are **draggable**, and the widths
 are the one piece of this app's state that lives in the browser rather than in
-DynamoDB — `localStorage`, under `columnWidths:widget:<id>:<column ids>`. It is
+DynamoDB, `localStorage`, under `columnWidths:widget:<id>:<column ids>`. It is
 per-machine preference, not organization data; there is nothing to reconcile
 across accounts and nothing worth a round trip.
 
@@ -1479,7 +1479,7 @@ Three details are load-bearing:
   query has different columns, and a layout saved for the old set describes a
   table that no longer exists.
 - **The last column has no fixed width**, so it absorbs whatever is left and the
-  table keeps a clean right edge. Before this, that column carried `w-full` —
+  table keeps a clean right edge. Before this, that column carried `w-full`,
   which in a table means `width: 100%`, so it claimed everything and every other
   column collapsed to its narrowest renderable size. The repository name, the
   column people were actually reading, was the one that got nothing while the
@@ -1488,7 +1488,7 @@ Three details are load-bearing:
 `lib/columnWidths.ts` holds the arithmetic and `lib/widgetColumns.ts` the column
 sets; both are pure and covered by `repro-columnwidths`, which also asserts that
 the number of columns matches the number of cells the body renders for each
-widget type — a `<colgroup>` of the wrong length does not throw, it silently
+widget type, a `<colgroup>` of the wrong length does not throw, it silently
 shifts every width one column across.
 
 ## Important events
@@ -1498,7 +1498,7 @@ tab's alert list exists because GitHub sent a webhook saying something changed.
 
 This is a different mechanism from the checks above, on the same page. The
 checks answer *what is true now*, by querying the stored graph. The alerts
-answer *what changed, and when* — and they can only know what GitHub told them.
+answer *what changed, and when*, and they can only know what GitHub told them.
 
 ### The path
 
@@ -1536,12 +1536,12 @@ Taking "a team was added to a repository" as the example:
 
 | In the diagram | What it is |
 |---|---|
-| the front door | API Gateway — the only address anything outside your AWS account can reach. It only accepts requests from GitHub's four published address ranges, and that check happens before any code runs |
+| the front door | API Gateway, the only address anything outside your AWS account can reach. It only accepts requests from GitHub's four published address ranges, and that check happens before any code runs |
 | the signature | GitHub signs each message with a shared secret. The doorman recomputes the signature and compares |
-| the doorman | A Lambda: `github-control-hub-webhook-receiver`, 256 MB, 8-second limit. It can reach exactly two things — the secret it needs, and the waiting line |
+| the doorman | A Lambda: `github-control-hub-webhook-receiver`, 256 MB, 8-second limit. It can reach exactly two things, the secret it needs, and the waiting line |
 | the waiting line | An SQS queue. Five failed attempts and the message moves to a dead-letter queue instead of being lost |
 | the handler | A Lambda: `github-control-hub-webhook-worker`, 512 MB, 10-minute limit (`webhooks/processDelivery.ts` is the matching part) |
-| "already handled this one?" | A row written in the `github-control-hub-webhook-deliveries` table, written only if it is not already there — so a message delivered twice is handled once |
+| "already handled this one?" | A row written in the `github-control-hub-webhook-deliveries` table, written only if it is not already there, so a message delivered twice is handled once |
 | an alert | A row in the `github-control-hub-alerts` table |
 
 **How the tab reads them.** `GET /alerts` returns one page, newest first,
@@ -1579,7 +1579,7 @@ the attribute is absent, so it is safe to run twice.
    GitHub App is subscribed to team events. Nothing scans for this, so if that
    subscription is off, nothing is ever flagged and nothing looks wrong.
 2. **There is no rules engine and no inference.** The handler compares two
-   strings — the event is `team`, the action is `added_to_repository` — and
+   strings, the event is `team`, the action is `added_to_repository`, and
    writes the alert. That is the whole of "how it knows":
 
    ```js
@@ -1595,7 +1595,7 @@ the attribute is absent, so it is safe to run twice.
    got round to it. Otherwise a backlog, a retry, or GitHub resending a week-old
    event would all be dated "now".
 5. **A failed email does not undo the alert.** Sending is attempted after the
-   alert is already stored, and a failure there is logged and dropped —
+   alert is already stored, and a failure there is logged and dropped,
    otherwise the whole message would be reprocessed and you would get a second
    copy of everything else it did.
 
@@ -1731,7 +1731,7 @@ so the timestamp is when it was *noticed*, and nobody knows who did it. A login
 and an exact time would both be invented.
 
 **An alert does not touch the access graph.** The worker updates connections for
-branches, collaborators and protection, but not for teams — so the alert appears
+branches, collaborators and protection, but not for teams, so the alert appears
 in seconds while the Access map still shows the team's old connections until the nightly
 rebuild.
 
@@ -1743,14 +1743,14 @@ gone silent.
 
 ## Activity feed
 
-**Shape: stored, append-only.** Nothing here is ever recomputed — each row is
+**Shape: stored, append-only.** Nothing here is ever recomputed, each row is
 written once, when the thing happened, and read back later.
 
 ### What writes a row
 
 | Writer | When |
 |---|---|
-| Any route that changes something | as it changes it — branch protection, a widget, a scanner, a ruleset |
+| Any route that changes something | as it changes it, branch protection, a widget, a scanner, a ruleset |
 | The guardrail Lambda | when a rule **actually fixed** something, or failed trying |
 | The webhook worker | when GitHub reports a change somebody made on github.com |
 | Any sync | when a refresh, sweep or re-check runs |
@@ -1771,7 +1771,7 @@ when the thing happened, and read back later.
                                                      the Activity tab
                                                              │
                                             some rows carry the opposite of
-                                            what was done — that is Undo
+                                            what was done, that is Undo
 ```
 
 **What each box really is:**
@@ -1780,20 +1780,20 @@ when the thing happened, and read back later.
 |---|---|
 | one long list | The `github-control-hub-activity` table. Every row is filed under the same single key so the whole feed can be read newest-first in one go, without searching |
 | newest first | The row's sort key starts with the time, so the database is already holding them in the order the page wants |
-| Undo | The row stores what would reverse the action. Pressing Undo replays that **using your own GitHub login**, so GitHub decides whether you may — the app does not |
+| Undo | The row stores what would reverse the action. Pressing Undo replays that **using your own GitHub login**, so GitHub decides whether you may, the app does not |
 
 1. **Every row is filed under the same single key**, which is what lets the whole
    feed be read newest-first in one go. The part that orders them starts with
    the time, so the database is already holding them in the order the page
-   wants — it never has to search through everything to build the list.
+   wants. It never has to search through everything to build the list.
 2. **The AWS sweeper writes its rows itself**, rather than going through the
-   shared code every other writer uses — the one exception, and deliberate. It
+   shared code every other writer uses, the one exception, and deliberate. It
    is packaged on its own, and reusing that code would drag the entire app into
    that function. The catch is that it has to stamp the 13-month expiry itself,
    and a row written without one would sit there for ever.
 3. **`id-index` exists because undo needs a row by its id.** Without it,
    `getActivityById` falls back to reading the newest rows and filtering, which
-   answers "is it recent?" rather than "does it exist?" — correct on a small
+   answers "is it recent?" rather than "does it exist?", correct on a small
    log, silently wrong on a large one.
 4. **`parentId-index` is sparse**: only child rows carry `parentId`, so the
    index holds exactly those and nothing else pays for it.
@@ -1827,21 +1827,21 @@ order the page wants.
 
 | Index | Why it exists |
 |---|---|
-| `id-index` | Undo needs to find one row *by its id*. Without this, `getActivityById` falls back to reading the newest rows and filtering — which answers "is it recent?" rather than "does it exist?" Correct on a small log, silently wrong on a large one |
+| `id-index` | Undo needs to find one row *by its id*. Without this, `getActivityById` falls back to reading the newest rows and filtering, which answers "is it recent?" rather than "does it exist?" Correct on a small log, silently wrong on a large one |
 | `parentId-index` | Finding a row's children. Sparse: only child rows carry `parentId`, so the index holds exactly those |
 
 **Which code touches it:**
 
 | File | Role |
 |---|---|
-| `services/activityService.ts` | `logActivity`, `logSync`, and every read — **the app's only writer** |
+| `services/activityService.ts` | `logActivity`, `logSync`, and every read, **the app's only writer** |
 | `aws-guardrails/handler.ts` | writes rows **directly**, bypassing the service |
 | `routes/activity.ts` | the tab, plus undo, redo and retry |
 
 The guardrail Lambda writing directly is the one exception, and deliberate: it is
 bundled on its own and importing the service would pull the whole app into that
 function. It inlines the retention stamp instead, with a comment saying it must
-match — a row without a TTL is a row that never expires.
+match, a row without a TTL is a row that never expires.
 
 ### Reading it back
 
@@ -1854,7 +1854,7 @@ search is bounded at 3,000 rows per request and says when it stopped early. See
 ### The three streams
 
 Rows are sorted into Organization, AWS and App settings by the prefix
-of their action name — `branch.` and `repository.` are organization changes,
+of their action name, `branch.` and `repository.` are organization changes,
 `aws.` is the guardrails, `widget.` and `sync.` are housekeeping. The mapping is
 data, in `frontend/src/lib/activityCategories.ts`, and an unrecognized action
 falls back to Organization on purpose: hiding something new in a tab nobody
@@ -1874,7 +1874,7 @@ came back.
 
 ### Undo
 
-A row can carry an *undo payload* — the inverse of what was done. Undo replays it
+A row can carry an *undo payload*, the inverse of what was done. Undo replays it
 **using the caller's own GitHub token**, so GitHub authorizes it exactly as it
 would have authorized the original action. The app is not deciding you may
 reverse something; GitHub is, on the same terms as when you did it.
@@ -1983,7 +1983,7 @@ the last hop.
 | In the diagram | What it is |
 |---|---|
 | the front door | API Gateway. Only GitHub's four published address ranges are allowed, enforced before any code runs, with a firewall in front of that |
-| the doorman | A Lambda: `github-control-hub-webhook-receiver`, 256 MB, 8-second limit — deliberately under GitHub's 10-second cutoff, because past that nobody is listening for the answer |
+| the doorman | A Lambda: `github-control-hub-webhook-receiver`, 256 MB, 8-second limit, deliberately under GitHub's 10-second cutoff, because past that nobody is listening for the answer |
 | the waiting line | An SQS queue. Five failed attempts and the message goes to a dead-letter queue, kept 14 days |
 | the handler | A Lambda: `github-control-hub-webhook-worker`, 512 MB, 10-minute limit. One message at a time, at most five at once, to stay inside GitHub's rate limit |
 
@@ -1995,7 +1995,7 @@ the last hop.
    signatures, and the waiting line. It holds no GitHub credentials and cannot
    write to any table. If it were ever broken into, what it yields is the
    ability to check signatures.
-3. **If a rotation changes the secret, it retries once with a fresh copy** —
+3. **If a rotation changes the secret, it retries once with a fresh copy**,
    otherwise every delivery would be rejected until a cache happened to expire.
 4. **A message too large for the queue fails loudly rather than quietly.**
    Accepting it and dropping it would lose the event with no record anywhere;
@@ -2006,7 +2006,7 @@ the last hop.
 6. **The handler claims each message before working on it**, so the same message
    arriving twice is only acted on once. The claim expires on its own, so a
    handler that dies halfway does not block that message for ever.
-7. **One message can write to four different places** — the activity feed, the
+7. **One message can write to four different places**, the activity feed, the
    access connections, an alert, a rescore. All of it is finished *inside* the
    handler rather than left running afterwards, because AWS freezes the function
    the moment it returns and unfinished work would simply never happen.
@@ -2014,7 +2014,7 @@ the last hop.
 ### Why the split
 
 The receiver is the only thing in this app reachable from the internet. It holds
-a key to the webhook secret **and nothing else** — no GitHub App key, no database
+a key to the webhook secret **and nothing else**, no GitHub App key, no database
 write access beyond the queue. If it were compromised, what it could reach is one
 HMAC secret.
 
@@ -2045,7 +2045,7 @@ for ever and that delivery would never be retried.
 |---|---|
 | `webhooks/receiver.ts` | the internet-facing Lambda: verify the signature, enqueue |
 | `webhooks/secret.ts` | fetches and caches the webhook secret |
-| `webhooks/deliveryLock.ts` | **the only file touching the deliveries table** — `claimDelivery`, `completeDelivery`, `releaseDelivery` |
+| `webhooks/deliveryLock.ts` | **the only file touching the deliveries table**, `claimDelivery`, `completeDelivery`, `releaseDelivery` |
 | `webhooks/worker.ts` | the queue-driven Lambda |
 | `webhooks/processDelivery.ts` | decides what each event means, and writes the consequences |
 
@@ -2056,7 +2056,7 @@ event can touch all three.
 
 ### When something goes wrong
 
-A delivery rejected at the API Gateway is **lost** — GitHub sees the failure, and
+A delivery rejected at the API Gateway is **lost**, GitHub sees the failure, and
 the Activity page will show as stale within 72 hours. A delivery that reached the
 queue and then failed is **retried**, and after five attempts lands in a
 dead-letter queue rather than vanishing.
@@ -2080,7 +2080,7 @@ a team.
 `organization` and `issues` are deliberately **not** among them. Nothing in the
 worker handles either, so ticking them means GitHub sends a delivery, API Gateway
 accepts it, the receiver verifies it, the queue holds it, and the worker drops
-it — the whole path, for nothing.
+it, the whole path, for nothing.
 
 ## Developer notifications
 
@@ -2109,7 +2109,7 @@ them as switches that quietly never fired would be worse than not offering them.
 
 In the org-config table, keyed `devalerts#<login>`. That table is read only by
 exact key, so per-person rows sit beside the organization's own without either
-seeing the other — and it needs no new table, which would have meant a stack
+seeing the other, and it needs no new table, which would have meant a stack
 deployment before anybody could try the feature.
 
 The webhook URL never leaves the server. The settings screen is told whether one
@@ -2120,7 +2120,7 @@ long as it exists.
 
 The digest reads the stored pull request snapshot rather than walking GitHub, so
 turning it on costs no additional requests however many people do. That also
-means it is only as fresh as the last walk — with **Monitor pull requests** off,
+means it is only as fresh as the last walk, with **Monitor pull requests** off,
 there is nothing keeping the snapshot current and the digest would summarise an
 old one.
 
@@ -2131,6 +2131,61 @@ keeps trying.
 
 ---
 
+## Alarms on the AWS guardrails
+
+A guardrail alarm is an ordinary alarm. It is not a second alarm system, and
+that is the whole design: the state machine, the recovery streak, the message
+templates and the delivery are the ones already in use.
+
+What differs is the subject. A widget alarm names a widget it can look up; a
+guardrail alarm carries a synthesised id, `guardrail:*` for every rule, or
+`guardrail:<ruleId>` for one, because "the S3 rules" is not a record anybody
+created, it is a view over the findings table. The evaluator resolves a subject
+and then knows nothing about what kind it was.
+
+| Metric | Counts |
+|---|---|
+| Failing resources | Resources currently breaking the rule, excluding the ones deliberately skipped |
+| Rules with a failure | How many separate rules have at least one failure |
+| Resources being skipped | Deliberately excluded, worth watching, because an exclusion list that quietly grows is how a rule stops covering anything while still reporting green |
+
+Checked hourly rather than every five minutes: the sweep that writes the
+findings runs hourly, so checking faster is twelve reads of one answer.
+
+It reads the findings table and evaluates nothing. A sweep started by an alarm
+would make the reading a consequence of the check.
+
+An alarm on a rule that has since been deleted is refused at creation rather
+than watched. It would read zero forever, which looks exactly like compliance.
+
+---
+
+## Microsoft Teams as a delivery channel
+
+Every notification in the app passes through one `publish(topicArn, subject,
+body)`, widget alarms, guardrail alarms, important events, pull request
+reminders, the Renovate feed. Teams was added at that seam, so all of them
+reach it and none of them knows it exists.
+
+A notification group is a list of people to tell; email was only ever the one
+way the app knew how to tell them. Groups now carry `teamsWebhooks` alongside
+their SNS topic, so a group created before this behaves exactly as it did.
+
+The two channels are attempted independently and neither can fail the other, a
+stale Teams webhook must not stop the email, which is the channel people are
+more likely to rely on. `publish` returns true when *anybody* was reached:
+reporting a delivered message as a failure would record a fired alarm as unsent.
+
+The webhook URLs never leave the server. The screen is told how many channels a
+group has, never what they are, because anybody holding one can post into that
+channel indefinitely. Removal is therefore by position rather than by URL.
+
+Only `https`, and only Microsoft's own hosts, are accepted, the same allow-list
+the personal notifications use, for the same reason: a Lambda posts to whatever
+is stored with no further checks.
+
+---
+
 ## Personal dashboards
 
 The same widget engine as the Overview tab, filtered to one person. A widget
@@ -2138,7 +2193,7 @@ with no `owner` is on the shared board and behaves exactly as it always did; one
 with an owner appears on that person's **My work → My cards** and nowhere else.
 
 The admin gate still applies to the shared board and deliberately does not apply
-to a personal one — that gate exists because the Overview is a single board seen
+to a personal one, that gate exists because the Overview is a single board seen
 by everybody. Editing and deleting read the stored owner first, so somebody
 else's personal widget is refused outright rather than falling back to the admin
 gate: an administrator has no more business rearranging a person's own dashboard
@@ -2152,17 +2207,17 @@ than anybody else does.
 
 ### Signing in
 
-1. You connect **AWS** first, with your own credentials — a profile, SSO, or
+1. You connect **AWS** first, with your own credentials, a profile, SSO, or
    pasted keys. Nothing else can happen until this works, because the GitHub
    credentials live in Secrets Manager in your AWS account.
 
    The **SSO** tab is shown whether or not a profile exists yet; with none it
    explains and offers to create one. It used to be filtered out until an SSO
    profile was already present, so a machine with none showed nothing about SSO
-   anywhere and the only route to making one was a tab called "New profile" —
+   anywhere and the only route to making one was a tab called "New profile",
    the people who needed it were the only ones who could not find it.
 
-   **Pasted keys** accept all four shapes the AWS access portal hands out —
+   **Pasted keys** accept all four shapes the AWS access portal hands out,
    `export` (bash), `set` (command prompt), `$Env:` (PowerShell) and the
    `aws_access_key_id=` credentials-file form. Parsing is line-based in
    `lib/awsCredentialBlock.ts`, splitting on the *first* `=` because session
@@ -2186,7 +2241,7 @@ the whole mechanism:
 
 So reopening the app never leaves you signed in. `sessionStorage` is cleared when
 the window closes, so the token is genuinely gone and the app is genuinely signed
-out. What survives is only a note of *who you were* — enough to draw the button,
+out. What survives is only a note of *who you were*, enough to draw the button,
 and nothing that grants access.
 
 Clicking it does a real OAuth round trip. It feels instant because **GitHub's own
@@ -2195,7 +2250,7 @@ and returns immediately without asking for a password.
 
 **The `?login=` parameter is load-bearing.** The button links to
 `/auth/github?login=<remembered>`, and without it GitHub signs in as whichever
-account its cookie happens to hold — so "Continue with alice" could hand back
+account its cookie happens to hold, so "Continue with alice" could hand back
 bob. That completes the moment it is asked, with no page and no choice offered,
 which is why the account is named before the redirect rather than announced
 after it.
@@ -2207,7 +2262,7 @@ after it.
 **The token itself** is a JWT signed with `JWT_SECRET`, which is read from
 Secrets Manager along with the other GitHub credentials. Because that secret
 lives in the AWS account rather than on the machine, a token stays valid across
-restarts and across machines pointed at the same account — and rotating the
+restarts and across machines pointed at the same account, and rotating the
 secret invalidates every outstanding session at once.
 
 One consequence worth knowing: `bootstrap.ts` generates a random `JWT_SECRET`
@@ -2217,7 +2272,7 @@ A session that never persists is the symptom of a missing `JWT_SECRET` in
 Secrets Manager.
 
 The OAuth callback is `localhost` because the desktop app runs its own backend on
-your machine. The code comes back to you and never transits a shared server —
+your machine. The code comes back to you and never transits a shared server,
 which is also why one OAuth App serves every AWS account.
 
 **Switching AWS accounts re-reads the secret** and clears any credential the new
@@ -2266,22 +2321,22 @@ preference.
 
 | In the diagram | What it is |
 |---|---|
-| the GitHub credentials | Kept in AWS Secrets Manager, which is why AWS has to work first — an AWS account holding no GitHub credentials simply has no GitHub tabs |
+| the GitHub credentials | Kept in AWS Secrets Manager, which is why AWS has to work first, an AWS account holding no GitHub credentials simply has no GitHub tabs |
 | back to the app on your own machine | GitHub returns you to `localhost`, because the desktop app is its own backend. The code never passes through a shared server, which is also why one set of GitHub sign-in credentials can serve every AWS account |
 | the one-time ticket | A row in the `github-control-hub-auth-codes` table, deleted the moment it is used and expiring by itself otherwise |
-| are you on the team | Checked against GitHub and remembered for 60 seconds, in memory only — it vanishes on restart, which is correct for something that is a shortcut rather than a record |
+| are you on the team | Checked against GitHub and remembered for 60 seconds, in memory only. It vanishes on restart, which is correct for something that is a shortcut rather than a record |
 | switching accounts | `components/AwsAccountSwitcher.tsx` in the navbar, calling the same endpoints the sign-in screen uses |
 
 **Your session is yours, not the account's.** The key that signs it is read from
 each AWS account's secret, so a session minted in dev stops verifying the moment
-uat's secrets load — which used to sign you out for the crime of changing an AWS
+uat's secrets load, which used to sign you out for the crime of changing an AWS
 setting. The switch now captures the session *before* the credentials move and
 re-signs it after, keeping the original expiry: a switch every few minutes must
 not be a session that never ends. Two consequences worth knowing:
 
 - **The membership check is skipped where it cannot be answered.** Every request
   re-asks GitHub whether you are still in the organization. An account with no
-  GitHub credentials has no organization configured, so asking throws — and the
+  GitHub credentials has no organization configured, so asking throws, and the
   check reads a throw as "could not ask", which degrades to *not a member* about
   an hour later. That is why the session used to die shortly *after* a switch
   rather than at it. Nothing is loosened: an account with no GitHub credentials
@@ -2293,13 +2348,13 @@ not be a session that never ends. Two consequences worth knowing:
 - **So is everything else cached per account.** Four things in the process were
   held on the reasoning that they could not change: the gate's account id, the
   guardrail store's own DynamoDB client, the home account id stamped on every
-  finding, and the cached AWS health verdict. The client was the one that bit —
+  finding, and the cached AWS health verdict. The client was the one that bit,
   the AWS tab showed whichever account was signed into *first*, in both
   directions, and refreshing could not help because every refresh asked the same
   stale client. `utils/awsAccountChange.ts` is now the one list of them, and a
   test fails if a module grows another and is not added to it.
 - **The window reloads.** Clearing the query cache is not enough: every mounted
-  page also holds state describing the account being left — a selected activity
+  page also holds state describing the account being left, a selected activity
   stream, an expanded row, a filter. A switch is rare and deliberate, so it
   gives you the state signing in to that account would, rather than a careful
   reconstruction of it that is wrong in one place nobody checks.
@@ -2307,7 +2362,7 @@ not be a session that never ends. Two consequences worth knowing:
 1. **Nothing GitHub-shaped can happen until AWS works**, because the GitHub
    credentials live in Secrets Manager in your account. An account whose secret
    holds none refuses every GitHub route and shows only the AWS and Activity
-   tabs — keeping GitHub out of an account *is* keeping its credentials out of
+   tabs, keeping GitHub out of an account *is* keeping its credentials out of
    it.
 2. **There are two secrets, deliberately.** The application bundle
    (`github-control-hub/secrets`) holds the GitHub App private key; the webhook
@@ -2320,15 +2375,15 @@ not be a session that never ends. Two consequences worth knowing:
 4. **The state row is deleted when redeemed, and the delete is the redemption**,
    so a code cannot be used twice even if two requests arrive at once. Anything
    left behind expires by TTL rather than accumulating.
-5. **Team membership is cached in a module-level `Map`** — in the process, not
-   in DynamoDB — keyed per team *and* per user, for 60 seconds. It disappears on
+5. **Team membership is cached in a module-level `Map`**, in the process, not
+   in DynamoDB, keyed per team *and* per user, for 60 seconds. It disappears on
    restart, which is correct: it is an optimisation, not a record.
 6. **A denial caused by a missing token is never cached.** That is a fact about
    the app, not about the person; caching it meant a credential problem lasting
    a second locked somebody out for a minute after it healed.
 7. **Membership is normally read with the App's token**, because you cannot
    necessarily see a team you are not in. Where there is no App it falls back to
-   your own token's `read:org` — safe precisely because it is narrower: with
+   your own token's `read:org`, safe precisely because it is narrower: with
    your token the only membership readable is your own, which is the only one
    being asked about.
 
@@ -2348,12 +2403,12 @@ ttl   <epoch+minutes>
 ```
 
 The state row is written before redirecting to GitHub and **deleted when
-redeemed** — the delete itself is the redemption, so a code cannot be used twice
+redeemed**, the delete itself is the redemption, so a code cannot be used twice
 even if two requests arrive at once. Anything left behind expires by TTL.
 
 **Team membership is cached in memory**, not in DynamoDB: a `Map` in
 `authorizationService`, keyed per team **and** per user, holding each answer for
-60 seconds. It is per process, so it disappears on restart, which is correct —
+60 seconds. It is per process, so it disappears on restart, which is correct,
 it is an optimisation, not a record.
 
 A denial caused by a **missing token is never cached**. That is a fact about the
@@ -2373,7 +2428,7 @@ second locked someone out for a minute after it healed.
 `aws configure sso` does this already, and it is a wizard in a terminal. The
 **New profile** tab on the login screen does the same thing without one.
 
-The hard part is not writing the file — it is that somebody setting this up knows
+The hard part is not writing the file. It is that somebody setting this up knows
 their sign-in link and nothing else. Not the twelve-digit account number, not the
 exact role name. Both are required, and both are what people guess wrong.
 
@@ -2388,8 +2443,8 @@ So it asks AWS, using the same device-authorization flow the CLI uses:
    roles you hold in each**, and you pick from lists.
 5. It appends a profile to `~/.aws/config` and offers to sign in with it.
 
-**No SDK.** The OIDC endpoints are unauthenticated by design — they run before
-anybody has credentials — and the portal endpoints take a bearer token rather
+**No SDK.** The OIDC endpoints are unauthenticated by design. They run before
+anybody has credentials, and the portal endpoints take a bearer token rather
 than a signed request, so `fetch` covers all of it. Two fewer packages in a
 bundle that ships to desktops.
 
@@ -2409,7 +2464,7 @@ sso_role_name = AdministratorAccess
 region = us-east-2
 ```
 
-**Appended, never rewritten.** That file is the machine's, not this app's — it
+**Appended, never rewritten.** That file is the machine's, not this app's. It
 may hold profiles for work with nothing to do with here, and the only safe edit
 is one that adds. A name that already exists is refused rather than replaced.
 
@@ -2423,7 +2478,7 @@ have, and the screen needs only the account and role names.
 
 **The config cache is refreshed the moment the file changes.** The AWS SDK parses
 `~/.aws/config` once per process and keeps it in a module-level cache
-(`filePromises` in `@smithy/core/config`) that nothing invalidates — reasonably,
+(`filePromises` in `@smithy/core/config`) that nothing invalidates, reasonably,
 since a config file is not normally expected to change under a running program.
 This app changes it. Without the refresh a profile was written correctly, signed
 into successfully by the AWS CLI in its own process, and invisible to the app
@@ -2433,7 +2488,7 @@ nothing, and only restarting fixed it. `refreshAwsConfigCache()` in
 `services/ssoSetupService.ts` re-reads with `ignoreCache`, which also replaces
 the cached promise so ordinary lookups afterwards see the new content. It runs
 after writing a profile and before either switch route resolves credentials by
-name — the second covers a profile you added in a terminal while the app was
+name, the second covers a profile you added in a terminal while the app was
 open. `repro-ssosetup` asserts the staleness and the fix against the real SDK
 rather than by reading source, because what would break it is the SDK changing;
 that module has already moved once, out of `@smithy/shared-ini-file-loader`.
@@ -2441,7 +2496,7 @@ that module has already moved once, out of `@smithy/shared-ini-file-loader`.
 | File | Role |
 |---|---|
 | `services/ssoSetupService.ts` | the device flow, the validation, and rendering the config block |
-| `routes/auth.ts` | `/aws-sso-start`, `/aws-sso-poll`, `/aws-sso-create-profile` — desktop-only, same-origin |
+| `routes/auth.ts` | `/aws-sso-start`, `/aws-sso-poll`, `/aws-sso-create-profile`, desktop-only, same-origin |
 | `pages/LoginPage.tsx` | the four-step panel on the **New profile** tab |
 
 ### What you are allowed to change
@@ -2455,12 +2510,12 @@ Team membership decides it:
 
 Org owners qualify for both, as a safety net against an empty or deleted team.
 Membership answers are cached for 60 seconds, keyed per team **and** per user. A
-denial caused by a missing token is never cached — that is a fact about the app,
+denial caused by a missing token is never cached, that is a fact about the app,
 not about the person.
 
 Membership is normally read with the App's token, because a user cannot
-necessarily see a team they are not in. Where there is no App — an account running
-the guardrails and holding no GitHub App key — it falls back to the caller's own
+necessarily see a team they are not in. Where there is no App, an account running
+the guardrails and holding no GitHub App key. It falls back to the caller's own
 token, which carries `read:org`. That is safe precisely because it is narrower:
 with your token the only membership readable is your own, which is the only one
 being asked about.
@@ -2478,7 +2533,7 @@ and shows only the AWS and Activity tabs. Nothing to switch on: keeping GitHub o
 of an account *is* keeping GitHub's credentials out of it.
 
 `GITHUB_ACCOUNT_ID` is the explicit form, for locking an account that has
-credentials anyway. Activity is not gated — it filters itself to AWS rows, because
+credentials anyway. Activity is not gated. It filters itself to AWS rows, because
 an account running guardrails needs the record of what they did.
 
 ---

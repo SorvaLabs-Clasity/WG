@@ -63,7 +63,7 @@ check("retention is 13 months", ACTIVITY_RETENTION_MONTHS === 13, ACTIVITY_RETEN
   check("the app and the Lambda compute the same expiry", disagree.length === 0, disagree);
 }
 
-check("the stamp is seconds, not milliseconds — DynamoDB reads it as seconds",
+check("the stamp is seconds, not milliseconds, DynamoDB reads it as seconds",
   String(activityExpiry(new Date().toISOString())).length === 10);
 
 console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
