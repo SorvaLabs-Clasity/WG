@@ -145,5 +145,5 @@ export function buildEventCard(event: DevEvent): any {
  * unknown key is no.
  */
 export function wants(prefs: DevAlerts, kind: EventKind): boolean {
-  return !!prefs.webhookUrl && prefs.events[kind] === true;
+  return !!prefs.teamsAddress && prefs.events[kind] === true;
 }

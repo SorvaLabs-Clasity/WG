@@ -2164,25 +2164,61 @@ than watched. It would read zero forever, which looks exactly like compliance.
 
 Every notification in the app passes through one `publish(topicArn, subject,
 body)`, widget alarms, guardrail alarms, important events, pull request
-reminders, the Renovate feed. Teams was added at that seam, so all of them
-reach it and none of them knows it exists.
+reminders, the Renovate feed. Teams was added at that seam, so all of them reach
+it and none of them knows it exists.
 
-A notification group is a list of people to tell; email was only ever the one
-way the app knew how to tell them. Groups now carry `teamsWebhooks` alongside
-their SNS topic, so a group created before this behaves exactly as it did.
+### One flow, not one per person
 
-The two channels are attempted independently and neither can fail the other, a
-stale Teams webhook must not stop the email, which is the channel people are
-more likely to rely on. `publish` returns true when *anybody* was reached:
-reporting a delivered message as a failure would record a fired alarm as unsent.
+The organization sets up **a single Power Automate workflow**, once, and the app
+stores its URL in org config as `teamsFlow`. Each message carries who it is for:
 
-The webhook URLs never leave the server. The screen is told how many channels a
-group has, never what they are, because anybody holding one can post into that
-channel indefinitely. Removal is therefore by position rather than by URL.
+    { "recipient": "someone@company.com", "card": "<adaptive card json>" }
 
-Only `https`, and only Microsoft's own hosts, are accepted, the same allow-list
-the personal notifications use, for the same reason: a Lambda posts to whatever
-is stored with no further checks.
+The flow binds its Recipient field to `recipient` rather than to a name typed
+into it, so one flow direct-messages anybody.
+
+The first design gave every person their own flow and their own webhook URL.
+That is ten steps in Power Automate per person, in a tool most of them do not
+otherwise use, with a destination that fails silently if one dropdown is wrong,
+and it was chosen only because it avoided any org-level setup. Multiplying that
+friction by everybody who would ever use the feature was the wrong trade the
+moment a second person needed it.
+
+So what a person supplies is now **an address, not infrastructure**: their work
+email, one field, once. A group holds a list of those addresses beside its email
+list, and the app sends one request per recipient.
+
+The card goes as a **string** rather than an object, because Power Automate's
+Adaptive Card field is a text field and a string binds straight from the
+dynamic-content picker. An object needs an expression somebody has to type
+correctly, and the setup instructions are the product here: every expression
+removed from them is a way they cannot be got wrong.
+
+### What is a credential and what is not
+
+The **flow URL** is the one credential, and it is never returned to the browser.
+Anybody holding it can post as the flow, to anyone.
+
+An **address** is not a credential, and is shown back. Being unable to see what
+you typed is how a typo survives.
+
+### Failing honestly
+
+Power Automate answers **202 Accepted** before it runs the flow, so a queued
+request says nothing about whether a message appeared. A misconfigured flow
+therefore looks exactly like a working one from here, which is why the test send
+distinguishes them: a 202 reports as accepted, not delivered, and points at the
+flow's run history.
+
+The two channels are attempted independently and neither can fail the other. A
+broken flow must not stop the email, which is the channel people are more likely
+to rely on. `publish` returns true when *anybody* was reached, because reporting
+a delivered message as a failure would record a fired alarm as unsent.
+
+Two different things can be missing, and they are reported separately: a person
+with no address can fix that themselves, while an organization with no flow
+needs an administrator, and telling somebody to check their own settings sends
+them somewhere they cannot fix it.
 
 ---
 

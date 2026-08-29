@@ -171,22 +171,28 @@ async function publishTeams(topicArn: string, subject: string, body: string): Pr
   try {
     const { groupByTopic } = await import("./alarmService");
     const group = await groupByTopic(topicArn);
-    const hooks = group?.teamsWebhooks ?? [];
-    if (hooks.length === 0) return false;
+    const people = group?.teamsRecipients ?? [];
+    if (people.length === 0) return false;
 
-    const { buildCard, sendCard } = await import("./teamsClient");
-    // Body first, because SNS subjects are short and the body carries the
-    // detail. Split into lines so a multi-line alarm body does not arrive as
-    // one unbroken paragraph.
-    const card = buildCard(subject, group!.name, [{
-      heading: "",
-      links: [],
-      emptyText: body,
-    }]);
-    const results = await Promise.all(hooks.map(url => sendCard(url, card)));
-    for (const [i, r] of results.entries()) {
-      if (!r.ok) console.warn(`[Notify] Teams webhook ${i + 1} for "${group!.name}": ${r.error}`);
+    // One shared flow for the whole organization. Unset means nobody has set
+    // Teams up yet, which is not a failure of this alarm.
+    const { getOrgConfig } = await import("./orgConfigService");
+    const flowUrl = (await getOrgConfig()).teamsFlow?.url;
+    if (!flowUrl) {
+      console.warn(`[Notify] "${group!.name}" has Teams recipients but no flow is configured`);
+      return false;
     }
+
+    const { buildCard, sendToPerson } = await import("./teamsClient");
+    const card = buildCard(subject, group!.name, [{ heading: "", links: [], emptyText: body }]);
+
+    // One request per person: the flow reads who each message is for. Sent in
+    // parallel, and one bad address does not stop the rest.
+    const results = await Promise.all(
+      people.map((address: string) => sendToPerson(flowUrl, address, card)));
+    results.forEach((r, i) => {
+      if (!r.ok) console.warn(`[Notify] Teams to ${people[i]} for "${group!.name}": ${r.error}`);
+    });
     return results.some(r => r.ok);
   } catch (err) {
     // Never allowed to take the email down with it.

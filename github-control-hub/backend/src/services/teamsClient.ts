@@ -98,23 +98,53 @@ export interface SendResult {
   ok: boolean;
   /** Present when it failed, in words somebody can act on. */
   error?: string;
+  /**
+   * What Teams answered.
+   *
+   * Power Automate replies 202 before it runs the flow, so a 202 means the
+   * request was queued and says nothing about whether a message appeared. The
+   * caller needs the difference: reporting "sent" on a queued request is how a
+   * misconfigured flow looks like a working one.
+   */
+  status?: number;
+  /** True for 202, where the outcome is genuinely not known yet. */
+  queued?: boolean;
 }
 
 /**
- * Post a card, and say plainly whether it arrived.
+ * Send a card to one person, through the organization's shared flow.
+ *
+ * The flow reads `recipient` and `card` out of the body: the destination
+ * travels with the message rather than being frozen into the flow, which is
+ * what lets one flow serve everybody instead of one per person.
+ *
+ * The card goes as a **string**, not an object. Power Automate's "Adaptive
+ * Card" field is a text field, so a string can be bound straight from the
+ * dynamic-content picker, while an object needs an expression somebody has to
+ * type correctly. The setup instructions are the product here, and every
+ * expression removed from them is a way it cannot be got wrong.
+ */
+export async function sendToPerson(
+  flowUrl: string, recipient: string, card: any, timeoutMs = 8000,
+): Promise<SendResult> {
+  return post(flowUrl, { recipient, card: JSON.stringify(card) }, timeoutMs);
+}
+
+/**
+ * Post a body, and say plainly whether it arrived.
  *
  * Never throws. A notification that fails must not take down the pass that
- * sent it, one person's stale webhook would otherwise stop everybody else's
+ * sent it, one person's bad address would otherwise stop everybody else's
  * digest, so the failure is returned and recorded against that person alone.
  */
-export async function sendCard(webhookUrl: string, card: any, timeoutMs = 8000): Promise<SendResult> {
+export async function post(webhookUrl: string, body: any, timeoutMs = 8000): Promise<SendResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(card),
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     if (!res.ok) {
@@ -123,17 +153,17 @@ export async function sendCard(webhookUrl: string, card: any, timeoutMs = 8000):
       return {
         ok: false,
         error: res.status === 404 || res.status === 410
-          ? "Teams no longer recognises this webhook. It was probably deleted or regenerated, create a new one and paste it again."
-          : `Teams refused the message (HTTP ${res.status}).`,
+          ? "Power Automate no longer recognises this flow. It was probably deleted or its URL regenerated, so an administrator needs to set a new one."
+          : `Power Automate refused the message (HTTP ${res.status}).`,
       };
     }
-    return { ok: true };
+    return { ok: true, status: res.status, queued: res.status === 202 };
   } catch (err: any) {
     return {
       ok: false,
       error: err?.name === "AbortError"
-        ? "Teams did not answer in time."
-        : `Could not reach Teams: ${err?.message ?? "unknown error"}`,
+        ? "Power Automate did not answer in time."
+        : `Could not reach Power Automate: ${err?.message ?? "unknown error"}`,
     };
   } finally {
     clearTimeout(timer);

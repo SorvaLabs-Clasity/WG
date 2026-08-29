@@ -4,7 +4,7 @@ import {
   createAlarmApi, updateAlarmApi, deleteAlarmApi,
   fetchGroups, createGroupApi, deleteGroupApi,
   addGroupMemberApi, removeGroupMemberApi, testGroupApi,
-  addGroupTeams, removeGroupTeams,
+  addGroupTeams, removeGroupTeams, fetchTeamsFlow, saveTeamsFlow,
   fetchSecuritySettings, saveSecuritySettingsApi,
   fetchFeedSettings, saveFeedSettingsApi,
   type WidgetAlarm, type SecurityNotifySettings,
@@ -80,11 +80,17 @@ export const useDeleteAlarm = () =>
 export const useCreateGroup = () =>
   useAlarmMutation((name: string) => createGroupApi(name), ["alarms", "groups"]);
 export const useAddGroupTeams = () =>
-  useAlarmMutation(({ id, webhookUrl }: { id: string; webhookUrl: string }) =>
-    addGroupTeams(id, webhookUrl), ["alarms", "groups"]);
+  useAlarmMutation(({ id, address }: { id: string; address: string }) =>
+    addGroupTeams(id, address), ["alarms", "groups"]);
 export const useRemoveGroupTeams = () =>
-  useAlarmMutation(({ id, index }: { id: string; index: number }) =>
-    removeGroupTeams(id, index), ["alarms", "groups"]);
+  useAlarmMutation(({ id, address }: { id: string; address: string }) =>
+    removeGroupTeams(id, address), ["alarms", "groups"]);
+
+export function useTeamsFlow() {
+  return useQuery({ queryKey: ["alarms", "teams-flow"], queryFn: fetchTeamsFlow, staleTime: 60_000 });
+}
+export const useSaveTeamsFlow = () =>
+  useAlarmMutation((url: string) => saveTeamsFlow(url), ["alarms", "teams-flow"]);
 export const useDeleteGroup = () =>
   useAlarmMutation(({ id, force }: { id: string; force?: boolean }) => deleteGroupApi(id, force),
     ["alarms", "groups"], ["alarms"]);

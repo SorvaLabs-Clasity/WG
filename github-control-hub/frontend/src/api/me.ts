@@ -103,6 +103,8 @@ export interface EventPrefs {
 export interface DigestPrefs {
   enabled: boolean;
   hour: number;
+  /** Minutes past the hour. The pass ticks every five, so this is a floor. */
+  minute: number;
   timeZone: string;
   /** 0 is Sunday. Empty means every day. */
   days: number[];
@@ -113,10 +115,14 @@ export interface DigestPrefs {
 export interface DevAlerts {
   login: string;
   /**
-   * The URL itself never leaves the server: anyone holding it can post into
-   * that channel indefinitely. Only whether one is set.
+   * Where to DM you in Teams: your work email.
+   *
+   * Shown back, unlike the webhook it replaces. It is not a credential, and
+   * being unable to see what you typed is how a typo survives.
    */
-  webhookConfigured: boolean;
+  teamsAddress?: string;
+  /** Whether an administrator has set the shared flow up. Nothing sends without it. */
+  teamsReady: boolean;
   events: EventPrefs;
   digest: DigestPrefs;
   lastSentAt?: string;
@@ -127,9 +133,13 @@ export interface DevAlerts {
 export const fetchDevAlerts = () => apiGet<DevAlerts>("/me/alerts");
 
 export const saveDevAlerts = (body: Partial<{
-  webhookUrl: string; events: Partial<EventPrefs>; digest: Partial<DigestPrefs>;
+  teamsAddress: string; events: Partial<EventPrefs>; digest: Partial<DigestPrefs>;
 }>) => apiPut<DevAlerts>("/me/alerts", body);
 
 export const testDevAlerts = () =>
-  apiPost<{ sent: boolean; counts: { toReview: number; mine: number; mergeable: number } }>(
-    "/me/alerts/test", {});
+  apiPost<{
+    sent: boolean;
+    /** Power Automate answered 202: accepted, not yet run. */
+    queued: boolean;
+    counts: { toReview: number; mine: number; mergeable: number };
+  }>("/me/alerts/test", {});

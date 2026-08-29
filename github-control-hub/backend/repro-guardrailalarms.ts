@@ -123,18 +123,29 @@ const f = (over: Record<string, any> = {}) => ({
       "reporting a reached recipient as a failure records a sent alarm as unsent");
     check("  Teams never throws into the caller",
       /catch \(err\) \{[\s\S]{0,200}return false;/.test(notify));
-    check("  a group with no webhooks is not a failure",
-      /if \(hooks\.length === 0\) return false;/.test(notify));
+    check("  a group with nobody in Teams is not a failure",
+      /if \(people\.length === 0\) return false;/.test(notify));
+    check("  one request per person, so one bad address does not stop the rest",
+      /people\.map\(\(address: string\) => sendToPerson\(flowUrl, address, card\)\)/.test(notify),
+      "the flow reads who each message is for");
 
     const route = fs.readFileSync("./src/routes/alarms.ts", "utf8");
-    check("the webhook URLs never reach the browser",
-      /const \{ teamsWebhooks, \.\.\.rest \} = g;/.test(route) && /teamsCount/.test(route),
-      "anybody holding one can post into that channel indefinitely");
-    check("  and a channel is added through the same allow-list",
-      /badWebhook/.test(route),
-      "a Lambda posts to whatever is stored, with no further checks");
-    check("  removal is by position, since the URL is never sent out",
-      /groups\/:id\/teams\/:index/.test(route));
+    // A group holds people now, not pipes, so there is nothing to hide: an
+    // address is the same shape as the email beside it.
+    check("a group lists who it reaches, by name",
+      /teamsRecipients: g\.teamsRecipients \?\? \[\]/.test(route));
+    check("  added by address, checked as an email",
+      /badTeamsAddress/.test(route));
+    check("  and removed by address rather than by position",
+      /groups\/:id\/teams\/:address/.test(route),
+      "a position is only a handle when the value cannot be shown");
+    // The one credential left, and it is org-wide.
+    check("the shared flow URL is set once and never returned",
+      /router\.put\("\/teams-flow"/.test(route)
+      && /res\.json\(\{ configured: !!flow\?\.url/.test(route),
+      "anybody holding it can post as the flow, to anyone");
+    check("  and it is still guarded by the host allow-list",
+      /badWebhook\(raw\)/.test(route));
 
     // An empty heading renders a separator with nothing above it.
     const card = JSON.stringify(buildCard("Subject", "Group", [{ heading: "", links: [], emptyText: "Body" }]));

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import TeamsSetupHelp from "./TeamsSetupHelp";
+import TeamsFlowPanel from "./TeamsFlowPanel";
 import {
   useEmailGroups, useCreateGroup, useDeleteGroup,
   useAddGroupMember, useRemoveGroupMember, useTestGroup,
@@ -30,7 +30,7 @@ import type { EmailGroup } from "../api/alarms";
 /** Members who will actually receive something. Pending ones will not. */
 function reachOf(g: EmailGroup): { live: number; pending: number } {
   const live = g.members.filter(m => m.confirmed).length;
-  return { live: live + (g.teamsCount ?? 0), pending: g.members.length - live };
+  return { live: live + (g.teamsRecipients ?? []).length, pending: g.members.length - live };
 }
 
 function ChannelHeader({ icon, label, count, tone }: {
@@ -90,7 +90,7 @@ function GroupCard({ group, onNotice, onError }: {
   const [hook, setHook] = useState("");
 
   const reach = reachOf(group);
-  const teams = group.teamsCount ?? 0;
+  const teams = group.teamsRecipients ?? [];
 
   const run = async (fn: () => Promise<any>, ok?: string) => {
     onError(""); onNotice("");
@@ -210,21 +210,21 @@ function GroupCard({ group, onNotice, onError }: {
 
         <div className="bg-white dark:bg-[#151a23] p-5">
           <ChannelHeader icon="ph-fill ph-chat-teardrop-text" label="Microsoft Teams"
-            count={teams} tone="text-violet-500" />
+            count={teams.length} tone="text-violet-500" />
 
-          {teams === 0 ? (
-            <p className="text-[12.5px] text-slate-400 dark:text-slate-500">No channels yet.</p>
+          {teams.length === 0 ? (
+            <p className="text-[12.5px] text-slate-400 dark:text-slate-500">Nobody yet.</p>
           ) : (
             <ul className="grid gap-1">
-              {/* Listed by position. The URLs never leave the server, anybody
-                  holding one can post into that channel indefinitely, so there
-                  is nothing else to name them by. */}
-              {Array.from({ length: teams }, (_, i) => (
-                <li key={i} className="group/row flex items-center gap-2 py-1 text-[12.5px]">
+              {/* Names, not "Channel 1". A group is a list of people, and the
+                  destination now travels with each message rather than being
+                  frozen into a pipe somebody had to build first. */}
+              {teams.map(address => (
+                <li key={address} className="group/row flex items-center gap-2 py-1 text-[12.5px]">
                   <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" aria-hidden="true" />
-                  <span className="text-slate-700 dark:text-slate-200">Channel {i + 1}</span>
+                  <span className="truncate text-slate-700 dark:text-slate-200">{address}</span>
                   <button
-                    onClick={() => run(() => removeTeams.mutateAsync({ id: group.id, index: i }))}
+                    onClick={() => run(() => removeTeams.mutateAsync({ id: group.id, address }))}
                     title="Remove"
                     className="ml-auto shrink-0 w-6 h-6 grid place-items-center rounded-md text-slate-300 dark:text-slate-600
                                opacity-0 group-hover/row:opacity-100 focus:opacity-100
@@ -238,14 +238,13 @@ function GroupCard({ group, onNotice, onError }: {
           )}
 
           <AddRow
-            type="url" value={hook} onChange={setHook} busy={addTeams.isPending}
-            placeholder="Paste the workflow URL"
+            type="email" value={hook} onChange={setHook} busy={addTeams.isPending}
+            placeholder="Their work email"
             onAdd={() => run(async () => {
-              await addTeams.mutateAsync({ id: group.id, webhookUrl: hook.trim() });
+              await addTeams.mutateAsync({ id: group.id, address: hook.trim() });
               setHook("");
-            }, "Teams channel added.")}
+            }, "Added. They will be sent a direct message in Teams.")}
           />
-          <div className="mt-1.5"><TeamsSetupHelp scope="channel" /></div>
         </div>
       </div>
     </section>
@@ -266,6 +265,11 @@ export default function EmailGroupsPanel() {
 
   return (
     <div className="grid gap-4">
+      {/* Above the groups, because nothing below it delivers to Teams until
+          this is set, and a screen full of Teams fields over a missing pipe is
+          how somebody adds twelve addresses that receive nothing. */}
+      <TeamsFlowPanel />
+
       <div className={`${SURFACE.card} px-5 py-4`}>
         <div className="flex items-end gap-3 flex-wrap">
           <div className="flex-1 min-w-[240px]">

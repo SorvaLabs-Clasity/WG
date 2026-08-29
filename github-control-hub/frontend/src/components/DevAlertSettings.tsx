@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 import { useDevAlerts, useSaveDevAlerts, useTestDevAlerts } from "../hooks/useMe";
 import { Note, Button, Spinner, SURFACE } from "../design";
 import type { DigestPrefs, EventPrefs } from "../api/me";
-import TeamsSetupHelp from "./TeamsSetupHelp";
 
 /**
  * A developer's own notifications, to their own Teams.
@@ -21,13 +20,6 @@ import TeamsSetupHelp from "./TeamsSetupHelp";
 const DAYS = [
   [1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"],
 ] as const;
-
-/** 24-hour storage, 12-hour display: nobody schedules anything at "14". */
-function clockHour(h: number): string {
-  const suffix = h < 12 ? "am" : "pm";
-  const twelve = h % 12 === 0 ? 12 : h % 12;
-  return `${twelve}${suffix}`;
-}
 
 function Row({ label, hint, checked, onChange, disabled }: {
   label: string; hint?: string; checked: boolean;
@@ -53,7 +45,7 @@ export default function DevAlertSettings() {
   const save = useSaveDevAlerts();
   const test = useTestDevAlerts();
 
-  const [webhook, setWebhook] = useState("");
+  const [address, setAddress] = useState("");
   const [events, setEvents] = useState<EventPrefs | null>(null);
   const [digest, setDigest] = useState<DigestPrefs | null>(null);
   const [saved, setSaved] = useState(false);
@@ -61,7 +53,11 @@ export default function DevAlertSettings() {
   // Seeded once the server answers, then left alone: re-seeding on every fetch
   // would throw away half-typed edits when the query refetches underneath.
   useEffect(() => {
-    if (data && !events) { setEvents(data.events); setDigest(data.digest); }
+    if (data && !events) {
+      setEvents(data.events);
+      setDigest(data.digest);
+      setAddress(data.teamsAddress ?? "");
+    }
   }, [data, events]);
 
   if (isLoading || !data || !events || !digest) {
@@ -92,24 +88,28 @@ export default function DevAlertSettings() {
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4">
           <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
-            Your Teams channel
+            Where to reach you
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
-            These are your own notifications, so a chat with yourself is usually the right place.
+            Your work email, the one you sign in to Teams with. Messages arrive as a
+            direct message from the Power Automate bot.
           </p>
           <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
         </div>
 
         <div className="p-5">
-          {data.webhookConfigured && !webhook && (
-            <Note intent="good">
-              A webhook is set. It is not shown here: anybody who can read it could post
-              into that channel. Paste a new one to replace it.
-            </Note>
+          {/* Two different things can be missing, and only one of them is
+              something this person can fix. */}
+          {!data.teamsReady && (
+            <div className="mb-3">
+              <Note intent="warn">
+                Teams delivery has not been set up for this organization yet. An administrator
+                does that once, in Alarms, and then this works for everybody. You can fill in
+                your address now, but nothing will arrive until they have.
+              </Note>
+            </div>
           )}
 
-          {/* The failure people cannot otherwise see: a webhook deleted or
-              regenerated in Teams fails silently and forever. */}
           {data.lastError && (
             <div className="mb-3">
               <Note intent="danger">
@@ -119,14 +119,15 @@ export default function DevAlertSettings() {
             </div>
           )}
 
-          <div className="flex gap-2 mt-3">
+          <div className="flex gap-2">
             <input
-              type="url" value={webhook} onChange={e => setWebhook(e.target.value)}
-              placeholder={data.webhookConfigured ? "Paste a new URL to replace the current one" : "https://…"}
+              type="email" value={address} onChange={e => setAddress(e.target.value)}
+              placeholder="you@company.com"
               className={SURFACE.input}
             />
-            <Button variant="primary" disabled={!webhook.trim() || save.isPending}
-              onClick={async () => { await commit({ webhookUrl: webhook.trim() }); setWebhook(""); }}>
+            <Button variant="primary"
+              disabled={!address.trim() || address.trim() === data.teamsAddress || save.isPending}
+              onClick={() => commit({ teamsAddress: address.trim() })}>
               Save
             </Button>
           </div>
@@ -136,16 +137,23 @@ export default function DevAlertSettings() {
           )}
 
           <div className="flex items-center gap-3 mt-4 flex-wrap">
-            {/* The whole point of this button: a URL that is subtly wrong
-                otherwise fails silently until somebody notices, weeks later,
-                that they have stopped being told things. */}
-            <Button onClick={() => test.mutate()} disabled={!data.webhookConfigured || test.isPending}>
+            <Button onClick={() => test.mutate()}
+              disabled={!data.teamsAddress || !data.teamsReady || test.isPending}>
               {test.isPending ? "Sending…" : "Send a test now"}
             </Button>
+            {/* Power Automate answers before it runs the flow, so a queued
+                request is not a delivered message. */}
             {test.isSuccess && (
-              <span className="text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400">
-                Sent. Check Teams.
-              </span>
+              test.data?.queued ? (
+                <span className="text-[12.5px] font-semibold text-amber-700 dark:text-amber-500">
+                  Accepted by Power Automate. If nothing arrives, ask an administrator to check
+                  the flow's run history.
+                </span>
+              ) : (
+                <span className="text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  Delivered. Check Teams.
+                </span>
+              )
             )}
             {test.isError && (
               <span className="text-[12.5px] font-semibold text-rose-600 dark:text-rose-400">
@@ -159,13 +167,11 @@ export default function DevAlertSettings() {
             )}
           </div>
 
-          {!data.webhookConfigured && (
+          {!data.teamsAddress && (
             <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-3">
-              Nothing is sent until a webhook is saved, whatever is ticked below.
+              Nothing is sent until an address is saved, whatever is ticked below.
             </p>
           )}
-
-          <div className="mt-3"><TeamsSetupHelp scope="chat" /></div>
         </div>
       </section>
 
@@ -230,12 +236,23 @@ export default function DevAlertSettings() {
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                 At
               </label>
-              <select value={digest.hour} onChange={e => patchDigest({ hour: Number(e.target.value) })}
-                className={SURFACE.input}>
-                {Array.from({ length: 24 }, (_, h) => (
-                  <option key={h} value={h}>{clockHour(h)}</option>
-                ))}
-              </select>
+              {/* A real time input rather than an hour dropdown. "Around nine"
+                  and "nine o'clock" are different promises, and the second is
+                  the one people mean. */}
+              <input
+                type="time"
+                value={`${String(digest.hour).padStart(2, "0")}:${String(digest.minute ?? 0).padStart(2, "0")}`}
+                onChange={e => {
+                  const [h, m] = e.target.value.split(":").map(Number);
+                  if (Number.isFinite(h) && Number.isFinite(m)) patchDigest({ hour: h, minute: m });
+                }}
+                className={SURFACE.input}
+              />
+              {/* Said where the time is chosen, because the checking interval is
+                  not something anybody can infer from a time field. */}
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                Checked every five minutes, so it arrives within five minutes of this.
+              </p>
             </div>
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">

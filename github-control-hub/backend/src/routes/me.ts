@@ -10,10 +10,11 @@ import { searchActivity } from "../services/activitySearch";
 import { getDetailedLogging } from "../services/orgConfigService";
 import { readPrSnapshot as prSnapshot } from "../services/alarmService";
 import {
-  getDevAlerts, putDevAlerts, badWebhook, type DevAlerts,
+  getDevAlerts, putDevAlerts, badTeamsAddress, type DevAlerts,
 } from "../services/devAlertService";
 import { buildDigest } from "../services/devAlertContent";
-import { sendCard } from "../services/teamsClient";
+import { sendToPerson } from "../services/teamsClient";
+import { getOrgConfig } from "../services/orgConfigService";
 
 /**
  * The app, pointed at whoever is reading it.
@@ -229,11 +230,12 @@ router.get("/ship", async (req: Request, res: Response) => {
 router.get("/alerts", async (req: Request, res: Response) => {
   try {
     const a = await getDevAlerts(req.user!.login);
-    // The URL itself is never returned. Somebody who can read it can post into
-    // that channel forever, and the screen only needs to know whether one is
-    // set and whether it is working.
-    const { webhookUrl, ...rest } = a;
-    res.json({ ...rest, webhookConfigured: !!webhookUrl });
+    // The address is the person's own and is shown back: unlike a webhook it is
+    // not a credential, and being unable to see what you typed is how a typo
+    // survives. What they cannot see for themselves is whether an administrator
+    // has set the shared flow up, so that travels with it.
+    const flow = (await getOrgConfig().catch(() => null))?.teamsFlow;
+    res.json({ ...a, teamsReady: !!flow?.url });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "me") });
   }
@@ -247,21 +249,21 @@ router.put("/alerts", async (req: Request, res: Response) => {
     // An empty string clears it; an absent field leaves it alone. Those are
     // different intentions and collapsing them would make the field impossible
     // to clear.
-    let webhookUrl = current.webhookUrl;
-    if (typeof body.webhookUrl === "string") {
-      const trimmed = body.webhookUrl.trim();
+    let teamsAddress = current.teamsAddress;
+    if (typeof body.teamsAddress === "string") {
+      const trimmed = body.teamsAddress.trim();
       if (trimmed === "") {
-        webhookUrl = undefined;
+        teamsAddress = undefined;
       } else {
-        const bad = badWebhook(trimmed);
+        const bad = badTeamsAddress(trimmed);
         if (bad) { res.status(400).json({ error: bad }); return; }
-        webhookUrl = trimmed;
+        teamsAddress = trimmed;
       }
     }
 
     const next: DevAlerts = {
       ...current,
-      webhookUrl,
+      teamsAddress,
       events: { ...current.events, ...(body.events ?? {}) },
       digest: {
         ...current.digest,
@@ -270,19 +272,20 @@ router.put("/alerts", async (req: Request, res: Response) => {
         // Clamped rather than trusted: an hour of 25 would simply never match,
         // which looks identical to the digest being broken.
         hour: Math.min(23, Math.max(0, Number(body.digest?.hour ?? current.digest.hour) || 0)),
+        minute: Math.min(59, Math.max(0, Number(body.digest?.minute ?? current.digest.minute) || 0)),
         days: Array.isArray(body.digest?.days)
           ? body.digest.days.filter((d: any) => Number.isInteger(d) && d >= 0 && d <= 6)
           : current.digest.days,
       },
       // Cleared on save: a failure from the old URL said nothing about the new
       // one, and leaving it makes a fixed setting still look broken.
-      lastError: typeof body.webhookUrl === "string" ? undefined : current.lastError,
-      lastErrorAt: typeof body.webhookUrl === "string" ? undefined : current.lastErrorAt,
+      lastError: typeof body.teamsAddress === "string" ? undefined : current.lastError,
+      lastErrorAt: typeof body.teamsAddress === "string" ? undefined : current.lastErrorAt,
     };
 
     const saved = await putDevAlerts(next);
-    const { webhookUrl: _hidden, ...rest } = saved;
-    res.json({ ...rest, webhookConfigured: !!saved.webhookUrl });
+    const flow = (await getOrgConfig().catch(() => null))?.teamsFlow;
+    res.json({ ...saved, teamsReady: !!flow?.url });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "me") });
   }
@@ -298,8 +301,19 @@ router.put("/alerts", async (req: Request, res: Response) => {
 router.post("/alerts/test", async (req: Request, res: Response) => {
   try {
     const a = await getDevAlerts(req.user!.login);
-    if (!a.webhookUrl) {
-      res.status(400).json({ error: "No Teams webhook is set yet." });
+    if (!a.teamsAddress) {
+      res.status(400).json({ error: "No Teams address is set yet." });
+      return;
+    }
+    // Two different things can be missing, and telling somebody to check their
+    // own settings when an administrator has not set the flow up sends them
+    // somewhere they cannot fix it.
+    const flowUrl = (await getOrgConfig().catch(() => null))?.teamsFlow?.url;
+    if (!flowUrl) {
+      res.status(400).json({
+        error: "Teams delivery is not set up for this organization yet. An administrator "
+          + "sets it up once, in Alarms, and then this works for everybody.",
+      });
       return;
     }
     const snap = await prSnapshot().catch(() => null);
@@ -308,13 +322,14 @@ router.post("/alerts/test", async (req: Request, res: Response) => {
     // sections they chose have anything in them.
     const digest = buildDigest({ ...a, digest: { ...a.digest, skipWhenEmpty: false } },
       snap?.prs ?? []);
-    const result = await sendCard(a.webhookUrl, digest.card);
+    const result = await sendToPerson(flowUrl, a.teamsAddress, digest.card);
     const now = new Date().toISOString();
     await putDevAlerts(result.ok
       ? { ...a, lastSentAt: now, lastError: undefined, lastErrorAt: undefined }
       : { ...a, lastError: result.error, lastErrorAt: now });
     if (!result.ok) { res.status(502).json({ error: result.error }); return; }
-    res.json({ sent: true, counts: digest.counts, usedSnapshot: !!snap });
+    // `queued` travels so the screen can stop claiming delivery it cannot see.
+    res.json({ sent: true, queued: !!result.queued, counts: digest.counts, usedSnapshot: !!snap });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "me") });
   }

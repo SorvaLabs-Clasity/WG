@@ -170,8 +170,10 @@ router.post("/", async (req: Request, res: Response) => {
  * and the screen only needs to know how many are set, not what they are.
  */
 function withoutHooks(g: any) {
-  const { teamsWebhooks, ...rest } = g;
-  return { ...rest, teamsCount: (teamsWebhooks ?? []).length };
+  // Nothing to hide any more. Recipients are work email addresses, the same
+  // shape as the email column beside them, so the screen shows who is on a
+  // group instead of "Channel 1, Channel 2".
+  return { ...g, teamsRecipients: g.teamsRecipients ?? [] };
 }
 
 router.get("/groups", async (_req: Request, res: Response) => {
@@ -272,47 +274,82 @@ router.post("/groups/:id/teams", async (req: Request, res: Response) => {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
 
-    const url = String(req.body?.webhookUrl ?? "").trim();
-    const { badWebhook } = await import("../services/devAlertService");
-    const bad = badWebhook(url);
+    const address = String(req.body?.address ?? "").trim();
+    const { badTeamsAddress } = await import("../services/devAlertService");
+    const bad = badTeamsAddress(address);
     if (bad) return res.status(400).json({ error: bad });
 
-    const hooks = group.teamsWebhooks ?? [];
-    // Silently ignoring a duplicate rather than erroring: adding the same
-    // channel twice is a person being unsure whether it took, and the answer
-    // they want is "it is there", not a complaint.
-    if (!hooks.includes(url)) {
-      await saveGroup({ ...group, teamsWebhooks: [...hooks, url], updatedAt: new Date().toISOString() });
+    const people = group.teamsRecipients ?? [];
+    // Adding somebody twice is a person unsure whether it took. The answer they
+    // want is "they are on it", not a complaint.
+    const already = people.some(p => p.toLowerCase() === address.toLowerCase());
+    if (!already) {
+      await saveGroup({
+        ...group, teamsRecipients: [...people, address], updatedAt: new Date().toISOString(),
+      });
     }
     await logActivity("config.updated" as any, req.user!.login, "", "alarm group",
-      `Added a Teams channel to "${group.name}"`);
-    res.json({ teamsCount: hooks.includes(url) ? hooks.length : hooks.length + 1 });
+      `Added ${address} to "${group.name}" in Teams`);
+    res.json({ teamsRecipients: already ? people : [...people, address] });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "alarm groups") });
+  }
+});
+
+router.delete("/groups/:id/teams/:address", async (req: Request, res: Response) => {
+  try {
+    const group = await getGroup(String(req.params.id));
+    if (!group) return res.status(404).json({ error: "No such group" });
+
+    const address = decodeURIComponent(String(req.params.address)).toLowerCase();
+    const people = (group.teamsRecipients ?? []).filter(p => p.toLowerCase() !== address);
+    await saveGroup({ ...group, teamsRecipients: people, updatedAt: new Date().toISOString() });
+    await logActivity("config.updated" as any, req.user!.login, "", "alarm group",
+      `Removed a Teams recipient from "${group.name}"`);
+    res.json({ teamsRecipients: people });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "alarm groups") });
   }
 });
 
 /**
- * Remove one, by position.
+ * The one flow every Teams message goes through.
  *
- * By index because the URLs are never sent to the browser, so there is nothing
- * else for it to name one by.
+ * Set once, by an administrator. Everybody else supplies an address and never
+ * opens Power Automate.
  */
-router.delete("/groups/:id/teams/:index", async (req: Request, res: Response) => {
+router.get("/teams-flow", async (_req: Request, res: Response) => {
   try {
-    const group = await getGroup(String(req.params.id));
-    if (!group) return res.status(404).json({ error: "No such group" });
+    const { getOrgConfig } = await import("../services/orgConfigService");
+    const flow = (await getOrgConfig()).teamsFlow;
+    // The URL is not returned. It is the one credential here: anybody holding
+    // it can post as the flow, to anyone.
+    res.json({ configured: !!flow?.url, setBy: flow?.setBy, setAt: flow?.setAt });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "alarm groups") });
+  }
+});
 
-    const hooks = [...(group.teamsWebhooks ?? [])];
-    const i = Number(String(req.params.index));
-    if (!Number.isInteger(i) || i < 0 || i >= hooks.length) {
-      return res.status(400).json({ error: "No channel at that position" });
+router.put("/teams-flow", async (req: Request, res: Response) => {
+  try {
+    const { setTeamsFlow } = await import("../services/orgConfigService");
+    const raw = String(req.body?.url ?? "").trim();
+
+    if (raw === "") {
+      await setTeamsFlow(null, req.user!.login);
+      await logActivity("config.updated" as any, req.user!.login, "", "teams flow",
+        "Removed the Teams delivery flow");
+      return res.json({ configured: false });
     }
-    hooks.splice(i, 1);
-    await saveGroup({ ...group, teamsWebhooks: hooks, updatedAt: new Date().toISOString() });
-    await logActivity("config.updated" as any, req.user!.login, "", "alarm group",
-      `Removed a Teams channel from "${group.name}"`);
-    res.json({ teamsCount: hooks.length });
+
+    const { badWebhook } = await import("../services/devAlertService");
+    const bad = badWebhook(raw);
+    if (bad) return res.status(400).json({ error: bad });
+
+    const saved = await setTeamsFlow(raw, req.user!.login);
+    await logActivity("config.updated" as any, req.user!.login, "", "teams flow",
+      "Set the Teams delivery flow");
+    res.json({ configured: true, setBy: saved.teamsFlow?.setBy, setAt: saved.teamsFlow?.setAt });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "alarm groups") });
   }

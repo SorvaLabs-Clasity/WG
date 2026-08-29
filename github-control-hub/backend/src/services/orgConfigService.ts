@@ -18,6 +18,23 @@ export interface OrgConfig {
    */
   renovateBot?: string;
   /**
+   * The one Power Automate flow every Teams message goes through.
+   *
+   * Set once, by an administrator. Before this, each person created their own
+   * flow and pasted their own URL, which meant ten steps in a tool they do not
+   * otherwise use, per person, with one silent failure mode if a dropdown was
+   * wrong. The flow is a pipe: it reads who the message is for out of the
+   * request, so one of them serves everybody.
+   *
+   * Unset means Teams delivery is simply off, and every screen that offers it
+   * says so rather than accepting an address that would go nowhere.
+   */
+  teamsFlow?: {
+    url: string;
+    setBy: string;
+    setAt: string;
+  };
+  /**
    * When the access graph was last rebuilt, and how it went.
    *
    * Kept here rather than beside the edges because the aggregator clears that
@@ -130,6 +147,20 @@ export async function getOrgConfig(): Promise<OrgConfig> {
     return defaultConfig;
   }
   return memConfig;
+}
+
+export async function setTeamsFlow(url: string | null, actor: string): Promise<OrgConfig> {
+  const current = await getOrgConfig();
+  const updated: OrgConfig = {
+    ...current,
+    teamsFlow: url ? { url, setBy: actor, setAt: new Date().toISOString() } : undefined,
+  };
+  if (hasTable("ORG_CONFIG_TABLE")) {
+    await docClient.send(new PutCommand({ TableName: TABLE(), Item: updated }));
+  } else {
+    memConfig = updated;
+  }
+  return updated;
 }
 
 export async function updateRenovateBot(bot: string): Promise<OrgConfig> {

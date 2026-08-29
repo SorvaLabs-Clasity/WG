@@ -51,13 +51,8 @@ export interface EmailGroup {
   topicArn: string;
   members: GroupMember[];
   membersError?: string;
-  /**
-   * How many Teams channels this group posts to.
-   *
-   * A count, never the URLs. Each one is effectively a password for posting
-   * into that channel, so they stay on the server.
-   */
-  teamsCount?: number;
+  /** People this group DMs in Teams, by work email address. */
+  teamsRecipients?: string[];
 }
 
 export interface SecurityNotifySettings {
@@ -88,12 +83,21 @@ export const deleteAlarmApi = (id: string) =>
 
 export const fetchGroups = () => apiGet<EmailGroup[]>("/alarms/groups");
 
-export const addGroupTeams = (id: string, webhookUrl: string) =>
-  apiPost<{ teamsCount: number }>(`/alarms/groups/${id}/teams`, { webhookUrl });
+export const addGroupTeams = (id: string, address: string) =>
+  apiPost<{ teamsRecipients: string[] }>(`/alarms/groups/${id}/teams`, { address });
 
-/** By position: the URLs are never sent to the browser, so there is no other handle. */
-export const removeGroupTeams = (id: string, index: number) =>
-  apiDelete<{ teamsCount: number }>(`/alarms/groups/${id}/teams/${index}`);
+export const removeGroupTeams = (id: string, address: string) =>
+  apiDelete<{ teamsRecipients: string[] }>(
+    `/alarms/groups/${id}/teams/${encodeURIComponent(address)}`);
+
+export interface TeamsFlow {
+  configured: boolean;
+  setBy?: string;
+  setAt?: string;
+}
+
+export const fetchTeamsFlow = () => apiGet<TeamsFlow>("/alarms/teams-flow");
+export const saveTeamsFlow = (url: string) => apiPut<TeamsFlow>("/alarms/teams-flow", { url });
 export const createGroupApi = (name: string) =>
   apiPost<EmailGroup>("/alarms/groups", { name });
 /** `force` deletes even when alarms still point at the group. */

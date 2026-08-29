@@ -1,6 +1,7 @@
 import { getDevAlerts, putDevAlerts } from "../services/devAlertService";
 import { buildEventCard, wants, type DevEvent, type EventKind } from "../services/devAlertContent";
-import { sendCard } from "../services/teamsClient";
+import { sendToPerson } from "../services/teamsClient";
+import { getOrgConfig } from "../services/orgConfigService";
 
 /**
  * The immediate half of a developer's notifications.
@@ -62,6 +63,9 @@ export async function notifyDevEvents(event: string, payload: any): Promise<numb
   const targets = recipientsFor(event, payload);
   if (targets.length === 0) return 0;
 
+  const flowUrl = (await getOrgConfig().catch(() => null))?.teamsFlow?.url;
+  if (!flowUrl) return 0;
+
   const pr = payload.pull_request;
   let sent = 0;
 
@@ -79,7 +83,7 @@ export async function notifyDevEvents(event: string, payload: any): Promise<numb
         actor: target.actor,
       };
 
-      const result = await sendCard(prefs.webhookUrl!, buildEventCard(devEvent));
+      const result = await sendToPerson(flowUrl, prefs.teamsAddress!, buildEventCard(devEvent));
       const now = new Date().toISOString();
       if (result.ok) {
         sent++;

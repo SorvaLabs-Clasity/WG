@@ -50,6 +50,15 @@ export interface DigestPrefs {
   enabled: boolean;
   /** Local hour, 0-23, in `timeZone`. */
   hour: number;
+  /**
+   * Minutes past that hour, 0-59.
+   *
+   * The pass ticks every five minutes, so the digest arrives at the first tick
+   * at or after the time chosen rather than exactly on it. Offering the minute
+   * anyway is the difference between "sometime around nine" and "nine o'clock",
+   * and the five-minute lag is stated where the time is picked.
+   */
+  minute: number;
   timeZone: string;
   /** 0 is Sunday. Empty means every day. */
   days: number[];
@@ -71,8 +80,19 @@ export interface DevAlerts {
   /** The table's key. Always `keyFor(login)`. */
   org: string;
   login: string;
-  /** Microsoft Teams incoming webhook, from a Workflows connector. */
-  webhookUrl?: string;
+  /**
+   * Where to DM this person in Teams: their work email address.
+   *
+   * Not a webhook. The organization has one shared flow and the destination
+   * travels with each message, so what a person supplies is who they are, not
+   * a pipe of their own. One field, once, instead of a Power Automate setup
+   * each.
+   *
+   * Kept separate from any GitHub email on purpose: a GitHub account often
+   * carries a private or `users.noreply.github.com` address, and neither is
+   * where Teams would find somebody.
+   */
+  teamsAddress?: string;
   events: EventPrefs;
   digest: DigestPrefs;
   /**
@@ -105,6 +125,7 @@ export function defaults(login: string): DevAlerts {
     digest: {
       enabled: false,
       hour: 9,
+      minute: 0,
       timeZone: "America/New_York",
       days: [1, 2, 3, 4, 5],
       include: { toReview: true, mine: true, mergeable: true },
@@ -140,6 +161,23 @@ const TEAMS_HOSTS = /^([a-z0-9-]+\.)*(webhook\.office\.com|logic\.azure\.com|pow
 
 /** Named in the refusal, so somebody can tell whether their URL should work. */
 const ACCEPTED = "webhook.office.com, logic.azure.com, powerplatform.com or flow.microsoft.com";
+
+/**
+ * A Teams address is an email address, so it is checked as one.
+ *
+ * Deliberately loose beyond that. Which addresses actually reach somebody in
+ * Teams is a question only the tenant can answer, and a stricter pattern here
+ * would refuse valid ones while catching nothing a typo produces.
+ */
+export function badTeamsAddress(value: string): string | null {
+  const v = value.trim();
+  if (!v) return "An address is required.";
+  if (v.length > 200) return "That address is too long.";
+  if (!/^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(v)) {
+    return "That does not look like an email address. Use the work address this person signs in to Teams with.";
+  }
+  return null;
+}
 
 export function badWebhook(url: string): string | null {
   let parsed: URL;
@@ -217,16 +255,16 @@ export async function listDevAlerts(): Promise<DevAlerts[]> {
  * to UTC rather than throwing: a bad timezone string should send the digest at
  * an odd hour, not stop sending it.
  */
-export function localNow(now: number, timeZone: string): { hour: number; day: number; date: string } {
+export function localNow(now: number, timeZone: string): { hour: number; minute: number; day: number; date: string } {
   let fmt: Intl.DateTimeFormat;
   try {
     fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone, hour: "numeric", hour12: false, weekday: "short",
+      timeZone, hour: "numeric", minute: "2-digit", hour12: false, weekday: "short",
       year: "numeric", month: "2-digit", day: "2-digit",
     });
   } catch {
     fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: "UTC", hour: "numeric", hour12: false, weekday: "short",
+      timeZone: "UTC", hour: "numeric", minute: "2-digit", hour12: false, weekday: "short",
       year: "numeric", month: "2-digit", day: "2-digit",
     });
   }
@@ -236,6 +274,7 @@ export function localNow(now: number, timeZone: string): { hour: number; day: nu
     // "24" is midnight in this format, and reading it as hour 24 would mean a
     // digest set for midnight never matched.
     hour: Number(parts.hour) % 24,
+    minute: Number(parts.minute) || 0,
     day: DAYS.indexOf(String(parts.weekday)),
     date: `${parts.year}-${parts.month}-${parts.day}`,
   };
@@ -249,12 +288,27 @@ export function localNow(now: number, timeZone: string): { hour: number; day: nu
  * the comparison is on their date rather than on elapsed hours so a clock
  * change cannot produce two.
  */
+/** How long after the chosen time a digest may still go out. */
+export const LATE_WINDOW_MINUTES = 60;
+
 export function digestDue(a: DevAlerts, now: number): boolean {
-  if (!a.digest.enabled || !a.webhookUrl) return false;
-  const { hour, day, date } = localNow(now, a.digest.timeZone);
-  if (hour !== a.digest.hour) return false;
+  if (!a.digest.enabled || !a.teamsAddress) return false;
+  const { hour, minute, day, date } = localNow(now, a.digest.timeZone);
   if (a.digest.days.length > 0 && !a.digest.days.includes(day)) return false;
+
+  // At or after the chosen time, not exactly on it. The pass ticks every five
+  // minutes, so an exact match would mean a digest set for 9:58 never fired at
+  // all: the ticks near it are 9:55, which is early, and 10:00, which is the
+  // next hour.
+  //
+  // Bounded by an hour so a pass that could not run at nine still delivers at
+  // half past, while a digest never arrives at eleven at night because nothing
+  // ran all morning.
+  const late = (hour * 60 + minute) - (a.digest.hour * 60 + (a.digest.minute ?? 0));
+  if (late < 0 || late >= LATE_WINDOW_MINUTES) return false;
+
   if (!a.lastDigestAt) return true;
-  // Compared in the same zone it was scheduled in.
+  // Compared in the same zone it was scheduled in, so one per local day holds
+  // across a clock change.
   return localNow(Date.parse(a.lastDigestAt), a.digest.timeZone).date !== date;
 }

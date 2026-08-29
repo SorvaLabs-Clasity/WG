@@ -1,7 +1,8 @@
 import { listDevAlerts, digestDue, putDevAlerts } from "../services/devAlertService";
 import { buildDigest } from "../services/devAlertContent";
 import { readPrSnapshot } from "../services/alarmService";
-import { sendCard } from "../services/teamsClient";
+import { sendToPerson } from "../services/teamsClient";
+import { getOrgConfig } from "../services/orgConfigService";
 
 /**
  * The scheduled half of a developer's notifications.
@@ -35,6 +36,14 @@ export async function runDigestPass(now = Date.now()): Promise<DigestSummary> {
   out.considered = due.length;
   if (due.length === 0) return out;
 
+  // One flow for the whole organization. Without it nothing can be delivered,
+  // and saying so once beats failing per person with the same message.
+  const flowUrl = (await getOrgConfig().catch(() => null))?.teamsFlow?.url;
+  if (!flowUrl) {
+    console.warn("[DevDigest] No Teams flow is configured; nothing can be sent");
+    return { ...out, skipped: due.length };
+  }
+
   const snapshot = await readPrSnapshot().catch(() => null);
   if (!snapshot) {
     // Nothing to summarise, and nothing recorded as sent, so the next tick
@@ -56,7 +65,7 @@ export async function runDigestPass(now = Date.now()): Promise<DigestSummary> {
       continue;
     }
 
-    const result = await sendCard(person.webhookUrl!, digest.card);
+    const result = await sendToPerson(flowUrl, person.teamsAddress!, digest.card);
     const stamp = new Date(now).toISOString();
 
     if (result.ok) {

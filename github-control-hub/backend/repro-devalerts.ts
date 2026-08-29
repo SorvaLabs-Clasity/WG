@@ -24,7 +24,7 @@
  */
 import fs from "node:fs";
 import {
-  defaults, badWebhook, digestDue, localNow, keyFor, KEY_PREFIX, type DevAlerts,
+  defaults, badWebhook, badTeamsAddress, digestDue, localNow, keyFor, KEY_PREFIX, type DevAlerts,
 } from "./src/services/devAlertService";
 import { buildDigest, buildEventCard, wants } from "./src/services/devAlertContent";
 import { buildCard, escapeMd } from "./src/services/teamsClient";
@@ -42,7 +42,7 @@ const DAY = 86_400_000;
 
 const prefs = (over: Partial<DevAlerts> = {}): DevAlerts => ({
   ...defaults("alice"),
-  webhookUrl: "https://acme.webhook.office.com/webhookb2/abc",
+  teamsAddress: "alice@example.com",
   ...over,
 });
 
@@ -62,9 +62,21 @@ const text = (card: any) => JSON.stringify(card);
 (async () => {
   // ── one message a day, not twelve ───────────────────────────────────
   {
-    const p = prefs({ digest: { ...defaults("alice").digest, enabled: true, hour: 9, timeZone: "America/New_York", days: [] } });
-    check("a digest is due in its own hour", digestDue(p, NOW));
+    const p = prefs({ digest: { ...defaults("alice").digest, enabled: true, hour: 9, minute: 0, timeZone: "America/New_York", days: [] } });
+    check("a digest is due at its time", digestDue(p, NOW));
     check("  and not an hour later", !digestDue(p, NOW + 3_600_000));
+    check("  nor before it", !digestDue(p, NOW - 3_600_000));
+
+    // The pass ticks every five minutes, so an exact match would mean a digest
+    // set for 9:58 never fired: the ticks near it are 9:55 and 10:00.
+    const late = prefs({ digest: { ...defaults("a").digest, enabled: true, hour: 9, minute: 58, timeZone: "America/New_York", days: [] } });
+    check("a time between ticks still fires, at the next one",
+      !digestDue(late, NOW) && digestDue(late, NOW + 30 * 60_000),
+      "an exact match means 9:58 never fires at all");
+    // Bounded, so a morning outage does not deliver at eleven at night.
+    check("  but not hours late",
+      !digestDue(late, NOW + 4 * 3_600_000),
+      "a digest arriving at bedtime is not the digest anybody asked for");
 
     // Twelve ticks fall inside any chosen hour.
     const sent = { ...p, lastDigestAt: new Date(NOW).toISOString() };
@@ -82,8 +94,8 @@ const text = (card: any) => JSON.stringify(card);
       localNow(NOW, "America/New_York").hour === 9 && localNow(NOW, "UTC").hour === 13,
       localNow(NOW, "America/New_York"));
     check("  so two people on different clocks get different answers",
-      digestDue(prefs({ digest: { ...defaults("a").digest, enabled: true, hour: 9, timeZone: "America/New_York", days: [] } }), NOW)
-      && !digestDue(prefs({ digest: { ...defaults("a").digest, enabled: true, hour: 9, timeZone: "Europe/London", days: [] } }), NOW));
+      digestDue(prefs({ digest: { ...defaults("a").digest, enabled: true, hour: 9, minute: 0, timeZone: "America/New_York", days: [] } }), NOW)
+      && !digestDue(prefs({ digest: { ...defaults("a").digest, enabled: true, hour: 9, minute: 0, timeZone: "Europe/London", days: [] } }), NOW));
 
     check("  midnight is hour zero, not hour twenty-four",
       localNow(Date.parse("2026-08-27T04:30:00Z"), "America/New_York").hour === 0,
@@ -93,15 +105,15 @@ const text = (card: any) => JSON.stringify(card);
     check("  an unknown timezone falls back rather than throwing",
       localNow(NOW, "Not/AZone").hour === 13);
 
-    const weekdays = prefs({ digest: { ...defaults("a").digest, enabled: true, hour: 9, timeZone: "America/New_York", days: [1, 2, 3, 4, 5] } });
+    const weekdays = prefs({ digest: { ...defaults("a").digest, enabled: true, hour: 9, minute: 0, timeZone: "America/New_York", days: [1, 2, 3, 4, 5] } });
     check("weekdays-only skips the weekend",
       digestDue(weekdays, NOW) && !digestDue(weekdays, NOW + 2 * DAY),
       localNow(NOW + 2 * DAY, "America/New_York"));
     check("  and an empty day list means every day",
-      digestDue(prefs({ digest: { ...defaults("a").digest, enabled: true, hour: 9, timeZone: "America/New_York", days: [] } }), NOW + 2 * DAY));
+      digestDue(prefs({ digest: { ...defaults("a").digest, enabled: true, hour: 9, minute: 0, timeZone: "America/New_York", days: [] } }), NOW + 2 * DAY));
 
-    check("nothing is due without a webhook",
-      !digestDue({ ...weekdays, webhookUrl: undefined }, NOW),
+    check("nothing is due without an address",
+      !digestDue({ ...weekdays, teamsAddress: undefined }, NOW),
       "otherwise it is marked sent every day and nobody ever receives one");
   }
 
@@ -133,38 +145,46 @@ const text = (card: any) => JSON.stringify(card);
 
   // ── where the app will POST ─────────────────────────────────────────
   //
-  // A Lambda posts to whatever is stored, with no further checks.
+  // One URL for the whole organization now, set by an administrator, so the
+  // allow-list guards one field rather than one per person. A Lambda still
+  // posts to whatever is stored with no further checks.
   {
     check("a Teams webhook is accepted",
       badWebhook("https://acme.webhook.office.com/webhookb2/x") === null);
     check("  as is a Logic Apps one",
       badWebhook("https://prod-12.westus.logic.azure.com/workflows/x") === null);
-    // The one that was wrongly refused: current Power Platform environments
-    // issue this host, and a list naming only the older two rejects a URL that
-    // came straight out of the Workflows connector.
     check("  as is a current Power Platform one",
       badWebhook("https://abc.05.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/x") === null,
       "the feature has moved twice and all three hosts are in use at once");
-    check("  and a Power Automate flow host",
-      badWebhook("https://emea.flow.microsoft.com/workflows/x") === null);
     for (const [label, url] of [
       ["plain http", "http://acme.webhook.office.com/x"],
       ["somebody else's host", "https://evil.example.com/hook"],
       ["a host that merely contains the words", "https://webhook.office.com.evil.example.com/x"],
       ["a lookalike on the new host too", "https://powerplatform.com.evil.example.com/x"],
       ["nonsense", "not a url"],
-      ["a file URL", "file:///etc/passwd"],
     ] as [string, string][]) {
       check(`  ${label} is refused`, badWebhook(url) !== null, url);
     }
-    check("  and the refusal says where to get a real one",
-      /Workflows connector/.test(badWebhook("https://evil.example.com/x") ?? ""));
-    // Somebody holding a legitimate URL on a host nobody thought of needs to be
-    // able to tell that apart from having pasted the wrong thing.
-    check("    names the hosts it accepts, and the one you gave",
-      /powerplatform\.com/.test(badWebhook("https://evil.example.com/x") ?? "")
-      && /evil\.example\.com/.test(badWebhook("https://evil.example.com/x") ?? ""),
-      badWebhook("https://evil.example.com/x"));
+  }
+
+  // ── what a person supplies is who they are ──────────────────────────
+  //
+  // An address, not infrastructure. Checked as an email and no further: which
+  // addresses actually reach somebody in Teams is a question only the tenant
+  // can answer, and a stricter pattern refuses valid ones while catching
+  // nothing a typo produces.
+  {
+    check("a work address is accepted", badTeamsAddress("a-person@company.com") === null);
+    for (const [label, value] of [
+      ["an empty one", ""],
+      ["no domain", "a-person"],
+      ["no dot in the domain", "a-person@company"],
+      ["a space in it", "a person@company.com"],
+    ] as [string, string][]) {
+      check(`  ${label} is refused`, badTeamsAddress(value) !== null, value);
+    }
+    check("  and the refusal says what to use",
+      /work address/.test(badTeamsAddress("nope") ?? ""));
   }
 
   // ── who gets told, and who does not ─────────────────────────────────
@@ -212,8 +232,8 @@ const text = (card: any) => JSON.stringify(card);
 
     check("an event nobody opted into is not sent",
       !wants({ ...prefs(), events: { reviewRequested: false, changesRequested: true } }, "reviewRequested"));
-    check("  nor is anything at all without a webhook",
-      !wants({ ...prefs(), webhookUrl: undefined }, "reviewRequested"));
+    check("  nor is anything at all without an address",
+      !wants({ ...prefs(), teamsAddress: undefined }, "reviewRequested"));
   }
 
   // ── the card itself ─────────────────────────────────────────────────
@@ -245,17 +265,29 @@ const text = (card: any) => JSON.stringify(card);
   // ── the wiring ──────────────────────────────────────────────────────
   {
     const route = fs.readFileSync("./src/routes/me.ts", "utf8");
-    check("the webhook URL is never returned to the browser",
-      /const \{ webhookUrl, \.\.\.rest \} = a;/.test(route) && /webhookConfigured/.test(route),
-      "anyone who reads it can post into that channel forever");
+    check("the shared flow URL is never returned to the browser",
+      /res\.json\(\{ configured: !!flow\?\.url/.test(fs.readFileSync("./src/routes/alarms.ts", "utf8")),
+      "anybody holding it can post as the flow, to anyone");
+    check("  but a person's own address is, since it is not a credential",
+      /res\.json\(\{ \.\.\.a, teamsReady/.test(route),
+      "being unable to see what you typed is how a typo survives");
     check("  and settings are always the caller's own",
       !/req\.query\.login/.test(route.slice(route.indexOf('router.get("/alerts"'))),
       "reading somebody else's would be a way to send messages as them");
     check("a test send exists, and uses real data",
       /router\.post\("\/alerts\/test"/.test(route) && /skipWhenEmpty: false/.test(route),
-      "a wrong URL otherwise fails silently until somebody notices they hear nothing");
+      "a wrong address otherwise fails silently until somebody notices they hear nothing");
+    // Two different things can be missing and only one is the caller's to fix.
+    check("  and tells apart no address from no flow",
+      /No Teams address is set yet/.test(route) && /not set up for this organization/.test(route),
+      "telling somebody to check their own settings when an admin has not set up the flow sends them nowhere");
 
     const digest = fs.readFileSync("./src/alarms/devDigest.ts", "utf8");
+    check("one flow serves everybody",
+      /sendToPerson\(flowUrl, person\.teamsAddress!/.test(digest),
+      "a pipe per person is ten steps in Power Automate per person");
+    check("  and a missing flow is said once, not once per person",
+      /No Teams flow is configured/.test(digest));
     check("the digest reads the stored snapshot, not GitHub",
       /readPrSnapshot/.test(digest) && !/fetchOpenPrs/.test(digest),
       "otherwise the feature gets more expensive the more people use it");

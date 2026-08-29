@@ -58,17 +58,16 @@ export interface EmailGroup {
   /** The SNS topic behind this group. */
   topicArn: string;
   /**
-   * Microsoft Teams webhooks this group also posts to.
+   * People this group also DMs in Teams, by work email address.
    *
-   * A group is a list of people to tell, and email was only ever the one way
-   * the app knew how to tell them. Adding the channel here rather than to each
-   * feature means every notification the app already sends, widget alarms,
-   * important events, pull request reminders, reaches Teams without any of
-   * them knowing Teams exists.
+   * Addresses rather than webhooks. The organization has one shared flow and
+   * the destination travels with each message, so adding somebody here is
+   * typing who they are, exactly like the email column beside it, rather than
+   * asking them to go and build a pipe of their own first.
    *
    * Optional, so every group created before this behaves exactly as it did.
    */
-  teamsWebhooks?: string[];
+  teamsRecipients?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;
