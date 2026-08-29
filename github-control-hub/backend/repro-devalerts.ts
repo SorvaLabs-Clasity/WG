@@ -283,6 +283,16 @@ const text = (card: any) => JSON.stringify(card);
       "telling somebody to check their own settings when an admin has not set up the flow sends them nowhere");
 
     const digest = fs.readFileSync("./src/alarms/devDigest.ts", "utf8");
+    // The Teams trigger has a fixed schema with nowhere to declare extra
+    // fields, so the body has to be the shape it already expects.
+    const client = fs.readFileSync("./src/services/teamsClient.ts", "utf8");
+    check("the recipient rides alongside the ordinary Teams envelope",
+      /post\(flowUrl, \{ \.\.\.card, recipient \}, timeoutMs\)/.test(client),
+      "a body the trigger does not recognise is a body it may refuse");
+    check("  so the card binding the template wrote keeps working",
+      !/card: JSON\.stringify/.test(client),
+      "restringing the card would mean a third field for somebody to rebind by hand");
+
     check("one flow serves everybody",
       /sendToPerson\(flowUrl, person\.teamsAddress!/.test(digest),
       "a pipe per person is ten steps in Power Automate per person");

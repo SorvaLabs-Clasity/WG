@@ -127,7 +127,18 @@ export interface SendResult {
 export async function sendToPerson(
   flowUrl: string, recipient: string, card: any, timeoutMs = 8000,
 ): Promise<SendResult> {
-  return post(flowUrl, { recipient, card: JSON.stringify(card) }, timeoutMs);
+  // The ordinary Teams envelope, with `recipient` added beside it.
+  //
+  // Not a payload of our own invention, and that is the whole point. The Teams
+  // "webhook request received" trigger has a fixed schema with nowhere to
+  // declare extra fields, so a body it does not recognise is a body it may
+  // refuse. Sending the shape it already expects, plus one extra key, means the
+  // trigger sees exactly what it always saw and the card binding the template
+  // wrote for itself keeps working.
+  //
+  // What that buys is the setup: one field to change instead of three, and no
+  // JSON schema to paste into a box that does not exist on this trigger.
+  return post(flowUrl, { ...card, recipient }, timeoutMs);
 }
 
 /**

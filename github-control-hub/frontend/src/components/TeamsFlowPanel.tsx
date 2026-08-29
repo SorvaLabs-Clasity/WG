@@ -107,33 +107,34 @@ export default function TeamsFlowPanel() {
           <div className="mt-3 rounded-xl border border-slate-200 dark:border-white/10
                           bg-slate-50/70 dark:bg-white/[0.03] p-4">
             <p className="text-[12.5px] text-slate-600 dark:text-slate-300 leading-relaxed">
-              You are building one workflow that can message anybody. The trick is the last two
-              steps: instead of typing a name into the flow, you point it at the incoming request,
-              so each message says who it is for.
+              You are building one workflow that can message anybody. Only one field changes:
+              instead of a name typed into the flow, the Recipient reads who each message is for
+              out of the request itself.
             </p>
 
             <ol className="mt-3 grid gap-2.5">
               {[
                 <>In Teams, open any chat, click the <span className="font-semibold">⋯</span> at the
                   top, then <span className="font-semibold">Workflows</span>. Which chat does not
-                  matter, the destination is set inside the flow.</>,
-                <>Choose <span className="font-semibold">“Post to a chat when a webhook request is
-                  received”</span>, then <span className="font-semibold">Add workflow</span>.</>,
-                <>Open the new flow and click <span className="font-semibold">Edit</span>.</>,
-                <>On the trigger step, paste this into
-                  {" "}<span className="font-semibold">Request Body JSON Schema</span>. It is what makes
-                  the two fields below appear in the dynamic-content picker:
-                  <code className="block mt-1.5 font-mono text-[11px] p-2 rounded bg-slate-200/70 dark:bg-white/[0.08] overflow-x-auto">
-                    {`{"type":"object","properties":{"recipient":{"type":"string"},"card":{"type":"string"}}}`}
-                  </code></>,
-                <>Open the <span className="font-semibold">Post card in a chat or channel</span> step.
-                  Set <span className="font-semibold">Post in</span> to
+                  matter, the destination is set inside the flow. If the template list is short,
+                  search <span className="font-semibold">webhook</span>.</>,
+                <>Choose <span className="font-semibold">“Send webhook alerts to a chat”</span>.
+                  When it asks for a recipient, put anyone, yourself is fine. It gets replaced in
+                  step 5.</>,
+                <>Click <span className="font-semibold">Add workflow</span>, then open the new flow
+                  and click <span className="font-semibold">Edit</span>.</>,
+                <>Open the second step, the one that posts to Teams. It is usually called
+                  <span className="font-semibold"> Post card in a chat or channel</span>, though
+                  Microsoft renames these. Set <span className="font-semibold">Post in</span> to
                   {" "}<span className="font-semibold">Chat with Flow bot</span>.</>,
-                <>Clear the <span className="font-semibold">Recipient</span> field and pick
-                  {" "}<span className="font-semibold">recipient</span> from the dynamic-content list.
-                  This is the step that makes one flow serve everybody.</>,
-                <>Clear the <span className="font-semibold">Adaptive Card</span> field and pick
-                  {" "}<span className="font-semibold">card</span> from the same list.</>,
+                <>Clear the <span className="font-semibold">Recipient</span> field and paste this
+                  expression in its place. This is the only change that matters, it is what makes
+                  one flow able to message anybody:
+                  <code className="block mt-1.5 font-mono text-[11px] p-2 rounded bg-slate-200/70 dark:bg-white/[0.08] overflow-x-auto">
+                    triggerBody()?['recipient']
+                  </code></>,
+                <>Leave <span className="font-semibold">Adaptive Card</span> exactly as it is. The
+                  template already points it at the card, and the app sends the shape it expects.</>,
                 <>Save the flow, then copy its <span className="font-semibold">HTTP URL</span> from the
                   trigger step and paste it above.</>,
               ].map((step, i) => (
@@ -156,7 +157,8 @@ export default function TeamsFlowPanel() {
                 <span className="font-semibold"> Run history</span>. Power Automate accepts the
                 request before it runs the flow, so a failure there cannot be seen from here.
                 <span className="font-semibold"> “Call made for a thread which is not a
-                ChatThread”</span> means step 5 was missed.
+                ChatThread”</span> means step 4 was missed. If everybody's messages arrive for
+                one person, step 5 was missed and the Recipient is still a name.
               </p>
             </div>
           </div>
