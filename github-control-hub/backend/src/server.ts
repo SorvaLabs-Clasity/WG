@@ -17,6 +17,7 @@ import graphRoutes from "./routes/graph";
 import accessRoutes from "./routes/access";
 import expertiseRoutes from "./routes/expertise";
 import pullsRoutes from "./routes/pulls";
+import meRoutes from "./routes/me";
 import widgetRoutes from "./routes/widgets";
 import configRoutes from "./routes/config";
 import { githubGateMiddleware } from "./middleware/githubGate";
@@ -126,6 +127,9 @@ app.use("/api/graph", authMiddleware, githubGateMiddleware, graphRoutes);
 app.use("/api/access", authMiddleware, githubGateMiddleware, accessRoutes);
 app.use("/api/expertise", authMiddleware, githubGateMiddleware, expertiseRoutes);
 app.use("/api/pulls", authMiddleware, githubGateMiddleware, pullsRoutes);
+// Gated like the rest of GitHub: it is composed entirely from what the GitHub
+// walk collected, so an account without GitHub credentials has nothing to serve.
+app.use("/api/me", authMiddleware, githubGateMiddleware, meRoutes);
 app.use("/api/widgets", authMiddleware, githubGateMiddleware, widgetRoutes);
 app.use("/api/config", authMiddleware, githubGateMiddleware, configRoutes);
 app.use("/api/aws", authMiddleware, awsGuardrailRoutes);

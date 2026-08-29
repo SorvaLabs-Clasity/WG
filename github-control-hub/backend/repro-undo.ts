@@ -294,7 +294,12 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
 
   const GUARDED: [string, RegExp, RegExp][] = [
     ["scanners.ts",      /router\.(post|put|delete)\(/g, /refusedScannerChange/],
-    ["widgets.ts",       /router\.(post|put|delete)\(/g, /refusedWidgetChange/],
+    // Two gates since personal dashboards existed. Creating still asks
+    // `refusedWidgetChange` — admin, for the one board everybody sees — while
+    // editing and deleting ask `refusedWidgetEdit`, which reads the stored
+    // owner first and is the stricter of the two: it refuses somebody else's
+    // personal widget outright rather than falling back to the admin gate.
+    ["widgets.ts",       /router\.(post|put|delete)\(/g, /refusedWidget(Change|Edit)/],
     ["alerts.ts",        /router\.(post|put|delete)\(/g, /refusedAlertChange/],
     ["config.ts",        /router\.(post|put|delete)\(/g, /refuseUnlessAdmin/],
     // The rule-template router was absent from this list until the August 2026
@@ -371,6 +376,7 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     "access.ts": "read models over the graph",
     "dependencies.ts": "reads advisories; its two writes enable and disable Dependabot on one repo with the caller's own token",
     "org.ts": "org read-through",
+    "me.ts": "everything is the caller's own: it reads no login parameter and writes only their row",
   };
 
   const routeDir = path.join(__dirname, "src/routes");

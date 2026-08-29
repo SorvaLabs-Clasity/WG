@@ -49,9 +49,15 @@ export function fetchWidgetSnapshots(): Promise<WidgetSnapshot[]> {
   return apiGet<WidgetSnapshot[]>("/widgets/snapshots");
 }
 
-export function fetchWidgets(): Promise<WidgetConfig[]> {
+/**
+ * The shared board by default, or the caller's own.
+ *
+ * Two boards out of one endpoint. Passing nothing returns what it always
+ * returned, so the Overview tab does not change because personal ones exist.
+ */
+export function fetchWidgets(scope?: "personal"): Promise<WidgetConfig[]> {
   if (DEMO_MODE) return mockFetchWidgets();
-  return apiGet<WidgetConfig[]>("/widgets");
+  return apiGet<WidgetConfig[]>(scope ? `/widgets?scope=${scope}` : "/widgets");
 }
 
 export function createWidgetApi(data: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">): Promise<WidgetConfig> {

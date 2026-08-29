@@ -172,7 +172,12 @@ function deps(over: Partial<{
     // synchronize or reopened would email on every rebase. Scoped to the
     // pull_request condition itself: `action === "edited"` is legitimate a few
     // lines away, on team events, and matching the whole file catches that.
-    const prCondition = /event === "pull_request"[^\n]*/.exec(src)?.[0] ?? "";
+    // Anchored on the condition that guards the Renovate branch rather than on
+    // the first `event === "pull_request"` in the file: other features handle
+    // the same event a few lines away, and matching whichever comes first makes
+    // this assert something about them instead.
+    const prCondition =
+      /event === "pull_request"[^\n]*payload\.pull_request[^\n]*/.exec(src)?.[0] ?? "";
     check("  and only on opened, not on every update to the pull request",
       prCondition.includes('"opened"')
         && !/"(synchronize|reopened|edited)"/.test(prCondition),

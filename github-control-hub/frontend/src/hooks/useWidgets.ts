@@ -25,10 +25,12 @@ export function useWidgetSnapshots() {
   });
 }
 
-export function useWidgets() {
+export function useWidgets(scope?: "personal") {
   return useQuery({
-    queryKey: ["widgets"],
-    queryFn: fetchWidgets,
+    // The scope is in the key. Without it the shared board and a personal one
+    // share a cache entry, so opening one shows the other's cards for a moment.
+    queryKey: ["widgets", scope ?? "org"],
+    queryFn: () => fetchWidgets(scope),
     staleTime: 30_000,
   });
 }
@@ -39,7 +41,7 @@ export function useCreateWidget() {
     mutationFn: (data: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) =>
       createWidgetApi(data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["widgets"] });
+      qc.invalidateQueries({ queryKey: ["widgets"] });   // both scopes: the key is a prefix
       qc.invalidateQueries({ queryKey: ["activity"] });
     },
   });
@@ -51,7 +53,7 @@ export function useUpdateWidget() {
     mutationFn: ({ id, data }: { id: string; data: Partial<Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">> }) =>
       updateWidgetApi(id, data),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["widgets"] });
+      qc.invalidateQueries({ queryKey: ["widgets"] });   // both scopes: the key is a prefix
       qc.invalidateQueries({ queryKey: ["activity"] });
     },
   });
@@ -62,7 +64,7 @@ export function useDeleteWidget() {
   return useMutation({
     mutationFn: (id: string) => deleteWidgetApi(id),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["widgets"] });
+      qc.invalidateQueries({ queryKey: ["widgets"] });   // both scopes: the key is a prefix
       qc.invalidateQueries({ queryKey: ["activity"] });
     },
   });

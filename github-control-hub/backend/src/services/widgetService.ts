@@ -11,6 +11,20 @@ export interface WidgetConfig {
   queryParam?: string;
   queryAdvanced?: any;
   displayType: "metric" | "table";
+  /**
+   * Whose personal dashboard this belongs to, if anybody's.
+   *
+   * Absent means the shared organization dashboard, which is what every widget
+   * created before this existed is — so the default is the old behaviour and no
+   * migration is needed. Set means it appears on that one person's My work and
+   * nowhere else, and only they can change it.
+   *
+   * Deliberately not the same field as `createdBy`. Who made a shared widget is
+   * a fact worth keeping about a widget everybody sees; whose dashboard it sits
+   * on is a different question, and conflating them would make every widget
+   * anybody created disappear from the shared board.
+   */
+  owner?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

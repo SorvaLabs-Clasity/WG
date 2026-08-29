@@ -149,7 +149,7 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
     const wh = read("src/webhooks/processDelivery.ts");
     const handled = [...new Set([...wh.matchAll(/event === "([a-z_]+)"/g)].map(m => m[1]))].sort();
 
-    check(`the worker handles ${handled.length} events`, handled.length === 11, handled);
+    check(`the worker handles ${handled.length} events`, handled.length === 12, handled);
 
     for (const [file, path] of [
       ["setup.md", "../../docs/operations/setup.md"],
@@ -164,13 +164,13 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
     // count is the thing to hold it to.
     const how = fs.readFileSync(`${__dirname}/../../docs/HOW-IT-WORKS.md`, "utf8");
     check("  HOW-IT-WORKS states the right number",
-      new RegExp(`(Eleven|${handled.length}) are subscribed`).test(how),
+      new RegExp(`(Twelve|${handled.length}) are subscribed`).test(how),
       "prose, so the count is what can be checked");
     check("  and calls out the one that must be ticked by hand",
       /`membership` is the newest/.test(how));
 
     check("  setup.md tells you how many boxes to tick",
-      /tick these eleven/.test(fs.readFileSync(`${__dirname}/../../docs/operations/setup.md`, "utf8")),
+      /tick these twelve/.test(fs.readFileSync(`${__dirname}/../../docs/operations/setup.md`, "utf8")),
       "somebody counting checkboxes against the table is the point of that line");
   }
 

@@ -896,7 +896,14 @@ function CheckRow({
   );
 }
 
-function CheckCard({
+/**
+ * Exported so the personal dashboard can render the same card.
+ *
+ * The alternative was a second card that looked nearly the same and drifted —
+ * and the verdict logic, the freshness stamp and the failure states inside this
+ * are exactly the parts that must not be reimplemented twice.
+ */
+export function CheckCard({
   config, index, onOpen, onReport, canEdit, onEdit, onRemove, graphEmpty, live,
 }: {
   config: WidgetConfig; index: number; onOpen: () => void;
@@ -1745,7 +1752,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
 
 /* ─── Widget Form Modal (Add / Edit) ─── */
 
-function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: () => void; onSave: (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => void; isSaving?: boolean; initialData?: WidgetConfig }) {
+export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { onClose: () => void; onSave: (config: Omit<WidgetConfig, "id" | "createdBy" | "createdAt" | "updatedAt">) => void; isSaving?: boolean; initialData?: WidgetConfig }) {
   const isEditing = !!initialData;
   const [title, setTitle] = useState(initialData?.title || "");
   const [type, setType] = useState<WidgetType>(initialData?.type || "preset");

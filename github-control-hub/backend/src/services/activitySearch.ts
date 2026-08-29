@@ -405,6 +405,19 @@ export async function activityPulse(
   buckets = 24,
   timeZone = "UTC",
   deps?: { query?: (cursor: any) => Promise<{ items: ActivityEntry[]; next: any }> },
+  /**
+   * Rows the caller is allowed to count, by action.
+   *
+   * The chart is deliberately wider than the table it sits behind — narrowing
+   * it to the current filter would make it agree with the table and stop being
+   * a comparison. That is a statement about *filters*, though, and an AWS-only
+   * deployment is not a filter: the feed drops GitHub rows there because an
+   * account holding no GitHub credentials is not supposed to be able to read
+   * GitHub history either. Counting them into the totals, the busiest hour, the
+   * top actors and the top repositories published exactly that history through
+   * a different route.
+   */
+  visible?: (action: string) => boolean,
 ): Promise<ActivityPulse> {
   const now = Date.now();
   const span = hours * 3_600_000;
@@ -490,11 +503,19 @@ export async function activityPulse(
 
       // Behind the window: keep going a little, to count the period before it.
       if (t < since) {
-        if (t >= prevSince) { previousCount++; continue; }
+        if (t >= prevSince) {
+          if (!visible || visible(e.action)) previousCount++;
+          continue;
+        }
         reachedPrevious = true;
         exhausted = true;
         break;
       }
+
+      // After the window arithmetic, never before it: how far back the walk has
+      // reached is a fact about timestamps, and skipping a row must not make the
+      // walk think it has further to go.
+      if (visible && !visible(e.action)) continue;
 
       oldest = e.timestamp;
       total++;

@@ -128,7 +128,7 @@ screen reports its own failures inline rather than relying on it.
 
 ## What runs on a schedule
 
-Six things happen without anybody pressing anything. Everything else happens
+Seven things happen without anybody pressing anything. Everything else happens
 because a person clicked, or GitHub sent a webhook.
 
 | What | Runs | Which Lambda |
@@ -138,6 +138,7 @@ because a person clicked, or GitHub sent a webhook.
 | Alarm evaluation, then the PR walk | every 5 minutes, whenever **Monitor pull requests** is on | `github-control-hub-alarm-evaluator` |
 | Light graph refresh | every 30 minutes | `github-control-hub-graph-aggregator` (`mode: light`) |
 | Access graph rebuild | nightly, 22:00 America/New_York | `github-control-hub-graph-aggregator` (`mode: full`) |
+| Developer Teams digests | checked every 5 minutes, sent once per person per day at their own hour | `github-control-hub-alarm-evaluator` |
 
 The schedules are EventBridge rules created by the CDK stack. Changing one means
 editing `infra/cdk-stack.ts` and redeploying — they are not settings in the app.
@@ -2062,9 +2063,14 @@ dead-letter queue rather than vanishing.
 
 ### Which events
 
-Eleven are subscribed: pushes, repositories, branch or tag creation and deletion,
+Twelve are subscribed: pushes, repositories, branch or tag creation and deletion,
 branch protection rules, repository rulesets, collaborator changes, teams, **team
-membership**, pull requests, and Dependabot alerts.
+membership**, pull requests, **pull request reviews**, and Dependabot alerts.
+
+`pull_request_review` is used by one thing only: the "changes requested"
+notification a developer can switch on for themselves. An installation without it
+loses that notification and nothing else, so it is worth ticking but not worth a
+migration.
 
 `membership` is the newest, and the only one that has to be ticked by hand on an
 existing installation. Without it `empty-teams` can only ever be as fresh as the
@@ -2075,6 +2081,70 @@ a team.
 worker handles either, so ticking them means GitHub sends a delivery, API Gateway
 accepts it, the receiver verifies it, the queue holds it, and the worker drops
 it — the whole path, for nothing.
+
+## Developer notifications
+
+The first thing in the app somebody configures for their own benefit rather than
+the organization's. Set from **My work → Notifications**, it posts to a Microsoft
+Teams webhook that person supplies.
+
+### The two halves
+
+| | Arrives | Where it runs |
+|---|---|---|
+| Review requested of you | seconds | the webhook worker, off `pull_request` |
+| Changes requested on yours | seconds | the webhook worker, off `pull_request_review` |
+| Daily summary | at the hour and timezone they chose | the 5-minute alarm tick |
+
+`pull_request_review` is subscribed for this and nothing else. An installation
+that has not ticked it loses the changes-requested notification and nothing more.
+
+Only two events are immediate, and the limit is what a webhook can actually
+deliver. "Became mergeable" and "checks went red" are conclusions drawn from
+several events rather than events themselves, so they appear in the summary,
+where they are read off the pull request snapshot that already exists. Offering
+them as switches that quietly never fired would be worse than not offering them.
+
+### Where it is stored
+
+In the org-config table, keyed `devalerts#<login>`. That table is read only by
+exact key, so per-person rows sit beside the organization's own without either
+seeing the other — and it needs no new table, which would have meant a stack
+deployment before anybody could try the feature.
+
+The webhook URL never leaves the server. The settings screen is told whether one
+is set, never what it is: anybody holding it could post into that channel for as
+long as it exists.
+
+### Staleness
+
+The digest reads the stored pull request snapshot rather than walking GitHub, so
+turning it on costs no additional requests however many people do. That also
+means it is only as fresh as the last walk — with **Monitor pull requests** off,
+there is nothing keeping the snapshot current and the digest would summarise an
+old one.
+
+A failed delivery is recorded against that person and shown on their settings
+screen. It is not retried: a webhook deleted in Teams fails identically twelve
+times an hour, and the point is that somebody finds out rather than that the app
+keeps trying.
+
+---
+
+## Personal dashboards
+
+The same widget engine as the Overview tab, filtered to one person. A widget
+with no `owner` is on the shared board and behaves exactly as it always did; one
+with an owner appears on that person's **My work → My cards** and nowhere else.
+
+The admin gate still applies to the shared board and deliberately does not apply
+to a personal one — that gate exists because the Overview is a single board seen
+by everybody. Editing and deleting read the stored owner first, so somebody
+else's personal widget is refused outright rather than falling back to the admin
+gate: an administrator has no more business rearranging a person's own dashboard
+than anybody else does.
+
+---
 
 ## Sign-in and permissions
 

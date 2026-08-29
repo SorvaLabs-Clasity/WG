@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuthStatus } from "../api/auth";
 import {
-  categoryOf, sourcesFor, CATEGORY_LABELS, VIEW_ORDER,
+  categoryOf, CATEGORY_LABELS, VIEW_ORDER,
   type ActivityView,
 } from "../lib/activityCategories";
 import { Page, INTENT, TYPE, SURFACE } from "../design";
@@ -206,11 +206,6 @@ const CATEGORY_DESCRIPTIONS: Record<ActivityView, string> = {
   app: "This app's own settings, widgets, scanners, imports, and undo history. Nothing here changed GitHub or AWS.",
 };
 
-const SOURCE_LABELS: Record<string, string> = {
-  app: "Control Hub app",
-  github: "GitHub webhook",
-};
-
 export default function ActivityPage() {
   const { user } = useAuth();
   const { data: orgConfig } = useOrgConfig();
@@ -219,7 +214,6 @@ export default function ActivityPage() {
   const retryMutation = useRetryActivity();
   const undoResolutionMutation = useUndoResolution();
   const [search, setSearch] = useState("");
-  const [sourceFilter, setSourceFilter] = useState<"all" | "app" | "github">("all");
   // Whether rows written under detailed logging are shown. A view preference,
   // not a query: hiding them filters the list the page already has, and the
   // choice survives reopening the app because it is the kind of preference
@@ -416,13 +410,12 @@ export default function ActivityPage() {
    * past. This is the number that tells them which they are looking at.
    */
   const activeFilterCount = [
-    sourceFilter !== "all", !!repoFilter, !!targetFilter, !!search,
+    !!repoFilter, !!targetFilter, !!search,
     !showDetailed, !showImportant, importantKinds.length > 0,
   ].filter(Boolean).length;
 
   const serverQuery = useMemo(() => ({
     ...(debouncedSearch ? { q: debouncedSearch } : {}),
-    ...(sourceFilter !== "all" ? { source: sourceFilter } : {}),
     ...(category !== "all" ? { category } : {}),
     ...(repoFilter ? { repoFilter } : {}),
     ...(targetFilter ? { target: targetFilter } : {}),
@@ -433,7 +426,7 @@ export default function ActivityPage() {
     // is a filter that does nothing at all: the object never rebuilds, so the
     // query key never changes and React Query never refetches. It looks exactly
     // like a broken backend from the outside.
-  }), [debouncedSearch, sourceFilter, category, repoFilter, targetFilter,
+  }), [debouncedSearch, category, repoFilter, targetFilter,
        showDetailed, showImportant, importantKinds]);
 
   // Back to the newest page whenever the question changes.
@@ -521,7 +514,6 @@ export default function ActivityPage() {
 
   // filter can change anything at all.
 
-  const availableSources = useMemo(() => sourcesFor(category), [category]);
 
 
   const paginatedEntries = filtered;
@@ -548,15 +540,6 @@ export default function ActivityPage() {
   const goPrev = () => setPageIndex(i => Math.max(0, i - 1));
   const hasFilters = Object.keys(serverQuery).length > 0;
 
-  // A source that cannot occur in the new view would filter every row away and
-  // read as an empty stream. Switching from Organization with "GitHub webhook"
-  // selected to App settings is exactly that: no app row is ever source github.
-  useEffect(() => {
-    if (sourceFilter !== "all" && !sourcesFor(category).includes(sourceFilter)) {
-      setSourceFilter("all");
-    }
-  }, [category, sourceFilter]);
-
   useEffect(() => {
     if (!highlightedId) return;
     const timer = setTimeout(() => {
@@ -576,7 +559,6 @@ export default function ActivityPage() {
         path = findActivityPath(data.entries, targetId);
         searchEntries = data.entries;
         if (path) {
-          setSourceFilter("all");
           setRepoFilter("");
           setTargetFilter("");
           setSearch("");
@@ -935,10 +917,7 @@ export default function ActivityPage() {
                   ))}
               </div>
             </div>
-            {/* Three columns when Source does not apply, so the remaining
-                filters spread rather than leaving a gap where it was. */}
-            <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 ${
-              availableSources.length > 1 ? "lg:grid-cols-5" : "lg:grid-cols-4"}`}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 lg:grid-cols-4">
               {/* Same placement rule as detailed rows: only the streams these
                   can appear in. Elsewhere the control could not change
                   anything on screen. */}
@@ -965,22 +944,6 @@ export default function ActivityPage() {
                     className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
                     <option value="show">Shown</option>
                     <option value="hide">Hidden</option>
-                  </select>
-                </div>
-              )}
-              {/* Offered only where it can change what is shown. In three of the
-                  four streams every row carries the same source, so the dropdown
-                  could only ever empty the table. And in the audit stream it did
-                  exactly that, offering app and github when every audit row is
-                  source `audit`. */}
-              {availableSources.length > 1 && (
-                <div>
-                  <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Source</label>
-                  <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as any)} className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
-                    <option value="all">All sources</option>
-                    {availableSources.map(src => (
-                      <option key={src} value={src}>{SOURCE_LABELS[src]}</option>
-                    ))}
                   </select>
                 </div>
               )}
@@ -1040,9 +1003,9 @@ export default function ActivityPage() {
               </div>
             )}
 
-            {(sourceFilter !== 'all' || repoFilter || targetFilter || search) && (
+            {(repoFilter || targetFilter || search) && (
               <div className="mt-3 flex justify-end">
-                <button onClick={() => { setSourceFilter('all'); setRepoFilter(''); setTargetFilter(''); setSearch(''); }} className="text-[11px] font-medium text-gh-muted dark:text-slate-400 hover:text-gh-blue dark:hover:text-blue-400">Clear Filters</button>
+                <button onClick={() => { setRepoFilter(''); setTargetFilter(''); setSearch(''); }} className="text-[11px] font-medium text-gh-muted dark:text-slate-400 hover:text-gh-blue dark:hover:text-blue-400">Clear Filters</button>
               </div>
             )}
           </div>

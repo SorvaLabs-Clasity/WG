@@ -39,6 +39,7 @@ the next rebuild.
 | `membership` added / removed | — | `has_member` |
 | `dependabot_alert` created / fixed / dismissed | — | `has_vulnerable_dependency` |
 | `pull_request` | — | — |
+| `pull_request_review` submitted | — | — |
 
 These are the things nobody did through the app. Without them the activity log
 would only show the app's own actions, which is the least interesting half of an

@@ -28,8 +28,24 @@ async function refusedWidgetChange(res: Response, login: string, verb: string, u
   return true;
 }
 
-router.get("/", async (_req: Request, res: Response) => {
-  res.json(await listWidgets());
+/**
+ * The shared dashboard, or your own.
+ *
+ * Two boards out of one table. Without a scope this returns exactly what it
+ * always did — the widgets with no owner — so the Overview tab is untouched by
+ * the existence of personal ones.
+ *
+ * Filtered on the server. A personal widget is not secret, but it is nobody
+ * else's business, and shipping the whole table to be filtered in a browser
+ * would put every person's board in every other person's page.
+ */
+router.get("/", async (req: Request, res: Response) => {
+  const all = await listWidgets();
+  const mine = req.query.scope === "personal";
+  const login = req.user!.login.toLowerCase();
+  res.json(all.filter(w => mine
+    ? w.owner?.toLowerCase() === login
+    : !w.owner));
 });
 
 /**
@@ -49,22 +65,51 @@ router.get("/snapshots", async (_req: Request, res: Response) => {
 });
 
 router.post("/", async (req: Request, res: Response) => {
-  if (await refusedWidgetChange(res, req.user!.login, "create", req.user!.accessToken)) return;
+  const { title, type, presetId, queryId, queryParam, queryAdvanced, displayType, personal } = req.body;
 
-  const { title, type, presetId, queryId, queryParam, queryAdvanced, displayType } = req.body;
+  // The admin gate is about the *shared* dashboard, which is why it exists:
+  // one board, seen by everybody, so not everybody may rearrange it. A widget
+  // on your own page is not that, and asking an administrator for permission to
+  // arrange your own screen would be the wrong shape entirely.
+  //
+  // The owner is taken from the session, never from the body — otherwise this
+  // would be a way to put a widget on somebody else's dashboard.
+  const owner = personal ? req.user!.login : undefined;
+  if (!owner && await refusedWidgetChange(res, req.user!.login, "create", req.user!.accessToken)) return;
+
   if (!title || !type || !displayType) {
     res.status(400).json({ error: "title, type, and displayType are required" });
     return;
   }
   const widget = await createWidget(
-    { title, type, presetId, queryId, queryParam, queryAdvanced, displayType, createdBy: req.user!.login },
+    { title, type, presetId, queryId, queryParam, queryAdvanced, displayType, owner,
+      createdBy: req.user!.login },
     req.user!.login
   );
   res.status(201).json(widget);
 });
 
+/**
+ * Whether this widget is the caller's own to change.
+ *
+ * Read from what is stored, never from the request. A widget with no owner is
+ * on the shared board and takes the admin gate; one owned by somebody else is
+ * refused outright rather than falling back to the admin gate, because an
+ * administrator has no business rearranging a person's own dashboard either.
+ */
+async function refusedWidgetEdit(
+  res: Response, id: string, login: string, verb: string, token?: string,
+): Promise<boolean> {
+  const existing = (await listWidgets()).find(w => w.id === id);
+  if (!existing) { res.status(404).json({ error: "Widget not found" }); return true; }
+  if (!existing.owner) return refusedWidgetChange(res, login, verb, token);
+  if (existing.owner.toLowerCase() === login.toLowerCase()) return false;
+  res.status(403).json({ error: "That widget is on somebody else's dashboard." });
+  return true;
+}
+
 router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
-  if (await refusedWidgetChange(res, req.user!.login, "edit", req.user!.accessToken)) return;
+  if (await refusedWidgetEdit(res, req.params.id, req.user!.login, "edit", req.user!.accessToken)) return;
 
   const { title, type, presetId, queryId, queryParam, queryAdvanced, displayType } = req.body;
   const updated = await updateWidget(req.params.id, { title, type, presetId, queryId, queryParam, queryAdvanced, displayType }, req.user!.login);
@@ -76,7 +121,7 @@ router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
 });
 
 router.delete("/:id", async (req: Request<{ id: string }>, res: Response) => {
-  if (await refusedWidgetChange(res, req.user!.login, "delete", req.user!.accessToken)) return;
+  if (await refusedWidgetEdit(res, req.params.id, req.user!.login, "delete", req.user!.accessToken)) return;
 
   const deleted = await deleteWidget(req.params.id, req.user!.login);
   if (!deleted) {
