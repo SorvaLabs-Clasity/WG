@@ -269,6 +269,14 @@ router.put("/alerts", async (req: Request, res: Response) => {
         ...current.digest,
         ...(body.digest ?? {}),
         include: { ...current.digest.include, ...(body.digest?.include ?? {}) },
+        // Clamped to a year. A limit of 4000 days is not a limit, and a
+        // negative one would filter everything away and read as "nothing to
+        // report" for ever.
+        maxAgeDays: Object.fromEntries(
+          (["toReview", "mine", "mergeable"] as const).map(k => [k,
+            Math.min(365, Math.max(0,
+              Number(body.digest?.maxAgeDays?.[k] ?? current.digest.maxAgeDays?.[k]) || 0))])
+        ) as { toReview: number; mine: number; mergeable: number },
         // Clamped rather than trusted: an hour of 25 would simply never match,
         // which looks identical to the digest being broken.
         hour: Math.min(23, Math.max(0, Number(body.digest?.hour ?? current.digest.hour) || 0)),

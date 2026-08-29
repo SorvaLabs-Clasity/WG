@@ -40,11 +40,23 @@ export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now
 
   const sections: CardSection[] = [];
 
+  /**
+   * Drop what this section has been told is too old to matter.
+   *
+   * Zero means no limit. Applied per section because they age differently, and
+   * counted after filtering so the heading never says twelve over a list of
+   * three, which is the sort of quiet disagreement that makes somebody stop
+   * trusting the whole message.
+   */
+  const within = (rows: typeof work.mine, days: number) =>
+    days > 0 ? rows.filter(p => p.idleDays <= days) : rows;
+
   if (prefs.digest.include.toReview) {
+    const rows = within(work.toReview, prefs.digest.maxAgeDays?.toReview ?? 0);
     sections.push({
-      heading: `Waiting for your review (${counts.toReview})`,
+      heading: `Waiting for your review (${rows.length})`,
       emptyText: "Nobody is waiting on you.",
-      links: work.toReview.slice(0, 10).map(pr => ({
+      links: rows.slice(0, 10).map(pr => ({
         title: pr.title,
         url: pr.url,
         detail: `${pr.repo}#${pr.number} · ${pr.author} · `
@@ -54,7 +66,8 @@ export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now
   }
 
   if (prefs.digest.include.mergeable) {
-    const ready = work.mine.filter(p => p.waiting === "nobody");
+    const ready = within(work.mine.filter(p => p.waiting === "nobody"),
+      prefs.digest.maxAgeDays?.mergeable ?? 0);
     sections.push({
       heading: `Ready to merge (${ready.length})`,
       emptyText: "None of yours are ready.",
@@ -67,7 +80,9 @@ export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now
   if (prefs.digest.include.mine) {
     // The ones already reported as ready are left out of this section: a pull
     // request appearing twice in one message makes the counts look wrong.
-    const rest = work.mine.filter(p => !(prefs.digest.include.mergeable && p.waiting === "nobody"));
+    const rest = within(
+      work.mine.filter(p => !(prefs.digest.include.mergeable && p.waiting === "nobody")),
+      prefs.digest.maxAgeDays?.mine ?? 0);
     sections.push({
       heading: `Your open pull requests (${rest.length})`,
       emptyText: "You have nothing open.",
@@ -79,6 +94,14 @@ export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now
       })),
     });
   }
+
+  // Recomputed from what survived the filters. The counts at the top of this
+  // function are the totals; the lead has to describe the message somebody is
+  // actually about to read.
+  counts.toReview = sections.find(s => s.heading.startsWith("Waiting for your review"))?.links.length
+    ?? counts.toReview;
+  counts.mergeable = sections.find(s => s.heading.startsWith("Ready to merge"))?.links.length
+    ?? counts.mergeable;
 
   const nothing = sections.every(s => s.links.length === 0);
   if (nothing && prefs.digest.skipWhenEmpty) {
@@ -117,9 +140,15 @@ export interface DevEvent {
   actor?: string;
 }
 
+/**
+ * The title is the first thing in the card and the first thing in the toast, so
+ * it is written to be read at a glance rather than as a sentence. "Review
+ * requested" tells somebody whether to switch to Teams; "You have been asked to
+ * review" makes them read to the end of a line to learn the same thing.
+ */
 const EVENT_TEXT: Record<EventKind, { title: string; line: (e: DevEvent) => string }> = {
   reviewRequested: {
-    title: "You have been asked to review",
+    title: "Review requested",
     line: e => e.actor ? `${e.actor} asked you to review this.` : "Your review has been requested.",
   },
   changesRequested: {
@@ -131,8 +160,10 @@ const EVENT_TEXT: Record<EventKind, { title: string; line: (e: DevEvent) => stri
 /** One card for one thing that just happened. */
 export function buildEventCard(event: DevEvent): any {
   const text = EVENT_TEXT[event.kind];
-  return buildCard(text.title, text.line(event), [{
-    heading: `${event.repo}#${event.number}`,
+  // `Review requested: web#42` rather than the repository on its own line: the
+  // toast has room for one line, and which pull request it is belongs in it.
+  return buildCard(`${text.title}: ${event.repo}#${event.number}`, text.line(event), [{
+    heading: "",
     links: [{ title: event.title, url: event.url }],
   }]);
 }

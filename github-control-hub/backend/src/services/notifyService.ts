@@ -167,6 +167,22 @@ async function publishEmail(topicArn: string, subject: string, body: string): Pr
  * Returns false when the group has no webhooks, which is the ordinary case and
  * not a failure. The caller's `email || teams` is what makes that harmless.
  */
+/**
+ * An email subject, rewritten to be read as a one-line notification.
+ *
+ * Alarm subjects lead with the state in brackets, `[ALARM] widget: metric is 5`,
+ * which is right for a mail client that shows a whole line and wrong for a toast
+ * where the first few words decide whether somebody switches applications. The
+ * brackets become a prefix so the state is the first thing read.
+ *
+ * Only the leading tag is touched. The rest of the subject is whatever template
+ * the organization wrote, and rewriting that would be editing their words.
+ */
+export function previewTitle(subject: string): string {
+  const m = /^\[([A-Z]{2,10})\]\s*(.*)$/.exec(subject.trim());
+  return m ? `${m[1]} - ${m[2]}` : subject;
+}
+
 async function publishTeams(topicArn: string, subject: string, body: string): Promise<boolean> {
   try {
     const { groupByTopic } = await import("./alarmService");
@@ -184,7 +200,8 @@ async function publishTeams(topicArn: string, subject: string, body: string): Pr
     }
 
     const { buildCard, sendToPerson } = await import("./teamsClient");
-    const card = buildCard(subject, group!.name, [{ heading: "", links: [], emptyText: body }]);
+    const card = buildCard(previewTitle(subject), group!.name,
+      [{ heading: "", links: [], emptyText: body }]);
 
     // One request per person: the flow reads who each message is for. Sent in
     // parallel, and one bad address does not stop the rest.

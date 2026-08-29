@@ -109,6 +109,8 @@ export interface DigestPrefs {
   /** 0 is Sunday. Empty means every day. */
   days: number[];
   include: { toReview: boolean; mine: boolean; mergeable: boolean };
+  /** Days of silence each section reaches back. Zero means no limit. */
+  maxAgeDays: { toReview: number; mine: number; mergeable: number };
   skipWhenEmpty: boolean;
 }
 

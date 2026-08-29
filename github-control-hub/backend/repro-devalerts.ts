@@ -143,6 +143,55 @@ const text = (card: any) => JSON.stringify(card);
       (body.match(/web#3/g) ?? []).length === 1, body.match(/web#3/g));
   }
 
+  // ── how far back each section reaches ───────────────────────────────
+  //
+  // Two hundred pull requests nobody has touched in a year push the three from
+  // this week that matter into the middle of a list nobody reads to the end of.
+  {
+    const old7 = pr({ number: 1, author: "bob", requestedReviewers: ["alice"],
+      mergeStateStatus: "BLOCKED", lastCommitAt: new Date(NOW - 200 * DAY).toISOString() });
+    const fresh = pr({ number: 2, author: "bob", requestedReviewers: ["alice"],
+      mergeStateStatus: "BLOCKED", lastCommitAt: new Date(NOW - 2 * DAY).toISOString() });
+
+    const base = defaults("alice").digest;
+    const limited = prefs({ digest: { ...base, skipWhenEmpty: false,
+      maxAgeDays: { toReview: 7, mine: 0, mergeable: 0 } } });
+    const body = text(buildDigest(limited, [old7, fresh], NOW).card);
+
+    check("a section drops what is quieter than its limit",
+      /web#2/.test(body) && !/web#1/.test(body), body.slice(0, 200));
+
+    // A heading of twelve over a list of three is the sort of quiet
+    // disagreement that makes somebody stop trusting the whole message.
+    check("  and its heading counts what survived",
+      /Waiting for your review \(1\)/.test(body), body.slice(0, 200));
+
+    const unlimited = prefs({ digest: { ...base, skipWhenEmpty: false,
+      maxAgeDays: { toReview: 0, mine: 0, mergeable: 0 } } });
+    check("  zero means no limit, which is the default",
+      /web#1/.test(text(buildDigest(unlimited, [old7, fresh], NOW).card)),
+      "a summary that silently omits what nobody asked it to omit is worse than a long one");
+
+    // Age is silence, not age: something touched this morning is not old.
+    const oldButBusy = pr({ number: 3, author: "bob", requestedReviewers: ["alice"],
+      mergeStateStatus: "BLOCKED",
+      createdAt: new Date(NOW - 300 * DAY).toISOString(),
+      lastCommitAt: new Date(NOW - 1 * DAY).toISOString() });
+    check("  measured from the last commit, not from when it was opened",
+      /web#3/.test(text(buildDigest(limited, [oldButBusy], NOW).card)),
+      "a pull request touched this morning is not stale however long ago it started");
+
+    check("  a limit applies only to the section it is set on",
+      /web#1/.test(text(buildDigest(prefs({ digest: { ...base, skipWhenEmpty: false,
+        maxAgeDays: { toReview: 0, mine: 7, mergeable: 7 } } }), [old7, fresh], NOW).card)),
+      "the sections age differently, which is why the limit is per section");
+
+    // Rows written before this existed have no value for it.
+    const noField = { ...prefs(), digest: { ...base, skipWhenEmpty: false, maxAgeDays: undefined } } as any;
+    check("  a row from before this existed behaves as it did",
+      /web#1/.test(text(buildDigest(noField, [old7, fresh], NOW).card)));
+  }
+
   // ── where the app will POST ─────────────────────────────────────────
   //
   // One URL for the whole organization now, set by an administrator, so the
@@ -253,6 +302,22 @@ const text = (card: any) => JSON.stringify(card);
     // Teams shows "sent a card" without one, and a notification nobody can
     // triage from the toast is one people learn to swipe away.
     const preview = JSON.stringify(buildCard("Review requested", "bob asked you", []));
+    // The first words decide whether somebody switches applications, so an
+    // alarm leads with its state rather than burying it in brackets mid-line.
+    const { previewTitle } = await import("./src/services/notifyService");
+    check("an alarm leads with its state",
+      previewTitle("[ALARM] Vuln repos: Critical is 5") === "ALARM - Vuln repos: Critical is 5",
+      previewTitle("[ALARM] Vuln repos: Critical is 5"));
+    check("  recovery too", previewTitle("[OK] x: y") === "OK - x: y");
+    check("  and anything without a tag is left as its author wrote it",
+      previewTitle("Renovate opened 3 pull requests") === "Renovate opened 3 pull requests",
+      "rewriting the rest would be editing somebody's template");
+
+    check("an event leads with what happened and which pull request",
+      /"summary":"Review requested: web#7/.test(text(buildEventCard(
+        { kind: "reviewRequested", repo: "web", number: 7, title: "x", url: "u", actor: "bob" }))),
+      "a toast has room for one line and which pull request belongs in it");
+
     check("a card carries preview text for the notification",
       /"summary":"Review requested: bob asked you"/.test(preview), preview.slice(0, 130));
     check("  and the card's own spoken form too",

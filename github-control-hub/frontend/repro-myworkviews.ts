@@ -141,6 +141,26 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
       "something that looks clickable and lands on a 404 is worse than plain text");
   }
 
+  // ── long lists do not push the page around ──────────────────────────
+  //
+  // Sixty open pull requests beside three reviews makes a page nobody can take
+  // in at a glance, which was the whole reason for two columns.
+  {
+    check("all four pull request lists page",
+      (page.match(/<Paged/g) ?? []).length === 4,
+      "one unpaged list is the one that pushes the others off the screen");
+    check("  the merged list pages by day, not by row",
+      /items=\{byDay\} keyOf=\{day => day\.label\} perPage=\{4\} bare/.test(page),
+      "a page starting mid-day shows rows under no heading");
+    // Sitting on page four of a list that now has one shows nothing, which
+    // reads as everything having been dealt with.
+    check("  and the page resets when the list changes underneath",
+      /useEffect\(\(\) => \{ setPage\(0\); \}, \[items\.length\]\)/.test(page));
+    check("  controls appear only when there is more than one page",
+      /\{pages > 1 && \(/.test(page),
+      "a pager over four rows is chrome");
+  }
+
   // ── polling that matches what actually changes ──────────────────────
   {
     check("the queue refreshes itself, since it is meant to be left open",

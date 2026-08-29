@@ -68,6 +68,27 @@ export interface DigestPrefs {
     mergeable: boolean;
   };
   /**
+   * How far back each section reaches, in days of silence. Zero means no limit.
+   *
+   * Per section rather than one setting, because the sections age differently.
+   * Two hundred pull requests nobody has touched in a year are not something a
+   * daily summary should carry, and once they are in it the three from this
+   * week that still matter are somewhere in the middle of a list nobody reads
+   * to the end of. A digest that has to be scrolled is a digest that gets
+   * ignored, which costs more than the omission does.
+   *
+   * Measured from the last commit rather than from when it was opened: a pull
+   * request touched this morning is not stale however long ago it started.
+   *
+   * Absent on rows written before this existed, which reads as no limit and is
+   * exactly the behaviour those rows had.
+   */
+  maxAgeDays: {
+    toReview: number;
+    mine: number;
+    mergeable: number;
+  };
+  /**
    * A digest with nothing in it is how a channel gets muted.
    *
    * On by default for that reason: somebody who wants the daily "all clear" can
@@ -129,6 +150,9 @@ export function defaults(login: string): DevAlerts {
       timeZone: "America/New_York",
       days: [1, 2, 3, 4, 5],
       include: { toReview: true, mine: true, mergeable: true },
+      // No limit by default: a summary that silently omits things somebody
+      // never asked it to omit is worse than a long one.
+      maxAgeDays: { toReview: 0, mine: 0, mergeable: 0 },
       skipWhenEmpty: true,
     },
     updatedAt: new Date().toISOString(),
@@ -214,6 +238,7 @@ export async function getDevAlerts(login: string): Promise<DevAlerts> {
       ...base.digest,
       ...stored.digest,
       include: { ...base.digest.include, ...stored.digest?.include },
+      maxAgeDays: { ...base.digest.maxAgeDays, ...stored.digest?.maxAgeDays },
     },
   } as DevAlerts;
 }

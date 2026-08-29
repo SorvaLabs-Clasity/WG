@@ -107,9 +107,10 @@ export default function TeamsFlowPanel() {
           <div className="mt-3 rounded-xl border border-slate-200 dark:border-white/10
                           bg-slate-50/70 dark:bg-white/[0.03] p-4">
             <p className="text-[12.5px] text-slate-600 dark:text-slate-300 leading-relaxed">
-              You are building one workflow that can message anybody. Only one field changes:
-              instead of a name typed into the flow, the Recipient reads who each message is for
-              out of the request itself.
+              You are building one workflow that can message anybody. The important part is the
+              Recipient: instead of a name typed into the flow, it reads who each message is for
+              out of the request. Note that the template contains the posting step twice, and
+              both copies need the same treatment.
             </p>
 
             <ol className="mt-3 grid gap-2.5">
@@ -133,17 +134,17 @@ export default function TeamsFlowPanel() {
                   {" "}<span className="font-semibold">Flow bot</span> and
                   {" "}<span className="font-semibold">Post in</span> to
                   {" "}<span className="font-semibold">Chat with Flow bot</span>.</>,
-                <>Clear the <span className="font-semibold">Recipient</span> field and paste this
-                  expression in its place. This is the only change that matters, it is what makes
-                  one flow able to message anybody:
+                <>In each, clear the <span className="font-semibold">Recipient</span> field and
+                  paste this expression in its place. This is what makes one flow able to message
+                  anybody, rather than only the person named when it was created:
                   <code className="block mt-1.5 font-mono text-[11px] p-2 rounded bg-slate-200/70 dark:bg-white/[0.08] overflow-x-auto">
                     triggerBody()?['recipient']
                   </code></>,
-                <>Click into the empty <span className="font-semibold">Adaptive Card</span> field,
-                  then pick <span className="font-semibold">Attachments Adaptive Card</span> from
-                  the panel on the right, under
+                <>In each, click into the <span className="font-semibold">Adaptive Card</span>
+                  field and pick <span className="font-semibold">Attachments Adaptive Card</span>
+                  from the panel on the right, under
                   <span className="font-semibold"> When a Teams webhook request is received</span>.
-                  It is the token the template provides for the card the app sends.</>,
+                  It cannot be left empty.</>,
                 <>Save the flow, then copy its <span className="font-semibold">HTTP URL</span> from the
                   trigger step and paste it above.</>,
               ].map((step, i) => (

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../App";
 import { useMyWork, usePushCheck, useShipped } from "../hooks/useMe";
 import { useRepos } from "../hooks/useRepos";
@@ -134,6 +134,67 @@ function Rows({ children }: { children: React.ReactNode }) {
   return <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">{children}</div>;
 }
 
+/** How many rows a panel shows before it starts paging. */
+const PAGE = 6;
+
+/**
+ * A page of rows, and the controls only when there is more than one.
+ *
+ * Somebody with sixty open pull requests should not get a panel sixty rows tall
+ * beside one that is three: the taller one pushes the other off the screen, and
+ * the page stops being something you can take in at a glance, which was the
+ * whole point of two columns.
+ *
+ * The page resets when the list changes underneath. Sitting on page four of a
+ * list that now has one page shows nothing, which reads as everything having
+ * been dealt with.
+ */
+function Paged<T>({ items, render, keyOf, perPage = PAGE, bare }: {
+  items: T[];
+  render: (item: T) => React.ReactNode;
+  keyOf: (item: T) => string;
+  perPage?: number;
+  /** Skip the hairline-divided wrapper, for content that groups itself. */
+  bare?: boolean;
+}) {
+  const [page, setPage] = useState(0);
+  const pages = Math.max(1, Math.ceil(items.length / perPage));
+  const current = Math.min(page, pages - 1);
+  const shown = items.slice(current * perPage, current * perPage + perPage);
+
+  useEffect(() => { setPage(0); }, [items.length]);
+
+  const rows = shown.map(item => <React.Fragment key={keyOf(item)}>{render(item)}</React.Fragment>);
+
+  return (
+    <>
+      {bare ? <div className="p-5 grid gap-4">{rows}</div> : <Rows>{rows}</Rows>}
+      {pages > 1 && (
+        <div className="flex items-center justify-between gap-3 px-5 py-2.5
+                        border-t border-slate-100 dark:border-white/[0.06]">
+          <span className="text-[11.5px] tabular-nums text-slate-400 dark:text-slate-500">
+            {current * perPage + 1}&ndash;{current * perPage + shown.length} of {items.length}
+          </span>
+          <div className="flex items-center gap-1">
+            <button onClick={() => setPage(current - 1)} disabled={current === 0}
+              className="w-7 h-7 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
+                         hover:bg-slate-100 dark:hover:bg-white/[0.08] disabled:opacity-25 disabled:hover:bg-transparent"
+              aria-label="Previous">
+              <i className="ph-bold ph-caret-left text-[12px]" />
+            </button>
+            <button onClick={() => setPage(current + 1)} disabled={current >= pages - 1}
+              className="w-7 h-7 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
+                         hover:bg-slate-100 dark:hover:bg-white/[0.08] disabled:opacity-25 disabled:hover:bg-transparent"
+              aria-label="Next">
+              <i className="ph-bold ph-caret-right text-[12px]" />
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function Quiet({ children }: { children: React.ReactNode }) {
   return (
     <p className="px-5 py-8 text-[13px] text-center text-slate-400 dark:text-slate-500">{children}</p>
@@ -169,9 +230,8 @@ function Headline({ mergeable, onYou, toReview }: {
             {toReview}
           </span>
           {!clear && (
-            <span className="mb-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold
+            <span className="mb-1.5 inline-flex items-center px-2 py-1 rounded-lg text-[12px] font-bold
                              bg-amber-500/10 text-amber-700 dark:text-amber-400">
-              <i className="ph-bold ph-eyes text-[12px]" aria-hidden="true" />
               review
             </span>
           )}
@@ -251,14 +311,16 @@ function Queue() {
           note="Reviews other people are blocked on.">
           {data.toReview.length === 0
             ? <Quiet>Nobody is waiting on a review from you.</Quiet>
-            : <Rows>{data.toReview.map(pr => <PullRow key={pr.url} pr={pr} showAuthor />)}</Rows>}
+            : <Paged items={data.toReview} keyOf={pr => pr.url}
+                render={pr => <PullRow pr={pr} showAuthor />} />}
         </Panel>
 
         <Panel title="Your pull requests" count={data.mine.length}
           note="Most idle first, since those are the forgotten ones.">
           {data.mine.length === 0
             ? <Quiet>You have nothing open.</Quiet>
-            : <Rows>{data.mine.map(pr => <PullRow key={pr.url} pr={pr} />)}</Rows>}
+            : <Paged items={data.mine} keyOf={pr => pr.url}
+                render={pr => <PullRow pr={pr} />} />}
         </Panel>
       </div>
 
@@ -581,9 +643,9 @@ function Shipped() {
             <Panel title="What went out" count={data.merged.length} note="Grouped by the day it merged.">
               {byDay.length === 0
                 ? <Quiet>{data.detailedLogging ? "Nothing merged in this window." : "Nothing recorded."}</Quiet>
-                : <div className="p-5 grid gap-4">
-                    {byDay.map(day => (
-                      <div key={day.label}>
+                : <Paged items={byDay} keyOf={day => day.label} perPage={4} bare
+                    render={day => (
+                      <div>
                         <div className="flex items-center gap-3 mb-2">
                           <span className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
                             {day.label}
@@ -624,26 +686,23 @@ function Shipped() {
                           })}
                         </div>
                       </div>
-                    ))}
-                  </div>}
+                    )} />}
             </Panel>
 
             <Panel title="Still waiting" count={data.waiting.length} note="Open, and not out yet.">
               {data.waiting.length === 0
                 ? <Quiet>Nothing of yours is open.</Quiet>
-                : <Rows>
-                    {data.waiting.map(pr => (
-                      <a key={pr.url} href={pr.url} target="_blank" rel="noreferrer noopener"
-                        className="block px-5 py-3.5 hover:bg-slate-50/80 dark:hover:bg-white/[0.035] transition-colors">
-                        <div className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">
-                          {pr.title}
-                        </div>
-                        <div className="text-[11.5px] font-mono text-slate-400 dark:text-slate-500 mt-1">
-                          {pr.repo}#{pr.number}
-                        </div>
-                      </a>
-                    ))}
-                  </Rows>}
+                : <Paged items={data.waiting} keyOf={pr => pr.url} render={pr => (
+                    <a href={pr.url} target="_blank" rel="noreferrer noopener"
+                      className="block px-5 py-3.5 hover:bg-slate-50/80 dark:hover:bg-white/[0.035] transition-colors">
+                      <div className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+                        {pr.title}
+                      </div>
+                      <div className="text-[11.5px] font-mono text-slate-400 dark:text-slate-500 mt-1">
+                        {pr.repo}#{pr.number}
+                      </div>
+                    </a>
+                  )} />}
             </Panel>
           </div>
         </>

@@ -21,6 +21,40 @@ const DAYS = [
   [1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"],
 ] as const;
 
+/**
+ * One section of the summary, with how far back it reaches.
+ *
+ * The limit sits on the row rather than in a settings block of its own: it is a
+ * property of that section, and two hundred year-old pull requests crowding out
+ * three from this week is a per-section problem.
+ */
+function IncludeRow({ label, checked, onChange, days, onDays }: {
+  label: string; checked: boolean; onChange: (v: boolean) => void;
+  days: number; onDays: (d: number) => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 py-2.5">
+      <label className="flex items-center gap-3 cursor-pointer min-w-0 flex-1">
+        <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
+          className="w-4 h-4 rounded accent-slate-900 dark:accent-white shrink-0" />
+        <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">{label}</span>
+      </label>
+      <div className={`flex items-center gap-1.5 shrink-0 ${checked ? "" : "opacity-40 pointer-events-none"}`}>
+        <span className="text-[11.5px] text-slate-400 dark:text-slate-500">quiet under</span>
+        <select value={days} onChange={e => onDays(Number(e.target.value))}
+          className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-white/[0.06]
+                     border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200">
+          {/* Zero first, because no limit is the default and the honest one:
+              a summary that silently drops things nobody asked it to drop is
+              worse than a long summary. */}
+          <option value={0}>any age</option>
+          {[3, 7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} days</option>)}
+        </select>
+      </div>
+    </div>
+  );
+}
+
 function Row({ label, hint, checked, onChange, disabled }: {
   label: string; hint?: string; checked: boolean;
   onChange: (v: boolean) => void; disabled?: boolean;
@@ -298,12 +332,23 @@ export default function DevAlertSettings() {
             <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
               Include
             </label>
-            <Row label="Reviews waiting on me" checked={digest.include.toReview}
-              onChange={v => patchDigest({ include: { ...digest.include, toReview: v } })} />
-            <Row label="Mine that are ready to merge" checked={digest.include.mergeable}
-              onChange={v => patchDigest({ include: { ...digest.include, mergeable: v } })} />
-            <Row label="My other open pull requests" checked={digest.include.mine}
-              onChange={v => patchDigest({ include: { ...digest.include, mine: v } })} />
+            {([
+              ["toReview", "Reviews waiting on me"],
+              ["mergeable", "Mine that are ready to merge"],
+              ["mine", "My other open pull requests"],
+            ] as const).map(([key, label]) => (
+              <IncludeRow
+                key={key} label={label}
+                checked={digest.include[key]}
+                onChange={v => patchDigest({ include: { ...digest.include, [key]: v } })}
+                days={digest.maxAgeDays?.[key] ?? 0}
+                onDays={d => patchDigest({ maxAgeDays: { ...digest.maxAgeDays, [key]: d } })}
+              />
+            ))}
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+              Age is time since the last commit, so something touched this morning is never
+              old however long ago it was opened.
+            </p>
           </div>
 
           <div className="mt-2 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
