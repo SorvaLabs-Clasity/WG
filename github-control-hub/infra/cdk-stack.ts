@@ -536,10 +536,24 @@ export class GitHubControlHubStack extends cdk.Stack {
         resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
       }));
 
+      // Reads every table, writes two.
+      //
+      // `alarms` holds the firing state each pass updates. `org-config` holds
+      // the per-person notification rows, and the digest records the day it
+      // last sent there.
+      //
+      // Without org-config the write is refused, the record of having sent is
+      // never stored, and every five-minute tick concludes the digest is still
+      // due, which is a message every five minutes forever. Narrow rather than
+      // widened to `-*`: this function has no business writing findings,
+      // activity or the access graph.
       alarmFn.addToRolePolicy(new iam.PolicyStatement({
         sid: "AlarmStateWrite",
         actions: ["dynamodb:PutItem", "dynamodb:UpdateItem"],
-        resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-alarms`],
+        resources: [
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-alarms`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-org-config`,
+        ],
       }));
 
       alarmFn.addToRolePolicy(new iam.PolicyStatement({

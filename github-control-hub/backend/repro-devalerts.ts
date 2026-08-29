@@ -250,6 +250,14 @@ const text = (card: any) => JSON.stringify(card);
       text(buildCard("a", "b", [])).includes("application/vnd.microsoft.card.adaptive"),
       "MessageCard works today and stops when Office 365 connectors go");
 
+    // Teams shows "sent a card" without one, and a notification nobody can
+    // triage from the toast is one people learn to swipe away.
+    const preview = JSON.stringify(buildCard("Review requested", "bob asked you", []));
+    check("a card carries preview text for the notification",
+      /"summary":"Review requested: bob asked you"/.test(preview), preview.slice(0, 130));
+    check("  and the card's own spoken form too",
+      /"speak":"Review requested\. bob asked you"/.test(preview));
+
     const e = buildEventCard({ kind: "reviewRequested", repo: "web", number: 7, title: "x", url: "u", actor: "bob" });
     check("an event card names who caused it", /bob asked you to review/.test(text(e)));
   }
@@ -302,8 +310,12 @@ const text = (card: any) => JSON.stringify(card);
       /readPrSnapshot/.test(digest) && !/fetchOpenPrs/.test(digest),
       "otherwise the feature gets more expensive the more people use it");
     check("  a failed send still marks the day done",
-      /lastDigestAt: stamp,\s*\n\s*lastError/.test(digest),
-      "retrying a broken webhook every five minutes is twelve failures instead of one");
+      /recordSent\(\{ \.\.\.person, lastError: result\.error/.test(digest),
+      "retrying a broken address every five minutes is twelve failures instead of one");
+    // The only thing between one message a day and one every five minutes.
+    check("  and a failure to record it is shouted about, not swallowed",
+      /console\.error\([\s\S]{0,200}sent again on the next tick/.test(digest),
+      "swallowed, every tick concludes the digest is still due and nothing says why");
     check("  and a missing snapshot does not mark it done",
       /skipped: due\.length/.test(digest),
       "the next tick in the same hour should try again rather than skip the day");

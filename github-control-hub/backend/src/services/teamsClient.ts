@@ -70,6 +70,20 @@ export function buildCard(title: string, subtitle: string, sections: CardSection
 
   return {
     type: "message",
+    /**
+     * What the toast says before anybody opens it.
+     *
+     * Without this Teams shows "sent a card", which tells a person nothing
+     * about whether it is worth switching to. A notification that cannot be
+     * triaged from the preview is a notification people learn to swipe away,
+     * which defeats the whole point of sending one.
+     *
+     * `summary` is the message-level preview; `speak` is the card's own, used
+     * by screen readers and by some clients for the same purpose. Both carry
+     * the title and the lead, because which one a given Teams client reads is
+     * not something worth guessing at.
+     */
+    summary: `${title}: ${subtitle}`,
     attachments: [{
       contentType: "application/vnd.microsoft.card.adaptive",
       contentUrl: null,
@@ -77,6 +91,7 @@ export function buildCard(title: string, subtitle: string, sections: CardSection
         $schema: "http://adaptivecards.io/schemas/adaptive-card.json",
         type: "AdaptiveCard",
         version: "1.4",
+        speak: `${title}. ${subtitle}`,
         body,
       },
     }],

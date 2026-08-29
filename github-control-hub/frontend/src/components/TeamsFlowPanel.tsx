@@ -123,9 +123,15 @@ export default function TeamsFlowPanel() {
                   step 5.</>,
                 <>Click <span className="font-semibold">Add workflow</span>, then open the new flow
                   and click <span className="font-semibold">Edit</span>.</>,
-                <>Open the second step, the one that posts to Teams. It is usually called
-                  <span className="font-semibold"> Post card in a chat or channel</span>, though
-                  Microsoft renames these. Set <span className="font-semibold">Post in</span> to
+                <>The template contains <span className="font-semibold">two</span> copies of the
+                  posting step, one either side of an
+                  <span className="font-semibold"> Attachments is null</span> condition. Configure
+                  <span className="font-semibold"> both</span>: the one that runs is decided at
+                  send time, and an unconfigured copy still holds a hard-coded thread id that
+                  Graph rejects.</>,
+                <>In each, set <span className="font-semibold">Post as</span> to
+                  {" "}<span className="font-semibold">Flow bot</span> and
+                  {" "}<span className="font-semibold">Post in</span> to
                   {" "}<span className="font-semibold">Chat with Flow bot</span>.</>,
                 <>Clear the <span className="font-semibold">Recipient</span> field and paste this
                   expression in its place. This is the only change that matters, it is what makes
@@ -133,8 +139,11 @@ export default function TeamsFlowPanel() {
                   <code className="block mt-1.5 font-mono text-[11px] p-2 rounded bg-slate-200/70 dark:bg-white/[0.08] overflow-x-auto">
                     triggerBody()?['recipient']
                   </code></>,
-                <>Leave <span className="font-semibold">Adaptive Card</span> exactly as it is. The
-                  template already points it at the card, and the app sends the shape it expects.</>,
+                <>Click into the empty <span className="font-semibold">Adaptive Card</span> field,
+                  then pick <span className="font-semibold">Attachments Adaptive Card</span> from
+                  the panel on the right, under
+                  <span className="font-semibold"> When a Teams webhook request is received</span>.
+                  It is the token the template provides for the card the app sends.</>,
                 <>Save the flow, then copy its <span className="font-semibold">HTTP URL</span> from the
                   trigger step and paste it above.</>,
               ].map((step, i) => (
@@ -157,8 +166,9 @@ export default function TeamsFlowPanel() {
                 <span className="font-semibold"> Run history</span>. Power Automate accepts the
                 request before it runs the flow, so a failure there cannot be seen from here.
                 <span className="font-semibold"> “Call made for a thread which is not a
-                ChatThread”</span> means step 4 was missed. If everybody's messages arrive for
-                one person, step 5 was missed and the Recipient is still a name.
+                ChatThread”</span> almost always means only one of the two posting steps was
+                configured. If everybody's messages arrive for one person, a Recipient is still
+                a name rather than the expression.
               </p>
             </div>
           </div>

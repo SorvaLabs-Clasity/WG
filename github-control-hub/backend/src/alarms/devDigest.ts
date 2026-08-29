@@ -25,6 +25,29 @@ export interface DigestSummary {
   failed: number;
 }
 
+/**
+ * Write down that today's digest is dealt with.
+ *
+ * The only thing standing between one message a day and one every five minutes,
+ * so a failure here is shouted about rather than swallowed. It was swallowed,
+ * with a comment reasoning that the worst case was one extra attempt. That was
+ * wrong: the worst case is every tick concluding the digest is still due,
+ * forever, and the cause invisible because nothing said the write had failed.
+ *
+ * Most likely cause when it does fail is the function's role not being allowed
+ * to write this table, which is a deployment problem and reads as one.
+ */
+async function recordSent(person: any, stamp: string): Promise<void> {
+  try {
+    await putDevAlerts({ ...person, lastDigestAt: stamp });
+  } catch (err: any) {
+    console.error(
+      `[DevDigest] Could not record the digest for ${person.login} as sent, so it will be `
+      + `sent again on the next tick. Check the function's write access to the org-config `
+      + `table: ${err?.message ?? err}`);
+  }
+}
+
 export async function runDigestPass(now = Date.now()): Promise<DigestSummary> {
   const out: DigestSummary = { considered: 0, sent: 0, skipped: 0, failed: 0 };
 
@@ -59,8 +82,7 @@ export async function runDigestPass(now = Date.now()): Promise<DigestSummary> {
     // anyway: the decision was made for today, and leaving it unrecorded would
     // re-ask every five minutes until the hour passed.
     if (!digest.card) {
-      await putDevAlerts({ ...person, lastDigestAt: new Date(now).toISOString() })
-        .catch(() => { /* the worst case is a second attempt next tick */ });
+      await recordSent(person, new Date(now).toISOString());
       out.skipped++;
       continue;
     }
@@ -70,19 +92,13 @@ export async function runDigestPass(now = Date.now()): Promise<DigestSummary> {
 
     if (result.ok) {
       out.sent++;
-      await putDevAlerts({
-        ...person, lastDigestAt: stamp, lastSentAt: stamp,
-        lastError: undefined, lastErrorAt: undefined,
-      }).catch(() => { /* sent is the part that mattered */ });
+      await recordSent({ ...person, lastSentAt: stamp, lastError: undefined, lastErrorAt: undefined }, stamp);
     } else {
       out.failed++;
       // `lastDigestAt` is still moved. Retrying a broken webhook every five
       // minutes for the rest of the hour is twelve failures instead of one,
       // and the error is recorded where the person can see it.
-      await putDevAlerts({
-        ...person, lastDigestAt: stamp,
-        lastError: result.error, lastErrorAt: stamp,
-      }).catch(() => { /* nothing further to do */ });
+      await recordSent({ ...person, lastError: result.error, lastErrorAt: stamp }, stamp);
       console.warn(`[DevDigest] ${person.login}: ${result.error}`);
     }
   }
