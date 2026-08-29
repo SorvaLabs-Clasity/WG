@@ -137,12 +137,21 @@ const text = (card: any) => JSON.stringify(card);
   {
     check("a Teams webhook is accepted",
       badWebhook("https://acme.webhook.office.com/webhookb2/x") === null);
-    check("  as is a Power Automate one",
+    check("  as is a Logic Apps one",
       badWebhook("https://prod-12.westus.logic.azure.com/workflows/x") === null);
+    // The one that was wrongly refused: current Power Platform environments
+    // issue this host, and a list naming only the older two rejects a URL that
+    // came straight out of the Workflows connector.
+    check("  as is a current Power Platform one",
+      badWebhook("https://abc.05.environment.api.powerplatform.com/powerautomate/automations/direct/workflows/x") === null,
+      "the feature has moved twice and all three hosts are in use at once");
+    check("  and a Power Automate flow host",
+      badWebhook("https://emea.flow.microsoft.com/workflows/x") === null);
     for (const [label, url] of [
       ["plain http", "http://acme.webhook.office.com/x"],
       ["somebody else's host", "https://evil.example.com/hook"],
       ["a host that merely contains the words", "https://webhook.office.com.evil.example.com/x"],
+      ["a lookalike on the new host too", "https://powerplatform.com.evil.example.com/x"],
       ["nonsense", "not a url"],
       ["a file URL", "file:///etc/passwd"],
     ] as [string, string][]) {
@@ -150,6 +159,12 @@ const text = (card: any) => JSON.stringify(card);
     }
     check("  and the refusal says where to get a real one",
       /Workflows connector/.test(badWebhook("https://evil.example.com/x") ?? ""));
+    // Somebody holding a legitimate URL on a host nobody thought of needs to be
+    // able to tell that apart from having pasted the wrong thing.
+    check("    names the hosts it accepts, and the one you gave",
+      /powerplatform\.com/.test(badWebhook("https://evil.example.com/x") ?? "")
+      && /evil\.example\.com/.test(badWebhook("https://evil.example.com/x") ?? ""),
+      badWebhook("https://evil.example.com/x"));
   }
 
   // ── who gets told, and who does not ─────────────────────────────────

@@ -122,7 +122,24 @@ export function defaults(login: string): DevAlerts {
  * it to Microsoft's own hosts is what stops it being a way to make the app POST
  * to an arbitrary address.
  */
-const TEAMS_HOSTS = /^([a-z0-9-]+\.)*(webhook\.office\.com|logic\.azure\.com|azure\.com)$/i;
+/**
+ * The Microsoft hosts a Teams webhook can legitimately live on.
+ *
+ * There is no single one, because the feature has moved twice. The retired
+ * Office 365 connector issued `webhook.office.com`; Power Automate flows have
+ * historically been on `logic.azure.com`; and current Power Platform
+ * environments issue `…environment.api.powerplatform.com`. All three are in
+ * use simultaneously depending on when and where the workflow was created, so
+ * a list that names only the older two rejects perfectly valid URLs, which is
+ * exactly what it did.
+ *
+ * Anchored at both ends and matching whole labels, so `powerplatform.com` in
+ * the middle of somebody else's hostname does not pass.
+ */
+const TEAMS_HOSTS = /^([a-z0-9-]+\.)*(webhook\.office\.com|logic\.azure\.com|powerplatform\.com|flow\.microsoft\.com|azure\.com)$/i;
+
+/** Named in the refusal, so somebody can tell whether their URL should work. */
+const ACCEPTED = "webhook.office.com, logic.azure.com, powerplatform.com or flow.microsoft.com";
 
 export function badWebhook(url: string): string | null {
   let parsed: URL;
@@ -133,8 +150,9 @@ export function badWebhook(url: string): string | null {
   }
   if (parsed.protocol !== "https:") return "The webhook must be an https URL.";
   if (!TEAMS_HOSTS.test(parsed.hostname)) {
-    return "That is not a Microsoft Teams webhook. Copy the URL from a Teams Workflows connector; "
-      + "it ends in office.com or azure.com.";
+    return `That host is not one Microsoft issues Teams webhooks on. It should end in ${ACCEPTED}, `
+      + `and yours is "${parsed.hostname}". Copy the URL from the Workflows connector in Teams — `
+      + "if that is where this came from, it is a host the app has not been told about.";
   }
   return null;
 }

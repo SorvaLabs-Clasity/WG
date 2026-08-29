@@ -95,11 +95,21 @@ export default function TeamsSetupHelp({ scope = "chat" }: {
           </ol>
 
           <div className="mt-3 pt-3 border-t border-slate-200 dark:border-white/10 grid gap-1.5">
+            {/* Three shapes, because the feature has moved twice and all three
+                are still issued depending on when and where the workflow was
+                made. Somebody comparing theirs against one example concludes
+                they have the wrong URL. */}
             <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
-              The URL looks like{" "}
+              The host will be one of{" "}
               <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-slate-200/70 dark:bg-white/[0.08]">
-                https://prod-<span className="opacity-60">NN</span>.<span className="opacity-60">region</span>.logic.azure.com/workflows/…
-              </code>
+                powerplatform.com
+              </code>,{" "}
+              <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-slate-200/70 dark:bg-white/[0.08]">
+                logic.azure.com
+              </code>{" "}or{" "}
+              <code className="font-mono text-[11px] px-1 py-0.5 rounded bg-slate-200/70 dark:bg-white/[0.08]">
+                webhook.office.com
+              </code>. All three are current; which you get depends on your tenant.
             </p>
             {/* The two things that actually go wrong, rather than a general
                 troubleshooting section nobody reads. */}
