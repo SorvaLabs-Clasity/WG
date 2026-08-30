@@ -120,6 +120,8 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
             <button
               key={profile.name}
               role="menuitem"
+              aria-current={on ? "true" : undefined}
+              title={on ? `${profile.name} is in use` : `Switch to ${profile.name}`}
               disabled={on || busy !== null}
               onClick={() => switchTo(profile)}
               className={`w-full px-4 py-2.5 flex items-center gap-2.5 text-left transition-colors ${
@@ -143,12 +145,16 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
                     than left blank: it inherits whatever the SDK resolves,
                     which is the one case where what you get is not written
                     down anywhere on this screen. */}
+                {/* Two facts, not three. The menu is 240px wide and this line
+                    is truncated, so a third one pushed the region, the thing
+                    that tells two profiles into the same account apart, off the
+                    end as "· in…". The check icon to the left already says
+                    which profile is in use, so the words did not need to. */}
                 <span className="block text-[11px] text-slate-400 dark:text-white/40 truncate">
                   {profile.accountId || profile.type.toUpperCase()}
                   {profile.region
                     ? ` · ${profile.region}`
                     : " · no region set"}
-                  {on && " · in use"}
                 </span>
               </span>
             </button>

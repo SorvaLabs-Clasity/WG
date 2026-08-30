@@ -179,6 +179,30 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
       && /hour: \(digest\.hour % 12\) \+ \(half === "AM" \? 0 : 12\)/.test(alerts),
       "picking 9 on a PM time has to mean 21:00, not 09:00");
 
+    // Three full-width inputs in a half-width column pushed PM off the edge,
+    // so half the clock could not be chosen at all. One bordered field holding
+    // bare controls is what fits.
+    check("the clock is one field, not three inputs",
+      /inline-flex items-center gap-0\.5 rounded-xl border/.test(alerts)
+      && /const BARE_SELECT/.test(alerts),
+      "SURFACE.input is w-full with px-3.5, so three of them cannot share a column");
+
+    check("  and both halves of the day are reachable",
+      /\(\["AM", "PM"\] as const\)/.test(alerts)
+      && !/\bw-auto tabular-nums/.test(alerts),
+      "a clipped PM is not a styling problem, it is a setting that cannot be made");
+
+    // The filter keeps anything touched within the limit and drops the rest.
+    // Saying it the other way round described the survivors, when the reason to
+    // open the menu is to cut the list, and it was read as its own opposite.
+    check("the age limit is worded as what it leaves out",
+      /skip if quiet over/.test(alerts) && !/>quiet under</.test(alerts),
+      "describing the survivors reads as the opposite of what the control does");
+
+    check("  and says nothing at all when there is no limit",
+      /\{days > 0 && \(/.test(alerts),
+      '"skip if quiet over any age" is not a sentence');
+
     check("saving waits until somebody stops changing things",
       /setTimeout\([\s\S]{0,200}\}, 600\)/.test(alerts),
       "a request per keystroke is what made the field lag under its own saves");

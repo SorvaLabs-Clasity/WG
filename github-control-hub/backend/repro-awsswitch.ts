@@ -295,6 +295,19 @@ function verifies(token: string): boolean {
       /no region set/.test(ui),
       "blank reads as 'none needed' when it means 'whatever the SDK resolves'");
 
+    // The line is truncated at 240px, so a third fact costs the region: the row
+    // read "111111111111 · us-west-2 · in…" and the useful half was the part
+    // that got cut. The check icon already marks the current profile.
+    check("  and the row carries two facts, not three",
+      // The subtitle specifically. The hover title still says "in use", which
+      // costs no width.
+      !/\{on && " · in use"\}/.test(ui),
+      "the region is what distinguishes rows, so it must not be the part truncated");
+
+    check("  with the current profile still announced to a screen reader",
+      /aria-current=\{on \? "true" : undefined\}/.test(ui),
+      "an icon alone says nothing to somebody not looking at it");
+
     check("  under a heading that admits region is half the identity",
       /AWS account and region/.test(ui),
       '"AWS account" invites reading a per-region pair as duplicates');

@@ -40,8 +40,19 @@ function IncludeRow({ label, checked, onChange, days, onDays }: {
         <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">{label}</span>
       </label>
       <div className={`flex items-center gap-1.5 shrink-0 ${checked ? "" : "opacity-40 pointer-events-none"}`}>
-        <span className="text-[11.5px] text-slate-400 dark:text-slate-500">quiet under</span>
+        {/* Phrased as what gets dropped, not what gets kept.
+            It read "quiet under 30 days", which is true, the filter keeps
+            anything touched within the limit, but it describes the survivors
+            while the reason anybody opens this menu is to cut a long list. Said
+            that way round it was read as its own opposite.
+
+            The words are hidden at "any age", because there is no limit to
+            describe and "skip if quiet over any age" is not a sentence. */}
+        {days > 0 && (
+          <span className="text-[11.5px] text-slate-400 dark:text-slate-500">skip if quiet over</span>
+        )}
         <select value={days} onChange={e => onDays(Number(e.target.value))}
+          title="Anything untouched for longer than this is left out of the summary."
           className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-white/[0.06]
                      border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200">
           {/* Zero first, because no limit is the default and the honest one:
@@ -54,6 +65,10 @@ function IncludeRow({ label, checked, onChange, days, onDays }: {
     </div>
   );
 }
+
+/** A select with no chrome of its own, for sitting inside a shared field. */
+const BARE_SELECT = "bg-transparent border-0 p-0 pr-4 text-[13px] font-semibold tabular-nums "
+  + "text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-0 cursor-pointer";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -377,40 +392,46 @@ export default function DevAlertSettings() {
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                 At
               </label>
-              {/* Three lists rather than a time field.
-                  The time field had to be policed on the way out, because
-                  `step` constrains its picker but not what somebody types, and
-                  it kept re-rendering under its own corrections while being
-                  typed into. Choosing from what is offered cannot produce a
-                  time the schedule is unable to keep, so there is nothing to
-                  correct and nothing to fight. */}
-              <div className="flex items-center gap-1.5">
+              {/* Three controls in one field, rather than three inputs.
+                  As three full inputs they were three lots of `px-3.5` borders
+                  and padding in a half-width column, so the last of them, PM,
+                  was clipped off the edge and the choice could not be made at
+                  all. Bare controls inside one bordered box read as a single
+                  time field and fit. */}
+              <div className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200
+                              dark:border-white/10 bg-white dark:bg-white/[0.06] px-2 py-1.5
+                              focus-within:ring-2 focus-within:ring-slate-900/10 dark:focus-within:ring-white/25">
                 <select
+                  aria-label="Hour"
                   value={((digest.hour + 11) % 12) + 1}
                   onChange={e => {
                     const twelve = Number(e.target.value) % 12;
                     patchDigest({ hour: digest.hour < 12 ? twelve : twelve + 12 });
                   }}
-                  className={`${SURFACE.input} w-auto tabular-nums`}>
+                  className={BARE_SELECT}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map(h =>
                     <option key={h} value={h}>{h}</option>)}
                 </select>
-                <span className="text-[15px] font-bold text-slate-400 dark:text-slate-500">:</span>
+
+                <span className="text-[13px] font-bold text-slate-400 dark:text-slate-500">:</span>
+
                 <select
+                  aria-label="Minute"
                   value={digest.minute ?? 0}
                   onChange={e => patchDigest({ minute: Number(e.target.value) })}
-                  className={`${SURFACE.input} w-auto tabular-nums`}>
+                  className={BARE_SELECT}>
                   {/* Only the ticks the pass actually runs on. */}
                   {Array.from({ length: 12 }, (_, i) => i * 5).map(m =>
                     <option key={m} value={m}>{String(m).padStart(2, "0")}</option>)}
                 </select>
-                <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-white/10 ml-1">
+
+                <div className="flex ml-1.5 rounded-lg overflow-hidden border border-slate-200 dark:border-white/10">
                   {(["AM", "PM"] as const).map(half => {
                     const on = (half === "AM") === (digest.hour < 12);
                     return (
                       <button key={half} type="button"
                         onClick={() => patchDigest({ hour: (digest.hour % 12) + (half === "AM" ? 0 : 12) })}
-                        className={`px-2.5 py-1.5 text-[12px] font-bold transition-colors ${
+                        className={`px-2 py-1 text-[11px] font-bold leading-none transition-colors ${
                           on
                             ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
                             : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.05]"}`}>
@@ -516,8 +537,9 @@ export default function DevAlertSettings() {
               />
             ))}
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
-              Age is time since the last commit, so something touched this morning is never
-              old however long ago it was opened.
+              A limit keeps anything touched within it and leaves out the rest. Age is time
+              since the last commit, so something touched this morning is never old however
+              long ago it was opened.
             </p>
           </div>
 

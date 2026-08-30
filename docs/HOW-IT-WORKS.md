@@ -2105,6 +2105,21 @@ several events rather than events themselves, so they appear in the summary,
 where they are read off the pull request snapshot that already exists. Offering
 them as switches that quietly never fired would be worse than not offering them.
 
+### How far back each section reaches
+
+Each of the three sections carries its own limit, and the limit **keeps
+anything touched within it and leaves out the rest**. Age is time since the last
+commit, so a pull request opened a year ago and committed to this morning is
+never old.
+
+The control says "skip if quiet over 30 days", phrased as what it drops. It used
+to say "quiet under 30 days", which is the same rule described from the other
+side, and that reads as its own opposite: the reason anybody opens the menu is
+to cut a long list, so the survivors are not what they are thinking about.
+
+No limit is the default, because a summary that silently drops things nobody
+asked it to drop is worse than a long one.
+
 ### When it is considered sent
 
 `lastDigestAt` is the only thing between one summary a day and one every five
