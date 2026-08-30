@@ -63,7 +63,9 @@ export interface FeedNotifyDeps {
   }>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   publish: (topicArn: string, subject: string, body: string,
-    teamsText?: { subject: string; body: string }) => Promise<boolean>;
+    teamsText?: { subject: string; body: string },
+    renderFor?: (timeZone: string, channel: "email" | "teams") => { subject: string; body: string },
+  ) => Promise<boolean>;
   timezone: () => Promise<string>;
   org: string;
 }
@@ -103,18 +105,20 @@ export async function notifyRenovatePr(
   const topicArn = await deps.topicArnFor(settings.groupId);
   if (!topicArn) return "no-group";
 
-  const vars = {
+  const base = {
     repo: pr.repo,
     title: pr.title,
     url: pr.url,
     number: String(pr.number),
     org: deps.org,
     state: "ALARM",
-    time: formatTimestamp(pr.openedAt, await deps.timezone()),
   };
+  const varsFor = (zone: string) => ({ ...base, time: formatTimestamp(pr.openedAt, zone) });
+  const vars = varsFor(await deps.timezone());
   const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, vars);
 
-  return (await deps.publish(topicArn, subject, body, teamsWording(settings, vars)))
+  return (await deps.publish(topicArn, subject, body, teamsWording(settings, vars),
+    renderer(settings, varsFor)))
     ? "sent" : "publish-failed";
 }
 
@@ -126,6 +130,27 @@ export async function notifyRenovatePr(
  * what tells `publish` to send the email wording rather than a second copy of
  * it that would then drift.
  */
+/**
+ * The same message written for a reader in `zone`, for either channel.
+ *
+ * Only {{time}} moves. Everything else is the reading that was taken, so two
+ * people are never told different facts about one event.
+ */
+function renderer(
+  settings: { subjectTemplate: string; bodyTemplate: string;
+    teamsSubjectTemplate?: string; teamsBodyTemplate?: string },
+  varsFor: (zone: string) => Record<string, string | number | undefined>,
+) {
+  return (zone: string, channel: "email" | "teams") => {
+    const v = varsFor(zone);
+    return channel === "teams" && (settings.teamsSubjectTemplate || settings.teamsBodyTemplate)
+      ? buildMessage(
+          settings.teamsSubjectTemplate || settings.subjectTemplate,
+          settings.teamsBodyTemplate || settings.bodyTemplate, v)
+      : buildMessage(settings.subjectTemplate, settings.bodyTemplate, v);
+  };
+}
+
 function teamsWording(
   settings: { subjectTemplate: string; bodyTemplate: string;
     teamsSubjectTemplate?: string; teamsBodyTemplate?: string },
@@ -156,7 +181,7 @@ export async function notifyDependabotAlert(
   const topicArn = await deps.topicArnFor(settings.groupId);
   if (!topicArn) return "no-group";
 
-  const vars = {
+  const base = {
     repo: alert.repo,
     package: alert.package,
     advisory: alert.summary,
@@ -164,11 +189,13 @@ export async function notifyDependabotAlert(
     url: alert.url,
     org: deps.org,
     state: "ALARM",
-    time: formatTimestamp(alert.createdAt, await deps.timezone()),
   };
+  const varsFor = (zone: string) => ({ ...base, time: formatTimestamp(alert.createdAt, zone) });
+  const vars = varsFor(await deps.timezone());
   const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, vars);
 
-  return (await deps.publish(topicArn, subject, body, teamsWording(settings, vars)))
+  return (await deps.publish(topicArn, subject, body, teamsWording(settings, vars),
+    renderer(settings, varsFor)))
     ? "sent" : "publish-failed";
 }
 
@@ -278,7 +305,9 @@ export interface FlushDeps {
   }>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   publish: (topicArn: string, subject: string, body: string,
-    teamsText?: { subject: string; body: string }) => Promise<boolean>;
+    teamsText?: { subject: string; body: string },
+    renderFor?: (timeZone: string, channel: "email" | "teams") => { subject: string; body: string },
+  ) => Promise<boolean>;
   timezone: () => Promise<string>;
   org: string;
 }
@@ -378,7 +407,7 @@ export async function flushPending(deps: FlushDeps): Promise<{
       return `${values.length} ${plural}`;
     };
 
-    const digestVars = {
+    const digestVarsFor = (zone: string) => ({
       ...first.item,
       package: agreed("package", "packages"),
       title: agreed("title", "pull requests"),
@@ -399,8 +428,9 @@ export async function flushPending(deps: FlushDeps): Promise<{
       what,
       org: deps.org,
       state: "ALARM",
-      time: formatTimestamp(first.occurredAt, tz),
-    };
+      time: formatTimestamp(first.occurredAt, zone),
+    });
+    const digestVars = digestVarsFor(tz);
     const rendered = buildMessage(settings.subjectTemplate, settings.bodyTemplate, digestVars);
     const digestRows = rows.map(r => ({ item: r.item, occurredAt: r.occurredAt }));
     const msg = buildDigest(
@@ -420,7 +450,20 @@ export async function flushPending(deps: FlushDeps): Promise<{
           axis === "subject" ? nameAndCount(rows.map(r => r.repo)) : undefined)
       : undefined;
 
-    if (await deps.publish(topicArn, msg.subject, msg.body, teamsMsg)) {
+    /**
+     * The whole digest, rebuilt for a reader in `zone`.
+     *
+     * Through `buildDigest` rather than by swapping the summary line, because
+     * the itemised list is the digest: a per-zone rendering that dropped it
+     * would send one reader the events and another the headline alone.
+     */
+    const renderDigestFor = (zone: string, channel: "email" | "teams") => {
+      const text = renderer(settings, digestVarsFor)(zone, channel);
+      return buildDigest(digestRows, text, FEED_LABELS[feed], what,
+        axis === "subject" ? nameAndCount(rows.map(r => r.repo)) : undefined);
+    };
+
+    if (await deps.publish(topicArn, msg.subject, msg.body, teamsMsg, renderDigestFor)) {
       await deps.markSent(rows.map(r => r.id));
       messages++;
       items += rows.length;

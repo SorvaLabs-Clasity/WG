@@ -112,8 +112,7 @@ const f = (over: Record<string, any> = {}) => ({
   {
     const notify = fs.readFileSync("./src/services/notifyService.ts", "utf8");
     check("one publish reaches both channels",
-      /publishEmail\(topicArn, subject, body\)/.test(notify)
-      && /publishTeams\(topicArn,/.test(notify),
+      /publishEmail\(topicArn,/.test(notify) && /publishTeams\(topicArn,/.test(notify),
       "adding it at the seam is what gives every existing notification Teams for free");
 
     // Teams can be worded separately from the email. Unset has to keep meaning
@@ -133,7 +132,8 @@ const f = (over: Record<string, any> = {}) => ({
     check("  a group with nobody in Teams is not a failure",
       /if \(people\.length === 0\) return false;/.test(notify));
     check("  one request per person, so one bad address does not stop the rest",
-      /people\.map\(\(address: string\) => sendToPerson\(flowUrl, address, card\)\)/.test(notify),
+      /people\.map\(\(address: string\) => sendToPerson\(flowUrl, address, /.test(notify)
+      && /Promise\.all\(\s*\n?\s*people\.map/.test(notify),
       "the flow reads who each message is for");
 
     const route = fs.readFileSync("./src/routes/alarms.ts", "utf8");

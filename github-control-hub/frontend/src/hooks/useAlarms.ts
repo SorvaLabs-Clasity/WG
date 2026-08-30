@@ -7,6 +7,7 @@ import {
   addGroupTeams, removeGroupTeams, fetchTeamsFlow, saveTeamsFlow,
   fetchSecuritySettings, saveSecuritySettingsApi,
   fetchFeedSettings, saveFeedSettingsApi,
+  setRecipientTimeZone, setGroupTimeZone,
   type WidgetAlarm, type SecurityNotifySettings,
   type FeedNotifySettings, type NotifyFeed,
 } from "../api/alarms";
@@ -36,6 +37,30 @@ export function useTemplateVariables(enabled = true) {
     // The catalogue only changes when the app is rebuilt.
     staleTime: Infinity,
     enabled,
+  });
+}
+
+/**
+ * A Teams recipient's own timezone, and the group's.
+ *
+ * Both invalidate the groups query rather than patching the cache: the server
+ * decides what was actually stored, including rejecting a zone it does not
+ * know, and a local guess would show a setting that did not take.
+ */
+export function useSetRecipientTimeZone() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, address, timeZone }: { id: string; address: string; timeZone: string }) =>
+      setRecipientTimeZone(id, address, timeZone),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alarms", "groups"] }),
+  });
+}
+
+export function useSetGroupTimeZone() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, timeZone }: { id: string; timeZone: string }) => setGroupTimeZone(id, timeZone),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["alarms", "groups"] }),
   });
 }
 

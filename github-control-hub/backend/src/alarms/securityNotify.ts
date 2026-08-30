@@ -27,7 +27,9 @@ export interface SecurityNotifyDeps {
   }>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   publish: (topicArn: string, subject: string, body: string,
-    teamsText?: { subject: string; body: string }) => Promise<boolean>;
+    teamsText?: { subject: string; body: string },
+    renderFor?: (timeZone: string, channel: "email" | "teams") => { subject: string; body: string },
+  ) => Promise<boolean>;
   org: string;
   /** Absent in tests that only exercise the immediate path. */
   buffer?: (row: {
@@ -86,15 +88,17 @@ export async function notifySecurityAlert(
     return "buffered";
   }
 
-  const vars = {
+  // Time last, because it is the one value that differs by who is reading.
+  const base = {
     repo: alert.repo,
     message: alert.message,
     severity: alert.severity,
     state: "ALARM",
     org: deps.org,
-    time: formatTimestamp(alert.timestamp, settings.timezone),
     widget: alert.type,
   };
+  const varsFor = (zone?: string) => ({ ...base, time: formatTimestamp(alert.timestamp, zone) });
+  const vars = varsFor(settings.timezone);
   const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, vars);
 
   // Unset means the email wording. See notifyService.publish.
@@ -105,5 +109,14 @@ export async function notifySecurityAlert(
         vars)
     : undefined;
 
-  return (await deps.publish(topicArn, subject, body, teamsText)) ? "sent" : "publish-failed";
+  const renderFor = (zone: string, channel: "email" | "teams") => {
+    const v = varsFor(zone);
+    return channel === "teams" && (settings.teamsSubjectTemplate || settings.teamsBodyTemplate)
+      ? buildMessage(
+          settings.teamsSubjectTemplate || settings.subjectTemplate,
+          settings.teamsBodyTemplate || settings.bodyTemplate, v)
+      : buildMessage(settings.subjectTemplate, settings.bodyTemplate, v);
+  };
+
+  return (await deps.publish(topicArn, subject, body, teamsText, renderFor)) ? "sent" : "publish-failed";
 }

@@ -4,9 +4,11 @@ import {
   useEmailGroups, useCreateGroup, useDeleteGroup,
   useAddGroupMember, useRemoveGroupMember, useTestGroup,
   useAddGroupTeams, useRemoveGroupTeams,
+  useSetRecipientTimeZone, useSetGroupTimeZone,
 } from "../hooks/useAlarms";
 import { Empty, Spinner, Note, Button, SURFACE, TYPE } from "../design";
 import type { EmailGroup } from "../api/alarms";
+import ZonePicker, { abbreviation } from "./ZonePicker";
 
 /**
  * Who gets told, and by which channel.
@@ -28,6 +30,13 @@ import type { EmailGroup } from "../api/alarms";
  */
 
 /** Members who will actually receive something. Pending ones will not. */
+/** "New York (EDT)", which is what the message will actually say. */
+function zoneLabel(zone: string): string {
+  const abbr = abbreviation(zone);
+  const city = zone.split("/").pop()?.replace(/_/g, " ") ?? zone;
+  return abbr ? `${city} (${abbr})` : city;
+}
+
 function reachOf(g: EmailGroup): { live: number; pending: number } {
   const live = g.members.filter(m => m.confirmed).length;
   return { live: live + (g.teamsRecipients ?? []).length, pending: g.members.length - live };
@@ -90,6 +99,8 @@ function GroupCard({ group, onNotice, onError }: {
   const [hook, setHook] = useState("");
 
   const reach = reachOf(group);
+  const setPersonZone = useSetRecipientTimeZone();
+  const setGroupZone = useSetGroupTimeZone();
   const teams = group.teamsRecipients ?? [];
 
   const run = async (fn: () => Promise<any>, ok?: string) => {
@@ -158,6 +169,24 @@ function GroupCard({ group, onNotice, onError }: {
           <ChannelHeader icon="ph-fill ph-envelope-simple" label="Email"
             count={group.members.length} tone="text-sky-500" />
 
+          {/* One zone for the whole email column, and that is the honest
+              granularity rather than a simplification. Email leaves as a single
+              publish to this group's SNS topic, which hands every subscriber
+              the identical body, so there is no per-person text to put a
+              per-person time in. Teams is called once per address, which is why
+              the column beside this one can do it per person. */}
+          <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-slate-100 dark:border-white/[0.06]">
+            <span className="text-[11.5px] text-slate-400 dark:text-slate-500">Times written in</span>
+            <ZonePicker
+              value={group.timeZone}
+              inherit="Organization default"
+              onChange={zone => run(() => setGroupZone.mutateAsync({ id: group.id, timeZone: zone }))}
+            />
+            <span className="text-[11px] text-slate-300 dark:text-slate-600 truncate">
+              one email, one clock
+            </span>
+          </div>
+
           {group.membersError ? (
             // Not the same as having none, and the difference decides whether
             // somebody adds an address that is already there.
@@ -182,7 +211,7 @@ function GroupCard({ group, onNotice, onError }: {
                     onClick={() => run(() => removeMember.mutateAsync(
                       { id: group.id, subscriptionArn: m.subscriptionArn }))}
                     title="Remove"
-                    className="ml-auto shrink-0 w-6 h-6 grid place-items-center rounded-md text-slate-300 dark:text-slate-600
+                    className="shrink-0 w-6 h-6 grid place-items-center rounded-md text-slate-300 dark:text-slate-600
                                opacity-0 group-hover/row:opacity-100 focus:opacity-100
                                hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all"
                   >
@@ -223,10 +252,21 @@ function GroupCard({ group, onNotice, onError }: {
                 <li key={address} className="group/row flex items-center gap-2 py-1 text-[12.5px]">
                   <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" aria-hidden="true" />
                   <span className="truncate text-slate-700 dark:text-slate-200">{address}</span>
+                  {/* Per person, because Teams is delivered per person: the
+                      flow is called once per address, so each call can carry
+                      that person's own rendering of the time. */}
+                  <ZonePicker
+                    value={group.recipientZones?.[address]}
+                    inherit={group.timeZone ? `${zoneLabel(group.timeZone)} (group)` : "Group default"}
+                    onChange={zone => run(() => setPersonZone.mutateAsync({
+                      id: group.id, address, timeZone: zone,
+                    }))}
+                    className="ml-auto shrink-0"
+                  />
                   <button
                     onClick={() => run(() => removeTeams.mutateAsync({ id: group.id, address }))}
                     title="Remove"
-                    className="ml-auto shrink-0 w-6 h-6 grid place-items-center rounded-md text-slate-300 dark:text-slate-600
+                    className="shrink-0 w-6 h-6 grid place-items-center rounded-md text-slate-300 dark:text-slate-600
                                opacity-0 group-hover/row:opacity-100 focus:opacity-100
                                hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all"
                   >

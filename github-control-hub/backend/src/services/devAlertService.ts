@@ -373,6 +373,14 @@ export function whyNotDue(a: DevAlerts, now: number): string | null {
 export function nextDigestRecord(current: DevAlerts, next: DevAlerts, now = Date.now()): string | undefined {
   const rescheduled = next.digest.hour !== current.digest.hour
     || next.digest.minute !== current.digest.minute
+    // The zone moves the schedule as surely as the clock does. 2:10pm is a
+    // different moment in a different zone, and leaving this out meant setting
+    // a time and then correcting the zone lost that day's summary: the time was
+    // saved first, judged against the old zone where it had already gone by,
+    // and marked done for the day. Changing the zone afterwards was not
+    // counted as a reschedule, so the record stood, and the moment it named
+    // came and went with nothing sent.
+    || next.digest.timeZone !== current.digest.timeZone
     || (next.digest.enabled && !current.digest.enabled);
   if (!rescheduled) return current.lastDigestAt;
 

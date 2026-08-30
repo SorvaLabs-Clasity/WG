@@ -56,6 +56,10 @@ export interface EmailGroup {
   membersError?: string;
   /** People this group DMs in Teams, by work email address. */
   teamsRecipients?: string[];
+  /** Per Teams recipient, by address. Absent means the group's zone. */
+  recipientZones?: Record<string, string>;
+  /** This group's email zone, and the default for its Teams people. */
+  timeZone?: string;
 }
 
 export interface SecurityNotifySettings {
@@ -88,6 +92,20 @@ export const deleteAlarmApi = (id: string) =>
   apiDelete<{ message: string }>(`/alarms/${id}`);
 
 export const fetchGroups = () => apiGet<EmailGroup[]>("/alarms/groups");
+
+/**
+ * One person's zone, for Teams only.
+ *
+ * Email leaves as a single SNS publish to the group's topic, so every
+ * subscriber gets the same body and there is nothing per person to change.
+ * `setGroupTimeZone` is the granularity that channel has.
+ */
+export const setRecipientTimeZone = (id: string, address: string, timeZone: string) =>
+  apiPut<{ recipientZones: Record<string, string> }>(
+    `/alarms/groups/${id}/teams/${encodeURIComponent(address)}/timezone`, { timeZone });
+
+export const setGroupTimeZone = (id: string, timeZone: string) =>
+  apiPut<{ timeZone?: string }>(`/alarms/groups/${id}/timezone`, { timeZone });
 
 export const addGroupTeams = (id: string, address: string) =>
   apiPost<{ teamsRecipients: string[] }>(`/alarms/groups/${id}/teams`, { address });

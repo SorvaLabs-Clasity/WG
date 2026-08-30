@@ -39,7 +39,9 @@ export interface EvaluatorDeps {
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   computeRows: (widget: WidgetLike) => Promise<WidgetRows>;
   publish: (topicArn: string, subject: string, body: string,
-    teamsText?: { subject: string; body: string }) => Promise<boolean>;
+    teamsText?: { subject: string; body: string },
+    renderFor?: (timeZone: string, channel: "email" | "teams") => { subject: string; body: string },
+  ) => Promise<boolean>;
   saveRuntime: (id: string, runtime: {
     state: AlarmState; cleanStreak: number; lastCheckedAt: string;
     lastValue?: number | null; lastFiredAt?: string; lastError?: string;
@@ -134,15 +136,18 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
         summary.publishFailures++;
         console.error(`[Alarm] ${alarm.name}: email group ${alarm.groupId} is missing, nothing sent`);
       } else {
-        const vars = {
+        // Everything except the time, which is the one value that differs by
+        // who is reading it.
+        const base = {
           widget: widget.title || alarm.name,
           metric: metricLabel(widget, alarm.condition),
           value: displayValue(alarm.condition, value),
           threshold: thresholdText(alarm.condition),
           state: fire === "alarm" ? "ALARM" : "OK",
           org: deps.org,
-          time: formatTimestamp(nowIso, deps.timezone),
         };
+        const varsFor = (zone?: string) => ({ ...base, time: formatTimestamp(nowIso, zone) });
+        const vars = varsFor(deps.timezone);
         const { subject, body } = buildMessage(alarm.subjectTemplate, alarm.bodyTemplate, vars);
 
         // Rendered from the same variables, so the two channels can never
@@ -157,7 +162,24 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
               vars)
           : undefined;
 
-        const ok = await deps.publish(topicArn, subject, body, teamsText);
+        /**
+         * The same firing, written for a reader in `zone`.
+         *
+         * Only {{time}} changes. Every other value is the one reading this
+         * alarm took, so two people in two countries cannot be told different
+         * numbers about the same event, only the same event at their own
+         * clock.
+         */
+        const renderFor = (zone: string, channel: "email" | "teams") => {
+          const v = varsFor(zone);
+          return channel === "teams" && (alarm.teamsSubjectTemplate || alarm.teamsBodyTemplate)
+            ? buildMessage(
+                alarm.teamsSubjectTemplate || alarm.subjectTemplate,
+                alarm.teamsBodyTemplate || alarm.bodyTemplate, v)
+            : buildMessage(alarm.subjectTemplate, alarm.bodyTemplate, v);
+        };
+
+        const ok = await deps.publish(topicArn, subject, body, teamsText, renderFor);
         if (ok) lastFiredAt = nowIso;
         else summary.publishFailures++;
       }

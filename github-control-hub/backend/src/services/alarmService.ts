@@ -81,6 +81,25 @@ export interface EmailGroup {
    * Optional, so every group created before this behaves exactly as it did.
    */
   teamsRecipients?: string[];
+  /**
+   * The zone each Teams recipient reads their times in, by address.
+   *
+   * A map beside the list rather than a field on it, so `teamsRecipients` stays
+   * the array of strings every stored group already holds and no row has to be
+   * migrated. An address missing from here falls back to the group's zone.
+   *
+   * Only Teams. Email leaves through one SNS publish to one topic, which
+   * delivers the same body to every subscriber, so there is no per-person text
+   * to put a per-person time in. `timeZone` below is the honest granularity
+   * for that half.
+   */
+  recipientZones?: Record<string, string>;
+  /**
+   * The zone this group's email is written in, and the default for its Teams
+   * people. Unset means the organization's zone, which is UTC unless somebody
+   * changed it.
+   */
+  timeZone?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;

@@ -483,6 +483,43 @@ const text = (card: any) => JSON.stringify(card);
       && nextDigestRecord(at(20, 0), at(9, 0), AFTERNOON) !== undefined,
       "09:00 is still ahead in Los Angeles when it is 14:30 UTC, and behind in UTC");
 
+    // The sequence that lost a day's summary, in the order somebody actually
+    // does it: set the time, then notice the zone is wrong and correct it.
+    //
+    // 14:30 UTC. The old zone is UTC, where 14:10 has gone by; the new zone is
+    // one hour behind, where it is only 13:30 and 14:10 is still to come.
+    {
+      const BEHIND = "Atlantic/Cape_Verde";   // UTC-1, no daylight saving
+      const start = at(9, 0);
+
+      // Step one: the time is saved while the zone is still the old one, so it
+      // is judged against a clock where it has already passed.
+      const afterTime = nextDigestRecord(start, at(14, 10), AFTERNOON);
+      check("setting a time that has passed marks the day done",
+        afterTime !== undefined,
+        "which is correct on its own, and is what the next step has to undo");
+
+      // Step two: the zone is corrected. In the new zone 14:10 is still ahead.
+      const withZone = { ...at(14, 10), lastDigestAt: afterTime };
+      const afterZone = nextDigestRecord(withZone, at(14, 10, { timeZone: BEHIND }), AFTERNOON);
+      check("  and correcting the zone afterwards gives the day back",
+        afterZone === undefined,
+        "the zone moves the schedule, so it has to re-decide like the clock does");
+
+      // The whole point: it is then actually due at the moment it names.
+      const ready = { ...at(14, 10, { timeZone: BEHIND }), lastDigestAt: afterZone };
+      check("  so the summary arrives at the time on screen",
+        whyNotDue(ready, Date.parse("2026-03-04T15:10:00Z")) === null,
+        whyNotDue(ready, Date.parse("2026-03-04T15:10:00Z")));
+
+      // And the rule still holds in the other direction: a zone change that
+      // leaves the time in the past must not fire a second summary.
+      const AHEAD = "Asia/Tokyo";   // 23:30 there when it is 14:30 UTC
+      check("  while a zone change that leaves the time behind does not resend",
+        nextDigestRecord(start, at(14, 10, { timeZone: AHEAD }), AFTERNOON) !== undefined,
+        "14:10 is long gone in Tokyo, so today's is done");
+    }
+
     const route2 = fs.readFileSync("./src/routes/me.ts", "utf8");
     check("an unrecognised timezone is refused rather than stored",
       /timeZone: knownZone\(body\.digest\?\.timeZone\)/.test(route2),

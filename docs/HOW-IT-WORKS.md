@@ -2128,9 +2128,16 @@ tick asks the same question. It is written whether the send succeeded, failed or
 had nothing to say, because all three are decisions made for today.
 
 Saving new settings re-decides it, and only the timing counts. Changing the
-hour, the minute, or switching the summary on is a reschedule; changing what
-goes in it is not, so toggling a section in the evening does not produce a
-second summary.
+hour, the minute, **the timezone**, or switching the summary on is a reschedule;
+changing what goes in it is not, so toggling a section in the evening does not
+produce a second summary.
+
+The timezone belongs in that list because it moves the schedule as surely as the
+clock does: 2:10pm is a different moment in a different zone. Leaving it out lost
+a day's summary in the order people actually work. The time is saved first and
+judged against the old zone, where it has already gone by, so the day is marked
+done. Correcting the zone a moment later did not count as a reschedule, the
+record stood, and the moment it named came and went with nothing sent.
 
 A reschedule then depends on whether the new time has already gone by **in that
 person's timezone**:
@@ -2204,6 +2211,31 @@ An alarm on a rule that has since been deleted is refused at creation rather
 than watched. It would read zero forever, which looks exactly like compliance.
 
 ---
+
+## What time a notification says it is
+
+`{{time}}` renders as `2026-08-30 10:30 EDT`: the abbreviation people use, never
+the IANA name, and it follows daylight saving rather than being fixed. A zone
+with no abbreviation gives its offset instead (`GMT+5:30`).
+
+Which clock it is on depends on the channel, and the two differ for a reason
+that is not effort:
+
+| Channel | Granularity | Why |
+| --- | --- | --- |
+| **Teams** | per person | The flow is called once per address, so each call can carry that person's own rendering |
+| **Email** | per group | One SNS publish reaches every subscriber of the topic with the identical body, so there is no per-person text to put a per-person time in |
+
+A Teams recipient's own zone wins, then the group's, then the organization's,
+which is UTC unless somebody changed it. Both are set in the Groups tab.
+
+Only `{{time}}` moves. Every other value in a message is the reading that was
+taken, so two people in two countries are never told different numbers about one
+event, only the same event on their own clock.
+
+An unrecognised zone is refused when it is saved rather than further down, where
+it is not an error at all: it renders as UTC, and the only symptom is a
+timestamp quietly hours out.
 
 ## What a notification says on each channel
 

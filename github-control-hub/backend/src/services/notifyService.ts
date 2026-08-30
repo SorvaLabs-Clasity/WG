@@ -138,21 +138,45 @@ export async function removeMember(subscriptionArn: string): Promise<void> {
  */
 export async function publish(
   topicArn: string, subject: string, body: string, teamsText?: NotifyText,
+  renderFor?: RenderForZone,
 ): Promise<boolean> {
+  // Read once and handed to both halves. Both need it, and it is a table read.
+  const group = renderFor
+    ? await (await import("./alarmService")).groupByTopic(topicArn).catch(() => null)
+    : null;
+
+  // The group's own zone for the email, because one publish reaches every
+  // subscriber with one body: this is the finest granularity that channel has.
+  const emailText = group?.timeZone && renderFor
+    ? renderFor(group.timeZone, "email")
+    : { subject, body };
+
   const [email, teams] = await Promise.all([
-    publishEmail(topicArn, subject, body),
+    publishEmail(topicArn, emailText.subject, emailText.body),
     // The email wording unless something wrote a Teams one. The two channels
     // are read differently, an email is opened deliberately and a Teams
     // message is glanced at in a sidebar, so the same paragraph is rarely
     // right for both. Falling back rather than requiring one keeps every
     // existing alarm sending exactly what it sends today.
-    publishTeams(topicArn, teamsText?.subject || subject, teamsText?.body || body),
+    publishTeams(topicArn, teamsText?.subject || subject, teamsText?.body || body, renderFor, group),
   ]);
   return email || teams;
 }
 
 /** A rendered subject and body for one channel. */
 export interface NotifyText { subject: string; body: string; }
+
+/**
+ * The same message, rendered as it should read for somebody in `timeZone`.
+ *
+ * Passed in rather than done here: the templates and the values that fill them
+ * belong to whatever raised the notification, and this module knows only how to
+ * deliver. Given one, Teams is rendered once per recipient, so {{time}} says
+ * the hour it was where each of them is sitting.
+ *
+ * Callers without one still work, and send everybody the same text.
+ */
+export type RenderForZone = (timeZone: string, channel: "email" | "teams") => NotifyText;
 
 async function publishEmail(topicArn: string, subject: string, body: string): Promise<boolean> {
   try {
@@ -193,10 +217,14 @@ export function previewTitle(subject: string): string {
   return m ? `${m[1]} - ${m[2]}` : subject;
 }
 
-async function publishTeams(topicArn: string, subject: string, body: string): Promise<boolean> {
+async function publishTeams(
+  topicArn: string, subject: string, body: string, renderFor?: RenderForZone,
+  known?: any,
+): Promise<boolean> {
   try {
     const { groupByTopic } = await import("./alarmService");
-    const group = await groupByTopic(topicArn);
+    // Reuse the read `publish` already did when it made one.
+    const group = known ?? await groupByTopic(topicArn);
     const people = group?.teamsRecipients ?? [];
     if (people.length === 0) return false;
 
@@ -210,13 +238,28 @@ async function publishTeams(topicArn: string, subject: string, body: string): Pr
     }
 
     const { buildCard, sendToPerson } = await import("./teamsClient");
-    const card = buildCard(previewTitle(subject), group!.name,
-      [{ heading: "", links: [], emptyText: body }]);
+
+    /**
+     * This person's card, in this person's zone.
+     *
+     * Teams is the one channel where this is possible: the flow is called once
+     * per address, so each call can carry a different rendering. Email leaves
+     * as a single SNS publish and has one body for the whole topic.
+     *
+     * Their own zone, else the group's, else whatever the caller already
+     * rendered, which is the organization's.
+     */
+    const cardFor = (address: string) => {
+      const zone = group!.recipientZones?.[address] ?? group!.timeZone;
+      const text = zone && renderFor ? renderFor(zone, "teams") : { subject, body };
+      return buildCard(previewTitle(text.subject), group!.name,
+        [{ heading: "", links: [], emptyText: text.body }]);
+    };
 
     // One request per person: the flow reads who each message is for. Sent in
     // parallel, and one bad address does not stop the rest.
     const results = await Promise.all(
-      people.map((address: string) => sendToPerson(flowUrl, address, card)));
+      people.map((address: string) => sendToPerson(flowUrl, address, cardFor(address))));
     results.forEach((r, i) => {
       if (!r.ok) console.warn(`[Notify] Teams to ${people[i]} for "${group!.name}": ${r.error}`);
     });

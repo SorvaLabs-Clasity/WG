@@ -54,6 +54,24 @@ const requireAdmin: RequestHandler = (req, res, next) => {
 
 router.use(requireAdmin);
 
+/**
+ * An IANA zone the runtime recognises, or null.
+ *
+ * `Intl` is the authority rather than a list kept here, which would go stale
+ * every time a government moves its clocks. Checked on the way in, because an
+ * unknown zone is not an error further down: it renders as UTC, and the only
+ * symptom is a timestamp quietly hours out.
+ */
+function knownZone(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 /** Rejects a template naming a variable that will never be substituted. */
 function templateProblem(
   subject?: string, body?: string,
@@ -314,10 +332,87 @@ router.delete("/groups/:id/teams/:address", async (req: Request, res: Response) 
 
     const address = decodeURIComponent(String(req.params.address)).toLowerCase();
     const people = (group.teamsRecipients ?? []).filter(p => p.toLowerCase() !== address);
-    await saveGroup({ ...group, teamsRecipients: people, updatedAt: new Date().toISOString() });
+    // Their zone goes with them. Left behind, it would silently reattach to
+    // anybody added under the same address later.
+    const zones = { ...(group.recipientZones ?? {}) };
+    for (const key of Object.keys(zones)) {
+      if (key.toLowerCase() === address) delete zones[key];
+    }
+    await saveGroup({
+      ...group, teamsRecipients: people, recipientZones: zones,
+      updatedAt: new Date().toISOString(),
+    });
     await logActivity("config.updated" as any, req.user!.login, "", "alarm group",
       `Removed a Teams recipient from "${group.name}"`);
     res.json({ teamsRecipients: people });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "alarm groups") });
+  }
+});
+
+/**
+ * The zone one Teams recipient reads their times in.
+ *
+ * Per person because Teams is delivered per person: the flow is called once per
+ * address, so each call can carry that person's own rendering of {{time}}.
+ *
+ * There is no equivalent for the email column, and that is not an oversight.
+ * Email leaves through a single SNS publish to the group's topic, which hands
+ * the identical body to every subscriber. `PUT /groups/:id/timezone` sets the
+ * one zone that email is written in.
+ */
+router.put("/groups/:id/teams/:address/timezone", async (req: Request, res: Response) => {
+  try {
+    const group = await getGroup(String(req.params.id));
+    if (!group) return res.status(404).json({ error: "No such group" });
+
+    const address = decodeURIComponent(String(req.params.address));
+    const known = (group.teamsRecipients ?? [])
+      .find(p => p.toLowerCase() === address.toLowerCase());
+    if (!known) return res.status(404).json({ error: "That person is not in this group" });
+
+    const raw = req.body?.timeZone;
+    // Empty means "use the group's", which is a real choice and not a failure.
+    const zone = raw === "" || raw === null || raw === undefined ? null : knownZone(raw);
+    if (raw && !zone) return res.status(400).json({ error: `"${raw}" is not a timezone this system knows` });
+
+    const zones = { ...(group.recipientZones ?? {}) };
+    if (zone) zones[known] = zone;
+    else delete zones[known];
+
+    await saveGroup({ ...group, recipientZones: zones, updatedAt: new Date().toISOString() });
+    await logActivity("config.updated" as any, req.user!.login, "", "alarm group",
+      zone
+        ? `Set a Teams recipient's timezone to ${zone} in "${group.name}"`
+        : `Cleared a Teams recipient's timezone in "${group.name}"`);
+    res.json({ recipientZones: zones });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "alarm groups") });
+  }
+});
+
+/**
+ * The zone this group's email is written in, and the default for its Teams
+ * people who have not set one.
+ *
+ * One value for the whole group, because one email reaches every subscriber
+ * with the same body.
+ */
+router.put("/groups/:id/timezone", async (req: Request, res: Response) => {
+  try {
+    const group = await getGroup(String(req.params.id));
+    if (!group) return res.status(404).json({ error: "No such group" });
+
+    const raw = req.body?.timeZone;
+    const zone = raw === "" || raw === null || raw === undefined ? null : knownZone(raw);
+    if (raw && !zone) return res.status(400).json({ error: `"${raw}" is not a timezone this system knows` });
+
+    await saveGroup({
+      ...group, timeZone: zone ?? undefined, updatedAt: new Date().toISOString(),
+    });
+    await logActivity("config.updated" as any, req.user!.login, "", "alarm group",
+      zone ? `Set "${group.name}" to ${zone}` : `Cleared the timezone on "${group.name}"`);
+    res.json({ timeZone: zone ?? undefined });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "alarm groups") });
   }
@@ -512,8 +607,13 @@ router.put("/:id", async (req: Request, res: Response) => {
       teamsSubjectTemplate, teamsBodyTemplate } = req.body ?? {};
 
     if (condition !== undefined) {
-      const widget = await getWidget(existing.widgetId);
-      if (!widget) return res.status(400).json({ error: "The widget this alarm watches no longer exists" });
+      // `subjectFor`, not `getWidget`. A guardrail alarm watches a rule, and
+      // there is no widget record to find: creating one went through here and
+      // editing one did not, so every guardrail alarm could be created and
+      // then never changed, refused with "the widget this alarm watches no
+      // longer exists" about a widget that had never existed.
+      const widget = await subjectFor(existing.widgetId);
+      if (!widget) return res.status(400).json({ error: "The subject this alarm watches no longer exists" });
       if (!isValidCondition(widget as any, condition as AlarmCondition)) {
         return res.status(400).json({
           error: `That condition does not apply to this widget. It supports: ` +
