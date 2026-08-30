@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { allZones, zoneLabel, zoneShort } from "../lib/zones";
 
 /**
  * An IANA timezone, chosen rather than typed.
@@ -8,8 +9,8 @@ import { useMemo } from "react";
  * It renders as UTC, and the only symptom is a timestamp quietly hours out,
  * which is the failure this control exists to end.
  *
- * The label shows the abbreviation people actually recognise (EDT, GMT+5:30)
- * beside the name, because that is what appears in the message.
+ * Options read "EDT · GMT-4 · New York": the code the message will actually
+ * say, then how far that is from anywhere else, then which one it is.
  */
 export default function ZonePicker({
   value, onChange, inherit, disabled, className = "",
@@ -22,18 +23,12 @@ export default function ZonePicker({
   className?: string;
 }) {
   const zones = useMemo(() => {
-    const all: string[] = (Intl as any).supportedValuesOf?.("timeZone") ?? [];
-    // Whatever is stored stays selectable even on a runtime that has not heard
-    // of it, so opening this cannot silently change somebody's setting.
-    const names = Array.from(new Set([...all, value].filter(Boolean) as string[])).sort();
     const groups = new Map<string, Array<{ id: string; label: string }>>();
-    for (const id of names) {
+    for (const id of allZones(value)) {
       const [region, ...rest] = id.split("/");
       const key = rest.length ? region : "Other";
-      const abbr = abbreviation(id);
-      const label = `${rest.join("/").replace(/_/g, " ") || id}${abbr ? `  ${abbr}` : ""}`;
       if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push({ id, label });
+      groups.get(key)!.push({ id, label: zoneLabel(id) });
     }
     return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [value]);
@@ -42,9 +37,12 @@ export default function ZonePicker({
     <select
       value={value ?? ""} disabled={disabled}
       onChange={e => onChange(e.target.value)}
+      // The chosen zone shows as its code alone, because a row has no width for
+      // three parts and the code is the half somebody is checking.
+      title={value ? zoneLabel(value) : inherit}
       className={`text-[11.5px] py-0.5 pl-1.5 pr-5 rounded-md bg-transparent
                   border border-slate-200 dark:border-white/10
-                  text-slate-500 dark:text-slate-400 max-w-[10rem] truncate
+                  text-slate-500 dark:text-slate-400 max-w-[11rem] truncate
                   disabled:opacity-40 ${className}`}
     >
       <option value="">{inherit}</option>
@@ -57,17 +55,4 @@ export default function ZonePicker({
   );
 }
 
-/**
- * What a zone is called in a message: "EDT", "GMT+5:30".
- *
- * The same `timeZoneName: "short"` the message formatter uses, so what is shown
- * when choosing is what arrives in the email.
- */
-export function abbreviation(timeZone: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "short" })
-      .formatToParts(new Date()).find(p => p.type === "timeZoneName")?.value ?? "";
-  } catch {
-    return "";
-  }
-}
+export { zoneShort };

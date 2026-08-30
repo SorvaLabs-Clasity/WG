@@ -78,8 +78,24 @@ export async function deleteTopic(topicArn: string): Promise<void> {
   await client.send(new DeleteTopicCommand({ TopicArn: topicArn }));
 }
 
-export async function listMembers(topicArn: string): Promise<GroupMember[]> {
+/**
+ * Who is on this group, as SNS sees it.
+ *
+ * `revoked` is the list of addresses whose unconfirmed invitation was
+ * cancelled. AWS cannot withdraw a pending subscription, so cancelling is
+ * enforced here instead, and it has to be enforced in both directions:
+ *
+ *   - a still-pending invitation is hidden, so the X appears to work, which
+ *     it did not before: it reported success and left the row in place;
+ *   - one that has since been **confirmed** is unsubscribed on sight. Without
+ *     this, somebody removed from a group could click a two-day-old link and
+ *     silently start receiving its alarms while showing on nobody's screen.
+ */
+export async function listMembers(
+  topicArn: string, revoked: string[] = [],
+): Promise<GroupMember[]> {
   const { client, ListSubscriptionsByTopicCommand } = await sns();
+  const denied = new Set(revoked.map(r => r.toLowerCase()));
   const members: GroupMember[] = [];
   let token: string | undefined;
   do {
@@ -88,11 +104,22 @@ export async function listMembers(topicArn: string): Promise<GroupMember[]> {
     }));
     for (const s of res.Subscriptions || []) {
       if (s.Protocol !== "email") continue;
-      members.push({
-        endpoint: s.Endpoint || "",
-        subscriptionArn: s.SubscriptionArn || "",
-        confirmed: !!s.SubscriptionArn && s.SubscriptionArn !== "PendingConfirmation",
-      });
+      const endpoint = s.Endpoint || "";
+      const arn = s.SubscriptionArn || "";
+      const confirmed = !!arn && arn !== "PendingConfirmation";
+
+      if (denied.has(endpoint.toLowerCase())) {
+        // Confirmed after being revoked: undo it now rather than leaving a
+        // hidden subscriber. Failure here is logged and the row still hidden,
+        // so a transient error cannot put them back on screen as a member.
+        if (confirmed) {
+          await removeMember(arn).catch(err =>
+            console.warn(`[Notify] Could not unsubscribe revoked ${endpoint}:`, err?.message ?? err));
+        }
+        continue;
+      }
+
+      members.push({ endpoint, subscriptionArn: arn, confirmed });
     }
     token = res.NextToken;
   } while (token);
@@ -145,10 +172,16 @@ export async function publish(
     ? await (await import("./alarmService")).groupByTopic(topicArn).catch(() => null)
     : null;
 
-  // The group's own zone for the email, because one publish reaches every
-  // subscriber with one body: this is the finest granularity that channel has.
-  const emailText = group?.timeZone && renderFor
-    ? renderFor(group.timeZone, "email")
+  /**
+   * Every zone the people on this group read in, the group's own first.
+   *
+   * One publish reaches every subscriber with one body, so the choice is not
+   * "whose zone" but "how many". Naming them all is the only answer that is
+   * right for everybody.
+   */
+  const emailZones = group && renderFor ? zonesOf(group) : [];
+  const emailText = emailZones.length && renderFor
+    ? renderFor(emailZones, "email")
     : { subject, body };
 
   const [email, teams] = await Promise.all([
@@ -171,12 +204,52 @@ export interface NotifyText { subject: string; body: string; }
  *
  * Passed in rather than done here: the templates and the values that fill them
  * belong to whatever raised the notification, and this module knows only how to
- * deliver. Given one, Teams is rendered once per recipient, so {{time}} says
- * the hour it was where each of them is sitting.
+ * deliver.
+ *
+ * A list, not one zone, because the two channels differ. Teams is called once
+ * per address, so it passes that person's zone alone. Email is one publish to
+ * one topic and physically cannot vary per subscriber, so it passes every zone
+ * its members are in and the message names them all.
  *
  * Callers without one still work, and send everybody the same text.
  */
-export type RenderForZone = (timeZone: string, channel: "email" | "teams") => NotifyText;
+export type RenderForZone = (timeZones: string[], channel: "email" | "teams") => NotifyText;
+
+/**
+ * The zone one person on a group reads in.
+ *
+ * Theirs, then the group's. The organization's default is the group's when
+ * unset, resolved before this is called, so there is one fallback chain and it
+ * lives in one place.
+ */
+export function zoneFor(group: { recipientZones?: Record<string, string>; timeZone?: string },
+  address: string): string | undefined {
+  const zones = group.recipientZones ?? {};
+  const exact = zones[address];
+  if (exact) return exact;
+  // Addresses are compared case-insensitively, because a person typed into two
+  // groups in two capitalisations is one person.
+  const found = Object.keys(zones).find(k => k.toLowerCase() === address.toLowerCase());
+  return (found && zones[found]) || group.timeZone;
+}
+
+/**
+ * Every distinct zone on a group, the group's own first.
+ *
+ * Includes the email members as well as the Teams ones: they are the people who
+ * will read the email, and their zones are what it has to be legible in.
+ */
+export function zonesOf(group: {
+  recipientZones?: Record<string, string>; timeZone?: string;
+  members?: Array<{ endpoint: string }>; teamsRecipients?: string[];
+}): string[] {
+  const out: string[] = [];
+  if (group.timeZone) out.push(group.timeZone);
+  for (const z of Object.values(group.recipientZones ?? {})) {
+    if (z) out.push(z);
+  }
+  return Array.from(new Set(out));
+}
 
 async function publishEmail(topicArn: string, subject: string, body: string): Promise<boolean> {
   try {
@@ -250,8 +323,8 @@ async function publishTeams(
      * rendered, which is the organization's.
      */
     const cardFor = (address: string) => {
-      const zone = group!.recipientZones?.[address] ?? group!.timeZone;
-      const text = zone && renderFor ? renderFor(zone, "teams") : { subject, body };
+      const zone = zoneFor(group!, address);
+      const text = zone && renderFor ? renderFor([zone], "teams") : { subject, body };
       return buildCard(previewTitle(text.subject), group!.name,
         [{ heading: "", links: [], emptyText: text.body }]);
     };

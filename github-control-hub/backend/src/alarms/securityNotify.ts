@@ -1,4 +1,4 @@
-import { buildMessage, formatTimestamp } from "./message";
+import { buildMessage, formatTimestamp, formatTimestampAcross } from "./message";
 import { meetsMinimumSeverity } from "./evaluate";
 
 /**
@@ -28,7 +28,7 @@ export interface SecurityNotifyDeps {
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   publish: (topicArn: string, subject: string, body: string,
     teamsText?: { subject: string; body: string },
-    renderFor?: (timeZone: string, channel: "email" | "teams") => { subject: string; body: string },
+    renderFor?: (timeZones: string[], channel: "email" | "teams") => { subject: string; body: string },
   ) => Promise<boolean>;
   org: string;
   /** Absent in tests that only exercise the immediate path. */
@@ -97,8 +97,8 @@ export async function notifySecurityAlert(
     org: deps.org,
     widget: alert.type,
   };
-  const varsFor = (zone?: string) => ({ ...base, time: formatTimestamp(alert.timestamp, zone) });
-  const vars = varsFor(settings.timezone);
+  const varsFor = (zones: string[]) => ({ ...base, time: formatTimestampAcross(alert.timestamp, zones) });
+  const vars = varsFor(settings.timezone ? [settings.timezone] : []);
   const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, vars);
 
   // Unset means the email wording. See notifyService.publish.
@@ -109,8 +109,8 @@ export async function notifySecurityAlert(
         vars)
     : undefined;
 
-  const renderFor = (zone: string, channel: "email" | "teams") => {
-    const v = varsFor(zone);
+  const renderFor = (zones: string[], channel: "email" | "teams") => {
+    const v = varsFor(zones);
     return channel === "teams" && (settings.teamsSubjectTemplate || settings.teamsBodyTemplate)
       ? buildMessage(
           settings.teamsSubjectTemplate || settings.subjectTemplate,

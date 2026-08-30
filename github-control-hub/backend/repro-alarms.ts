@@ -271,7 +271,10 @@ function check(name: string, ok: boolean, got?: unknown) {
   // otherwise was a trailing Z lost among the milliseconds.
   const t = formatTimestamp("2026-08-14T13:15:50.911Z");
   check("a timestamp names its timezone", t.endsWith(" UTC"), t);
-  check("  and keeps the date and the minute", t.startsWith("2026-08-14 13:15"), t);
+  check("  and keeps the date and the minute", t.startsWith("Aug 14, 2026 at 1:15"), t);
+  // Twelve-hour, with a named month: "14:30" and "08-09" are both things people
+  // read wrong, in different ways and in different countries.
+  check("  on a twelve-hour clock", / PM /.test(t), t);
   // No milliseconds, and no ISO "T" wedged between the date and the time.
   // Matching a bare "T" would flag the word UTC, which is the part that makes
   // the whole thing readable.
@@ -285,9 +288,13 @@ function check(name: string, ok: boolean, got?: unknown) {
   // 13:15 UTC is 09:15 in Toronto. The hour has to move, and the label with it.
   const local = formatTimestamp("2026-08-14T13:15:50.911Z", "America/Toronto");
   check("a timezone shifts the clock and renames it",
-    local.startsWith("2026-08-14 09:15") && !local.includes("UTC"), local);
+    local.startsWith("Aug 14, 2026 at 9:15 AM") && !local.includes("UTC"), local);
+  // The abbreviation, not the offset. en-GB and en-CA render this as "GMT-4",
+  // which is why notifications were not saying EDT.
+  check("  by the name people use, not the offset",
+    local.endsWith(" EDT"), local);
   check("  and a zone crossing midnight moves the date too",
-    formatTimestamp("2026-08-14T02:30:00Z", "America/Toronto").startsWith("2026-08-13 22:30"),
+    formatTimestamp("2026-08-14T02:30:00Z", "America/Toronto").startsWith("Aug 13, 2026 at 10:30 PM"),
     formatTimestamp("2026-08-14T02:30:00Z", "America/Toronto"));
 
   // Intl throws on an unknown zone, and a thrown formatter takes the email.
@@ -299,7 +306,7 @@ function check(name: string, ok: boolean, got?: unknown) {
   for (const f of ["src/alarms/evaluate.ts", "src/alarms/securityNotify.ts"]) {
     const src = fs.readFileSync(path.join(__dirname, f), "utf8");
     check(`  ${f.split("/").pop()} formats the time it sends`,
-      /time:\s*formatTimestamp\(/.test(src),
+      /time:\s*formatTimestampAcross\(/.test(src),
       "this sender still puts a raw ISO string in the email");
   }
 }

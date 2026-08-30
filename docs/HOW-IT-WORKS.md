@@ -2214,20 +2214,30 @@ than watched. It would read zero forever, which looks exactly like compliance.
 
 ## What time a notification says it is
 
-`{{time}}` renders as `2026-08-30 10:30 EDT`: the abbreviation people use, never
-the IANA name, and it follows daylight saving rather than being fixed. A zone
-with no abbreviation gives its offset instead (`GMT+5:30`).
+`{{time}}` renders as `Aug 30, 2026 at 10:30 AM EDT`: a named month, a
+twelve-hour clock, and the abbreviation people use rather than the IANA name.
 
-Which clock it is on depends on the channel, and the two differ for a reason
-that is not effort:
+**The locale is load-bearing.** The formatter asks in `en-US`, because `en-GB`
+and `en-CA` render American zones as `GMT-4`, which is correct and is not what
+anybody there calls it. A zone with no letter code, which is most of the world,
+gives its offset instead (`GMT+5:30`).
 
-| Channel | Granularity | Why |
+**Everybody on a group has their own timezone**, set on their row in the Groups
+tab, in either column. What that does then depends on the channel, and the
+difference is physics rather than effort:
+
+| Channel | What happens | Why |
 | --- | --- | --- |
-| **Teams** | per person | The flow is called once per address, so each call can carry that person's own rendering |
-| **Email** | per group | One SNS publish reaches every subscriber of the topic with the identical body, so there is no per-person text to put a per-person time in |
+| **Teams** | Rendered in that person's zone alone | The flow is called once per address, so each call carries its own rendering |
+| **Email** | One body naming every zone its people are in: `10:30 AM EDT (7:30 AM PDT)` | One SNS publish hands every subscriber the identical body. There is no per-person text, so picking one person's zone would be wrong for the rest |
 
-A Teams recipient's own zone wins, then the group's, then the organization's,
-which is UTC unless somebody changed it. Both are set in the Groups tab.
+The date appears once and the other clocks carry only the time, because a second
+full date invites reading it as a second event.
+
+The chain is: the person's zone, then their group's, then the organization's
+default, which is set at the top of the Groups tab and is UTC until changed.
+Somebody added to a group has none of their own, so they read in the group's,
+and a group with none reads in the organization's.
 
 Only `{{time}}` moves. Every other value in a message is the reading that was
 taken, so two people in two countries are never told different numbers about one
@@ -2236,6 +2246,23 @@ event, only the same event on their own clock.
 An unrecognised zone is refused when it is saved rather than further down, where
 it is not an error at all: it renders as UTC, and the only symptom is a
 timestamp quietly hours out.
+
+## Removing somebody who never confirmed
+
+AWS cannot withdraw a pending SNS subscription. It has no ARN to unsubscribe and
+simply expires after three days, so the X on an unconfirmed row did nothing,
+reported success, and left the person in the list.
+
+The address is recorded as revoked on the group instead, and that is enforced in
+both directions:
+
+- a still-pending invitation is hidden, so the button does what it appears to;
+- one **confirmed afterwards is unsubscribed on sight**. Without that half, a
+  person removed from a group could click a two-day-old link and start receiving
+  its alarms while appearing on nobody's screen.
+
+Adding them back clears the record, or their new invitation would be hidden and
+then cancelled behind them.
 
 ## What a notification says on each channel
 
@@ -2694,6 +2721,39 @@ credentials anyway. Activity is not gated. It filters itself to AWS rows, becaus
 an account running guardrails needs the record of what they did.
 
 ---
+
+## When the desktop app checks for an update
+
+The check needs a GitHub App token, that token comes from Secrets Manager, and
+so **AWS has to be reachable before GitHub can be asked anything**. That
+coupling is structural: there is no credential to check with until somebody has
+signed in.
+
+What is not structural is treating "not yet" as "not until you relaunch", which
+it did in three ways:
+
+| Situation | What happened | Now |
+| --- | --- | --- |
+| AWS not reachable within five minutes | Gave up for half an hour; signing in a minute later changed nothing | Keeps retrying |
+| No GitHub App token | Reported an error and returned. **Permanent in an AWS-only account**, which holds no App key by design, so it could never check at all | Waits, and starts on its own if you switch to an account that has one |
+| Switching into an account with an App | Nothing re-triggered a check | Picked up by the retry |
+
+So it retries every 20 seconds until a check actually runs, then settles into
+the ordinary 30-minute interval. Each attempt is one local HTTP call and one
+function call inside the same process, so retrying costs nothing worth saving.
+
+A check that ran and *failed* counts as having run: GitHub being unreachable is
+the interval's problem, not a reason to poll every twenty seconds.
+
+Each distinct reason for waiting is logged once rather than on every retry,
+because the AWS-only case is normal and permanent there, and a line repeating
+for ever is one nobody reads. The reasons reset after a successful check, so a
+later failure explains itself rather than being silenced by something said an
+hour ago.
+
+The token is read by calling into the backend running in the same process. It
+was once served over an unauthenticated `GET /auth/system-token`, which put an
+org-wide admin token behind anything that could open a socket to the app.
 
 ## Where the code runs
 

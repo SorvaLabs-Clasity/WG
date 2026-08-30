@@ -2,7 +2,7 @@ import {
   conditionsFor, intervalFor, isDue, isBreaching, metricValue, step,
   severityRank, type AlarmState,
 } from "./conditions";
-import { buildMessage, formatTimestamp } from "./message";
+import { buildMessage, formatTimestamp, formatTimestampAcross } from "./message";
 import type { WidgetLike, WidgetRows } from "./widgetValues";
 
 /**
@@ -40,7 +40,7 @@ export interface EvaluatorDeps {
   computeRows: (widget: WidgetLike) => Promise<WidgetRows>;
   publish: (topicArn: string, subject: string, body: string,
     teamsText?: { subject: string; body: string },
-    renderFor?: (timeZone: string, channel: "email" | "teams") => { subject: string; body: string },
+    renderFor?: (timeZones: string[], channel: "email" | "teams") => { subject: string; body: string },
   ) => Promise<boolean>;
   saveRuntime: (id: string, runtime: {
     state: AlarmState; cleanStreak: number; lastCheckedAt: string;
@@ -146,8 +146,8 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
           state: fire === "alarm" ? "ALARM" : "OK",
           org: deps.org,
         };
-        const varsFor = (zone?: string) => ({ ...base, time: formatTimestamp(nowIso, zone) });
-        const vars = varsFor(deps.timezone);
+        const varsFor = (zones: string[]) => ({ ...base, time: formatTimestampAcross(nowIso, zones) });
+        const vars = varsFor(deps.timezone ? [deps.timezone] : []);
         const { subject, body } = buildMessage(alarm.subjectTemplate, alarm.bodyTemplate, vars);
 
         // Rendered from the same variables, so the two channels can never
@@ -170,8 +170,8 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
          * numbers about the same event, only the same event at their own
          * clock.
          */
-        const renderFor = (zone: string, channel: "email" | "teams") => {
-          const v = varsFor(zone);
+        const renderFor = (zones: string[], channel: "email" | "teams") => {
+          const v = varsFor(zones);
           return channel === "teams" && (alarm.teamsSubjectTemplate || alarm.teamsBodyTemplate)
             ? buildMessage(
                 alarm.teamsSubjectTemplate || alarm.subjectTemplate,

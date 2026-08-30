@@ -5,10 +5,12 @@ import {
   useAddGroupMember, useRemoveGroupMember, useTestGroup,
   useAddGroupTeams, useRemoveGroupTeams,
   useSetRecipientTimeZone, useSetGroupTimeZone,
+  useSecuritySettings, useSaveSecuritySettings,
 } from "../hooks/useAlarms";
 import { Empty, Spinner, Note, Button, SURFACE, TYPE } from "../design";
 import type { EmailGroup } from "../api/alarms";
-import ZonePicker, { abbreviation } from "./ZonePicker";
+import ZonePicker from "./ZonePicker";
+import { zoneShort } from "../lib/zones";
 
 /**
  * Who gets told, and by which channel.
@@ -30,13 +32,6 @@ import ZonePicker, { abbreviation } from "./ZonePicker";
  */
 
 /** Members who will actually receive something. Pending ones will not. */
-/** "New York (EDT)", which is what the message will actually say. */
-function zoneLabel(zone: string): string {
-  const abbr = abbreviation(zone);
-  const city = zone.split("/").pop()?.replace(/_/g, " ") ?? zone;
-  return abbr ? `${city} (${abbr})` : city;
-}
-
 function reachOf(g: EmailGroup): { live: number; pending: number } {
   const live = g.members.filter(m => m.confirmed).length;
   return { live: live + (g.teamsRecipients ?? []).length, pending: g.members.length - live };
@@ -207,10 +202,24 @@ function GroupCard({ group, onNotice, onError }: {
                     <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide
                                      text-amber-700 dark:text-amber-500">pending</span>
                   )}
+                  {/* Their own zone, the same control as the Teams column.
+                      One email cannot be written in two clocks, so it is
+                      written in all of them and each person finds their own. */}
+                  <ZonePicker
+                    value={group.recipientZones?.[m.endpoint]}
+                    inherit={group.timeZone ? `${zoneShort(group.timeZone)} (group)` : "Group default"}
+                    onChange={zone => run(() => setPersonZone.mutateAsync({
+                      id: group.id, address: m.endpoint, timeZone: zone,
+                    }))}
+                    className="ml-auto shrink-0"
+                  />
                   <button
+                    // The address goes too. An unconfirmed subscription has no
+                    // ARN, so "PendingConfirmation" names everybody waiting
+                    // rather than this one person.
                     onClick={() => run(() => removeMember.mutateAsync(
-                      { id: group.id, subscriptionArn: m.subscriptionArn }))}
-                    title="Remove"
+                      { id: group.id, subscriptionArn: m.subscriptionArn, email: m.endpoint }))}
+                    title={m.confirmed ? "Remove" : "Cancel this invitation"}
                     className="shrink-0 w-6 h-6 grid place-items-center rounded-md text-slate-300 dark:text-slate-600
                                opacity-0 group-hover/row:opacity-100 focus:opacity-100
                                hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all"
@@ -257,7 +266,7 @@ function GroupCard({ group, onNotice, onError }: {
                       that person's own rendering of the time. */}
                   <ZonePicker
                     value={group.recipientZones?.[address]}
-                    inherit={group.timeZone ? `${zoneLabel(group.timeZone)} (group)` : "Group default"}
+                    inherit={group.timeZone ? `${zoneShort(group.timeZone)} (group)` : "Group default"}
                     onChange={zone => run(() => setPersonZone.mutateAsync({
                       id: group.id, address, timeZone: zone,
                     }))}
@@ -299,6 +308,12 @@ export default function EmailGroupsPanel() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
+  // The organization's default zone. It is the same value the Security tab
+  // writes, not a second one: two org defaults that could disagree is worse
+  // than one in a place somebody has to go looking for.
+  const { data: security } = useSecuritySettings(true);
+  const saveSecurity = useSaveSecuritySettings();
+
   if (isLoading) return <div className="py-20 flex justify-center"><Spinner /></div>;
 
   const list = groups ?? [];
@@ -309,6 +324,35 @@ export default function EmailGroupsPanel() {
           this is set, and a screen full of Teams fields over a missing pipe is
           how somebody adds twelve addresses that receive nothing. */}
       <TeamsFlowPanel />
+
+      {/* The bottom of the fallback chain, and the only part of it that is not
+          on a row somewhere below. A person's zone, then their group's, then
+          this. Somebody added to a group with no zone of their own reads times
+          in whatever this says. */}
+      <div className={`${SURFACE.card} px-5 py-4`}>
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="min-w-0">
+            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+              Default timezone
+            </h3>
+            <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+              Used for anybody, and any group, that has not chosen one.
+            </p>
+          </div>
+          <div className="ml-auto shrink-0">
+            <ZonePicker
+              value={security?.timezone && security.timezone !== "UTC" ? security.timezone : undefined}
+              inherit="UTC"
+              onChange={zone => {
+                setError(""); setNotice("");
+                saveSecurity.mutateAsync({ timezone: zone || "UTC" })
+                  .then(() => setNotice("Default timezone saved."))
+                  .catch((e: any) => setError(e?.message || "Could not save that."));
+              }}
+            />
+          </div>
+        </div>
+      </div>
 
       <div className={`${SURFACE.card} px-5 py-4`}>
         <div className="flex items-end gap-3 flex-wrap">

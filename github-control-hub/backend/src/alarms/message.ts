@@ -191,22 +191,80 @@ export function formatTimestamp(iso: string | undefined, timeZone = "UTC"): stri
   if (Number.isNaN(d.getTime())) return String(iso);
 
   try {
-    // en-CA for the year-month-day ordering, and timeZoneName so the reader is
-    // never left guessing which clock this is.
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone, year: "numeric", month: "2-digit", day: "2-digit",
-      hour: "2-digit", minute: "2-digit", hour12: false, timeZoneName: "short",
+    // "30 Aug 2026 at 10:30 AM EDT".
+    //
+    // Was "2026-08-30 14:30 UTC": correct, and read like a log line. A named
+    // month cannot be misread the way 08-09 can, depending on which side of
+    // the Atlantic the reader learned to write dates, and a twelve-hour clock
+    // is what the people receiving these actually use.
+    // en-US, and the locale is load-bearing rather than incidental: it is what
+    // decides whether the zone reads "EDT" or "GMT-4". en-GB and en-CA give the
+    // offset for American zones, which is correct and is not what anybody
+    // there calls it.
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone, month: "short", day: "numeric", year: "numeric",
+      hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short",
     }).formatToParts(d);
     const at = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+
+    const meridiem = at("dayPeriod").toUpperCase();
     const zone = at("timeZoneName");
-    return `${at("year")}-${at("month")}-${at("day")} ${at("hour")}:${at("minute")}` +
-           (zone ? ` ${zone}` : "");
+
+    return `${at("month")} ${at("day")}, ${at("year")} at ${at("hour")}:${at("minute")}`
+      + (meridiem ? ` ${meridiem}` : "")
+      + (zone ? ` ${zone}` : "");
   } catch {
     // An unknown zone name throws rather than falling back, and a rejected
     // timestamp would take the whole email with it. UTC is always valid.
-    const p = (n: number) => String(n).padStart(2, "0");
-    return `${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ` +
-           `${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`;
+    return formatTimestamp(iso, "UTC");
+  }
+}
+
+/**
+ * One moment, written in every clock that will read it.
+ *
+ * Teams is delivered per person, so it gets each recipient's own zone and this
+ * is never needed there. Email is one SNS publish to one topic, which hands
+ * every subscriber the identical body: there is no per-person text, and no
+ * amount of configuration changes that.
+ *
+ * So rather than picking one person's zone and being wrong for the rest, or
+ * offering a per-person setting for email that could never take effect, the one
+ * body carries them all: "Aug 30, 2026 at 10:30 AM EDT (7:30 AM PDT)". Each
+ * reader finds their own, and nobody has to subtract.
+ *
+ * Ordered as given, so the group's own zone leads. Duplicates are dropped,
+ * which is the ordinary case: most groups are in one place and this then reads
+ * exactly as a single zone.
+ */
+export function formatTimestampAcross(iso: string | undefined, zones: string[]): string {
+  if (!iso) return "";
+  const seen = new Set<string>();
+  const distinct = zones.filter(z => z && !seen.has(z) && seen.add(z));
+  if (distinct.length === 0) return formatTimestamp(iso);
+  const primary = formatTimestamp(iso, distinct[0]);
+  if (distinct.length === 1) return primary;
+
+  // The others carry the clock and the zone, not the date again: a second full
+  // date invites reading it as a second event.
+  const rest = distinct.slice(1)
+    .map(z => shortClock(iso, z))
+    .filter(Boolean);
+  return rest.length ? `${primary} (${rest.join(", ")})` : primary;
+}
+
+/** Just the time and its zone: "7:30 AM PDT". */
+function shortClock(iso: string, timeZone: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone, hour: "numeric", minute: "2-digit", hour12: true, timeZoneName: "short",
+    }).formatToParts(d);
+    const at = (t: string) => parts.find(p => p.type === t)?.value ?? "";
+    return `${at("hour")}:${at("minute")} ${at("dayPeriod").toUpperCase()} ${at("timeZoneName")}`.trim();
+  } catch {
+    return "";
   }
 }
 

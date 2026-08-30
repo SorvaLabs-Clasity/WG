@@ -94,15 +94,15 @@ export const deleteAlarmApi = (id: string) =>
 export const fetchGroups = () => apiGet<EmailGroup[]>("/alarms/groups");
 
 /**
- * One person's zone, for Teams only.
+ * One person's zone, in either column.
  *
- * Email leaves as a single SNS publish to the group's topic, so every
- * subscriber gets the same body and there is nothing per person to change.
- * `setGroupTimeZone` is the granularity that channel has.
+ * Teams is rendered in it exactly. Email cannot be, because one SNS publish
+ * hands every subscriber the same body, so the one email names every zone its
+ * people are in and each reader finds their own.
  */
 export const setRecipientTimeZone = (id: string, address: string, timeZone: string) =>
   apiPut<{ recipientZones: Record<string, string> }>(
-    `/alarms/groups/${id}/teams/${encodeURIComponent(address)}/timezone`, { timeZone });
+    `/alarms/groups/${id}/people/${encodeURIComponent(address)}/timezone`, { timeZone });
 
 export const setGroupTimeZone = (id: string, timeZone: string) =>
   apiPut<{ timeZone?: string }>(`/alarms/groups/${id}/timezone`, { timeZone });
@@ -129,9 +129,18 @@ export const deleteGroupApi = (id: string, force = false) =>
   apiDelete<{ message: string }>(`/alarms/groups/${id}${force ? "?force=1" : ""}`);
 export const addGroupMemberApi = (id: string, email: string) =>
   apiPost<{ message: string }>(`/alarms/groups/${id}/members`, { email });
-export const removeGroupMemberApi = (id: string, subscriptionArn: string) =>
+/**
+ * The address goes too, because an unconfirmed subscription has no ARN.
+ *
+ * AWS cannot withdraw a pending invitation, so the server records the address
+ * as revoked instead. Without it here, the only identifier for that row is the
+ * literal string "PendingConfirmation", which names everybody who has not
+ * clicked their link rather than the one being cancelled.
+ */
+export const removeGroupMemberApi = (id: string, subscriptionArn: string, email?: string) =>
   apiDelete<{ message: string }>(
-    `/alarms/groups/${id}/members?subscriptionArn=${encodeURIComponent(subscriptionArn)}`);
+    `/alarms/groups/${id}/members?subscriptionArn=${encodeURIComponent(subscriptionArn)}`
+    + (email ? `&email=${encodeURIComponent(email)}` : ""));
 export const testGroupApi = (id: string) =>
   apiPost<{ message: string }>(`/alarms/groups/${id}/test`, {});
 

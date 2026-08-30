@@ -123,8 +123,9 @@ export const useAddGroupMember = () =>
   useAlarmMutation(({ id, email }: { id: string; email: string }) => addGroupMemberApi(id, email),
     ["alarms", "groups"]);
 export const useRemoveGroupMember = () =>
-  useAlarmMutation(({ id, subscriptionArn }: { id: string; subscriptionArn: string }) =>
-    removeGroupMemberApi(id, subscriptionArn), ["alarms", "groups"]);
+  useAlarmMutation(({ id, subscriptionArn, email }:
+    { id: string; subscriptionArn: string; email?: string }) =>
+    removeGroupMemberApi(id, subscriptionArn, email), ["alarms", "groups"]);
 export const useTestGroup = () =>
   useAlarmMutation((id: string) => testGroupApi(id), ["alarms", "groups"]);
 

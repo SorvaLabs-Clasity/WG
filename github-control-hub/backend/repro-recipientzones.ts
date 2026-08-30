@@ -20,7 +20,7 @@
  * Run:  npx tsx repro-recipientzones.ts   from github-control-hub/backend
  */
 import fs from "node:fs";
-import { formatTimestamp } from "./src/alarms/message";
+import { formatTimestamp, formatTimestampAcross } from "./src/alarms/message";
 import { evaluateAlarms } from "./src/alarms/evaluate";
 
 let failures = 0;
@@ -34,8 +34,23 @@ function check(name: string, ok: boolean, got?: unknown) {
   {
     const t = "2026-08-30T14:30:00Z";
     check("a time says which clock it is on",
-      formatTimestamp(t, "America/New_York") === "2026-08-30 10:30 EDT",
+      formatTimestamp(t, "America/New_York") === "Aug 30, 2026 at 10:30 AM EDT",
       formatTimestamp(t, "America/New_York"));
+
+    // The locale is load-bearing, not incidental: en-GB and en-CA render
+    // American zones as "GMT-4", which is correct and is not what anybody
+    // there calls it. This was why notifications did not say EDT.
+    check("  because the formatter asks in a locale that has abbreviations",
+      /"en-US"/.test(fs.readFileSync("./src/alarms/message.ts", "utf8")),
+      "en-GB gives GMT-4 where en-US gives EDT");
+
+    check("  on a twelve-hour clock",
+      / (AM|PM) /.test(formatTimestamp(t, "America/New_York")),
+      "14:30 is not how the people receiving these read a time");
+
+    check("  with a named month, which cannot be read the wrong way round",
+      /^Aug 30, 2026/.test(formatTimestamp(t, "America/New_York")),
+      "08-09 is two different days depending on where you learned to write dates");
 
     // The abbreviation, never the IANA name. "10:30 America/New_York" is the
     // database's name for the zone, not a thing anybody says.
@@ -55,6 +70,39 @@ function check(name: string, ok: boolean, got?: unknown) {
 
     check("an unknown zone falls back rather than throwing",
       formatTimestamp(t, "Not/AZone").endsWith("UTC"),
+      "a rejected timestamp would take the whole message with it");
+  }
+
+  // ── one email, every clock on it ────────────────────────────────────
+  //
+  // Teams is called once per address and gets each person's own zone. Email is
+  // one publish to one topic and hands every subscriber the same body, so the
+  // choice is not whose zone but how many. Naming them all is the only answer
+  // that is right for everybody.
+  {
+    const t = "2026-08-30T14:30:00Z";
+    check("one zone reads as one zone",
+      formatTimestampAcross(t, ["America/New_York"]) === "Aug 30, 2026 at 10:30 AM EDT",
+      formatTimestampAcross(t, ["America/New_York"]));
+
+    check("  and several are all named, the group's first",
+      formatTimestampAcross(t, ["America/New_York", "America/Los_Angeles"])
+        === "Aug 30, 2026 at 10:30 AM EDT (7:30 AM PDT)",
+      formatTimestampAcross(t, ["America/New_York", "America/Los_Angeles"]));
+
+    // The date once. Repeating it invites reading the second clock as a second
+    // event, which on a date boundary is exactly the confusion to avoid.
+    check("  carrying the date once, and the clock for the rest",
+      (formatTimestampAcross(t, ["America/New_York", "Asia/Tokyo"]).match(/2026/g) ?? []).length === 1,
+      formatTimestampAcross(t, ["America/New_York", "Asia/Tokyo"]));
+
+    check("  with duplicates dropped, so one place reads plainly",
+      formatTimestampAcross(t, ["UTC", "UTC"]) === formatTimestampAcross(t, ["UTC"]),
+      "most groups are in one place and should not see it written twice");
+
+    check("  and an unknown zone left out rather than breaking the line",
+      formatTimestampAcross(t, ["America/New_York", "Not/AZone"])
+        === "Aug 30, 2026 at 10:30 AM EDT",
       "a rejected timestamp would take the whole message with it");
   }
 
@@ -90,13 +138,13 @@ function check(name: string, ok: boolean, got?: unknown) {
       typeof one?.renderFor === "function",
       "without it nothing downstream can write the time any other way");
 
-    const ny = one.renderFor("America/New_York", "email");
+    const ny = one.renderFor(["America/New_York"], "email");
     check("  which writes the same event on a different clock",
-      ny.body === "2 failing at 2026-08-30 10:30 EDT", ny.body);
+      ny.body === "2 failing at Aug 30, 2026 at 10:30 AM EDT", ny.body);
 
     // The reading is the fact; the clock is the reader's. Two people must never
     // be told different numbers about one event.
-    const tokyo = one.renderFor("Asia/Tokyo", "email");
+    const tokyo = one.renderFor(["Asia/Tokyo"], "email");
     check("  changing only the time, never the reading",
       ny.body.startsWith("2 failing") && tokyo.body.startsWith("2 failing")
       && ny.body !== tokyo.body,
@@ -110,22 +158,27 @@ function check(name: string, ok: boolean, got?: unknown) {
   {
     const notify = fs.readFileSync("./src/services/notifyService.ts", "utf8");
 
-    check("a Teams recipient's own zone wins",
-      /group!\.recipientZones\?\.\[address\] \?\? group!\.timeZone/.test(notify),
-      "theirs, then the group's, and only then whatever was already rendered");
+    check("a person's own zone wins over the group's",
+      /const exact = zones\[address\];/.test(notify)
+      && /\|\| group\.timeZone;/.test(notify),
+      "theirs, then the group's, and only then the organization's");
+
+    check("  matched however they were capitalised",
+      /k\.toLowerCase\(\) === address\.toLowerCase\(\)/.test(notify),
+      "one person typed into two groups two ways is still one person");
 
     check("  and each card is built for that person",
       /people\.map\(\(address: string\) => sendToPerson\(flowUrl, address, cardFor\(address\)\)\)/.test(notify),
       "one render for everybody is what made this an organization-wide setting");
 
     check("email uses the group's zone, since it has only one",
-      /renderFor\(group\.timeZone, "email"\)/.test(notify),
+      /renderFor\(emailZones, "email"\)/.test(notify),
       "one publish reaches every subscriber with one body");
 
     // A per-person email zone would be a control that silently did nothing.
-    check("  and there is no per-person email zone pretending to work",
-      !/recipientZones[\s\S]{0,120}publishEmail/.test(notify),
-      "SNS gives every subscriber the same body, so it could never take effect");
+    check("  and the email carries every zone rather than picking one",
+      /const emailZones = group && renderFor \? zonesOf\(group\) : \[\]/.test(notify),
+      "SNS gives every subscriber the same body, so one chosen zone is wrong for the rest");
 
     const routes = fs.readFileSync("./src/routes/alarms.ts", "utf8");
     check("a zone is checked against the runtime before it is stored",
@@ -170,6 +223,76 @@ function check(name: string, ok: boolean, got?: unknown) {
     check("a subject that really is gone is still refused",
       /found \? \{ id, type: "guardrail", title: `Guardrail: \$\{found\.name\}` \} : undefined/.test(routes),
       "watching a deleted rule reports all-clear for ever");
+  }
+
+  // ── cancelling an invitation nobody has accepted ────────────────────
+  //
+  // AWS cannot withdraw a pending subscription: it has no ARN to unsubscribe
+  // and simply expires after three days. So the X reported success, did
+  // nothing, and left the person in the list.
+  {
+    const notify = fs.readFileSync("./src/services/notifyService.ts", "utf8");
+    const routes = fs.readFileSync("./src/routes/alarms.ts", "utf8");
+
+    check("cancelling a pending invitation is recorded, not silently dropped",
+      /if \(subscriptionArn === "PendingConfirmation"\) \{/.test(routes)
+      && /revokedPending: revoked/.test(routes),
+      "removeMember returned early for these, and the caller said Removed");
+
+    check("  identified by the address, since the ARN names everybody waiting",
+      /req\.query\.email/.test(routes),
+      '"PendingConfirmation" is the same string for every unconfirmed row');
+
+    check("  and refuses rather than guessing when it is missing",
+      /Cancelling an unconfirmed invitation needs the address/.test(routes),
+      "cancelling the wrong person is worse than not cancelling");
+
+    check("a revoked invitation disappears from the list",
+      /if \(denied\.has\(endpoint\.toLowerCase\(\)\)\)/.test(notify),
+      "the row staying put is what made the button look broken");
+
+    // The half that makes the list true rather than cosmetic. Without it,
+    // somebody removed from a group could click a two-day-old link and start
+    // receiving its alarms while showing on nobody's screen.
+    check("  and one confirmed afterwards is unsubscribed on sight",
+      /if \(confirmed\) \{[\s\S]{0,220}removeMember\(arn\)/.test(notify),
+      "hiding a subscriber who still receives mail is worse than showing them");
+
+    check("  while a failure there keeps them hidden rather than back on screen",
+      /catch\(err =>[\s\S]{0,140}Could not unsubscribe revoked/.test(notify),
+      "a transient error must not undo the removal in the UI");
+
+    check("adding somebody back clears the record",
+      /revokedPending: \(group\.revokedPending \?\? \[\]\)\s*\n?\s*\.filter/.test(routes),
+      "otherwise their new invitation is hidden and then cancelled behind them");
+  }
+
+  // ── zones are named the way a message names them ────────────────────
+  {
+    const zones = fs.readFileSync("../frontend/src/lib/zones.ts", "utf8");
+
+    check("a zone with letters is labelled by them",
+      /return \/\^GMT\[\+-\]\/\.test\(name\) \|\| name === "" \? "" : name;/.test(zones),
+      "`short` gives an offset where there is no abbreviation, and that is not a code");
+
+    check("  and the offset is always included",
+      /timeZoneName: "shortOffset"/.test(zones),
+      "a code alone does not say how far from anywhere else it is");
+
+    check("  with the city kept, so four hundred zones stay tellable apart",
+      /\[code, offset, city\]\.filter\(Boolean\)\.join\(" · "\)/.test(zones),
+      "dozens of rows reading EDT with no way to pick the right one");
+
+    // One definition, used by both lists, or they drift into two vocabularies
+    // for the same thing.
+    for (const f of [
+      "../frontend/src/components/ZonePicker.tsx",
+      "../frontend/src/components/DevAlertSettings.tsx",
+    ]) {
+      check(`  and ${f.split("/").pop()} uses it`,
+        /from "\.\.\/lib\/zones"/.test(fs.readFileSync(f, "utf8")),
+        "two labellers is two answers to the same question");
+    }
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

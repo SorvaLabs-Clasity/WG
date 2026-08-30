@@ -340,75 +340,114 @@ function readSystemToken(): string {
 /** How often to look, once the first check has run. */
 const UPDATE_INTERVAL_MS = 30 * 60_000;
 
-/** How long to keep waiting for AWS before saying so and trying again later. */
-const AUTH_WAIT_MS = 5 * 60_000;
+/** How often to retry while the first check still cannot run. */
+const RETRY_MS = 20_000;
 
 /**
  * Check for an update, once the credentials to do it exist.
  *
  * The token comes from Secrets Manager, so AWS has to be reachable before
- * GitHub can be asked anything, that coupling is structural and cannot be
- * removed here. What can be removed is the part that made it permanent: this
- * polled for five minutes and then cleared its interval for the lifetime of the
- * process. Signing in to AWS after that window meant no update check until the
- * app was restarted, and nothing on screen said so. An app people leave open
- * for days would never look again.
+ * GitHub can be asked anything. That coupling is structural and cannot be
+ * removed here. What can be removed is every way that turned "not yet" into
+ * "not until you relaunch", and there were three:
  *
- * So it keeps its own clock: give up on *this* attempt after five minutes, then
- * try the whole thing again on the ordinary interval.
+ *   1. **AWS not reachable within five minutes.** Sitting on the sign-in screen
+ *      for longer than that, or an expired SSO session, and the attempt gave up
+ *      for the next half hour. Signing in a minute later changed nothing.
+ *
+ *   2. **No GitHub App token.** An AWS-only account holds no App key on
+ *      purpose, so `getSystemToken()` is empty there and always will be. This
+ *      reported an error and returned, every half hour, for ever. In that kind
+ *      of account the app could never check for an update at all.
+ *
+ *   3. **Switching into an account that has one.** Nothing re-triggered a
+ *      check, so the app stayed on the half-hour clock started at launch.
+ *
+ * All three are the same shape: a reason to wait was treated as a reason to
+ * stop. So this retries on a short clock until a check actually runs, and only
+ * then settles into the ordinary interval. Each attempt is a local HTTP call
+ * and a function call in this process, so retrying costs nothing worth saving.
  */
 function scheduleUpdateChecks(): void {
-  const attempt = async (): Promise<void> => {
-    const deadline = Date.now() + AUTH_WAIT_MS;
-
-    while (Date.now() < deadline) {
-      let reachable = false;
-      try {
-        const status = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/status`);
-        reachable = !!status.aws?.dynamoReachable;
-      } catch (err: any) {
-        console.log("[updater] backend not answering yet:", err?.message || "");
-      }
-
-      if (reachable) {
-        const token = readSystemToken();
-        if (!token) {
-          // Distinct from a failed check: the App credentials are missing or
-          // broken, and no amount of retrying this minute will help.
-          console.error(
-            "[updater] AWS is reachable but there is no GitHub App token, so the update " +
-            "check cannot run. Check the App credentials in Secrets Manager.",
-          );
-          sendUpdateStatus("error", "No GitHub App token, cannot check for updates");
-          return;
-        }
-        process.env.GH_TOKEN = token;
-        sendUpdateStatus("checking");
-        console.log("[updater] checking for updates…");
-        try {
-          const result = await autoUpdater.checkForUpdates();
-          console.log("[updater] check returned:",
-            result?.updateInfo?.version ?? "no version in response");
-        } catch (err: any) {
-          // The "error" handler above has already reported it; this stops the
-          // rejection becoming an unhandled one.
-          console.error("[updater] check threw:", err?.message ?? err);
-        }
-        return;
-      }
-
-      await new Promise(r => setTimeout(r, 5000));
-    }
-
-    console.warn(
-      "[updater] AWS was not reachable within five minutes, so no update check ran. " +
-      `Trying again in ${UPDATE_INTERVAL_MS / 60_000} minutes. Signing in to AWS will ` +
-      "make the next attempt work without restarting.",
-    );
+  // Said once, not every twenty seconds. The state is normal in an AWS-only
+  // account and a log line repeating for ever is one nobody reads.
+  let reported = "";
+  const sayOnce = (key: string, say: () => void) => {
+    if (reported === key) return;
+    reported = key;
+    say();
   };
 
-  void attempt();
-  setInterval(() => { void attempt(); }, UPDATE_INTERVAL_MS);
+  /** True only when a check actually ran, which is what ends the retrying. */
+  const attempt = async (): Promise<boolean> => {
+    let reachable = false;
+    try {
+      const status = await httpGetJson(`http://localhost:${BACKEND_PORT}/auth/status`);
+      reachable = !!status.aws?.dynamoReachable;
+    } catch (err: any) {
+      sayOnce("backend", () =>
+        console.log("[updater] backend not answering yet:", err?.message || ""));
+      return false;
+    }
+
+    if (!reachable) {
+      sayOnce("aws", () => console.log(
+        "[updater] waiting for AWS. The update check needs a token from Secrets " +
+        "Manager, so it cannot run before sign-in. It will start on its own.",
+      ));
+      return false;
+    }
+
+    const token = readSystemToken();
+    if (!token) {
+      // Not fatal, and not permanent. An AWS-only account has no App key by
+      // design, and switching to an account that has one makes this work
+      // without a relaunch.
+      // Logged, not sent to the window. The overlay exists to explain a
+      // download in progress, and there is nothing here for somebody to wait
+      // for: in an AWS-only account this is simply how it is.
+      sayOnce("token", () => console.log(
+        "[updater] AWS is reachable but there is no GitHub App token, so the update " +
+        "check cannot run yet. That is expected in an AWS-only account; switching to " +
+        "one with the App configured will start it without a relaunch.",
+      ));
+      return false;
+    }
+
+    process.env.GH_TOKEN = token;
+    sendUpdateStatus("checking");
+    console.log("[updater] checking for updates…");
+    try {
+      const result = await autoUpdater.checkForUpdates();
+      console.log("[updater] check returned:",
+        result?.updateInfo?.version ?? "no version in response");
+    } catch (err: any) {
+      // The "error" handler has already reported it; this stops the rejection
+      // becoming an unhandled one. Counted as having run: the credentials were
+      // there and GitHub was asked, so this is the ordinary interval's problem
+      // now, not a reason to keep retrying every twenty seconds.
+      console.error("[updater] check threw:", err?.message ?? err);
+    }
+    return true;
+  };
+
+  let retry: ReturnType<typeof setInterval> | null = null;
+
+  const tick = async () => {
+    if (!(await attempt())) return;
+    if (retry) {
+      clearInterval(retry);
+      retry = null;
+      // Reset, so a later failure explains itself again rather than being
+      // silenced by something said an hour ago.
+      reported = "";
+      setInterval(() => { void attempt(); }, UPDATE_INTERVAL_MS);
+      console.log(`[updater] first check done, now every ${UPDATE_INTERVAL_MS / 60_000} minutes`);
+    }
+  };
+
+  retry = setInterval(() => { void tick(); }, RETRY_MS);
+  void tick();
 }
 
 app.whenReady().then(main);

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDevAlerts, useSaveDevAlerts, useTestDevAlerts } from "../hooks/useMe";
 import { Note, Button, Spinner, SURFACE } from "../design";
+import { allZones, zoneLabel } from "../lib/zones";
 import type { DigestPrefs, EventPrefs } from "../api/me";
 
 /**
@@ -116,36 +117,6 @@ function nextRun(digest: DigestPrefs): string | null {
 const clockLabel = (h: number, m: number) =>
   `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
 
-/** Every zone the browser knows, labelled with what it currently reads. */
-function useZones(current: string) {
-  return useMemo(() => {
-    const all: string[] = (Intl as any).supportedValuesOf?.("timeZone") ?? [];
-    // Whatever is stored stays selectable even if this runtime has not heard
-    // of it, so opening the page cannot silently change somebody's setting.
-    const names = Array.from(new Set([...all, current].filter(Boolean))).sort();
-
-    const groups = new Map<string, Array<{ id: string; label: string }>>();
-    for (const id of names) {
-      const [region, ...rest] = id.split("/");
-      const key = rest.length ? region : "Other";
-      const offset = zoneOffset(id);
-      const label = `${rest.join("/").replace(/_/g, " ") || id}${offset ? `  ${offset}` : ""}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push({ id, label });
-    }
-    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
-  }, [current]);
-}
-
-function zoneOffset(timeZone: string): string {
-  try {
-    return new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortOffset" })
-      .formatToParts(new Date()).find(p => p.type === "timeZoneName")?.value ?? "";
-  } catch {
-    return "";
-  }
-}
-
 function Row({ label, hint, checked, onChange, disabled }: {
   label: string; hint?: string; checked: boolean;
   onChange: (v: boolean) => void; disabled?: boolean;
@@ -188,8 +159,19 @@ export default function DevAlertSettings() {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Above the loading return, so the hook count does not change between the
-  // spinner and the form.
-  const zones = useZones(digest?.timeZone ?? data?.digest?.timeZone ?? "UTC");
+  // spinner and the form. Grouped by region, and labelled the same way as the
+  // pickers in Alarms, so one zone reads identically wherever it appears.
+  const current = digest?.timeZone ?? data?.digest?.timeZone ?? "UTC";
+  const zones = useMemo(() => {
+    const groups = new Map<string, Array<{ id: string; label: string }>>();
+    for (const id of allZones(current)) {
+      const [region, ...rest] = id.split("/");
+      const key = rest.length ? region : "Other";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push({ id, label: zoneLabel(id) });
+    }
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [current]);
 
   // A pending save must not be dropped by unmounting the tab.
   useEffect(() => () => {

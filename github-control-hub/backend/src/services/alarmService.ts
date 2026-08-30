@@ -95,11 +95,24 @@ export interface EmailGroup {
    */
   recipientZones?: Record<string, string>;
   /**
-   * The zone this group's email is written in, and the default for its Teams
-   * people. Unset means the organization's zone, which is UTC unless somebody
-   * changed it.
+   * The zone this group's email is written in, and the default for its people.
+   * Unset means the organization's zone.
    */
   timeZone?: string;
+  /**
+   * Addresses whose pending invitation was cancelled.
+   *
+   * AWS offers no way to withdraw a subscription that has not been confirmed:
+   * it has no ARN to unsubscribe, and it simply expires after three days. So
+   * the X on an unconfirmed row did nothing at all, reported success, and left
+   * the person sitting in the list.
+   *
+   * Recorded here instead, and acted on in two places: the row disappears at
+   * once, and if that person confirms later, the subscription that appears is
+   * unsubscribed rather than quietly starting to deliver to somebody who was
+   * removed. Without the second half this list would be a lie by three days.
+   */
+  revokedPending?: string[];
   createdBy: string;
   createdAt: string;
   updatedAt: string;

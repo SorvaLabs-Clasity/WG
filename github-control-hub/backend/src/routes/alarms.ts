@@ -213,7 +213,10 @@ router.get("/groups", async (_req: Request, res: Response) => {
     // and would otherwise look like a working recipient.
     const withMembers = await Promise.all(groups.map(async g => {
       try {
-        return { ...withoutHooks(g), members: await listMembers(g.topicArn) };
+        return {
+          ...withoutHooks(g),
+          members: await listMembers(g.topicArn, g.revokedPending ?? []),
+        };
       } catch (err) {
         return { ...withoutHooks(g), members: [], membersError: (err as Error).message };
       }
@@ -269,6 +272,18 @@ router.post("/groups/:id/members", async (req: Request, res: Response) => {
     const email = String(req.body?.email ?? "").trim();
     if (!isValidEmail(email)) return res.status(400).json({ error: "That does not look like an email address" });
 
+    // Adding them back is the opposite of revoking them, so it has to clear the
+    // record. Left in place, their new invitation would be hidden the moment
+    // they confirmed it and then unsubscribed behind their back.
+    if ((group.revokedPending ?? []).some(r => r.toLowerCase() === email.toLowerCase())) {
+      await saveGroup({
+        ...group,
+        revokedPending: (group.revokedPending ?? [])
+          .filter(r => r.toLowerCase() !== email.toLowerCase()),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
     await addMember(group.topicArn, email);
     res.status(201).json({
       message: `AWS has emailed ${email} a confirmation link. ` +
@@ -283,6 +298,34 @@ router.delete("/groups/:id/members", async (req: Request, res: Response) => {
   try {
     const subscriptionArn = String(req.query.subscriptionArn ?? "");
     if (!subscriptionArn) return res.status(400).json({ error: "subscriptionArn is required" });
+
+    // An unconfirmed subscription has no ARN to unsubscribe, and AWS provides
+    // no way to withdraw one: it expires on its own after three days. So this
+    // used to do nothing, say "Removed", and leave them in the list.
+    //
+    // Recorded as revoked instead. `listMembers` hides them from now on, and
+    // unsubscribes them if the invitation is confirmed later.
+    if (subscriptionArn === "PendingConfirmation") {
+      const group = await getGroup(String(req.params.id));
+      if (!group) return res.status(404).json({ error: "Group not found" });
+
+      const email = String(req.query.email ?? "").trim().toLowerCase();
+      if (!email) {
+        return res.status(400).json({
+          error: "Cancelling an unconfirmed invitation needs the address, "
+            + "because there is no subscription to identify it by",
+        });
+      }
+
+      const revoked = Array.from(new Set([...(group.revokedPending ?? []), email]));
+      await saveGroup({ ...group, revokedPending: revoked, updatedAt: new Date().toISOString() });
+      await logActivity("config.updated" as any, req.user!.login, "", "alarm group",
+        `Cancelled an unconfirmed invitation to "${group.name}"`);
+      return res.json({
+        message: "Invitation cancelled. If they click the old link it will not subscribe them.",
+      });
+    }
+
     await removeMember(subscriptionArn);
     res.json({ message: "Removed" });
   } catch (error: any) {
@@ -351,24 +394,37 @@ router.delete("/groups/:id/teams/:address", async (req: Request, res: Response) 
 });
 
 /**
- * The zone one Teams recipient reads their times in.
+ * The zone one person on this group reads their times in.
  *
- * Per person because Teams is delivered per person: the flow is called once per
- * address, so each call can carry that person's own rendering of {{time}}.
+ * Set for anybody in either column. What it then does depends on the channel,
+ * and the difference is physics rather than effort:
  *
- * There is no equivalent for the email column, and that is not an oversight.
- * Email leaves through a single SNS publish to the group's topic, which hands
- * the identical body to every subscriber. `PUT /groups/:id/timezone` sets the
- * one zone that email is written in.
+ *   - **Teams** is called once per address, so that person's message is
+ *     rendered in their own zone and nobody else's.
+ *   - **Email** is one publish to one SNS topic, which hands every subscriber
+ *     the identical body. There is no per-person text, so the one body names
+ *     every zone its people are in: "10:30 AM EDT (7:30 AM PDT)". Each reader
+ *     finds their own rather than one of them being right and the rest
+ *     subtracting.
+ *
+ * Unset means the group's zone, and an unset group means the organization's.
  */
-router.put("/groups/:id/teams/:address/timezone", async (req: Request, res: Response) => {
+router.put("/groups/:id/people/:address/timezone", async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
 
     const address = decodeURIComponent(String(req.params.address));
-    const known = (group.teamsRecipients ?? [])
+
+    // Either column. Both are people on this group and both are identified by
+    // a work email address, so one map of zones covers them: an email member
+    // who is also a Teams recipient is one person with one zone, not two.
+    const teams = (group.teamsRecipients ?? [])
       .find(p => p.toLowerCase() === address.toLowerCase());
+    const subscribed = await listMembers(group.topicArn, group.revokedPending ?? [])
+      .then(ms => ms.find(m => m.endpoint.toLowerCase() === address.toLowerCase())?.endpoint)
+      .catch(() => undefined);
+    const known = teams ?? subscribed;
     if (!known) return res.status(404).json({ error: "That person is not in this group" });
 
     const raw = req.body?.timeZone;

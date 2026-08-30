@@ -210,9 +210,14 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
       /clearTimeout\(timer\.current\)/.test(alerts),
       "each save re-decides whether today's summary is owed");
 
+    // The list moved to lib/zones so this and the Alarms pickers label a zone
+    // the same way. Two labellers is two vocabularies for one thing.
     check("the timezone is chosen, not typed",
-      /supportedValuesOf\?\.\("timeZone"\)/.test(alerts) && !/placeholder="America\/New_York"/.test(alerts),
+      /from "\.\.\/lib\/zones"/.test(alerts) && !/placeholder="America\/New_York"/.test(alerts),
       "an unrecognised zone is not rejected downstream, it quietly becomes UTC");
+    check("  and labelled by the code a message will actually say",
+      /zoneLabel\(id\)/.test(alerts),
+      '"New York  GMT-4" is the database\'s name for a zone, not anybody\'s');
     check("  and when the next one arrives is stated outright",
       /Next summary \{next\}/.test(alerts),
       "a time already past today means tomorrow, which is not visible in the controls");

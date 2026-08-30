@@ -1,4 +1,4 @@
-import { buildMessage, formatTimestamp, sanitizeSubject } from "./message";
+import { buildMessage, formatTimestamp, formatTimestampAcross, sanitizeSubject } from "./message";
 import { meetsMinimumSeverity } from "./evaluate";
 import { groupBurst, describeBurst, nameAndCount, worstSeverity, type Axis } from "./grouping";
 
@@ -64,7 +64,7 @@ export interface FeedNotifyDeps {
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   publish: (topicArn: string, subject: string, body: string,
     teamsText?: { subject: string; body: string },
-    renderFor?: (timeZone: string, channel: "email" | "teams") => { subject: string; body: string },
+    renderFor?: (timeZones: string[], channel: "email" | "teams") => { subject: string; body: string },
   ) => Promise<boolean>;
   timezone: () => Promise<string>;
   org: string;
@@ -113,8 +113,8 @@ export async function notifyRenovatePr(
     org: deps.org,
     state: "ALARM",
   };
-  const varsFor = (zone: string) => ({ ...base, time: formatTimestamp(pr.openedAt, zone) });
-  const vars = varsFor(await deps.timezone());
+  const varsFor = (zones: string[]) => ({ ...base, time: formatTimestampAcross(pr.openedAt, zones) });
+  const vars = varsFor([await deps.timezone()]);
   const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, vars);
 
   return (await deps.publish(topicArn, subject, body, teamsWording(settings, vars),
@@ -139,10 +139,10 @@ export async function notifyRenovatePr(
 function renderer(
   settings: { subjectTemplate: string; bodyTemplate: string;
     teamsSubjectTemplate?: string; teamsBodyTemplate?: string },
-  varsFor: (zone: string) => Record<string, string | number | undefined>,
+  varsFor: (zones: string[]) => Record<string, string | number | undefined>,
 ) {
-  return (zone: string, channel: "email" | "teams") => {
-    const v = varsFor(zone);
+  return (zones: string[], channel: "email" | "teams") => {
+    const v = varsFor(zones);
     return channel === "teams" && (settings.teamsSubjectTemplate || settings.teamsBodyTemplate)
       ? buildMessage(
           settings.teamsSubjectTemplate || settings.subjectTemplate,
@@ -190,8 +190,8 @@ export async function notifyDependabotAlert(
     org: deps.org,
     state: "ALARM",
   };
-  const varsFor = (zone: string) => ({ ...base, time: formatTimestamp(alert.createdAt, zone) });
-  const vars = varsFor(await deps.timezone());
+  const varsFor = (zones: string[]) => ({ ...base, time: formatTimestampAcross(alert.createdAt, zones) });
+  const vars = varsFor([await deps.timezone()]);
   const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, vars);
 
   return (await deps.publish(topicArn, subject, body, teamsWording(settings, vars),
@@ -306,7 +306,7 @@ export interface FlushDeps {
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   publish: (topicArn: string, subject: string, body: string,
     teamsText?: { subject: string; body: string },
-    renderFor?: (timeZone: string, channel: "email" | "teams") => { subject: string; body: string },
+    renderFor?: (timeZones: string[], channel: "email" | "teams") => { subject: string; body: string },
   ) => Promise<boolean>;
   timezone: () => Promise<string>;
   org: string;
@@ -407,7 +407,7 @@ export async function flushPending(deps: FlushDeps): Promise<{
       return `${values.length} ${plural}`;
     };
 
-    const digestVarsFor = (zone: string) => ({
+    const digestVarsFor = (zones: string[]) => ({
       ...first.item,
       package: agreed("package", "packages"),
       title: agreed("title", "pull requests"),
@@ -428,9 +428,9 @@ export async function flushPending(deps: FlushDeps): Promise<{
       what,
       org: deps.org,
       state: "ALARM",
-      time: formatTimestamp(first.occurredAt, zone),
+      time: formatTimestampAcross(first.occurredAt, zones),
     });
-    const digestVars = digestVarsFor(tz);
+    const digestVars = digestVarsFor(tz ? [tz] : []);
     const rendered = buildMessage(settings.subjectTemplate, settings.bodyTemplate, digestVars);
     const digestRows = rows.map(r => ({ item: r.item, occurredAt: r.occurredAt }));
     const msg = buildDigest(
@@ -457,8 +457,8 @@ export async function flushPending(deps: FlushDeps): Promise<{
      * the itemised list is the digest: a per-zone rendering that dropped it
      * would send one reader the events and another the headline alone.
      */
-    const renderDigestFor = (zone: string, channel: "email" | "teams") => {
-      const text = renderer(settings, digestVarsFor)(zone, channel);
+    const renderDigestFor = (zones: string[], channel: "email" | "teams") => {
+      const text = renderer(settings, digestVarsFor)(zones, channel);
       return buildDigest(digestRows, text, FEED_LABELS[feed], what,
         axis === "subject" ? nameAndCount(rows.map(r => r.repo)) : undefined);
     };
