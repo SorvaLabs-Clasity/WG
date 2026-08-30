@@ -62,6 +62,19 @@ since, it finds nothing and does nothing.
 one, `webhook-deliveries`, and that sits behind the same GitHub gate. So a
 deploy cannot bring the pruned tables back.
 
+**If you deploy without the flag by mistake**, the GitHub half appears: the
+webhook API and its queues, the receiver and worker, the graph aggregator and
+its schedule, the WAF, and `webhook-deliveries`. Undo it with
+`./scripts/revert-to-aws-only.sh --apply`, which redeploys with the flag rather
+than deleting anything. Those resources belong to CloudFormation, and removing
+them by hand leaves the stack reconciling against a reality that has moved. The
+script checks the account really is meant to be AWS-only first, shows what will
+go, and verifies afterwards.
+
+One thing survives a flag flip: API Gateway's CloudWatch role, which CDK retains
+because there is one per account and region and deleting it would take logging
+away from any other API Gateway there. The script names it and leaves it.
+
 **It never asks for the GitHub App private key.** That key reads your entire
 organization, and keeping it out of the account is the whole exercise. Without
 it the app's GitHub tabs are refused, by the backend, not by hiding a button,

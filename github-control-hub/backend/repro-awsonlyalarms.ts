@@ -347,6 +347,48 @@ const handler = fs.readFileSync("./src/alarms/handler.ts", "utf8");
       "the alarm evaluator resolves a subject through it, so a missing table throws mid-pass");
   }
 
+  // ── undoing a deploy that forgot the flag ───────────────────────────
+  //
+  // `cdk deploy` without `-c awsOnly=true` builds the GitHub half in whichever
+  // account you were pointed at. The fix is a redeploy with the flag, not a
+  // script that deletes the resources: CloudFormation owns them, and removing
+  // them by hand leaves the stack reconciling against a reality that has moved.
+  {
+    const revert = fs.readFileSync("../../scripts/revert-to-aws-only.sh", "utf8");
+
+    check("reverting is a redeploy, not a delete",
+      /npx cdk deploy --require-approval never -c awsOnly=true/.test(revert)
+      && !/aws lambda delete-function/.test(revert),
+      "hand-deleting a stack-managed resource is what puts a stack into drift");
+
+    check("  and it refuses on an account that holds the App key",
+      /GITHUB_APP_PRIVATE_KEY \? "yes" : "no"/.test(revert)
+      && /Reverting it would remove the webhook pipeline/.test(revert),
+      "run against a full install this would tear down its webhooks and graph");
+
+    check("  naming what stays, so the list does not read as everything",
+      /Staying, because an AWS-only install has them too/.test(revert),
+      "the evaluator and the enforcer live in both modes");
+
+    check("  and verifying afterwards rather than assuming",
+      /step "Verifying"/.test(revert),
+      "a deploy that reports success can still leave a queue draining");
+
+    // The one thing a flag flip genuinely leaves behind. CDK retains it because
+    // it is account-wide, so the script has to say so rather than let somebody
+    // find an orphan role later and wonder.
+    check("the retained API Gateway role is reported, not deleted",
+      /WebhookApiCloudWatchRole/.test(revert)
+      && !/aws iam delete-role/.test(revert),
+      "one CloudWatch role per account: deleting it breaks every other API there");
+
+    // Two scripts, two mechanisms, and each has to point at the other or
+    // somebody runs one and believes the account is clean.
+    check("and it points at the table pruner for what it cannot remove",
+      /prune-github-tables\.sh --apply/.test(revert),
+      "the tables are outside CloudFormation and this deploy does not touch them");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();
