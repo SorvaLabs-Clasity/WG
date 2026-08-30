@@ -67,6 +67,30 @@ export async function handler(): Promise<void> {
   const startedAt = Date.now();
   await bootstrapOnce();
 
+  // ── the developers' own digests ───────────────────────────────────
+  //
+  // First, not last. It used to run at the end of the pass, behind alarm
+  // evaluation, the widget snapshots, a GraphQL walk of every open pull request
+  // and the reminder pass. None of that is quick on a real organization, so a
+  // summary somebody asked for at 11:45 arrived at 11:48 and read as the
+  // schedule being approximate.
+  //
+  // Nothing here depends on any of it. The digest reads the pull request
+  // snapshot the *previous* pass stored, which is at most five minutes old, and
+  // five minutes of staleness in a daily summary is not worth three minutes of
+  // lateness in delivering it.
+  //
+  // Still wrapped: one person's broken address must not stop the alarms.
+  try {
+    const { runDigestPass } = await import("./devDigest");
+    const digests = await runDigestPass();
+    if (digests.sent > 0 || digests.failed > 0) {
+      console.log(`[DevDigest] ${digests.sent} sent, ${digests.skipped} skipped, ${digests.failed} failed`);
+    }
+  } catch (err) {
+    console.error("[DevDigest] Digest pass failed:", (err as Error).message);
+  }
+
   // No fallback. This used to degrade to a SYSTEM_GITHUB_TOKEN personal access
   // token, which meant a broken App produced alarm runs that quietly worked,
   // on a credential nobody remembered configuring, until that expired too.
@@ -413,19 +437,4 @@ export async function handler(): Promise<void> {
     }
   }
 
-  // ── the developers' own digests ───────────────────────────────────
-  //
-  // Last, and outside the block above, deliberately. It reads the stored
-  // snapshot rather than the walk, so it still works on a tick where the pull
-  // request pass was switched off or failed, and a failure of somebody's
-  // webhook must not be able to take down the reminders that ran before it.
-  try {
-    const { runDigestPass } = await import("./devDigest");
-    const digests = await runDigestPass();
-    if (digests.sent > 0 || digests.failed > 0) {
-      console.log(`[DevDigest] ${digests.sent} sent, ${digests.skipped} skipped, ${digests.failed} failed`);
-    }
-  } catch (err) {
-    console.error("[DevDigest] Digest pass failed:", (err as Error).message);
-  }
 }

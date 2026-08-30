@@ -24,7 +24,7 @@
  */
 import fs from "node:fs";
 import {
-  defaults, badWebhook, badTeamsAddress, digestDue, localNow, keyFor, KEY_PREFIX, type DevAlerts,
+  defaults, badWebhook, badTeamsAddress, digestDue, whyNotDue, localNow, keyFor, KEY_PREFIX, type DevAlerts,
 } from "./src/services/devAlertService";
 import { buildDigest, buildEventCard, wants } from "./src/services/devAlertContent";
 import { buildCard, escapeMd } from "./src/services/teamsClient";
@@ -84,6 +84,46 @@ const text = (card: any) => JSON.stringify(card);
       !digestDue(sent, NOW + 5 * 60_000) && !digestDue(sent, NOW + 55 * 60_000),
       "the pass ticks every five minutes and would send twelve copies");
     check("  but tomorrow it is due again", digestDue(sent, NOW + DAY));
+  }
+
+  // ── why a digest is not going out ───────────────────────────────────
+  //
+  // Silence in the log is indistinguishable from the pass not running, which is
+  // exactly the state somebody is in when they ask why nothing arrived. Each of
+  // these has been the real cause at least once.
+  {
+    const at9 = { ...defaults("a").digest, enabled: true, hour: 9, minute: 0,
+      timeZone: "America/New_York", days: [] };
+    const base = prefs({ digest: at9 });
+
+    check("a due digest has no reason not to be",
+      whyNotDue(base, NOW) === null, whyNotDue(base, NOW));
+    check("  switched off says so",
+      whyNotDue(prefs({ digest: { ...at9, enabled: false } }), NOW) === "disabled");
+    check("  no address says so",
+      whyNotDue({ ...base, teamsAddress: undefined }, NOW) === "no address");
+    check("  before its time says so",
+      whyNotDue(base, NOW - 3_600_000) === "not yet");
+    check("  long after says so",
+      whyNotDue(base, NOW + 4 * 3_600_000) === "window passed");
+    check("  a day not chosen says so",
+      whyNotDue(prefs({ digest: { ...at9, days: [1] } }), NOW + 2 * DAY) === "not a chosen day",
+      whyNotDue(prefs({ digest: { ...at9, days: [1] } }), NOW + 2 * DAY));
+    check("  and today's already gone says so",
+      whyNotDue({ ...base, lastDigestAt: new Date(NOW).toISOString() }, NOW) === "already sent today");
+
+    // Two rules that can disagree is how a log explains one thing while the
+    // code does another.
+    check("the decision is the absence of a reason, not a second rule",
+      /return whyNotDue\(a, now\) === null;/.test(
+        fs.readFileSync("./src/services/devAlertService.ts", "utf8")));
+
+    const digest = fs.readFileSync("./src/alarms/devDigest.ts", "utf8");
+    check("  and a tick with nobody due says why, per person",
+      /enabled, none due/.test(digest) && /whyNotDue\(a, now\)/.test(digest));
+    check("    but stays quiet where nobody asked for one",
+      /if \(wanted\.length > 0\)/.test(digest),
+      "a line every five minutes on a deployment nobody uses is noise");
   }
 
   // ── the reader's morning, not the server's ──────────────────────────
@@ -402,6 +442,19 @@ const text = (card: any) => JSON.stringify(card);
     check("  so the card binding the template wrote keeps working",
       !/card: JSON\.stringify/.test(client),
       "restringing the card would mean a third field for somebody to rebind by hand");
+
+    // It used to run last, behind alarm evaluation, the widget snapshots, a
+    // GraphQL walk of every open pull request and the reminder pass. A summary
+    // asked for at 11:45 arriving at 11:48 reads as an approximate schedule.
+    const handler = fs.readFileSync("./src/alarms/handler.ts", "utf8");
+    // Compared on the call sites, not the imports: an import sits at the top of
+    // the file whatever order the work runs in.
+    check("the digest runs before the slow work, not after it",
+      handler.indexOf("await runDigestPass()") < handler.indexOf("await evaluateAlarms(")
+      && handler.indexOf("await runDigestPass()") < handler.indexOf("fetchOpenPrs(graphql"),
+      "everything ahead of it is minutes on a real organization");
+    check("  and still cannot take the alarms down with it",
+      /try \{\s*\n\s*const \{ runDigestPass \}/.test(handler));
 
     check("one flow serves everybody",
       /sendToPerson\(flowUrl, person\.teamsAddress!/.test(digest),

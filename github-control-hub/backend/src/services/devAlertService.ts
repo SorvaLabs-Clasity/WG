@@ -316,24 +316,41 @@ export function localNow(now: number, timeZone: string): { hour: number; minute:
 /** How long after the chosen time a digest may still go out. */
 export const LATE_WINDOW_MINUTES = 60;
 
-export function digestDue(a: DevAlerts, now: number): boolean {
-  if (!a.digest.enabled || !a.teamsAddress) return false;
+/**
+ * Why a digest is not going out, in a word.
+ *
+ * `digestDue` answers yes or no, which is all the pass needs and nothing like
+ * enough to debug with: a tick where nobody is due logs nothing, and that looks
+ * exactly like the pass not running at all. Every one of these has been the
+ * real cause at least once.
+ */
+export function whyNotDue(a: DevAlerts, now: number): string | null {
+  if (!a.digest.enabled) return "disabled";
+  if (!a.teamsAddress) return "no address";
   const { hour, minute, day, date } = localNow(now, a.digest.timeZone);
-  if (a.digest.days.length > 0 && !a.digest.days.includes(day)) return false;
-
-  // At or after the chosen time, not exactly on it. The pass ticks every five
-  // minutes, so an exact match would mean a digest set for 9:58 never fired at
-  // all: the ticks near it are 9:55, which is early, and 10:00, which is the
-  // next hour.
-  //
-  // Bounded by an hour so a pass that could not run at nine still delivers at
-  // half past, while a digest never arrives at eleven at night because nothing
-  // ran all morning.
+  if (a.digest.days.length > 0 && !a.digest.days.includes(day)) return "not a chosen day";
   const late = (hour * 60 + minute) - (a.digest.hour * 60 + (a.digest.minute ?? 0));
-  if (late < 0 || late >= LATE_WINDOW_MINUTES) return false;
+  if (late < 0) return "not yet";
+  if (late >= LATE_WINDOW_MINUTES) return "window passed";
+  if (a.lastDigestAt
+      && localNow(Date.parse(a.lastDigestAt), a.digest.timeZone).date === date) {
+    return "already sent today";
+  }
+  return null;
+}
 
-  if (!a.lastDigestAt) return true;
-  // Compared in the same zone it was scheduled in, so one per local day holds
-  // across a clock change.
-  return localNow(Date.parse(a.lastDigestAt), a.digest.timeZone).date !== date;
+/**
+ * At or after the chosen time, not exactly on it. The pass ticks every five
+ * minutes, so an exact match would mean a digest set for 9:58 never fired: the
+ * ticks near it are 9:55, which is early, and 10:00, which is the next hour.
+ *
+ * Bounded by an hour so a pass that could not run at nine still delivers at half
+ * past, while a digest never arrives at eleven at night because nothing ran all
+ * morning.
+ *
+ * Defined as "no reason not to", so the decision and the explanation cannot
+ * drift apart into two rules that disagree.
+ */
+export function digestDue(a: DevAlerts, now: number): boolean {
+  return whyNotDue(a, now) === null;
 }

@@ -1,4 +1,4 @@
-import { listDevAlerts, digestDue, putDevAlerts } from "../services/devAlertService";
+import { listDevAlerts, digestDue, whyNotDue, putDevAlerts } from "../services/devAlertService";
 import { buildDigest } from "../services/devAlertContent";
 import { readPrSnapshot } from "../services/alarmService";
 import { sendToPerson } from "../services/teamsClient";
@@ -57,7 +57,19 @@ export async function runDigestPass(now = Date.now()): Promise<DigestSummary> {
   });
   const due = everyone.filter(a => digestDue(a, now));
   out.considered = due.length;
-  if (due.length === 0) return out;
+
+  if (due.length === 0) {
+    // Silence here used to be indistinguishable from the pass not running, which
+    // is the state somebody is in when they are asking why nothing arrived. One
+    // line, and only when somebody has actually asked for a digest, so a
+    // deployment with none configured stays quiet.
+    const wanted = everyone.filter(a => a.digest.enabled);
+    if (wanted.length > 0) {
+      const why = wanted.map(a => `${a.login}: ${whyNotDue(a, now) ?? "due"}`).join(", ");
+      console.log(`[DevDigest] ${wanted.length} enabled, none due (${why})`);
+    }
+    return out;
+  }
 
   // One flow for the whole organization. Without it nothing can be delivered,
   // and saying so once beats failing per person with the same message.
