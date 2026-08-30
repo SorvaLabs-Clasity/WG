@@ -21,6 +21,7 @@
  */
 import fs from "node:fs";
 import { formatTimestamp, formatTimestampAcross } from "./src/alarms/message";
+import { whyNotDue, defaults } from "./src/services/devAlertService";
 import { evaluateAlarms } from "./src/alarms/evaluate";
 
 let failures = 0;
@@ -303,14 +304,39 @@ function check(name: string, ok: boolean, got?: unknown) {
   // class that was supposed to prevent exactly that could not act.
   {
     const panel = fs.readFileSync("../frontend/src/components/EmailGroupsPanel.tsx", "utf8");
-    const rows = panel.match(/min-w-0 flex-1 truncate/g) ?? [];
-    check("both columns let a long address shrink rather than push",
-      rows.length === 2,
-      { found: rows.length, expected: 2 });
+    const truncated = fs.readFileSync("../frontend/src/components/Truncated.tsx", "utf8");
 
-    check("  and keep the full address on hover, since it is now clipped",
-      /title=\{m\.endpoint\}/.test(panel) && /title=\{address\}/.test(panel),
-      "truncating without a title hides the thing the row is about");
+    check("both columns clip the address rather than let it push",
+      (panel.match(/<Truncated text=/g) ?? []).length === 2,
+      { found: (panel.match(/<Truncated text=/g) ?? []).length, expected: 2 });
+
+    check("  which shrinks, because truncate alone cannot",
+      /min-w-0 flex-1 truncate/.test(truncated),
+      "a flex item will not go below its content width without min-w-0");
+
+    // The column, not only the text in it. grid-cols-2 is minmax(auto, 1fr),
+    // and that `auto` sizes a column to its content: the card was being pushed
+    // out from a level above the one being truncated.
+    check("  and so does the column holding it",
+      (panel.match(/bg-white dark:bg-\[#151a23\] p-5 min-w-0/g) ?? []).length === 2,
+      "an auto-sized grid column grows past its share whatever is inside it");
+
+    check("  with the full address on hover",
+      /createPortal\(/.test(truncated) && /role="tooltip"/.test(truncated),
+      "clipping without a way to read the whole thing hides the row's subject");
+
+    // Rendered into the body, because the card has rounded corners and so
+    // overflow:hidden, which would clip a bubble to the row it explains.
+    check("  from outside the card, which would otherwise clip it",
+      /document\.body,/.test(truncated),
+      "a tooltip clipped to its own row is no tooltip");
+
+    // Asked of the browser rather than guessed from a length. A character cap
+    // is wrong in both directions: it hides the end of an address that fitted,
+    // and lets a shorter one overflow a narrower column.
+    check("  and only when the text is actually cut off",
+      /el\.scrollWidth <= el\.clientWidth/.test(truncated),
+      "a bubble over text you can already read is noise");
 
     // With the address taking the slack, a margin pushing from the other side
     // is what fights it.
@@ -346,6 +372,58 @@ function check(name: string, ok: boolean, got?: unknown) {
       /inheritZone=\{group\.timeZone \|\| orgZone\}/.test(panel)
       && /const orgZone = security\?\.timezone \|\| "UTC";/.test(panel),
       "an unset group is not an answer, so a row cannot stop there");
+  }
+
+  // ── daylight saving, which nothing here has to be told about ────────
+  //
+  // What is stored is an IANA zone name, never an offset, and the offset and
+  // the abbreviation are both resolved at the moment of formatting. So the
+  // clocks changing is not an event this app handles; it is a fact `Intl`
+  // already knows on the day.
+  //
+  // Storing "GMT-5" instead would have been correct for four months a year.
+  {
+    const NY = "America/New_York";
+    const on = (iso: string) => formatTimestamp(iso, NY);
+
+    check("the same zone is EST in winter and EDT in summer",
+      on("2026-01-15T15:00:00Z").endsWith("EST") && on("2026-07-15T15:00:00Z").endsWith("EDT"),
+      { winter: on("2026-01-15T15:00:00Z"), summer: on("2026-07-15T15:00:00Z") });
+
+    // The 2026 US transitions are 8 March and 1 November.
+    check("  changing on the day, not at some rounded boundary",
+      on("2026-03-07T15:00:00Z").endsWith("EST") && on("2026-03-09T15:00:00Z").endsWith("EDT"),
+      { before: on("2026-03-07T15:00:00Z"), after: on("2026-03-09T15:00:00Z") });
+
+    check("  and back again in the autumn",
+      on("2026-10-31T15:00:00Z").endsWith("EDT") && on("2026-11-02T15:00:00Z").endsWith("EST"),
+      { before: on("2026-10-31T15:00:00Z"), after: on("2026-11-02T15:00:00Z") });
+
+    check("  with the hour moving too, not just the label",
+      on("2026-01-15T15:00:00Z").includes("10:00 AM")
+      && on("2026-07-15T15:00:00Z").includes("11:00 AM"),
+      "an abbreviation that changes while the clock does not is worse than neither");
+
+    // The other half: a summary set for nine in the morning has to stay at nine
+    // in the morning, which is a different instant in UTC either side of the
+    // change. This is why the schedule is compared in local time rather than by
+    // storing an offset when it was set.
+    const person: any = {
+      org: "o", login: "a", teamsAddress: "a@b.c",
+      events: { reviewRequested: true, changesRequested: true },
+      digest: { ...defaults("a").digest, enabled: true, hour: 9, minute: 0, timeZone: NY, days: [] },
+    };
+    check("a 9am summary is due at 9am local in winter",
+      whyNotDue(person, Date.parse("2026-01-15T14:00:00Z")) === null,
+      whyNotDue(person, Date.parse("2026-01-15T14:00:00Z")));
+
+    check("  and at 9am local in summer, which is a different hour in UTC",
+      whyNotDue(person, Date.parse("2026-07-15T13:00:00Z")) === null,
+      whyNotDue(person, Date.parse("2026-07-15T13:00:00Z")));
+
+    check("  so the UTC hour that worked in winter does not in summer",
+      whyNotDue(person, Date.parse("2026-07-15T14:00:00Z")) !== null,
+      "a schedule pinned to an offset drifts by an hour twice a year");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

@@ -10,6 +10,7 @@ import {
 import { Empty, Spinner, Note, Button, SURFACE, TYPE } from "../design";
 import type { EmailGroup } from "../api/alarms";
 import ZonePicker from "./ZonePicker";
+import Truncated from "./Truncated";
 
 /**
  * Who gets told, and by which channel.
@@ -161,7 +162,12 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
       {/* Two channels as peers. Neither is the primary, a group with only
           Teams is as valid as one with only email. */}
       <div className="grid md:grid-cols-2 gap-px bg-slate-200/70 dark:bg-white/[0.07]">
-        <div className="bg-white dark:bg-[#151a23] p-5">
+        {/* min-w-0 on the column, not only on the text inside it.
+            `grid-cols-2` is minmax(auto, 1fr), and that `auto` minimum sizes a
+            column to its content: one long unbroken address grew the column
+            past its share and pushed the card out, which no amount of
+            truncating inside it could prevent. */}
+        <div className="bg-white dark:bg-[#151a23] p-5 min-w-0">
           <ChannelHeader icon="ph-fill ph-envelope-simple" label="Email"
             count={group.members.length} tone="text-sky-500" />
 
@@ -198,12 +204,11 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
                   className="group/row flex items-center gap-2 py-1 text-[12.5px]">
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     m.confirmed ? "bg-emerald-500" : "bg-amber-400"}`} aria-hidden="true" />
-                  {/* min-w-0, or `truncate` does nothing here. A flex item will not
-                      shrink below its content, so one very long address grew the
-                      row and pushed the zone picker and the remove button off the
-                      end of it. The class was already there and could not act. */}
-                  <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200"
-                    title={m.endpoint}>{m.endpoint}</span>
+                  {/* Clipped to the column, and readable in full on hover.
+                      `truncate` alone did nothing: a flex item will not shrink
+                      below its content without min-w-0, so one long address
+                      grew the row and pushed the picker and the X off it. */}
+                  <Truncated text={m.endpoint} className="text-slate-700 dark:text-slate-200" />
                   {!m.confirmed && (
                     <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide
                                      text-amber-700 dark:text-amber-500">pending</span>
@@ -252,7 +257,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
           </p>
         </div>
 
-        <div className="bg-white dark:bg-[#151a23] p-5">
+        <div className="bg-white dark:bg-[#151a23] p-5 min-w-0">
           <ChannelHeader icon="ph-fill ph-chat-teardrop-text" label="Microsoft Teams"
             count={teams.length} tone="text-violet-500" />
 
@@ -276,8 +281,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
               {teams.map(address => (
                 <li key={address} className="group/row flex items-center gap-2 py-1 text-[12.5px]">
                   <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" aria-hidden="true" />
-                  <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200"
-                    title={address}>{address}</span>
+                  <Truncated text={address} className="text-slate-700 dark:text-slate-200" />
                   {/* Per person, because Teams is delivered per person: the
                       flow is called once per address, so each call can carry
                       that person's own rendering of the time. */}

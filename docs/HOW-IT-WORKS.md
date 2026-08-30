@@ -2217,6 +2217,15 @@ than watched. It would read zero forever, which looks exactly like compliance.
 `{{time}}` renders as `Aug 30, 2026 at 10:30 AM EDT`: a named month, a
 twelve-hour clock, and the abbreviation people use rather than the IANA name.
 
+**Daylight saving needs no handling.** What is stored is an IANA zone name,
+never an offset, and both the offset and the abbreviation are resolved at the
+moment of formatting. So `America/New_York` prints `EST` in January and `EDT`
+in July, changing on the day the clocks do, and the hour moves with it. A
+summary set for nine in the morning stays at nine in the morning, which is a
+different instant in UTC either side of the change: the schedule is compared in
+local time rather than against an offset captured when it was set. Storing
+`GMT-5` would have been correct for four months a year.
+
 **The locale is load-bearing.** The formatter asks in `en-US`, because `en-GB`
 and `en-CA` render American zones as `GMT-4`, which is correct and is not what
 anybody there calls it. A zone with no letter code, which is most of the world,
