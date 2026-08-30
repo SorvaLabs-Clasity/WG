@@ -291,7 +291,20 @@ router.put("/alerts", async (req: Request, res: Response) => {
       lastErrorAt: typeof body.teamsAddress === "string" ? undefined : current.lastErrorAt,
     };
 
-    const saved = await putDevAlerts(next);
+    // Changing *when* the summary arrives forgets that today's already went.
+    //
+    // Without this, somebody who sets a time this afternoon waits until
+    // tomorrow to find out whether it works, with nothing on screen explaining
+    // the silence. The stored record is about the old schedule, and keeping it
+    // makes the new one untestable on the day it is set.
+    //
+    // Only the timing, not the contents: toggling a section at nine in the
+    // evening should not produce a second summary.
+    const rescheduled = next.digest.hour !== current.digest.hour
+      || next.digest.minute !== current.digest.minute
+      || (next.digest.enabled && !current.digest.enabled);
+
+    const saved = await putDevAlerts(rescheduled ? { ...next, lastDigestAt: undefined } : next);
     const flow = (await getOrgConfig().catch(() => null))?.teamsFlow;
     res.json({ ...saved, teamsReady: !!flow?.url });
   } catch (error: any) {

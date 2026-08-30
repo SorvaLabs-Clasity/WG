@@ -351,6 +351,16 @@ export default function DevAlertSettings() {
             </p>
           </div>
 
+          {/* Otherwise the only evidence a summary went out is having received
+              it, and its absence is indistinguishable from it being broken. */}
+          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-3">
+            {data.lastDigestAt
+              ? <>Last summary sent {new Date(data.lastDigestAt).toLocaleString()}. One per day,
+                  so the next is tomorrow at this time. Changing the time above sends today's
+                  at the new one.</>
+              : <>No summary has been sent yet.</>}
+          </p>
+
           <div className="mt-2 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
             <Row
               label="Skip it when there is nothing to say"

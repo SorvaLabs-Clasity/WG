@@ -128,6 +128,8 @@ export interface DevAlerts {
   events: EventPrefs;
   digest: DigestPrefs;
   lastSentAt?: string;
+  /** When the scheduled summary last went out. One per local day. */
+  lastDigestAt?: string;
   lastError?: string;
   lastErrorAt?: string;
 }

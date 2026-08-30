@@ -351,6 +351,16 @@ const text = (card: any) => JSON.stringify(card);
       /router\.post\("\/alerts\/test"/.test(route) && /skipWhenEmpty: false/.test(route),
       "a wrong address otherwise fails silently until somebody notices they hear nothing");
     // Two different things can be missing and only one is the caller's to fix.
+    // Without this, somebody who sets a time this afternoon waits until
+    // tomorrow to learn whether it works, with nothing explaining the silence.
+    check("changing the time forgets that today's summary already went",
+      /const rescheduled = next\.digest\.hour !== current\.digest\.hour/.test(route)
+      && /lastDigestAt: undefined/.test(route),
+      "the stored record is about the old schedule");
+    check("  but changing what is in it does not",
+      !/include[\s\S]{0,60}lastDigestAt: undefined/.test(route),
+      "toggling a section at nine in the evening should not produce a second summary");
+
     check("  and tells apart no address from no flow",
       /No Teams address is set yet/.test(route) && /not set up for this organization/.test(route),
       "telling somebody to check their own settings when an admin has not set up the flow sends them nowhere");
