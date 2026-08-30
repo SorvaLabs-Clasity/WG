@@ -138,7 +138,16 @@ const text = (card: any) => JSON.stringify(card);
 
     // A pull request in two sections makes the counts look wrong.
     const ready = buildDigest(p, [pr({ number: 3, author: "alice", reviewDecision: "APPROVED" })], NOW);
-    const body = text(ready.card);
+    // One rendering, not the envelope: every payload now carries the card and
+    // the text form of the same content, so counting across both would find
+    // everything twice by design.
+    const body = String((ready.card as any).message);
+    // The section people scan fastest is the one that was omitting it.
+    check("  a ready pull request says how long it has been ready",
+      /quiet 1 day|updated today/.test(text(buildDigest(p,
+        [pr({ number: 4, author: "alice", reviewDecision: "APPROVED" })], NOW).card)),
+      "ready and untouched for three weeks is a different thing from ready this morning");
+
     check("  a ready pull request is listed once, not twice",
       (body.match(/web#3/g) ?? []).length === 1, body.match(/web#3/g));
   }
@@ -294,6 +303,24 @@ const text = (card: any) => JSON.stringify(card);
     check("  and the escaped form is what reaches Teams",
       /\\\\\[WIP\\\\\]/.test(JSON.stringify(card)) || text(card).includes("\\\\[WIP\\\\]"),
       text(card).slice(0, 300));
+
+    // Teams builds a notification preview from the message body. A card has no
+    // body, so the card action produces "sent a card" whatever it contains, and
+    // nothing inside the card changes that.
+    const both = buildCard("Review requested: web#7", "bob asked you", [
+      { heading: "", links: [{ title: "Fix <b>things</b> & stuff", url: "https://e/1" }] },
+    ]) as any;
+    check("every message carries a text rendering as well as a card",
+      typeof both.message === "string" && both.message.length > 0,
+      "the flow decides which it reads, so switching is one field there and no deploy here");
+    check("  which leads with the title, since that is all a toast shows",
+      /^<b>Review requested: web#7<\/b>/.test(both.message), both.message.slice(0, 80));
+    check("  and escapes what people wrote",
+      /Fix &lt;b&gt;things&lt;\/b&gt; &amp; stuff/.test(both.message),
+      "a pull request title is somebody else's text going into a chat message");
+    check("  while the card is still there for a flow that reads it",
+      Array.isArray(both.attachments) && both.attachments.length === 1,
+      "a flow on the old action must keep working");
 
     check("the card is the Workflows shape, not a retired connector card",
       text(buildCard("a", "b", [])).includes("application/vnd.microsoft.card.adaptive"),

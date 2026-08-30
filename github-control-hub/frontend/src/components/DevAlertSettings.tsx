@@ -275,17 +275,33 @@ export default function DevAlertSettings() {
                   the one people mean. */}
               <input
                 type="time"
+                // Five-minute steps, because that is when the pass runs. Offering
+                // 10:17 as a choice promises something the schedule cannot keep,
+                // and the three minutes of drift read as unreliability rather
+                // than as a limit nobody mentioned.
+                step={300}
                 value={`${String(digest.hour).padStart(2, "0")}:${String(digest.minute ?? 0).padStart(2, "0")}`}
                 onChange={e => {
                   const [h, m] = e.target.value.split(":").map(Number);
-                  if (Number.isFinite(h) && Number.isFinite(m)) patchDigest({ hour: h, minute: m });
+                  if (!Number.isFinite(h) || !Number.isFinite(m)) return;
+                  // `step` constrains the picker, not what somebody can type or
+                  // paste, so the value is rounded here as well. Rounding rather
+                  // than refusing: a typed 10:17 means "about ten past", and the
+                  // nearest tick is what they will actually get.
+                  const snapped = Math.round(m / 5) * 5;
+                  patchDigest(snapped === 60
+                    ? { hour: (h + 1) % 24, minute: 0 }
+                    : { hour: h, minute: snapped });
                 }}
                 className={SURFACE.input}
               />
               {/* Said where the time is chosen, because the checking interval is
                   not something anybody can infer from a time field. */}
+              {/* The honest limit of a five-minute pass, said where the time is
+                  chosen. The ticks land on :00, :05, :10 and so on, so a time on
+                  one of those arrives on it. */}
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                Checked every five minutes, so it arrives within five minutes of this.
+                Runs on the clock every five minutes, so these are the times it can keep.
               </p>
             </div>
             <div>

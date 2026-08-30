@@ -161,6 +161,20 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
       "a pager over four rows is chrome");
   }
 
+  // ── the summary can only be set to a time the pass can keep ─────────
+  {
+    const alerts = fs.readFileSync("./src/components/DevAlertSettings.tsx", "utf8");
+    check("the time picker steps in fives",
+      /step=\{300\}/.test(alerts),
+      "offering 10:17 promises something a five-minute pass cannot keep");
+    // `step` constrains the picker, not typing or pasting.
+    check("  and a typed time is snapped rather than trusted",
+      /Math\.round\(m \/ 5\) \* 5/.test(alerts));
+    check("  with the hour carried when it rounds up to sixty",
+      /snapped === 60[\s\S]{0,80}hour: \(h \+ 1\) % 24, minute: 0/.test(alerts),
+      "minute 60 would never match a tick, so the digest would simply never fire");
+  }
+
   // ── polling that matches what actually changes ──────────────────────
   {
     check("the queue refreshes itself, since it is meant to be left open",

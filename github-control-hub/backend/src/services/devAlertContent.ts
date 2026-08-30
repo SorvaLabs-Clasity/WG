@@ -71,8 +71,15 @@ export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now
     sections.push({
       heading: `Ready to merge (${ready.length})`,
       emptyText: "None of yours are ready.",
+      // The age belongs here as much as anywhere else. Something ready to merge
+      // and untouched for three weeks is a different thing from one ready since
+      // this morning, and the section that omits it is the one people scan
+      // fastest.
       links: ready.slice(0, 10).map(pr => ({
-        title: pr.title, url: pr.url, detail: `${pr.repo}#${pr.number}`,
+        title: pr.title,
+        url: pr.url,
+        detail: `${pr.repo}#${pr.number} · `
+          + (pr.idleDays === 0 ? "updated today" : `quiet ${plural(pr.idleDays, "day")}`),
       })),
     });
   }

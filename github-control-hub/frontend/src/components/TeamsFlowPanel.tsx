@@ -107,10 +107,11 @@ export default function TeamsFlowPanel() {
           <div className="mt-3 rounded-xl border border-slate-200 dark:border-white/10
                           bg-slate-50/70 dark:bg-white/[0.03] p-4">
             <p className="text-[12.5px] text-slate-600 dark:text-slate-300 leading-relaxed">
-              You are building one workflow that can message anybody. The important part is the
-              Recipient: instead of a name typed into the flow, it reads who each message is for
-              out of the request. Note that the template contains the posting step twice, and
-              both copies need the same treatment.
+              You are building one workflow that can message anybody. Two things matter: the
+              Recipient reads who each message is for out of the request rather than being a name
+              typed into the flow, and the posting step is the message one rather than the card
+              one, so notifications say what happened instead of “sent a card”. The template
+              contains that step twice, and both copies need the same treatment.
             </p>
 
             <ol className="mt-3 grid gap-2.5">
@@ -120,16 +121,21 @@ export default function TeamsFlowPanel() {
                   matter, the destination is set inside the flow. If the template list is short,
                   search <span className="font-semibold">webhook</span>.</>,
                 <>Choose <span className="font-semibold">“Send webhook alerts to a chat”</span>.
-                  When it asks for a recipient, put anyone, yourself is fine. It gets replaced in
-                  step 5.</>,
+                  When it asks for a recipient, put anyone, yourself is fine. Nothing you choose
+                  here survives, step 7 replaces it.</>,
                 <>Click <span className="font-semibold">Add workflow</span>, then open the new flow
                   and click <span className="font-semibold">Edit</span>.</>,
-                <>The template contains <span className="font-semibold">two</span> copies of the
-                  posting step, one either side of an
-                  <span className="font-semibold"> Attachments is null</span> condition. Configure
-                  <span className="font-semibold"> both</span>: the one that runs is decided at
-                  send time, and an unconfigured copy still holds a hard-coded thread id that
-                  Graph rejects.</>,
+                <>Notice that the template contains
+                  <span className="font-semibold"> two</span> copies of the posting step, one
+                  either side of an <span className="font-semibold">Attachments is null</span>
+                  condition. Everything below applies to
+                  <span className="font-semibold"> both</span>: which one runs is decided at send
+                  time, and a copy left as the template wrote it still holds a hard-coded thread
+                  id that Graph rejects.</>,
+                <>Replace each with <span className="font-semibold">Post message in a chat or
+                  channel</span>. The card action it ships with produces a notification reading
+                  “sent a card”, because Teams builds the preview from a message body and a card
+                  has none. Delete the card step, add the message one in its place.</>,
                 <>In each, set <span className="font-semibold">Post as</span> to
                   {" "}<span className="font-semibold">Flow bot</span> and
                   {" "}<span className="font-semibold">Post in</span> to
@@ -140,11 +146,11 @@ export default function TeamsFlowPanel() {
                   <code className="block mt-1.5 font-mono text-[11px] p-2 rounded bg-slate-200/70 dark:bg-white/[0.08] overflow-x-auto">
                     triggerBody()?['recipient']
                   </code></>,
-                <>In each, click into the <span className="font-semibold">Adaptive Card</span>
-                  field and pick <span className="font-semibold">Attachments Adaptive Card</span>
-                  from the panel on the right, under
-                  <span className="font-semibold"> When a Teams webhook request is received</span>.
-                  It cannot be left empty.</>,
+                <>In each, put this expression in the
+                  {" "}<span className="font-semibold">Message</span> field:
+                  <code className="block mt-1.5 font-mono text-[11px] p-2 rounded bg-slate-200/70 dark:bg-white/[0.08] overflow-x-auto">
+                    triggerBody()?['message']
+                  </code></>,
                 <>Save the flow, then copy its <span className="font-semibold">HTTP URL</span> from the
                   trigger step and paste it above.</>,
               ].map((step, i) => (
@@ -168,8 +174,10 @@ export default function TeamsFlowPanel() {
                 request before it runs the flow, so a failure there cannot be seen from here.
                 <span className="font-semibold"> “Call made for a thread which is not a
                 ChatThread”</span> almost always means only one of the two posting steps was
-                configured. If everybody's messages arrive for one person, a Recipient is still
-                a name rather than the expression.
+                replaced. If everybody's messages arrive for one person, a Recipient is still a
+                name rather than the expression. If the notification says
+                <span className="font-semibold"> “sent a card”</span>, a step is still the card
+                action rather than the message one.
               </p>
             </div>
           </div>

@@ -84,6 +84,11 @@ export function buildCard(title: string, subtitle: string, sections: CardSection
      * not something worth guessing at.
      */
     summary: `${title}: ${subtitle}`,
+    /**
+     * The same content as text, for a flow using the message action instead of
+     * the card one. Ignored by a flow that reads the card, so both work.
+     */
+    message: buildHtml(title, subtitle, sections),
     attachments: [{
       contentType: "application/vnd.microsoft.card.adaptive",
       contentUrl: null,
@@ -96,6 +101,56 @@ export function buildCard(title: string, subtitle: string, sections: CardSection
       },
     }],
   };
+}
+
+/**
+ * The same message as HTML, for the action that takes text.
+ *
+ * Teams builds a notification's preview from the message body, and a card has
+ * no body: "Post card in a chat or channel" produces a toast reading "sent a
+ * card" whatever the card contains. Nothing inside the card changes that, and
+ * neither of the action's advanced parameters is text.
+ *
+ * So both renderings travel in every payload and the flow decides which it
+ * reads. Switching between them is a change to one field in Power Automate
+ * rather than a redeploy here, and a flow still on the card action keeps
+ * working untouched.
+ *
+ * The title leads, because the first words are what a person sees on a lock
+ * screen and all they have to decide whether to switch applications.
+ */
+export function buildHtml(title: string, subtitle: string, sections: CardSection[]): string {
+  const out: string[] = [`<b>${escapeHtml(title)}</b>`];
+  if (subtitle) out.push(escapeHtml(subtitle));
+
+  for (const section of sections) {
+    if (section.heading) out.push(`<br><b>${escapeHtml(section.heading)}</b>`);
+    if (section.links.length === 0) {
+      if (section.emptyText) out.push(escapeHtml(section.emptyText));
+      continue;
+    }
+    for (const link of section.links) {
+      // The URL is ours; the title is somebody's pull request and is escaped.
+      out.push(`<a href="${escapeHtml(link.url)}">${escapeHtml(link.title)}</a>`
+        + (link.detail ? `<br>${escapeHtml(link.detail)}` : ""));
+    }
+  }
+  return out.join("<br>");
+}
+
+/**
+ * Everything that could close a tag or open an attribute.
+ *
+ * Pull request titles are written by people and routinely contain angle
+ * brackets and ampersands. Interpolated raw they would at best break the
+ * message and at worst put markup of somebody else's choosing into a chat.
+ */
+export function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /**

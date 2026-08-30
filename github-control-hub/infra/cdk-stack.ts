@@ -575,10 +575,23 @@ export class GitHubControlHubStack extends cdk.Stack {
       // rule is a fifteen-minute alarm that reads as ten everywhere else.
       // backend/src/alarms/conditions.ts declares TICK_MINUTES, which this must
       // match, and repro-alarms.ts fails if the two disagree.
+      // Cron rather than rate, so the ticks land on the clock.
+      //
+      // `rate(5 minutes)` counts from whenever the rule happened to be created,
+      // so its ticks fall at some arbitrary offset: :03, :08, :13, :18. Nothing
+      // cares about that while the pass only evaluates alarms, but people
+      // choose a time for their summary, and a digest set for 10:15 arriving at
+      // 10:18 reads as the feature being unreliable rather than as a schedule
+      // nobody aligned.
+      //
+      // `0/5` fires at :00, :05, :10 and so on, so a time on a five-minute
+      // boundary is served by the tick with that name. Anything between two
+      // boundaries still waits for the next one, which is the honest limit of a
+      // five-minute pass and is what the settings screen says.
       new events.Rule(this, "AlarmSchedule", {
         ruleName: `${stackPrefix}-alarm-schedule`,
         description: "Evaluates widget alarms that are due",
-        schedule: events.Schedule.rate(cdk.Duration.minutes(5)),
+        schedule: events.Schedule.cron({ minute: "0/5" }),
         targets: [new targets.LambdaFunction(alarmFn)],
       });
 

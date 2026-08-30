@@ -648,11 +648,26 @@ function check(name: string, ok: boolean, got?: unknown) {
     // here rather than shared, which is the only thing keeping them together.
     const stack = fs.readFileSync(
       path.join(__dirname, "..", "infra", "cdk-stack.ts"), "utf8");
-    const alarmRule = stack.slice(stack.indexOf('new events.Rule(this, "AlarmSchedule"'));
-    const rate = /Schedule\.rate\(cdk\.Duration\.minutes\((\d+)\)\)/.exec(alarmRule)?.[1];
+    // This rule only, not everything after it. Sliced to end-of-file it also
+    // contained the thirty-minute light refresh, so a pattern that failed to
+    // match here silently matched that instead and asserted the wrong rule.
+    const alarmStart = stack.indexOf('new events.Rule(this, "AlarmSchedule"');
+    const alarmRule = stack.slice(alarmStart, stack.indexOf("});", alarmStart));
+    // Either form: `rate(minutes(N))` counts from whenever the rule was made,
+    // `cron({ minute: "0/N" })` lands on the clock. Both are N minutes apart,
+    // which is what TICK_MINUTES has to agree with.
+    const rate = /Schedule\.rate\(cdk\.Duration\.minutes\((\d+)\)\)/.exec(alarmRule)?.[1]
+      ?? /Schedule\.cron\(\{ minute: "0\/(\d+)" \}\)/.exec(alarmRule)?.[1];
     check("  and the deployed rule fires at exactly that rate",
       rate !== undefined && Number(rate) === TICK_MINUTES,
-      rate === undefined ? "no rate found on AlarmSchedule" : `rule fires every ${rate}m, code assumes ${TICK_MINUTES}m`);
+      rate === undefined ? "no schedule found on AlarmSchedule" : `rule fires every ${rate}m, code assumes ${TICK_MINUTES}m`);
+
+    // People choose a time for their summary, and a rate rule's ticks fall at
+    // whatever offset the rule was created at, so 10:15 arrives at 10:18 and
+    // reads as the feature being unreliable.
+    check("  and its ticks land on the clock, not on an arbitrary offset",
+      /Schedule\.cron\(\{ minute: "0\//.test(alarmRule),
+      "rate() counts from when the rule was created, so a chosen time is served late");
   }
 
   // ── one sweep per run, however many alarms read it ──────────────────
