@@ -299,6 +299,54 @@ const handler = fs.readFileSync("./src/alarms/handler.ts", "utf8");
       "a deploy that renames an entire stack is not an upgrade");
   }
 
+  // ── the two scripts agree on what an AWS-only account holds ─────────
+  //
+  // The setup script created twelve tables and the prune script deleted three
+  // of them, so every AWS-only install came up with three empty tables and a
+  // second script whose job was to undo that. Not a design: two scripts
+  // disagreeing, and the kind that stays wrong because each half works.
+  {
+    const account = fs.readFileSync("../../scripts/setup-aws-account.sh", "utf8");
+    const awsOnly = fs.readFileSync("../../scripts/setup-aws-only.sh", "utf8");
+    const prune = fs.readFileSync("../../scripts/prune-github-tables.sh", "utf8");
+
+    check("the AWS-only setup tells the table script it is AWS-only",
+      /SKIP_SECRET=1 SKIP_CONFIRM=1 AWS_ONLY=1/.test(awsOnly),
+      "without it the script has no way to know which half it is provisioning");
+
+    check("  and the table script skips the GitHub-only ones",
+      /GITHUB_ONLY_TABLES=\(alerts scanners graph-edges\)/.test(account)
+      && /if github_only "\$name"; then/.test(account),
+      "creating them so another script can delete them is the bug");
+
+    // One list, in the file where the schemas live. Two lists is how they drift.
+    const listed = /GITHUB_ONLY_TABLES=\(([^)]*)\)/.exec(account)?.[1].trim().split(/\s+/) ?? [];
+    const pruned = /CANDIDATES=\(([\s\S]*?)\)/.exec(prune)?.[1]
+      .split("\n").map(l => l.trim().split(/\s+/)[0]).filter(x => x && !x.startsWith("#")) ?? [];
+    check("  and the prune script targets exactly those",
+      listed.length === 3 && listed.slice().sort().join() === pruned.slice().sort().join(),
+      { setup: listed, prune: pruned });
+
+    // Skipping a table means never waiting for it, or the wait blocks for its
+    // full timeout on something that is never going to appear.
+    for (const [what, re] of [
+      ["the existence wait", /github_only "\$\{PREFIX\}-\$\{t\}" && continue/],
+      ["the expiry pass", /github_only "\$\{PREFIX\}-\$\{t\}" && continue[\s\S]{0,80}enable_ttl/],
+      ["the alerts index", /if github_only "\$\{PREFIX\}-alerts"; then/],
+    ] as const) {
+      check(`  ${what} skips them too`, re.test(account),
+        "waiting on a table that will never exist blocks for the full timeout");
+    }
+
+    check("a full install still creates all of them",
+      /\[ "\$\{AWS_ONLY:-\}" = "1" \] \|\| return 1/.test(account),
+      "the flag is the only thing that changes this, so unset must mean everything");
+
+    check("`widgets` is kept even in an AWS-only account",
+      !/GITHUB_ONLY_TABLES=\([^)]*widgets/.test(account),
+      "the alarm evaluator resolves a subject through it, so a missing table throws mid-pass");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

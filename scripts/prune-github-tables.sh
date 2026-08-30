@@ -2,14 +2,15 @@
 #
 # Remove the GitHub-only DynamoDB tables from an AWS-only account.
 #
-# setup-aws-only.sh creates all twelve tables, not the six this account uses.
-# That is deliberate: it delegates to setup-aws-account.sh so the schemas cannot
-# drift from the ones the app reads, and writing a subset out again had already
-# got three of them wrong in ways nothing noticed until sign-in broke. The six
-# it does not need stay empty, and an empty on-demand table costs nothing.
+# For accounts set up before setup-aws-only.sh stopped creating them.
 #
-# So this is tidiness, not a cost saving, and it is optional. Run it if you would
-# rather the account contained only what it uses.
+# It used to create all twelve tables and leave the unused ones empty, on the
+# reasoning that an idle on-demand table costs nothing. It now passes AWS_ONLY=1
+# to setup-aws-account.sh, which skips them, so a freshly created account has
+# nothing for this script to find and running it is a no-op.
+#
+# Run it on an account created before that change. It is tidiness, not a cost
+# saving, and it is optional.
 #
 # ── what this does NOT touch ──
 #
@@ -233,6 +234,8 @@ if [ "$APPLY" = "0" ]; then
 else
   echo "  $DELETED deleted, $KEPT kept, $ABSENT already gone."
   echo
-  echo "  ${dim}Nothing in this account reads them. If you later turn this into a"
-  echo "  full install, setup-aws-account.sh recreates them.${off}"
+  echo "  ${dim}Nothing in this account reads them, and setup-aws-only.sh no longer"
+  echo "  creates them, so re-running it will not bring them back. If you later"
+  echo "  turn this into a full install, setup-aws-account.sh recreates them"
+  echo "  without AWS_ONLY=1.${off}"
 fi

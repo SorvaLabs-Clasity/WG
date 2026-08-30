@@ -260,7 +260,9 @@ const branch = (repo: string, name: string, prot: boolean): EdgeLike =>
     // the echo above broke the moment a comment was written between them, and
     // anchoring on "the first loop mentioning TABLES" matched the create loop,
     // which says nothing about waiting.
-    const wait = setup.match(/for t in ([^\n]*); do\n\s*\$AWS dynamodb wait table-exists/)?.[1] ?? "";
+    // The loop body may skip a table first, in an AWS-only install, so the
+    // wait is no longer the line straight after `do`.
+    const wait = setup.match(/for t in ([^\n]*); do\n[\s\S]{0,240}?\$AWS dynamodb wait table-exists/)?.[1] ?? "";
     check("  and is waited for before anything modifies it",
       /\balerts\b/.test(wait), wait);
     check("  which happens before expiry is enabled",

@@ -48,13 +48,19 @@ only the GitHub half writes to stay empty here, and an idle on-demand table
 costs nothing. [The AWS-only setup](../aws-only-setup.md) has the full
 inventory of what lands in such an account.
 
-Twelve tables are created rather than six because the same script the full
-install uses makes them, so their schemas cannot drift. The six the GitHub half
-writes to stay empty, and an idle on-demand table costs nothing. If you would
-rather the account held only what it uses, `./scripts/prune-github-tables.sh`
-removes the GitHub-only ones. It is optional tidiness, not a saving: it deletes
-only tables that are empty, since an empty table is the proof nothing here uses
-it, and it reports CloudFormation-owned resources rather than deleting them.
+The tables come from the same script the full install uses, so their schemas
+cannot drift, but it is run with `AWS_ONLY=1` and skips the ones only the GitHub
+half writes to: `alerts`, `scanners` and `graph-edges` are not created here.
+
+Accounts set up before that change have those three sitting empty.
+`./scripts/prune-github-tables.sh` removes them. It deletes only tables that are
+empty, since an empty table is the proof nothing here uses it, and it reports
+CloudFormation-owned resources rather than deleting them. On an account created
+since, it finds nothing and does nothing.
+
+`cdk deploy -c awsOnly=true` creates no tables at all: the stack owns exactly
+one, `webhook-deliveries`, and that sits behind the same GitHub gate. So a
+deploy cannot bring the pruned tables back.
 
 **It never asks for the GitHub App private key.** That key reads your entire
 organization, and keeping it out of the account is the whole exercise. Without

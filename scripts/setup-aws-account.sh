@@ -137,8 +137,35 @@ TABLES=(
   alarms             # alarmService.ts            Key: { id }
 )
 
+# Tables only the GitHub half of the app ever writes to.
+#
+# Named here, beside the schemas, because this file is where a table is defined
+# and so is where "who uses it" belongs. With AWS_ONLY=1 they are not created at
+# all: an account running the guardrails has no access graph, no security alerts
+# and no scanners, and creating three empty tables so that a second script can
+# delete them again is not a design, it is two scripts disagreeing.
+#
+# `widgets` is deliberately not here. The alarm evaluator resolves an alarm's
+# subject through it, so a missing table turns "no such widget", which the
+# evaluator handles and reports, into a thrown error in the middle of a pass.
+GITHUB_ONLY_TABLES=(alerts scanners graph-edges)
+
+# Is this table one an AWS-only install has no use for?
+github_only() {
+  [ "${AWS_ONLY:-}" = "1" ] || return 1
+  local want="$1" t
+  for t in "${GITHUB_ONLY_TABLES[@]}"; do
+    [ "$want" = "${PREFIX}-${t}" ] && return 0
+  done
+  return 1
+}
+
 create_table() {
   local name="$1"; shift
+  if github_only "$name"; then
+    echo "    skip:    $name (GitHub only, and this is an AWS-only install)"
+    return
+  fi
   if $AWS dynamodb describe-table --table-name "$name" >/dev/null 2>&1; then
     echo "    exists:  $name"
     return
@@ -305,6 +332,9 @@ echo
 # table alone, so an account provisioned before this index existed would skip
 # it. The Security tab reads *through* this index, so without it the tab shows
 # no alerts at all rather than showing them slowly.
+if github_only "${PREFIX}-alerts"; then
+  echo "==> Skipping the alerts index (GitHub only)"
+else
 echo "==> Checking alerts table index"
 $AWS dynamodb wait table-exists --table-name "${PREFIX}-alerts"
 have=$($AWS dynamodb describe-table --table-name "${PREFIX}-alerts" \
@@ -362,6 +392,7 @@ if [[ "$stale" =~ ^[0-9]+$ ]] && [ "$stale" -gt 0 ]; then
   echo "          appear on the Security tab. To add them:"
   echo "            ./scripts/backfill-alert-feed.sh --apply"
 fi
+fi
 echo
 
 # ── 2. Wait, before anything that modifies a table ──
@@ -372,6 +403,9 @@ echo "==> Waiting for tables to become ACTIVE"
 # table still CREATING, could not read it, and skipped it. On a fresh account
 # that means no expiry on the one table this was all added for.
 for t in "${TABLES[@]}" alerts activity scanners graph-edges org-config auth-codes aws-guardrails aws-exclusions aws-findings; do
+  # A table this install skipped is never going to exist, and `wait` on it
+  # blocks for its full timeout before failing.
+  github_only "${PREFIX}-${t}" && continue
   $AWS dynamodb wait table-exists --table-name "${PREFIX}-${t}"
 done
 
@@ -393,6 +427,7 @@ done
 #   auth-codes   short-lived sign-in codes
 echo "==> Enabling expiry where rows should age out"
 for t in activity alerts alarms auth-codes; do
+  github_only "${PREFIX}-${t}" && continue
   enable_ttl "${PREFIX}-${t}"
 done
 

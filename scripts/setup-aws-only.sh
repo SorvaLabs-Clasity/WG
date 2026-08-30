@@ -8,11 +8,9 @@
 # tab is refused, by the backend rather than by hiding a button.
 #
 # What lands here:
-#   - the DynamoDB tables, created by setup-aws-account.sh so their schemas
-#     cannot drift from the ones the app reads. The six only the GitHub half
-#     writes to are created and stay empty; an idle on-demand table costs
-#     nothing, and a second hand-written copy of twelve schemas does not stay
-#     right.
+#   - the DynamoDB tables this account actually uses, created by
+#     setup-aws-account.sh so their schemas cannot drift from the ones the app
+#     reads. The ones only the GitHub half writes to are not created here.
 #   - one Lambda on a fifteen-minute schedule, plus a CloudTrail rule so it also
 #     reacts to resources being created
 #   - the alarm evaluator, on the five-minute tick. Guardrails can raise alarms,
@@ -163,13 +161,16 @@ step "1/4  DynamoDB tables"
 # until something tried to use the table: sign-in died with "Missing the key id
 # in the item", which names neither the table nor the cause.
 #
-# So the same script the full install uses creates them. It also creates the six
-# tables only the GitHub half writes to. They stay empty here: nothing in this
-# account writes to them, and an empty on-demand table costs nothing: and that
-# is a better trade than a second copy of twelve schemas that has to be kept in
-# step by hand.
+# So the same script the full install uses creates them, with AWS_ONLY=1, which
+# tells it to leave out the ones only the GitHub half writes to. One copy of the
+# schemas, and none of the tables this account has no use for.
+#
+# It used to create all of them and leave the unused ones empty, on the
+# reasoning that an idle on-demand table costs nothing. True, but it meant the
+# setup script created three tables and prune-github-tables.sh existed to delete
+# them again, which is not a design, it is two scripts disagreeing.
 AWS_PROFILE="${AWS_PROFILE:-}" AWS_REGION="$REGION" STACK_NAME="$PREFIX" \
-  SKIP_SECRET=1 SKIP_CONFIRM=1 \
+  SKIP_SECRET=1 SKIP_CONFIRM=1 AWS_ONLY=1 \
   bash "$HERE/setup-aws-account.sh" </dev/null \
   || die "Table creation failed. The output above says why."
 ok "tables present (on-demand billing; the unused ones cost nothing)"
