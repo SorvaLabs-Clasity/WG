@@ -2376,9 +2376,19 @@ left every client reading the first. The switch reported success, the account id
 was right, and the tables looked empty, because they were in the region nobody
 was reading.
 
+**Access keys carry no region**, so the sign-in form has a field for one, and
+it is the only thing on that path that can name a region. Left blank, the app
+falls back to the region the process started with rather than to whichever
+account was open before: a region exported for this machine is a choice the
+operator made, and one left behind by a previous switch is not. Without that
+distinction, connecting to a second account with keys read the first account's
+tables under the second's credentials, and the dashboard was simply empty.
+
 That is also **how you move between regions**. Each region is its own
 installation, so a profile per region, each with its own `region` line, and the
-account switcher moves between them.
+account switcher moves between them. The switcher shows each profile's region
+beside its account id, because with one install per region two profiles into the
+same account are two entirely separate sets of rules, findings and alarms.
 
 ### The path
 

@@ -80,12 +80,15 @@ export default function LoginPage() {
   const [newStartUrl, setNewStartUrl] = useState("");
   const [newSsoRegion, setNewSsoRegion] = useState("us-east-2");
   /**
-   * Where this app's own infrastructure is.
+   * Where this app's own infrastructure is, and so which install this profile
+   * opens.
    *
-   * Not asked for when the build already knows, `VITE_AWS_REGION` is written by
-   * the setup script for exactly this install, so asking is asking somebody to
-   * retype a fact the app is holding. It stays editable for the case where the
-   * build carries nothing.
+   * Seeded from `VITE_AWS_REGION`, which the setup script writes for the
+   * install a build was made for, and always editable. It used to be hidden
+   * whenever that was set, because retyping a fact the app holds is a poor
+   * prompt. That stopped being true once each region became its own install:
+   * the one field that picks between them was the one the build was answering
+   * on your behalf.
    */
   const [newRegion, setNewRegion] = useState(
     (import.meta.env.VITE_AWS_REGION as string | undefined) || "");
@@ -748,28 +751,31 @@ export default function LoginPage() {
                           </p>
                         </div>
 
-                        {/* Only asked when the build does not already know. */}
-                        {!import.meta.env.VITE_AWS_REGION && (
-                          <div>
-                            <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
-                              Region this app runs in
-                            </label>
-                            <input value={newRegion} onChange={e => setNewRegion(e.target.value)}
-                              placeholder="us-east-2" className={SURFACE.input} />
-                            <p className="mt-1 text-[11px] text-slate-400">
-                              Where this app's own tables and secrets are. Often a different
-                              region from the sign-in above.
-                            </p>
-                          </div>
-                        )}
-
-                        {import.meta.env.VITE_AWS_REGION && (
-                          <p className="text-[11px] text-slate-400">
-                            This app runs in <code>{import.meta.env.VITE_AWS_REGION as string}</code>,
-                            so the profile will use that. Different from the sign-in region above,
-                            and that is normal.
+                        {/* Always asked, and pre-filled when the build knows one.
+                            It used to be hidden whenever `VITE_AWS_REGION` was
+                            baked in, on the reasoning that the app already knew
+                            the answer. That held while there was one install.
+                            With one per region it made the app unable to create
+                            a profile for any region but the one it was built
+                            for, and it did not say so: the field was simply not
+                            there, and every profile came out pointing at the
+                            same region. */}
+                        <div>
+                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
+                            Region this app runs in
+                          </label>
+                          <input value={newRegion} onChange={e => setNewRegion(e.target.value)}
+                            placeholder="us-east-2" className={SURFACE.input} />
+                          <p className="mt-1 text-[11px] text-slate-400">
+                            Where this app's tables and secrets are, which is the install this
+                            profile opens. Often a different region from the sign-in above.
+                            {import.meta.env.VITE_AWS_REGION && (
+                              <> This build was made for{" "}
+                                <code>{import.meta.env.VITE_AWS_REGION as string}</code>, so that is
+                                filled in. Change it to reach another region's install.</>
+                            )}
                           </p>
-                        )}
+                        </div>
                         <div className="flex justify-end">
                           <Button variant="primary" onClick={handleNewSsoStart}
                             disabled={newBusy || !newStartUrl.trim() || !newSsoRegion.trim() || !newRegion.trim()}>
@@ -932,9 +938,19 @@ export default function LoginPage() {
                           <input type="password" value={akSession} onChange={e => setAkSession(e.target.value)}
                             placeholder="••••••••" className={`${SURFACE.input} font-mono text-[12.5px]`} />
                         </Field>
+                        {/* Optional, but worth naming: a key pair carries no
+                            region, so this is the only thing here that can say
+                            which one. Left blank the app falls back to the
+                            region it was started with, which is right on a
+                            machine that sets one and nothing at all on a
+                            machine that does not. */}
                         <Field label="Region" optional>
                           <input type="text" value={akRegion} onChange={e => setAkRegion(e.target.value)}
-                            placeholder="us-east-1" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                            placeholder="us-east-2" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                          <p className="mt-1 text-[11.5px] text-slate-400 dark:text-slate-500">
+                            Which region's install to open. Access keys do not carry one, and with
+                            one install per region this is what picks between them.
+                          </p>
                         </Field>
                         <div className="flex justify-end">
                           <Button variant="primary" onClick={handleAccessKeys} disabled={refreshing === "aws" || !akId || !akSecret}>

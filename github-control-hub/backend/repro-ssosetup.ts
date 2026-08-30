@@ -357,6 +357,39 @@ function check(name: string, ok: boolean, got?: unknown) {
       "otherwise the tab is present and blank, which is worse than hidden");
   }
 
+  // ── the profile's own region is always a choice ─────────────────────
+  //
+  // Two regions are asked for, and they are different questions. `sso_region`
+  // is where the company's sign-in directory lives, one for the whole company.
+  // `region` is which install the profile opens, and with one install per
+  // region that is the field that picks between them.
+  //
+  // The second was hidden whenever VITE_AWS_REGION was baked into the build, on
+  // the reasoning that the app already knew it. That held while there was one
+  // install. After that it made the app silently unable to create a profile for
+  // any region but its own: no field, no message, every profile the same.
+  {
+    const fsx = await import("fs");
+    const login = fsx.readFileSync("../frontend/src/pages/LoginPage.tsx", "utf8");
+
+    check("the install region is asked for even when the build carries one",
+      !/\{!import\.meta\.env\.VITE_AWS_REGION && \(/.test(login),
+      "hiding it made every profile point at the region the build was made for");
+
+    check("  and the build's region is offered as the default rather than imposed",
+      /useState\(\s*\(import\.meta\.env\.VITE_AWS_REGION as string \| undefined\) \|\| ""\)/.test(login),
+      "pre-filling saves typing; deciding removes the choice");
+
+    // The two must stay distinct in what is written, or a company whose
+    // directory is in one region could only ever reach installs in that region.
+    check("the profile records the two regions separately",
+      /sso_region = \$\{p\.ssoRegion\}/.test(
+        fsx.readFileSync("src/services/ssoSetupService.ts", "utf8"))
+      && /region = \$\{p\.region\}/.test(
+        fsx.readFileSync("src/services/ssoSetupService.ts", "utf8")),
+      "one directory, many installs, so these cannot be the same value");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

@@ -88,8 +88,13 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
 
   return (
     <div className="border-t border-slate-100 dark:border-white/[0.07]">
+      {/* Region is named here because it is half of what a row identifies.
+          One installation per region means two profiles can be the same
+          account and hold entirely different rules, findings and alarms, and
+          a heading saying only "AWS account" invites reading them as
+          duplicates. */}
       <p className="px-4 pt-3 pb-1.5 text-[10px] uppercase tracking-[0.16em] font-bold text-slate-400 dark:text-white/35">
-        AWS account
+        AWS account and region
       </p>
 
       {isLoading && (
@@ -129,11 +134,20 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
                 <span className="block text-[13px] font-bold text-slate-900 dark:text-white truncate">
                   {profile.name}
                 </span>
-                {/* The account id is what people actually recognise, and it is
-                    the thing that disambiguates two profiles into the same
-                    account. Shown when the profile carries one. */}
+                {/* The account id is what people recognise; the region is what
+                    tells two profiles into the same account apart, and it used
+                    to be fetched and then not shown, so a per-region pair
+                    rendered as two identical rows.
+
+                    A profile with no region of its own is called out rather
+                    than left blank: it inherits whatever the SDK resolves,
+                    which is the one case where what you get is not written
+                    down anywhere on this screen. */}
                 <span className="block text-[11px] text-slate-400 dark:text-white/40 truncate">
                   {profile.accountId || profile.type.toUpperCase()}
+                  {profile.region
+                    ? ` · ${profile.region}`
+                    : " · no region set"}
                   {on && " · in use"}
                 </span>
               </span>

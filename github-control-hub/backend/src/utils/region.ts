@@ -41,3 +41,36 @@ export async function resolveAwsRegion(): Promise<string | undefined> {
     return undefined;
   }
 }
+
+/**
+ * The region this process started with, before anybody switched accounts.
+ *
+ * Captured once, at load, because `AWS_REGION` is not read-only here: both
+ * account-switch routes write to it. Without a record of the original, "no
+ * region was given for this account" and "the last account's region" are the
+ * same value, and the app reads one account's tables under another's
+ * credentials. That failure is silent, an empty dashboard, which is the
+ * shape this whole module exists to prevent.
+ *
+ * Undefined when the process was started without one, which is the normal
+ * case for the desktop app.
+ */
+export const BOOT_REGION: string | undefined =
+  process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || undefined;
+
+/**
+ * Put the region back to what this process started with.
+ *
+ * For a switch into an account that names no region of its own. Falling back
+ * to the launch environment is right: that is a choice the operator made, for
+ * this machine, and it is the same answer they would have got before switching
+ * anything. Inheriting the account just left is not a choice anybody made.
+ */
+export function resetRegionToBoot(): void {
+  if (BOOT_REGION) {
+    process.env.AWS_REGION = BOOT_REGION;
+  } else {
+    delete process.env.AWS_REGION;
+    delete process.env.AWS_DEFAULT_REGION;
+  }
+}

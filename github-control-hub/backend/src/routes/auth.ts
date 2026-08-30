@@ -932,10 +932,7 @@ router.post("/aws-use-profile", serverModeGuard, sameOriginOnly, setupOrAuthMidd
    */
   const profileRegion = await regionOfProfile(profile);
   if (profileRegion) process.env.AWS_REGION = profileRegion;
-  else {
-    delete process.env.AWS_REGION;
-    delete process.env.AWS_DEFAULT_REGION;
-  }
+  else (await import("../utils/region")).resetRegionToBoot();
 
   unlockAws();
   dynamo.resetDynamoClient();
@@ -969,7 +966,17 @@ router.post("/aws-access-keys", serverModeGuard, sameOriginOnly, setupOrAuthMidd
   process.env.AWS_SECRET_ACCESS_KEY = secretAccessKey;
   if (sessionToken) process.env.AWS_SESSION_TOKEN = sessionToken;
   else delete process.env.AWS_SESSION_TOKEN;
+  /**
+   * The same rule as the profile route, and it matters more here: keys carry
+   * no region at all, so this field is the only thing that can name one, and
+   * it is optional.
+   *
+   * Left blank, the region used to be whichever account was open before, so
+   * connecting to a second account with keys read the first account's tables
+   * under the second's credentials. Nothing failed; the dashboard was empty.
+   */
   if (region) process.env.AWS_REGION = region;
+  else (await import("../utils/region")).resetRegionToBoot();
   delete process.env.AWS_PROFILE;
 
   unlockAws();

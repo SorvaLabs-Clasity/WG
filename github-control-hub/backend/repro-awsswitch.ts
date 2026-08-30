@@ -261,8 +261,8 @@ function verifies(token: string): boolean {
       && !/req\.body\?\.region/.test(body),
       "this decides which account's data every later request reads");
 
-    check("  and a profile naming none clears it rather than inheriting one",
-      /delete process\.env\.AWS_REGION;\s*\n\s*delete process\.env\.AWS_DEFAULT_REGION;/.test(body),
+    check("  and a profile naming none does not inherit one",
+      /resetRegionToBoot\(\)/.test(body),
       "pointing at the account just departed is the failure this fixes");
 
     // The region a profile names is written into no config file here, but it
@@ -274,6 +274,85 @@ function verifies(token: string): boolean {
     check("the default profile's section is recognised too",
       /profile === "default" && line === "\[default\]"/.test(auth),
       '"[default]" has no "profile " prefix, so matching only the prefixed form misses it');
+  }
+
+  // ── and the region is on screen ─────────────────────────────────────
+  //
+  // The switcher fetched each profile's region and then rendered only the name
+  // and the account id. With one installation per region, two profiles into the
+  // same account are two entirely separate sets of rules, findings and alarms,
+  // and they drew as two identical rows: same name shape, same account id,
+  // nothing to pick between them.
+  {
+    const fs = await import("fs");
+    const ui = fs.readFileSync("../frontend/src/components/AwsAccountSwitcher.tsx", "utf8");
+
+    check("the profile's region is shown, not just fetched",
+      /\$\{profile\.region\}/.test(ui),
+      "it was in the payload and not on the screen, which is how two regions looked alike");
+
+    check("  and a profile without one says so",
+      /no region set/.test(ui),
+      "blank reads as 'none needed' when it means 'whatever the SDK resolves'");
+
+    check("  under a heading that admits region is half the identity",
+      /AWS account and region/.test(ui),
+      '"AWS account" invites reading a per-region pair as duplicates');
+
+    // The backend has to actually send it, or the row above renders nothing.
+    const auth = fs.readFileSync("src/routes/auth.ts", "utf8");
+    check("the profile listing carries the region",
+      /if \(k === "region"\) current\.region = v;/.test(auth));
+  }
+
+  // ── access keys carry no region ─────────────────────────────────────
+  //
+  // A profile has a `region` line; a key pair has nothing. The form's Region
+  // field is optional, so the ordinary case is that nothing names one, and the
+  // value left in the environment was the last account's. Connecting to a
+  // second account with keys then read the first account's tables under the
+  // second's credentials, and the dashboard was simply empty.
+  {
+    const fs = await import("fs");
+    const { execFileSync } = await import("child_process");
+    const auth = fs.readFileSync("src/routes/auth.ts", "utf8");
+
+    const keys = auth.slice(auth.indexOf('"/aws-access-keys"'));
+    check("connecting with keys and no region does not inherit one",
+      /else \(await import\("\.\.\/utils\/region"\)\)\.resetRegionToBoot\(\)/.test(keys),
+      "blank meant 'keep the last account's region', which is nobody's intent");
+
+    const profileBlock = auth.slice(auth.indexOf('"/aws-use-profile"'), auth.indexOf('"/aws-access-keys"'));
+    check("  and the profile route uses the same rule",
+      /resetRegionToBoot\(\)/.test(profileBlock),
+      "two switch routes disagreeing about this is how one of them rots");
+
+    // The distinction that makes the fallback safe: a region the operator
+    // exported for this machine is a choice, and is kept. One left behind by a
+    // previous switch is not, and is dropped.
+    const probe = "tmp-bootregion-probe.ts";
+    fs.writeFileSync(probe,
+      'import { resetRegionToBoot, awsRegion } from "./src/utils/region";\n'
+      + 'process.env.AWS_REGION = "eu-west-1";\n'
+      + 'resetRegionToBoot();\n'
+      + 'process.stdout.write(String(awsRegion() ?? ""));\n');
+    const run = (env: Record<string, string | undefined>) =>
+      execFileSync("npx", ["tsx", probe], {
+        encoding: "utf8",
+        env: { ...process.env, AWS_CONFIG_FILE: "/dev/null", ...env },
+      }).trim();
+
+    try {
+      check("a region exported at launch survives a switch that names none",
+        run({ AWS_REGION: "us-east-2" }) === "us-east-2",
+        "that one is a choice the operator made for this machine");
+
+      check("  while the previous account's is dropped either way",
+        run({ AWS_REGION: undefined, AWS_DEFAULT_REGION: undefined }) === "",
+        "no region is a loud failure; the wrong region is a silent one");
+    } finally {
+      fs.unlinkSync(probe);
+    }
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
