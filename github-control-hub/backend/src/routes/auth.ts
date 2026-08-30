@@ -847,6 +847,47 @@ router.post("/aws-sso-login", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
 });
 
 /** Switch to an existing AWS CLI profile (non-SSO). */
+/**
+ * The `region` a named profile sets in ~/.aws/config, if it sets one.
+ *
+ * Read here rather than taken from what the browser sent: this decides which
+ * account's data every subsequent request reads, and the caller is not the
+ * authority on what is in the operator's config file.
+ */
+async function regionOfProfile(profile: string): Promise<string | null> {
+  try {
+    const fs = await import("node:fs");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const file = process.env.AWS_CONFIG_FILE
+      || path.join(os.homedir(), ".aws", "config");
+    const text = fs.readFileSync(file, "utf8");
+
+    let inProfile = false;
+    for (const raw of text.split("\n")) {
+      const line = raw.trim();
+      if (line.startsWith("[")) {
+        // "[default]" has no prefix; every other profile is "[profile name]".
+        inProfile = line === `[profile ${profile}]`
+          || (profile === "default" && line === "[default]");
+        continue;
+      }
+      if (!inProfile) continue;
+      const [k, ...v] = line.split("=");
+      if (k?.trim() === "region") {
+        const region = v.join("=").trim();
+        const { isValidRegion } = await import("../services/ssoSetupService");
+        return isValidRegion(region) ? region : null;
+      }
+    }
+    return null;
+  } catch {
+    // No config file, or unreadable. The caller then clears the inherited one
+    // and lets the SDK answer, which is the same as having read nothing here.
+    return null;
+  }
+}
+
 router.post("/aws-use-profile", serverModeGuard, sameOriginOnly, setupOrAuthMiddleware, async (req: Request, res: Response) => {
   const { unlockAws } = await import("../middleware/awsHealthMiddleware");
   const dynamo = await import("../utils/dynamo");
@@ -872,6 +913,29 @@ router.post("/aws-use-profile", serverModeGuard, sameOriginOnly, setupOrAuthMidd
   delete process.env.AWS_ACCESS_KEY_ID;
   delete process.env.AWS_SECRET_ACCESS_KEY;
   delete process.env.AWS_SESSION_TOKEN;
+
+  /**
+   * The region comes with the profile, and must not be inherited.
+   *
+   * `AWS_REGION` beats a profile's own `region` everywhere in the SDK, and the
+   * access-keys route sets it. So signing in with keys for one region and then
+   * switching to a profile in another left every client talking to the first:
+   * the switch reported success, the account id was right, and the tables were
+   * empty because they are in the region nobody was reading. Nothing failed.
+   *
+   * With one installation per region, that stops being an edge case and
+   * becomes the ordinary way somebody moves between them.
+   *
+   * Cleared when the profile names no region, rather than left pointing at the
+   * account just departed: the SDK's own resolution is the only thing that can
+   * answer this correctly, and a missing region is an error worth seeing.
+   */
+  const profileRegion = await regionOfProfile(profile);
+  if (profileRegion) process.env.AWS_REGION = profileRegion;
+  else {
+    delete process.env.AWS_REGION;
+    delete process.env.AWS_DEFAULT_REGION;
+  }
 
   unlockAws();
   dynamo.resetDynamoClient();

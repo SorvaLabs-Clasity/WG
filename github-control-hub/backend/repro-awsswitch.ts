@@ -236,6 +236,46 @@ function verifies(token: string): boolean {
     }
   }
 
+  // ── the region comes with the profile ───────────────────────────────
+  //
+  // AWS_REGION beats a profile's own `region` everywhere in the SDK, and the
+  // access-keys route sets it. Switching from keys in one region to a profile
+  // in another therefore left every client reading the first: the switch
+  // reported success, the account was right, and the tables were empty because
+  // they are in the region nobody was reading.
+  //
+  // With one installation per region this is the ordinary way somebody moves
+  // between them, not an edge case.
+  {
+    const fs = await import("fs");
+    const auth = fs.readFileSync("src/routes/auth.ts", "utf8");
+    const start = auth.indexOf('"/aws-use-profile"');
+    const body = auth.slice(start, start + 3000);
+
+    check("switching to a profile adopts that profile's region",
+      /process\.env\.AWS_REGION = profileRegion/.test(body),
+      "otherwise the region of the account just left silently wins");
+
+    check("  read from the config file, not from what the browser sent",
+      /const profileRegion = await regionOfProfile\(profile\)/.test(body)
+      && !/req\.body\?\.region/.test(body),
+      "this decides which account's data every later request reads");
+
+    check("  and a profile naming none clears it rather than inheriting one",
+      /delete process\.env\.AWS_REGION;\s*\n\s*delete process\.env\.AWS_DEFAULT_REGION;/.test(body),
+      "pointing at the account just departed is the failure this fixes");
+
+    // The region a profile names is written into no config file here, but it
+    // is used to reach an account, so a malformed one should not be adopted.
+    check("  a malformed region in the config is refused",
+      /isValidRegion\(region\) \? region : null/.test(auth),
+      "an unreadable region is better than a wrong one");
+
+    check("the default profile's section is recognised too",
+      /profile === "default" && line === "\[default\]"/.test(auth),
+      '"[default]" has no "profile " prefix, so matching only the prefixed form misses it');
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

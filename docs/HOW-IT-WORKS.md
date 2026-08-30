@@ -2367,6 +2367,19 @@ account's secret does not set, so an account with no GitHub App never inherits
 another account's. You stay signed in across the switch, and the GitHub tabs
 appear or disappear according to what the account you moved to holds.
 
+**The region comes with the profile.** Switching to a named profile adopts that
+profile's `region` from `~/.aws/config`, and clears the inherited one when the
+profile names none. This matters because `AWS_REGION` beats a profile's own
+setting everywhere in the SDK, and the access-keys route sets it: without this,
+signing in with keys for one region and then switching to a profile in another
+left every client reading the first. The switch reported success, the account id
+was right, and the tables looked empty, because they were in the region nobody
+was reading.
+
+That is also **how you move between regions**. Each region is its own
+installation, so a profile per region, each with its own `region` line, and the
+account switcher moves between them.
+
 ### The path
 
 AWS first, GitHub second, and the order is the security model rather than a

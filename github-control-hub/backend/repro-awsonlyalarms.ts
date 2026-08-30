@@ -266,6 +266,39 @@ const handler = fs.readFileSync("./src/alarms/handler.ts", "utf8");
       "a refused request behind a working page reads as the page being broken");
   }
 
+  // ── the prefix reaches both halves of an install ────────────────────
+  //
+  // The setup scripts let you choose one, and export STACK_NAME so both halves
+  // use it. setup-aws-account.sh read it and named the tables; the CDK app did
+  // not, and configured every Lambda for "github-control-hub-*". A custom
+  // prefix therefore produced an account whose tables existed under one name
+  // and whose functions looked for another, and the symptom was a sweep that
+  // found nothing while the data sat there.
+  {
+    const appTs = fs.readFileSync("../infra/cdk-app.ts", "utf8");
+    check("the CDK app reads the prefix the setup scripts export",
+      /process\.env\.STACK_NAME \|\| "github-control-hub"/.test(appTs),
+      "exported into a deploy that ignores it is the same as not exported");
+
+    check("  and passes it to the stack",
+      /stackPrefix: prefix/.test(appTs),
+      "the prop existed and was documented, and nothing ever set it");
+
+    check("  along with the secret names derived from it",
+      /secretName: `\$\{prefix\}\/secrets`/.test(appTs),
+      "the tables would be renamed and the secret not, which is half a rename");
+
+    const script = fs.readFileSync("../../scripts/setup-aws-only.sh", "utf8");
+    check("  which is what the script was already trying to do",
+      /STACK_NAME="\$PREFIX" npx cdk deploy/.test(script));
+
+    // Unset has to keep meaning the default, or every existing install renames
+    // every resource it owns on the next deploy.
+    check("no prefix still means the default",
+      /\|\| "github-control-hub"/.test(appTs),
+      "a deploy that renames an entire stack is not an upgrade");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

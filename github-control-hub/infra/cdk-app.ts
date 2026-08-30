@@ -33,6 +33,20 @@ function getRegion(): string {
   );
 }
 
+/**
+ * The name every resource in this stack is built from.
+ *
+ * `STACK_NAME` because that is what the setup scripts already export, and they
+ * were exporting it into a deploy that never read it: setup-aws-account.sh made
+ * the tables with the chosen prefix, while the stack fell back to its default
+ * and configured every Lambda to read `github-control-hub-*`. The two halves
+ * disagreed, and the symptom was a guardrail sweep finding nothing in an
+ * account whose tables were sitting right there under another name.
+ *
+ * Unset means the default, which is what every install using it has.
+ */
+const prefix = process.env.STACK_NAME || "github-control-hub";
+
 const app = new cdk.App();
 
 new GitHubControlHubStack(app, "GitHubControlHub", {
@@ -40,6 +54,11 @@ new GitHubControlHubStack(app, "GitHubControlHub", {
     account: getAccount(),
     region: getRegion(),
   },
+  stackPrefix: prefix,
+  // Derived, because the setup scripts derive them the same way. Naming them
+  // separately would be a third place for the same choice to drift.
+  secretName: `${prefix}/secrets`,
+  webhookSecretName: `${prefix}/webhook-secret`,
   // `-c awsOnly=true` deploys the guardrail half alone: no webhook, no alarm
   // evaluator, no access graph, no audit-log pipeline. For an account that runs
   // the guardrails and holds nothing about the GitHub organization.
