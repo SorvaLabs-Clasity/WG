@@ -21,6 +21,8 @@ export interface AlarmLike {
   groupId: string;
   subjectTemplate: string;
   bodyTemplate: string;
+  teamsSubjectTemplate?: string;
+  teamsBodyTemplate?: string;
   notifyOnRecovery: boolean;
   enabled: boolean;
   state: AlarmState;
@@ -36,7 +38,8 @@ export interface EvaluatorDeps {
   getWidget: (id: string) => Promise<WidgetLike | undefined>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   computeRows: (widget: WidgetLike) => Promise<WidgetRows>;
-  publish: (topicArn: string, subject: string, body: string) => Promise<boolean>;
+  publish: (topicArn: string, subject: string, body: string,
+    teamsText?: { subject: string; body: string }) => Promise<boolean>;
   saveRuntime: (id: string, runtime: {
     state: AlarmState; cleanStreak: number; lastCheckedAt: string;
     lastValue?: number | null; lastFiredAt?: string; lastError?: string;
@@ -131,7 +134,7 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
         summary.publishFailures++;
         console.error(`[Alarm] ${alarm.name}: email group ${alarm.groupId} is missing, nothing sent`);
       } else {
-        const { subject, body } = buildMessage(alarm.subjectTemplate, alarm.bodyTemplate, {
+        const vars = {
           widget: widget.title || alarm.name,
           metric: metricLabel(widget, alarm.condition),
           value: displayValue(alarm.condition, value),
@@ -139,8 +142,22 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
           state: fire === "alarm" ? "ALARM" : "OK",
           org: deps.org,
           time: formatTimestamp(nowIso, deps.timezone),
-        });
-        const ok = await deps.publish(topicArn, subject, body);
+        };
+        const { subject, body } = buildMessage(alarm.subjectTemplate, alarm.bodyTemplate, vars);
+
+        // Rendered from the same variables, so the two channels can never
+        // report different numbers for one firing. Only built when a Teams
+        // template was actually written: unset means send the email wording,
+        // and rendering it here anyway would leave nothing for `publish` to
+        // tell the two cases apart by.
+        const teamsText = (alarm.teamsSubjectTemplate || alarm.teamsBodyTemplate)
+          ? buildMessage(
+              alarm.teamsSubjectTemplate || alarm.subjectTemplate,
+              alarm.teamsBodyTemplate || alarm.bodyTemplate,
+              vars)
+          : undefined;
+
+        const ok = await deps.publish(topicArn, subject, body, teamsText);
         if (ok) lastFiredAt = nowIso;
         else summary.publishFailures++;
       }

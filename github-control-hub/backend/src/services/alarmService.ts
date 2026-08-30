@@ -34,6 +34,19 @@ export interface WidgetAlarm {
   groupId: string;
   subjectTemplate: string;
   bodyTemplate: string;
+  /**
+   * The Teams wording, when it should differ from the email above.
+   *
+   * Empty means "use the email one", which is what every alarm written before
+   * this field existed means, and keeps one message to maintain for anybody
+   * who does not want two.
+   *
+   * They are separate because the two are read differently: an email is opened
+   * deliberately and gets a paragraph, a Teams message is glanced at in a
+   * sidebar and wants a line.
+   */
+  teamsSubjectTemplate?: string;
+  teamsBodyTemplate?: string;
   notifyOnRecovery: boolean;
   enabled: boolean;
 
@@ -85,6 +98,19 @@ export interface SecurityNotifySettings {
   minSeverity: Severity;
   subjectTemplate: string;
   bodyTemplate: string;
+  /**
+   * The Teams wording, when it should differ from the email above.
+   *
+   * Empty means "use the email one", which is what every alarm written before
+   * this field existed means, and keeps one message to maintain for anybody
+   * who does not want two.
+   *
+   * They are separate because the two are read differently: an email is opened
+   * deliberately and gets a paragraph, a Teams message is glanced at in a
+   * sidebar and wants a line.
+   */
+  teamsSubjectTemplate?: string;
+  teamsBodyTemplate?: string;
   /**
    * IANA zone the {{time}} variable is rendered in, for both alarm and
    * security emails. UTC by default, because one email reaches a group who may
@@ -185,7 +211,9 @@ export async function getAlarm(id: string): Promise<WidgetAlarm | undefined> {
 export async function createAlarm(
   data: {
     widgetId: string; name: string; condition: AlarmCondition; groupId: string;
-    subjectTemplate?: string; bodyTemplate?: string; notifyOnRecovery?: boolean; enabled?: boolean;
+    subjectTemplate?: string; bodyTemplate?: string;
+    teamsSubjectTemplate?: string; teamsBodyTemplate?: string;
+    notifyOnRecovery?: boolean; enabled?: boolean;
   },
   actor: string,
 ): Promise<WidgetAlarm> {
@@ -199,6 +227,11 @@ export async function createAlarm(
     groupId: data.groupId,
     subjectTemplate: data.subjectTemplate || DEFAULT_ALARM_SUBJECT,
     bodyTemplate: data.bodyTemplate || DEFAULT_ALARM_BODY,
+    // No default. Empty is meaningful here: it means the email wording, and
+    // filling it in would make every alarm carry two copies of the same text
+    // that then drift apart.
+    teamsSubjectTemplate: data.teamsSubjectTemplate ?? "",
+    teamsBodyTemplate: data.teamsBodyTemplate ?? "",
     notifyOnRecovery: data.notifyOnRecovery ?? true,
     enabled: data.enabled ?? true,
     // A new alarm starts clear. Starting it in ALARM would email everyone the
@@ -239,7 +272,8 @@ export async function createAlarm(
  */
 const EDITABLE_ALARM_FIELDS = [
   "name", "condition", "groupId", "subjectTemplate",
-  "bodyTemplate", "notifyOnRecovery", "enabled",
+  "bodyTemplate", "teamsSubjectTemplate", "teamsBodyTemplate",
+  "notifyOnRecovery", "enabled",
 ] as const;
 
 type EditableAlarm = Partial<Pick<WidgetAlarm, typeof EDITABLE_ALARM_FIELDS[number]>>;
@@ -301,6 +335,8 @@ export async function updateAlarm(
     ["notifyOnRecovery", "recovery email"],
     ["subjectTemplate", "subject template edited"],
     ["bodyTemplate", "body template edited"],
+    ["teamsSubjectTemplate", "Teams subject template edited"],
+    ["teamsBodyTemplate", "Teams body template edited"],
   ]);
   if (conditionChanged) changes.unshift("condition changed");
   await logActivity(
@@ -437,7 +473,8 @@ function describeChanges(
   for (const [key, label] of fields) {
     if (after[key] === undefined) continue;
     if (sameValue(before[key], after[key])) continue;
-    if (key === "subjectTemplate" || key === "bodyTemplate") changed.push(label);
+    if (key === "subjectTemplate" || key === "bodyTemplate"
+      || key === "teamsSubjectTemplate" || key === "teamsBodyTemplate") changed.push(label);
     else if (typeof after[key] === "boolean") changed.push(`${label} ${after[key] ? "on" : "off"}`);
     else changed.push(`${label} → ${after[key]}`);
   }
@@ -452,7 +489,8 @@ export async function getSecuritySettings(): Promise<SecurityNotifySettings> {
 
 export async function saveSecuritySettings(
   data: Partial<Pick<SecurityNotifySettings, "enabled" | "groupId" | "minSeverity"
-    | "subjectTemplate" | "bodyTemplate" | "timezone">>,
+    | "subjectTemplate" | "bodyTemplate"
+    | "teamsSubjectTemplate" | "teamsBodyTemplate" | "timezone">>,
   actor: string,
 ): Promise<SecurityNotifySettings> {
   const current = await getSecuritySettings();
@@ -472,6 +510,8 @@ export async function saveSecuritySettings(
     ["timezone", "timezone"],
     ["subjectTemplate", "subject template edited"],
     ["bodyTemplate", "body template edited"],
+    ["teamsSubjectTemplate", "Teams subject template edited"],
+    ["teamsBodyTemplate", "Teams body template edited"],
   ]);
   await logActivity(
     "config.updated" as any, actor, "", "alarm_security",
@@ -538,6 +578,9 @@ export interface FeedNotifySettings {
   grouping: "per-alert" | "per-repository";
   subjectTemplate: string;
   bodyTemplate: string;
+  /** Empty means the email wording above. See WidgetAlarm for why. */
+  teamsSubjectTemplate?: string;
+  teamsBodyTemplate?: string;
   updatedBy?: string;
   updatedAt?: string;
 }
@@ -578,7 +621,8 @@ export async function getFeedSettings(feed: NotifyFeed): Promise<FeedNotifySetti
 export async function saveFeedSettings(
   feed: NotifyFeed,
   data: Partial<Pick<FeedNotifySettings, "enabled" | "groupId" | "minSeverity"
-    | "grouping" | "subjectTemplate" | "bodyTemplate">>,
+    | "grouping" | "subjectTemplate" | "bodyTemplate"
+    | "teamsSubjectTemplate" | "teamsBodyTemplate">>,
   actor: string,
 ): Promise<FeedNotifySettings> {
   const current = await getFeedSettings(feed);
@@ -603,6 +647,8 @@ export async function saveFeedSettings(
     ["grouping", "grouping"],
     ["subjectTemplate", "subject template edited"],
     ["bodyTemplate", "body template edited"],
+    ["teamsSubjectTemplate", "Teams subject template edited"],
+    ["teamsBodyTemplate", "Teams body template edited"],
   ]);
   await logActivity(
     "config.updated" as any, actor, "", `notify_${feed}`,

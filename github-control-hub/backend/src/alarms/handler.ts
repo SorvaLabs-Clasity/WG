@@ -33,6 +33,37 @@ import { publish } from "../services/notifyService";
  * container spends its whole life unable to reach GitHub.
  */
 
+/**
+ * Whether this deployment watches AWS and nothing else.
+ *
+ * Set by the stack from the same flag that decides what is created, so it says
+ * what the install *is* rather than what happens to be missing from it.
+ */
+const awsOnlyInstall = () => process.env.AWS_ONLY === "true";
+
+/**
+ * Whether this pass can read GitHub.
+ *
+ * The App is the only credential, so no App means the GitHub half of a pass
+ * cannot run. Guardrail alarms do not care: they read the findings table the
+ * sweep wrote, which is why the evaluator is worth running at all in an
+ * account with no GitHub in it.
+ */
+const githubConfigured = () =>
+  !!process.env.GITHUB_ORG
+  && !!process.env.GITHUB_APP_ID
+  && !!process.env.GITHUB_APP_PRIVATE_KEY
+  && !!process.env.GITHUB_APP_INSTALLATION_ID;
+
+/**
+ * Not an error: a part of the pass that has nothing to do in this install.
+ *
+ * Carried as a throw so each section keeps its single exit, and caught by name
+ * so a skipped section stays silent while a genuine failure in the same block
+ * is still reported.
+ */
+class SkipWithoutGitHub extends Error {}
+
 let bootstrapped: Promise<void> | null = null;
 
 function bootstrapOnce(): Promise<void> {
@@ -40,7 +71,11 @@ function bootstrapOnce(): Promise<void> {
     bootstrapped = (async () => {
       await loadSecretsIntoEnv();
 
-      if (!process.env.GITHUB_ORG) {
+      // An AWS-only install has no GitHub organization, and that is not a
+      // fault. It is told so explicitly rather than inferred from the missing
+      // value, because a secret that failed to load looks exactly the same
+      // from here, and one of those must fail loudly.
+      if (!awsOnlyInstall() && !process.env.GITHUB_ORG) {
         bootstrapped = null;
         throw new Error("[Alarm] Secrets did not load. GITHUB_ORG is unset; not caching this bootstrap");
       }
@@ -98,10 +133,35 @@ export async function handler(): Promise<void> {
   // The App is the only credential now, so a run that cannot get a token fails
   // and says why. A failed scheduled run is visible in the function's logs and
   // its DLQ; a run that silently used a different identity is not.
-  const token = await getSystemTokenAsync();
+  //
+  // Skipped entirely when there is no GitHub to read. An AWS-only account runs
+  // this same pass for its guardrail alarms, which read the findings table and
+  // never touch a token.
+  const hasGitHub = githubConfigured();
+  const token = hasGitHub ? await getSystemTokenAsync() : "";
 
-  const org = process.env.GITHUB_ORG!;
-  const octokit = createOctokit(token);
+  const org = process.env.GITHUB_ORG ?? "";
+  const octokit = hasGitHub ? createOctokit(token) : (null as any);
+
+  if (!hasGitHub) {
+    console.log(
+      awsOnlyInstall()
+        ? "[Alarm] AWS-only install: evaluating guardrail alarms, skipping the GitHub half"
+        : "[Alarm] No GitHub App is configured, so only guardrail alarms can be evaluated",
+    );
+  }
+
+  /**
+   * The reading a GitHub-backed alarm gets when there is no GitHub.
+   *
+   * Thrown rather than returned as zero. An alarm on "repositories with
+   * vulnerabilities" that reads zero in an account which cannot see GitHub
+   * would resolve itself and report all clear, which is the one answer that
+   * must never be produced by an absence.
+   */
+  const needsGitHub = (what: string) => {
+    throw new Error(`${what} needs GitHub, and this install has none configured`);
+  };
 
   /**
    * Fetched at most once per run, however many alarms read it.
@@ -113,6 +173,7 @@ export async function handler(): Promise<void> {
    */
   let dependencyPromise: ReturnType<typeof fetchOrgDependencyAlerts> | null = null;
   const dependencyAlerts = () => {
+    if (!hasGitHub) needsGitHub("Dependabot alerts");
     if (!dependencyPromise) dependencyPromise = fetchOrgDependencyAlerts(octokit, org);
     return dependencyPromise;
   };
@@ -124,6 +185,7 @@ export async function handler(): Promise<void> {
    */
   let renovatePromise: Promise<any[] | null> | null = null;
   const renovateOpenPrs = () => {
+    if (!hasGitHub) needsGitHub("The Renovate feed");
     if (!renovatePromise) {
       renovatePromise = (async () => {
         const bot = (await getOrgConfig()).renovateBot;
@@ -167,6 +229,7 @@ export async function handler(): Promise<void> {
     dependencyAlerts,
     renovateOpenPrs,
     runQuery: (queryId: string, param?: string, advanced?: any) => {
+      if (!hasGitHub) needsGitHub("A security query");
       const key = JSON.stringify([queryId, param ?? null, advanced ?? null]);
       let run = queryRuns.get(key);
       if (!run) {
@@ -223,7 +286,12 @@ export async function handler(): Promise<void> {
   // call in the same instant, and the subject-by-subject checks draw on commit
   // search, which allows thirty requests a minute. The pass has five minutes and
   // nothing waiting on it.
+  //
+  // Skipped without GitHub. Every widget is a reading of the organization, so
+  // in an AWS-only account this pass would store an error against each one
+  // every five minutes and call it a snapshot.
   try {
+    if (!hasGitHub) throw new SkipWithoutGitHub();
     const { listWidgets } = await import("../services/widgetService");
     const { saveWidgetSnapshot } = await import("../services/alarmService");
     const all = await listWidgets();
@@ -257,7 +325,9 @@ export async function handler(): Promise<void> {
   } catch (err) {
     // The snapshots are an optimisation; the dashboard falls back to computing
     // live without them. A failure here must not fail the alarm pass.
-    console.error("[Alarm] widget snapshot pass failed:", (err as Error).message);
+    if (!(err instanceof SkipWithoutGitHub)) {
+      console.error("[Alarm] widget snapshot pass failed:", (err as Error).message);
+    }
   }
 
   // Written only when the pass did something.
@@ -297,7 +367,11 @@ export async function handler(): Promise<void> {
   // tick, which is the trade grouping was asked for.
   //
   // Its own try, so a failure to flush cannot lose the alarm summary above.
+  //
+  // Nothing buffers without a webhook, and an AWS-only install has none, so
+  // this would drain an empty queue on every tick.
   try {
+    if (!hasGitHub) throw new SkipWithoutGitHub();
     const flushed = await flushPending({
       listPending,
       markSent: markPendingSent,
@@ -313,6 +387,11 @@ export async function handler(): Promise<void> {
           grouping: "per-repository",
           subjectTemplate: sec.subjectTemplate,
           bodyTemplate: sec.bodyTemplate,
+          // Carried across too. Built by hand rather than spread, so a field
+          // added to the settings and not added here is silently dropped, and
+          // the symptom is a Teams template that saves and does nothing.
+          teamsSubjectTemplate: sec.teamsSubjectTemplate,
+          teamsBodyTemplate: sec.teamsBodyTemplate,
         };
       },
       topicArnFor: async (groupId: string) => (await getGroup(groupId))?.topicArn,
@@ -328,7 +407,9 @@ export async function handler(): Promise<void> {
       );
     }
   } catch (err) {
-    console.error("[Notify] Flushing buffered notifications failed:", (err as Error).message);
+    if (!(err instanceof SkipWithoutGitHub)) {
+      console.error("[Notify] Flushing buffered notifications failed:", (err as Error).message);
+    }
   }
 
   // ── stale pull requests ──
@@ -348,6 +429,10 @@ export async function handler(): Promise<void> {
     // and it made the common configuration, monitoring on, reminders off,
     // the one where nothing kept the stored list warm, so every first open of
     // the day paid for a live walk.
+    // The whole pass is a walk of the organization's open pull requests, so
+    // there is nothing here for an install with no organization.
+    if (!hasGitHub) throw { __skip: true };
+
     const prSettings = await getPrSettings();
     if (!prSettings.monitoringEnabled) {
       throw { __skip: true };

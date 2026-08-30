@@ -213,8 +213,8 @@ export function badWebhook(url: string): string | null {
   if (parsed.protocol !== "https:") return "The webhook must be an https URL.";
   if (!TEAMS_HOSTS.test(parsed.hostname)) {
     return `That host is not one Microsoft issues Teams webhooks on. It should end in ${ACCEPTED}, `
-      + `and yours is "${parsed.hostname}". Copy the URL from the Workflows connector in Teams — `
-      + "if that is where this came from, it is a host the app has not been told about.";
+      + `and yours is "${parsed.hostname}". Copy the URL from the Workflows connector in Teams. `
+      + "If that is where this came from, it is a host the app has not been told about.";
   }
   return null;
 }
@@ -351,6 +351,37 @@ export function whyNotDue(a: DevAlerts, now: number): string | null {
  * Defined as "no reason not to", so the decision and the explanation cannot
  * drift apart into two rules that disagree.
  */
+/**
+ * What `lastDigestAt` should become when somebody saves their settings.
+ *
+ * Changing *when* the summary arrives re-decides whether today's is still
+ * owed, and the answer depends on whether the new time has already gone by.
+ *
+ * A time still ahead clears the record, so a schedule set this morning can be
+ * tested the same day rather than leaving somebody to wonder overnight whether
+ * it works.
+ *
+ * A time already past is marked done instead. Clearing it there made the pass
+ * conclude today's was still owed and send one within five minutes, which is
+ * not what setting 12:45 at 12:48 asks for. That, with a settings form that
+ * saved on every change, is how adjusting the time produced a run of
+ * summaries: each save re-opened a window that had already passed.
+ *
+ * Only the timing counts. Toggling a section at nine in the evening changes
+ * what tomorrow's says, not whether tonight gets a second one.
+ */
+export function nextDigestRecord(current: DevAlerts, next: DevAlerts, now = Date.now()): string | undefined {
+  const rescheduled = next.digest.hour !== current.digest.hour
+    || next.digest.minute !== current.digest.minute
+    || (next.digest.enabled && !current.digest.enabled);
+  if (!rescheduled) return current.lastDigestAt;
+
+  const local = localNow(now, next.digest.timeZone);
+  const chosen = next.digest.hour * 60 + (next.digest.minute ?? 0);
+  const passed = local.hour * 60 + local.minute >= chosen;
+  return passed ? new Date(now).toISOString() : undefined;
+}
+
 export function digestDue(a: DevAlerts, now: number): boolean {
   return whyNotDue(a, now) === null;
 }

@@ -36,7 +36,11 @@ interface NavbarProps {
  * halves, and an account running guardrails needs the record of what they did,
  * which is most of the reason to run them. The server does that filtering.
  */
-const ALWAYS_AVAILABLE = new Set(["/aws", "/activity"]);
+// Alarms is here because the guardrails can raise them: an account watching
+// only AWS still needs somewhere to see what is firing, who gets told, and to
+// set Teams up. Its GitHub-backed half, alarms on widgets, simply has no
+// widgets to offer there.
+const ALWAYS_AVAILABLE = new Set(["/aws", "/activity", "/alarms"]);
 
 const ITEMS = [
   // First, because it is the one somebody opens without being sent there.

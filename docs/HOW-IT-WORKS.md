@@ -2105,6 +2105,36 @@ several events rather than events themselves, so they appear in the summary,
 where they are read off the pull request snapshot that already exists. Offering
 them as switches that quietly never fired would be worse than not offering them.
 
+### When it is considered sent
+
+`lastDigestAt` is the only thing between one summary a day and one every five
+minutes: the pass ticks twelve times inside the hour a summary is due, and each
+tick asks the same question. It is written whether the send succeeded, failed or
+had nothing to say, because all three are decisions made for today.
+
+Saving new settings re-decides it, and only the timing counts. Changing the
+hour, the minute, or switching the summary on is a reschedule; changing what
+goes in it is not, so toggling a section in the evening does not produce a
+second summary.
+
+A reschedule then depends on whether the new time has already gone by **in that
+person's timezone**:
+
+| The chosen time is | `lastDigestAt` becomes | so |
+| --- | --- | --- |
+| still ahead today | cleared | it can arrive today, and a schedule set this morning is testable the same day |
+| already past today | now | it waits for tomorrow |
+
+The second row is the one that had to be learned. Clearing it unconditionally
+meant setting 12:45 at 12:48 re-opened a window that had already passed, and the
+next tick sent a summary three minutes later. Because the settings form saved on
+every change, adjusting the time asked that question once per keystroke, and a
+run of summaries followed. The form now saves once, after the changes stop.
+
+An unrecognised timezone is refused when the settings are saved rather than
+further down, where it is not an error at all: it falls back to UTC, and the
+only symptom is a summary arriving at the wrong hour with nothing saying why.
+
 ### Where it is stored
 
 In the org-config table, keyed `devalerts#<login>`. That table is read only by
@@ -2159,6 +2189,27 @@ An alarm on a rule that has since been deleted is refused at creation rather
 than watched. It would read zero forever, which looks exactly like compliance.
 
 ---
+
+## What a notification says on each channel
+
+Every alarm, important event and feed message carries a subject and a body
+template. Those render once, from one reading, and go to both channels.
+
+A second pair can be set for Teams. Empty means "send the email wording", which
+is what everything written before the field existed means, so nothing changed
+for any existing alarm. They are separate because the two are read differently:
+an email is opened deliberately and can carry a paragraph, a Teams message is
+glanced at in a sidebar where the first few words decide whether anybody opens
+it.
+
+Both renderings draw on the **same variables and the same reading**, so the two
+channels cannot report different numbers for one firing. What differs is the
+wording, never the fact.
+
+`notifyService.publish` is where the fallback lives, which is why the caller
+renders the Teams pair only when a template was actually written: if it rendered
+one unconditionally, `publish` would have nothing left to tell the two cases
+apart by.
 
 ## Microsoft Teams as a delivery channel
 
@@ -2457,7 +2508,7 @@ second locked someone out for a minute after it healed.
 | `github/oauth.ts` | builds the GitHub URLs and exchanges the code for a token |
 | `services/authorizationService.ts` | `isControlHubAdmin`, `isAwsAdmin`, and the 60-second cache |
 | `middleware/authMiddleware.ts` | verifies the session on every `/api` request |
-| `middleware/githubGate.ts` | refuses GitHub routes in an account that should not have them |
+| `middleware/githubGate.ts` | refuses GitHub routes in an account that should not have them. Two routers are exempt because they carry both halves: Activity, which filters itself to the AWS rows, and Alarms, which an AWS-only account needs for guardrail alarms and which reaches GitHub through no App credential |
 
 ### Creating an SSO profile from the app
 
@@ -2579,7 +2630,7 @@ an account running guardrails needs the record of what they did.
 | | |
 |---|---|
 | Desktop app | the whole backend, in-process, on `localhost:4321`, using your AWS credentials |
-| Lambda | five functions: guardrails, webhook receiver, webhook worker, alarm evaluator, graph aggregator |
+| Lambda | five functions: guardrails, webhook receiver, webhook worker, alarm evaluator, graph aggregator. An AWS-only install has two, the guardrail sweep and the alarm evaluator |
 
 The same backend is compiled once and started both ways. What differs is who it
 authenticates as and what triggers it.

@@ -25,13 +25,17 @@ export function useWidgetSnapshots() {
   });
 }
 
-export function useWidgets(scope?: "personal") {
+export function useWidgets(scope?: "personal", enabled = true) {
   return useQuery({
     // The scope is in the key. Without it the shared board and a personal one
     // share a cache entry, so opening one shows the other's cards for a moment.
     queryKey: ["widgets", scope ?? "org"],
     queryFn: () => fetchWidgets(scope),
     staleTime: 30_000,
+    // Widgets are the GitHub half of the app, so an AWS-only account has none
+    // and the endpoint refuses. Asking anyway turns a normal state into a
+    // failed request behind a page that is working.
+    enabled,
   });
 }
 

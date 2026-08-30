@@ -59,9 +59,11 @@ export interface FeedNotifyDeps {
   settings: () => Promise<{
     enabled: boolean; groupId?: string; minSeverity?: string;
     subjectTemplate: string; bodyTemplate: string;
+    teamsSubjectTemplate?: string; teamsBodyTemplate?: string;
   }>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
-  publish: (topicArn: string, subject: string, body: string) => Promise<boolean>;
+  publish: (topicArn: string, subject: string, body: string,
+    teamsText?: { subject: string; body: string }) => Promise<boolean>;
   timezone: () => Promise<string>;
   org: string;
 }
@@ -101,7 +103,7 @@ export async function notifyRenovatePr(
   const topicArn = await deps.topicArnFor(settings.groupId);
   if (!topicArn) return "no-group";
 
-  const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, {
+  const vars = {
     repo: pr.repo,
     title: pr.title,
     url: pr.url,
@@ -109,9 +111,31 @@ export async function notifyRenovatePr(
     org: deps.org,
     state: "ALARM",
     time: formatTimestamp(pr.openedAt, await deps.timezone()),
-  });
+  };
+  const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, vars);
 
-  return (await deps.publish(topicArn, subject, body)) ? "sent" : "publish-failed";
+  return (await deps.publish(topicArn, subject, body, teamsWording(settings, vars)))
+    ? "sent" : "publish-failed";
+}
+
+/**
+ * The Teams wording for a feed message, or undefined to reuse the email's.
+ *
+ * Rendered from the same variables as the email, so the two channels cannot
+ * disagree about what happened. Undefined when nothing was written, which is
+ * what tells `publish` to send the email wording rather than a second copy of
+ * it that would then drift.
+ */
+function teamsWording(
+  settings: { subjectTemplate: string; bodyTemplate: string;
+    teamsSubjectTemplate?: string; teamsBodyTemplate?: string },
+  vars: Record<string, string | number | undefined>,
+) {
+  if (!settings.teamsSubjectTemplate && !settings.teamsBodyTemplate) return undefined;
+  return buildMessage(
+    settings.teamsSubjectTemplate || settings.subjectTemplate,
+    settings.teamsBodyTemplate || settings.bodyTemplate,
+    vars);
 }
 
 export async function notifyDependabotAlert(
@@ -132,7 +156,7 @@ export async function notifyDependabotAlert(
   const topicArn = await deps.topicArnFor(settings.groupId);
   if (!topicArn) return "no-group";
 
-  const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, {
+  const vars = {
     repo: alert.repo,
     package: alert.package,
     advisory: alert.summary,
@@ -141,9 +165,11 @@ export async function notifyDependabotAlert(
     org: deps.org,
     state: "ALARM",
     time: formatTimestamp(alert.createdAt, await deps.timezone()),
-  });
+  };
+  const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, vars);
 
-  return (await deps.publish(topicArn, subject, body)) ? "sent" : "publish-failed";
+  return (await deps.publish(topicArn, subject, body, teamsWording(settings, vars)))
+    ? "sent" : "publish-failed";
 }
 
 /**
@@ -248,9 +274,11 @@ export interface FlushDeps {
   settings: (feed: FeedName) => Promise<{
     enabled: boolean; groupId?: string; grouping: string;
     subjectTemplate: string; bodyTemplate: string;
+    teamsSubjectTemplate?: string; teamsBodyTemplate?: string;
   }>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
-  publish: (topicArn: string, subject: string, body: string) => Promise<boolean>;
+  publish: (topicArn: string, subject: string, body: string,
+    teamsText?: { subject: string; body: string }) => Promise<boolean>;
   timezone: () => Promise<string>;
   org: string;
 }
@@ -350,7 +378,7 @@ export async function flushPending(deps: FlushDeps): Promise<{
       return `${values.length} ${plural}`;
     };
 
-    const rendered = buildMessage(settings.subjectTemplate, settings.bodyTemplate, {
+    const digestVars = {
       ...first.item,
       package: agreed("package", "packages"),
       title: agreed("title", "pull requests"),
@@ -372,15 +400,27 @@ export async function flushPending(deps: FlushDeps): Promise<{
       org: deps.org,
       state: "ALARM",
       time: formatTimestamp(first.occurredAt, tz),
-    });
+    };
+    const rendered = buildMessage(settings.subjectTemplate, settings.bodyTemplate, digestVars);
+    const digestRows = rows.map(r => ({ item: r.item, occurredAt: r.occurredAt }));
     const msg = buildDigest(
-      rows.map(r => ({ item: r.item, occurredAt: r.occurredAt })),
+      digestRows,
       rendered, FEED_LABELS[feed],
       what,
       axis === "subject" ? nameAndCount(rows.map(r => r.repo)) : undefined,
     );
 
-    if (await deps.publish(topicArn, msg.subject, msg.body)) {
+    // The same list of events, wrapped in the Teams wording. Built through
+    // buildDigest as well rather than reusing the email's body, so a Teams
+    // template still gets the itemised list the digest exists to produce.
+    const teamsRendered = teamsWording(settings, digestVars);
+    const teamsMsg = teamsRendered
+      ? buildDigest(
+          digestRows, teamsRendered, FEED_LABELS[feed], what,
+          axis === "subject" ? nameAndCount(rows.map(r => r.repo)) : undefined)
+      : undefined;
+
+    if (await deps.publish(topicArn, msg.subject, msg.body, teamsMsg)) {
       await deps.markSent(rows.map(r => r.id));
       messages++;
       items += rows.length;

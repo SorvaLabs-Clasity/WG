@@ -67,12 +67,31 @@ function verdict(configured: string, actual: string | null) {
     const mounts = [...server.matchAll(/app\.use\("(\/api\/[a-z]+)",([^)]*)\)/g)]
       .map(m => ({ path: m[1], mw: m[2] }));
 
-    // Activity is the one deliberate exception: it carries both halves, and
-    // locking it would remove the record of what the guardrails did in the very
-    // accounts that run them. It filters itself instead, asserted below.
-    const EXEMPT = new Set(["/api/aws", "/api", "/api/activity"]);
+    // Two deliberate exceptions, both for the same reason: they carry both
+    // halves of the app, so locking them would remove something an AWS-only
+    // account genuinely needs.
+    //
+    // Activity is the record of what the guardrails did, in the very accounts
+    // that run them. It filters itself instead, asserted below.
+    //
+    // Alarms stopped being GitHub-only when the guardrails could raise them. A
+    // guardrail alarm is created from the AWS tab and posts here, and the
+    // groups, Teams delivery and feed settings behind it are DynamoDB and SNS.
+    // Admin membership is still required, checked with the caller's own token.
+    const EXEMPT = new Set(["/api/aws", "/api", "/api/activity", "/api/alarms"]);
     const github = mounts.filter(m => !EXEMPT.has(m.path));
     const ungated = github.filter(m => !m.mw.includes("githubGateMiddleware"));
+    // The exemption must not become a way in. Nothing under /api/alarms reads
+    // GitHub with the App: it is the one property that makes lifting the gate
+    // there safe rather than convenient.
+    const alarmRoutes = fs.readFileSync(`${__dirname}/src/routes/alarms.ts`, "utf8");
+    check("the ungated alarms router still requires an admin",
+      /router\.use\(requireAdmin\)/.test(alarmRoutes),
+      "these send mail on behalf of the whole organization");
+    check("  and reaches GitHub through no App credential",
+      !/getSystemToken|createOctokit|initTokenManager/.test(alarmRoutes),
+      "that is what the gate is there to prevent, and what makes this exemption safe");
+
     check(`all ${github.length} GitHub routers are gated`, ungated.length === 0,
       ungated.map(m => m.path));
 

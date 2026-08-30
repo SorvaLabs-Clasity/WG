@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDevAlerts, useSaveDevAlerts, useTestDevAlerts } from "../hooks/useMe";
 import { Note, Button, Spinner, SURFACE } from "../design";
 import type { DigestPrefs, EventPrefs } from "../api/me";
@@ -55,6 +55,82 @@ function IncludeRow({ label, checked, onChange, days, onDays }: {
   );
 }
 
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/** The wall clock in someone else's timezone, or null if the zone is unknown. */
+function zoneNow(timeZone: string): { hour: number; minute: number; day: number } | null {
+  try {
+    const parts = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone, hour: "numeric", minute: "2-digit", hour12: false, weekday: "short",
+      }).formatToParts(new Date()).map(x => [x.type, x.value]));
+    return {
+      // Midnight formats as "24" here, and reading it as hour 24 would put
+      // every midnight comparison a day out.
+      hour: Number(parts.hour) % 24,
+      minute: Number(parts.minute),
+      day: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(String(parts.weekday)),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * When the next summary actually arrives, said in full.
+ *
+ * The rule it describes is not guessable from the controls: a time already
+ * past today means tomorrow, and a day that is switched off is skipped. Both
+ * were previously things somebody found out by not receiving anything.
+ */
+function nextRun(digest: DigestPrefs): string | null {
+  const now = zoneNow(digest.timeZone);
+  if (!now) return null;
+
+  const chosen = digest.hour * 60 + (digest.minute ?? 0);
+  const allowed = digest.days.length === 0 ? [0, 1, 2, 3, 4, 5, 6] : digest.days;
+  if (allowed.length === 0) return null;
+
+  let ahead = chosen > now.hour * 60 + now.minute ? 0 : 1;
+  while (!allowed.includes((now.day + ahead) % 7) && ahead < 8) ahead++;
+
+  const when = ahead === 0 ? "today" : ahead === 1 ? "tomorrow" : `on ${DAY_NAMES[(now.day + ahead) % 7]}`;
+  return `${when} at ${clockLabel(digest.hour, digest.minute ?? 0)}`;
+}
+
+const clockLabel = (h: number, m: number) =>
+  `${((h + 11) % 12) + 1}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+
+/** Every zone the browser knows, labelled with what it currently reads. */
+function useZones(current: string) {
+  return useMemo(() => {
+    const all: string[] = (Intl as any).supportedValuesOf?.("timeZone") ?? [];
+    // Whatever is stored stays selectable even if this runtime has not heard
+    // of it, so opening the page cannot silently change somebody's setting.
+    const names = Array.from(new Set([...all, current].filter(Boolean))).sort();
+
+    const groups = new Map<string, Array<{ id: string; label: string }>>();
+    for (const id of names) {
+      const [region, ...rest] = id.split("/");
+      const key = rest.length ? region : "Other";
+      const offset = zoneOffset(id);
+      const label = `${rest.join("/").replace(/_/g, " ") || id}${offset ? `  ${offset}` : ""}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push({ id, label });
+    }
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [current]);
+}
+
+function zoneOffset(timeZone: string): string {
+  try {
+    return new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortOffset" })
+      .formatToParts(new Date()).find(p => p.type === "timeZoneName")?.value ?? "";
+  } catch {
+    return "";
+  }
+}
+
 function Row({ label, hint, checked, onChange, disabled }: {
   label: string; hint?: string; checked: boolean;
   onChange: (v: boolean) => void; disabled?: boolean;
@@ -84,6 +160,27 @@ export default function DevAlertSettings() {
   const [digest, setDigest] = useState<DigestPrefs | null>(null);
   const [saved, setSaved] = useState(false);
 
+  /**
+   * Save shortly after somebody stops, rather than on every keystroke.
+   *
+   * Each control here used to put a request on the wire as it moved, which
+   * made the time field lag under its own saves. It also had a consequence
+   * past the UI: changing the time decides whether today's summary is still
+   * owed, so dragging through 10:15, 10:20, 10:25 asked that question three
+   * times. Only where somebody stopped is a real answer.
+   */
+  const queued = useRef<any>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Above the loading return, so the hook count does not change between the
+  // spinner and the form.
+  const zones = useZones(digest?.timeZone ?? data?.digest?.timeZone ?? "UTC");
+
+  // A pending save must not be dropped by unmounting the tab.
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
+
   // Seeded once the server answers, then left alone: re-seeding on every fetch
   // would throw away half-typed edits when the query refetches underneath.
   useEffect(() => {
@@ -105,6 +202,16 @@ export default function DevAlertSettings() {
     setTimeout(() => setSaved(false), 2500);
   };
 
+  const queue = (body: any) => {
+    queued.current = { ...queued.current, ...body };
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      const body = queued.current;
+      queued.current = null;
+      if (body) commit(body);
+    }, 600);
+  };
+
   const patchEvents = (p: Partial<EventPrefs>) => {
     const next = { ...events, ...p };
     setEvents(next);
@@ -113,7 +220,7 @@ export default function DevAlertSettings() {
   const patchDigest = (p: Partial<DigestPrefs>) => {
     const next = { ...digest, ...p };
     setDigest(next);
-    commit({ digest: next });
+    queue({ digest: next });
   };
 
   return (
@@ -270,47 +377,94 @@ export default function DevAlertSettings() {
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                 At
               </label>
-              {/* A real time input rather than an hour dropdown. "Around nine"
-                  and "nine o'clock" are different promises, and the second is
-                  the one people mean. */}
-              <input
-                type="time"
-                // Five-minute steps, because that is when the pass runs. Offering
-                // 10:17 as a choice promises something the schedule cannot keep,
-                // and the three minutes of drift read as unreliability rather
-                // than as a limit nobody mentioned.
-                step={300}
-                value={`${String(digest.hour).padStart(2, "0")}:${String(digest.minute ?? 0).padStart(2, "0")}`}
-                onChange={e => {
-                  const [h, m] = e.target.value.split(":").map(Number);
-                  if (!Number.isFinite(h) || !Number.isFinite(m)) return;
-                  // `step` constrains the picker, not what somebody can type or
-                  // paste, so the value is rounded here as well. Rounding rather
-                  // than refusing: a typed 10:17 means "about ten past", and the
-                  // nearest tick is what they will actually get.
-                  const snapped = Math.round(m / 5) * 5;
-                  patchDigest(snapped === 60
-                    ? { hour: (h + 1) % 24, minute: 0 }
-                    : { hour: h, minute: snapped });
-                }}
-                className={SURFACE.input}
-              />
-              {/* Said where the time is chosen, because the checking interval is
-                  not something anybody can infer from a time field. */}
-              {/* The honest limit of a five-minute pass, said where the time is
-                  chosen. The ticks land on :00, :05, :10 and so on, so a time on
-                  one of those arrives on it. */}
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                Runs on the clock every five minutes, so these are the times it can keep.
+              {/* Three lists rather than a time field.
+                  The time field had to be policed on the way out, because
+                  `step` constrains its picker but not what somebody types, and
+                  it kept re-rendering under its own corrections while being
+                  typed into. Choosing from what is offered cannot produce a
+                  time the schedule is unable to keep, so there is nothing to
+                  correct and nothing to fight. */}
+              <div className="flex items-center gap-1.5">
+                <select
+                  value={((digest.hour + 11) % 12) + 1}
+                  onChange={e => {
+                    const twelve = Number(e.target.value) % 12;
+                    patchDigest({ hour: digest.hour < 12 ? twelve : twelve + 12 });
+                  }}
+                  className={`${SURFACE.input} w-auto tabular-nums`}>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(h =>
+                    <option key={h} value={h}>{h}</option>)}
+                </select>
+                <span className="text-[15px] font-bold text-slate-400 dark:text-slate-500">:</span>
+                <select
+                  value={digest.minute ?? 0}
+                  onChange={e => patchDigest({ minute: Number(e.target.value) })}
+                  className={`${SURFACE.input} w-auto tabular-nums`}>
+                  {/* Only the ticks the pass actually runs on. */}
+                  {Array.from({ length: 12 }, (_, i) => i * 5).map(m =>
+                    <option key={m} value={m}>{String(m).padStart(2, "0")}</option>)}
+                </select>
+                <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-white/10 ml-1">
+                  {(["AM", "PM"] as const).map(half => {
+                    const on = (half === "AM") === (digest.hour < 12);
+                    return (
+                      <button key={half} type="button"
+                        onClick={() => patchDigest({ hour: (digest.hour % 12) + (half === "AM" ? 0 : 12) })}
+                        className={`px-2.5 py-1.5 text-[12px] font-bold transition-colors ${
+                          on
+                            ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
+                            : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.05]"}`}>
+                        {half}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+                The pass runs every five minutes on the clock, so these are the times it can keep.
               </p>
             </div>
+
             <div>
               <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
                 Timezone
               </label>
-              <input value={digest.timeZone} onChange={e => setDigest({ ...digest, timeZone: e.target.value })}
-                onBlur={() => patchDigest({ timeZone: digest.timeZone })}
-                placeholder="America/New_York" className={SURFACE.input} />
+              {/* Was a text field, which is the wrong control for a value with
+                  one correct spelling: "EST" or "New York" is not a zone, and
+                  an unrecognised one is not rejected anywhere downstream, it
+                  quietly becomes UTC and the summary turns up at the wrong
+                  hour. Every zone the browser knows, so there is nothing to
+                  spell. */}
+              <select
+                value={digest.timeZone}
+                onChange={e => patchDigest({ timeZone: e.target.value })}
+                className={SURFACE.input}>
+                {zones.map(([region, entries]) => (
+                  <optgroup key={region} label={region}>
+                    {entries.map(z => <option key={z.id} value={z.id}>{z.label}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+              {(() => {
+                const here = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                const clock = zoneNow(digest.timeZone);
+                return (
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    {clock && (
+                      <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
+                        {clockLabel(clock.hour, clock.minute)} there now
+                      </span>
+                    )}
+                    {here && here !== digest.timeZone && (
+                      <button type="button" onClick={() => patchDigest({ timeZone: here })}
+                        className="text-[11px] font-semibold text-slate-500 dark:text-slate-400
+                                   underline underline-offset-2 hover:text-slate-900 dark:hover:text-white">
+                        Use this computer's ({here.split("/").pop()?.replace(/_/g, " ")})
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -368,14 +522,25 @@ export default function DevAlertSettings() {
           </div>
 
           {/* Otherwise the only evidence a summary went out is having received
-              it, and its absence is indistinguishable from it being broken. */}
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-3">
-            {data.lastDigestAt
-              ? <>Last summary sent {new Date(data.lastDigestAt).toLocaleString()}. One per day,
-                  so the next is tomorrow at this time. Changing the time above sends today's
-                  at the new one.</>
-              : <>No summary has been sent yet.</>}
-          </p>
+              it, and its absence is indistinguishable from it being broken.
+              The next one is stated outright because the rule behind it is not
+              visible in the controls: a time that has already gone today means
+              tomorrow, not in a few minutes. */}
+          <div className="mt-3 flex items-baseline gap-2 flex-wrap">
+            {(() => {
+              const next = nextRun(digest);
+              return next ? (
+                <span className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">
+                  Next summary {next}.
+                </span>
+              ) : null;
+            })()}
+            <span className="text-[11.5px] text-slate-400 dark:text-slate-500">
+              {data.lastDigestAt
+                ? `Last one sent ${new Date(data.lastDigestAt).toLocaleString()}.`
+                : "None sent yet."}
+            </span>
+          </div>
 
           <div className="mt-2 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
             <Row

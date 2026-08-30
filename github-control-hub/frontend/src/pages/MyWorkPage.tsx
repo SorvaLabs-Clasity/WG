@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { idleLabel } from "../lib/idle";
 import { useAuth } from "../App";
 import { useMyWork, usePushCheck, useShipped } from "../hooks/useMe";
 import { useRepos } from "../hooks/useRepos";
@@ -69,7 +70,7 @@ function PullRow({ pr, showAuthor }: { pr: MyPull; showAuthor?: boolean }) {
           </span>
           {pr.isDraft && <Pill intent="neutral">draft</Pill>}
           <span className="ml-auto shrink-0 text-[11px] tabular-nums text-slate-300 dark:text-slate-600">
-            {pr.idleDays === 0 ? "today" : `${pr.idleDays}d`}
+            {pr.idleDays < 1 ? "today" : idleLabel(pr.idleDays)}
           </span>
         </div>
 

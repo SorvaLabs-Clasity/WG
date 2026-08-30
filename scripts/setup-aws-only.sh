@@ -15,13 +15,22 @@
 #     right.
 #   - one Lambda on a fifteen-minute schedule, plus a CloudTrail rule so it also
 #     reacts to resources being created
+#   - the alarm evaluator, on the five-minute tick. Guardrails can raise alarms,
+#     so an account without this could save one and have nothing ever evaluate
+#     it: the rule detected the violation, the tab agreed, and no message was
+#     ever sent. It runs the guardrail half of a pass and skips the GitHub half.
 #   - a secret holding only what sign-in needs
 #
 # What deliberately does not:
 #   - the GitHub App private key and installation id. This is the credential
 #     that reads your organization, and it is the whole point of the exercise.
-#   - the webhook endpoint, the access graph, the alarm evaluator, the audit-log
-#     pipeline. `cdk deploy -c awsOnly=true` creates none of them.
+#   - the webhook endpoint, the access graph, the audit-log pipeline.
+#     `cdk deploy -c awsOnly=true` creates none of them.
+#
+# Run it once per region you want guardrails in. It asks for the region, and
+# every name it creates is per-region, so a second run in a second region
+# collides with nothing. The regions share no data: each has its own rules,
+# exclusion lists, alarms and Teams settings, and nothing reconciles them.
 #
 # Sign-in still uses GitHub, because that is how this app knows who you are and
 # which team you are on. That needs the OAuth App's client id and secret: an
@@ -242,7 +251,7 @@ else
 fi
 
 # ── 4. the guardrail stack ────────────────────────────────────────────
-step "4/4  Guardrail Lambda and schedule"
+step "4/4  Guardrail and alarm Lambdas, and their schedules"
 
 cd "$ROOT/github-control-hub"
 [ -d node_modules ] || { echo "  installing workspace deps…"; npm install --silent; }
@@ -266,6 +275,8 @@ echo "  GitHub organization."
 echo
 echo "  ${bold}In the app, signed in to this account:${off}"
 echo "    · the AWS tab works as normal"
+echo "    · Alarms works: set one on a guardrail rule from the AWS tab, and"
+echo "      manage groups and Teams delivery under Alarms"
 echo "    · Activity shows what the guardrails did, and only that"
 echo "    · every other tab is refused, because there are no GitHub credentials"
 echo

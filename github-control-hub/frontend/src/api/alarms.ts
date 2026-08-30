@@ -30,6 +30,9 @@ export interface WidgetAlarm {
   groupId: string;
   subjectTemplate: string;
   bodyTemplate: string;
+  /** Empty means the email wording above is used for Teams as well. */
+  teamsSubjectTemplate?: string;
+  teamsBodyTemplate?: string;
   notifyOnRecovery: boolean;
   enabled: boolean;
   state: "OK" | "ALARM";
@@ -61,6 +64,9 @@ export interface SecurityNotifySettings {
   minSeverity: Severity;
   subjectTemplate: string;
   bodyTemplate: string;
+  /** Empty means the email wording above is used for Teams as well. */
+  teamsSubjectTemplate?: string;
+  teamsBodyTemplate?: string;
   /** IANA zone that {{time}} is rendered in, for alarm and security emails. */
   timezone: string;
   updatedBy?: string;
@@ -134,6 +140,9 @@ export interface FeedNotifySettings {
   grouping: "per-alert" | "per-repository";
   subjectTemplate: string;
   bodyTemplate: string;
+  /** Empty means the email wording above is used for Teams as well. */
+  teamsSubjectTemplate?: string;
+  teamsBodyTemplate?: string;
   updatedBy?: string;
   updatedAt?: string;
 }

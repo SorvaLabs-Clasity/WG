@@ -164,15 +164,34 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
   // ── the summary can only be set to a time the pass can keep ─────────
   {
     const alerts = fs.readFileSync("./src/components/DevAlertSettings.tsx", "utf8");
-    check("the time picker steps in fives",
-      /step=\{300\}/.test(alerts),
+    // Was a time field with step=300 and a rounding step on the way out,
+    // because `step` constrains that field's picker but not what somebody
+    // types into it. Choosing from a list cannot produce a time the pass
+    // cannot keep, so there is nothing left to correct.
+    check("the minutes offered are only the ticks the pass runs on",
+      /length: 12 \}, \(_, i\) => i \* 5\)/.test(alerts),
       "offering 10:17 promises something a five-minute pass cannot keep");
-    // `step` constrains the picker, not typing or pasting.
-    check("  and a typed time is snapped rather than trusted",
-      /Math\.round\(m \/ 5\) \* 5/.test(alerts));
-    check("  with the hour carried when it rounds up to sixty",
-      /snapped === 60[\s\S]{0,80}hour: \(h \+ 1\) % 24, minute: 0/.test(alerts),
-      "minute 60 would never match a tick, so the digest would simply never fire");
+    check("  and it is a list, so there is no unconstrained value to correct",
+      !/type="time"/.test(alerts),
+      "a time field accepts anything typed into it, whatever its step says");
+    check("  the hour and the half of the day stay consistent",
+      /hour: digest\.hour < 12 \? twelve : twelve \+ 12/.test(alerts)
+      && /hour: \(digest\.hour % 12\) \+ \(half === "AM" \? 0 : 12\)/.test(alerts),
+      "picking 9 on a PM time has to mean 21:00, not 09:00");
+
+    check("saving waits until somebody stops changing things",
+      /setTimeout\([\s\S]{0,200}\}, 600\)/.test(alerts),
+      "a request per keystroke is what made the field lag under its own saves");
+    check("  which also stops one adjustment being read as several",
+      /clearTimeout\(timer\.current\)/.test(alerts),
+      "each save re-decides whether today's summary is owed");
+
+    check("the timezone is chosen, not typed",
+      /supportedValuesOf\?\.\("timeZone"\)/.test(alerts) && !/placeholder="America\/New_York"/.test(alerts),
+      "an unrecognised zone is not rejected downstream, it quietly becomes UTC");
+    check("  and when the next one arrives is stated outright",
+      /Next summary \{next\}/.test(alerts),
+      "a time already past today means tomorrow, which is not visible in the controls");
   }
 
   // ── polling that matches what actually changes ──────────────────────

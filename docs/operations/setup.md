@@ -29,15 +29,32 @@ has its own script:
 ```
 
 It creates the DynamoDB tables, a secret holding only what sign-in needs, and
-one Lambda on a schedule. It deploys with `-c awsOnly=true`, so the webhook
-endpoint, the alarm evaluator and the access graph are never created: five
-Lambda functions become one.
+two Lambdas on schedules: the guardrail sweep, and the alarm evaluator that can
+tell somebody what the sweep found. It deploys with `-c awsOnly=true`, so the
+webhook endpoint and the access graph are never created: five Lambda functions
+become two.
+
+**Run it once per region you want guardrails in.** It asks which region to
+deploy into, and everything it creates lives in that one: the tables, the
+secret, the stack and the schedules are all per-region names, so a second run
+in a second region collides with nothing. What it does *not* share is data. Each
+region gets its own rules, its own exclusion lists, its own alarms and its own
+Teams configuration, and there is no combined view across them. That is the
+trade: full isolation per region, and nothing kept in step for you.
 
 Twelve tables are created, not six: the same script the full install uses makes
 them, so their schemas cannot drift from the ones the app reads. The six that
 only the GitHub half writes to stay empty here, and an idle on-demand table
 costs nothing. [The AWS-only setup](../aws-only-setup.md) has the full
 inventory of what lands in such an account.
+
+Twelve tables are created rather than six because the same script the full
+install uses makes them, so their schemas cannot drift. The six the GitHub half
+writes to stay empty, and an idle on-demand table costs nothing. If you would
+rather the account held only what it uses, `./scripts/prune-github-tables.sh`
+removes the GitHub-only ones. It is optional tidiness, not a saving: it deletes
+only tables that are empty, since an empty table is the proof nothing here uses
+it, and it reports CloudFormation-owned resources rather than deleting them.
 
 **It never asks for the GitHub App private key.** That key reads your entire
 organization, and keeping it out of the account is the whole exercise. Without
@@ -50,6 +67,14 @@ which are an identity check carrying no access beyond what the person signing in
 already has. Team membership is then read with that person's own token rather
 than the App's, which works because the only membership anyone here asks about
 is their own.
+
+**Alarms work here.** The guardrails can raise them, so the evaluator is
+deployed in this mode too, on the same five-minute tick as a full install. It
+runs the guardrail half of a pass and skips the GitHub half, because there is no
+App key to read the organization with. A GitHub-backed alarm created in such an
+account reports that it cannot be read rather than reading zero: an alarm on
+"repositories with vulnerabilities" that returned zero here would resolve itself
+and send an all-clear about something nobody looked at.
 
 **Activity stays available and shows only the AWS rows.** It is the one feed
 carrying both halves, and an account running guardrails needs the record of what

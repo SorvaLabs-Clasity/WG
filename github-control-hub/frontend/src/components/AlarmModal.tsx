@@ -5,6 +5,7 @@ import {
 } from "../hooks/useAlarms";
 import { describeInterval, type AlarmCondition, type Severity, type WidgetAlarm } from "../api/alarms";
 import VariableChips, { useTemplateInsert } from "./TemplateVariables";
+import TeamsWording from "./TeamsWording";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
@@ -44,6 +45,7 @@ export default function AlarmModal({
   const [groupId, setGroupId] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [teams, setTeams] = useState({ subject: "", body: "" });
   const [notifyOnRecovery, setNotifyOnRecovery] = useState(true);
   const [showTemplates, setShowTemplates] = useState(false);
   const [error, setError] = useState("");
@@ -70,6 +72,10 @@ export default function AlarmModal({
       setGroupId(existing.groupId);
       setSubject(existing.subjectTemplate);
       setBody(existing.bodyTemplate);
+      setTeams({
+        subject: existing.teamsSubjectTemplate ?? "",
+        body: existing.teamsBodyTemplate ?? "",
+      });
       setNotifyOnRecovery(existing.notifyOnRecovery);
     } else {
       setName(spec.title || "Alarm");
@@ -104,7 +110,9 @@ export default function AlarmModal({
 
     const payload = {
       widgetId, name, condition, groupId,
-      subjectTemplate: subject, bodyTemplate: body, notifyOnRecovery,
+      subjectTemplate: subject, bodyTemplate: body,
+      teamsSubjectTemplate: teams.subject, teamsBodyTemplate: teams.body,
+      notifyOnRecovery,
     };
     try {
       if (existing) await updateAlarm.mutateAsync({ id: existing.id, data: payload });
@@ -217,7 +225,7 @@ export default function AlarmModal({
                 <button type="button" onClick={() => setShowTemplates(v => !v)}
                   className="text-sm font-semibold text-gh-blue hover:underline">
                   <i className={`ph ph-caret-${showTemplates ? "down" : "right"} mr-1`}></i>
-                  Customise the email
+                  Customise the message
                 </button>
 
                 {showTemplates && (
@@ -237,6 +245,11 @@ export default function AlarmModal({
                         className={inputClass + " font-mono text-xs"} />
                     </div>
                     <VariableChips variables={variables} target={tpl.target} onInsert={tpl.insert} />
+
+                    <TeamsWording
+                      subject={teams.subject} body={teams.body} onChange={setTeams}
+                      variables={variables} emailSubject={subject} emailBody={body}
+                    />
                   </div>
                 )}
               </div>

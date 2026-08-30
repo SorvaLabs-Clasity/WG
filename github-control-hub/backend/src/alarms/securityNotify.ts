@@ -23,9 +23,11 @@ export interface SecurityNotifyDeps {
   settings: () => Promise<{
     enabled: boolean; groupId?: string; minSeverity: string;
     subjectTemplate: string; bodyTemplate: string; timezone?: string;
+    teamsSubjectTemplate?: string; teamsBodyTemplate?: string;
   }>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
-  publish: (topicArn: string, subject: string, body: string) => Promise<boolean>;
+  publish: (topicArn: string, subject: string, body: string,
+    teamsText?: { subject: string; body: string }) => Promise<boolean>;
   org: string;
   /** Absent in tests that only exercise the immediate path. */
   buffer?: (row: {
@@ -84,7 +86,7 @@ export async function notifySecurityAlert(
     return "buffered";
   }
 
-  const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, {
+  const vars = {
     repo: alert.repo,
     message: alert.message,
     severity: alert.severity,
@@ -92,7 +94,16 @@ export async function notifySecurityAlert(
     org: deps.org,
     time: formatTimestamp(alert.timestamp, settings.timezone),
     widget: alert.type,
-  });
+  };
+  const { subject, body } = buildMessage(settings.subjectTemplate, settings.bodyTemplate, vars);
 
-  return (await deps.publish(topicArn, subject, body)) ? "sent" : "publish-failed";
+  // Unset means the email wording. See notifyService.publish.
+  const teamsText = (settings.teamsSubjectTemplate || settings.teamsBodyTemplate)
+    ? buildMessage(
+        settings.teamsSubjectTemplate || settings.subjectTemplate,
+        settings.teamsBodyTemplate || settings.bodyTemplate,
+        vars)
+    : undefined;
+
+  return (await deps.publish(topicArn, subject, body, teamsText)) ? "sent" : "publish-failed";
 }

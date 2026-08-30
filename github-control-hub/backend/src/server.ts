@@ -133,7 +133,19 @@ app.use("/api/me", authMiddleware, githubGateMiddleware, meRoutes);
 app.use("/api/widgets", authMiddleware, githubGateMiddleware, widgetRoutes);
 app.use("/api/config", authMiddleware, githubGateMiddleware, configRoutes);
 app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
-app.use("/api/alarms", authMiddleware, githubGateMiddleware, alarmRoutes);
+// Not gated, unlike the rest of this block.
+//
+// Alarms stopped being a GitHub feature when the guardrails could raise them.
+// An AWS-only account creates one from the AWS tab, on a rule about its own
+// resources, and the gate was refusing that: the tab was there, the button was
+// there, and the request came back 403 about GitHub credentials it was not
+// asking for.
+//
+// Nothing here reads GitHub with the App. Groups, Teams delivery and the feed
+// settings are DynamoDB and SNS; the one endpoint that reads a widget finds
+// none in such an account and says so, which is the true answer. Admin
+// membership is still checked, with the caller's own token.
+app.use("/api/alarms", authMiddleware, alarmRoutes);
 
 // Try to load secrets from Secrets Manager at startup (covers auto-connected AWS)
 // then initialize the GitHub App token manager

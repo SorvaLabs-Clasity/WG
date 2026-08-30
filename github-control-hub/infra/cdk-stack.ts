@@ -277,8 +277,171 @@ export class GitHubControlHubStack extends cdk.Stack {
     // An organization can reasonably want the guardrails watching a production
     // account while nothing about its GitHub organization lives there, no App
     // key, no access graph, no webhook. Deploy with `-c awsOnly=true` and none of
-    // this is created, leaving the guardrail function, its schedule and its
-    // tables. See scripts/setup-aws-only.sh.
+    // this is created, leaving the guardrail function, the alarm evaluator, their
+    // schedules and the tables. See scripts/setup-aws-only.sh.
+    //
+    // The alarm evaluator used to sit inside this gate, which was right when the
+    // only thing it could watch was a GitHub widget. Guardrails can raise alarms
+    // now, so an AWS-only account had rules that could detect a violation and no
+    // way to tell anyone: the tab was there, the alarms saved, and nothing ever
+    // evaluated them. It is created either way, and skips the GitHub half of a
+    // pass when there is no App to read it with.
+    // Shared by every function in the stack, so defined outside the GitHub
+    // gate below: the alarm evaluator is built with it too, and it now runs
+    // in AWS-only installs where nothing under that gate exists.
+    const webhookBundling = {
+      externalModules: [],
+      minify: false,
+      sourceMap: true,
+      // @octokit/auth-app is installed into the asset rather than bundled.
+      //
+      // github/client.ts loads it through require.resolve() plus a dynamic
+      // import built with `new Function`, which is how it dodges tsc rewriting
+      // the import into a require for an ESM-only package. esbuild cannot see
+      // through that either, so it bundles nothing, and require.resolve then
+      // fails at runtime with "Cannot find module '@octokit/auth-app'". The
+      // symptom is quiet: the App token manager fails to initialise, every
+      // invocation degrades to SYSTEM_GITHUB_TOKEN, and the app runs on a PAT's
+      // 5,000 requests an hour instead of the App's 12,500.
+      //
+      // esbuild warns about exactly this ("should be marked as external for use
+      // with require.resolve") during synth.
+      //
+      // Marking it external is NOT the fix, and was tried: `octokit` itself
+      // requires @octokit/auth-app internally, so leaving it external puts a
+      // bare require() of an ESM-only package in the bundle and the whole
+      // function dies at init with ERR_REQUIRE_ESM. Bundling it, the setting
+      // below, at least keeps octokit working; only client.ts's
+      // require.resolve path fails, and getSystemTokenAsync degrades to
+      // SYSTEM_GITHUB_TOKEN. The real fix belongs in client.ts, not here.
+    };
+
+    // The name prefix is the boundary: topics are created as
+    // `${stackPrefix}-notify-<slug>`, so this grant cannot reach a topic
+    // belonging to anything else in the account, and cannot subscribe anyone
+    // to anything. Adding recipients happens in the desktop app, under the
+    // operator's own credentials.
+    const notifyTopics = `arn:aws:sns:${this.region}:${this.account}:${stackPrefix}-notify-*`;
+
+    // ── widget alarms ───────────────────────────────────────────────────
+    //
+    // Reachable only from EventBridge. It reads whichever widgets have a due
+    // alarm, compares the value against the alarm's condition, and publishes
+    // to that alarm's topic when the state changes.
+    const alarmFn = new NodejsFunction(this, "AlarmEvaluator", {
+      functionName: `${stackPrefix}-alarm-evaluator`,
+      logGroup: logGroupFor("AlarmEvaluator", `${stackPrefix}-alarm-evaluator`),
+      runtime: lambda.Runtime.NODEJS_24_X,
+      entry: path.join(__dirname, "..", "backend", "src", "alarms", "handler.ts"),
+      handler: "handler",
+      projectRoot: path.join(__dirname, ".."),
+      depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
+      // A pass walks the org's Dependabot alerts once and runs a graph query
+      // per non-Dependabot alarm. Nothing is waiting on the answer, and Lambda
+      // bills for time actually used, so the ceiling is set for the slow case
+      // rather than the usual one.
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 512,
+      environment: {
+        STACK_NAME: stackPrefix,
+        SECRET_NAME: secretName,
+        ALARMS_TABLE: `${stackPrefix}-alarms`,
+        WIDGETS_TABLE: `${stackPrefix}-widgets`,
+        ACTIVITY_TABLE: `${stackPrefix}-activity`,
+        ALERTS_TABLE: `${stackPrefix}-alerts`,
+        SCANNERS_TABLE: `${stackPrefix}-scanners`,
+        ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
+        GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+        // Stated, not inferred. Without this the function would have to read
+        // "this install has no GitHub" from a missing GITHUB_ORG, which is
+        // also what a secret that failed to load looks like: one is a normal
+        // AWS-only pass and the other is an install that should be shouting.
+        AWS_ONLY: String(awsOnly),
+      },
+      bundling: webhookBundling,
+    });
+
+    alarmFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "ReadAppSecrets",
+      actions: ["secretsmanager:GetSecretValue"],
+      resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
+    }));
+
+    // Reads widely, writes to one table.
+    //
+    // Evaluating an alarm means reading widgets and graph edges; the only
+    // thing it ever writes is the alarm's own
+    // runtime state. Granting writes across the prefix would have let a
+    // scheduled job with no user in front of it modify the activity log, the
+    // record used to reconstruct what happened, including to itself.
+    alarmFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "AppTablesRead",
+      actions: [
+        "dynamodb:GetItem", "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem",
+      ],
+      resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
+    }));
+
+    // Reads every table, writes two.
+    //
+    // `alarms` holds the firing state each pass updates. `org-config` holds
+    // the per-person notification rows, and the digest records the day it
+    // last sent there.
+    //
+    // Without org-config the write is refused, the record of having sent is
+    // never stored, and every five-minute tick concludes the digest is still
+    // due, which is a message every five minutes forever. Narrow rather than
+    // widened to `-*`: this function has no business writing findings,
+    // activity or the access graph.
+    alarmFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "AlarmStateWrite",
+      actions: ["dynamodb:PutItem", "dynamodb:UpdateItem"],
+      resources: [
+        `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-alarms`,
+        `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-org-config`,
+      ],
+    }));
+
+    alarmFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "PublishAlarmEmails",
+      actions: ["sns:Publish"],
+      resources: [notifyTopics],
+    }));
+
+    // Five minutes, and the only schedule in the feature.
+    //
+    // This is the tick, not the interval. Each alarm carries its own interval
+    // and the evaluator decides per alarm which are due, so one rule serves
+    // every tiering and changing that tiering stays a constant in the code
+    // rather than a deploy. Ticks with nothing due read the alarms table and
+    // return.
+    //
+    // It has to divide every interval in INTERVAL_MINUTES, because an alarm can
+    // only be evaluated on a tick, a ten-minute interval under a fifteen-minute
+    // rule is a fifteen-minute alarm that reads as ten everywhere else.
+    // backend/src/alarms/conditions.ts declares TICK_MINUTES, which this must
+    // match, and repro-alarms.ts fails if the two disagree.
+    // Cron rather than rate, so the ticks land on the clock.
+    //
+    // `rate(5 minutes)` counts from whenever the rule happened to be created,
+    // so its ticks fall at some arbitrary offset: :03, :08, :13, :18. Nothing
+    // cares about that while the pass only evaluates alarms, but people
+    // choose a time for their summary, and a digest set for 10:15 arriving at
+    // 10:18 reads as the feature being unreliable rather than as a schedule
+    // nobody aligned.
+    //
+    // `0/5` fires at :00, :05, :10 and so on, so a time on a five-minute
+    // boundary is served by the tick with that name. Anything between two
+    // boundaries still waits for the next one, which is the honest limit of a
+    // five-minute pass and is what the settings screen says.
+    new events.Rule(this, "AlarmSchedule", {
+      ruleName: `${stackPrefix}-alarm-schedule`,
+      description: "Evaluates widget alarms that are due",
+      schedule: events.Schedule.cron({ minute: "0/5" }),
+      targets: [new targets.LambdaFunction(alarmFn)],
+    });
+
+
     if (!awsOnly) {
       // ── Webhooks ──
       //
@@ -320,32 +483,6 @@ export class GitHubControlHubStack extends cdk.Stack {
         },
       });
 
-      const webhookBundling = {
-        externalModules: [],
-        minify: false,
-        sourceMap: true,
-        // @octokit/auth-app is installed into the asset rather than bundled.
-        //
-        // github/client.ts loads it through require.resolve() plus a dynamic
-        // import built with `new Function`, which is how it dodges tsc rewriting
-        // the import into a require for an ESM-only package. esbuild cannot see
-        // through that either, so it bundles nothing, and require.resolve then
-        // fails at runtime with "Cannot find module '@octokit/auth-app'". The
-        // symptom is quiet: the App token manager fails to initialise, every
-        // invocation degrades to SYSTEM_GITHUB_TOKEN, and the app runs on a PAT's
-        // 5,000 requests an hour instead of the App's 12,500.
-        //
-        // esbuild warns about exactly this ("should be marked as external for use
-        // with require.resolve") during synth.
-        //
-        // Marking it external is NOT the fix, and was tried: `octokit` itself
-        // requires @octokit/auth-app internally, so leaving it external puts a
-        // bare require() of an ESM-only package in the bundle and the whole
-        // function dies at init with ERR_REQUIRE_ESM. Bundling it, the setting
-        // below, at least keeps octokit working; only client.ts's
-        // require.resolve path fails, and getSystemTokenAsync degrades to
-        // SYSTEM_GITHUB_TOKEN. The real fix belongs in client.ts, not here.
-      };
 
       const receiverFn = new NodejsFunction(this, "WebhookReceiver", {
         functionName: `${stackPrefix}-webhook-receiver`,
@@ -450,7 +587,6 @@ export class GitHubControlHubStack extends cdk.Stack {
       // belonging to anything else in the account, and cannot subscribe anyone
       // to anything. Adding recipients happens in the desktop app, under the
       // operator's own credentials.
-      const notifyTopics = `arn:aws:sns:${this.region}:${this.account}:${stackPrefix}-notify-*`;
       workerFn.addToRolePolicy(new iam.PolicyStatement({
         sid: "PublishAlarmEmails",
         actions: ["sns:Publish"],
@@ -481,119 +617,6 @@ export class GitHubControlHubStack extends cdk.Stack {
         batchSize: 1,
         maxConcurrency: 5,
       }));
-
-      // ── widget alarms ───────────────────────────────────────────────────
-      //
-      // Reachable only from EventBridge. It reads whichever widgets have a due
-      // alarm, compares the value against the alarm's condition, and publishes
-      // to that alarm's topic when the state changes.
-      const alarmFn = new NodejsFunction(this, "AlarmEvaluator", {
-        functionName: `${stackPrefix}-alarm-evaluator`,
-        logGroup: logGroupFor("AlarmEvaluator", `${stackPrefix}-alarm-evaluator`),
-        runtime: lambda.Runtime.NODEJS_24_X,
-        entry: path.join(__dirname, "..", "backend", "src", "alarms", "handler.ts"),
-        handler: "handler",
-        projectRoot: path.join(__dirname, ".."),
-        depsLockFilePath: path.join(__dirname, "..", "package-lock.json"),
-        // A pass walks the org's Dependabot alerts once and runs a graph query
-        // per non-Dependabot alarm. Nothing is waiting on the answer, and Lambda
-        // bills for time actually used, so the ceiling is set for the slow case
-        // rather than the usual one.
-        timeout: cdk.Duration.minutes(5),
-        memorySize: 512,
-        environment: {
-          STACK_NAME: stackPrefix,
-          SECRET_NAME: secretName,
-          ALARMS_TABLE: `${stackPrefix}-alarms`,
-          WIDGETS_TABLE: `${stackPrefix}-widgets`,
-          ACTIVITY_TABLE: `${stackPrefix}-activity`,
-          ALERTS_TABLE: `${stackPrefix}-alerts`,
-          SCANNERS_TABLE: `${stackPrefix}-scanners`,
-          ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
-          GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
-        },
-        bundling: webhookBundling,
-      });
-
-      alarmFn.addToRolePolicy(new iam.PolicyStatement({
-        sid: "ReadAppSecrets",
-        actions: ["secretsmanager:GetSecretValue"],
-        resources: [`arn:aws:secretsmanager:${this.region}:${this.account}:secret:${secretName}*`],
-      }));
-
-      // Reads widely, writes to one table.
-      //
-      // Evaluating an alarm means reading widgets and graph edges; the only
-      // thing it ever writes is the alarm's own
-      // runtime state. Granting writes across the prefix would have let a
-      // scheduled job with no user in front of it modify the activity log, the
-      // record used to reconstruct what happened, including to itself.
-      alarmFn.addToRolePolicy(new iam.PolicyStatement({
-        sid: "AppTablesRead",
-        actions: [
-          "dynamodb:GetItem", "dynamodb:Scan", "dynamodb:Query", "dynamodb:BatchGetItem",
-        ],
-        resources: [`arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-*`],
-      }));
-
-      // Reads every table, writes two.
-      //
-      // `alarms` holds the firing state each pass updates. `org-config` holds
-      // the per-person notification rows, and the digest records the day it
-      // last sent there.
-      //
-      // Without org-config the write is refused, the record of having sent is
-      // never stored, and every five-minute tick concludes the digest is still
-      // due, which is a message every five minutes forever. Narrow rather than
-      // widened to `-*`: this function has no business writing findings,
-      // activity or the access graph.
-      alarmFn.addToRolePolicy(new iam.PolicyStatement({
-        sid: "AlarmStateWrite",
-        actions: ["dynamodb:PutItem", "dynamodb:UpdateItem"],
-        resources: [
-          `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-alarms`,
-          `arn:aws:dynamodb:${this.region}:${this.account}:table/${stackPrefix}-org-config`,
-        ],
-      }));
-
-      alarmFn.addToRolePolicy(new iam.PolicyStatement({
-        sid: "PublishAlarmEmails",
-        actions: ["sns:Publish"],
-        resources: [notifyTopics],
-      }));
-
-      // Five minutes, and the only schedule in the feature.
-      //
-      // This is the tick, not the interval. Each alarm carries its own interval
-      // and the evaluator decides per alarm which are due, so one rule serves
-      // every tiering and changing that tiering stays a constant in the code
-      // rather than a deploy. Ticks with nothing due read the alarms table and
-      // return.
-      //
-      // It has to divide every interval in INTERVAL_MINUTES, because an alarm can
-      // only be evaluated on a tick, a ten-minute interval under a fifteen-minute
-      // rule is a fifteen-minute alarm that reads as ten everywhere else.
-      // backend/src/alarms/conditions.ts declares TICK_MINUTES, which this must
-      // match, and repro-alarms.ts fails if the two disagree.
-      // Cron rather than rate, so the ticks land on the clock.
-      //
-      // `rate(5 minutes)` counts from whenever the rule happened to be created,
-      // so its ticks fall at some arbitrary offset: :03, :08, :13, :18. Nothing
-      // cares about that while the pass only evaluates alarms, but people
-      // choose a time for their summary, and a digest set for 10:15 arriving at
-      // 10:18 reads as the feature being unreliable rather than as a schedule
-      // nobody aligned.
-      //
-      // `0/5` fires at :00, :05, :10 and so on, so a time on a five-minute
-      // boundary is served by the tick with that name. Anything between two
-      // boundaries still waits for the next one, which is the honest limit of a
-      // five-minute pass and is what the settings screen says.
-      new events.Rule(this, "AlarmSchedule", {
-        ruleName: `${stackPrefix}-alarm-schedule`,
-        description: "Evaluates widget alarms that are due",
-        schedule: events.Schedule.cron({ minute: "0/5" }),
-        targets: [new targets.LambdaFunction(alarmFn)],
-      });
 
       // ── access graph rebuild ────────────────────────────────────────────
       //

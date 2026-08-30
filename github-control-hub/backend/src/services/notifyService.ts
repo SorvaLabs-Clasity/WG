@@ -136,13 +136,23 @@ export async function removeMember(subscriptionArn: string): Promise<void> {
  * Teams webhook must not stop the email, which is the channel people are more
  * likely to be relying on.
  */
-export async function publish(topicArn: string, subject: string, body: string): Promise<boolean> {
+export async function publish(
+  topicArn: string, subject: string, body: string, teamsText?: NotifyText,
+): Promise<boolean> {
   const [email, teams] = await Promise.all([
     publishEmail(topicArn, subject, body),
-    publishTeams(topicArn, subject, body),
+    // The email wording unless something wrote a Teams one. The two channels
+    // are read differently, an email is opened deliberately and a Teams
+    // message is glanced at in a sidebar, so the same paragraph is rarely
+    // right for both. Falling back rather than requiring one keeps every
+    // existing alarm sending exactly what it sends today.
+    publishTeams(topicArn, teamsText?.subject || subject, teamsText?.body || body),
   ]);
   return email || teams;
 }
+
+/** A rendered subject and body for one channel. */
+export interface NotifyText { subject: string; body: string; }
 
 async function publishEmail(topicArn: string, subject: string, body: string): Promise<boolean> {
   try {

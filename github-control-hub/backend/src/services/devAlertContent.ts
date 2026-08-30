@@ -15,6 +15,19 @@ import type { DevAlerts, EventPrefs } from "./devAlertService";
 
 const plural = (n: number, one: string) => `${n} ${n === 1 ? one : one + "s"}`;
 
+/**
+ * Whole days, for a line somebody reads.
+ *
+ * The age is fractional on purpose: the nudge threshold is compared in
+ * seconds, so rounding it where it is computed would coarsen which pull
+ * requests count as stale. It has to be rounded here instead, and it was not,
+ * which is how a card came to say "quiet 10.742989347923849 days".
+ *
+ * Floored, because that is what "quiet 10 days" claims. Rounding 10.7 up to 11
+ * counts a day that has not happened yet.
+ */
+const wholeDays = (days: number) => Math.max(0, Math.floor(days));
+
 export interface Digest {
   /** Null when there is nothing to say and the person asked not to be told so. */
   card: any | null;
@@ -60,7 +73,7 @@ export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now
         title: pr.title,
         url: pr.url,
         detail: `${pr.repo}#${pr.number} · ${pr.author} · `
-          + (pr.idleDays === 0 ? "updated today" : `quiet ${plural(pr.idleDays, "day")}`),
+          + (wholeDays(pr.idleDays) === 0 ? "updated today" : `quiet ${plural(wholeDays(pr.idleDays), "day")}`),
       })),
     });
   }
@@ -79,7 +92,7 @@ export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now
         title: pr.title,
         url: pr.url,
         detail: `${pr.repo}#${pr.number} · `
-          + (pr.idleDays === 0 ? "updated today" : `quiet ${plural(pr.idleDays, "day")}`),
+          + (wholeDays(pr.idleDays) === 0 ? "updated today" : `quiet ${plural(wholeDays(pr.idleDays), "day")}`),
       })),
     });
   }
@@ -97,7 +110,7 @@ export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now
         title: pr.title,
         url: pr.url,
         detail: `${pr.repo}#${pr.number} · ${describe(pr.waiting)} · `
-          + (pr.idleDays === 0 ? "updated today" : `quiet ${plural(pr.idleDays, "day")}`),
+          + (wholeDays(pr.idleDays) === 0 ? "updated today" : `quiet ${plural(wholeDays(pr.idleDays), "day")}`),
       })),
     });
   }

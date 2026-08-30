@@ -20,8 +20,15 @@ import { useGraphAggregation, useTriggerAggregation } from "../hooks/useGraph";
  * organization, counted from whichever walk ran last, scheduled or manual.
  *
  * **How long is left**, so a refusal is a number rather than a shrug.
+ *
+ * `dense` is for a toolbar. The explanation is a paragraph, and a paragraph
+ * inside a row of buttons sets the row's height and width, so on Overview a
+ * refusal was pushing the rest of the header around. In dense mode the same
+ * words are still reachable, on hover and on focus, but out of the flow.
  */
-export default function RecrawlButton({ className = "" }: { className?: string }) {
+export default function RecrawlButton({ className = "", dense = false }: {
+  className?: string; dense?: boolean;
+}) {
   const { data: status } = useGraphAggregation();
   const trigger = useTriggerAggregation();
 
@@ -34,11 +41,13 @@ export default function RecrawlButton({ className = "" }: { className?: string }
   const running = recrawl?.running || trigger.isPending;
   const blocked = !running && recrawl?.allowed === false;
 
+  // Shorter in a toolbar, where the button sits beside others and a sentence
+  // for a label is what makes a row start wrapping.
   const label = running
-    ? "Recrawling, this takes a few minutes…"
+    ? dense ? "Recrawling…" : "Recrawling, this takes a few minutes…"
     : blocked
-      ? `Recrawl available in ${recrawl!.waitMinutes} min`
-      : "Full GitHub recrawl";
+      ? dense ? `Recrawl in ${recrawl!.waitMinutes} min` : `Recrawl available in ${recrawl!.waitMinutes} min`
+      : dense ? "Full recrawl" : "Full GitHub recrawl";
 
   // Shown, not put in a tooltip. The reason a button is disabled has to be
   // readable before pressing it, and a disabled button does not reliably raise
@@ -52,8 +61,13 @@ export default function RecrawlButton({ className = "" }: { className?: string }
         + `across the organization, counting the nightly one at 10pm Eastern.`
       : null;
 
+  const note = trigger.isError
+    ? (trigger.error as any)?.message || "Could not start a recrawl."
+    : why;
+  const noteIsError = trigger.isError;
+
   return (
-    <div className={className}>
+    <div className={`${dense ? "relative group" : ""} ${className}`}>
       <Button
         /* Not the same shape as the refresh button people see elsewhere. That
            re-reads a stored answer; this re-reads the organization. */
@@ -67,15 +81,28 @@ export default function RecrawlButton({ className = "" }: { className?: string }
       {/* The server's own words when it refuses, which carry the numbers.
           Preferred over `why` because a refusal that arrived from the server is
           about this click, while `why` is about the state generally. */}
-      {trigger.isError ? (
-        <p className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300 max-w-[44ch]">
-          {(trigger.error as any)?.message || "Could not start a recrawl."}
+      {note && (dense ? (
+        // Taken out of the flow entirely, so nothing here can resize the row
+        // it sits in. The countdown itself is already on the button, which is
+        // the part somebody needs without hovering.
+        <div className="pointer-events-none absolute right-0 top-full z-30 mt-1.5 w-[46ch] max-w-[80vw]
+                        opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
+          <p className={`rounded-lg px-2.5 py-2 text-[12px] leading-snug shadow-lg ring-1
+                         bg-white dark:bg-slate-900 ring-slate-200 dark:ring-white/10 ${
+            noteIsError
+              ? "text-amber-700 dark:text-amber-300"
+              : "text-slate-600 dark:text-slate-300"}`}>
+            {note}
+          </p>
+        </div>
+      ) : (
+        <p className={`mt-1.5 text-[12px] max-w-[44ch] ${
+          noteIsError
+            ? "text-amber-700 dark:text-amber-300"
+            : "text-slate-500 dark:text-slate-400"}`}>
+          {note}
         </p>
-      ) : why ? (
-        <p className="mt-1.5 text-[12px] text-slate-500 dark:text-slate-400 max-w-[44ch]">
-          {why}
-        </p>
-      ) : null}
+      ))}
     </div>
   );
 }

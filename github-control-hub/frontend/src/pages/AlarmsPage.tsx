@@ -1,4 +1,6 @@
 import { useState, useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchAuthStatus } from "../api/auth";
 import { useNavigate } from "react-router-dom";
 import {
   Page, PageHeader, Empty, Spinner, LoadFailed, RefreshButton, Segmented,
@@ -175,7 +177,13 @@ export default function AlarmsPage() {
   const isAdmin = permissions?.isAwsAdmin ?? false;
 
   const { data: alarms, isLoading, isError, error, isFetching, refetch } = useAlarms(isAdmin);
-  const { data: widgets } = useWidgets();
+  // Only where there can be any. This page is reachable in an AWS-only
+  // account, where widgets are refused and every alarm is a guardrail one.
+  const { data: authStatus } = useQuery({
+    queryKey: ["auth", "status"], queryFn: fetchAuthStatus, staleTime: 60_000,
+  });
+  const githubBlocked = authStatus?.githubAccess?.allowed === false;
+  const { data: widgets } = useWidgets(undefined, !githubBlocked);
   const { data: groups } = useEmailGroups(isAdmin);
   const updateAlarm = useUpdateAlarm();
   const deleteAlarm = useDeleteAlarm();

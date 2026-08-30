@@ -464,7 +464,7 @@ export default function AnalyticsPage() {
                 re-reads a stored answer in a second; this one re-reads the
                 whole organization over several minutes. They looked identical,
                 which is how the expensive one got pressed by mistake. */}
-            {canEditDashboard && <RecrawlButton className="whitespace-nowrap" />}
+            {canEditDashboard && <RecrawlButton dense className="whitespace-nowrap" />}
             {canEditDashboard && (
               <Button variant="primary" onClick={() => setShowAddModal(true)}>
                 <i className="ph-bold ph-plus mr-2"></i>Add check

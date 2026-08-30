@@ -24,7 +24,8 @@
  */
 import fs from "node:fs";
 import {
-  defaults, badWebhook, badTeamsAddress, digestDue, whyNotDue, localNow, keyFor, KEY_PREFIX, type DevAlerts,
+  defaults, badWebhook, badTeamsAddress, digestDue, whyNotDue, localNow, nextDigestRecord,
+  keyFor, KEY_PREFIX, type DevAlerts,
 } from "./src/services/devAlertService";
 import { buildDigest, buildEventCard, wants } from "./src/services/devAlertContent";
 import { buildCard, escapeMd } from "./src/services/teamsClient";
@@ -190,6 +191,34 @@ const text = (card: any) => JSON.stringify(card);
 
     check("  a ready pull request is listed once, not twice",
       (body.match(/web#3/g) ?? []).length === 1, body.match(/web#3/g));
+
+    // The age is fractional because the staleness threshold is compared in
+    // seconds, so it has to be rounded where it is rendered. It was not, and a
+    // card said "quiet 10.742989347923849 days".
+    const odd = buildDigest(p, [pr({
+      number: 9, author: "alice", reviewDecision: "APPROVED",
+      lastCommitAt: new Date(NOW - Math.round(10.742989 * 86_400_000)).toISOString(),
+    })], NOW);
+    const oddText = text(odd.card);
+    check("  and says it in whole days",
+      // Scoped to the age itself: the card carries its own schema version,
+      // so looking for any decimal anywhere finds "1.4".
+      /quiet 10 days/.test(oddText) && !/quiet [\d.]*\.\d/.test(oddText),
+      (oddText.match(/quiet [^<"]*/g) ?? []).join(" | "));
+
+    // Floored, not rounded: 10.7 days is ten whole days elapsed, and eleven is
+    // a day that has not happened.
+    check("  rounding down, since a part-day is not a day",
+      !/quiet 11 days/.test(oddText));
+
+    // Below a day this used to need an exact zero to read as today, so
+    // anything touched three hours ago fell through to the day count.
+    const fresh = text(buildDigest(p, [pr({
+      number: 10, author: "alice", reviewDecision: "APPROVED",
+      lastCommitAt: new Date(NOW - 3 * 3_600_000).toISOString(),
+    })], NOW).card);
+    check("  and anything touched today says so, rather than quiet 0 days",
+      /updated today/.test(fresh) && !/quiet 0 days/.test(fresh));
   }
 
   // ── how far back each section reaches ───────────────────────────────
@@ -402,6 +431,64 @@ const text = (card: any) => JSON.stringify(card);
       "two rows for one person means settings that half apply");
   }
 
+  // ── what saving settings does to today's summary ────────────────────
+  //
+  // The bug this covers: setting a time that had already gone by sent a
+  // summary within five minutes, and because the form saved on every change,
+  // adjusting the time sent several.
+  {
+    const at = (hour: number, minute: number, over: Partial<DevAlerts["digest"]> = {}) =>
+      prefs({ digest: { ...defaults("a").digest, enabled: true, hour, minute, timeZone: "UTC", days: [], ...over } });
+    // 14:30 UTC, so 14:00 is behind us and 15:00 is ahead.
+    const AFTERNOON = Date.parse("2026-03-04T14:30:00Z");
+
+    check("a time still ahead today clears the record, so it can arrive today",
+      nextDigestRecord(at(9, 0), at(15, 0), AFTERNOON) === undefined,
+      "otherwise a schedule set this morning cannot be tested until tomorrow");
+
+    check("a time already past today does not, so it waits for tomorrow",
+      nextDigestRecord(at(9, 0), at(14, 0), AFTERNOON) !== undefined,
+      "setting 12:45 at 12:48 means tomorrow, not in two minutes");
+
+    check("  and the same minute counts as past, since that tick has run",
+      nextDigestRecord(at(9, 0), at(14, 30), AFTERNOON) !== undefined,
+      "a window that opened before the setting was saved was never for this setting");
+
+    check("  so a past time is not due on the next tick",
+      whyNotDue(
+        { ...at(9, 0), lastDigestAt: nextDigestRecord(at(9, 0), at(14, 0), AFTERNOON), digest: at(14, 0).digest },
+        AFTERNOON + 5 * 60_000) === "already sent today",
+      "this is the repeat somebody actually received");
+
+    check("changing only what is in the summary leaves the record alone",
+      nextDigestRecord(
+        { ...at(9, 0), lastDigestAt: "2026-03-04T09:00:00Z" },
+        at(9, 0, {}), AFTERNOON) === "2026-03-04T09:00:00Z",
+      "toggling a section at nine in the evening should not produce a second summary");
+
+    check("turning it on is a reschedule, so a time still ahead arrives today",
+      nextDigestRecord(
+        { ...at(15, 0), digest: { ...at(15, 0).digest, enabled: false } },
+        at(15, 0), AFTERNOON) === undefined,
+      "switching it on and hearing nothing for a day reads as broken");
+
+    // The zone is the frame every one of those comparisons is made in, so
+    // getting it wrong moves the whole schedule rather than breaking it
+    // visibly.
+    // 14:30 UTC is 06:30 in Los Angeles, so 09:00 is behind in UTC and ahead
+    // there. Reading it in the wrong frame does not fail visibly, it moves
+    // everybody's summary by their offset.
+    check("the time is read in the person's own zone, not the server's",
+      nextDigestRecord(at(20, 0), at(9, 0, { timeZone: "America/Los_Angeles" }), AFTERNOON) === undefined
+      && nextDigestRecord(at(20, 0), at(9, 0), AFTERNOON) !== undefined,
+      "09:00 is still ahead in Los Angeles when it is 14:30 UTC, and behind in UTC");
+
+    const route2 = fs.readFileSync("./src/routes/me.ts", "utf8");
+    check("an unrecognised timezone is refused rather than stored",
+      /timeZone: knownZone\(body\.digest\?\.timeZone\)/.test(route2),
+      "it becomes UTC further down, and the only symptom is the wrong hour");
+  }
+
   // ── the wiring ──────────────────────────────────────────────────────
   {
     const route = fs.readFileSync("./src/routes/me.ts", "utf8");
@@ -420,13 +507,9 @@ const text = (card: any) => JSON.stringify(card);
     // Two different things can be missing and only one is the caller's to fix.
     // Without this, somebody who sets a time this afternoon waits until
     // tomorrow to learn whether it works, with nothing explaining the silence.
-    check("changing the time forgets that today's summary already went",
-      /const rescheduled = next\.digest\.hour !== current\.digest\.hour/.test(route)
-      && /lastDigestAt: undefined/.test(route),
-      "the stored record is about the old schedule");
-    check("  but changing what is in it does not",
-      !/include[\s\S]{0,60}lastDigestAt: undefined/.test(route),
-      "toggling a section at nine in the evening should not produce a second summary");
+    check("saving settings decides the record through nextDigestRecord",
+      /lastDigestAt: nextDigestRecord\(current, next\)/.test(route),
+      "inline, the rule that stops a repeat cannot be tested");
 
     check("  and tells apart no address from no flow",
       /No Teams address is set yet/.test(route) && /not set up for this organization/.test(route),

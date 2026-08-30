@@ -10,7 +10,7 @@ import { searchActivity } from "../services/activitySearch";
 import { getDetailedLogging } from "../services/orgConfigService";
 import { readPrSnapshot as prSnapshot } from "../services/alarmService";
 import {
-  getDevAlerts, putDevAlerts, badTeamsAddress, type DevAlerts,
+  getDevAlerts, putDevAlerts, badTeamsAddress, nextDigestRecord, type DevAlerts,
 } from "../services/devAlertService";
 import { buildDigest } from "../services/devAlertContent";
 import { sendToPerson } from "../services/teamsClient";
@@ -23,6 +23,22 @@ import { getOrgConfig } from "../services/orgConfigService";
  * questions about you, out of the same data, which is the whole reason they
  * can exist at all. Nothing below reads GitHub.
  */
+/**
+ * An IANA zone name the runtime actually recognises, or null.
+ *
+ * `Intl` is the authority rather than a list kept here, which would go stale
+ * every time a government moves its clocks.
+ */
+function knownZone(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: value });
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 const router = Router();
 
 /**
@@ -281,6 +297,10 @@ router.put("/alerts", async (req: Request, res: Response) => {
         // which looks identical to the digest being broken.
         hour: Math.min(23, Math.max(0, Number(body.digest?.hour ?? current.digest.hour) || 0)),
         minute: Math.min(59, Math.max(0, Number(body.digest?.minute ?? current.digest.minute) || 0)),
+        // Checked here, because an unknown zone is not an error further
+        // down: it quietly becomes UTC, and the only symptom is a summary
+        // arriving at the wrong hour with nothing saying why.
+        timeZone: knownZone(body.digest?.timeZone) ?? current.digest.timeZone,
         days: Array.isArray(body.digest?.days)
           ? body.digest.days.filter((d: any) => Number.isInteger(d) && d >= 0 && d <= 6)
           : current.digest.days,
@@ -291,20 +311,8 @@ router.put("/alerts", async (req: Request, res: Response) => {
       lastErrorAt: typeof body.teamsAddress === "string" ? undefined : current.lastErrorAt,
     };
 
-    // Changing *when* the summary arrives forgets that today's already went.
-    //
-    // Without this, somebody who sets a time this afternoon waits until
-    // tomorrow to find out whether it works, with nothing on screen explaining
-    // the silence. The stored record is about the old schedule, and keeping it
-    // makes the new one untestable on the day it is set.
-    //
-    // Only the timing, not the contents: toggling a section at nine in the
-    // evening should not produce a second summary.
-    const rescheduled = next.digest.hour !== current.digest.hour
-      || next.digest.minute !== current.digest.minute
-      || (next.digest.enabled && !current.digest.enabled);
-
-    const saved = await putDevAlerts(rescheduled ? { ...next, lastDigestAt: undefined } : next);
+    // Changing *when* it arrives re-decides whether today's is still owed.
+    const saved = await putDevAlerts({ ...next, lastDigestAt: nextDigestRecord(current, next) });
     const flow = (await getOrgConfig().catch(() => null))?.teamsFlow;
     res.json({ ...saved, teamsReady: !!flow?.url });
   } catch (error: any) {

@@ -5,6 +5,7 @@ import {
 } from "../hooks/useAlarms";
 import type { Severity } from "../api/alarms";
 import VariableChips, { useTemplateInsert } from "./TemplateVariables";
+import TeamsWording from "./TeamsWording";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
@@ -49,6 +50,7 @@ export default function ImportantEventsPanel({ isAdmin }: { isAdmin: boolean }) 
   const [timezone, setTimezone] = useState("UTC");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [teams, setTeams] = useState({ subject: "", body: "" });
   const [showTemplates, setShowTemplates] = useState(false);
 
   const tpl = useTemplateInsert(subject, setSubject, body, setBody);
@@ -63,6 +65,10 @@ export default function ImportantEventsPanel({ isAdmin }: { isAdmin: boolean }) 
     setTimezone(settings.timezone || "UTC");
     setSubject(settings.subjectTemplate);
     setBody(settings.bodyTemplate);
+    setTeams({
+      subject: settings.teamsSubjectTemplate ?? "",
+      body: settings.teamsBodyTemplate ?? "",
+    });
   }, [settings]);
 
   if (!isAdmin) {
@@ -78,13 +84,15 @@ export default function ImportantEventsPanel({ isAdmin }: { isAdmin: boolean }) 
 
   async function save(next: Partial<{
     enabled: boolean; groupId: string; minSeverity: Severity;
-    subjectTemplate: string; bodyTemplate: string; timezone: string;
+    subjectTemplate: string; bodyTemplate: string;
+    teamsSubjectTemplate: string; teamsBodyTemplate: string; timezone: string;
   }>) {
     setError(""); setNotice("");
     try {
       await saveSettings.mutateAsync({
         enabled, groupId, minSeverity, timezone,
-        subjectTemplate: subject, bodyTemplate: body, ...next,
+        subjectTemplate: subject, bodyTemplate: body,
+        teamsSubjectTemplate: teams.subject, teamsBodyTemplate: teams.body, ...next,
       });
       setNotice("Saved");
     } catch (err: any) {
@@ -237,6 +245,14 @@ export default function ImportantEventsPanel({ isAdmin }: { isAdmin: boolean }) 
               and <code className="font-mono">{"{{repos}}"}</code> to describe the group.
             </p>
             <VariableChips variables={variables} target={tpl.target} onInsert={tpl.insert} />
+
+            <TeamsWording
+              subject={teams.subject} body={teams.body}
+              onChange={setTeams}
+              onCommit={next => save({
+                teamsSubjectTemplate: next.subject, teamsBodyTemplate: next.body })}
+              variables={variables} emailSubject={subject} emailBody={body}
+            />
           </div>
         )}
       </div>

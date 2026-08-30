@@ -55,9 +55,17 @@ const requireAdmin: RequestHandler = (req, res, next) => {
 router.use(requireAdmin);
 
 /** Rejects a template naming a variable that will never be substituted. */
-function templateProblem(subject?: string, body?: string): string | null {
-  for (const [what, tpl] of [["subject", subject], ["body", body]] as const) {
-    if (tpl === undefined) continue;
+function templateProblem(
+  subject?: string, body?: string,
+  teamsSubject?: string, teamsBody?: string,
+): string | null {
+  for (const [what, tpl] of [
+    ["subject", subject], ["body", body],
+    ["Teams subject", teamsSubject], ["Teams body", teamsBody],
+  ] as const) {
+    // Undefined means "not being changed"; empty means "use the email
+    // wording", which is a real value and needs no validating.
+    if (tpl === undefined || tpl === "") continue;
     if (typeof tpl !== "string") return `The ${what} template must be text`;
     if (tpl.length > 4000) return `The ${what} template is too long`;
     const unknown = unknownVariables(tpl);
@@ -124,6 +132,7 @@ router.get("/", async (_req: Request, res: Response) => {
 router.post("/", async (req: Request, res: Response) => {
   try {
     const { widgetId, name, condition, groupId, subjectTemplate, bodyTemplate,
+      teamsSubjectTemplate, teamsBodyTemplate,
             notifyOnRecovery, enabled } = req.body ?? {};
 
     if (!widgetId || !condition || !groupId) {
@@ -147,12 +156,14 @@ router.post("/", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "That email group no longer exists" });
     }
 
-    const problem = templateProblem(subjectTemplate, bodyTemplate);
+    const problem = templateProblem(subjectTemplate, bodyTemplate,
+      teamsSubjectTemplate, teamsBodyTemplate);
     if (problem) return res.status(400).json({ error: problem });
 
     const alarm = await createAlarm({
       widgetId, name: String(name || widget.title || "Alarm").slice(0, 200),
-      condition, groupId, subjectTemplate, bodyTemplate, notifyOnRecovery, enabled,
+      condition, groupId, subjectTemplate, bodyTemplate,
+      teamsSubjectTemplate, teamsBodyTemplate, notifyOnRecovery, enabled,
     }, req.user!.login);
     res.status(201).json(alarm);
   } catch (error: any) {
@@ -386,7 +397,8 @@ router.get("/security", async (_req: Request, res: Response) => {
 
 router.put("/security", async (req: Request, res: Response) => {
   try {
-    const { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate, timezone } = req.body ?? {};
+    const { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate,
+      teamsSubjectTemplate, teamsBodyTemplate, timezone } = req.body ?? {};
 
     if (enabled && !groupId) {
       return res.status(400).json({ error: "Choose an email group before turning this on" });
@@ -405,11 +417,13 @@ router.put("/security", async (req: Request, res: Response) => {
       catch { return res.status(400).json({ error: `"${timezone}" is not a known timezone` }); }
     }
 
-    const problem = templateProblem(subjectTemplate, bodyTemplate);
+    const problem = templateProblem(subjectTemplate, bodyTemplate,
+      teamsSubjectTemplate, teamsBodyTemplate);
     if (problem) return res.status(400).json({ error: problem });
 
     res.json(await saveSecuritySettings(
-      { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate, timezone }, req.user!.login));
+      { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate,
+        teamsSubjectTemplate, teamsBodyTemplate, timezone }, req.user!.login));
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "alarm settings") });
   }
@@ -441,7 +455,8 @@ router.put("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response)
     return res.status(404).json({ error: "Unknown notification feed" });
   }
   try {
-    const { enabled, groupId, minSeverity, grouping, subjectTemplate, bodyTemplate } = req.body ?? {};
+    const { enabled, groupId, minSeverity, grouping, subjectTemplate, bodyTemplate,
+      teamsSubjectTemplate, teamsBodyTemplate } = req.body ?? {};
 
     if (grouping !== undefined && !["per-alert", "per-repository"].includes(grouping)) {
       return res.status(400).json({ error: "Grouping must be per-alert or per-repository" });
@@ -465,12 +480,14 @@ router.put("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response)
       }
     }
 
-    const problem = templateProblem(subjectTemplate, bodyTemplate);
+    const problem = templateProblem(subjectTemplate, bodyTemplate,
+      teamsSubjectTemplate, teamsBodyTemplate);
     if (problem) return res.status(400).json({ error: problem });
 
     res.json(await saveFeedSettings(
       feed as NotifyFeed,
-      { enabled, groupId, minSeverity, grouping, subjectTemplate, bodyTemplate },
+      { enabled, groupId, minSeverity, grouping, subjectTemplate, bodyTemplate,
+        teamsSubjectTemplate, teamsBodyTemplate },
       req.user!.login,
     ));
   } catch (error: any) {
@@ -491,7 +508,8 @@ router.put("/:id", async (req: Request, res: Response) => {
     const existing = await getAlarm(String(req.params.id));
     if (!existing) return res.status(404).json({ error: "Alarm not found" });
 
-    const { condition, groupId, subjectTemplate, bodyTemplate } = req.body ?? {};
+    const { condition, groupId, subjectTemplate, bodyTemplate,
+      teamsSubjectTemplate, teamsBodyTemplate } = req.body ?? {};
 
     if (condition !== undefined) {
       const widget = await getWidget(existing.widgetId);
@@ -508,7 +526,8 @@ router.put("/:id", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "That email group no longer exists" });
     }
 
-    const problem = templateProblem(subjectTemplate, bodyTemplate);
+    const problem = templateProblem(subjectTemplate, bodyTemplate,
+      teamsSubjectTemplate, teamsBodyTemplate);
     if (problem) return res.status(400).json({ error: problem });
 
     res.json(await updateAlarm(String(req.params.id), req.body ?? {}, req.user!.login));

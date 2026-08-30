@@ -113,8 +113,15 @@ const f = (over: Record<string, any> = {}) => ({
     const notify = fs.readFileSync("./src/services/notifyService.ts", "utf8");
     check("one publish reaches both channels",
       /publishEmail\(topicArn, subject, body\)/.test(notify)
-      && /publishTeams\(topicArn, subject, body\)/.test(notify),
+      && /publishTeams\(topicArn,/.test(notify),
       "adding it at the seam is what gives every existing notification Teams for free");
+
+    // Teams can be worded separately from the email. Unset has to keep meaning
+    // "send the email wording", or every alarm written before the field
+    // existed would start sending a blank message.
+    check("  Teams falls back to the email wording when none is set",
+      /teamsText\?\.subject \|\| subject, teamsText\?\.body \|\| body/.test(notify),
+      "an unset Teams template must send the email's words, not nothing");
     check("  attempted independently, so one cannot fail the other",
       /await Promise\.all\(\[\s*\n\s*publishEmail/.test(notify),
       "a stale Teams webhook must not stop the email");

@@ -5,6 +5,7 @@ import {
 } from "../hooks/useAlarms";
 import type { Severity, NotifyFeed } from "../api/alarms";
 import VariableChips, { useTemplateInsert } from "./TemplateVariables";
+import TeamsWording from "./TeamsWording";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
@@ -78,6 +79,7 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
   const [grouping, setGrouping] = useState<"per-alert" | "per-repository">("per-repository");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [teams, setTeams] = useState({ subject: "", body: "" });
   const [showTemplates, setShowTemplates] = useState(false);
 
   const tpl = useTemplateInsert(subject, setSubject, body, setBody);
@@ -92,6 +94,10 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
     if (settings.grouping) setGrouping(settings.grouping);
     setSubject(settings.subjectTemplate);
     setBody(settings.bodyTemplate);
+    setTeams({
+      subject: settings.teamsSubjectTemplate ?? "",
+      body: settings.teamsBodyTemplate ?? "",
+    });
   }, [settings]);
 
   if (!isAdmin) {
@@ -109,6 +115,7 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
     enabled: boolean; groupId: string; minSeverity: Severity;
     grouping: "per-alert" | "per-repository";
     subjectTemplate: string; bodyTemplate: string;
+    teamsSubjectTemplate: string; teamsBodyTemplate: string;
   }>) {
     setError(""); setNotice("");
     try {
@@ -117,7 +124,8 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
         // Sent only where it means something. The backend rejects it on the
         // Renovate feed rather than storing a filter it will never read.
         ...(spec.severity ? { minSeverity } : {}),
-        grouping, subjectTemplate: subject, bodyTemplate: body, ...next,
+        grouping, subjectTemplate: subject, bodyTemplate: body,
+        teamsSubjectTemplate: teams.subject, teamsBodyTemplate: teams.body, ...next,
       });
       setNotice("Saved");
     } catch (err: any) {
@@ -284,6 +292,14 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
             <VariableChips variables={variables} target={tpl.target} onInsert={tpl.insert}>
               Times use the timezone set on the Security tab, which applies to every email this app sends.
             </VariableChips>
+
+            <TeamsWording
+              subject={teams.subject} body={teams.body}
+              onChange={setTeams}
+              onCommit={next => save({
+                teamsSubjectTemplate: next.subject, teamsBodyTemplate: next.body })}
+              variables={variables} emailSubject={subject} emailBody={body}
+            />
           </div>
         )}
       </div>

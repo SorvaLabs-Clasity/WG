@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { idleLabel } from "../lib/idle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../App";
 import { apiGet, apiPut, apiPost } from "../api/client";
@@ -61,13 +62,6 @@ const BLOCK: Record<BlockReason, { label: string; chip: string; dot: string }> =
   "draft":             { label: "Draft",            chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20", dot: "bg-slate-400" },
   "blocked":           { label: "Blocked",          chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20", dot: "bg-slate-400" },
 };
-
-function idleLabel(days: number): string {
-  const secs = Math.max(0, days * 86_400);
-  if (secs < 3_600) return `${Math.max(1, Math.round(secs / 60))}m`;
-  if (secs < 172_800) return `${Math.round(secs / 3_600)}h`;
-  return `${Math.floor(days)}d`;
-}
 
 function thresholdLabel(secs: number): string {
   if (secs >= 86_400) return `${Math.round(secs / 86_400)} days`;
