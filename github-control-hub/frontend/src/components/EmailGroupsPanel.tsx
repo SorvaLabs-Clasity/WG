@@ -10,7 +10,6 @@ import {
 import { Empty, Spinner, Note, Button, SURFACE, TYPE } from "../design";
 import type { EmailGroup } from "../api/alarms";
 import ZonePicker from "./ZonePicker";
-import { zoneShort } from "../lib/zones";
 
 /**
  * Who gets told, and by which channel.
@@ -79,8 +78,10 @@ function AddRow({ value, onChange, onAdd, placeholder, type, busy }: {
   );
 }
 
-function GroupCard({ group, onNotice, onError }: {
+function GroupCard({ group, orgZone, onNotice, onError }: {
   group: EmailGroup;
+  /** The organization's zone, so a row can name what it falls back to. */
+  orgZone: string;
   onNotice: (s: string) => void; onError: (s: string) => void;
 }) {
   const addMember = useAddGroupMember();
@@ -164,21 +165,21 @@ function GroupCard({ group, onNotice, onError }: {
           <ChannelHeader icon="ph-fill ph-envelope-simple" label="Email"
             count={group.members.length} tone="text-sky-500" />
 
-          {/* One zone for the whole email column, and that is the honest
-              granularity rather than a simplification. Email leaves as a single
-              publish to this group's SNS topic, which hands every subscriber
-              the identical body, so there is no per-person text to put a
-              per-person time in. Teams is called once per address, which is why
-              the column beside this one can do it per person. */}
+          {/* The zone this group's email leads with. Everybody's own zone is
+              still named in the message: one SNS publish hands every subscriber
+              the same body, so rather than picking one person's clock and being
+              wrong for the rest, it carries them all. */}
           <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-slate-100 dark:border-white/[0.06]">
-            <span className="text-[11.5px] text-slate-400 dark:text-slate-500">Times written in</span>
+            <span className="text-[11.5px] text-slate-400 dark:text-slate-500 shrink-0">
+              Times lead with
+            </span>
             <ZonePicker
               value={group.timeZone}
-              inherit="Organization default"
+              inheritZone={orgZone}
               onChange={zone => run(() => setGroupZone.mutateAsync({ id: group.id, timeZone: zone }))}
             />
             <span className="text-[11px] text-slate-300 dark:text-slate-600 truncate">
-              one email, one clock
+              others shown too
             </span>
           </div>
 
@@ -197,7 +198,12 @@ function GroupCard({ group, onNotice, onError }: {
                   className="group/row flex items-center gap-2 py-1 text-[12.5px]">
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     m.confirmed ? "bg-emerald-500" : "bg-amber-400"}`} aria-hidden="true" />
-                  <span className="truncate text-slate-700 dark:text-slate-200">{m.endpoint}</span>
+                  {/* min-w-0, or `truncate` does nothing here. A flex item will not
+                      shrink below its content, so one very long address grew the
+                      row and pushed the zone picker and the remove button off the
+                      end of it. The class was already there and could not act. */}
+                  <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200"
+                    title={m.endpoint}>{m.endpoint}</span>
                   {!m.confirmed && (
                     <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide
                                      text-amber-700 dark:text-amber-500">pending</span>
@@ -207,11 +213,11 @@ function GroupCard({ group, onNotice, onError }: {
                       written in all of them and each person finds their own. */}
                   <ZonePicker
                     value={group.recipientZones?.[m.endpoint]}
-                    inherit={group.timeZone ? `${zoneShort(group.timeZone)} (group)` : "Group default"}
+                    inheritZone={group.timeZone || orgZone}
                     onChange={zone => run(() => setPersonZone.mutateAsync({
                       id: group.id, address: m.endpoint, timeZone: zone,
                     }))}
-                    className="ml-auto shrink-0"
+                    className="shrink-0"
                   />
                   <button
                     // The address goes too. An unconfirmed subscription has no
@@ -250,6 +256,16 @@ function GroupCard({ group, onNotice, onError }: {
           <ChannelHeader icon="ph-fill ph-chat-teardrop-text" label="Microsoft Teams"
             count={teams.length} tone="text-violet-500" />
 
+          {/* The counterpart to the email column's line, and it sits in the same
+              place for the same reason: the two columns take the same setting
+              and do different things with it, and that asymmetry is worth one
+              sentence each rather than being left for somebody to discover. */}
+          <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-slate-100 dark:border-white/[0.06]">
+            <span className="text-[11.5px] text-slate-400 dark:text-slate-500">
+              Each message uses its own recipient's zone
+            </span>
+          </div>
+
           {teams.length === 0 ? (
             <p className="text-[12.5px] text-slate-400 dark:text-slate-500">Nobody yet.</p>
           ) : (
@@ -260,17 +276,18 @@ function GroupCard({ group, onNotice, onError }: {
               {teams.map(address => (
                 <li key={address} className="group/row flex items-center gap-2 py-1 text-[12.5px]">
                   <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" aria-hidden="true" />
-                  <span className="truncate text-slate-700 dark:text-slate-200">{address}</span>
+                  <span className="min-w-0 flex-1 truncate text-slate-700 dark:text-slate-200"
+                    title={address}>{address}</span>
                   {/* Per person, because Teams is delivered per person: the
                       flow is called once per address, so each call can carry
                       that person's own rendering of the time. */}
                   <ZonePicker
                     value={group.recipientZones?.[address]}
-                    inherit={group.timeZone ? `${zoneShort(group.timeZone)} (group)` : "Group default"}
+                    inheritZone={group.timeZone || orgZone}
                     onChange={zone => run(() => setPersonZone.mutateAsync({
                       id: group.id, address, timeZone: zone,
                     }))}
-                    className="ml-auto shrink-0"
+                    className="shrink-0"
                   />
                   <button
                     onClick={() => run(() => removeTeams.mutateAsync({ id: group.id, address }))}
@@ -313,6 +330,9 @@ export default function EmailGroupsPanel() {
   // than one in a place somebody has to go looking for.
   const { data: security } = useSecuritySettings(true);
   const saveSecurity = useSaveSecuritySettings();
+  // The bottom of the chain. Never blank, because "what time will this say" has
+  // to have an answer even when nobody has chosen one.
+  const orgZone = security?.timezone || "UTC";
 
   if (isLoading) return <div className="py-20 flex justify-center"><Spinner /></div>;
 
@@ -342,7 +362,7 @@ export default function EmailGroupsPanel() {
           <div className="ml-auto shrink-0">
             <ZonePicker
               value={security?.timezone && security.timezone !== "UTC" ? security.timezone : undefined}
-              inherit="UTC"
+              inheritZone="UTC"
               onChange={zone => {
                 setError(""); setNotice("");
                 saveSecurity.mutateAsync({ timezone: zone || "UTC" })
@@ -399,7 +419,8 @@ export default function EmailGroupsPanel() {
       ) : (
         <div className="grid gap-4">
           {list.map(g => (
-            <GroupCard key={g.id} group={g} onNotice={setNotice} onError={setError} />
+            <GroupCard key={g.id} group={g} orgZone={orgZone}
+              onNotice={setNotice} onError={setError} />
           ))}
         </div>
       )}

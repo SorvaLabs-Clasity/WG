@@ -295,6 +295,59 @@ function check(name: string, ok: boolean, got?: unknown) {
     }
   }
 
+  // ── the rows survive a long address ─────────────────────────────────
+  //
+  // `truncate` cannot shrink a flex item that has no `min-w-0`: the item will
+  // not go below its content width. So one very long address grew the row and
+  // pushed the zone picker and the remove button off the end of it, and the
+  // class that was supposed to prevent exactly that could not act.
+  {
+    const panel = fs.readFileSync("../frontend/src/components/EmailGroupsPanel.tsx", "utf8");
+    const rows = panel.match(/min-w-0 flex-1 truncate/g) ?? [];
+    check("both columns let a long address shrink rather than push",
+      rows.length === 2,
+      { found: rows.length, expected: 2 });
+
+    check("  and keep the full address on hover, since it is now clipped",
+      /title=\{m\.endpoint\}/.test(panel) && /title=\{address\}/.test(panel),
+      "truncating without a title hides the thing the row is about");
+
+    // With the address taking the slack, a margin pushing from the other side
+    // is what fights it.
+    // Scoped to the member rows. The channel header's count and the
+    // organization control legitimately push right; a row must not, because
+    // the address is already taking the slack.
+    const memberRows = (panel.match(/<li key=\{[\s\S]*?<\/li>/g) ?? []).join("\n");
+    check("  with nothing else in a row claiming the free space",
+      memberRows.length > 0 && !/ml-auto/.test(memberRows),
+      "two things claiming the slack is what broke the row in the first place");
+  }
+
+  // ── the default is named as a time, not as a level ──────────────────
+  //
+  // The pickers read "Organization default" and "Group default": three levels
+  // to hold in your head, and a person's row saying "Group default" under a
+  // group that had no zone of its own pointed at something equally empty. The
+  // question is what time the message will say.
+  {
+    const picker = fs.readFileSync("../frontend/src/components/ZonePicker.tsx", "utf8");
+    const panel = fs.readFileSync("../frontend/src/components/EmailGroupsPanel.tsx", "utf8");
+
+    check("the empty option names the zone that applies",
+      /Default · \$\{zoneShort\(inheritZone\)\}/.test(picker),
+      "naming the level leaves the reader to resolve the chain themselves");
+
+    check("  and every picker says it the same way",
+      !/inherit="Organization default"/.test(panel) && !/Group default/.test(panel),
+      "two wordings for one idea is what made this read as two systems");
+
+    // The chain has to be resolved where it is known, not by the control.
+    check("a person falls back to their group, and a group to the organization",
+      /inheritZone=\{group\.timeZone \|\| orgZone\}/.test(panel)
+      && /const orgZone = security\?\.timezone \|\| "UTC";/.test(panel),
+      "an unset group is not an answer, so a row cannot stop there");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

@@ -13,12 +13,21 @@ import { allZones, zoneLabel, zoneShort } from "../lib/zones";
  * say, then how far that is from anywhere else, then which one it is.
  */
 export default function ZonePicker({
-  value, onChange, inherit, disabled, className = "",
+  value, onChange, inheritZone, disabled, className = "",
 }: {
   value?: string;
   onChange: (zone: string) => void;
-  /** What an empty value falls back to, named so the default is not a blank. */
-  inherit: string;
+  /**
+   * The zone that actually applies when this is unset.
+   *
+   * Named as a zone, not as a level. These read "Organization default" and
+   * "Group default", which asked the reader to hold a three-step chain in their
+   * head and then still not know what time they would see: a row saying "Group
+   * default" under a group that had no zone of its own pointed at something
+   * equally empty. Every one of them now says the same thing, "Default · EDT",
+   * and answers the only question being asked.
+   */
+  inheritZone?: string;
   disabled?: boolean;
   className?: string;
 }) {
@@ -39,13 +48,13 @@ export default function ZonePicker({
       onChange={e => onChange(e.target.value)}
       // The chosen zone shows as its code alone, because a row has no width for
       // three parts and the code is the half somebody is checking.
-      title={value ? zoneLabel(value) : inherit}
+      title={value ? zoneLabel(value) : `Default${inheritZone ? `, currently ${zoneLabel(inheritZone)}` : ""}`}
       className={`text-[11.5px] py-0.5 pl-1.5 pr-5 rounded-md bg-transparent
                   border border-slate-200 dark:border-white/10
                   text-slate-500 dark:text-slate-400 max-w-[11rem] truncate
                   disabled:opacity-40 ${className}`}
     >
-      <option value="">{inherit}</option>
+      <option value="">{inheritZone ? `Default · ${zoneShort(inheritZone)}` : "Default"}</option>
       {zones.map(([region, entries]) => (
         <optgroup key={region} label={region}>
           {entries.map(z => <option key={z.id} value={z.id}>{z.label}</option>)}
