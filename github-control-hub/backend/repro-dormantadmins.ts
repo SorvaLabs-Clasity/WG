@@ -304,6 +304,43 @@ function searchWithBudget(dormant: Set<string>, budget: number): Search {
       /QUERY_INCOMPLETE/.test(route) && /covered: error\.covered/.test(route));
   }
 
+  // ── one fact, one source ────────────────────────────────────────────
+  //
+  // "Repos exposed through a package" answered from `has_vulnerable_dependency`
+  // edges while the Vulnerabilities tab read Dependabot live. An alert raised
+  // before the webhook was subscribed, or one the nightly walk has not covered,
+  // then shows on one screen and not the other, with nothing on either
+  // explaining the difference.
+  {
+    const fs = await import("fs");
+    const gs = fs.readFileSync("./src/services/graphService.ts", "utf8");
+    const q = gs.slice(gs.indexOf('case "repos-dependent-on"'), gs.indexOf('case "repos-with-outside-admins"'));
+
+    check("the package query reads the alerts the Vulnerabilities tab reads",
+      /fetchOrgDependencyAlerts/.test(q),
+      "two sources for one fact disagree the moment either is behind");
+
+    // The graph stays as the fallback: empty here reads as "nothing is
+    // exposed", which is the one answer it must not give by accident.
+    check("  falling back to the graph when the alerts cannot be read",
+      /if \(live && !live\.degraded\)/.test(q) && /edge\.type !== "has_vulnerable_dependency"/.test(q),
+      "stale is better than a confident nothing");
+
+    check("  and a degraded sweep is not treated as an answer",
+      /!live\.degraded/.test(q),
+      "an empty list from a failed sweep is indistinguishable from a clean org");
+
+    // The alert's package field is `dependency`; the graph edge spells the same
+    // thing DEPENDENCY#<name>.
+    check("  matching on the field the alert actually uses",
+      /a\.dependency/.test(q),
+      "matching a field that does not exist finds nothing, quietly");
+
+    check("  and ignoring alerts already dismissed or fixed",
+      /if \(a\.clean\) continue;/.test(q),
+      "a closed alert is not an exposure");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

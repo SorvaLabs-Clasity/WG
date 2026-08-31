@@ -34,6 +34,11 @@ export interface WidgetAlarm {
   teamsSubjectTemplate?: string;
   teamsBodyTemplate?: string;
   notifyOnRecovery: boolean;
+  /**
+   * How often the evaluator looks, from the evaluator rather than guessed here.
+   * Null when the subject no longer exists.
+   */
+  intervalMinutes?: number | null;
   enabled: boolean;
   state: "OK" | "ALARM";
   lastCheckedAt?: string;

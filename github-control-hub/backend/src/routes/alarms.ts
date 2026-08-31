@@ -141,7 +141,33 @@ router.get("/widgets/:widgetId/conditions", async (req: Request, res: Response) 
 
 router.get("/", async (_req: Request, res: Response) => {
   try {
-    res.json(await listAlarms());
+    const alarms = await listAlarms();
+
+    /**
+     * How often each is evaluated, answered by the code that decides it.
+     *
+     * The list screen worked this out for itself, from the subject's kind, and
+     * so said "checked every hour" about an alarm the evaluator now looks at
+     * every tick. Two places deciding one number means one of them is wrong,
+     * and it is always the copy.
+     *
+     * Subjects are resolved once per distinct id: several alarms commonly watch
+     * one widget.
+     */
+    const subjects = new Map<string, any>();
+    const withInterval = await Promise.all(alarms.map(async a => {
+      if (!subjects.has(a.widgetId)) subjects.set(a.widgetId, await subjectFor(a.widgetId));
+      const subject = subjects.get(a.widgetId);
+      return {
+        ...a,
+        // A deleted subject has no interval to report. The row already says the
+        // alarm is unreadable, so a number here would be the confident half of
+        // a contradiction.
+        intervalMinutes: subject ? intervalFor(subject) : null,
+      };
+    }));
+
+    res.json(withInterval);
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "alarms") });
   }

@@ -215,10 +215,19 @@ export default function AlarmModal({
                 )}
               </div>
 
-              <label className="flex items-center gap-2 text-sm text-gh-textBase dark:text-slate-200">
-                <input type="checkbox" checked={notifyOnRecovery}
+              {/* The asymmetry is stated, because it is the thing people ask
+                  about: firing is immediate and recovery is not, deliberately. */}
+              <label className="flex items-start gap-2 text-sm text-gh-textBase dark:text-slate-200">
+                <input type="checkbox" checked={notifyOnRecovery} className="mt-0.5"
                   onChange={e => setNotifyOnRecovery(e.target.checked)} />
-                Also email when it returns to normal
+                <span>
+                  Tell me when it returns to normal
+                  <span className="block text-[12px] text-gray-500 dark:text-slate-400 mt-0.5">
+                    Sent to the same group, by email and Teams. It waits for two clean checks
+                    in a row, so a value resting on its threshold does not send an all-clear
+                    every time it wobbles. Going wrong waits for nothing.
+                  </span>
+                </span>
               </label>
 
               <div>

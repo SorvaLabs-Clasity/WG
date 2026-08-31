@@ -289,6 +289,10 @@ export const GITHUB_BACKED_QUERIES = new Set([
   // requests a minute: the smallest budget in the app. This one was missing
   // from the list when it was written by hand, and the check found it.
   "dormant-privileged-users",
+  // Reads Dependabot alerts live, so that it and the Vulnerabilities tab
+  // cannot disagree about the same package. The sweep is memoised per pass and
+  // already paid for by the Dependabot widgets.
+  "repos-dependent-on",
 ]);
 
 /**

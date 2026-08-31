@@ -342,6 +342,79 @@ function world(opts: { state?: AlarmState; lastCheckedAt?: string } = {}) {
     }
   }
 
+  // ── going wrong is instant; coming right waits ──────────────────────
+  //
+  // The asymmetry is deliberate and is the thing people ask about: a breach
+  // fires on the first check, and a recovery waits for two clean ones, so a
+  // value resting on its threshold does not send an all-clear every time it
+  // wobbles.
+  {
+    const { step, RECOVERY_CHECKS } = await import("./src/alarms/conditions");
+
+    const first = step({ state: "OK", cleanStreak: 0 }, true);
+    check("the first breach fires", first.fire === "alarm", first);
+    check("  and a second does not", step(first.runtime, true).fire === null,
+      "one notification per transition, not one per evaluation");
+
+    let r = step({ state: "ALARM", cleanStreak: 0 }, false);
+    check("one clean check does not recover", r.fire === null, r);
+    r = step(r.runtime, false);
+    check(`  ${RECOVERY_CHECKS} do`, r.fire === "recovery" && r.runtime.state === "OK", r);
+
+    // Which is why a fix at 2:50 with a five-minute tick lands at 3:00 rather
+    // than instantly: one clean check on the event, one on the next tick.
+    check("  so a recovery is at most two checks behind the fix",
+      RECOVERY_CHECKS === 2, RECOVERY_CHECKS);
+
+    const modal = fs.readFileSync("../frontend/src/components/AlarmModal.tsx", "utf8");
+    check("the wait is stated where the setting is",
+      /two clean checks\s*\n?\s*in a row/.test(modal),
+      "an all-clear that is late without explanation reads as one that is lost");
+
+    check("  and the setting says it covers Teams as well as email",
+      /by email and Teams/.test(modal),
+      "labelled email only, nobody turns it off for the channel it also uses");
+  }
+
+  // ── the interval on screen comes from the evaluator ─────────────────
+  //
+  // The list worked it out for itself from the subject's kind, so it said
+  // "checked every hour" about an alarm the evaluator looks at every tick. Two
+  // places deciding one number means one of them is wrong, and it is the copy.
+  {
+    const routes = fs.readFileSync("./src/routes/alarms.ts", "utf8");
+    check("the alarms list reports each alarm's real interval",
+      /intervalMinutes: subject \? intervalFor\(subject\) : null/.test(routes),
+      "the screen should not be guessing what the evaluator does");
+
+    const page = fs.readFileSync("../frontend/src/pages/AlarmsPage.tsx", "utf8");
+    check("  and the screen uses it rather than its own table",
+      /interval=\{a\.intervalMinutes \?\? null\}/.test(page)
+      && !/interval=\{guardrail \? 60/.test(page),
+      "a hardcoded 60 outlives every change to the evaluator");
+
+    check("  with a deleted subject stating no interval at all",
+      /interval !== null && <span>checked/.test(page),
+      "a number there would be the confident half of a contradiction");
+  }
+
+  // ── an exclusion change re-checks, and so re-alarms ─────────────────
+  {
+    const routes = fs.readFileSync("./src/routes/awsGuardrails.ts", "utf8");
+    check("changing exclusions re-runs the affected rules",
+      /await invokeEngine\(\{ ruleIds \}\)/.test(routes),
+      "otherwise a resource stays skipped after the list excluding it has gone");
+
+    // That invocation lands in the same handler as a sweep, so it writes
+    // findings and then evaluates the alarms reading them: a resource that
+    // comes back into scope and breaches fires at once.
+    const handler = fs.readFileSync("./src/aws-guardrails/handler.ts", "utf8");
+    const afterWrite = handler.slice(handler.indexOf("await putFindings(result.findings);"));
+    check("  and that run evaluates alarms like any other",
+      /evaluateGuardrailAlarms\(\)/.test(afterWrite.slice(0, 1400)),
+      "a narrow run is still a run, and the alarm must not wait for the sweep");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

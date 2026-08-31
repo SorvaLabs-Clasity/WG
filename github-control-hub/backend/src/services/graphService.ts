@@ -1,6 +1,6 @@
 import { docClient, hasTable, tableName, ScanCommand } from "../utils/dynamo";
 import { readGraphVersion, isVersionRow } from "./graphVersion";
-import { getSystemToken } from "../github/client";
+import { getSystemToken, getOrg } from "../github/client";
 import { rulesetCoversBranch } from "./branchService";
 import fs from "fs";
 import path from "path";
@@ -255,29 +255,66 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
   const results: any[] = [];
 
   switch (q) {
-    case "repos-dependent-on":
+    case "repos-dependent-on": {
       if (!param) throw new Error("Missing 'param' for dependency name");
-      // Only vulnerable dependencies are known here: the edges come from
-      // Dependabot alerts, not from a dependency graph. A repository using a
-      // package with no open advisory has no edge, so this answers "who is
-      // exposed through this package", not "who uses it". The label says so.
+      // Only vulnerable dependencies are known here: the source is Dependabot
+      // alerts, not a dependency graph. A repository using a package with no
+      // open advisory does not appear, so this answers "who is exposed through
+      // this package", not "who uses it". The label says so.
       //
-      // Matched case-insensitively, package names are lower case by
-      // convention but nobody types them that way reliably.
+      // Matched case-insensitively: package names are lower case by convention
+      // but nobody types them that way reliably.
       const wanted = new Set(param.split(",").map(x => x.trim().toLowerCase()).filter(Boolean));
       if (wanted.size === 0) throw new Error("Missing 'param' for dependency name");
 
-      // One row per repository, listing every package asked about that it is
-      // exposed through. Emitting a row per package instead would count a
-      // repository once for each, and the metric card counts rows.
+      /**
+       * Read from the same place the Vulnerabilities tab reads.
+       *
+       * Answering this from `has_vulnerable_dependency` edges makes it a second
+       * source for one fact, and the two disagree whenever an edge is missing:
+       * an alert raised before the webhook was subscribed, or one the nightly
+       * walk has not covered yet, shows on the Vulnerabilities tab and not
+       * here, and nothing on either screen explains the difference.
+       *
+       * The org-wide alert sweep this uses is memoised for the pass and already
+       * paid for by the Dependabot widgets, so agreeing costs nothing.
+       *
+       * The graph is the fallback, for a token that cannot read alerts. Stale
+       * is better than empty, and empty here reads as "nothing is exposed".
+       */
       const byRepo = new Map<string, { pkg: string; severity: string }[]>();
-      for (const edge of allEdges) {
-        if (edge.type !== "has_vulnerable_dependency") continue;
-        const pkg = edge.sk.replace("DEPENDENCY#", "");
-        if (!wanted.has(pkg.toLowerCase())) continue;
-        const repo = edge.pk.replace("REPO#", "");
-        if (!byRepo.has(repo)) byRepo.set(repo, []);
-        byRepo.get(repo)!.push({ pkg, severity: edge.metadata?.severity || "unknown" });
+      let live: Awaited<ReturnType<typeof import("./dependencyService").fetchOrgDependencyAlerts>> | null = null;
+      try {
+        const token = userToken || getSystemToken();
+        const org = getOrg();
+        if (token && org) {
+          const { Octokit } = await import("octokit");
+          const { fetchOrgDependencyAlerts } = await import("./dependencyService");
+          live = await fetchOrgDependencyAlerts(new Octokit({ auth: token }), org);
+        }
+      } catch {
+        // Falls through to the graph below.
+      }
+
+      if (live && !live.degraded) {
+        for (const a of live.alerts) {
+          // `dependency` is the package name; the graph edge calls the same
+          // thing DEPENDENCY#<name>, which is why these agreed on nothing.
+          if (!wanted.has(String(a.dependency ?? "").toLowerCase())) continue;
+          // A dismissed or fixed alert is not an exposure.
+          if (a.clean) continue;
+          if (!byRepo.has(a.repo)) byRepo.set(a.repo, []);
+          byRepo.get(a.repo)!.push({ pkg: a.dependency, severity: a.severity || "unknown" });
+        }
+      } else {
+        for (const edge of allEdges) {
+          if (edge.type !== "has_vulnerable_dependency") continue;
+          const pkg = edge.sk.replace("DEPENDENCY#", "");
+          if (!wanted.has(pkg.toLowerCase())) continue;
+          const repo = edge.pk.replace("REPO#", "");
+          if (!byRepo.has(repo)) byRepo.set(repo, []);
+          byRepo.get(repo)!.push({ pkg, severity: edge.metadata?.severity || "unknown" });
+        }
       }
       for (const [repo, hits] of byRepo) {
         results.push({
@@ -285,11 +322,12 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
           reason: hits.length === 1
             ? `Vulnerable ${hits[0].pkg} (${hits[0].severity})`
             : `Vulnerable in ${hits.length} of the packages asked about`,
-          details: hits.map(h => `${h.pkg} (${h.severity})`).join(", "),
+            details: hits.map(h => `${h.pkg} (${h.severity})`).join(", "),
         });
       }
 
       break;
+    }
 
     case "repos-with-outside-admins": {
       // Build a map of repo -> owning team members

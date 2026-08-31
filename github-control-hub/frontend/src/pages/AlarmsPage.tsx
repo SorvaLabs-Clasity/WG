@@ -73,7 +73,8 @@ function AlarmRow({ alarm, subject, groupName, interval, onEdit, onToggle, onDel
   alarm: WidgetAlarm;
   subject: ReturnType<typeof subjectOf>;
   groupName?: string;
-  interval: number;
+  /** Null when the subject is gone, so there is no interval to state. */
+  interval: number | null;
   onEdit: () => void; onToggle: () => void; onDelete: () => void;
 }) {
   const firing = alarm.state === "ALARM" && alarm.enabled;
@@ -116,7 +117,7 @@ function AlarmRow({ alarm, subject, groupName, interval, onEdit, onToggle, onDel
             {groupName ?? <span className="text-amber-600 dark:text-amber-500">group deleted</span>}
           </span>
           <span aria-hidden="true">·</span>
-          <span>checked {describeInterval(interval)}</span>
+          {interval !== null && <span>checked {describeInterval(interval)}</span>}
           {alarm.lastCheckedAt && (
             <>
               <span aria-hidden="true">·</span>
@@ -317,8 +318,7 @@ export default function AlarmsPage() {
                     alarm={a}
                     subject={subjectOf(a, widget?.title)}
                     groupName={groupById.get(a.groupId)?.name}
-                    interval={guardrail ? 60
-                      : widget?.type === "preset" && (widget.presetId === "dependabot" || widget.presetId === "vuln-repos") ? 60 : 15}
+                    interval={a.intervalMinutes ?? null}
                     onEdit={() => setEditing(a)}
                     onToggle={() => updateAlarm.mutate({ id: a.id, data: { enabled: !a.enabled } })}
                     onDelete={() => {

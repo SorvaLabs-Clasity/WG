@@ -2245,6 +2245,20 @@ just wrote. Every other alarm buys its reading from GitHub or an estate-wide AWS
 sweep, so triggering those on every data change would multiply that cost by how
 often the data changes, which is exactly what their intervals exist to bound.
 
+### Going wrong is instant; coming right waits
+
+A breach fires on the first check. A recovery waits for **two consecutive clean
+checks**, so a value resting on its threshold does not send an all-clear every
+time it wobbles, which is what teaches people to filter the alarm that mattered.
+
+So a guardrail fixed at 2:50 clears at 3:00, not at 2:50: one clean check on the
+CloudTrail event, one on the next tick. That asymmetry is stated on the setting
+itself, because an all-clear that is late without explanation reads as one that
+is lost.
+
+Whether the all-clear is sent at all is per alarm, `notifyOnRecovery`, and it
+covers email and Teams alike.
+
 ### One message per transition, not per evaluation
 
 Two evaluators are only safe because firing is **claimed before anything is
