@@ -2869,7 +2869,19 @@ already answer.
 
 So it multiplies **metered usage** by **published prices**: consumed read and
 write units per table, invocations and duration times that function's own
-memory, bytes ingested per log group, messages published per topic.
+memory, bytes ingested per log group, messages published per topic, requests
+through the API and the queues.
+
+**Some charges are fixed**, and those are marked on screen. A WAF web ACL is
+five dollars a month whether it inspects one request or a million, each of its
+rules is another, a CloudWatch alarm is ten cents and a secret is forty. On a
+quiet install the web ACL is the largest line on the page, so a report that left
+it out, as this one first did, was worse than no report: everything else reads
+as "spend less by doing less", and these do not move.
+
+`repro-costs.ts` derives what should be priced from `cdk-stack.ts` rather than
+from a list, so a resource added to the infrastructure and not to the pricing is
+caught rather than silently missing.
 
 The trade is stated beside the number rather than in a footnote: this is list
 price, and it knows nothing about the free tier, committed-use discounts,

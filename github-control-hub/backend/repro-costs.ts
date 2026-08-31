@@ -80,12 +80,75 @@ function check(name: string, ok: boolean, got?: unknown) {
       "each service is read in its own try, so no permission gap empties the page");
   }
 
+  // ── nothing billable is left out ────────────────────────────────────
+  //
+  // WAF was missing, and it was the worst possible omission: a web ACL is five
+  // dollars a month whether it inspects one request or a million, so on a quiet
+  // install it is the largest line on the page. A report that silently drops
+  // the biggest fixed charge is worse than no report.
+  //
+  // Derived from the stack rather than from a list kept here, so a resource
+  // added to the infrastructure and not to the pricing is caught.
+  {
+    const svc = fs.readFileSync("./src/services/costService.ts", "utf8");
+    const stack = fs.readFileSync("../infra/cdk-stack.ts", "utf8");
+
+    // What the stack creates that AWS charges for, and where each is priced.
+    const billable: Array<[string, RegExp, RegExp]> = [
+      ["DynamoDB tables", /new dynamodb\.Table\(/, /PRICES\.dynamo\./],
+      ["Lambda functions", /new NodejsFunction\(/, /PRICES\.lambda\./],
+      ["log groups", /new logs\.LogGroup\(/, /PRICES\.logs\./],
+      ["SQS queues", /new sqs\.Queue\(/, /PRICES\.sqs\./],
+      ["the WAF", /new wafv2\.CfnWebACL\(/, /PRICES\.waf\./],
+      ["API Gateway", /new apigateway\.RestApi\(/, /PRICES\.apiGateway\./],
+      ["CloudWatch alarms", /new cloudwatch\.Alarm\(|\.createAlarm\(/, /PRICES\.cloudwatch\.alarmMonth/],
+    ];
+
+    for (const [what, inStack, inPrices] of billable) {
+      if (!inStack.test(stack)) {
+        check(`${what} are no longer created, so nothing to price`, true);
+        continue;
+      }
+      check(`${what} are created and priced`, inPrices.test(svc),
+        "the stack creates this and the report would not show it");
+    }
+
+    // The fixed charges are the ones a usage-based page hides worst: everything
+    // else reads as "spend less by doing less", and these do not move.
+    check("the fixed monthly charges are all priced",
+      /webAclMonth: 5\.00/.test(svc) && /ruleMonth: 1\.00/.test(svc)
+      && /alarmMonth: 0\.10/.test(svc) && /secret: 0\.40/.test(svc),
+      "a web ACL costs the same on an idle install as a busy one");
+
+    const ui = fs.readFileSync("../frontend/src/components/CostPanel.tsx", "utf8");
+    check("  and marked on screen as fixed",
+      /const FIXED: ReadonlySet<CostLine\["kind"\]> = new Set\(\["waf", "alarm", "secret"\]\)/.test(ui),
+      "otherwise the page reads as if every line could be reduced by doing less");
+
+    // Each one still has to be scoped to this app, like the rest.
+    for (const [what, re] of [
+      ["the WAF", /String\(acl\.Name\)\.startsWith\(`\$\{prefix\}-`\)/],
+      ["API Gateway", /String\(a\.name\)\.startsWith\(`\$\{prefix\}-`\)/],
+      ["SQS", /QueueNamePrefix: prefix/],
+      ["alarms", /AlarmNamePrefix: prefix/],
+    ] as const) {
+      check(`  ${what} is still scoped to this app`, re.test(svc),
+        "a new section without the prefix bills the whole account here");
+    }
+
+    // REGIONAL, because it fronts an API Gateway stage. A CLOUDFRONT-scope ACL
+    // lives in us-east-1 and belongs to somebody else.
+    check("the WAF is looked for at the right scope",
+      /Scope: "REGIONAL"/.test(svc),
+      "the wrong scope finds nothing and reports the largest line as absent");
+  }
+
   // ── what the report itself spends ───────────────────────────────────
   {
     const svc = fs.readFileSync("./src/services/costService.ts", "utf8");
 
     check("the only billed call is the metrics read",
-      /cloudwatch: \{ metricRequested: 0\.01 \/ 1_000 \}/.test(svc),
+      /metricRequested: 0\.01 \/ 1_000/.test(svc),
       "$0.01 per 1,000 metrics; everything else it calls is control plane");
 
     // The thing somebody actually worries about when a tool offers cost

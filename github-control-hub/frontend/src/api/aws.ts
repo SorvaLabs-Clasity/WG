@@ -142,7 +142,7 @@ export const deleteAwsExclusion = (id: string) => apiDelete<{ message: string }>
 export interface CostUsage { label: string; amount: number; unit: string; cost: number }
 export interface CostLine {
   name: string;
-  kind: "table" | "function" | "topic" | "logs" | "secret";
+  kind: "table" | "function" | "topic" | "logs" | "secret" | "waf" | "api" | "queue" | "alarm";
   usage: CostUsage[];
   cost: number;
   error?: string;

@@ -57,13 +57,26 @@ export const PRICES = {
    * The only billed call in the report. Everything else it makes, listing
    * tables, functions, log groups and topics, is control plane and free.
    */
-  cloudwatch: { metricRequested: 0.01 / 1_000 },
+  cloudwatch: {
+    metricRequested: 0.01 / 1_000,
+    /** Per alarm per month, whether or not it ever fires. */
+    alarmMonth: 0.10,
+  },
+  /**
+   * WAF is the one resource here with a real fixed charge, and it is the
+   * largest single line on a quiet install: a web ACL costs the same whether it
+   * inspects one request a day or a million.
+   */
+  waf: { webAclMonth: 5.00, ruleMonth: 1.00, millionRequests: 0.60 },
+  /** REST API, which is what this uses: HTTP APIs cannot carry a resource policy. */
+  apiGateway: { millionRequests: 3.50 },
+  sqs: { millionRequests: 0.40 },
 } as const;
 
 export interface CostLine {
   /** The resource, as it is named in AWS. */
   name: string;
-  kind: "table" | "function" | "topic" | "logs" | "secret";
+  kind: "table" | "function" | "topic" | "logs" | "secret" | "waf" | "api" | "queue" | "alarm";
   /** What it did, in the units the price is charged in. */
   usage: Array<{ label: string; amount: number; unit: string; cost: number }>;
   cost: number;
@@ -410,10 +423,139 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
 
   };
 
+  // ── WAF ──
+  //
+  // The one resource here with a charge that does not depend on use: a web ACL
+  // is five dollars a month whether it inspects one request or a million, and
+  // each rule is another. On a quiet install it is the largest line on the
+  // page, which is exactly why leaving it out was the worst omission.
+  const wafSection = async () => {
+    try {
+      const { WAFV2Client, ListWebACLsCommand, GetWebACLCommand } =
+        await import("@aws-sdk/client-wafv2");
+      const waf = new WAFV2Client({ region: awsRegion() });
+
+      // REGIONAL, because it protects an API Gateway stage rather than
+      // CloudFront. A CLOUDFRONT-scope ACL lives in us-east-1 and is not ours.
+      const list: any = await waf.send(new ListWebACLsCommand({ Scope: "REGIONAL" }));
+      for (const acl of list.WebACLs ?? []) {
+        if (!String(acl.Name).startsWith(`${prefix}-`)) continue;
+
+        let rules = 0;
+        try {
+          const got: any = await waf.send(new GetWebACLCommand({
+            Name: acl.Name, Id: acl.Id, Scope: "REGIONAL",
+          }));
+          rules = (got.WebACL?.Rules ?? []).length;
+        } catch { /* the ACL still costs its base charge without the rule count */ }
+
+        const requests = (await sums([{
+          id: "waf0", namespace: "AWS/WAFV2", metric: "AllowedRequests",
+          dims: { WebACL: acl.Name, Rule: "ALL", Region: awsRegion() ?? PRICES.region },
+        }], from, to, counter).catch(() => ({} as Record<string, number>)))["waf0"] ?? 0;
+
+        const usage = [
+          { label: "Web ACL", amount: 1, unit: "ACL", cost: PRICES.waf.webAclMonth * (days / 30) },
+          { label: "Rules", amount: rules, unit: "rules", cost: rules * PRICES.waf.ruleMonth * (days / 30) },
+          { label: "Requests", amount: requests, unit: "requests", cost: (requests / 1_000_000) * PRICES.waf.millionRequests },
+        ];
+        lines.push({ name: acl.Name, kind: "waf", usage, cost: usage.reduce((a, u) => a + u.cost, 0) });
+      }
+    } catch (err: any) {
+      errors.push(`WAF could not be read: ${err?.message ?? err}`);
+    }
+  };
+
+  // ── API Gateway ──
+  const apiSection = async () => {
+    try {
+      const { APIGatewayClient, GetRestApisCommand } = await import("@aws-sdk/client-api-gateway");
+      const api = new APIGatewayClient({ region: awsRegion() });
+      const res: any = await api.send(new GetRestApisCommand({ limit: 500 }));
+      const ours = (res.items ?? []).filter((a: any) => String(a.name).startsWith(`${prefix}-`));
+
+      const metrics = await sums(ours.map((a: any, i: number) => ({
+        id: idFor("ag", i), namespace: "AWS/ApiGateway", metric: "Count",
+        dims: { ApiName: a.name },
+      })), from, to, counter).catch(() => ({} as Record<string, number>));
+
+      for (const [i, a] of ours.entries()) {
+        const calls = metrics[idFor("ag", i)] ?? 0;
+        const usage = [{
+          label: "Requests", amount: calls, unit: "requests",
+          cost: (calls / 1_000_000) * PRICES.apiGateway.millionRequests,
+        }];
+        lines.push({ name: a.name, kind: "api", usage, cost: usage[0].cost });
+      }
+    } catch (err: any) {
+      errors.push(`API Gateway could not be read: ${err?.message ?? err}`);
+    }
+  };
+
+  // ── SQS ──
+  const sqsSection = async () => {
+    try {
+      const { SQSClient, ListQueuesCommand } = await import("@aws-sdk/client-sqs");
+      const sqs = new SQSClient({ region: awsRegion() });
+      const res: any = await sqs.send(new ListQueuesCommand({ QueueNamePrefix: prefix }));
+      const names = (res.QueueUrls ?? []).map((u: string) => u.split("/").pop()!);
+
+      // Sent and received are billed the same, and a queue with a worker on it
+      // is charged for both halves of every message.
+      const q = names.flatMap((n: string, i: number) => [
+        { id: idFor("qs", i), namespace: "AWS/SQS", metric: "NumberOfMessagesSent", dims: { QueueName: n } },
+        { id: idFor("qr", i), namespace: "AWS/SQS", metric: "NumberOfMessagesReceived", dims: { QueueName: n } },
+      ]);
+      const metrics = await sums(q, from, to, counter).catch(() => ({} as Record<string, number>));
+
+      for (const [i, n] of names.entries()) {
+        const requests = (metrics[idFor("qs", i)] ?? 0) + (metrics[idFor("qr", i)] ?? 0);
+        const usage = [{
+          label: "Requests", amount: requests, unit: "requests",
+          cost: (requests / 1_000_000) * PRICES.sqs.millionRequests,
+        }];
+        lines.push({ name: n, kind: "queue", usage, cost: usage[0].cost });
+      }
+    } catch (err: any) {
+      errors.push(`SQS queues could not be read: ${err?.message ?? err}`);
+    }
+  };
+
+  // ── CloudWatch alarms ──
+  //
+  // Ten cents each per month, fires or not. Small, and the sort of thing that
+  // is only small until somebody adds forty of them.
+  const alarmSection = async () => {
+    try {
+      const { CloudWatchClient, DescribeAlarmsCommand } = await import("@aws-sdk/client-cloudwatch");
+      const client = new CloudWatchClient({ region: awsRegion() });
+      let token: string | undefined;
+      const names: string[] = [];
+      do {
+        const page: any = await client.send(new DescribeAlarmsCommand({
+          AlarmNamePrefix: prefix, NextToken: token,
+        }));
+        for (const a of page.MetricAlarms ?? []) names.push(a.AlarmName);
+        token = page.NextToken;
+      } while (token);
+
+      for (const name of names) {
+        const cost = PRICES.cloudwatch.alarmMonth * (days / 30);
+        lines.push({
+          name, kind: "alarm",
+          usage: [{ label: "Standing charge", amount: 1, unit: "alarm", cost }],
+          cost,
+        });
+      }
+    } catch (err: any) {
+      errors.push(`CloudWatch alarms could not be read: ${err?.message ?? err}`);
+    }
+  };
+
   /**
-   * The five run together, because none of them needs another's answer.
+   * All of them run together, because none needs another's answer.
    *
-   * In turn, this was five round trips of listing before the first number
+   * In turn, this was a round trip of listing per service before the first number
    * appeared, and the page sat empty for the length of all of them. They push
    * into the same two arrays, which is safe here: JavaScript runs one of them
    * at a time, and the order of the lines is decided by the sort below rather
@@ -424,6 +566,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
    */
   await Promise.all([
     dynamoSection(), lambdaSection(), logsSection(), snsSection(), secretsSection(),
+    wafSection(), apiSection(), sqsSection(), alarmSection(),
   ]);
 
   lines.sort((a, b) => b.cost - a.cost);

@@ -27,7 +27,20 @@ const KIND: Record<CostLine["kind"], { icon: string; label: string; tone: string
   logs:     { icon: "ph-list-magnifying-glass", label: "Logs",  tone: "text-slate-400" },
   topic:    { icon: "ph-megaphone",      label: "SNS",          tone: "text-violet-500" },
   secret:   { icon: "ph-key",            label: "Secret",       tone: "text-emerald-500" },
+  waf:      { icon: "ph-shield-check",   label: "WAF",          tone: "text-rose-500" },
+  api:      { icon: "ph-plugs-connected", label: "API Gateway", tone: "text-indigo-500" },
+  queue:    { icon: "ph-queue",          label: "SQS",          tone: "text-teal-500" },
+  alarm:    { icon: "ph-bell-ringing",   label: "Alarm",        tone: "text-orange-500" },
 };
+
+/**
+ * Resources charged whether or not anything uses them.
+ *
+ * Worth calling out, because the rest of this page is usage and reads as
+ * "spend less by doing less". These do not work that way: a web ACL costs the
+ * same on an idle install, and on a quiet one it is the largest line here.
+ */
+const FIXED: ReadonlySet<CostLine["kind"]> = new Set(["waf", "alarm", "secret"]);
 
 /**
  * Money, at the precision the number deserves.
@@ -258,6 +271,12 @@ export default function CostPanel() {
                         style={{ width: `${Math.max(share, line.cost > 0 ? 2 : 0)}%` }} />
                     </span>
                   </span>
+                  {FIXED.has(line.kind) && (
+                    <span className="text-[9.5px] font-black uppercase tracking-wider shrink-0
+                                     text-amber-700 dark:text-amber-500" title="Charged whether it is used or not">
+                      fixed
+                    </span>
+                  )}
                   <span className="text-[10px] font-black uppercase tracking-wider text-slate-300 dark:text-slate-600 shrink-0">
                     {k.label}
                   </span>
