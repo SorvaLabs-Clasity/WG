@@ -12,6 +12,25 @@ import ExpertisePage from "./pages/ExpertisePage";
 import MyWorkPage from "./pages/MyWorkPage";
 import PullRequestsPage from "./pages/PullRequestsPage";
 import { isAuthenticated } from "./api/client";
+import RequireTeam from "./components/RequireTeam";
+import { usePermissions } from "./hooks/usePermissions";
+
+/**
+ * Where the app opens.
+ *
+ * Overview for the people who can read it, My work for everybody else. Sending
+ * everyone to Overview would open the app on a locked door for most of the
+ * organization, which is a poor first impression of a screen that is working
+ * exactly as intended.
+ *
+ * While permissions are loading, nothing is decided: guessing and correcting
+ * would bounce somebody between two tabs on every launch.
+ */
+function Home() {
+  const { data: perms, isLoading } = usePermissions();
+  if (isLoading) return null;
+  return <Navigate to={perms?.isControlHubAdmin ? "/analytics" : "/my-work"} replace />;
+}
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   if (!isAuthenticated()) {
@@ -31,7 +50,7 @@ export const router = createBrowserRouter([
   },
   {
     path: "/",
-    element: <Navigate to="/analytics" replace />,
+    element: <RequireAuth><Home /></RequireAuth>,
   },
   {
     path: "/pulls",
@@ -69,7 +88,9 @@ export const router = createBrowserRouter([
     path: "/analytics",
     element: (
       <RequireAuth>
-        <AnalyticsPage />
+        <RequireTeam team="control-hub" title="Overview">
+          <AnalyticsPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },
@@ -77,7 +98,9 @@ export const router = createBrowserRouter([
     path: "/access",
     element: (
       <RequireAuth>
-        <AccessPage />
+        <RequireTeam team="control-hub" title="Access">
+          <AccessPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },
@@ -112,7 +135,9 @@ export const router = createBrowserRouter([
     path: "/aws",
     element: (
       <RequireAuth>
-        <AwsPage />
+        <RequireTeam team="aws" title="AWS">
+          <AwsPage />
+        </RequireTeam>
       </RequireAuth>
     ),
   },

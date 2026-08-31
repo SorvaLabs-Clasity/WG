@@ -26,6 +26,7 @@ import type { Activity, ActivityAction } from "../types/Activity";
 import { buildConflictComparison } from "../utils/conflictComparison";
 import CostPanel from "../components/CostPanel";
 import GithubBudgetPanel from "../components/GithubBudgetPanel";
+import { usePermissions } from "../hooks/usePermissions";
 
 
 function formatTimestamp(ts: string): string {
@@ -279,7 +280,16 @@ export default function ActivityPage() {
    * there is no GitHub App there, so the route behind it is gated off and the
    * lens would be a tab that only ever explains why it cannot load.
    */
-  const lenses = useMemo(() => LENSES.filter(([v]) => !(awsOnly && v === "github")), [awsOnly]);
+  const { data: perms } = usePermissions();
+  const awsAdmin = perms?.isAwsAdmin !== false;
+
+  const lenses = useMemo(
+    () => LENSES.filter(([v]) =>
+      !(awsOnly && v === "github")
+      // Costs reads the AWS account, on the route the AWS tab is gated behind.
+      // Left visible it is a tab that only ever renders a permission error.
+      && !(v === "costs" && !awsAdmin)),
+    [awsOnly, awsAdmin]);
 
   // Defaults to the organization stream rather than to Everything. That is what
   // this app exists to record, and opening on a merged feed puts dashboard
@@ -399,6 +409,12 @@ export default function ActivityPage() {
   useEffect(() => {
     if (awsOnly && lens === "github") setLensPersistent("costs");
   }, [awsOnly, lens]);
+
+  // A lens remembered from an account that could read it, reopened by somebody
+  // who cannot, would leave the control showing nothing selected.
+  useEffect(() => {
+    if (!awsAdmin && lens === "costs") setLensPersistent("feed");
+  }, [awsAdmin, lens]);
   /**
    * How rows somebody wrote arranging their own board are treated.
    *

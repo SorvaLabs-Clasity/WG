@@ -26,6 +26,10 @@ export interface UsageRow {
   feature: string;
   bucket: Bucket;
   count: number;
+  /** How many of these went out on a signed-in person's own token. */
+  viaUser: number;
+  /** Which processes wrote these, largest first. */
+  sources: Array<{ name: string; count: number }>;
   /** Share of everything measured in this window, 0 to 1. */
   share: number;
   /** Absent for a label nobody has written up yet. */
@@ -35,7 +39,10 @@ export interface UsageRow {
 export interface BudgetReport {
   limits: BudgetLimit[];
   usage: UsageRow[];
+  /** Both credentials together. */
   totals: Record<Bucket, number>;
+  /** The app's own credentials only: the half comparable with `limits`. */
+  appTotals: Record<Bucket, number>;
   hours: string[];
   /** Nothing recorded yet, as distinct from nothing having happened. */
   empty: boolean;

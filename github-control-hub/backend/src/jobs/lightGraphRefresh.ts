@@ -71,7 +71,7 @@ export function refreshLightEdges(fallbackToken?: string): Promise<LightRefreshR
 async function runLightRefresh(fallbackToken?: string): Promise<LightRefreshResult> {
   const org = getOrg();
   const token = fallbackToken ?? await getSystemTokenAsync();
-  const octokit = createOctokit(token);
+  const octokit = createOctokit(token, "Light access graph refresh");
 
   const result: LightRefreshResult = {
     repos: 0, teams: 0, edgesWritten: 0, edgesRemoved: 0, requests: 0, errors: [],

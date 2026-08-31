@@ -88,7 +88,7 @@ router.post("/:id/run", async (req: Request<{id: string}>, res: Response) => {
       res.status(401).json({ error: "No GitHub token available. Sign in again." });
       return;
     }
-    const octokit = createOctokit(token);
+    const octokit = createOctokit(token, "Scanner run");
     const startedAt = Date.now();
     let result;
     try {

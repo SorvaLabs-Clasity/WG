@@ -30,14 +30,24 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Files that reach GitHub, by the shapes the client is actually called with. */
+/**
+ * Files that reach GitHub.
+ *
+ * Building a client counts, not only issuing a request through one. A route
+ * that constructs a client and hands it to a helper is where the label is
+ * applied and therefore where the spend is attributed — `repos.ts` and `me.ts`
+ * do exactly that, and a detector that only looked for `rest.*` calls declared
+ * their entries stale while they were doing the attributing.
+ */
 function filesCallingGitHub(): string[] {
   const found: string[] = [];
   for (const file of walk(ROOT)) {
     const rel = relative(ROOT, file);
+    if (rel === "github/client.ts") continue;   // the factory itself
     const body = readFileSync(file, "utf8");
     const spends = /\brest\.[a-zA-Z]+\.[a-zA-Z]+\s*\(/.test(body)
       || /\boctokit\.request\s*\(/.test(body)
+      || /\bcreateOctokit\s*\(/.test(body)
       || /\bgraphql\s*(<[^>]*>)?\s*\(\s*(query|`|GET_|[A-Z_]+_QUERY)/.test(body);
     if (spends) found.push(rel);
   }
@@ -84,6 +94,41 @@ function filesCallingGitHub(): string[] {
     if (labels.size === 0) bad("no labels found at all", "the scan is looking in the wrong place");
     else if (undescribed.length === 0) ok(`all ${labels.size} labels in the code are described`);
     else bad("a feature label has no explanation", `undescribed: ${undescribed.join(", ")}`);
+  }
+
+  console.log("\nEvery client carries a label");
+  {
+    /**
+     * The failure that produced a page of "Unattributed".
+     *
+     * A client built with no label sends everything it does to the catch-all
+     * bucket. Nothing errors, the page still adds up, and the largest row is a
+     * word that explains nothing. Five clients in the dependencies routes and
+     * the alarm pass were in exactly that state.
+     */
+    const bare: string[] = [];
+    for (const file of walk(ROOT)) {
+      const rel = relative(ROOT, file);
+      if (rel === "github/client.ts") continue;
+      const body = readFileSync(file, "utf8");
+      for (const m of body.matchAll(/\bcreateOctokit\s*\(/g)) {
+        // Walk to the matching paren, so `createOctokit(getSystemToken() || x,
+        // "Label")` is read as two arguments rather than as one containing a
+        // bracket. Counting brackets is the only way to see a top-level comma.
+        let depth = 0, i = m.index! + m[0].length - 1, comma = false;
+        for (; i < body.length; i++) {
+          const ch = body[i];
+          if (ch === "(") depth++;
+          else if (ch === ")") { depth--; if (depth === 0) break; }
+          else if (ch === "," && depth === 1) comma = true;
+        }
+        if (comma) continue;
+        bare.push(`${rel}: ${body.slice(m.index!, i + 1).replace(/\s+/g, " ")}`);
+      }
+    }
+    if (bare.length === 0) ok("no client is built without one");
+    else bad("a client is built with no feature label",
+      `everything it does lands under Unattributed:\n        ${bare.join("\n        ")}`);
   }
 
   console.log("\nUsage is measured, not derived");

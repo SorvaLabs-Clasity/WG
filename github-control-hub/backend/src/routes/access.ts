@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
+import { requireControlHubAdmin } from "../middleware/teamGate";
 import {
   accessSummary, accessForUser, accessForRepo, knownRepos, invalidateAccessMap,
 } from "../services/accessMapService";
@@ -12,13 +13,25 @@ import {
  * there, removing someone's access is a decision with consequences that
  * belongs where the consequences are visible, not behind a button on a map.
  *
- * Open to anyone signed in, like the rest of the reporting surface. Knowing
- * who can write to which repository is not privileged information inside an
- * organization; it is the thing people most often get wrong because nobody
- * could see it.
+ * Restricted to the Control Hub admin team. It was open to anyone signed in, on
+ * the reasoning that GitHub already shows members who is on which team — true,
+ * but it is the aggregation that is the risk. One screen ranking who holds
+ * admin across every repository is a different artefact from the same facts
+ * spread over a hundred pages, and it is the artefact somebody would want.
  */
 
 const router = Router();
+
+/**
+ * The whole tab, not just its one write.
+ *
+ * Every route here is a read, which is why it sat outside the admin gate: that
+ * gate guards writes. But the reads are the sensitive part — this screen
+ * aggregates who holds admin on what across the organization, which is
+ * materially easier to misuse than the same facts scattered through GitHub's
+ * own UI.
+ */
+router.use(requireControlHubAdmin);
 
 router.get("/summary", async (_req: Request, res: Response) => {
   try {

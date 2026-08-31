@@ -207,6 +207,20 @@ app.use("/api/alarms", authMiddleware, alarmRoutes);
   }
 })();
 
+/**
+ * GitHub request counters are buffered in memory and written every half minute.
+ *
+ * Outside the listen block, because that block is the *developer's* server: the
+ * desktop app sets `__STANDALONE__` and calls listen() itself, so anything in
+ * there never runs in the build people actually use. Flushing lived in there,
+ * which meant every count on a desktop install sat in memory and was never
+ * written — the page reported nothing, correctly, forever.
+ *
+ * The Lambdas flush at the end of their pass instead: they are frozen between
+ * invocations, so a timer there fires at an unrelated moment or not at all.
+ */
+startUsageFlushing();
+
 // When imported by the desktop app, skip auto-listen. It calls listen() itself
 if (!process.env.__STANDALONE__) {
   // Loopback. This branch is the developer's local server, whose only client is
@@ -215,11 +229,6 @@ if (!process.env.__STANDALONE__) {
   app.listen(PORT, "127.0.0.1", () => {
     console.log(`Backend running on http://127.0.0.1:${PORT}`);
   });
-  // GitHub request counters are buffered in memory and written every half
-  // minute. The Lambdas flush at the end of their pass instead: they are frozen
-  // between invocations, so a timer there fires at an unrelated moment or not
-  // at all.
-  startUsageFlushing();
 }
 
 export default app;

@@ -2929,6 +2929,146 @@ than counted as zero: a total quietly missing DynamoDB reads as a cheap app. The
 report is cached for an hour, since the numbers move slowly and every refresh is
 real API calls.
 
+## Restricted tabs
+
+Three tabs are limited to a team, and the restriction is on the **server**. The
+screen somebody sees instead is presentation; anybody can call the API directly,
+so "this screen is restricted" is only true if the routes refuse.
+
+| Tab | Team | What it protects |
+| --- | --- | --- |
+| Access | `control-hub-admins` | the organization's whole permission map |
+| Overview | `control-hub-admins` | the shared board — which checks somebody thought worth watching |
+| AWS | `aws-guardrail-admins` | an account a different team administers |
+
+Two different teams on purpose: the people who run the repositories and the
+people who run the AWS account are usually not the same, and conflating them
+means one of the two gets access they were never meant to have.
+
+### Reads, not just writes
+
+Every one of these was already gated for *changes*. What moved is **reading**,
+which is a stronger claim and was made only where the screen itself is the
+sensitive artefact.
+
+Access is the clearest case. It was open on the reasoning that GitHub already
+shows members who is on which team — true, and beside the point. One screen
+ranking who holds admin across every repository is a different artefact from the
+same facts spread over a hundred pages, and it is the artefact somebody would
+actually want.
+
+The AWS tab carried a comment saying "reading is deliberately open: anyone
+signed in can see rules and findings". That is an inventory of another team's
+account, and it is now gated with the comment corrected rather than left to
+contradict the code.
+
+### What is deliberately *not* gated
+
+**The check engine.** `/api/graph/query` runs the checks, and personal widgets
+run the same ones. Gating it would take My work away from exactly the people it
+was built for, and would buy nothing: a non-admin can build any check on their
+own board. What the Overview gate protects is the organization's *curated*
+board, not the ability to run a check.
+
+That makes the Overview gate genuinely narrower than the other two, and worth
+knowing: someone who is not an admin cannot read the shared board, but can
+reproduce any single check on their own.
+
+**Personal scope.** `GET /widgets?scope=personal` is open, and
+`GET /widgets/snapshots` is **narrowed rather than refused** — an admin gets
+every one, everybody else gets their own. A snapshot holds the check's actual
+findings, so serving all of them past a gated board would hand over exactly what
+the gate was for; refusing them outright would break My work.
+
+### The locked screen
+
+Hiding the tab was the other option and is worse. Somebody who cannot find a
+screen they have heard about assumes the app is broken, or goes looking for a
+link, and nothing tells them the one fact that would settle it: the name of the
+team to ask for. A door that is visibly locked is more useful than a wall.
+
+The screen names the team exactly as GitHub spells it, says organization owners
+are admitted without being on it, and points at My work, which is still theirs.
+
+Two details that matter more than they look:
+
+- **An unreachable GitHub is an outage, not a refusal.** The middleware answers
+  503, and the screen renders the page rather than the lock. Answering 403 would
+  tell somebody they had lost access they still have.
+- **The app opens somewhere they can read.** `/` sent everyone to Overview,
+  which for most of the organization is now a locked door as a first impression.
+  It resolves to Overview for admins and My work for everybody else.
+
+The Costs lens in Activity reads the AWS route, so it is hidden from people who
+are not on the AWS team — left visible it is a tab that only ever renders a
+permission error.
+
+## Which team owns an alarm
+
+An alarm belongs to the team that owns **what it watches**, not to one team for
+all of them.
+
+| Alarm | Create, edit, delete |
+| --- | --- |
+| on a widget | `control-hub-admins` |
+| on a `guardrail:` subject | `aws-guardrail-admins` |
+| personal, on your own card | its owner, and nobody else |
+
+Reading the tab is open to **either** team. That is deliberately weaker than
+writing: an administrator who cannot see an alarm cannot sensibly be told they
+may change it.
+
+### What this replaced, and why it was wrong
+
+Every alarm route was gated on the Control Hub team, with a stated rationale:
+alarms watch GitHub activity and merely happen to be delivered by SNS. That was
+true when written, and stopped being true when guardrail alarms arrived — those
+watch AWS findings, and the reasoning does not reach them.
+
+What it produced was backwards. Whoever administers the AWS account could not
+touch the alarms watching it, while whoever administers only the repositories
+could — and that got sharper when the AWS tab itself was restricted to the AWS
+team, leaving the alarms **more open than the screen they are about**.
+
+### How the decision is made
+
+The subject decides, read from the stored record rather than from the request:
+taking it from the body would let either team claim the other's. Because the
+subject is only known once the body or the stored alarm has been read, the check
+runs *inside* the handler (`refusedForSubject`) rather than as route middleware
+— `repro-undo.ts`'s scanner was taught that this counts as naming a guard.
+
+A membership check that cannot be answered is a **503**, not a refusal. A 403
+would tell somebody they had lost a permission they still hold.
+
+### What stays with the Control Hub team
+
+The shared notification plumbing: creating groups, adding members, the Teams
+flow, the security-alert settings. These are one set of destinations for the
+whole organization rather than either team's own, and adding an address to a
+topic is the "this app can email anyone" capability the gate exists for. An AWS
+admin can point an alarm at an existing group; they cannot create one or change
+who is in it.
+
+`repro-authz.ts` holds the separation positively rather than by exclusion: it
+asserts that in the one file holding both kinds, the AWS check is reached only
+for AWS subjects, and that reading is open to either.
+
+### One page, two sections
+
+The Alarms tab keeps one list, split into **On GitHub widgets** and **On AWS
+guardrails** — sections rather than tabs, because they are one answer to "what is
+being watched" and a tab would hide half of it behind a click on a page whose
+whole job is to be scanned.
+
+A section the viewer's team does not own says **view only** once at the top,
+with the team name, and its rows carry no controls: a button that only ever
+returns a permission error is worse than no button.
+
+A bug surfaced while doing this: the page gated *reading* on the AWS team alone,
+so somebody who administers every GitHub setting in this app opened the Alarms
+tab and was told it was for admins.
+
 ## Personal alarms
 
 **My work → My alarms.** An alarm on one of your own cards, delivered to your own
@@ -3018,14 +3158,17 @@ and the narrowing differ.
 
 ### Why the card looks different
 
-The Overview card is a status tile. It is built to be scanned across a wall of
-others, so it leads with a share of the organization, colours itself by how bad
-that share is, and reports a verdict into a page-level headline.
+The Overview card is a status tile built to be scanned across a wall of others:
+it leads with a share of the organization and reports a verdict into a
+page-level headline. A personal board has no such headline, and the share of the
+organization is the wrong denominator for four cards you chose.
 
-None of that is what a personal board is for. A personal card is a list you
-keep, so it leads with the rows themselves — on your own board the answer to "is
-this bad" is usually "these four" — with a quiet rail instead of a severity
-colour, and the controls out of the way until you hover.
+The personal card leads with **the count**, at a size that reads across a grid,
+tinted and edged by severity, with the rows underneath as the evidence. The
+first version led with the list and put the number in a subtitle, which made a
+card with four problems look exactly like a card with none — the thing a
+dashboard exists to prevent. Clear cards stay deliberately quiet: a board where
+every card shouts is a board nobody reads.
 
 What is deliberately **not** forked is the data. `PersonalCard` imports
 `useWidgetData`, `verdictFor` and `entityForConfig` from the Overview, and
@@ -3091,6 +3234,32 @@ widget reads live instead — the same rule the detail table already followed.
 `allItems`, the rows *before* this widget's filters. Drawing them from the
 filtered rows would mean the value you wanted had already been filtered out of
 the list of values to pick from.
+
+### Making a zero explainable
+
+A filter that keeps nothing looks identical to a check that found nothing, and
+the commonest cause is filtering the wrong column — a username typed into
+Entity, where the values are repository names.
+
+So the editor shows its work:
+
+- **A per-column match count** beside each control (`2 of 47`), red at zero. The
+  total at the bottom is every filter together, which says only that *something*
+  is wrong; this says which control caused it.
+- **A count on each tickable value**, so a choice that would keep nothing is
+  visible before it is made.
+- **Real example values** under each text box, clickable to insert — which makes
+  the wrong-column mistake self-correcting.
+- **A column nothing fills** says so outright, rather than accepting a filter
+  that could never match.
+
+`repro-widgetrowshapes.ts` reads every check's `results.push({…})` out of
+`graphService.ts` and asserts that every column its table shows is backed by a
+field the rows actually carry, and that a filter built from a row's own value
+keeps that row. Across all 16 checks nothing is mismatched — worth recording
+that **`stale-repos` is the only check that reports an owner**, so filtering by
+person applies there and the column is correctly absent elsewhere rather than
+present-and-empty.
 
 ### Saying when a filter is deciding the number
 
@@ -3184,19 +3353,73 @@ that fails or is rate-limited still counts: GitHub charged for it either way,
 and a page that counted only successes would go quietest exactly when the
 allowance was under most pressure.
 
-The feature name comes from one of two places:
+The feature name comes from one of two places, **async-local first**:
 
 - an **async-local** set by `withFeature(...)` at the function that does the
   work — the alert sweep, the Renovate search, the pull request walk, a repository
   detail page. Nesting works, and the innermost name wins, because that is the one
   that answers "what would I change to spend less".
-- the **client itself**, via `createOctokit(token, "…")`. The per-subject checks
-  make their calls inline inside a much larger function, and naming the client
-  beats wrapping sixty lines of loop.
+- the **client itself**, via `createOctokit(token, "…")`, used when nothing wraps
+  the call. The per-subject checks make their calls inline inside a much larger
+  function, and naming the client beats wrapping sixty lines of loop.
 
-Anything made outside either is counted as **Unattributed** rather than dropped.
-A large number there means the page is hiding something, and the fix is a label
-rather than an estimate.
+The order matters and was wrong at first. A client is built once and handed
+around: the alarm pass builds one and passes it to the Dependabot sweep, so a
+label fixed at construction filed the sweep's requests under the pass. The
+async-local is set by whatever is actually doing the work, so it wins wherever
+there is one.
+
+Anything made outside either is counted as **Unattributed** rather than dropped
+— which is exactly what happened: five clients in the dependency routes and one
+in the alarm pass carried no label, and the largest row on the page was a word
+that explained nothing.
+
+That row's own description was worse than useless for a while. It listed
+sign-ins, membership checks and writes to GitHub as examples of unlabelled
+work, and stayed there after all three were given rows of their own three lines
+above it. A description written before the thing it describes changed, and never
+revisited, contradicts the page it sits on. `repro-githubbudget.ts` now
+fails on any `createOctokit(` built without one, matching parens so a call whose
+first argument contains brackets is still read as one argument.
+
+### Which process wrote a count
+
+Four processes write to this table — the app's own server and three Lambdas —
+and they **deploy separately**. A Lambda running a build from before a label
+existed keeps writing rows under the old name, and on the page those are
+indistinguishable from a call site nobody labelled. One is fixed by deploying,
+the other by editing code, so every count records the process that made it.
+
+The name comes from `AWS_LAMBDA_FUNCTION_NAME` at runtime, with the stack prefix
+stripped, so nothing has to be threaded through CDK and a function added
+tomorrow is named correctly the day it appears. Absent means the app's own
+server.
+
+An expanded row lists the processes that recorded it, and an `Unattributed` row
+recorded by anything other than the app says outright that redeploying is what
+moves those counts into named rows.
+
+**The stored attribute has grown twice**, so `parseAttr` reads three shapes:
+`u#<bucket>#<via>#<source>#<feature>` and the two earlier forms. Rows live for
+two days, so the older ones are still in the table; they read as the app's own
+credentials, which is what nearly all of them were, and as an unknown source,
+which is honest. Dropping them would make an hour look emptier than it was.
+
+### Two credentials, two allowances
+
+GitHub meters **per token**, and this app holds two kinds: its own App
+installation token, and each signed-in person's. Counting them together and
+comparing the total against the App's headroom is how the page came to report 39
+requests against an allowance showing 10 used.
+
+Each request now records which credential it went out on, decided in the hook by
+comparing against `getSystemToken()` rather than from anything a caller passes —
+a flag supplied at the call site would be wrong wherever the token is chosen
+there (`getSystemToken() || req.user.accessToken`). The page shows the app's own
+count beside each allowance, and names the user-token half separately.
+
+They still will not match exactly, and the page says why: the windows differ.
+GitHub's allowance refills on its own clock; these counters bucket by the hour.
 
 **Counted across three processes.** The app's own server, the alarm evaluator
 and the graph aggregator all make GitHub requests, so an in-memory count would
@@ -3204,7 +3427,24 @@ describe only whichever one happened to answer the page. Counts are buffered in
 memory and flushed to the **alarms table**, which all three already reach and
 which already has TTL enabled — no new table, no CDK change.
 
-- The server flushes on a 30-second timer.
+- The server flushes on a 30-second timer, started at **module level**. It was
+  first started inside `if (!process.env.__STANDALONE__)`, which is the
+  *developer's* server: the desktop app sets that variable and calls `listen()`
+  itself, so on every real install the timer never armed. Counts buffered in
+  memory, nothing was ever written, and the page reported nothing — correctly,
+  and for ever. `repro-githubusage.ts` now fails if the call moves back inside
+  that block.
+- Reading the page flushes this process's buffer first, so a request made a
+  moment ago is on the page rather than up to half a minute behind it. The
+  Refresh button is therefore immediate for anything the app itself just did,
+  and holds its spinner for a moment so a cached answer returning in single-digit
+  milliseconds still looks like it did something.
+
+**Reloading a tab often adds nothing, and the page says so.** Most checks are
+computed from stored data and never reach GitHub at all, and the alert sweep and
+the Renovate search are held for a minute and shared — so a second look inside
+that minute costs nothing. Without that stated, a counter working exactly as
+designed reads as a broken one.
 - The Lambdas flush at the end of their pass. A timer there would fire at an
   unrelated moment or not at all, because they are frozen between invocations.
   The alarm pass flushes outside every `try`, so a pass that failed half way

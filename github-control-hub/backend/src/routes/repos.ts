@@ -8,7 +8,7 @@ const router = Router();
 
 router.get("/", async (req: Request, res: Response) => {
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Repository list");
     const repos = await listRepos(octokit);
     res.json(repos);
   } catch (err) {
@@ -27,7 +27,8 @@ router.get("/:repo/details", async (req: Request<{ repo: string }>, res: Respons
   try {
     // Prefer the App token so the panel sees the same repos the rest of the app
     // manages, falling back to the caller's own grant.
-    const octokit = createOctokit(getSystemToken() || req.user!.accessToken);
+    const octokit = createOctokit(getSystemToken() || req.user!.accessToken,
+      "Repository detail page");
     res.json(await getRepoDetails(octokit, repo));
   } catch (err: any) {
     if (err?.status === 404) {

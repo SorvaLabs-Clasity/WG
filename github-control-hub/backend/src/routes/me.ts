@@ -152,7 +152,7 @@ router.get("/push-check", async (req: Request, res: Response) => {
     let raw: Record<string, unknown> | null = null;
     let unreadable = false;
     try {
-      raw = await getProtection(createOctokit(req.user!.accessToken), repo, branch);
+      raw = await getProtection(createOctokit(req.user!.accessToken, "Why can't I push?"), repo, branch);
     } catch {
       // Reading protection needs admin. Not being allowed to read the rules is
       // not the same as there being none, and reporting it as none would tell

@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { useWidgetData, verdictFor, entityForConfig, nounFor } from "../pages/AnalyticsPage";
+import { useWidgetData, verdictFor, entityForConfig, nounFor, TONE } from "../pages/AnalyticsPage";
 import { widgetColumns } from "../lib/widgetColumns";
 import {
   filterableColumns, activeFilterCount, describeFilter, isActive, valueFor,
@@ -14,11 +14,14 @@ import type { WidgetConfig } from "../api/widgets";
  * organization, a colour for how bad that is, and a verdict rolled into a
  * page-level headline. None of that is what a personal board is for.
  *
- * This one is a list you keep. It leads with the rows themselves, because on
- * your own board the answer to "is this bad" is usually just "these four" — and
- * it says out loud when a filter is deciding which four, since a number that
- * quietly disagrees with the same check on the Overview is the one thing this
- * feature could get badly wrong.
+ * This one leads with the count, at a size you can read across a grid, because
+ * the first version led with the list and buried the number in a subtitle —
+ * which made a card with four problems look exactly like a card with none. The
+ * rows sit underneath as the evidence for it.
+ *
+ * It also says out loud when a filter is deciding that number, since a figure
+ * that quietly disagrees with the same check on the Overview is the one thing
+ * this feature could get badly wrong.
  *
  * The data path is shared with the Overview on purpose. Same hook, same rows,
  * same verdict function; only the presentation differs, so the two boards
@@ -58,41 +61,64 @@ export default function PersonalCard({
 
   const chips = (config.filters ?? []).filter(isActive);
   const count = verdict.value;
+  const tone = TONE[verdict.level];
   const preview = items.slice(0, 4);
   const more = Math.max(0, items.length - preview.length);
 
   const nameOf = (item: any) => String(valueFor(item, "entity") ?? "—");
 
   return (
-    <div className="group relative rounded-2xl border border-slate-200 dark:border-white/10
-                    bg-white dark:bg-slate-900 overflow-hidden
-                    hover:border-slate-300 dark:hover:border-white/20 transition-colors">
-      {/* A quiet rail rather than a status colour. This board is a list of
-          things you are keeping an eye on, not a wall of severities. */}
+    <div className={`group relative rounded-2xl border overflow-hidden transition-colors
+                     bg-white dark:bg-slate-900
+                     ${error || count === 0 || verdict.level === "clear"
+                        ? "border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20"
+                        : `${tone.edge} ${tone.lift}`}`}>
+      {/* The rail carries the verdict, so the state is readable before the
+          number is. Clear is deliberately the quiet one: a board where every
+          card shouts is a board nobody reads. */}
       <div aria-hidden="true"
         className={`absolute left-0 top-0 bottom-0 w-[3px] ${
-          error ? "bg-rose-400" : count > 0 ? "bg-slate-300 dark:bg-slate-600" : "bg-emerald-400/70"}`} />
+          error ? "bg-rose-400" : count === 0 ? "bg-emerald-400/70" : tone.bar}`} />
 
-      <div className="pl-5 pr-3 pt-3.5 pb-2 flex items-start gap-2">
+      <div className="pl-5 pr-3 pt-3.5 pb-1 flex items-start gap-2">
         <button type="button" onClick={onOpen}
           className="min-w-0 flex-1 text-left group/title">
-          <h3 className="text-[13.5px] font-bold tracking-tight text-slate-900 dark:text-white
-                         truncate group-hover/title:text-gh-blue transition-colors">
+          <h3 className="text-[12px] font-bold uppercase tracking-wider text-slate-400
+                         dark:text-slate-500 truncate group-hover/title:text-gh-blue transition-colors">
             {config.title}
           </h3>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 tabular-nums">
-            {isLoading ? "Checking…"
-              : error ? "Could not be read"
-              : `${count.toLocaleString()} ${nounFor(entity, count)}`}
-            {/* The unfiltered figure, always, when a filter is on. Without it
-                this card and the Overview show two different numbers for the
-                same check and neither says why. */}
-            {filtered && !isLoading && !error && (
-              <span className="text-slate-300 dark:text-slate-600">
-                {" "}· {unfiltered.toLocaleString()} before filters
+
+          {/* The number, at the size the answer deserves. It led as a subtitle
+              in the first version, which made four problems and none look
+              identical across a grid. */}
+          <div className="flex items-baseline gap-2 mt-1">
+            {isLoading ? (
+              <span className="inline-block h-8 w-16 rounded bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
+            ) : error ? (
+              <span className="text-[15px] font-bold text-rose-600 dark:text-rose-400">
+                Could not be read
               </span>
+            ) : (
+              <>
+                <span className={`text-[34px] font-black tabular-nums leading-none tracking-[-0.03em]
+                                  ${count === 0 ? "text-slate-300 dark:text-slate-600" : tone.figure}`}>
+                  {count.toLocaleString()}
+                </span>
+                <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">
+                  {nounFor(entity, count)}
+                </span>
+              </>
             )}
-          </p>
+          </div>
+
+          {/* The unfiltered figure, always, when a filter is on. Without it
+              this card and the Overview show two different numbers for the
+              same check and neither says why. */}
+          {filtered && !isLoading && !error && (
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5 tabular-nums">
+              narrowed from {unfiltered.toLocaleString()}
+            </p>
+          )}
         </button>
 
         {alarmCount > 0 && (

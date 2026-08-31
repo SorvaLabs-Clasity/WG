@@ -295,13 +295,30 @@ export function createOctokit(token: string, feature?: string): Octokit {
   // under most pressure.
   octokit.hook.before("request", (options: any) => {
     try {
-      const { recordRequest, currentFeature, bucketFor } = usageHooks();
-      // A client built for one job says so, which beats the async-local for the
-      // loops that make their calls inline inside a much larger function: those
-      // would otherwise need the whole loop wrapped, and a reindented sixty
-      // lines is a worse change than naming the client.
-      recordRequest(feature ?? currentFeature(),
-        bucketFor(String(options.url ?? ""), options.method));
+      const { recordRequest, currentFeature, bucketFor, UNATTRIBUTED } = usageHooks();
+      /**
+       * The async-local first, the client's own label as the fallback.
+       *
+       * A client is built once and then handed around: the alarm pass builds
+       * one and passes it into the Dependabot sweep, so a label fixed at
+       * construction would file the sweep's requests under whoever built the
+       * client. The async-local is set by the function actually doing the work,
+       * which is the finer and more useful answer whenever there is one.
+       *
+       * The client's label is what covers the other case: loops that make their
+       * calls inline inside a much larger function, where wrapping the loop
+       * would mean reindenting sixty lines to say one thing.
+       */
+      const scoped = currentFeature();
+      // Which allowance this actually drew on. GitHub meters per token, and a
+      // request sent with a signed-in person's own grant spends theirs, not the
+      // App's — so the two are counted apart and only the App's half is
+      // comparable with the headroom this app can read.
+      const via = token && token === getSystemToken() ? "app" : "user";
+      recordRequest(
+        scoped !== UNATTRIBUTED ? scoped : (feature ?? UNATTRIBUTED),
+        bucketFor(String(options.url ?? ""), options.method),
+        via);
     } catch { /* never let bookkeeping break a request */ }
   });
 

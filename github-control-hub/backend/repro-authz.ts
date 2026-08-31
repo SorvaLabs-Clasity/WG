@@ -174,6 +174,11 @@ globalThis.fetch = (async (input: any) => {
     // admin team, which is precisely the separation this block exists to keep.
     const MAY_USE_AWS_CHECK = new Set([
       "awsGuardrails.ts", "activity.ts", "auth.ts", "config.ts",
+      // Alarms hold both kinds. A guardrail alarm watches AWS findings and
+      // belongs to the AWS team; a widget alarm does not and must not. Being on
+      // this list buys the file nothing on its own — the assertion below is what
+      // holds the separation, and it is stricter than exclusion would be.
+      "alarms.ts",
     ]);
 
     const offenders: string[] = [];
@@ -184,6 +189,30 @@ globalThis.fetch = (async (input: any) => {
     }
     assert("only AWS routes gate on the AWS admin team", offenders.length === 0,
       offenders.length ? `${offenders.join(", ")} gate GitHub work on aws-guardrail-admins` : "");
+
+    /**
+     * And in the one file that holds both, the AWS check is reached only for
+     * AWS subjects.
+     *
+     * This is the separation the block above exists for, stated positively
+     * rather than by exclusion: a widget alarm must never require the AWS team,
+     * and an AWS alarm must never be satisfied by the GitHub one.
+     */
+    const alarmsSrc = fs.readFileSync(path.join(dir, "alarms.ts"), "utf8");
+    const decider = /const aws = subjectId\.startsWith\(GUARDRAIL_PREFIX\);/.test(alarmsSrc);
+    assert("  and in alarms.ts the subject decides which team", decider,
+      decider ? "" : "the two teams would be interchangeable for every alarm");
+
+    const branch = /\? await isAwsAdmin\([\s\S]{0,80}: await isControlHubAdmin\(/.test(alarmsSrc);
+    assert("    AWS subjects to the AWS team, everything else to the Control Hub one",
+      branch, branch ? "" : "one team could claim the other's alarms");
+
+    // The blanket read gate admits either, which is a weaker claim on purpose:
+    // an admin who cannot see an alarm cannot be told they may change it.
+    const readOnlyEither = /Promise\.all\(\[[\s\S]{0,200}isControlHubAdmin[\s\S]{0,200}isAwsAdmin/
+      .test(alarmsSrc);
+    assert("    while reading is open to either", readOnlyEither,
+      readOnlyEither ? "" : "reading should not be narrower than writing");
 
     // auth.ts reports both flags to the client and gates nothing, so it is
     // allowed the import, but it must not be quietly gating a route either.

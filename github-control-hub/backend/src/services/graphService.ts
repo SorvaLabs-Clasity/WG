@@ -289,7 +289,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         const org = getOrg();
         if (token && org) {
               const { fetchOrgDependencyAlerts } = await import("./dependencyService");
-          live = await fetchOrgDependencyAlerts(createOctokit(token), org);
+          live = await fetchOrgDependencyAlerts(createOctokit(token, "Dependabot alert sweep"), org);
         }
       } catch {
         // Falls through to the graph below.

@@ -167,8 +167,12 @@ const labels = (e: { cannotPushBecause: any[]; mergeNeeds: any[] }) =>
   // ── the route's own refusals ────────────────────────────────────────
   {
     const route = fs.readFileSync("./src/routes/me.ts", "utf8");
+    // Anchored on the token, not on the shape of the call: the client gained a
+    // feature label for the request counter, and the thing that matters here is
+    // whose credentials go out, which is unchanged.
     check("protection is read with the caller's own token",
-      /getProtection\(createOctokit\(req\.user!\.accessToken\)/.test(route),
+      /getProtection\(createOctokit\(req\.user!\.accessToken\b/.test(route)
+        && !/getProtection\(createOctokit\(getSystemToken/.test(route),
       "the app's token would answer for people GitHub would not have answered");
     check("  and being unable to read the rules is not reported as having none",
       /unreadable/.test(route) && /does not mean there are none/.test(route));

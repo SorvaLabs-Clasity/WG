@@ -206,8 +206,10 @@ const rows = [
     const card = fs.readFileSync("./src/components/PersonalCard.tsx", "utf8");
     // Otherwise this card and the Overview show two different numbers for the
     // same check and neither says why.
+    // Anchored on the figure being rendered, not on the sentence around it:
+    // the card was redesigned to lead with the count and the wording moved.
     check("the unfiltered figure is shown beside the filtered one",
-      /before filters/.test(card));
+      /\{unfiltered\.toLocaleString\(\)\}/.test(card) && /filtered &&/.test(card));
     check("  and an empty result distinguishes its two causes",
       /Nothing matches your filters/.test(card) && /Nothing found/.test(card));
 

@@ -70,7 +70,7 @@ async function runAggregation(fallbackToken?: string) {
     return;
   }
 
-  const octokit = createOctokit(token);
+  const octokit = createOctokit(token, "Nightly access graph rebuild");
   const org = getOrg();
   const edges: GraphEdge[] = [];
   // Keyed to the table this job actually writes.

@@ -54,6 +54,22 @@ export interface UsageRow {
   feature: string;
   bucket: Bucket;
   count: number;
+  /**
+   * How many of these went out on a signed-in person's own token.
+   *
+   * Those draw on that person's allowance rather than the app's, which is why
+   * they are counted apart rather than folded into one figure.
+   */
+  viaUser: number;
+  /**
+   * Which processes wrote these, largest first.
+   *
+   * The app's server and three Lambdas deploy separately, so an unlabelled row
+   * is either a call site nobody named or a function still running an older
+   * build. One is fixed by editing code and the other by deploying, and without
+   * this the page cannot say which.
+   */
+  sources: Array<{ name: string; count: number }>;
   /** Share of everything measured in this window, 0 to 1. */
   share: number;
   about?: FeatureNote;
@@ -63,8 +79,14 @@ export interface BudgetReport {
   limits: BudgetLimit[];
   /** Measured usage, biggest first. */
   usage: UsageRow[];
-  /** Per-bucket measured totals for the window. */
+  /** Per-bucket measured totals for the window, both credentials together. */
   totals: Record<Bucket, number>;
+  /**
+   * Per-bucket totals for the app's own credentials only.
+   *
+   * The half that is comparable with `limits`, which GitHub reports per token.
+   */
+  appTotals: Record<Bucket, number>;
   /** Hours covered, oldest first. */
   hours: string[];
   /** Nothing has been recorded yet, as distinct from nothing having happened. */
@@ -233,10 +255,15 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       "GET /orgs/{org}/repos", "GET /repos/{o}/{r}/branches",
       "GET /repos/{o}/{r}/branches/{b}/protection",
     ],
-    files: ["services/scannerService.ts"],
+    files: [
+      "services/scannerService.ts", "routes/scanners.ts",
+      "webhooks/processDelivery.ts",
+    ],
     scalesWith: "repositories in scope and branch conditions",
     note: "A scanner limited to a few repositories costs a few requests; one "
-      + "left org-wide with branch conditions walks every repository's branches.",
+      + "left org-wide with branch conditions walks every repository's branches. "
+      + "A webhook matching a scanner starts one too, which is the only GitHub "
+      + "spend a delivery causes.",
   },
   "Expertise lookup": {
     trigger: "The expertise panel",
@@ -301,6 +328,44 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
     files: ["routes/graph.ts"],
     scalesWith: "what the tab is asked to show",
   },
+  "Alarm pass": {
+    trigger: "Every 5 minutes",
+    endpoints: ["whatever a check needs that is not already stored"],
+    files: ["alarms/handler.ts"],
+    scalesWith: "how many widgets and alarms exist",
+    note: "The pass itself, for the reads that do not belong to one of the "
+      + "named checks above. Most of what it does is arithmetic over stored "
+      + "data and costs nothing.",
+  },
+  "Vulnerabilities tab": {
+    trigger: "Opening the Vulnerabilities or Dependencies tab",
+    endpoints: [
+      "GET /orgs/{org}/dependabot/alerts", "POST /graphql", "GET /search/issues",
+    ],
+    files: ["routes/dependencies.ts"],
+    scalesWith: "repositories and open alerts",
+    note: "Shares the held sweep and search with the alarm pass, so opening the "
+      + "tab beside a pass does not pay for either twice.",
+  },
+  "Turning Dependabot on or off": {
+    trigger: "The toggle on a repository",
+    endpoints: ["PUT /repos/{o}/{r}/vulnerability-alerts", "DELETE …"],
+    files: ["routes/dependencies.ts"],
+    scalesWith: "how often it is toggled",
+  },
+  "Repository list": {
+    trigger: "Any screen that lists repositories",
+    endpoints: ["GET /orgs/{org}/repos"],
+    files: ["routes/repos.ts", "services/repoService.ts"],
+    scalesWith: "repositories",
+  },
+  "Why can't I push?": {
+    trigger: "The push explainer on My work",
+    endpoints: ["GET /repos/{o}/{r}/branches/{b}/protection"],
+    files: ["routes/me.ts"],
+    scalesWith: "how often it is asked",
+    note: "Runs on the asker's own token, so it draws on their allowance.",
+  },
   "Reading this page": {
     trigger: "Opening this tab",
     endpoints: ["GET /rate_limit"],
@@ -312,13 +377,20 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "about everybody else's.",
   },
   "Unattributed": {
-    trigger: "A request made outside any labelled feature",
+    trigger: "A request no running process could name",
     endpoints: [],
     files: [],
     scalesWith: "unlabelled work",
-    note: "Sign-ins, membership checks, writes to GitHub, and anything new that "
-      + "has not been given a name yet. A large number here means this page is "
-      + "hiding something, and the fix is a label rather than an estimate.",
+    // This note listed sign-ins, membership checks and writes to GitHub — all
+    // of which now have rows of their own, three lines above it. A description
+    // written before the labels existed and never revisited is worse than no
+    // description: it contradicts the page it sits on.
+    note: "Every call site in this app carries a label, and a test fails the "
+      + "build if one does not. So a row here almost always means requests are "
+      + "arriving from a process running older code — a Lambda deployed before "
+      + "the labels existed. The source below says which. Counts are kept by "
+      + "clock hour, so anything recorded earlier in this hour stays until it "
+      + "rolls over.",
   },
 };
 
@@ -343,6 +415,8 @@ export async function buildBudgetReport(hours = 1): Promise<BudgetReport> {
       feature: r.feature,
       bucket: r.bucket,
       count: r.count,
+      viaUser: r.viaUser,
+      sources: r.sources,
       share: measured > 0 ? r.count / measured : 0,
       ...(about ? { about: { feature: r.feature, ...about } } : {}),
     };
@@ -352,6 +426,7 @@ export async function buildBudgetReport(hours = 1): Promise<BudgetReport> {
     limits: headroom.limits,
     usage: rows,
     totals: usage.totals,
+    appTotals: usage.appTotals,
     hours: usage.hours,
     empty: usage.empty,
     ...(headroom.error ? { error: headroom.error } : {}),

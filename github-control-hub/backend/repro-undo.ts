@@ -314,7 +314,10 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     // detailed-logging settings ask whether they are an org admin at all.
     // Either is a real gate; a route naming neither is what this catches.
     ["activity.ts",      /router\.(post|put|delete)\(/g, /denyIfNotPermitted|isAwsAdmin|isControlHubAdmin/],
-    ["alarms.ts",        /router\.(post|put|delete)\(/g, /requireAdmin/],
+    // `refusedForSubject` is a guard too: it runs inside the handler because
+    // which team may write depends on what the alarm watches, which is not
+    // known until the body or the stored record has been read.
+    ["alarms.ts",        /router\.(post|put|delete)\(/g, /requireAdmin|refusedForSubject/],
     // Pausing a stale-pull-request reminder silences it for everyone on that
     // pull request, not just for the person clicking, so it is an org-wide act
     // and gated the same way.

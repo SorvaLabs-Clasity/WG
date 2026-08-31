@@ -85,8 +85,10 @@ function verdict(configured: string, actual: string | null) {
     // GitHub with the App: it is the one property that makes lifting the gate
     // there safe rather than convenient.
     const alarmRoutes = fs.readFileSync(`${__dirname}/src/routes/alarms.ts`, "utf8");
+    // Same claim, new name: the gate widened to admit the AWS team for the
+    // alarms that watch AWS, and still admits nobody else.
     check("the ungated alarms router still requires an admin",
-      /router\.use\(requireAdmin\)/.test(alarmRoutes),
+      /router\.use\(requireEitherTeam\)/.test(alarmRoutes),
       "these send mail on behalf of the whole organization");
     check("  and reaches GitHub through no App credential",
       !/getSystemToken|createOctokit|initTokenManager/.test(alarmRoutes),
@@ -219,9 +221,14 @@ function verdict(configured: string, actual: string | null) {
     check("  and only ever answers about the caller, which is what makes that safe",
       /asking about \*themselves\*/.test(src));
 
+    // The gate moved into shared middleware when the whole tab was restricted
+    // rather than only its writes; the claim is unchanged and is checked where
+    // it now lives.
     const guardrails = fs.readFileSync(`${__dirname}/src/routes/awsGuardrails.ts`, "utf8");
+    const teamGate = fs.readFileSync(`${__dirname}/src/middleware/teamGate.ts`, "utf8");
     check("  the AWS routes pass it",
-      /isAwsAdmin\(req\.user!\.login, req\.user!\.accessToken\)/.test(guardrails));
+      /check\(req\.user!\.login, req\.user!\.accessToken\)/.test(teamGate)
+        && /requireAwsAdmin/.test(guardrails));
   }
 
   // ── switching accounts must not carry credentials across ────────────

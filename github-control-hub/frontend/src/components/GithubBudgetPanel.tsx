@@ -96,6 +96,34 @@ function UsageLine({ row, biggest, open, onToggle }: {
 
       {open && (
         <div className="px-5 pb-4 pt-1 grid gap-3 bg-slate-50/60 dark:bg-white/[0.02]">
+          {/* Which process wrote these. Above the description, because on an
+              Unattributed row it is the answer: a name other than "app" means a
+              Lambda running a build from before that label existed, which is
+              fixed by deploying rather than by editing anything. */}
+          {(row.sources ?? []).length > 0 && (
+            <div>
+              <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Recorded by</p>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {row.sources.map(src => (
+                  <span key={src.name}
+                    className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded tabular-nums ${
+                      src.name === "app"
+                        ? "bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-300"
+                        : "bg-amber-500/10 text-amber-700 dark:text-amber-400"}`}>
+                    {src.name === "app" ? "this app" : src.name} · {src.count.toLocaleString()}
+                  </span>
+                ))}
+              </div>
+              {row.feature === "Unattributed"
+                && row.sources.some(x => x.name !== "app") && (
+                <p className="text-[11.5px] text-amber-700 dark:text-amber-400 mt-1.5 leading-relaxed">
+                  A process other than this app recorded these. That build predates
+                  the labels, so redeploying it is what moves them into named rows.
+                </p>
+              )}
+            </div>
+          )}
+
           {row.about ? (
             <>
               {row.about.note && (
@@ -157,7 +185,22 @@ export default function GithubBudgetPanel() {
   const [open, setOpen] = useState<string | null>(null);
   const [hours, setHours] = useState(1);
 
-  const { data, isLoading, isError, error } = useQuery({
+  /**
+   * Held on for a moment after the request finishes.
+   *
+   * A cached answer comes back in single-digit milliseconds, so the spinner
+   * appeared and vanished inside one frame and the button looked dead. The
+   * floor is about feedback, not about the work.
+   */
+  const [spinning, setSpinning] = useState(false);
+  const refresh = async () => {
+    setSpinning(true);
+    const done = refetch();
+    await Promise.all([done, new Promise(r => setTimeout(r, 600))]);
+    setSpinning(false);
+  };
+
+  const { data, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["github", "budget", hours],
     queryFn: () => fetchGithubBudget(hours),
     staleTime: 30_000,
@@ -192,8 +235,10 @@ export default function GithubBudgetPanel() {
   const totals = data.totals ?? { core: 0, search: 0, graphql: 0 };
   const stale = !Array.isArray(data.usage);
 
+  const appTotals = data.appTotals ?? { core: 0, search: 0, graphql: 0 };
   const biggest = usage[0]?.count ?? 0;
   const measured = Object.values(totals).reduce((a: number, n) => a + (Number(n) || 0), 0);
+  const viaUser = usage.reduce((a, r) => a + (r.viaUser ?? 0), 0);
   const windowLabel = hours === 1 ? "this hour" : `the last ${hours} hours`;
 
   return (
@@ -221,6 +266,21 @@ export default function GithubBudgetPanel() {
                 running out of one leaves the others untouched.
               </p>
             </div>
+            <div className="flex items-center gap-2">
+              {/* Counters are written every thirty seconds and by each job at
+                  the end of its pass, so a request made a moment ago may not be
+                  here yet. The button says so rather than leaving somebody
+                  reloading the whole app to find out. */}
+              <button type="button" onClick={refresh} disabled={spinning}
+                title="Read the counters again"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-bold
+                           border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300
+                           hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors
+                           disabled:opacity-50">
+                <i className={`ph-bold ph-arrows-clockwise text-[12px] ${
+                  spinning || isFetching ? "animate-spin" : ""}`} aria-hidden="true" />
+                {spinning || isFetching ? "Reading…" : "Refresh"}
+              </button>
             <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-white/10">
               {[1, 6, 24].map(h => (
                 <button key={h} type="button" onClick={() => setHours(h)}
@@ -231,6 +291,7 @@ export default function GithubBudgetPanel() {
                   {h}h
                 </button>
               ))}
+            </div>
             </div>
           </div>
           <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
@@ -265,6 +326,18 @@ export default function GithubBudgetPanel() {
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
                     {l.remaining.toLocaleString()} left, refilling in {untilReset(l.resetsAt)}.
                   </p>
+                  {/* The bridge between the two halves of this page. GitHub
+                      meters per token and its window is its own, so this app's
+                      count of what it spent on the App's credentials is close
+                      to, but never exactly, the figure above. Said here rather
+                      than left for somebody to notice and disbelieve. */}
+                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
+                    This app counted{" "}
+                    <span className="font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
+                      {(appTotals[l.bucket] ?? 0).toLocaleString()}
+                    </span>{" "}
+                    of its own {windowLabel}.
+                  </p>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
                     {b.blurb}
                   </p>
@@ -285,12 +358,26 @@ export default function GithubBudgetPanel() {
             {measured > 0 && (
               <span className="text-[12px] font-bold tabular-nums text-slate-500 dark:text-slate-400">
                 {measured.toLocaleString()} requests counted
+                {viaUser > 0 && (
+                  <span className="font-semibold text-slate-400 dark:text-slate-500">
+                    {" "}· {viaUser.toLocaleString()} on a signed-in account
+                  </span>
+                )}
               </span>
             )}
           </div>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 max-w-[80ch]">
             Counted as each request is made, by the feature that made it. Open a
             row for what it does, the endpoints it calls, and the files to change.
+          </p>
+          {/* The question this page kept raising: somebody reloads a tab, the
+              numbers do not move, and the counter looks broken when it is
+              working exactly as designed. */}
+          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-1.5 max-w-[80ch] leading-relaxed">
+            Reloading a tab often adds nothing here, and that is the point: most
+            checks are computed from stored data and never reach GitHub, and the
+            alert sweep and the Renovate search are held for a minute and shared,
+            so a second look inside that minute costs nothing.
           </p>
           <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
         </div>
@@ -303,7 +390,9 @@ export default function GithubBudgetPanel() {
               Nothing has been counted yet for {windowLabel}. Counters are written
               every thirty seconds by the app, and at the end of each run by the
               alarm and graph jobs, so a freshly started install has nothing to
-              show until the next pass finishes.
+              show until the next pass finishes. Requests this app made a moment
+              ago are written before this page is drawn, so Refresh picks them up
+              at once.
             </Note>
           </div>
         ) : (
@@ -319,10 +408,12 @@ export default function GithubBudgetPanel() {
       </section>
 
       <p className="text-[11.5px] text-slate-400 dark:text-slate-500 px-1 leading-relaxed max-w-[85ch]">
-        The two halves are counted differently and will not match exactly.
-        GitHub's figure covers every request against the installation; this app's
-        covers what it made and could attribute. Requests it makes outside a
-        named feature are counted under{" "}
+        The two halves will not match exactly, for two reasons worth knowing.
+        GitHub meters <span className="font-semibold">per token</span>: the
+        allowances above are the app's own, while requests made on a signed-in
+        person's account draw on theirs, so only the app's half is comparable.
+        And the windows differ — GitHub's refills on its own clock, this counts
+        by the hour. Requests made outside a named feature are counted under{" "}
         <span className="font-semibold">Unattributed</span> rather than dropped.
         Drawing this page costs one request to{" "}
         <code className="font-mono text-[11px]">GET /rate_limit</code>, the one

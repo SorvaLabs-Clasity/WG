@@ -611,12 +611,18 @@ function check(name: string, ok: boolean, got?: unknown) {
       firstParam > 0 && shadowed.length === 0, shadowed);
 
     // Reads are gated too, because a group's members are people's addresses.
-    check("every alarm route is behind the admin gate",
-      /router\.use\(requireAdmin\)/.test(src),
+    // The blanket gate was `requireAdmin` (Control Hub only) until guardrail
+    // alarms were given to the AWS team. The claim is unchanged — no route here
+    // is reachable without membership of an admin team — so it is checked on
+    // the gate that exists rather than on its old name.
+    check("every alarm route is behind an admin gate",
+      /router\.use\(requireEitherTeam\)/.test(src),
       "notification settings would be world-readable to any signed-in user");
+    check("  and that gate admits only the two admin teams",
+      /isControlHubAdmin\(req\.user!\.login/.test(src) && /isAwsAdmin\(req\.user!\.login/.test(src));
 
     check("  and the gate is applied before any route is declared",
-      at("router.use(requireAdmin)") < at('router.get("/variables"'),
+      at("router.use(requireEitherTeam)") < at('router.get("/variables"'),
       "routes declared above the gate are ungated");
   }
 

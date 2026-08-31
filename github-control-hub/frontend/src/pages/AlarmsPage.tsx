@@ -69,12 +69,19 @@ function StatusDot({ alarm }: { alarm: WidgetAlarm }) {
   );
 }
 
-function AlarmRow({ alarm, subject, groupName, interval, onEdit, onToggle, onDelete }: {
+function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onToggle, onDelete }: {
   alarm: WidgetAlarm;
   subject: ReturnType<typeof subjectOf>;
   groupName?: string;
   /** Null when the subject is gone, so there is no interval to state. */
   interval: number | null;
+  /**
+   * Whether this viewer's team owns what this alarm watches.
+   *
+   * The server refuses either way. Hiding the controls stops somebody pressing
+   * a button that was only ever going to return a permission error.
+   */
+  canEdit: boolean;
   onEdit: () => void; onToggle: () => void; onDelete: () => void;
 }) {
   const firing = alarm.state === "ALARM" && alarm.enabled;
@@ -149,7 +156,11 @@ function AlarmRow({ alarm, subject, groupName, interval, onEdit, onToggle, onDel
       </div>
 
       {/* Revealed on hover, so a list of twelve alarms is not also a list of
-          thirty-six buttons. Kept reachable from the keyboard regardless. */}
+          thirty-six buttons. Kept reachable from the keyboard regardless.
+          Absent entirely where this viewer's team does not own the subject:
+          the server refuses, and a button that only ever produces a permission
+          error is worse than no button. */}
+      {canEdit && (
       <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         <button onClick={onToggle} title={alarm.enabled ? "Pause" : "Resume"}
           className="w-8 h-8 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
@@ -167,6 +178,7 @@ function AlarmRow({ alarm, subject, groupName, interval, onEdit, onToggle, onDel
           <i className="ph-bold ph-trash text-[13px]" />
         </button>
       </div>
+      )}
     </div>
   );
 }
@@ -175,7 +187,20 @@ export default function AlarmsPage() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { data: permissions } = usePermissions();
-  const isAdmin = permissions?.isAwsAdmin ?? false;
+  /**
+   * Who may see this page, and who may change what on it.
+   *
+   * Reading was gated on the AWS team alone, which meant somebody who
+   * administers every GitHub setting in this app opened the Alarms tab and was
+   * told it was for admins. Both teams keep alarms here, so both can read it.
+   *
+   * Changing one depends on what it watches: a guardrail alarm belongs to the
+   * AWS team, a widget alarm to the Control Hub team. The server decides the
+   * same way; this only keeps the controls off a row somebody cannot change.
+   */
+  const canSeeGithub = permissions?.isControlHubAdmin ?? false;
+  const canSeeAws = permissions?.isAwsAdmin ?? false;
+  const isAdmin = canSeeGithub || canSeeAws;
 
   const { data: alarms, isLoading, isError, error, isFetching, refetch } = useAlarms(isAdmin);
   // Only where there can be any. This page is reachable in an AWS-only
@@ -199,6 +224,15 @@ export default function AlarmsPage() {
     () => [...(alarms ?? [])].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)),
     [alarms]);
 
+  // Two sections rather than two tabs: they are one list of what is being
+  // watched, and a tab would hide half of it behind a click on a page whose
+  // whole job is to be scanned. The split is by what an alarm watches, which is
+  // also what decides who may change it.
+  const githubRows = useMemo(
+    () => rows.filter(a => !a.widgetId.startsWith("guardrail:")), [rows]);
+  const awsRows = useMemo(
+    () => rows.filter(a => a.widgetId.startsWith("guardrail:")), [rows]);
+
   const firing = rows.filter(a => a.state === "ALARM" && a.enabled);
   const paused = rows.filter(a => !a.enabled);
   const unreadable = rows.filter(a => a.enabled && a.lastError);
@@ -209,8 +243,9 @@ export default function AlarmsPage() {
         <PageHeader title="Alarms" subtitle="Thresholds on widgets and AWS guardrails, and who hears about them." />
         <Empty
           title="Admins only"
-          body={`Alarms notify the whole organization, so they are managed by ` +
-            `members of the "${permissions?.awsAdminTeam ?? "admin"}" team and organization owners.`}
+          body={`Alarms notify the whole organization, so they are managed by `
+            + `members of the "${permissions?.adminTeam ?? "admin"}" and `
+            + `"${permissions?.awsAdminTeam ?? "admin"}" teams, and by organization owners.`}
         />
       </Page>
     );
@@ -298,39 +333,81 @@ export default function AlarmsPage() {
             </div>
           </div>
 
-          <section className={`${SURFACE.card} overflow-hidden`}>
-            <div className="px-5 pt-4">
-              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
-                Everything being watched
-              </h3>
-              <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
-                Firing first, then paused. Hover a row for its controls.
-              </p>
-              <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
-            </div>
-            <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
-              {rows.map(a => {
-                const guardrail = a.widgetId.startsWith("guardrail:");
-                const widget = guardrail ? undefined : widgetById.get(a.widgetId);
-                return (
-                  <AlarmRow
-                    key={a.id}
-                    alarm={a}
-                    subject={subjectOf(a, widget?.title)}
-                    groupName={groupById.get(a.groupId)?.name}
-                    interval={a.intervalMinutes ?? null}
-                    onEdit={() => setEditing(a)}
-                    onToggle={() => updateAlarm.mutate({ id: a.id, data: { enabled: !a.enabled } })}
-                    onDelete={() => {
-                      if (confirm(`Delete "${a.name}"? Nothing will be watching that number.`)) {
-                        deleteAlarm.mutate(a.id);
-                      }
-                    }}
-                  />
-                );
-              })}
-            </div>
-          </section>
+          {([
+            {
+              key: "github", rows: githubRows, canEdit: canSeeGithub,
+              title: "On GitHub widgets", icon: "ph-git-branch",
+              team: permissions?.adminTeam,
+              blurb: "Thresholds on the checks from the Overview board.",
+              none: "No alarm watches a widget yet. Open one on Overview and set a number on it.",
+            },
+            {
+              key: "aws", rows: awsRows, canEdit: canSeeAws,
+              title: "On AWS guardrails", icon: "ph-shield-check",
+              team: permissions?.awsAdminTeam,
+              blurb: "Thresholds on guardrail findings, in the AWS account.",
+              none: "No alarm watches a guardrail yet. Open a rule on the AWS tab and set a number on it.",
+            },
+          ] as const).map(section => (
+            <section key={section.key} className={`${SURFACE.card} overflow-hidden`}>
+              <div className="px-5 pt-4">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <i className={`ph-bold ${section.icon} text-[14px] text-slate-400 dark:text-slate-500`}
+                    aria-hidden="true" />
+                  <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+                    {section.title}
+                  </h3>
+                  <span className="text-[11px] font-bold tabular-nums text-slate-300 dark:text-slate-600">
+                    {section.rows.length}
+                  </span>
+                  {/* Read-only is said once, at the top, rather than implied by
+                      a row whose controls quietly never appear. */}
+                  {!section.canEdit && (
+                    <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded
+                                     text-[10.5px] font-bold bg-slate-100 dark:bg-white/[0.08]
+                                     text-slate-500 dark:text-slate-400">
+                      <i className="ph-fill ph-lock-simple text-[9px]" aria-hidden="true" />
+                      view only · {section.team ?? "admin"}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+                  {section.blurb} Firing first, then paused.
+                </p>
+                <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+              </div>
+
+              {section.rows.length === 0 ? (
+                <p className="px-5 py-6 text-[12.5px] text-slate-400 dark:text-slate-500">
+                  {section.none}
+                </p>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+                  {section.rows.map(a => {
+                    const guardrail = a.widgetId.startsWith("guardrail:");
+                    const widget = guardrail ? undefined : widgetById.get(a.widgetId);
+                    return (
+                      <AlarmRow
+                        key={a.id}
+                        alarm={a}
+                        subject={subjectOf(a, widget?.title)}
+                        groupName={groupById.get(a.groupId)?.name}
+                        interval={a.intervalMinutes ?? null}
+                        canEdit={section.canEdit}
+                        onEdit={() => setEditing(a)}
+                        onToggle={() => updateAlarm.mutate({ id: a.id, data: { enabled: !a.enabled } })}
+                        onDelete={() => {
+                          if (confirm(`Delete "${a.name}"? Nothing will be watching that number.`)) {
+                            deleteAlarm.mutate(a.id);
+                          }
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          ))}
         </div>
       )}
 

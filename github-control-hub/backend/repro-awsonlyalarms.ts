@@ -251,8 +251,10 @@ const handler = fs.readFileSync("./src/alarms/handler.ts", "utf8");
         "lifting the gate for alarms must not lift it for the GitHub half");
     }
 
+    // Renamed when guardrail alarms moved to the AWS team; the property being
+    // asserted is that a blanket gate is still there, not what it is called.
     check("  and admin membership is still required",
-      /router\.use\(requireAdmin\)/.test(fs.readFileSync("./src/routes/alarms.ts", "utf8")),
+      /router\.use\(requireEitherTeam\)/.test(fs.readFileSync("./src/routes/alarms.ts", "utf8")),
       "these send mail for the whole organization, gate or no gate");
 
     const nav = fs.readFileSync("../frontend/src/components/Navbar.tsx", "utf8");

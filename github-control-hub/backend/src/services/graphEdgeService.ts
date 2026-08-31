@@ -138,7 +138,7 @@ export async function removeVulnerableDependencyEdge(repo: string, dependency: s
  * Covers: branches, collaborators, workflows, dependabot alerts.
  */
 export async function addRepoEdges(token: string, org: string, repoName: string) {
-  const octokit = createOctokit(token);
+  const octokit = createOctokit(token, "Nightly access graph rebuild");
   const repoId = `REPO#${repoName}`;
   const edges: Array<{ pk: string; sk: string; type: string; metadata?: Record<string, any> }> = [];
 

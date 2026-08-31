@@ -20,7 +20,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
 
-    const octokit = createOctokit(token);
+    const octokit = createOctokit(token, "Vulnerabilities tab");
     const org = getOrg();
 
     const repoFilter = req.query.repo as string | undefined;
@@ -119,7 +119,7 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Repo name is required" });
     }
 
-    const octokit = createOctokit(token);
+    const octokit = createOctokit(token, "Turning Dependabot on or off");
     const org = getOrg();
 
     try {
@@ -156,7 +156,7 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Repo name is required" });
     }
 
-    const octokit = createOctokit(token);
+    const octokit = createOctokit(token, "Turning Dependabot on or off");
     const org = getOrg();
 
     try {
@@ -187,7 +187,7 @@ router.get("/summary", async (req: Request, res: Response) => {
       return res.status(401).json({ error: "No GitHub token provided" });
     }
 
-    const octokit = createOctokit(token);
+    const octokit = createOctokit(token, "Vulnerabilities tab");
     const org = getOrg();
 
     // Shares the sweep with the tab above and with the alarm evaluator, which
@@ -281,7 +281,7 @@ router.get("/renovate", async (req: Request, res: Response) => {
     // rather than showing an empty table, which reads as a broken fetch.
     if (!bot) return res.json({ configured: false, prs: [], truncated: false, bot: null });
 
-    const octokit = createOctokit(token);
+    const octokit = createOctokit(token, "Renovate pull request search");
     const result = await fetchRenovatePrs(
       async (q, page) => {
         const r: any = await (octokit as any).rest.search.issuesAndPullRequests({

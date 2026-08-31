@@ -21,6 +21,13 @@ router.get("/", async (req: Request, res: Response) => {
     if (cache && cache.hours === hours && Date.now() - cache.at < CACHE_MS) {
       return res.json({ ...cache.report, cached: true });
     }
+    // Write this process's buffer before reading, so a request made a moment
+    // ago is on the page rather than up to half a minute behind it. The other
+    // processes flush at the end of their own pass; this is the one whose
+    // requests somebody has just made by clicking around.
+    const { flushUsage } = await import("../services/githubUsageService");
+    await flushUsage().catch(() => { /* the report still stands */ });
+
     const { buildBudgetReport } = await import("../services/githubBudgetService");
     const report = await buildBudgetReport(hours);
     cache = { at: Date.now(), hours, report };

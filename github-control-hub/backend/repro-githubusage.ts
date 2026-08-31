@@ -3,7 +3,7 @@ import { join, relative } from "path";
 import { createOctokit } from "./src/github/client";
 import {
   withFeature, currentFeature, bucketFor, recordRequest, pendingUsage,
-  __resetUsageBuffer, hourKey, readUsage, flushUsage, UNATTRIBUTED,
+  __resetUsageBuffer, hourKey, readUsage, flushUsage, UNATTRIBUTED, processName,
 } from "./src/services/githubUsageService";
 
 /**
@@ -87,13 +87,12 @@ async function attempt(octokit: any, url: string): Promise<void> {
   {
     __resetUsageBuffer();
     // The per-subject checks make their calls inline inside a much larger
-    // function; naming the client beats wrapping sixty lines of loop.
-    await withFeature("Something else", async () => {
-      await attempt(
-        createOctokit("t", "Per-subject check: stale-branch-protections"),
-        "GET /repos/acme/api/rulesets");
-    });
-    check("the client's own label beats the surrounding scope",
+    // function; naming the client beats wrapping sixty lines of loop. Nothing
+    // wraps them, so the client's label is what identifies them.
+    await attempt(
+      createOctokit("t", "Per-subject check: stale-branch-protections"),
+      "GET /repos/acme/api/rulesets");
+    check("an unwrapped client is identified by its own label",
       pendingUsage()[0]?.feature === "Per-subject check: stale-branch-protections",
       pendingUsage());
   }
@@ -108,6 +107,100 @@ async function attempt(octokit: any, url: string): Promise<void> {
       currentFeature() === UNATTRIBUTED, currentFeature());
   }
 
+  console.log("\nthe two credentials are counted apart");
+  {
+    // The contradiction this fixes: GitHub meters per token, so adding requests
+    // made on a signed-in person's account to the app's own and comparing the
+    // total against the app's headroom reported 39 requests against an
+    // allowance showing 10 used.
+    __resetUsageBuffer();
+    recordRequest("Signing in", "core", "user", 4);
+    recordRequest("Dependabot alert sweep", "core", "app", 3);
+    const rows = pendingUsage();
+    check("a request keeps the credential it went out on",
+      rows.length === 2 && rows.every(r => r.via === (r.feature === "Signing in" ? "user" : "app")),
+      rows);
+    check("  and the default is the app's own",
+      (recordRequest("X", "core"), pendingUsage().find(r => r.feature === "X")?.via === "app"));
+
+    // The hook has to decide this from the token, not from the caller.
+    const client = readFileSync(join(ROOT, "github/client.ts"), "utf8");
+    check("  decided by comparing against the app's own token",
+      /token === getSystemToken\(\) \? "app" : "user"/.test(client),
+      "a caller-supplied flag would be wrong wherever the token is chosen at the call site");
+    __resetUsageBuffer();
+  }
+
+  console.log("\nthe innermost label wins over the client's own");
+  {
+    // The alarm pass builds one client and hands it to the sweep. A label fixed
+    // at construction filed the sweep's requests under the pass, which is how
+    // a page of "Unattributed" and mislabelled rows happens.
+    __resetUsageBuffer();
+    await withFeature("Dependabot alert sweep", async () => {
+      await attempt(createOctokit("t", "Alarm pass"), "GET /orgs/acme/dependabot/alerts");
+    });
+    check("the function doing the work names the request",
+      pendingUsage()[0]?.feature === "Dependabot alert sweep", pendingUsage());
+
+    __resetUsageBuffer();
+    await attempt(createOctokit("t", "Alarm pass"), "GET /orgs/acme/repos");
+    check("  and the client's label is what covers the rest",
+      pendingUsage()[0]?.feature === "Alarm pass", pendingUsage());
+  }
+
+  console.log("\nevery count says which process wrote it");
+  {
+    // Four processes write to this table and they deploy separately. A Lambda
+    // running a build from before a label existed keeps writing rows under the
+    // old name, and from the page those look identical to a call site nobody
+    // labelled — one is fixed by deploying, the other by editing code.
+    __resetUsageBuffer();
+    delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+    check("the app's own server calls itself the app", processName() === "app", processName());
+
+    process.env.AWS_LAMBDA_FUNCTION_NAME = "github-control-hub-alarm-evaluator";
+    check("  a Lambda is named by its function, without the stack prefix",
+      processName() === "alarm-evaluator", processName());
+    process.env.AWS_LAMBDA_FUNCTION_NAME = "uat-hub-graph-aggregator";
+    check("    whatever the stack is called",
+      processName() === "graph-aggregator", processName());
+    delete process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+    recordRequest("Unattributed", "graphql", "app", 2);
+    check("  and the source travels with the count",
+      pendingUsage()[0]?.source === "app", pendingUsage());
+    __resetUsageBuffer();
+  }
+
+  console.log("\nolder rows are read rather than discarded");
+  {
+    // Counts are kept per clock hour and live for two days, so rows written
+    // before a dimension existed are still in the table. Dropping them would
+    // make an hour look emptier than it was.
+    const { __parseAttrForTests } = await import("./src/services/githubUsageService") as any;
+    if (typeof __parseAttrForTests !== "function") {
+      check("the attribute parser is reachable from a test", false, "missing export");
+    } else {
+      const full = __parseAttrForTests("u#core#user#alarm-evaluator#Signing in");
+      check("a full attribute keeps all four dimensions",
+        full?.bucket === "core" && full?.via === "user"
+          && full?.source === "alarm-evaluator" && full?.feature === "Signing in", full);
+
+      const noSource = __parseAttrForTests("u#graphql#app#Open pull request walk");
+      check("  a row without a source reads as unknown, not as the app",
+        noSource?.source === "unknown" && noSource?.feature === "Open pull request walk",
+        noSource);
+
+      const oldest = __parseAttrForTests("u#search#Renovate pull request search");
+      check("  the oldest shape still parses",
+        oldest?.via === "app" && oldest?.feature === "Renovate pull request search", oldest);
+
+      check("  and nonsense is refused rather than guessed",
+        __parseAttrForTests("kind") === null && __parseAttrForTests("ttl") === null);
+    }
+  }
+
   console.log("\nbuckets are read from the route");
   {
     check("graphql is its own allowance", bucketFor("/graphql", "POST") === "graphql");
@@ -120,8 +213,8 @@ async function attempt(octokit: any, url: string): Promise<void> {
   console.log("\ncounts survive being handed to storage");
   {
     __resetUsageBuffer();
-    recordRequest("Dependabot alert sweep", "core", 3);
-    recordRequest("Dependabot alert sweep", "core", 2);
+    recordRequest("Dependabot alert sweep", "core", "app", 3);
+    recordRequest("Dependabot alert sweep", "core", "app", 2);
     check("repeat calls to the same feature accumulate",
       pendingUsage()[0]?.count === 5, pendingUsage());
 
@@ -168,6 +261,32 @@ async function attempt(octokit: any, url: string): Promise<void> {
       !readFileSync(join(ROOT, file), "utf8").includes(label));
     check(`all ${want.length} spenders name themselves`, missing.length === 0,
       missing.map(([f, l]) => `${f}: ${l}`));
+  }
+
+  console.log("\nflushing runs however the server was started");
+  {
+    const server = readFileSync(join(ROOT, "server.ts"), "utf8");
+
+    // The bug this exists for: `startUsageFlushing()` sat inside the
+    // `if (!process.env.__STANDALONE__)` block, which is the *developer's*
+    // server. The desktop app sets that variable and calls listen() itself, so
+    // on every real install the timer never armed: counts buffered in memory,
+    // nothing was ever written, and the page reported nothing — correctly, and
+    // for ever.
+    const listenBlock = server.slice(server.indexOf("if (!process.env.__STANDALONE__)"));
+    check("the flush timer is not inside the developer-only listen block",
+      !listenBlock.includes("startUsageFlushing"),
+      "the desktop app skips that block entirely, so nothing would ever be written");
+    check("  and it is started at module level",
+      /^startUsageFlushing\(\);$/m.test(server),
+      "every process that imports the server counts, so every one must write");
+
+    // Without this the page is up to a flush interval behind the clicking that
+    // somebody just did to make something appear on it.
+    const route = readFileSync(join(ROOT, "routes/githubBudget.ts"), "utf8");
+    check("reading the page writes this process's buffer first",
+      /await flushUsage\(\)/.test(route),
+      "otherwise a request made a moment ago is not on the page that reports it");
   }
 
   console.log("\nthe counters are flushed by every process that makes requests");

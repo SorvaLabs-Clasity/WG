@@ -136,7 +136,7 @@ export async function handler(): Promise<void> {
   const token = hasGitHub ? await getSystemTokenAsync() : "";
 
   const org = process.env.GITHUB_ORG ?? "";
-  const octokit = hasGitHub ? createOctokit(token) : (null as any);
+  const octokit = hasGitHub ? createOctokit(token, "Alarm pass") : (null as any);
 
   if (!hasGitHub) {
     console.log(

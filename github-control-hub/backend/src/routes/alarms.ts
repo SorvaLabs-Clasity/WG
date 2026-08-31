@@ -1,6 +1,9 @@
 import { Router, Request, Response, RequestHandler } from "express";
 
-import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
+import {
+  isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM,
+  isAwsAdmin, AWS_ADMIN_TEAM,
+} from "../services/authorizationService";
 import { getWidget } from "../services/widgetService";
 import {
   listAlarms, listOrgAlarms, listOrgGroups, getAlarm, createAlarm, updateAlarm, deleteAlarm,
@@ -32,11 +35,23 @@ const router = Router();
  * send email to anyone. Reads are gated too because a group's member list is a
  * list of people's email addresses.
  *
- * Gated on the Control Hub team, not the AWS one. Alarms watch GitHub activity
- * and mail people about it; that they happen to be delivered by SNS is an
- * implementation detail, and gating on it meant someone trusted with every
- * GitHub setting in this app could not create an alarm unless they were also
- * trusted with the AWS account.
+ * Reading is open to **either** admin team, and writing depends on what the
+ * alarm watches.
+ *
+ * This was Control Hub only, on the reasoning that alarms watch GitHub activity
+ * and merely happen to be delivered by SNS. That was true when it was written
+ * and stopped being true when guardrail alarms arrived: those watch AWS
+ * findings, and the reasoning does not reach them.
+ *
+ * What it produced was backwards. Somebody who administers the AWS account
+ * could not touch the alarms watching it, while somebody who administers only
+ * the repositories could — including after the AWS tab itself was restricted to
+ * the AWS team, which left the alarms more open than the screen they are about.
+ *
+ * So the subject decides: a `guardrail:` alarm belongs to the AWS team, a widget
+ * alarm to the Control Hub team. The shared notification plumbing — groups,
+ * their members, the Teams flow — stays Control Hub, because it is one set of
+ * destinations for the whole organization rather than either team's own.
  */
 const requireAdmin: RequestHandler = (req, res, next) => {
   isControlHubAdmin(req.user!.login, req.user!.accessToken)
@@ -52,7 +67,66 @@ const requireAdmin: RequestHandler = (req, res, next) => {
     .catch(() => res.status(503).json({ error: "Could not verify team membership" }));
 };
 
-router.use(requireAdmin);
+
+/**
+ * Either team, for reading.
+ *
+ * Both are administrator populations, and an AWS admin has to be able to see
+ * the alarms watching their account and the groups those alarms notify —
+ * otherwise they can be given the right to change something they cannot find.
+ */
+const requireEitherTeam: RequestHandler = (req, res, next) => {
+  Promise.all([
+    isControlHubAdmin(req.user!.login, req.user!.accessToken).catch(() => false),
+    isAwsAdmin(req.user!.login, req.user!.accessToken).catch(() => false),
+  ])
+    .then(([hub, aws]) => {
+      if (hub || aws) return next();
+      res.status(403).json({
+        code: "CONTROL_HUB_ADMIN_REQUIRED",
+        team: CONTROL_HUB_ADMIN_TEAM,
+        error: `Alarms are limited to the "${CONTROL_HUB_ADMIN_TEAM}" and `
+          + `"${AWS_ADMIN_TEAM}" teams, and to organization owners.`,
+      });
+    })
+    .catch(() => res.status(503).json({ error: "Could not verify team membership" }));
+};
+
+/**
+ * The team that owns whatever this alarm watches.
+ *
+ * Read from the subject rather than from the request: an alarm's team is a fact
+ * about what it is pointed at, and taking it from the body would let either
+ * team claim the other's.
+ */
+async function refusedForSubject(
+  req: Request, res: Response, subjectId: string,
+): Promise<boolean> {
+  const aws = subjectId.startsWith(GUARDRAIL_PREFIX);
+  const allowed = aws
+    ? await isAwsAdmin(req.user!.login, req.user!.accessToken).catch(() => null)
+    : await isControlHubAdmin(req.user!.login, req.user!.accessToken).catch(() => null);
+
+  // Null is "we could not ask", which is an outage. Refusing would tell
+  // somebody they had lost a permission they still hold.
+  if (allowed === null) {
+    res.status(503).json({ error: "Could not verify team membership" });
+    return true;
+  }
+  if (allowed) return false;
+
+  const team = aws ? AWS_ADMIN_TEAM : CONTROL_HUB_ADMIN_TEAM;
+  res.status(403).json({
+    code: aws ? "AWS_ADMIN_REQUIRED" : "CONTROL_HUB_ADMIN_REQUIRED",
+    team,
+    error: aws
+      ? `Alarms on AWS guardrails are limited to the "${team}" team, and to organization owners.`
+      : `Alarms on widgets are limited to the "${team}" team, and to organization owners.`,
+  });
+  return true;
+}
+
+router.use(requireEitherTeam);
 
 /**
  * An IANA zone the runtime recognises, or null.
@@ -189,6 +263,11 @@ router.post("/", async (req: Request, res: Response) => {
     const widget = await subjectFor(widgetId);
     if (!widget) return res.status(404).json({ error: "Widget not found" });
 
+    // Checked here rather than as route middleware: which team may create this
+    // is decided by what it watches, and that is only known once the body has
+    // been read.
+    if (await refusedForSubject(req, res, String(widgetId))) return;
+
     // The load-bearing check. A condition its widget cannot produce would
     // evaluate to nothing on every pass and never fire, which is
     // indistinguishable from an alarm that is simply not triggering.
@@ -267,7 +346,7 @@ router.get("/groups", async (_req: Request, res: Response) => {
   }
 });
 
-router.post("/groups", async (req: Request, res: Response) => {
+router.post("/groups", requireAdmin, async (req: Request, res: Response) => {
   try {
     const name = String(req.body?.name ?? "").trim();
     if (!name) return res.status(400).json({ error: "A group needs a name" });
@@ -280,7 +359,7 @@ router.post("/groups", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/groups/:id", async (req: Request, res: Response) => {
+router.delete("/groups/:id", requireAdmin, async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "Group not found" });
@@ -307,7 +386,7 @@ router.delete("/groups/:id", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/groups/:id/members", async (req: Request, res: Response) => {
+router.post("/groups/:id/members", requireAdmin, async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "Group not found" });
@@ -337,7 +416,7 @@ router.post("/groups/:id/members", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/groups/:id/members", async (req: Request, res: Response) => {
+router.delete("/groups/:id/members", requireAdmin, async (req: Request, res: Response) => {
   try {
     const subscriptionArn = String(req.query.subscriptionArn ?? "");
     if (!subscriptionArn) return res.status(400).json({ error: "subscriptionArn is required" });
@@ -384,7 +463,7 @@ router.delete("/groups/:id/members", async (req: Request, res: Response) => {
  * Lambda posts to whatever is stored here with no further checks, so anything
  * accepted is somewhere the app will send alarm text.
  */
-router.post("/groups/:id/teams", async (req: Request, res: Response) => {
+router.post("/groups/:id/teams", requireAdmin, async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
@@ -411,7 +490,7 @@ router.post("/groups/:id/teams", async (req: Request, res: Response) => {
   }
 });
 
-router.delete("/groups/:id/teams/:address", async (req: Request, res: Response) => {
+router.delete("/groups/:id/teams/:address", requireAdmin, async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
@@ -452,7 +531,7 @@ router.delete("/groups/:id/teams/:address", async (req: Request, res: Response) 
  *
  * Unset means the group's zone, and an unset group means the organization's.
  */
-router.put("/groups/:id/people/:address/timezone", async (req: Request, res: Response) => {
+router.put("/groups/:id/people/:address/timezone", requireAdmin, async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
@@ -497,7 +576,7 @@ router.put("/groups/:id/people/:address/timezone", async (req: Request, res: Res
  * One value for the whole group, because one email reaches every subscriber
  * with the same body.
  */
-router.put("/groups/:id/timezone", async (req: Request, res: Response) => {
+router.put("/groups/:id/timezone", requireAdmin, async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "No such group" });
@@ -535,7 +614,7 @@ router.get("/teams-flow", async (_req: Request, res: Response) => {
   }
 });
 
-router.put("/teams-flow", async (req: Request, res: Response) => {
+router.put("/teams-flow", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { setTeamsFlow } = await import("../services/orgConfigService");
     const raw = String(req.body?.url ?? "").trim();
@@ -560,7 +639,7 @@ router.put("/teams-flow", async (req: Request, res: Response) => {
   }
 });
 
-router.post("/groups/:id/test", async (req: Request, res: Response) => {
+router.post("/groups/:id/test", requireAdmin, async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "Group not found" });
@@ -589,7 +668,7 @@ router.get("/security", async (_req: Request, res: Response) => {
   res.json(await getSecuritySettings());
 });
 
-router.put("/security", async (req: Request, res: Response) => {
+router.put("/security", requireAdmin, async (req: Request, res: Response) => {
   try {
     const { enabled, groupId, minSeverity, subjectTemplate, bodyTemplate,
       teamsSubjectTemplate, teamsBodyTemplate, timezone } = req.body ?? {};
@@ -643,7 +722,7 @@ router.get("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response)
   }
 });
 
-router.put("/feeds/:feed", async (req: Request<{ feed: string }>, res: Response) => {
+router.put("/feeds/:feed", requireAdmin, async (req: Request<{ feed: string }>, res: Response) => {
   const feed = String(req.params.feed);
   if (!(FEEDS as readonly string[]).includes(feed)) {
     return res.status(404).json({ error: "Unknown notification feed" });
@@ -705,6 +784,7 @@ router.put("/:id", async (req: Request, res: Response) => {
     // administrator is permission over the organization's settings, not over
     // what lands in one person's inbox.
     if (existing.owner) return res.status(404).json({ error: "Alarm not found" });
+    if (await refusedForSubject(req, res, existing.widgetId)) return;
 
     const { condition, groupId, subjectTemplate, bodyTemplate,
       teamsSubjectTemplate, teamsBodyTemplate } = req.body ?? {};
@@ -749,6 +829,7 @@ router.delete("/:id", async (req: Request, res: Response) => {
   // Absent and somebody-else's answer identically here: on this route a
   // personal alarm is not a thing that exists.
   if (!existing || existing.owner) return res.status(404).json({ error: "Alarm not found" });
+  if (await refusedForSubject(req, res, existing.widgetId)) return;
   const ok = await deleteAlarm(String(req.params.id), req.user!.login);
   if (!ok) return res.status(404).json({ error: "Alarm not found" });
   res.json({ message: "Alarm deleted" });

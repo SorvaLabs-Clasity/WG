@@ -37,10 +37,31 @@ async function refusedWidgetChange(res: Response, login: string, verb: string, u
  * else's business, and shipping the whole table to be filtered in a browser
  * would put every person's board in every other person's page.
  */
+/**
+ * The shared board, or the caller's own.
+ *
+ * Only the shared half is gated. Somebody's own cards are theirs to list, and
+ * gating those would take the personal board away from everybody it exists for.
+ *
+ * The check engine behind both stays open on purpose: a non-admin can build the
+ * same check on their own board, so restricting it here would buy nothing and
+ * break My work. What the gate protects is the organization's *curated* board —
+ * which checks somebody thought worth watching — not the ability to run one.
+ */
 router.get("/", async (req: Request, res: Response) => {
-  const all = await listWidgets();
   const mine = req.query.scope === "personal";
   const login = req.user!.login.toLowerCase();
+
+  if (!mine && !(await isControlHubAdmin(login, req.user!.accessToken).catch(() => false))) {
+    return res.status(403).json({
+      code: "CONTROL_HUB_ADMIN_REQUIRED",
+      team: CONTROL_HUB_ADMIN_TEAM,
+      error: `The Overview board is limited to the "${CONTROL_HUB_ADMIN_TEAM}" team, `
+        + "and to organization owners. Your own cards are on My work.",
+    });
+  }
+
+  const all = await listWidgets();
   res.json(all.filter(w => mine
     ? w.owner?.toLowerCase() === login
     : !w.owner));
@@ -57,9 +78,23 @@ router.get("/", async (req: Request, res: Response) => {
  * An empty list is a normal answer: the scheduled pass may not have run yet, or
  * a widget may have been added since. The caller computes live in that case.
  */
-router.get("/snapshots", async (_req: Request, res: Response) => {
+router.get("/snapshots", async (req: Request, res: Response) => {
   const { readWidgetSnapshots } = await import("../services/alarmService");
-  res.json(await readWidgetSnapshots());
+  const all = await readWidgetSnapshots();
+
+  // Narrowed to what the caller may see, not refused outright: My work reads
+  // this too, and gating it whole would take the personal board's stored
+  // answers away from everybody. A snapshot holds the check's actual findings,
+  // so serving every one of them past a gated board would hand over exactly
+  // what the gate was for.
+  const login = req.user!.login.toLowerCase();
+  if (await isControlHubAdmin(login, req.user!.accessToken).catch(() => false)) {
+    return res.json(all);
+  }
+  const mine = new Set((await listWidgets())
+    .filter(w => w.owner?.toLowerCase() === login)
+    .map(w => w.id));
+  res.json(all.filter(snap => mine.has(snap.widgetId)));
 });
 
 /**

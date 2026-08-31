@@ -172,6 +172,44 @@ function ColumnFilter({ column, items, value, onChange }: {
   const [typed, setTyped] = useState("");
   const active = value ? isActive(value) : false;
 
+  /**
+   * What this one filter keeps, on its own.
+   *
+   * The count at the bottom of the dialog is every filter together, so a zero
+   * there says only that something is wrong. This says which control caused it,
+   * next to that control — which is the difference between "0 matches" and
+   * "the Owner filter matches nothing, and here is what Owner actually holds".
+   */
+  const kept = useMemo(
+    () => (active && value ? applyWidgetFilters(items, [value]).length : items.length),
+    [active, value, items]);
+
+  /** How many rows carry each value, so a choice that matches nothing is visible. */
+  const counts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const item of items) {
+      const v = valueFor(item, column.id);
+      if (v === undefined || v === null || v === "") continue;
+      const key = String(v);
+      m.set(key, (m.get(key) ?? 0) + 1);
+    }
+    return m;
+  }, [items, column.id]);
+
+  /**
+   * Real values from the data, for a column somebody has to type into.
+   *
+   * The commonest way to get nothing back is to filter the wrong column: a
+   * username typed into Entity, where the values are repository names, matches
+   * nothing and looks like a broken filter. Showing what is in there makes that
+   * mistake self-correcting.
+   */
+  const examples = useMemo(
+    () => [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([v]) => v),
+    [counts]);
+
+  const missing = items.length - counts.size === items.length && counts.size === 0;
+
   const bounds = useMemo(() => {
     if (column.kind !== "number") return null;
     const nums = items.map(i => Number(valueFor(i, column.id)))
@@ -200,14 +238,31 @@ function ColumnFilter({ column, items, value, onChange }: {
             {column.kind === "number" ? "a range" : column.kind === "enum" ? "pick values" : "match text"}
           </span>
         </div>
-        {active && (
-          <button type="button" onClick={() => onChange(null)}
-            className="text-[11.5px] font-semibold text-slate-400 hover:text-rose-600
-                       dark:hover:text-rose-400 transition-colors">
-            Clear
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          <span className={`text-[11px] font-bold tabular-nums ${
+            active && kept === 0 ? "text-rose-600 dark:text-rose-400"
+              : active ? "text-emerald-600 dark:text-emerald-400"
+              : "text-slate-300 dark:text-slate-600"}`}>
+            {active ? `${kept} of ${items.length}` : `${items.length} rows`}
+          </span>
+          {active && (
+            <button type="button" onClick={() => onChange(null)}
+              className="text-[11.5px] font-semibold text-slate-400 hover:text-rose-600
+                         dark:hover:text-rose-400 transition-colors">
+              Clear
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* The column has nothing in it at all. Said before somebody types into
+          it and concludes the filter is broken. */}
+      {missing && (
+        <p className="text-[11.5px] text-amber-700 dark:text-amber-400 mt-1.5">
+          No row in this check reports a {column.label.toLowerCase()}, so a
+          filter here would match nothing.
+        </p>
+      )}
 
       {column.kind === "number" ? (
         <div className="flex items-center gap-2 mt-2.5">
@@ -227,11 +282,18 @@ function ColumnFilter({ column, items, value, onChange }: {
               <button key={opt} type="button"
                 onClick={() => onChange({ values: on ? values.filter(v => v !== opt) : [...values, opt] })}
                 aria-pressed={on}
-                className={`px-2.5 py-1 rounded-lg text-[12px] font-semibold transition-colors border ${
+                className={`px-2.5 py-1 rounded-lg text-[12px] font-semibold transition-colors border
+                            inline-flex items-center gap-1.5 ${
                   on
                     ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent"
                     : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-slate-400"}`}>
                 {opt}
+                {/* How many rows carry it. A choice that would keep nothing is
+                    worth seeing before it is made, not after. */}
+                <span className={`text-[10px] tabular-nums font-bold ${
+                  on ? "opacity-60" : "text-slate-400 dark:text-slate-500"}`}>
+                  {counts.get(opt) ?? 0}
+                </span>
               </button>
             );
           })}
@@ -273,9 +335,31 @@ function ColumnFilter({ column, items, value, onChange }: {
           {/* Matching is on part of the value, not all of it, because what
               people type is a name they half-remember. Said here so a filter
               that keeps more than expected is explainable. */}
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
             Matches any part of the value, ignoring case.
+            {examples.length > 0 && (
+              <> This column holds things like{" "}
+                {examples.map((e, i) => (
+                  <span key={e}>
+                    {i > 0 && ", "}
+                    <button type="button" onClick={() => addValue(e)}
+                      className="font-mono text-[10.5px] px-1 py-0.5 rounded
+                                 bg-slate-200/70 dark:bg-white/[0.08]
+                                 text-slate-600 dark:text-slate-300 hover:text-gh-blue transition-colors">
+                      {e}
+                    </button>
+                  </span>
+                ))}.
+              </>
+            )}
           </p>
+          {active && kept === 0 && (
+            <p className="text-[11.5px] text-rose-600 dark:text-rose-400 mt-1.5 leading-relaxed">
+              Nothing in this column matches. Check it is the column you meant:
+              Entity holds the repository, user or team a row is about, and Owner
+              holds who to ask about it.
+            </p>
+          )}
         </>
       )}
 

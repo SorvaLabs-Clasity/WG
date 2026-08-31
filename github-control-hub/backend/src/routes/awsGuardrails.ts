@@ -15,8 +15,14 @@ import { ruleExclusionsChanged, listContentChanged, rulesUsingList } from "../aw
 import { callerMayRemediate, liveProbe, type ResourceRef, type WriteIntent } from "../aws-guardrails/permissions";
 import type { Guardrail, AwsExclusionList, GuardrailMode, GuardrailKind, AwsAccount } from "../aws-guardrails/types";
 import { awsRegion, resolveAwsRegion } from "../utils/region";
+import { requireAwsAdmin } from "../middleware/teamGate";
 
 const router = Router();
+
+// Every route, reads included. The per-route uses below are left in place: they
+// are now redundant, and they are also the record of which routes were always
+// meant to be restricted, which matters if this line is ever relaxed.
+router.use(requireAwsAdmin);
 
 const FUNCTION_NAME = process.env.GUARDRAIL_FUNCTION_NAME
   || `${process.env.STACK_NAME || "github-control-hub"}-guardrail-enforcer`;
@@ -28,21 +34,11 @@ const FUNCTION_NAME = process.env.GUARDRAIL_FUNCTION_NAME
  * as the Lambda's role, which holds account-wide write permissions. There is no
  * per-user AWS identity to delegate to, so the app has to decide.
  *
- * Reading is deliberately open: anyone signed in can see rules and findings.
+ * Reading is gated too, at the router below. It was open, on the reasoning that
+ * rules and findings are harmless to look at; they are an inventory of another
+ * team's AWS account, which is not this app's to publish to the organization.
  */
-const requireAdmin: RequestHandler = (req, res, next) => {
-  isAwsAdmin(req.user!.login, req.user!.accessToken)
-    .then(allowed => {
-      if (allowed) return next();
-      res.status(403).json({
-        code: "CONTROL_HUB_ADMIN_REQUIRED",
-        error: `Only members of the "${AWS_ADMIN_TEAM}" team (or organization owners) can change or run ` +
-          `AWS guardrails. They act on the whole account, so they are not scoped to what you personally can reach. ` +
-          `Viewing rules and findings is open to everyone.`,
-      });
-    })
-    .catch(() => res.status(503).json({ error: "Could not verify team membership" }));
-};
+const requireAdmin = requireAwsAdmin;
 
 /** The rule kinds the UI can offer, with their defaults. */
 /**

@@ -630,7 +630,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
           console.warn("[Webhook] No GitHub token available. Cannot run automated background scan.");
           return;
         }
-        const octokit = createOctokit(token);
+        const octokit = createOctokit(token, "Scanner run");
         const scanners = await listScanners();
         const relevantScanners = scanners.filter(s =>
           s.targetRepos === "all" ||
