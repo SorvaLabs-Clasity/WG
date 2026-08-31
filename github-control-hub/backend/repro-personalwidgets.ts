@@ -98,10 +98,22 @@ function handler(marker: string): string {
     // be a placeholder saying "go and look at the Overview tab", which is a
     // screen apologising for not being the other screen.
     const imported = /import \{([^}]*)\} from "\.\.\/pages\/AnalyticsPage"/.exec(board)?.[1] ?? "";
-    for (const piece of ["CheckCard", "WidgetFormModal", "CheckDetail"]) {
+    for (const piece of ["WidgetFormModal", "CheckDetail"]) {
       check(`the personal board reuses ${piece} rather than its own`,
         imported.includes(piece),
         "a second one drifts from the verdicts and freshness stamps in the first");
+    }
+
+    // The card itself is deliberately its own component now: a status tile
+    // built to be scanned across a wall of others is the wrong shape for a
+    // board of four things you chose. What must not fork is the *data*, so the
+    // claim moved from "same component" to "same hook and same verdict".
+    const card = fs.readFileSync("../frontend/src/components/PersonalCard.tsx", "utf8");
+    const cardImports = /import \{([^}]*)\} from "\.\.\/pages\/AnalyticsPage"/.exec(card)?.[1] ?? "";
+    for (const piece of ["useWidgetData", "verdictFor", "entityForConfig"]) {
+      check(`the personal card shares ${piece} with the Overview`,
+        cardImports.includes(piece),
+        "two data paths means two answers to the same check");
     }
     check("  and opening a card shows the real table, not a pointer to another tab",
       !/Open the Overview tab/.test(board),
@@ -113,6 +125,40 @@ function handler(marker: string): string {
     check("the two boards do not share a cache entry",
       /queryKey: \["widgets", scope \?\? "org"\]/.test(hooks),
       "one key means opening one board briefly shows the other's cards");
+  }
+
+  // ── filters are stored, and stored safely ───────────────────────────
+  {
+    console.log("\nwhat a filter is allowed to be");
+
+    const routes = fs.readFileSync("./src/routes/widgets.ts", "utf8");
+
+    // Filters arrive in a request body and are applied to rows on a screen, so
+    // everything here is shape rather than trust.
+    check("filters are cleaned before they are stored",
+      /function cleanFilters/.test(routes)
+        && /filters: cleanFilters\(req\.body\.filters\)/.test(routes));
+    check("  a filter that narrows nothing is not kept",
+      /return narrows \? \[cleaned\] : \[\];/.test(routes),
+      "an empty filter shows as a chip promising a narrowing that never happens");
+    check("  a bound that is not a finite number is dropped",
+      /Number\.isFinite\(v\)/.test(routes),
+      "NaN compares false against everything and would empty the widget silently");
+    check("  and the lists are bounded",
+      /\.slice\(0, 20\)/.test(routes) && /\.slice\(0, 50\)/.test(routes));
+
+    // The bug this found: updateWidget merges over what is stored, so naming a
+    // field the body did not send erases it. The filter editor sends `filters`
+    // alone and would have wiped the title.
+    check("a partial update only writes what it was sent",
+      /if \(key in req\.body\)/.test(routes),
+      "merging undefined over a stored field deletes it");
+    check("  while an explicitly sent empty filter list still clears",
+      /if \("filters" in req\.body\)/.test(routes),
+      "otherwise the last filter can never be removed");
+
+    const service = fs.readFileSync("./src/services/widgetService.ts", "utf8");
+    check("the stored widget carries its filters", /filters\?: Array<\{/.test(service));
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

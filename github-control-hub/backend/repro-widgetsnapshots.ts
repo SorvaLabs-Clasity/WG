@@ -113,8 +113,14 @@ const read = (p: string) => fs.readFileSync(`${__dirname}/${p}`, "utf8");
     check("  a stored error falls through to a live read",
       /!!snapshot && !snapshot\.error/.test(page));
     check("  and so does a trimmed one when every row is needed",
-      /needAllRows && snapshot\.trimmed/.test(page),
+      /needAllRows \|\| filtering\) && snapshot\.trimmed/.test(page),
       "a card can be served from a short list; a table listing them cannot");
+    // The second reason, added with per-column filters: a trimmed snapshot
+    // holds some rows and the true count of all of them, so filtering it
+    // compares against rows that are not there and reports the result as exact.
+    check("    a filtered widget will not read a trimmed snapshot either",
+      /const filtering = activeFilterCount\(config\.filters\) > 0;/.test(page),
+      "the rows that were cut might be the ones the filter would have kept");
     check("  the detail view asks for every row",
       /useWidgetData\(config, \{ needAllRows: true, live \}\)/.test(page));
     check("    and honours the refresh window too",

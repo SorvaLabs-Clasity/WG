@@ -85,7 +85,7 @@ router.get("/blast-radius/repo/:repo", async (req: Request<{ repo: string }>, re
     // there is nothing stored, rather than failing the panel over a list.
     let workflows = edges.filter(e => e.type === "uses_workflow").map(e => e.sk.replace("WORKFLOW#", ""));
     try {
-      const octokit = createOctokit(req.user!.accessToken);
+      const octokit = createOctokit(req.user!.accessToken, "Access graph tab");
       const { data } = await octokit.rest.actions.listRepoWorkflows({
         owner: getOrg(), repo: req.params.repo, per_page: 100,
       });

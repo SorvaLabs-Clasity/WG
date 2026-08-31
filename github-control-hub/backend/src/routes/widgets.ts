@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import type { Request, Response } from "express";
-import { listWidgets, createWidget, updateWidget, deleteWidget } from "../services/widgetService";
+import { listWidgets, createWidget, updateWidget, deleteWidget, type WidgetConfig } from "../services/widgetService";
 
 const router = Router();
 
@@ -62,6 +62,40 @@ router.get("/snapshots", async (_req: Request, res: Response) => {
   res.json(await readWidgetSnapshots());
 });
 
+/**
+ * Per-column filters, sanitised.
+ *
+ * Stored on the widget and applied to the rows when they are drawn, so
+ * everything here is shape rather than trust: a filter naming a column that
+ * does not exist narrows nothing, and one carrying a hundred values is a body
+ * somebody hand-wrote. Bounds are dropped when they are not finite, because
+ * `NaN` compares false against everything and would empty the widget with no
+ * way to see why.
+ */
+function cleanFilters(raw: unknown): WidgetConfig["filters"] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw.slice(0, 20).flatMap((f: any) => {
+    if (!f || typeof f.column !== "string" || f.column.length > 64) return [];
+    const values = Array.isArray(f.values)
+      ? f.values.filter((v: any) => typeof v === "string" && v.length <= 200).slice(0, 50)
+      : undefined;
+    const num = (v: any) => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+    const cleaned = {
+      column: f.column,
+      ...(f.mode === "exclude" ? { mode: "exclude" as const } : {}),
+      ...(values && values.length ? { values } : {}),
+      ...(num(f.min) !== undefined ? { min: num(f.min) } : {}),
+      ...(num(f.max) !== undefined ? { max: num(f.max) } : {}),
+    };
+    // A filter with nothing in it is not stored: it would show as a chip on the
+    // card promising a narrowing that never happens.
+    const narrows = (cleaned.values?.length ?? 0) > 0
+      || cleaned.min !== undefined || cleaned.max !== undefined;
+    return narrows ? [cleaned] : [];
+  });
+  return out.length ? out : undefined;
+}
+
 router.post("/", async (req: Request, res: Response) => {
   const { title, type, presetId, queryId, queryParam, queryAdvanced, displayType, personal } = req.body;
 
@@ -81,7 +115,7 @@ router.post("/", async (req: Request, res: Response) => {
   }
   const widget = await createWidget(
     { title, type, presetId, queryId, queryParam, queryAdvanced, displayType, owner,
-      createdBy: req.user!.login },
+      filters: cleanFilters(req.body.filters), createdBy: req.user!.login },
     req.user!.login
   );
   res.status(201).json(widget);
@@ -109,8 +143,26 @@ async function refusedWidgetEdit(
 router.put("/:id", async (req: Request<{ id: string }>, res: Response) => {
   if (await refusedWidgetEdit(res, req.params.id, req.user!.login, "edit", req.user!.accessToken)) return;
 
-  const { title, type, presetId, queryId, queryParam, queryAdvanced, displayType } = req.body;
-  const updated = await updateWidget(req.params.id, { title, type, presetId, queryId, queryParam, queryAdvanced, displayType }, req.user!.login);
+  /**
+   * Only the fields the request actually sent.
+   *
+   * `updateWidget` merges over what is stored, so naming a field here that the
+   * body did not carry sets it to undefined and DynamoDB drops the attribute:
+   * a request changing one thing wipes the rest. It never showed, because the
+   * only caller sent the whole widget every time. The filter editor sends
+   * `filters` alone, and would have erased the title.
+   *
+   * `filters` is included whenever the key is present even if it cleans to
+   * undefined, because that is how the last filter gets removed.
+   */
+  const patch: Parameters<typeof updateWidget>[1] = {};
+  for (const key of ["title", "type", "presetId", "queryId", "queryParam",
+    "queryAdvanced", "displayType"] as const) {
+    if (key in req.body) (patch as any)[key] = req.body[key];
+  }
+  if ("filters" in req.body) patch.filters = cleanFilters(req.body.filters);
+
+  const updated = await updateWidget(req.params.id, patch, req.user!.login);
   if (!updated) {
     res.status(404).json({ error: "Widget not found" });
     return;

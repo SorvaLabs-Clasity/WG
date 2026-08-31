@@ -27,7 +27,7 @@ const org = () => process.env.GITHUB_ORG || "";
  * person may read, so the token decides it.
  */
 function graphqlFor(token: string) {
-  const octokit = createOctokit(token);
+  const octokit = createOctokit(token, "Pull request actions");
   return async (query: string, variables: Record<string, unknown>) =>
     (octokit as any).graphql(query, variables);
 }
@@ -253,7 +253,7 @@ router.post("/run", async (req: Request, res: Response) => {
       error: "No app token available, so a reminder would have no account to post from",
     });
   }
-  const octokit = createOctokit(appToken);
+  const octokit = createOctokit(appToken, "Pull request actions");
   const split = (repo: string) => { const [owner, name] = repo.split("/"); return { owner, repo: name }; };
 
   const startedAt = Date.now();
@@ -342,7 +342,7 @@ router.put("/mute", async (req: Request, res: Response) => {
       const { listOrgMembers, depsFromOctokit, isOrgMember } =
         await import("../services/orgMembersService");
       const members = await listOrgMembers(
-        depsFromOctokit(createOctokit(req.user!.accessToken)), org());
+        depsFromOctokit(createOctokit(req.user!.accessToken, "Pull request actions")), org());
       if (!isOrgMember(target, members)) {
         return res.status(400).json({
           error: `"${target}" is not a member of this organization, so muting them would `

@@ -1,15 +1,22 @@
 /**
- * Tests for rate-limit detection.
+ * Not asking GitHub the same question several times a minute.
  *
- * GitHub reports two different problems through the same 403, and they need
- * different answers: one is "wait until the hour turns over", the other is
- * "wait twenty seconds". Getting it wrong tells someone to wait an hour for
- * something that clears immediately, or the reverse.
+ * The two org-wide reads here are the ones that trip a **secondary** rate
+ * limit, which is not the hourly budget but "too much, too fast": the
+ * Dependabot alert sweep pages a hundred at a time, and the Renovate search
+ * draws on the search API, whose limit is thirty requests a *minute*, the
+ * smallest budget the app has.
  *
- * A plain 403 must NOT be read as a rate limit, that is a permission refusal
- * and has its own message.
+ * Both were memoised inside the alarm pass and nowhere else, so the pass was
+ * careful and every page load was not. A person clicking around the
+ * Vulnerabilities tab, with widgets computing live beside them, issues exactly
+ * the burst that limit exists to stop.
+ *
+ * Run:  npx tsx repro-ratelimit.ts   from github-control-hub/backend
  */
-import { parseRateLimit } from "./src/utils/rateLimit";
+import fs from "node:fs";
+import { fetchOrgDependencyAlerts, invalidateDependencySweep } from "./src/services/dependencyService";
+import { fetchRenovatePrs, invalidateRenovateSearch } from "./src/services/renovateService";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -17,66 +24,102 @@ function check(name: string, ok: boolean, got?: unknown) {
   if (!ok) failures++;
 }
 
-const RESET = Math.floor(Date.now() / 1000) + 1800;
+(async () => {
+  // ── the Dependabot sweep ────────────────────────────────────────────
+  {
+    let pages = 0;
+    const octokit: any = { rest: { dependabot: {
+      listAlertsForOrg: async () => { pages++; return { data: [], headers: {} }; },
+    } } };
 
-/** The shape Octokit throws. */
-const ghError = (status: number, message: string, headers: Record<string, string> = {}) =>
-  Object.assign(new Error(message), { status, response: { headers } });
+    invalidateDependencySweep();
+    pages = 0;
+    await Promise.all(Array.from({ length: 6 }, () => fetchOrgDependencyAlerts(octokit, "acme")));
+    check("six callers at once cost one sweep", pages === 1, pages);
 
-// ── primary: the hourly budget is spent ──────────────────────────────
-{
-  const err = ghError(403, "API rate limit exceeded for installation ID 12345.", {
-    "x-ratelimit-limit": "12500", "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(RESET),
-  });
-  const info = parseRateLimit(err);
-  check("primary limit is recognized", info?.kind === "primary", info);
-  check("  reset time is carried through",
-    info?.resetAt === new Date(RESET * 1000).toISOString(), info?.resetAt);
-  check("  so is the limit, for the message", info?.limit === 12500, info?.limit);
-}
+    pages = 0;
+    await fetchOrgDependencyAlerts(octokit, "acme");
+    await fetchOrgDependencyAlerts(octokit, "acme");
+    check("  and repeats within the window cost none", pages === 0, pages);
 
-// ── secondary: too fast, clears quickly ──────────────────────────────
-{
-  const err = ghError(403, "You have exceeded a secondary rate limit. Please wait a few minutes.", {
-    "retry-after": "23", "x-ratelimit-remaining": "4210",
-  });
-  const info = parseRateLimit(err);
-  check("secondary limit is recognized", info?.kind === "secondary", info);
-  check("  retry-after is carried through", info?.retryAfter === 23, info?.retryAfter);
-}
+    invalidateDependencySweep();
+    pages = 0;
+    await fetchOrgDependencyAlerts(octokit, "acme");
+    check("  while an invalidated cache goes back to GitHub", pages === 1, pages);
 
-{
-  // Secondary limits do not always name themselves; retry-after with budget
-  // still remaining is the tell.
-  const info = parseRateLimit(ghError(403, "Forbidden", { "retry-after": "60", "x-ratelimit-remaining": "3000" }));
-  check("a retry-after with budget left is secondary, not primary", info?.kind === "secondary", info);
-}
+    // A different organization is a different question.
+    pages = 0;
+    await fetchOrgDependencyAlerts(octokit, "other-org");
+    check("  and another organization is not served the first one's answer",
+      pages === 1, pages);
+  }
 
-// ── the important negative ───────────────────────────────────────────
-{
-  const denied = ghError(403, "Resource not accessible by integration", { "x-ratelimit-remaining": "4998" });
-  check("a permission 403 is NOT read as a rate limit", parseRateLimit(denied) === null, parseRateLimit(denied));
+  // ── a failed sweep is not held ──────────────────────────────────────
+  //
+  // "We could not read this" cached for a minute turns one failed request into
+  // a minute of them, and hides a token whose scope was just fixed.
+  {
+    let calls = 0;
+    const failing: any = { rest: { dependabot: {
+      listAlertsForOrg: async () => {
+        calls++;
+        const e: any = new Error("Forbidden"); e.status = 403; throw e;
+      },
+    } } };
 
-  check("a 404 is not", parseRateLimit(ghError(404, "Not Found")) === null);
-  check("a 500 is not", parseRateLimit(ghError(500, "Server Error")) === null);
-  check("an ordinary Error is not", parseRateLimit(new Error("socket hang up")) === null);
-  check("undefined is not", parseRateLimit(undefined) === null);
-}
+    invalidateDependencySweep();
+    const a = await fetchOrgDependencyAlerts(failing, "acme");
+    const b = await fetchOrgDependencyAlerts(failing, "acme");
+    check("a degraded sweep says so", a.degraded === true, a);
+    check("  and is asked again rather than held", calls === 2, calls);
+  }
 
-// ── 429, which GitHub also uses ──────────────────────────────────────
-{
-  const info = parseRateLimit(ghError(429, "Too Many Requests", {
-    "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(RESET),
-  }));
-  check("a 429 is handled as well as a 403", info?.kind === "primary", info);
-}
+  // ── the Renovate search ─────────────────────────────────────────────
+  {
+    let searches = 0;
+    const search = async () => { searches++; return { items: [] }; };
 
-// ── missing headers must not throw ───────────────────────────────────
-{
-  const info = parseRateLimit(ghError(403, "API rate limit exceeded"));
-  check("a rate limit with no headers is still recognized", info?.kind === "primary", info);
-  check("  and simply has no reset time", info?.resetAt === undefined, info?.resetAt);
-}
+    invalidateRenovateSearch();
+    searches = 0;
+    await Promise.all(Array.from({ length: 5 },
+      () => fetchRenovatePrs(search as any, "acme", "renovate[bot]")));
+    const concurrent = searches;
+    check("five callers at once cost one search pass", concurrent <= 2, concurrent);
 
-console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
-process.exit(failures === 0 ? 0 : 1);
+    searches = 0;
+    await fetchRenovatePrs(search as any, "acme", "renovate[bot]");
+    await fetchRenovatePrs(search as any, "acme", "renovate[bot]");
+    check("  and repeats within the window cost none", searches === 0, searches);
+
+    // Without this, five callers is five times whatever one call costs, and one
+    // call is already several requests: it pages, and tries each candidate
+    // spelling because search answers an unknown author with 422.
+    check("  which is what a page load beside an alarm pass looks like",
+      concurrent < 5, { concurrent });
+  }
+
+  // ── the widget that made this urgent ────────────────────────────────
+  //
+  // `repos-dependent-on` was changed to read live alerts so it and the
+  // Vulnerabilities tab could not disagree. That is right, and it put a fourth
+  // caller on an uncached org-wide sweep.
+  {
+    const gs = fs.readFileSync("./src/services/graphService.ts", "utf8");
+    check("the package query goes through the shared sweep",
+      /fetchOrgDependencyAlerts/.test(gs),
+      "a private copy of the sweep is a private copy of the rate limit");
+
+    const dep = fs.readFileSync("./src/services/dependencyService.ts", "utf8");
+    check("  and the sweep is cached for every caller, not per caller",
+      /let sweepCache/.test(dep) && /let sweepInFlight/.test(dep),
+      "memoising inside one pass leaves every other caller unprotected");
+
+    const ren = fs.readFileSync("./src/services/renovateService.ts", "utf8");
+    check("  as is the search",
+      /let renovateCache/.test(ren) && /let renovateInFlight/.test(ren),
+      "search is thirty requests a minute, the smallest budget here");
+  }
+
+  console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
+  process.exit(failures === 0 ? 0 : 1);
+})();

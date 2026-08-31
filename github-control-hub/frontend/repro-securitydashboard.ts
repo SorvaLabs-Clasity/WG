@@ -307,14 +307,19 @@ const allResolved: AlertLike[] = [
       /<ImportantEvents \/>/.test(activity) && /import ImportantEvents/.test(activity));
 
     // Named views, not slices and a toggle. Statistics, Events, Important
-    // events and Costs answer different questions and each was getting in the
-    // others' way on one screen.
+    // events, Costs and GitHub requests answer different questions and each was
+    // getting in the others' way on one screen.
     check("  one of several named views",
       /\["stats", "ph-chart-line-up", "Statistics"\]/.test(activity)
         && /\["important", "ph-shield-warning", "Important events"\]/.test(activity)
-        && /\["costs", "ph-currency-dollar", "Costs"\]/.test(activity));
+        && /\["costs", "ph-currency-dollar", "Costs"\]/.test(activity)
+        && /\["github", "[a-z-]+", "GitHub requests"\]/.test(activity));
+    // Anchored on the state being separate from the stream, not on how the
+    // union is spelled: naming the type moved the words without changing which
+    // control picks the view.
     check("  chosen by a segmented control, not by the stream tabs",
-      /const \[lens, setLens\] = useState<"stats" \| "feed" \| "important" \| "costs">/.test(activity),
+      /\blens\b/.test(activity) && /setLensPersistent\(v\)/.test(activity)
+        && /const \[category, setCategory\]/.test(activity),
       "the streams are slices of one list; these are different jobs");
     check("  and the choice survives a reload",
       /localStorage\.setItem\("activity:lens"/.test(activity));

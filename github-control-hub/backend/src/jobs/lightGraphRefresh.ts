@@ -1,8 +1,9 @@
 import { Octokit } from "octokit";
-import { getOrg, getSystemTokenAsync } from "../github/client";
+import { getOrg, getSystemTokenAsync, createOctokit } from "../github/client";
 import { docClient, tableName, QueryCommand, batchWrite } from "../utils/dynamo";
 import { bumpGraphVersion } from "../services/graphVersion";
 import { buildRepoMeta } from "./repoMeta";
+import { withFeature } from "../services/githubUsageService";
 
 /**
  * The cheap half of the access graph, refreshed far more often than the rest.
@@ -63,10 +64,14 @@ export interface LightRefreshResult {
   errors: string[];
 }
 
-export async function refreshLightEdges(fallbackToken?: string): Promise<LightRefreshResult> {
+export function refreshLightEdges(fallbackToken?: string): Promise<LightRefreshResult> {
+  return withFeature("Light access graph refresh", () => runLightRefresh(fallbackToken));
+}
+
+async function runLightRefresh(fallbackToken?: string): Promise<LightRefreshResult> {
   const org = getOrg();
   const token = fallbackToken ?? await getSystemTokenAsync();
-  const octokit = new Octokit({ auth: token });
+  const octokit = createOctokit(token);
 
   const result: LightRefreshResult = {
     repos: 0, teams: 0, edgesWritten: 0, edgesRemoved: 0, requests: 0, errors: [],

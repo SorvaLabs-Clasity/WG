@@ -19,6 +19,7 @@ import {
 } from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
+import { flushUsage } from "../services/githubUsageService";
 
 /**
  * The scheduled half of alarms.
@@ -533,4 +534,8 @@ export async function handler(): Promise<void> {
     }
   }
 
+  // Last, and outside every try above, so a pass that failed half way still
+  // records what it spent. The requests were made either way, and an hour that
+  // went wrong is the hour somebody most wants the numbers for.
+  await flushUsage();
 }

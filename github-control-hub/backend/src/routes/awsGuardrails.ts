@@ -371,6 +371,10 @@ router.post("/remediate", requireAdmin, async (req: Request, res: Response) => {
       resourceIds: [resourceId],
       accountIds: accountId ? [accountId] : undefined,
       forceRemediate: true,
+      // Carried so the engine's own row can name who asked. Its actor stays the
+      // system, which is what did the work, but the person is no longer lost
+      // once the row saying they pressed the button stops being counted.
+      triggeredBy: req.user!.login,
     });
 
     const fixed = (result.remediated ?? 0) > 0;
@@ -379,7 +383,13 @@ router.post("/remediate", requireAdmin, async (req: Request, res: Response) => {
         ? `Fixed ${resourceId} for "${rule.name}"`
         : `Asked to fix ${resourceId} for "${rule.name}". Nothing was changed`,
       undefined, "app", undefined, undefined,
-      { failed: !fixed && (result.errors?.length ?? 0) > 0 });
+      {
+        failed: !fixed && (result.errors?.length ?? 0) > 0,
+        // Only when the engine actually changed something, because only then
+        // did it write a row of its own. A fix that found nothing to do leaves
+        // this row as the sole record of the attempt, and it must still count.
+        ...(fixed ? { echoOf: "aws.guardrail" } : {}),
+      });
 
     res.json({
       remediated: result.remediated ?? 0,

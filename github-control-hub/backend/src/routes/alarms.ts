@@ -3,7 +3,7 @@ import { Router, Request, Response, RequestHandler } from "express";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
 import { getWidget } from "../services/widgetService";
 import {
-  listAlarms, getAlarm, createAlarm, updateAlarm, deleteAlarm,
+  listAlarms, listOrgAlarms, listOrgGroups, getAlarm, createAlarm, updateAlarm, deleteAlarm,
   listGroups, getGroup, saveGroup, createGroupRecord, deleteGroupRecord, alarmsUsingGroup,
   getSecuritySettings, saveSecuritySettings,
   getFeedSettings, saveFeedSettings, type NotifyFeed,
@@ -141,7 +141,10 @@ router.get("/widgets/:widgetId/conditions", async (req: Request, res: Response) 
 
 router.get("/", async (_req: Request, res: Response) => {
   try {
-    const alarms = await listAlarms();
+    // The organization's, never anybody's own. A personal alarm watches a card
+    // only its owner can see, so listing it here would put a stranger's private
+    // alert in an administrator's table with a widget name they cannot open.
+    const alarms = await listOrgAlarms();
 
     /**
      * How often each is evaluated, answered by the code that decides it.
@@ -196,7 +199,14 @@ router.post("/", async (req: Request, res: Response) => {
       });
     }
 
-    if (!(await getGroup(groupId))) {
+    const target = await getGroup(groupId);
+    if (!target) {
+      return res.status(400).json({ error: "That email group no longer exists" });
+    }
+    // The other half of keeping personal destinations private: without this an
+    // organization alarm could be pointed at one person's own inbox, which is
+    // both a surprise for them and a way to read what they subscribed.
+    if (target.owner) {
       return res.status(400).json({ error: "That email group no longer exists" });
     }
 
@@ -233,7 +243,11 @@ function withoutHooks(g: any) {
 
 router.get("/groups", async (_req: Request, res: Response) => {
   try {
-    const groups = await listGroups();
+    // Organization groups only. A personal group is where one person's own
+    // alarms land; offering it here would let an administrator point an
+    // organization alarm at somebody's private inbox, and would list that
+    // person's addresses to everybody who can manage alarms.
+    const groups = await listOrgGroups();
     // Members come from SNS rather than from our table, so the confirmation
     // state is the real one. An address that never confirmed receives nothing
     // and would otherwise look like a working recipient.
@@ -270,6 +284,9 @@ router.delete("/groups/:id", async (req: Request, res: Response) => {
   try {
     const group = await getGroup(String(req.params.id));
     if (!group) return res.status(404).json({ error: "Group not found" });
+    // Somebody's own destination is not an organization group, and on this
+    // route it is not a thing that exists.
+    if (group.owner) return res.status(404).json({ error: "Group not found" });
 
     // Deleting the topic under a live alarm would leave it firing into
     // nothing, which looks exactly like an alarm that never triggers.
@@ -684,6 +701,10 @@ router.put("/:id", async (req: Request, res: Response) => {
   try {
     const existing = await getAlarm(String(req.params.id));
     if (!existing) return res.status(404).json({ error: "Alarm not found" });
+    // Somebody's own alarm is theirs to change, on their own route. Being an
+    // administrator is permission over the organization's settings, not over
+    // what lands in one person's inbox.
+    if (existing.owner) return res.status(404).json({ error: "Alarm not found" });
 
     const { condition, groupId, subjectTemplate, bodyTemplate,
       teamsSubjectTemplate, teamsBodyTemplate } = req.body ?? {};
@@ -704,8 +725,13 @@ router.put("/:id", async (req: Request, res: Response) => {
       }
     }
 
-    if (groupId !== undefined && !(await getGroup(groupId))) {
-      return res.status(400).json({ error: "That email group no longer exists" });
+    if (groupId !== undefined) {
+      const target = await getGroup(groupId);
+      // A personal destination is not a group this route can point at, for the
+      // same reason it is not one this route can list.
+      if (!target || target.owner) {
+        return res.status(400).json({ error: "That email group no longer exists" });
+      }
     }
 
     const problem = templateProblem(subjectTemplate, bodyTemplate,
@@ -719,6 +745,10 @@ router.put("/:id", async (req: Request, res: Response) => {
 });
 
 router.delete("/:id", async (req: Request, res: Response) => {
+  const existing = await getAlarm(String(req.params.id));
+  // Absent and somebody-else's answer identically here: on this route a
+  // personal alarm is not a thing that exists.
+  if (!existing || existing.owner) return res.status(404).json({ error: "Alarm not found" });
   const ok = await deleteAlarm(String(req.params.id), req.user!.login);
   if (!ok) return res.status(404).json({ error: "Alarm not found" });
   res.json({ message: "Alarm deleted" });

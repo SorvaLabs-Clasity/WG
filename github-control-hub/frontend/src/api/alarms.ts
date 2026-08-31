@@ -201,3 +201,44 @@ export function describeCondition(condition: AlarmCondition, specs: MetricSpec[]
   const comparator = condition.op === "gte" ? "is at or above" : "is at or below";
   return `${label} ${comparator} ${condition.threshold}${spec?.unit ? ` ${spec.unit}` : ""}`;
 }
+
+// ── one person's own alarms ──
+
+/**
+ * Where somebody's own alarms are delivered.
+ *
+ * Never a group they choose. The server resolves it from the session, so this
+ * carries no group id in either direction and there is no request shape that
+ * could point a personal alarm at an organization topic.
+ */
+export interface PersonalDestination {
+  groupId: string;
+  emails: GroupMember[];
+  teams: string[];
+  timeZone: string | null;
+  recipientZones: Record<string, string>;
+}
+
+export const fetchMyAlarms = () => apiGet<WidgetAlarm[]>("/me/alarms");
+export const createMyAlarm = (data: Partial<WidgetAlarm> & { widgetId: string }) =>
+  apiPost<WidgetAlarm>("/me/alarms", data);
+export const updateMyAlarm = (id: string, data: Partial<WidgetAlarm>) =>
+  apiPut<WidgetAlarm>(`/me/alarms/${id}`, data);
+export const deleteMyAlarm = (id: string) =>
+  apiDelete<{ message: string }>(`/me/alarms/${id}`);
+
+export const fetchMyDestination = () =>
+  apiGet<PersonalDestination>("/me/alarms/destination");
+export const addMyEmail = (email: string) =>
+  apiPost<{ message: string }>("/me/alarms/destination/email", { email });
+export const removeMyEmail = (subscriptionArn: string, email: string) =>
+  apiDelete<{ message: string }>(
+    `/me/alarms/destination/email?subscriptionArn=${encodeURIComponent(subscriptionArn)}`
+    + `&email=${encodeURIComponent(email)}`);
+export const addMyTeams = (address: string) =>
+  apiPost<{ message: string }>("/me/alarms/destination/teams", { address });
+export const removeMyTeams = (address: string) =>
+  apiDelete<{ message: string }>(
+    `/me/alarms/destination/teams/${encodeURIComponent(address)}`);
+export const setMyTimeZone = (timeZone: string | null) =>
+  apiPut<{ message: string }>("/me/alarms/destination/timezone", { timeZone });

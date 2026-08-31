@@ -44,7 +44,7 @@ export const CATEGORY_LABELS: Record<ActivityView, string> = {
   all: "Everything",
   github: "GitHub Organization",
   aws: "AWS",
-  app: "App settings",
+  app: "App",
 };
 
 /** Which sources a row in each stream can actually carry. */

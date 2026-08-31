@@ -20,6 +20,14 @@ interface DirectInvoke {
   resourceIds?: string[];
   /** One-off fix of named resources, even where the rule only reports. */
   forceRemediate?: boolean;
+  /**
+   * Who asked, when a person did.
+   *
+   * Recorded on the row rather than replacing the actor: the engine did the
+   * work whoever set it off, and a row claiming a person changed a bucket
+   * policy directly would be a worse record than one naming both.
+   */
+  triggeredBy?: string;
   accountIds?: string[];
   dryRun?: boolean;
 }
@@ -78,10 +86,12 @@ export async function handler(event: Incoming): Promise<RunResult & { trigger: s
     }
   }
 
+  const triggeredBy = isDirect(event) ? event.triggeredBy : undefined;
+
   const result = await run(rules, exclusions, options, async (entry) => {
     // Activity rows are written by the app's own table, shared with the GitHub
     // side so one feed covers both.
-    await writeActivity(entry);
+    await writeActivity({ ...entry, triggeredBy });
   });
 
   // A dry run must not overwrite stored findings with hypothetical ones.
@@ -152,6 +162,7 @@ async function writeActivity(entry: {
   ruleId: string; ruleName: string; resourceId: string; description: string;
   accountId: string; accountName: string; region: string;
   failed: boolean; error?: string; undo?: { action: string; params: Record<string, any> };
+  triggeredBy?: string;
 }): Promise<void> {
   try {
     const { DynamoDBClient } = await import("@aws-sdk/client-dynamodb");
@@ -178,6 +189,7 @@ async function writeActivity(entry: {
         target: entry.ruleName,
         details: `${entry.description} in ${entry.accountName} (${entry.accountId}), ${entry.region}`,
         timestamp,
+        ...(entry.triggeredBy && { triggeredBy: entry.triggeredBy }),
         ...(entry.failed && { failed: true }),
         ...(entry.error && { errorMessage: entry.error }),
         ...(entry.undo && { undoPayload: entry.undo }),

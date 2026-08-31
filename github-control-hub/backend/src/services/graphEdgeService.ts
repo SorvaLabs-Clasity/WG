@@ -1,4 +1,5 @@
 import { Octokit } from "octokit";
+import { createOctokit } from "../github/client";
 import { docClient, hasTable, tableName, PutCommand, DeleteCommand, QueryCommand, batchWrite } from "../utils/dynamo";
 
 import { bumpGraphVersion } from "./graphVersion";
@@ -137,7 +138,7 @@ export async function removeVulnerableDependencyEdge(repo: string, dependency: s
  * Covers: branches, collaborators, workflows, dependabot alerts.
  */
 export async function addRepoEdges(token: string, org: string, repoName: string) {
-  const octokit = new Octokit({ auth: token });
+  const octokit = createOctokit(token);
   const repoId = `REPO#${repoName}`;
   const edges: Array<{ pk: string; sk: string; type: string; metadata?: Record<string, any> }> = [];
 

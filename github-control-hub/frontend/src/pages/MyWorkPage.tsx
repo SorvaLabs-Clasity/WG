@@ -12,6 +12,7 @@ import type { MyPull, Waiting, PushRule, PushCheck as PushCheckData, ShipEntry }
 import { useOrgConfig } from "../hooks/useOrgConfig";
 import DevAlertSettings from "../components/DevAlertSettings";
 import PersonalBoard from "../components/PersonalBoard";
+import MyAlarmsPanel from "../components/MyAlarmsPanel";
 
 /**
  * The app, pointed at whoever is reading it.
@@ -27,7 +28,7 @@ import PersonalBoard from "../components/PersonalBoard";
  * fourteen rows.
  */
 
-type Lens = "queue" | "push" | "shipped" | "board" | "alerts";
+type Lens = "queue" | "push" | "shipped" | "board" | "myalarms" | "alerts";
 
 /** How each waiting-state reads, and how loud it should be. */
 const WAITING: Record<Waiting, { label: string; tone: string; rail: string }> = {
@@ -734,6 +735,7 @@ export default function MyWorkPage() {
             ["push", "Why can't I push?"],
             ["shipped", "What did I ship?"],
             ["board", "My widgets"],
+            ["myalarms", "My alarms"],
             ["alerts", "Notifications"],
           ]}
         />
@@ -743,6 +745,7 @@ export default function MyWorkPage() {
       {lens === "push" && <PushCheck />}
       {lens === "shipped" && <Shipped />}
       {lens === "board" && <PersonalBoard />}
+      {lens === "myalarms" && <MyAlarmsPanel />}
       {lens === "alerts" && <DevAlertSettings />}
     </Page>
   );

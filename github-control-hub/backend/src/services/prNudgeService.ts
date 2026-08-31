@@ -1,3 +1,4 @@
+import { withFeature } from "./githubUsageService";
 /**
  * Open pull requests, and nudging the people holding them up.
  *
@@ -566,7 +567,14 @@ async function graphqlAllowingPartial(
   }
 }
 
-export async function fetchOpenPrs(
+export function fetchOpenPrs(
+  graphql: GraphQlFn,
+  org: string,
+): Promise<{ prs: PullRequest[]; truncated: boolean }> {
+  return withFeature("Open pull request walk", () => walkOpenPrs(graphql, org));
+}
+
+async function walkOpenPrs(
   graphql: GraphQlFn,
   org: string,
 ): Promise<{ prs: PullRequest[]; truncated: boolean }> {

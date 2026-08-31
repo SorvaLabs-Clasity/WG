@@ -26,12 +26,35 @@ export async function startBackend(
   const expressApp = require(entryPoint).default;
 
   if (fs.existsSync(frontendDir)) {
-    expressApp.use(express.static(frontendDir));
+    /**
+     * The entry document is never cached; everything it points at always is.
+     *
+     * Vite fingerprints every asset, so `index-CoGchpD5.js` is safe to keep
+     * forever — a new build produces a new name. `index.html` is the pointer to
+     * those names, and it is the one file that must not be held.
+     *
+     * Held, it is how an updated app boots the *previous* frontend against the
+     * new backend: Chromium had a fresh-enough copy of the document, asked for
+     * the old hashed bundle it named, and got that from cache too. Everything
+     * loads, nothing errors, and the first screen whose API response changed
+     * shape dies reading a field the old code still expects.
+     */
+    expressApp.use(express.static(frontendDir, {
+      etag: true,
+      setHeaders(res: any, filePath: string) {
+        if (filePath.endsWith("index.html")) {
+          res.setHeader("Cache-Control", "no-store, must-revalidate");
+        } else if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        }
+      },
+    }));
 
     expressApp.get("*", (req: any, res: any, next: any) => {
       if (req.path.startsWith("/api") || req.path.startsWith("/auth") || req.path.startsWith("/health")) {
         return next();
       }
+      res.setHeader("Cache-Control", "no-store, must-revalidate");
       res.sendFile(path.join(frontendDir, "index.html"));
     });
   } else if (isDev) {

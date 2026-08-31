@@ -13,7 +13,7 @@ const router = Router();
 
 router.get("/:repo/rulesets", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const rulesets = await listRulesets(octokit, req.params.repo);
     res.json(rulesets);
   } catch (err) {
@@ -24,7 +24,7 @@ router.get("/:repo/rulesets", validateParams("repo"), async (req: Request<{ repo
 
 router.get("/:repo/protections", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const protections = await getAllProtections(octokit, req.params.repo);
     res.json(protections);
   } catch (err) {
@@ -35,7 +35,7 @@ router.get("/:repo/protections", validateParams("repo"), async (req: Request<{ r
 
 router.get("/:repo/protection/:branch", validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const protection = await getProtection(octokit, req.params.repo, req.params.branch);
     if (!protection) {
       res.status(404).json({ error: "No protection rules found" });
@@ -50,7 +50,7 @@ router.get("/:repo/protection/:branch", validateParams("repo", "branch"), async 
 
 router.put("/:repo/protection/:branch", validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const protection = req.body;
     const result = await protectBranch(octokit, req.params.repo, req.params.branch, protection);
     const isRuleset = protection.type === "ruleset" || protection.type === "ruleset_json";
@@ -76,7 +76,7 @@ router.put("/:repo/protection/:branch", validateParams("repo", "branch"), async 
 
 router.delete("/:repo/protection/:branch", validateParams("repo", "branch"), async (req: Request<RepoAndBranch>, res: Response) => {
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     let protectionConfig: any;
     try {
       protectionConfig = await getProtection(octokit, req.params.repo, req.params.branch);
@@ -95,7 +95,7 @@ router.delete("/:repo/protection/:branch", validateParams("repo", "branch"), asy
 router.post("/:repo/rulesets/import", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   const raw = req.body;
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const { getOrg } = require("../github/client");
     const org = getOrg();
 
@@ -142,7 +142,7 @@ router.delete("/:repo/rulesets/:rulesetId", validateParams("repo"), async (req: 
       res.status(400).json({ error: "Invalid ruleset id" });
       return;
     }
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const org = getOrg();
     let rulesetConfig: any;
     try {

@@ -1105,7 +1105,7 @@ router.get("/callback", async (req: Request, res: Response) => {
 
   try {
     const accessToken = await exchangeCodeForToken(code);
-    const octokit = createOctokit(accessToken);
+    const octokit = createOctokit(accessToken, "Signing in");
 
     const { data: user } = await octokit.rest.users.getAuthenticated();
 

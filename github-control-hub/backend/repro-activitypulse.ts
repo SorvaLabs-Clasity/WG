@@ -279,6 +279,60 @@ const onePage = (items: any[]) => async () => ({ items, next: undefined });
       /PULSE_TTL_MS = 5 \* 60_000/.test(route));
   }
 
+  // ── one change is one event ─────────────────────────────────────────
+  {
+    console.log("\na guardrail fix somebody pressed is one event, not two");
+
+    // What actually lands in the table when a person presses Fix: the route
+    // records who asked, the engine records what changed.
+    const asked = row({
+      hoursAgo: 1, action: "aws.guardrail.run", actor: "alice",
+      repo: "acme-bucket", echoOf: "aws.guardrail",
+    });
+    const changed = row({
+      hoursAgo: 1, action: "aws.guardrail", actor: "system (aws guardrail, prod)",
+      repo: "acme-bucket", triggeredBy: "alice",
+    });
+
+    const p = await activityPulse(168, 28, "UTC", { query: onePage([asked, changed]) });
+    check("the pair counts once", p.total === 1, p.total);
+    check("  under AWS, not split across two categories",
+      p.byCategory.aws === 1, p.byCategory);
+    check("  and the person who pressed it still gets the credit",
+      p.topActors[0]?.actor === "alice" && p.topActors[0]?.count === 1, p.topActors);
+
+    // The engine's row is the one kept, so a scheduled remediation and a
+    // pressed one count the same way.
+    const scheduled = await activityPulse(168, 28, "UTC", { query: onePage([
+      row({ hoursAgo: 1, action: "aws.guardrail", actor: "system (aws guardrail, prod)", repo: "acme-bucket" }),
+    ]) });
+    check("  an automatic remediation counts the same as a pressed one",
+      scheduled.total === 1, scheduled.total);
+    check("    and credits nobody, because nobody pressed it",
+      scheduled.topActors.length === 0, scheduled.topActors);
+
+    // A fix that changed nothing writes no engine row, so the route's row is
+    // the only record of the attempt and must still count.
+    const nothingDone = await activityPulse(168, 28, "UTC", { query: onePage([
+      row({ hoursAgo: 1, action: "aws.guardrail.run", actor: "alice", repo: "acme-bucket" }),
+    ]) });
+    check("  a fix that changed nothing still counts, having no twin",
+      nothingDone.total === 1, nothingDone.total);
+
+    // Both windows must dedupe, or the trend is a deduplicated week against a
+    // doubled one and reports a 50% fall that never happened.
+    const trend = await activityPulse(24, 24, "UTC", { query: onePage([
+      row({ hoursAgo: 1, action: "aws.guardrail.run", echoOf: "aws.guardrail" }),
+      row({ hoursAgo: 1, action: "aws.guardrail", actor: "system (aws guardrail, prod)" }),
+      row({ hoursAgo: 30, action: "aws.guardrail.run", echoOf: "aws.guardrail" }),
+      row({ hoursAgo: 30, action: "aws.guardrail", actor: "system (aws guardrail, prod)" }),
+      row({ hoursAgo: 200 }),
+    ]) });
+    check("  the window before this one is deduplicated too",
+      trend.total === 1 && trend.previousTotal === 1,
+      { total: trend.total, previous: trend.previousTotal });
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

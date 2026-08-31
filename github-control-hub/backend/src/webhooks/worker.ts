@@ -9,6 +9,7 @@ import { initTokenManager, getSystemTokenAsync } from "../github/client";
 import { loadSecretsIntoEnv } from "./secret";
 import { claimDelivery, completeDelivery, releaseDelivery } from "./deliveryLock";
 import { processDelivery } from "./processDelivery";
+import { flushUsage } from "../services/githubUsageService";
 
 /**
  * The privileged half. Reachable only from the queue.
@@ -123,4 +124,8 @@ export async function handler(event: SQSEvent): Promise<void> {
       );
     }
   }
+
+  // A delivery matching a scanner starts a run, which is the one thing this
+  // worker does that spends GitHub requests.
+  await flushUsage();
 }

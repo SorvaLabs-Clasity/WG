@@ -18,7 +18,7 @@ const router = Router();
  * token decides it and no permission logic is duplicated here.
  */
 function readerFor(token: string, org: string): GithubReader {
-  const octokit = createOctokit(token);
+  const octokit = createOctokit(token, "Expertise lookup");
   const split = (repo: string) => {
     const [a, b] = repo.includes("/") ? repo.split("/") : [org, repo];
     return { owner: a, repo: b };

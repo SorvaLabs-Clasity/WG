@@ -1,4 +1,5 @@
 import { apiGet, apiPost, apiPut, apiDelete, DEMO_MODE } from "./client";
+import type { WidgetFilter } from "../lib/widgetFilters";
 import {
   mockFetchWidgets,
   mockCreateWidget,
@@ -15,6 +16,8 @@ export interface WidgetConfig {
   queryParam?: string;
   queryAdvanced?: any;
   displayType: "metric" | "table";
+  /** Per-column filters, on a personal widget. See lib/widgetFilters.ts. */
+  filters?: WidgetFilter[];
   createdBy?: string;
   createdAt?: string;
   updatedAt?: string;

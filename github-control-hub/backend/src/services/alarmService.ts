@@ -49,6 +49,16 @@ export interface WidgetAlarm {
   teamsBodyTemplate?: string;
   notifyOnRecovery: boolean;
   enabled: boolean;
+  /**
+   * Whose alarm this is, if anybody's.
+   *
+   * Absent means the organization's, so every alarm written before this needs
+   * no migration. Set means it watches that person's own widget, notifies their
+   * own group, and only they can see or change it — including administrators,
+   * who have no more business reading somebody's private alerts than
+   * rearranging their dashboard.
+   */
+  owner?: string;
 
   // ── runtime, written by the evaluator ──
   state: AlarmState;
@@ -111,9 +121,58 @@ export interface EmailGroup {
    * removed. Without the second half this list would be a lie by three days.
    */
   revokedPending?: string[];
+  /**
+   * Whose group this is, if anybody's.
+   *
+   * One per person, made on demand, and never offered in the group list an
+   * administrator manages: it is where that person's own alarms go, not an
+   * organization destination somebody else can point an alarm at.
+   */
+  owner?: string;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+}
+
+/**
+ * Where one person's own alarms are delivered.
+ *
+ * One group each, created the first time they need it, so every piece of
+ * delivery machinery the organization's alarms already use — the SNS topic, the
+ * Teams recipients, the per-person timezones, the templates — works unchanged
+ * for a personal alarm. The alternative was a second delivery path beside the
+ * tested one, which is how two ways of sending an email end up disagreeing
+ * about what a message looks like.
+ *
+ * The person never picks it. A personal alarm's group is resolved from who is
+ * asking, never from the request body, so this cannot become a way to point an
+ * alarm at somebody else's inbox or at an organization topic.
+ */
+export async function getOrCreatePersonalGroup(login: string): Promise<EmailGroup> {
+  const mine = (await listGroups()).find(
+    g => g.owner && g.owner.toLowerCase() === login.toLowerCase());
+  if (mine) return mine;
+
+  const { createTopic } = await import("./notifyService");
+  const name = `${login}'s alarms`;
+  const topicArn = await createTopic(`personal-${login}`);
+  return createGroupRecord(name, topicArn, login, login);
+}
+
+/** The groups an administrator manages: the organization's, never anybody's own. */
+export async function listOrgGroups(): Promise<EmailGroup[]> {
+  return (await listGroups()).filter(g => !g.owner);
+}
+
+/** One person's own alarms. */
+export async function listPersonalAlarms(login: string): Promise<WidgetAlarm[]> {
+  return (await listAlarms()).filter(
+    a => a.owner && a.owner.toLowerCase() === login.toLowerCase());
+}
+
+/** The organization's alarms: everything nobody owns personally. */
+export async function listOrgAlarms(): Promise<WidgetAlarm[]> {
+  return (await listAlarms()).filter(a => !a.owner);
 }
 
 /** One row, because there is one security-alert setting for the organization. */
@@ -244,6 +303,8 @@ export async function createAlarm(
     subjectTemplate?: string; bodyTemplate?: string;
     teamsSubjectTemplate?: string; teamsBodyTemplate?: string;
     notifyOnRecovery?: boolean; enabled?: boolean;
+    /** Set only by the personal route, from the session, never from a body. */
+    owner?: string;
   },
   actor: string,
 ): Promise<WidgetAlarm> {
@@ -255,6 +316,7 @@ export async function createAlarm(
     name: data.name,
     condition: data.condition,
     groupId: data.groupId,
+    ...(data.owner ? { owner: data.owner } : {}),
     subjectTemplate: data.subjectTemplate || DEFAULT_ALARM_SUBJECT,
     bodyTemplate: data.bodyTemplate || DEFAULT_ALARM_BODY,
     // No default. Empty is meaningful here: it means the email wording, and
@@ -276,6 +338,7 @@ export async function createAlarm(
   await logActivity(
     "config.updated" as any, actor, "", "alarm",
     `Created alarm "${alarm.name}"`, { alarmId: alarm.id, widgetId: alarm.widgetId }, "app",
+    undefined, undefined, { personal: !!alarm.owner },
   );
   return alarm;
 }
@@ -375,6 +438,7 @@ export async function updateAlarm(
       ? `Alarm "${updated.name}": ${changes.join(", ")}`
       : `Alarm "${updated.name}" saved with no change`,
     { alarmId: id, conditionChanged, changed: changes }, "app",
+    undefined, undefined, { personal: !!updated.owner },
   );
   return updated;
 }
@@ -453,6 +517,7 @@ export async function deleteAlarm(id: string, actor: string): Promise<boolean> {
   await logActivity(
     "config.updated" as any, actor, "", "alarm",
     `Deleted alarm "${existing.name}"`, { alarmId: id }, "app",
+    undefined, undefined, { personal: !!existing.owner },
   );
   return true;
 }
@@ -484,17 +549,22 @@ export async function saveGroup(group: EmailGroup): Promise<void> {
 }
 
 export async function createGroupRecord(
-  name: string, topicArn: string, actor: string,
+  name: string, topicArn: string, actor: string, owner?: string,
 ): Promise<EmailGroup> {
   const now = new Date().toISOString();
   const group: EmailGroup = {
     id: crypto.randomUUID(), kind: "group", name, topicArn,
+    ...(owner ? { owner } : {}),
     createdBy: actor, createdAt: now, updatedAt: now,
   };
   await put(group);
   await logActivity(
     "config.updated" as any, actor, "", "alarm_group",
-    `Created email group "${name}"`, { groupId: group.id, topicArn }, "app",
+    owner
+      ? `Set up where "${actor}" receives their own alarms`
+      : `Created email group "${name}"`,
+    { groupId: group.id, topicArn }, "app",
+    undefined, undefined, { personal: !!owner },
   );
   return group;
 }

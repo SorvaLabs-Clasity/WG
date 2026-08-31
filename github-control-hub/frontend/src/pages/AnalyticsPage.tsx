@@ -23,6 +23,7 @@ import { useOrgConfig } from "../hooks/useOrgConfig";
 import type { WidgetConfig } from "../api/widgets";
 import { TagInput } from "../components/TagInput";
 import { IncompleteQueryError } from "../api/client";
+import { applyWidgetFilters, activeFilterCount } from "../lib/widgetFilters";
 
 /**
  * The checks that read GitHub once per subject and therefore keep dated,
@@ -156,9 +157,9 @@ export function describeSeverities(picked: Severity[]): string {
  * See /.impeccable.md for the visual direction.
  */
 
-type Level = "danger" | "warn" | "info" | "clear";
+export type Level = "danger" | "warn" | "info" | "clear";
 
-interface Verdict {
+export interface Verdict {
   level: Level;
   value: number;
   denominator: number | null;
@@ -168,7 +169,7 @@ interface Verdict {
   eyebrow: string;
 }
 
-function verdictFor(items: any[], total: number | null, config: WidgetConfig): Verdict {
+export function verdictFor(items: any[], total: number | null, config: WidgetConfig): Verdict {
   const hasStatus = items.some((i: any) => i.status);
   if (hasStatus) {
     const pass = items.filter((i: any) => i.status === "pass").length;
@@ -210,7 +211,7 @@ function verdictFor(items: any[], total: number | null, config: WidgetConfig): V
  * once. Colour is the only thing separating a card that matters from one that
  * does not, so it has to be applied consistently or the grid flattens again.
  */
-const TONE: Record<Level, {
+export const TONE: Record<Level, {
   wash: string; ring: string; track: string; bar: string; figure: string; chip: string; edge: string; lift: string;
 }> = {
   danger: {
@@ -697,7 +698,8 @@ export function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgNa
   // Without it the Overview went live and the detail table kept reading the
   // stored snapshot, so a check that had started reporting a new field showed
   // the old shape until the next scheduled pass wrote one.
-  const { items, isLoading, total, entity } = useWidgetData(config, { needAllRows: true, live });
+  const { items, isLoading, total, entity, filtered, unfiltered } =
+    useWidgetData(config, { needAllRows: true, live });
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const tone = TONE[verdict.level];
   const pct = verdict.share === null ? null : Math.round(verdict.share * 100);
@@ -706,6 +708,17 @@ export function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgNa
   return (
     <div style={enter(0)}>
       <Back onClick={onBack}>All checks</Back>
+
+      {filtered && (
+        <div className="mb-4">
+          <Note intent="info">
+            This card is narrowed by its own filters, so it is showing{" "}
+            {items.length.toLocaleString()} of the{" "}
+            {unfiltered.toLocaleString()} rows the check found. The check itself
+            still looks at the whole organization.
+          </Note>
+        </div>
+      )}
 
       <div className={`${SURFACE.sheet} mb-5`}>
         <div className={`${tone.wash} px-6 sm:px-8 py-7 flex items-start gap-6 flex-wrap`}>
@@ -753,7 +766,7 @@ export function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgNa
   );
 }
 
-type Entity = "repository" | "user" | "team";
+export type Entity = "repository" | "user" | "team";
 
 /**
  * What a check counts.
@@ -762,7 +775,7 @@ type Entity = "repository" | "user" | "team";
  * read, and the id is not a description, inferring from a "repos-" prefix is
  * what gave "unowned-repos" no denominator while its neighbour had one.
  */
-function entityForConfig(config: WidgetConfig): Entity {
+export function entityForConfig(config: WidgetConfig): Entity {
   if (config.type === "preset") return "repository";
   const option = QUERY_OPTIONS.find(q => q.id === config.queryId) as { entity?: Entity } | undefined;
   return option?.entity ?? "repository";
@@ -774,7 +787,7 @@ const PLURAL: Record<Entity, [string, string]> = {
   team: ["team", "teams"],
 };
 
-const nounFor = (kind: Entity, n: number) => PLURAL[kind][n === 1 ? 0 : 1];
+export const nounFor = (kind: Entity, n: number) => PLURAL[kind][n === 1 ? 0 : 1];
 
 const EMBLEM: Record<Entity, string> = {
   repository: "ph-fill ph-books",
@@ -1216,7 +1229,7 @@ export function CheckCard({
  * Live is still the answer with no snapshot yet, when the stored one records an
  * error, and whenever somebody presses refresh.
  */
-function useWidgetData(
+export function useWidgetData(
   config: WidgetConfig,
   opts?: {
     /** Ignore the stored answer and compute now. */
@@ -1237,8 +1250,12 @@ function useWidgetData(
     : snapshots?.find(s => s.widgetId === config.id);
   // A stored error is not an answer. Fall through and let the live path
   // produce the real one, and the real message with it.
+  // A trimmed snapshot holds some of the rows and the true count of all of
+  // them. Filtering it would compare a filter against rows that are missing
+  // and report the result as exact, so a filtered widget reads live instead.
+  const filtering = activeFilterCount(config.filters) > 0;
   const fromSnapshot = !!snapshot && !snapshot.error
-    && !(opts?.needAllRows && snapshot.trimmed);
+    && !((opts?.needAllRows || filtering) && snapshot.trimmed);
 
   const { data: depsData, isLoading: depsLoading } = useDependencies(!fromSnapshot);
   const isBypass = !fromSnapshot && config.type === "preset" && config.presetId === "bypasses";
@@ -1339,13 +1356,34 @@ function useWidgetData(
   // A widget whose check has been removed returns nothing, which on a card
   // looks exactly like a check that found nothing. Carrying the failure up
   // means it can say so instead of reading as clean.
+  // Applied here rather than in the table, so the number on the card and the
+  // rows behind it are the same answer to the same question. A card reading 112
+  // that opens onto four rows is the bug this placement exists to prevent.
+  const shown = useMemo(
+    () => applyWidgetFilters(items, config.filters),
+    [items, config.filters],
+  );
+
   return {
-    items, isLoading, total, entity,
+    items: shown, isLoading, total, entity,
+    /**
+     * The rows before this widget's own filters.
+     *
+     * The filter editor builds its choices from these: offering only the values
+     * that survive the current filter would make a narrowed board impossible to
+     * widen again, because the option you wanted would have been filtered out
+     * of the list of options.
+     */
+    allItems: items,
     error: (queryError as Error) ?? null,
     /** When this was computed, or null when it was worked out just now. */
     computedAt: fromSnapshot ? snapshot!.computedAt : null,
     /** The true row count. A trimmed snapshot still knows how many there were. */
-    count: fromSnapshot ? snapshot!.total : items.length,
+    count: filtering ? shown.length : fromSnapshot ? snapshot!.total : items.length,
+    /** Rows the check found before this widget's own filters narrowed them. */
+    unfiltered: fromSnapshot ? snapshot!.total : items.length,
+    /** Whether any filter is narrowing what is shown. */
+    filtered: filtering,
     /** A stored snapshot that could not hold every row; the detail reads live. */
     trimmed: fromSnapshot ? snapshot!.trimmed : false,
   };

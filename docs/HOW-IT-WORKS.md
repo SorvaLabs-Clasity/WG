@@ -2929,6 +2929,357 @@ than counted as zero: a total quietly missing DynamoDB reads as a cheap app. The
 report is cached for an hour, since the numbers move slowly and every refresh is
 real API calls.
 
+## Personal alarms
+
+**My work → My alarms.** An alarm on one of your own cards, delivered to your own
+addresses. Nobody else sees it, and nobody else has to agree the threshold is
+the right one.
+
+### Why it is a separate router
+
+`/api/alarms` is gated on the Control Hub admin team, for a stated reason:
+subscribing an address to an SNS topic means this app can send mail. Personal
+alarms cannot sit behind that gate — asking an administrator for permission to
+be told about your own card is the wrong shape — so `/api/me/alarms` is a
+separate router, narrowed until that reason no longer applies:
+
+- **The destination is never in the request.** It is resolved from the session,
+  so there is no request shape that points a personal alarm at an organization
+  topic or at somebody else's inbox. The edit route names the fields it writes
+  rather than passing the body through, which is where that hole would reappear
+  one request later.
+- **The card must be one you own**, checked against what is stored.
+- **The alarm is yours only if its stored `owner` says so.** An administrator is
+  refused here like anybody else — being trusted with the organization's
+  settings is not the same as being able to read what lands in one person's
+  inbox. Absent and somebody-else's answer identically, because a 403 confirms
+  the thing exists.
+- **An unsubscribe ARN must belong to your own topic**, or one from elsewhere
+  would remove a stranger from a group you do not own.
+- **The lists are capped** at five email and five Teams addresses.
+
+What remains is that somebody can have AWS send a confirmation email to an
+address they typed. SNS delivers nothing until that address confirms, so the
+widest this reaches is a handful of one-off confirmation emails — each recorded
+in the activity feed like every other change.
+
+### One group per person
+
+A personal alarm points at a group like every other alarm — one per person,
+created the first time they need it. That reuse is the whole design: the SNS
+topic, the Teams recipients, the per-person timezones and the templates all work
+unchanged. A second delivery path beside the tested one is how two ways of
+sending an email end up disagreeing about what a message looks like.
+
+Personal groups are filtered out of `GET /alarms/groups` and personal alarms out
+of `GET /alarms`, so an administrator's screens show the organization's and only
+the organization's.
+
+### One form, two modes
+
+`AlarmModal` takes a `personal` flag rather than being copied. Everything hard
+about it — which conditions a widget supports, what the templates may say, what
+the interval means — is identical, and the copy is always the one that goes
+stale. What differs is the destination: the organization form picks a group, and
+the personal one shows where the alarm will land, read-only, because the
+addresses are managed in one place on the Alarms tab. Four alarms carrying four
+copies of the same address is four things to change when an address changes, and
+three get forgotten.
+
+The summary is deliberately explicit about unconfirmed addresses: one that has
+not confirmed receives nothing, and a form showing it as a destination leaves
+somebody waiting for an email that was never going to arrive.
+
+## Personal changes in the feed
+
+A personal widget or alarm is a real change. It belongs in Activity and it
+counts in Statistics — it is how somebody answers "why did that alert arrive".
+It is not, however, the same event as an administrator changing what everybody
+sees, and a feed that renders the two identically makes the organization's own
+history harder to read.
+
+So rows carry a **`personal`** flag, alongside `important` and `detailed`:
+
+- Written from the **stored record** (`!!widget.owner`, `!!alarm.owner`), never
+  from a parameter. A caller that forgot to pass it would file a personal change
+  as an organization one.
+- Rendered as a chip on the row.
+- Filterable in three states — shown, only personal, hidden — because both
+  narrowings are wanted and neither is the default. The control appears on the
+  **Everything** and **App** streams, the two where these rows land.
+
+The stream formerly labelled "App settings" is now **App**.
+
+## Personal widgets, and narrowing them
+
+**My work → your cards** run the same checks as the Overview tab, against the
+same data path — the same hook, the same verdict function. Only the presentation
+and the narrowing differ.
+
+### Why the card looks different
+
+The Overview card is a status tile. It is built to be scanned across a wall of
+others, so it leads with a share of the organization, colours itself by how bad
+that share is, and reports a verdict into a page-level headline.
+
+None of that is what a personal board is for. A personal card is a list you
+keep, so it leads with the rows themselves — on your own board the answer to "is
+this bad" is usually "these four" — with a quiet rail instead of a severity
+colour, and the controls out of the way until you hover.
+
+What is deliberately **not** forked is the data. `PersonalCard` imports
+`useWidgetData`, `verdictFor` and `entityForConfig` from the Overview, and
+`repro-personalwidgets.ts` fails if it stops doing so. Two presentations of one
+answer is a design choice; two data paths is a bug waiting to produce two
+different numbers for the same check.
+
+### Per-column filters
+
+A check answers a question about the whole organization. On a shared board that
+is the point; on your own it usually is not, because "which repositories have
+gone dormant" is a hundred rows of which four are yours.
+
+Narrowing the check was never an option — the checks are shared, and a personal
+board that could redefine them would change what everybody else sees. So the
+narrowing happens to the **rows**, and is stored on the widget: a dashboard you
+have to re-narrow every time you open it is not a dashboard.
+
+**Every column except three.** `index` is the row number, a property of the list
+rather than the row. `link` is a button. `details` is excluded on purpose: it is
+prose assembled per row, so a filter on it would be a text search wearing a
+filter's clothes, and the alarm on the same check already matches that text
+properly.
+
+**Three shapes of control, decided by the data rather than by a list of check
+ids**, so a check that starts returning a new field becomes filterable without
+this being edited — the same rule the columns themselves already follow:
+
+| The column holds | Control | Matching |
+| --- | --- | --- |
+| free text (repository, owner) | type values, keep or hide | case-insensitive **substring** |
+| a small fixed set (status, visibility, worst) | tick the values present | exact |
+| a count (bypasses, age, severity totals) | min and max | inclusive both ends |
+
+Substring, because what people type is a name they half-remember; an exact match
+would make a filter that returns nothing look like a check that found nothing.
+A column with more than a dozen distinct values is treated as text, one with
+fewer as a set.
+
+Filters combine **AND across columns, OR within one**, which is how people
+describe a board out loud: "my two repositories, only the failing ones".
+
+**Absence is not a wildcard.** A row with no owner does not belong in a board
+narrowed to two owners. The inverse holds too: excluding those two owners keeps
+the row that has neither.
+
+**Ranges ignore `exclude`** rather than inverting themselves. A range with a
+hole in the middle is two filters, not one turned inside out.
+
+### The three ways this could have gone wrong
+
+**A count that disagrees with its own rows.** Filtering happens inside
+`useWidgetData`, so the number on the card and the rows behind it come out of
+the same function. A card reading 112 that opens onto four rows is the bug that
+placement prevents.
+
+**Filtering a list that is missing rows.** A stored snapshot is trimmed to fit
+the row limit and carries the true count of everything. Filtering that compares
+against rows that are not there and reports the answer as exact, so a filtered
+widget reads live instead — the same rule the detail table already followed.
+
+**A filter that cannot be undone.** The editor builds its choices from
+`allItems`, the rows *before* this widget's filters. Drawing them from the
+filtered rows would mean the value you wanted had already been filtered out of
+the list of values to pick from.
+
+### Saying when a filter is deciding the number
+
+The card prints the unfiltered figure beside the filtered one, an empty result
+distinguishes "nothing matches your filters" from "nothing found", and the
+detail view opened from a narrowed card says so at the top. Without those, this
+card and the Overview show two different numbers for the same check and neither
+explains why.
+
+### A bug this uncovered
+
+`PUT /widgets/:id` destructured every field out of the body and passed them all
+to `updateWidget`, which merges over what is stored. A field the request did not
+send arrived as `undefined` and, with `removeUndefinedValues`, deleted the stored
+attribute. It never showed, because the only caller sent the whole widget every
+time. The filter editor sends `filters` alone, and would have erased the title.
+
+The route now copies only the keys actually present in the body — with `filters`
+included whenever the key is there even if it cleans to undefined, because that
+is how the last filter gets removed.
+
+## One change, one event, in Statistics
+
+Pressing **Fix** on a guardrail finding writes two activity rows on purpose:
+
+| Row | Actor | What it records |
+| --- | --- | --- |
+| `aws.guardrail.run` | the person | who asked |
+| `aws.guardrail` | `system (aws guardrail, <account>)` | what actually changed, with the undo payload, account and region |
+
+Both belong in **Events**, which is the tab you go to precisely to find out who
+triggered something.
+
+They are one event, though, and **Statistics** was counting them twice. A person
+fixing ten findings showed twenty events, and the AWS category read as twice as
+busy as it was.
+
+The route's row now carries `echoOf: "aws.guardrail"`, and the pulse walk skips
+any row that has it. The engine's row is the one kept, because it is written
+whether a schedule or a person set the run off, so a remediation counts the same
+way however it was triggered.
+
+Two details that are easy to get wrong:
+
+- **Only when the engine actually wrote a row.** A fix that found nothing to
+  change leaves the route's row as the sole record of the attempt, so it is not
+  marked and still counts.
+- **The previous window is deduplicated too.** Comparing a deduplicated week
+  against a doubled one would report a 50% fall that never happened.
+
+The person is not lost. The manual-fix invocation carries `triggeredBy`, the
+engine stamps it on its own row, and the top-actors count reads that in
+preference to the actor. The actor stays the system, which is what did the work:
+a row claiming a person changed a bucket policy directly would be a worse record
+than one naming both.
+
+## The GitHub request breakdown
+
+**Activity → GitHub requests** answers the other half of the question the Costs
+lens answers: not what the app costs in dollars, but what it spends of the
+organization's GitHub allowance, and which feature spends it.
+
+It sits beside Costs because the two are read together, and is hidden in an
+AWS-only install, where there is no GitHub App and the route behind it is gated
+off anyway.
+
+**Both halves are measured.**
+
+**The allowances** come from GitHub. `GET /rate_limit` is the one endpoint that
+does not count against the limit it reports, so a page about the budget cannot
+spend it. Three allowances that do not share, so exhausting one leaves the
+others untouched:
+
+| Bucket | Allowance | What draws on it |
+| --- | --- | --- |
+| core | 15,000 per hour | ordinary REST reads and writes, almost everything |
+| search | **30 per minute** | commit, code and issue search. The smallest budget in the app by a wide margin |
+| graphql | points per hour | the open pull request walk, and nothing else |
+
+Shown as **used**, not remaining. "14,985 / 15,000" is the same fact told
+backwards, and every reader takes the first number for what they have spent,
+because a figure over a total means that everywhere else.
+
+**The per-feature counts** come from a counter this app increments on every
+request it makes. GitHub reports that a request happened and never which feature
+made it, so attribution has to happen at the moment of the call.
+
+Every GitHub client is built by `createOctokit`, which installs a `before`
+request hook. The hook counts before the request rather than after, so a call
+that fails or is rate-limited still counts: GitHub charged for it either way,
+and a page that counted only successes would go quietest exactly when the
+allowance was under most pressure.
+
+The feature name comes from one of two places:
+
+- an **async-local** set by `withFeature(...)` at the function that does the
+  work — the alert sweep, the Renovate search, the pull request walk, a repository
+  detail page. Nesting works, and the innermost name wins, because that is the one
+  that answers "what would I change to spend less".
+- the **client itself**, via `createOctokit(token, "…")`. The per-subject checks
+  make their calls inline inside a much larger function, and naming the client
+  beats wrapping sixty lines of loop.
+
+Anything made outside either is counted as **Unattributed** rather than dropped.
+A large number there means the page is hiding something, and the fix is a label
+rather than an estimate.
+
+**Counted across three processes.** The app's own server, the alarm evaluator
+and the graph aggregator all make GitHub requests, so an in-memory count would
+describe only whichever one happened to answer the page. Counts are buffered in
+memory and flushed to the **alarms table**, which all three already reach and
+which already has TTL enabled — no new table, no CDK change.
+
+- The server flushes on a 30-second timer.
+- The Lambdas flush at the end of their pass. A timer there would fire at an
+  unrelated moment or not at all, because they are frozen between invocations.
+  The alarm pass flushes outside every `try`, so a pass that failed half way
+  still records what it spent — the hour that went wrong is the hour somebody
+  most wants the numbers for.
+
+**One row per clock hour**, `github-usage#YYYY-MM-DDTHH`, with a 48-hour TTL.
+Counters are flattened into top-level attributes named `u#<bucket>#<feature>` so
+each can be incremented with `ADD`, which is atomic and needs no read first.
+Three processes write these concurrently, and a read-modify-write would silently
+drop whichever update lost the race, undercounting in exactly the busy hour
+somebody opened the page to understand.
+
+**The two halves will not agree exactly, and the page says so.** GitHub's figure
+covers every request against the installation; this app's covers what it made
+and could attribute. Where they differ, the gap is itself worth knowing.
+
+**Nothing recorded is said out loud.** A fresh install and a quiet one produce
+identical numbers and are completely different situations, so an empty window
+explains itself rather than rendering as a row of zeros.
+
+**What this replaced.** The first version of this page published estimates:
+requests-per-run times runs-per-hour, derived from the code and from the size of
+the organization. They were arithmetic about a hypothetical installation, sat in
+the same visual voice as the real allowance numbers beside them, and gave nobody
+anything to act on. `repro-githubbudget.ts` now fails if `perRun`, `runsPerHour`,
+`perHour` or `worstCase` reappears in that file.
+
+**Two tests hold it together**, because every failure here is silent — a new
+call site works perfectly, spends the allowance, and is invisible to the counter
+while the page keeps rendering and keeps adding up.
+
+- `repro-githubusage.ts` fails if any file constructs a GitHub client outside
+  `github/client.ts`. It matches the aliased form too: three checks were building
+  clients as `new SbpOctokit(...)`, `new PbrOctokit(...)` and `new DormOctokit(...)`,
+  which a search for `new Octokit(` misses entirely.
+- `repro-githubbudget.ts` walks `src/` for call sites and fails when one belongs
+  to no feature, when a feature names a file that no longer calls GitHub, or when
+  a label passed in the code has no write-up beside it.
+
+The reference material beside each count — what the feature does, the endpoints
+it calls, the files to change — is what those tests keep honest. The counts
+themselves cannot drift, because they are counted.
+
+Cached for 30 seconds. Both halves are live and the counters flush every 30
+seconds, so a shorter cache repaints the same figures and a longer one makes a
+limit look stuck while it recovers.
+
+## Not asking GitHub the same question twice a minute
+
+Two reads here are org-wide, and both are the kind that trip a **secondary**
+rate limit, which is not the hourly budget but "too much, too fast":
+
+| Read | Cost |
+| --- | --- |
+| The Dependabot alert sweep | pages a hundred alerts at a time, so one call is several requests back to back |
+| The Renovate search | the search API, whose limit is **thirty requests a minute**, the smallest budget the app draws on. One call pages, and tries each candidate bot spelling, because search answers an unknown author with 422 rather than an empty result |
+
+Both were memoised **inside the alarm pass and nowhere else**, so the pass was
+careful and every page load was not. Somebody clicking around the
+Vulnerabilities tab, with widgets computing live beside them, issues exactly the
+burst that limit exists to stop.
+
+Both are now held for a minute and shared by every caller, with the in-flight
+promise shared as well as the result, because the case this exists for is
+several callers starting together and all missing the cache. Six concurrent
+callers cost one sweep; five cost one search pass.
+
+**A failed read is not cached.** "We could not read this" held for a minute
+turns one failed request into a minute of them, and hides a token whose scope
+has just been fixed.
+
+Sixty seconds because GitHub rescans on its own schedule: a fresher answer than
+that does not exist to be had.
+
 ## When the desktop app checks for an update
 
 The check needs a GitHub App token, that token comes from Secrets Manager, and

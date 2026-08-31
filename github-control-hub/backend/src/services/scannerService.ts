@@ -4,6 +4,7 @@ import { getOrg } from "../github/client";
 import { listBranches, getProtection, listRulesets, getAllProtections } from "./branchService";
 import { docClient, hasTable, tableName, PutCommand, GetCommand, DeleteCommand, QueryCommand, ScanCommand } from "../utils/dynamo";
 import { logActivity } from "./activityService";
+import { withFeature } from "./githubUsageService";
 
 export interface ScannerCondition {
   type?: "branch_protection" | "query";
@@ -270,7 +271,12 @@ export function mergeScanResult(
   };
 }
 
-export async function runScan(octokit: Octokit, scannerId: string, overrideReposToScan?: string[], token?: string): Promise<ScanResult> {
+export function runScan(octokit: Octokit, scannerId: string, overrideReposToScan?: string[], token?: string): Promise<ScanResult> {
+  return withFeature("Scanner run",
+    () => executeScan(octokit, scannerId, overrideReposToScan, token));
+}
+
+async function executeScan(octokit: Octokit, scannerId: string, overrideReposToScan?: string[], token?: string): Promise<ScanResult> {
   const scanner = await getScanner(scannerId);
   if (!scanner) throw new Error("Scanner not found");
 

@@ -78,7 +78,7 @@ async function denyIfNotPermitted(
     };
   }
 
-  const octokit = createOctokit(accessToken);
+  const octokit = createOctokit(accessToken, "Branch and protection changes");
   const org = getOrg();
   for (const level of ["admin", "push"] as const) {
     try {
@@ -163,6 +163,8 @@ router.get("/", async (req: Request, res: Response) => {
     ...(req.query.repoFilter ? { repo: String(req.query.repoFilter) } : {}),
     ...(req.query.target ? { target: String(req.query.target) } : {}),
     ...(req.query.detailed === "hide" ? { includeDetailed: false } : {}),
+    ...(req.query.personal === "only" || req.query.personal === "hide"
+      ? { personal: req.query.personal as "only" | "hide" } : {}),
     ...(req.query.important === "hide" ? { includeImportant: false } : {}),
     ...(typeof req.query.importantKinds === "string" && req.query.importantKinds
       ? { importantKinds: req.query.importantKinds.split(",").filter(Boolean) }
@@ -564,7 +566,7 @@ router.post("/:id/undo-resolution", async (req: Request<{ id: string }>, res: Re
 async function executeRetry(entry: ActivityEntry, accessToken: string): Promise<import("../services/activityService").UndoPayload | undefined> {
   if (!entry.retryPayload) return undefined;
   const { action, params } = entry.retryPayload;
-  const octokit = createOctokit(accessToken);
+  const octokit = createOctokit(accessToken, "Branch and protection changes");
   const org = getOrg();
 
   switch (action) {
@@ -653,7 +655,7 @@ async function executeRetry(entry: ActivityEntry, accessToken: string): Promise<
 async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<void> {
   if (!entry.undoPayload) return;
   const { action, params } = entry.undoPayload;
-  const octokit = createOctokit(accessToken);
+  const octokit = createOctokit(accessToken, "Branch and protection changes");
   const org = getOrg();
 
   if (!ALLOWED_UNDO_ACTIONS.has(action)) {
@@ -812,12 +814,12 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
       }
       break;
     case "disable_dependabot": {
-      const depOctokit = createOctokit(accessToken);
+      const depOctokit = createOctokit(accessToken, "Branch and protection changes");
       await depOctokit.rest.repos.disableVulnerabilityAlerts({ owner: org, repo: params.repo });
       break;
     }
     case "enable_dependabot": {
-      const depOctokit = createOctokit(accessToken);
+      const depOctokit = createOctokit(accessToken, "Branch and protection changes");
       await depOctokit.rest.repos.enableVulnerabilityAlerts({ owner: org, repo: params.repo });
       break;
     }
@@ -831,7 +833,7 @@ async function executeUndo(entry: ActivityEntry, accessToken: string): Promise<v
 async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<void> {
   if (!entry.undoPayload) return;
   const { action, params } = entry.undoPayload;
-  const octokit = createOctokit(accessToken);
+  const octokit = createOctokit(accessToken, "Branch and protection changes");
   const org = getOrg();
 
   if (!ALLOWED_UNDO_ACTIONS.has(action)) {
@@ -1029,13 +1031,13 @@ async function executeRedo(entry: ActivityEntry, accessToken: string): Promise<v
       break;
 
     case "disable_dependabot": {
-      const depOctokit = createOctokit(accessToken);
+      const depOctokit = createOctokit(accessToken, "Branch and protection changes");
       await depOctokit.rest.repos.enableVulnerabilityAlerts({ owner: org, repo: params.repo });
       break;
     }
 
     case "enable_dependabot": {
-      const depOctokit = createOctokit(accessToken);
+      const depOctokit = createOctokit(accessToken, "Branch and protection changes");
       await depOctokit.rest.repos.disableVulnerabilityAlerts({ owner: org, repo: params.repo });
       break;
     }

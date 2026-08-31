@@ -1,5 +1,6 @@
 import { Octokit } from "octokit";
 import { getOrg } from "../github/client";
+import { withFeature } from "./githubUsageService";
 
 /**
  * Everything the Knowledge Center panel shows for a single repo.
@@ -102,7 +103,11 @@ async function fileExists(octokit: Octokit, org: string, repo: string, path: str
   }
 }
 
-export async function getRepoDetails(octokit: Octokit, repo: string): Promise<RepoDetails> {
+export function getRepoDetails(octokit: Octokit, repo: string): Promise<RepoDetails> {
+  return withFeature("Repository detail page", () => readRepoDetails(octokit, repo));
+}
+
+async function readRepoDetails(octokit: Octokit, repo: string): Promise<RepoDetails> {
   const org = getOrg();
 
   // The only call that must succeed. Everything else decorates it.

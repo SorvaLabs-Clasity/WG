@@ -24,6 +24,24 @@ export interface WidgetConfig {
    * from the shared board.
    */
   owner?: string;
+  /**
+   * Per-column filters, on a personal widget.
+   *
+   * Stored here rather than held in the page: a dashboard you have to
+   * re-narrow every time you open it is not a dashboard. Applied where the rows
+   * are assembled, so the count on the card and the rows in the table cannot
+   * disagree.
+   *
+   * Absent on every widget that predates this, which is why nothing here
+   * needed a migration.
+   */
+  filters?: Array<{
+    column: string;
+    mode?: "include" | "exclude";
+    values?: string[];
+    min?: number | null;
+    max?: number | null;
+  }>;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -72,9 +90,13 @@ export async function createWidget(
     memWidgets.set(widget.id, widget);
   }
 
+  // Flagged from the stored record rather than from a parameter: whether this
+  // is somebody's own card is a fact about the widget, and a caller that forgot
+  // to pass it would file a personal change as an organization one.
   await logActivity("widget.create", actor, "*", widget.title, `Created analytics widget "${widget.title}"`,
     undefined, "app", undefined, undefined,
-    { undoPayload: { action: "delete_widget", params: { widgetId: widget.id, widgetData: widget } } }
+    { undoPayload: { action: "delete_widget", params: { widgetId: widget.id, widgetData: widget } },
+      personal: !!widget.owner }
   );
   return widget;
 }
@@ -103,7 +125,8 @@ export async function updateWidget(
 
   await logActivity("widget.update", actor, "*", updated.title, `Updated analytics widget "${updated.title}"`,
     undefined, "app", undefined, undefined,
-    { undoPayload: { action: "revert_widget", params: { widgetId: id, previousState: existing, currentState: updated } } }
+    { undoPayload: { action: "revert_widget", params: { widgetId: id, previousState: existing, currentState: updated } },
+      personal: !!updated.owner }
   );
   return updated;
 }
@@ -120,7 +143,8 @@ export async function deleteWidget(id: string, actor: string): Promise<boolean> 
 
   await logActivity("widget.delete", actor, "*", existing.title, `Deleted analytics widget "${existing.title}"`,
     undefined, "app", undefined, undefined,
-    { undoPayload: { action: "restore_widget", params: { widgetData: existing } } }
+    { undoPayload: { action: "restore_widget", params: { widgetData: existing } },
+      personal: !!existing.owner }
   );
   return true;
 }

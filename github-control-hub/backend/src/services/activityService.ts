@@ -118,6 +118,42 @@ export interface ActivityEntry {
   };
   conflictResolution?: "override" | "skip";
   linkedActivityId?: string;
+  /**
+   * The action whose row already records the change this row restates.
+   *
+   * Pressing Fix on a guardrail finding writes two rows on purpose: this one,
+   * saying who asked, and the engine's, saying what changed. Both belong in the
+   * feed, which is where you go to find out who triggered something. They are
+   * one event, though, so Statistics counts the pair once and skips whichever
+   * row carries this.
+   *
+   * A plain string rather than an ActivityAction: the row it points at is
+   * `aws.guardrail`, which the Lambda writes directly and which is kept out of
+   * that union for exactly that reason.
+   */
+  echoOf?: string;
+  /**
+   * Somebody arranging their own screen, rather than the organization's.
+   *
+   * A personal widget or a personal alarm is a real change and belongs in the
+   * feed and in the statistics: it is how somebody answers "why did that alert
+   * arrive". It is not, however, the same event as an administrator changing
+   * what everybody sees, and a feed that renders the two identically makes the
+   * organization's own history harder to read.
+   *
+   * A flag on the row rather than a separate action, so the actions stay the
+   * ones the rest of the app already knows and the distinction can be filtered
+   * on either side.
+   */
+  personal?: boolean;
+  /**
+   * The person who caused a row the system wrote.
+   *
+   * The engine's rows are authored by "system (aws guardrail, …)" whether a
+   * schedule or a person set them off. Recording who asked lets Statistics
+   * credit a manual fix to them without inventing a second event for it.
+   */
+  triggeredBy?: string;
 }
 
 const TABLE = () => tableName("ACTIVITY_TABLE");
@@ -234,7 +270,7 @@ export async function logActivity(
   source: "app" | "github" = "app",
   prNumber?: number,
   commitSha?: string,
-  extra?: { parentId?: string; undoPayload?: UndoPayload; failed?: boolean; errorMessage?: string; retryPayload?: RetryPayload; conflictPayload?: ActivityEntry["conflictPayload"]; linkedActivityId?: string; undone?: boolean; detailed?: boolean; importantKind?: string }
+  extra?: { parentId?: string; undoPayload?: UndoPayload; failed?: boolean; errorMessage?: string; retryPayload?: RetryPayload; conflictPayload?: ActivityEntry["conflictPayload"]; linkedActivityId?: string; undone?: boolean; detailed?: boolean; importantKind?: string; echoOf?: string; personal?: boolean }
 ): Promise<ActivityEntry> {
   const entry: ActivityEntry = {
     id: crypto.randomUUID(),
@@ -265,6 +301,8 @@ export async function logActivity(
     ...(extra?.retryPayload && { retryPayload: extra.retryPayload }),
     ...(extra?.conflictPayload && { conflictPayload: extra.conflictPayload }),
     ...(extra?.linkedActivityId && { linkedActivityId: extra.linkedActivityId }),
+    ...(extra?.echoOf && { echoOf: extra.echoOf }),
+    ...(extra?.personal && { personal: true }),
     ...(extra?.undone !== undefined && { undone: extra.undone }),
   };
 

@@ -25,6 +25,7 @@ import { useWebhookHealth } from "../hooks/useWebhookHealth";
 import type { Activity, ActivityAction } from "../types/Activity";
 import { buildConflictComparison } from "../utils/conflictComparison";
 import CostPanel from "../components/CostPanel";
+import GithubBudgetPanel from "../components/GithubBudgetPanel";
 
 
 function formatTimestamp(ts: string): string {
@@ -207,6 +208,17 @@ const CATEGORY_DESCRIPTIONS: Record<ActivityView, string> = {
   app: "This app's own settings, widgets, scanners, imports, and undo history. Nothing here changed GitHub or AWS.",
 };
 
+/** The views that replace the table, in the order they are offered. */
+type Lens = "stats" | "feed" | "important" | "costs" | "github";
+
+const LENSES: ReadonlyArray<readonly [Lens, string, string]> = [
+  ["stats", "ph-chart-line-up", "Statistics"],
+  ["feed", "ph-list-magnifying-glass", "Events"],
+  ["important", "ph-shield-warning", "Important events"],
+  ["costs", "ph-currency-dollar", "Costs"],
+  ["github", "ph-git-branch", "GitHub requests"],
+];
+
 export default function ActivityPage() {
   const { user } = useAuth();
   const { data: orgConfig } = useOrgConfig();
@@ -260,6 +272,15 @@ export default function ActivityPage() {
     [awsOnly],
   );
 
+  /**
+   * The views on the right of the segmented control.
+   *
+   * GitHub requests is dropped in an AWS-only install rather than shown empty:
+   * there is no GitHub App there, so the route behind it is gated off and the
+   * lens would be a tab that only ever explains why it cannot load.
+   */
+  const lenses = useMemo(() => LENSES.filter(([v]) => !(awsOnly && v === "github")), [awsOnly]);
+
   // Defaults to the organization stream rather than to Everything. That is what
   // this app exists to record, and opening on a merged feed puts dashboard
   // housekeeping beside branch protection disappearing, which is the mixing
@@ -281,21 +302,23 @@ export default function ActivityPage() {
    *   Events           find one row. Streams, filters, table or timeline.
    *   Important events the changes worth knowing about, and who is told.
    *   Costs            what the app's own AWS resources have consumed.
+   *   GitHub requests  where the organization's API allowance goes.
    *
-   * Not a fifth stream: the streams narrow which rows the table shows, and
+   * Not extra streams: the streams narrow which rows the table shows, and
    * these replace the table.
    *
    * Costs sits here rather than under AWS Guardrails because the bill covers
    * both halves of the app, and this is the tab that carries both and exists
-   * in an AWS-only install.
+   * in an AWS-only install. GitHub requests sits beside it because it is the
+   * same question asked of the other half, and the two are read together.
    */
-  const [lens, setLens] = useState<"stats" | "feed" | "important" | "costs">(() => {
+  const [lens, setLens] = useState<Lens>(() => {
     try {
       const v = localStorage.getItem("activity:lens");
-      return v === "stats" || v === "important" || v === "costs" ? v : "feed";
+      return v === "stats" || v === "important" || v === "costs" || v === "github" ? v : "feed";
     } catch { return "feed"; }
   });
-  const setLensPersistent = (v: "stats" | "feed" | "important" | "costs") => {
+  const setLensPersistent = (v: Lens) => {
     setLens(v);
     try { localStorage.setItem("activity:lens", v); } catch { /* the view still changes */ }
   };
@@ -370,6 +393,30 @@ export default function ActivityPage() {
   useEffect(() => {
     if (awsOnly && !views.includes(category)) setCategory("aws");
   }, [awsOnly, views, category]);
+
+  // A lens remembered from a GitHub-capable account, reopened against an
+  // AWS-only one, would otherwise leave the control showing nothing selected.
+  useEffect(() => {
+    if (awsOnly && lens === "github") setLensPersistent("costs");
+  }, [awsOnly, lens]);
+  /**
+   * How rows somebody wrote arranging their own board are treated.
+   *
+   * Three states, because both narrowings are wanted and neither is the
+   * default: "only" answers "what did I change on my own board", and "hide"
+   * gives back the organization's history without personal housekeeping in it.
+   */
+  const [personalMode, setPersonalMode] = useState<"all" | "only" | "hide">(() => {
+    try {
+      const v = localStorage.getItem("activity:personal");
+      return v === "only" || v === "hide" ? v : "all";
+    } catch { return "all"; }
+  });
+  const setPersonalPersistent = (v: "all" | "only" | "hide") => {
+    setPersonalMode(v);
+    try { localStorage.setItem("activity:personal", v); } catch { /* the view still changes */ }
+  };
+
   const [repoFilter, setRepoFilter] = useState("");
   const [targetFilter, setTargetFilter] = useState("");
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -406,6 +453,7 @@ export default function ActivityPage() {
   const activeFilterCount = [
     !!repoFilter, !!targetFilter, !!search,
     !showDetailed, !showImportant, importantKinds.length > 0,
+    personalMode !== "all",
   ].filter(Boolean).length;
 
   const serverQuery = useMemo(() => ({
@@ -416,12 +464,13 @@ export default function ActivityPage() {
     ...(showDetailed ? {} : { detailed: "hide" as const }),
     ...(showImportant ? {} : { important: "hide" as const }),
     ...(showImportant && importantKinds.length ? { importantKinds: importantKinds.join(",") } : {}),
+    ...(personalMode !== "all" ? { personal: personalMode } : {}),
     // Every value read above is listed below. A filter left out of this array
     // is a filter that does nothing at all: the object never rebuilds, so the
     // query key never changes and React Query never refetches. It looks exactly
     // like a broken backend from the outside.
   }), [debouncedSearch, category, repoFilter, targetFilter,
-       showDetailed, showImportant, importantKinds]);
+       showDetailed, showImportant, importantKinds, personalMode]);
 
   // Back to the newest page whenever the question changes.
   useEffect(() => {
@@ -672,6 +721,14 @@ export default function ActivityPage() {
                   important
                 </span>
               )}
+              {entry.personal && (
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 dark:bg-violet-500/10
+                                 text-violet-700 dark:text-violet-300 border border-violet-200
+                                 dark:border-violet-500/30 font-medium shrink-0"
+                  title="Somebody arranging their own board, not an organization setting">
+                  personal
+                </span>
+              )}
               {entry.detailed && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/70 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 font-medium shrink-0" title="Recorded by detailed GitHub logging">
                   detailed
@@ -784,7 +841,9 @@ export default function ActivityPage() {
                     ? "Changes worth knowing about, grouped by what caused them. Most are somebody doing their job."
                     : lens === "costs"
                       ? "What this app's own AWS resources have consumed, resource by resource."
-                      : "Everything this app and GitHub have recorded, newest first."}
+                      : lens === "github"
+                        ? "Every request this app makes to GitHub, what triggers it, and what it draws on."
+                        : "Everything this app and GitHub have recorded, newest first."}
               </p>
             </div>
             <WebhookPulse />
@@ -797,18 +856,16 @@ export default function ActivityPage() {
               roughly when something happened but not which stream recorded it -
               a repository going public shows up in Organization and again in the
               audit log, and searching one at a time is how you miss it. */}
-          {/* ── the three views ──────────────────────────────────────────
-              A segmented control, not tabs, because these are not three slices
-              of one list. They are three different jobs: see the shape, find a
-              row, review what mattered. Tabs would have put them on the same
-              footing as the stream tabs below, which really are slices. */}
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 dark:bg-white/[0.06] w-fit">
-            {([
-              ["stats", "ph-chart-line-up", "Statistics"],
-              ["feed", "ph-list-magnifying-glass", "Events"],
-              ["important", "ph-shield-warning", "Important events"],
-              ["costs", "ph-currency-dollar", "Costs"],
-            ] as const).map(([v, icon, label]) => (
+          {/* ── the views ────────────────────────────────────────────────
+              A segmented control, not tabs, because these are not slices of one
+              list. They are separate jobs: see the shape, find a row, review
+              what mattered, read a bill. Tabs would have put them on the same
+              footing as the stream tabs below, which really are slices.
+              Wrapping, because the labels are words rather than icons and five
+              of them do not fit a narrow window on one line. */}
+          <div className="flex items-center flex-wrap gap-1 p-1 rounded-xl
+                          bg-slate-100 dark:bg-white/[0.06] w-fit max-w-full">
+            {lenses.map(([v, icon, label]) => (
               <button key={v} onClick={() => setLensPersistent(v)} aria-pressed={lens === v}
                 className={`px-3.5 py-2 rounded-lg text-[13px] font-semibold whitespace-nowrap
                             flex items-center gap-2 transition-all
@@ -942,6 +999,22 @@ export default function ActivityPage() {
                   </select>
                 </div>
               )}
+              {/* Only the two streams these rows land in. A personal widget or
+                  alarm is an app change, so on the AWS stream this control
+                  could not alter anything on screen. */}
+              {(category === "app" || category === "all") && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Personal rows</label>
+                  <select value={personalMode}
+                    onChange={(e) => setPersonalPersistent(e.target.value as "all" | "only" | "hide")}
+                    className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    <option value="all">Shown</option>
+                    <option value="only">Only personal</option>
+                    <option value="hide">Hidden</option>
+                  </select>
+                </div>
+              )}
+
               <div>
                 <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Repository</label>
                 <input type="text" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} placeholder="e.g. web-platform" className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200" />
@@ -1009,6 +1082,8 @@ export default function ActivityPage() {
 
         {lens === "costs" ? (
           <CostPanel />
+        ) : lens === "github" ? (
+          <GithubBudgetPanel />
         ) : lens === "stats" ? (
           <div className="grid gap-4">
             {/* The chart keeps its own window control, and Statistics reads the

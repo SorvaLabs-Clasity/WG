@@ -1,6 +1,6 @@
 import { docClient, hasTable, tableName, ScanCommand } from "../utils/dynamo";
 import { readGraphVersion, isVersionRow } from "./graphVersion";
-import { getSystemToken, getOrg } from "../github/client";
+import { getSystemToken, getOrg, createOctokit } from "../github/client";
 import { rulesetCoversBranch } from "./branchService";
 import fs from "fs";
 import path from "path";
@@ -288,9 +288,8 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         const token = userToken || getSystemToken();
         const org = getOrg();
         if (token && org) {
-          const { Octokit } = await import("octokit");
-          const { fetchOrgDependencyAlerts } = await import("./dependencyService");
-          live = await fetchOrgDependencyAlerts(new Octokit({ auth: token }), org);
+              const { fetchOrgDependencyAlerts } = await import("./dependencyService");
+          live = await fetchOrgDependencyAlerts(createOctokit(token), org);
         }
       } catch {
         // Falls through to the graph below.
@@ -563,7 +562,7 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
       if (!token) throw new Error("Authentication required for live rule evaluation");
       const { Octokit } = await import("octokit");
       const { getOrg } = await import("../github/client");
-      const octokit = new Octokit({ auth: token });
+      const octokit = createOctokit(token, "Widget check: repos-with-branch-rules");
       const org = getOrg();
 
       for (const repo of reposToCheck) {
@@ -718,9 +717,8 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     case "stale-branch-protections": {
       const sbpToken = userToken || getSystemToken();
       if (!sbpToken) throw new Error("Authentication required for live evaluation");
-      const { Octokit: SbpOctokit } = await import("octokit");
       const { getOrg: sbpGetOrg } = await import("../github/client");
-      const sbpOctokit = new SbpOctokit({ auth: sbpToken });
+      const sbpOctokit = createOctokit(sbpToken, "Per-subject check: stale-branch-protections");
       const sbpOrg = sbpGetOrg();
 
       const protectedRepos = new Set<string>();
@@ -853,9 +851,8 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     case "protection-bypasses-ranking": {
       const pbrToken = userToken || getSystemToken();
       if (!pbrToken) throw new Error("Authentication required for live evaluation");
-      const { Octokit: PbrOctokit } = await import("octokit");
       const { getOrg: pbrGetOrg } = await import("../github/client");
-      const pbrOctokit = new PbrOctokit({ auth: pbrToken });
+      const pbrOctokit = createOctokit(pbrToken, "Per-subject check: protection-bypasses-ranking");
       const pbrOrg = pbrGetOrg();
 
       const protectedRepos = new Set<string>();
@@ -1232,9 +1229,8 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
     case "dormant-privileged-users": {
       const dormToken = userToken || getSystemToken();
       if (!dormToken) throw new Error("Authentication required for live evaluation");
-      const { Octokit: DormOctokit } = await import("octokit");
       const { getOrg: dormGetOrg } = await import("../github/client");
-      const dormOctokit = new DormOctokit({ auth: dormToken });
+      const dormOctokit = createOctokit(dormToken, "Per-subject check: dormant-privileged-users");
       const dormOrg = dormGetOrg();
 
       const userAccessMap = new Map<string, string[]>();

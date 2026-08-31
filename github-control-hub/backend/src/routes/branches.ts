@@ -10,7 +10,7 @@ const router = Router();
 
 router.get("/:repo/branches", validateParams("repo"), async (req: Request<{ repo: string }>, res: Response) => {
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const branches = await listBranches(octokit, req.params.repo);
     res.json(branches);
   } catch (err) {
@@ -43,7 +43,7 @@ router.post("/:repo/branches", validateParams("repo"), async (req: Request<{ rep
   }
 
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
     const createdFromSha = await createBranch(octokit, req.params.repo, branchName, baseBranch);
     await logActivity("branch.create", req.user!.login, req.params.repo, branchName, `Created from ${baseBranch}`, undefined, "app", undefined, undefined, {
       undoPayload: { action: "delete_branch", params: { repo: req.params.repo, branch: branchName, baseBranch, createdFromSha } },
@@ -64,7 +64,7 @@ router.delete(
   validateParams("repo", "branch"),
   async (req: Request<{ repo: string; branch: string }>, res: Response) => {
     try {
-      const octokit = createOctokit(req.user!.accessToken);
+      const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
       let sha: string | undefined;
       try {
         const { data: ref } = await octokit.rest.git.getRef({ owner: getOrg(), repo: req.params.repo, ref: `heads/${req.params.branch}` });
@@ -96,7 +96,7 @@ router.patch(
       return;
     }
     try {
-      const octokit = createOctokit(req.user!.accessToken);
+      const octokit = createOctokit(req.user!.accessToken, "Branch and protection changes");
       await renameBranch(octokit, req.params.repo, req.params.branch, newName);
       await logActivity("branch.rename", req.user!.login, req.params.repo, req.params.branch, `Renamed to ${newName}`, undefined, "app", undefined, undefined, {
         undoPayload: { action: "rename_branch", params: { repo: req.params.repo, from: newName, to: req.params.branch } },

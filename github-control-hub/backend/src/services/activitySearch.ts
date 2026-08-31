@@ -110,6 +110,15 @@ export interface ActivityFilters {
    * default.
    */
   importantKinds?: string[];
+  /**
+   * How to treat rows somebody wrote arranging their own screen.
+   *
+   * Three states rather than a boolean, because both narrowings are wanted:
+   * "only mine" answers "what did I change", and "hide" gives back the
+   * organization's own history without personal housekeeping in it. Absent
+   * means all of them, which is what the feed showed before this existed.
+   */
+  personal?: "only" | "hide";
 }
 
 export interface ActivityPage {
@@ -139,6 +148,8 @@ export function matches(e: ActivityEntry, f: ActivityFilters): boolean {
   if (f.source && e.source !== f.source) return false;
   if (f.category && categoryOf(e.action) !== f.category) return false;
   if (f.includeDetailed === false && (e as any).detailed) return false;
+  if (f.personal === "only" && !(e as any).personal) return false;
+  if (f.personal === "hide" && (e as any).personal) return false;
 
   // An important event is one that raised an alert, which the action says.
   // Rows written before the kind was recorded still match the on/off filter,
@@ -500,7 +511,7 @@ export async function activityPulse(
       // Behind the window: keep going a little, to count the period before it.
       if (t < since) {
         if (t >= prevSince) {
-          if (!visible || visible(e.action)) previousCount++;
+          if ((!visible || visible(e.action)) && !e.echoOf) previousCount++;
           continue;
         }
         reachedPrevious = true;
@@ -512,6 +523,22 @@ export async function activityPulse(
       // reached is a fact about timestamps, and skipping a row must not make the
       // walk think it has further to go.
       if (visible && !visible(e.action)) continue;
+
+      /**
+       * One change, one count.
+       *
+       * Pressing Fix on a guardrail finding writes two rows: the route's,
+       * saying who asked, and the engine's, saying what changed. The feed wants
+       * both, because "who triggered this" is the question it exists to answer.
+       * Statistics wants neither doubled: a person fixing ten findings showed
+       * twenty events, and the AWS category read as twice as busy as it was.
+       *
+       * The engine's row is the one kept, because it is written whether a
+       * schedule or a person set the run off, so remediations count the same
+       * way however they were triggered. It carries `triggeredBy`, which is
+       * where the person goes.
+       */
+      if (e.echoOf) continue;
 
       oldest = e.timestamp;
       total++;
@@ -536,7 +563,13 @@ export async function activityPulse(
       dayCounts.set(local.date, (dayCounts.get(local.date) ?? 0) + 1);
 
       // People, not the scheduler. See isPerson.
-      if (isPerson(e.actor)) actors.set(e.actor, (actors.get(e.actor) ?? 0) + 1);
+      //
+      // `triggeredBy` first: a row the engine wrote because somebody pressed
+      // Fix is authored by the system, and crediting the system would drop that
+      // person's work out of the picture entirely now that the row naming them
+      // is no longer counted.
+      const person = e.triggeredBy ?? e.actor;
+      if (isPerson(person)) actors.set(person, (actors.get(person) ?? 0) + 1);
 
       // `repo` on an AWS row is a resource path, "github-control-hub/lambda/
       // alarm-evaluator", because the guardrail engine reuses the field to say

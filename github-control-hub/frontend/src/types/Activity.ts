@@ -72,6 +72,17 @@ export interface RetryPayload {
 }
 
 export interface Activity {
+  /**
+   * Somebody arranging their own board, rather than the organization's.
+   *
+   * A personal widget or alarm is a real change and belongs in the feed and in
+   * the statistics — it is how somebody answers "why did that alert arrive" —
+   * but it is not the same event as an administrator changing what everybody
+   * sees, and a feed that rendered the two identically would make the
+   * organization's own history harder to read.
+   */
+  personal?: boolean;
+
   id: string;
   source: "app" | "github";
   action: ActivityAction;

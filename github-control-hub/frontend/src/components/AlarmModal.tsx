@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import {
   useWidgetConditions, useEmailGroups, useTemplateVariables,
   useCreateAlarm, useUpdateAlarm,
+
+  useCreateMyAlarm, useUpdateMyAlarm, useMyDestination,
 } from "../hooks/useAlarms";
 import { describeInterval, type AlarmCondition, type Severity, type WidgetAlarm } from "../api/alarms";
 import VariableChips, { useTemplateInsert } from "./TemplateVariables";
@@ -24,18 +26,35 @@ const labelClass = "block text-sm font-semibold text-gh-textBase dark:text-slate
  * cannot construct a request the server will refuse.
  */
 export default function AlarmModal({
-  isOpen, onClose, widgetId, existing,
+  isOpen, onClose, widgetId, existing, personal = false,
 }: {
   isOpen: boolean;
   onClose: () => void;
   widgetId: string;
   existing?: WidgetAlarm | null;
+  /**
+   * An alarm on somebody's own card, delivered to their own address.
+   *
+   * One form for both, because everything that is hard here — which conditions
+   * a widget supports, what the templates may say, what the interval means — is
+   * identical, and a second copy would be the one that goes stale. What differs
+   * is the destination: an organization alarm picks a group, and a personal one
+   * has exactly one, resolved by the server from who is asking. There is
+   * deliberately no control for it, since offering a choice would mean sending
+   * a group id, which is what the server refuses.
+   */
+  personal?: boolean;
 }) {
   const { data: spec, isLoading } = useWidgetConditions(isOpen ? widgetId : null);
-  const { data: groups } = useEmailGroups(isOpen);
+  const { data: groups } = useEmailGroups(isOpen && !personal);
+  const { data: destination } = useMyDestination(isOpen && personal);
   const { data: variables } = useTemplateVariables(isOpen);
-  const createAlarm = useCreateAlarm();
-  const updateAlarm = useUpdateAlarm();
+  const createOrg = useCreateAlarm();
+  const updateOrg = useUpdateAlarm();
+  const createMine = useCreateMyAlarm();
+  const updateMine = useUpdateMyAlarm();
+  const createAlarm = personal ? createMine : createOrg;
+  const updateAlarm = personal ? updateMine : updateOrg;
 
   const [name, setName] = useState("");
   const [metric, setMetric] = useState("");
@@ -106,10 +125,13 @@ export default function AlarmModal({
     setError("");
     const condition = buildCondition();
     if (!condition) return setError("Choose a condition and a number.");
-    if (!groupId) return setError("Choose who to email.");
+    if (!personal && !groupId) return setError("Choose who to email.");
 
     const payload = {
-      widgetId, name, condition, groupId,
+      widgetId, name, condition,
+      // Omitted entirely on a personal alarm. The server resolves the
+      // destination from the session and refuses a supplied one.
+      ...(personal ? {} : { groupId }),
       subjectTemplate: subject, bodyTemplate: body,
       teamsSubjectTemplate: teams.subject, teamsBodyTemplate: teams.body,
       notifyOnRecovery,
@@ -204,8 +226,10 @@ export default function AlarmModal({
               </div>
 
               <div>
-                <label className={labelClass}>Email</label>
-                {groups && groups.length > 0 ? (
+                <label className={labelClass}>{personal ? "Where this goes" : "Email"}</label>
+                {personal ? (
+                  <PersonalDestinationSummary destination={destination} />
+                ) : groups && groups.length > 0 ? (
                   <select value={groupId} onChange={e => setGroupId(e.target.value)} className={inputClass}>
                     <option value="">Choose a group…</option>
                     {groups.map(g => (
@@ -289,6 +313,57 @@ export default function AlarmModal({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Where a personal alarm lands, stated rather than chosen.
+ *
+ * Read-only on purpose: the addresses are managed in one place, on the Alarms
+ * tab, so somebody with four alarms has one list to keep rather than four. What
+ * this has to do is make the silence explainable — an address that has not
+ * confirmed receives nothing, and a form that showed it as a destination would
+ * leave somebody waiting for an email that was never going to arrive.
+ */
+function PersonalDestinationSummary({ destination }: {
+  destination?: { emails: { endpoint: string; confirmed: boolean }[]; teams: string[] };
+}) {
+  const confirmed = (destination?.emails ?? []).filter(e => e.confirmed);
+  const pending = (destination?.emails ?? []).filter(e => !e.confirmed);
+  const teams = destination?.teams ?? [];
+
+  if (confirmed.length === 0 && teams.length === 0) {
+    return (
+      <p className="text-sm text-amber-700 dark:text-amber-400">
+        {pending.length > 0
+          ? `${pending.length} address${pending.length > 1 ? "es have" : " has"} not confirmed yet, `
+            + "so nothing can be delivered. Check for the confirmation email from AWS."
+          : "You have not added an address yet. Add one on the Alarms tab and this "
+            + "alarm will reach you."}
+      </p>
+    );
+  }
+
+  return (
+    <div className="text-sm text-slate-600 dark:text-slate-300">
+      {confirmed.map(e => (
+        <div key={e.endpoint} className="flex items-center gap-1.5">
+          <i className="ph-bold ph-envelope-simple text-[12px] text-slate-400" aria-hidden="true" />
+          <span className="font-mono text-[12.5px]">{e.endpoint}</span>
+        </div>
+      ))}
+      {teams.map(a => (
+        <div key={a} className="flex items-center gap-1.5">
+          <i className="ph-bold ph-chat-teardrop-text text-[12px] text-violet-500" aria-hidden="true" />
+          <span className="font-mono text-[12.5px]">{a}</span>
+        </div>
+      ))}
+      {pending.length > 0 && (
+        <p className="text-[12px] text-amber-700 dark:text-amber-400 mt-1">
+          {pending.length} more waiting to confirm.
+        </p>
+      )}
     </div>
   );
 }

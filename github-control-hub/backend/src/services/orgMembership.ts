@@ -36,7 +36,7 @@ export interface MembershipDeps {
 
 const realDeps: MembershipDeps = {
   check: async (accessToken, login) => {
-    const octokit = createOctokit(accessToken);
+    const octokit = createOctokit(accessToken, "Signing in");
     try {
       await octokit.rest.orgs.checkMembershipForUser({ org: getOrg(), username: login });
       return true;

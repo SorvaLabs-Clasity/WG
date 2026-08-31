@@ -32,7 +32,7 @@ router.get("/webhook-health", async (_req: Request, res: Response) => {
 router.get("/members", async (req: Request, res: Response) => {
   try {
     const { listOrgMembers, depsFromOctokit } = await import("../services/orgMembersService");
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Organization tab");
     res.json(await listOrgMembers(depsFromOctokit(octokit), getOrg()));
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
@@ -53,7 +53,7 @@ router.get("/config", async (req: Request, res: Response) => {
 
 router.get("/actors", async (req: Request, res: Response) => {
   try {
-    const octokit = createOctokit(req.user!.accessToken);
+    const octokit = createOctokit(req.user!.accessToken, "Organization tab");
     const org = getOrg();
 
     const WRITE_BASE_ROLES = new Set(["write", "maintain", "admin"]);

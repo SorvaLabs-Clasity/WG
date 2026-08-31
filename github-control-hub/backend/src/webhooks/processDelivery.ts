@@ -1,5 +1,5 @@
 import { Octokit } from "octokit";
-import { getOrg } from "../github/client";
+import { getOrg, createOctokit } from "../github/client";
 import { runScan, listScanners } from "../services/scannerService";
 import { createAlert, autoResolveAlerts } from "../services/alertService";
 import { logActivity } from "../services/activityService";
@@ -630,7 +630,7 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
           console.warn("[Webhook] No GitHub token available. Cannot run automated background scan.");
           return;
         }
-        const octokit = new Octokit({ auth: token });
+        const octokit = createOctokit(token);
         const scanners = await listScanners();
         const relevantScanners = scanners.filter(s =>
           s.targetRepos === "all" ||

@@ -18,13 +18,16 @@ import accessRoutes from "./routes/access";
 import expertiseRoutes from "./routes/expertise";
 import pullsRoutes from "./routes/pulls";
 import meRoutes from "./routes/me";
+import meAlarmRoutes from "./routes/meAlarms";
 import widgetRoutes from "./routes/widgets";
 import configRoutes from "./routes/config";
+import githubBudgetRoutes from "./routes/githubBudget";
 import { githubGateMiddleware } from "./middleware/githubGate";
 import { authMiddleware } from "./middleware/authMiddleware";
 import { awsHealthMiddleware } from "./middleware/awsHealthMiddleware";
 import { initTokenManager } from "./github/client";
 import { awsRegion } from "./utils/region";
+import { startUsageFlushing } from "./services/githubUsageService";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -130,8 +133,15 @@ app.use("/api/pulls", authMiddleware, githubGateMiddleware, pullsRoutes);
 // Gated like the rest of GitHub: it is composed entirely from what the GitHub
 // walk collected, so an account without GitHub credentials has nothing to serve.
 app.use("/api/me", authMiddleware, githubGateMiddleware, meRoutes);
+// Not behind the alarms router's admin gate, and deliberately so: these are
+// somebody's own alarms on their own cards, delivered to their own address.
+// Every narrowing that makes it safe lives in the router itself.
+app.use("/api/me/alarms", authMiddleware, githubGateMiddleware, meAlarmRoutes);
 app.use("/api/widgets", authMiddleware, githubGateMiddleware, widgetRoutes);
 app.use("/api/config", authMiddleware, githubGateMiddleware, configRoutes);
+// Behind the gate: an AWS-only install has no GitHub allowance to report on,
+// and the lens that reads this is hidden there for the same reason.
+app.use("/api/github-budget", authMiddleware, githubGateMiddleware, githubBudgetRoutes);
 app.use("/api/aws", authMiddleware, awsGuardrailRoutes);
 // Not gated, unlike the rest of this block.
 //
@@ -205,6 +215,11 @@ if (!process.env.__STANDALONE__) {
   app.listen(PORT, "127.0.0.1", () => {
     console.log(`Backend running on http://127.0.0.1:${PORT}`);
   });
+  // GitHub request counters are buffered in memory and written every half
+  // minute. The Lambdas flush at the end of their pass instead: they are frozen
+  // between invocations, so a timer there fires at an unrelated moment or not
+  // at all.
+  startUsageFlushing();
 }
 
 export default app;

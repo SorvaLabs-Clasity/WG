@@ -1,5 +1,9 @@
 import { useState } from "react";
-import { CheckCard, WidgetFormModal, CheckDetail } from "../pages/AnalyticsPage";
+import { WidgetFormModal, CheckDetail } from "../pages/AnalyticsPage";
+import PersonalCard from "./PersonalCard";
+import WidgetFilterEditor from "./WidgetFilterEditor";
+import AlarmModal from "./AlarmModal";
+import { useMyAlarms } from "../hooks/useAlarms";
 import { useWidgets, useCreateWidget, useUpdateWidget, useDeleteWidget } from "../hooks/useWidgets";
 import { Button, Empty, Spinner, Note } from "../design";
 import type { WidgetConfig } from "../api/widgets";
@@ -30,6 +34,9 @@ export default function PersonalBoard() {
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<WidgetConfig | null>(null);
   const [opened, setOpened] = useState<WidgetConfig | null>(null);
+  const [filtering, setFiltering] = useState<WidgetConfig | null>(null);
+  const [alarming, setAlarming] = useState<WidgetConfig | null>(null);
+  const { data: myAlarms } = useMyAlarms();
 
   if (isLoading) return <div className="py-16 flex justify-center"><Spinner /></div>;
 
@@ -45,11 +52,13 @@ export default function PersonalBoard() {
         onBack={() => setOpened(null)}
         onEdit={() => { setEditing(opened); setOpened(null); }}
         canEdit
-        // Alarms notify a shared group and are an administrator's to set. A
-        // card on your own dashboard is not the place to arrange that.
-        onAlarm={() => { /* not offered on a personal board */ }}
-        canAlarm={false}
-        alarmCount={0}
+        // Offered here now. The reason it was not is that an alarm meant an
+        // organization group and an administrator's permission, which is the
+        // wrong shape for your own card. A personal alarm has neither: it goes
+        // to the addresses on your own Alarms tab and nobody else is told.
+        onAlarm={() => setAlarming(opened)}
+        canAlarm
+        alarmCount={(myAlarms ?? []).filter(a => a.widgetId === opened.id).length}
       />
     );
   }
@@ -57,8 +66,10 @@ export default function PersonalBoard() {
   return (
     <>
       <div className="flex items-center justify-between gap-3 mb-4">
-        <p className="text-[12.5px] text-slate-500 dark:text-slate-400">
-          Only you see these. They use the same checks as the Overview tab.
+        <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-[70ch]">
+          Only you see these. They run the same checks as the Overview tab, and
+          each card can be narrowed to the repositories, owners and values you
+          care about.
         </p>
         <Button variant="primary" onClick={() => setAdding(true)}>
           <i className="ph-bold ph-plus mr-1.5 text-[12px]"></i>Add a card
@@ -77,19 +88,15 @@ export default function PersonalBoard() {
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {list.map((w, i) => (
-            <CheckCard
+          {list.map(w => (
+            <PersonalCard
               key={w.id}
               config={w}
-              index={i}
               onOpen={() => setOpened(w)}
-              // The shared board rolls its cards' verdicts into a page-level
-              // headline. There is no such headline here, so nothing is
-              // reported upwards and this is the required no-op rather than a
-              // second aggregation nobody reads.
-              onReport={() => { /* no page-level roll-up on a personal board */ }}
-              canEdit
               onEdit={() => setEditing(w)}
+              onFilters={() => setFiltering(w)}
+              onAlarm={() => setAlarming(w)}
+              alarmCount={(myAlarms ?? []).filter(a => a.widgetId === w.id).length}
               onRemove={() => remove.mutate(w.id)}
             />
           ))}
@@ -108,12 +115,25 @@ export default function PersonalBoard() {
               // `personal` is what puts it on this board. The server takes the
               // owner from the session rather than from here, so this cannot be
               // used to add a card to somebody else's page.
-              await create.mutateAsync({ ...config, personal: true } as any);
+              //
+              // Straight into the filters afterwards, because narrowing is the
+              // reason most of these cards exist and the choices only become
+              // real once the check has rows to offer.
+              const made = await create.mutateAsync({ ...config, personal: true } as any);
+              if (made) setFiltering(made);
             }
             setAdding(false);
             setEditing(null);
           }}
         />
+      )}
+
+      {filtering && (
+        <WidgetFilterEditor config={filtering} onClose={() => setFiltering(null)} />
+      )}
+
+      {alarming && (
+        <AlarmModal isOpen personal widgetId={alarming.id} onClose={() => setAlarming(null)} />
       )}
 
     </>

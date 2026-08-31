@@ -271,8 +271,16 @@ export async function getSystemTokenAsync(): Promise<string> {
 
 // ── Octokit Factory ──
 
-export function createOctokit(token: string): Octokit {
-  return new Octokit({
+/**
+ * The one place a GitHub client is built.
+ *
+ * Every caller comes through here so the counting hook cannot be bypassed. A
+ * `new Octokit()` somewhere else works perfectly and is invisible to the usage
+ * page, which is the worst combination: the page keeps adding up and quietly
+ * omits whatever that call site spends. `repro-githubusage.ts` fails on one.
+ */
+export function createOctokit(token: string, feature?: string): Octokit {
+  const octokit = new Octokit({
     auth: token,
     retry: { enabled: true, retries: 1 },
     throttle: {
@@ -280,6 +288,36 @@ export function createOctokit(token: string): Octokit {
       onSecondaryRateLimit: () => false,
     },
   });
+
+  // Counted before the request rather than after it, so a call that fails or is
+  // rate-limited still counts: GitHub charged for it either way, and a page
+  // that only counted successes would go quietest exactly when the budget was
+  // under most pressure.
+  octokit.hook.before("request", (options: any) => {
+    try {
+      const { recordRequest, currentFeature, bucketFor } = usageHooks();
+      // A client built for one job says so, which beats the async-local for the
+      // loops that make their calls inline inside a much larger function: those
+      // would otherwise need the whole loop wrapped, and a reindented sixty
+      // lines is a worse change than naming the client.
+      recordRequest(feature ?? currentFeature(),
+        bucketFor(String(options.url ?? ""), options.method));
+    } catch { /* never let bookkeeping break a request */ }
+  });
+
+  return octokit;
+}
+
+/**
+ * The usage recorder, resolved lazily.
+ *
+ * A static import would make this file depend on the DynamoDB client, and this
+ * file is imported by the bundled Lambdas, one of which has no reason to carry
+ * it. Required on first use instead, and a failure here is swallowed by the
+ * caller.
+ */
+function usageHooks() {
+  return require("../services/githubUsageService") as typeof import("../services/githubUsageService");
 }
 
 export function getOrg(): string {

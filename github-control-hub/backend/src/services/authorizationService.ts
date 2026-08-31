@@ -108,7 +108,7 @@ async function resolve(login: string, team: string, userToken?: string): Promise
     );
     throw new Unanswerable("no token of any kind");
   }
-  const octokit: Octokit = createOctokit(token);
+  const octokit: Octokit = createOctokit(token, "Signing in");
 
   // Org owners always qualify, otherwise an empty or deleted team could lock
   // everyone out of their own settings.

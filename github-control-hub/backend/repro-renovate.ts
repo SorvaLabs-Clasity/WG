@@ -16,6 +16,7 @@ import path from "path";
 import {
   buildQueries, normalizePr, fetchRenovatePrs, openPrs, retentionCutoff, botCandidates,
   CLOSED_RETENTION_MONTHS, type SearchIssues,
+  invalidateRenovateSearch,
 } from "./src/services/renovateService";
 
 let failures = 0;
@@ -106,6 +107,8 @@ const NOW = new Date("2026-08-14T12:00:00Z");
       return { items: page === 1 ? pageOf(5, "closed", 500) : [] };
     };
 
+    invalidateRenovateSearch();
+
     const res = await fetchRenovatePrs(search, "Org", "bot", NOW);
     check("every page of open results is followed", openPrs(res.prs).length === 130, openPrs(res.prs).length);
     check("  and a short page ends the walk rather than a guess",
@@ -115,6 +118,7 @@ const NOW = new Date("2026-08-14T12:00:00Z");
 
     // GitHub refuses to page past 1,000 search results.
     const always: SearchIssues = async () => ({ items: pageOf(100, "open", 1) });
+    invalidateRenovateSearch();
     const capped = await fetchRenovatePrs(always, "Org", "bot", NOW);
     check("hitting the search ceiling is reported, not hidden",
       capped.truncated === true, capped.truncated);
@@ -134,6 +138,8 @@ const NOW = new Date("2026-08-14T12:00:00Z");
         : [mk("closed", "2026-07-01T00:00:00Z", "2026-07-02T00:00:00Z"),
            mk("closed", "2026-08-01T00:00:00Z", "2026-08-10T00:00:00Z")],
     });
+
+    invalidateRenovateSearch();
 
     const { prs } = await fetchRenovatePrs(search, "Org", "bot", NOW);
     check("open PRs sort above closed ones",
@@ -156,6 +162,7 @@ const NOW = new Date("2026-08-14T12:00:00Z");
       e.status = 422;
       throw e;
     };
+    invalidateRenovateSearch();
     const res = await fetchRenovatePrs(notFound, "Org", "no-such-bot", NOW);
     check("an unknown bot account reports itself instead of throwing",
       res.unknownBot === true && res.prs.length === 0, res);
@@ -203,6 +210,8 @@ const NOW = new Date("2026-08-14T12:00:00Z");
       }] : [] };
     };
 
+    invalidateRenovateSearch();
+
     const typedPlain = await fetchRenovatePrs(only("acme-renovate[bot]"), "Org", "acme-renovate", NOW);
     check("typing the display name finds the App behind it",
       !typedPlain.unknownBot && typedPlain.prs.length === 1, typedPlain);
@@ -210,6 +219,7 @@ const NOW = new Date("2026-08-14T12:00:00Z");
       typedPlain.resolvedBot === "acme-renovate[bot]", typedPlain.resolvedBot);
 
     // And a genuine user account still works.
+    invalidateRenovateSearch();
     const typedUser = await fetchRenovatePrs(only("some-user"), "Org", "some-user", NOW);
     check("a real user account still resolves",
       !typedUser.unknownBot && typedUser.resolvedBot === "some-user", typedUser.resolvedBot);
@@ -218,6 +228,7 @@ const NOW = new Date("2026-08-14T12:00:00Z");
     const neither: SearchIssues = async () => {
       const e: any = new Error("Validation Failed"); e.status = 422; throw e;
     };
+    invalidateRenovateSearch();
     const nope = await fetchRenovatePrs(neither, "Org", "nobody", NOW);
     check("  a name matching neither form reports unknown", nope.unknownBot === true, nope);
   }

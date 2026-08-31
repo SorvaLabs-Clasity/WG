@@ -301,11 +301,15 @@ function check(name: string, ok: boolean, got?: unknown) {
 
   // The list of GitHub-backed queries sits in conditions.ts and the calls sit
   // in graphService.ts, so it can drift. Derived here from the cases that
-  // actually construct an Octokit.
+  // actually build a GitHub client.
+  //
+  // Anchored on the factory rather than on `new Octokit`, which is what this
+  // looked for until every client was routed through one place so the request
+  // counter could not be bypassed.
   const gs = fs.readFileSync(path.join(__dirname, "src/services/graphService.ts"), "utf8");
   const body = gs.slice(gs.indexOf("export async function evaluateSecurityQuery"));
   const cases = [...body.matchAll(/case "([a-z-]+)":/g)].map(m => ({ id: m[1], at: m.index! }));
-  const octokits = [...body.matchAll(/new [A-Za-z]*Octokit\(/g)].map(m => m.index!);
+  const octokits = [...body.matchAll(/createOctokit\(/g)].map(m => m.index!);
 
   // Each Octokit belongs to the case it appears under.
   const callsGitHub = new Set<string>();

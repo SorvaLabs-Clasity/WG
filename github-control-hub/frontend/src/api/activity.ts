@@ -24,6 +24,13 @@ export interface ActivityQuery {
   important?: "show" | "hide";
   /** Comma separated kinds to keep. Absent means all of them. */
   importantKinds?: string;
+  /**
+   * How to treat rows somebody wrote arranging their own board.
+   *
+   * Absent means all of them, which is what the feed showed before personal
+   * widgets and alarms existed.
+   */
+  personal?: "only" | "hide";
 }
 
 /**

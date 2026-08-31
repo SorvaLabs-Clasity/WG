@@ -377,6 +377,8 @@ const at = (over: Partial<ActivityEntry> = {}): ActivityEntry => ({
     "dependencies.ts": "reads advisories; its two writes enable and disable Dependabot on one repo with the caller's own token",
     "org.ts": "org read-through",
     "me.ts": "everything is the caller's own: it reads no login parameter and writes only their row",
+    "meAlarms.ts": "everything is the caller's own: ownership is read from the stored record, "
+      + "and the destination is resolved from the session rather than accepted from the body",
   };
 
   const routeDir = path.join(__dirname, "src/routes");

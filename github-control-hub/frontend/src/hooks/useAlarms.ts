@@ -10,6 +10,8 @@ import {
   setRecipientTimeZone, setGroupTimeZone,
   type WidgetAlarm, type SecurityNotifySettings,
   type FeedNotifySettings, type NotifyFeed,
+
+  fetchMyAlarms, createMyAlarm, updateMyAlarm, deleteMyAlarm, fetchMyDestination, addMyEmail, removeMyEmail, addMyTeams, removeMyTeams, setMyTimeZone,
 } from "../api/alarms";
 
 /**
@@ -148,3 +150,43 @@ export function useFeedSettings(feed: NotifyFeed, enabled = true) {
 export const useSaveFeedSettings = (feed: NotifyFeed) =>
   useAlarmMutation((data: Partial<FeedNotifySettings>) => saveFeedSettingsApi(feed, data),
     ["alarms", "feeds", feed]);
+
+// ── one person's own alarms ──
+//
+// Separate query keys from the organization's, so opening My work does not
+// briefly paint somebody's private alarms into the shared Alarms tab or the
+// other way round — the same reason the two widget boards do not share one.
+
+export function useMyAlarms(enabled = true) {
+  return useQuery({ queryKey: ["alarms", "mine"], queryFn: fetchMyAlarms, enabled });
+}
+
+export const useCreateMyAlarm = () =>
+  useAlarmMutation((data: Partial<WidgetAlarm> & { widgetId: string }) => createMyAlarm(data),
+    ["alarms", "mine"]);
+export const useUpdateMyAlarm = () =>
+  useAlarmMutation(({ id, data }: { id: string; data: Partial<WidgetAlarm> }) =>
+    updateMyAlarm(id, data), ["alarms", "mine"]);
+export const useDeleteMyAlarm = () =>
+  useAlarmMutation((id: string) => deleteMyAlarm(id), ["alarms", "mine"]);
+
+export function useMyDestination(enabled = true) {
+  return useQuery({
+    queryKey: ["alarms", "mine", "destination"],
+    queryFn: fetchMyDestination,
+    // A confirmation link is clicked outside this app, so the state changes
+    // without anything here knowing.
+    refetchInterval: enabled ? 30_000 : false,
+    enabled,
+  });
+}
+
+const DEST_KEY = ["alarms", "mine", "destination"];
+export const useAddMyEmail = () => useAlarmMutation((email: string) => addMyEmail(email), DEST_KEY);
+export const useRemoveMyEmail = () =>
+  useAlarmMutation(({ arn, email }: { arn: string; email: string }) =>
+    removeMyEmail(arn, email), DEST_KEY);
+export const useAddMyTeams = () => useAlarmMutation((a: string) => addMyTeams(a), DEST_KEY);
+export const useRemoveMyTeams = () => useAlarmMutation((a: string) => removeMyTeams(a), DEST_KEY);
+export const useSetMyTimeZone = () =>
+  useAlarmMutation((tz: string | null) => setMyTimeZone(tz), DEST_KEY);

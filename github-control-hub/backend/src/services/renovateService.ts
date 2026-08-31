@@ -1,3 +1,4 @@
+import { withFeature } from "./githubUsageService";
 /**
  * Renovate's pull requests, found by who opened them.
  *
@@ -166,7 +167,66 @@ export function botCandidates(bot: string): string[] {
   return [`${trimmed}[bot]`, trimmed];
 }
 
+/**
+ * Held briefly, and shared by every caller.
+ *
+ * This is the search API, whose secondary limit is **thirty requests a
+ * minute**, the smallest budget the app draws on. One call is already several
+ * requests: it pages, and an unrecognised bot name is answered with 422, so it
+ * tries each candidate spelling in turn.
+ *
+ * The alarm pass memoised it for itself, which did nothing for the
+ * Vulnerabilities tab or for a widget computed live while a page was open, and
+ * those are exactly the calls a person makes in bursts while clicking around.
+ *
+ * Keyed on the organization and the bot, not on the caller's token: the answer
+ * is org-wide and identical either way.
+ */
+const RENOVATE_CACHE_MS = 60_000;
+let renovateCache: { at: number; key: string; value: RenovateResult } | null = null;
+let renovateInFlight: { key: string; run: Promise<RenovateResult> } | null = null;
+
+/** Forget the held search, so the next read goes to GitHub. */
+export function invalidateRenovateSearch(): void {
+  renovateCache = null;
+}
+
 export async function fetchRenovatePrs(
+  search: SearchIssues,
+  org: string,
+  bot: string,
+  now = new Date(),
+): Promise<RenovateResult> {
+  const key = `${org}\u0000${bot}`;
+  if (renovateCache && renovateCache.key === key && Date.now() - renovateCache.at < RENOVATE_CACHE_MS) {
+    return renovateCache.value;
+  }
+  if (renovateInFlight && renovateInFlight.key === key) return renovateInFlight.run;
+
+  const run = searchRenovatePrs(search, org, bot, now);
+  renovateInFlight = { key, run };
+  try {
+    const value = await run;
+    // An unknown bot is not cached: it is "we could not ask", and holding it
+    // would keep answering with a failure after somebody fixes the name.
+    if (!value.unknownBot) renovateCache = { at: Date.now(), key, value };
+    return value;
+  } finally {
+    renovateInFlight = null;
+  }
+}
+
+function searchRenovatePrs(
+  search: SearchIssues,
+  org: string,
+  bot: string,
+  now = new Date(),
+): Promise<RenovateResult> {
+  return withFeature("Renovate pull request search",
+    () => runRenovateSearch(search, org, bot, now));
+}
+
+async function runRenovateSearch(
   search: SearchIssues,
   org: string,
   bot: string,

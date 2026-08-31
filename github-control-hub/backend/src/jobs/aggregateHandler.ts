@@ -5,6 +5,7 @@ import { aggregateGraphData } from "./graphAggregator";
 import { refreshLightEdges } from "./lightGraphRefresh";
 import { getOrgConfig } from "../services/orgConfigService";
 import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
+import { flushUsage } from "../services/githubUsageService";
 
 /**
  * The scheduled rebuild of the access graph.
@@ -93,6 +94,7 @@ export async function handler(event?: { mode?: "light" | "full" }): Promise<{ ok
         startedAt,
       });
     }
+    await flushUsage();
     return { ok: true };
   }
 
@@ -124,5 +126,6 @@ export async function handler(event?: { mode?: "light" | "full" }): Promise<{ ok
     startedAt,
   });
 
+  await flushUsage();
   return { ok: true };
 }

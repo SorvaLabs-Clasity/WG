@@ -9,6 +9,7 @@ import {
   ScanCommand,
   UpdateCommand,
   BatchWriteCommand,
+  BatchGetCommand,
 } from "@aws-sdk/lib-dynamodb";
 
 let rawClient = new DynamoDBClient({
@@ -187,4 +188,5 @@ export {
   ScanCommand,
   UpdateCommand,
   BatchWriteCommand,
+  BatchGetCommand,
 };

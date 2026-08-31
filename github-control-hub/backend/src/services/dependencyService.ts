@@ -1,5 +1,6 @@
 import type { Octokit } from "octokit";
 import { fetchAllCursorPages } from "../utils/cursorPages";
+import { withFeature } from "./githubUsageService";
 
 /**
  * The organization's open Dependabot alerts.
@@ -58,7 +59,73 @@ export function mapAlert(alert: any, repoName: string, orgName: string): Depende
  * but the caller is told, because an alarm must not read "no alerts" off a
  * sweep that never ran.
  */
-export async function fetchOrgDependencyAlerts(
+/**
+ * Held briefly, and shared by every caller.
+ *
+ * This walks the organization's open alerts a hundred at a time, so one call is
+ * several requests issued back to back, and several callers wanting the same
+ * answer within a moment is what a secondary rate limit is for. The alarm pass
+ * memoised it for itself, which did nothing for the routes or for a widget
+ * computed live while a page was open.
+ *
+ * Sixty seconds: GitHub rescans on its own schedule, so a fresher answer than
+ * that does not exist to be had.
+ *
+ * The in-flight promise is shared as well as the result, because the case this
+ * exists for is several callers starting together and all missing the cache.
+ */
+const SWEEP_CACHE_MS = 60_000;
+let sweepCache: { at: number; org: string; value: { alerts: DependencyAlert[]; degraded: boolean } } | null = null;
+let sweepInFlight: { org: string; run: Promise<{ alerts: DependencyAlert[]; degraded: boolean }> } | null = null;
+
+/**
+ * The held sweep, if there is one, without starting a new one.
+ *
+ * For anything that wants to describe the sweep rather than use it. The budget
+ * page reports how many alerts there are; asking GitHub to draw that page would
+ * be the page spending the allowance it exists to report on.
+ */
+export function peekDependencySweep(): { alerts: DependencyAlert[]; degraded: boolean } | null {
+  if (!sweepCache || Date.now() - sweepCache.at >= SWEEP_CACHE_MS) return null;
+  return sweepCache.value;
+}
+
+/** Forget the held sweep, so the next read goes to GitHub. */
+export function invalidateDependencySweep(): void {
+  sweepCache = null;
+}
+
+export function fetchOrgDependencyAlerts(
+  octokit: Octokit,
+  org: string,
+): Promise<{ alerts: DependencyAlert[]; degraded: boolean }> {
+  return withFeature("Dependabot alert sweep", () => cachedOrgAlertSweep(octokit, org));
+}
+
+async function cachedOrgAlertSweep(
+  octokit: Octokit,
+  org: string,
+): Promise<{ alerts: DependencyAlert[]; degraded: boolean }> {
+  if (sweepCache && sweepCache.org === org && Date.now() - sweepCache.at < SWEEP_CACHE_MS) {
+    return sweepCache.value;
+  }
+  if (sweepInFlight && sweepInFlight.org === org) return sweepInFlight.run;
+
+  const run = sweepOrgAlerts(octokit, org);
+  sweepInFlight = { org, run };
+  try {
+    const value = await run;
+    // A degraded sweep is not cached. It is the answer "we could not read
+    // this", and holding it for a minute turns one failed request into a
+    // minute of them.
+    if (!value.degraded) sweepCache = { at: Date.now(), org, value };
+    return value;
+  } finally {
+    sweepInFlight = null;
+  }
+}
+
+async function sweepOrgAlerts(
   octokit: Octokit,
   org: string,
 ): Promise<{ alerts: DependencyAlert[]; degraded: boolean }> {

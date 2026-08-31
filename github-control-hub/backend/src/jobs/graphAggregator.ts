@@ -1,5 +1,5 @@
 import { Octokit } from "octokit";
-import { getOrg, getSystemTokenAsync } from "../github/client";
+import { getOrg, getSystemTokenAsync, createOctokit } from "../github/client";
 import { tableName, scanAll, batchWrite } from "../utils/dynamo";
 import { bumpGraphVersion } from "../services/graphVersion";
 import { buildRepoMeta } from "./repoMeta";
@@ -7,6 +7,7 @@ import { invalidateAccessMap } from "../services/accessMapService";
 import { invalidateEdgeCache } from "../services/graphService";
 import { recordGraphAggregation } from "../services/orgConfigService";
 import { SCHEDULE_ACTOR } from "../services/recrawlWindow";
+import { withFeature } from "../services/githubUsageService";
 
 interface GraphEdge {
   pk: string;
@@ -25,6 +26,16 @@ export async function aggregateGraphData(
    */
   startedBy: string = SCHEDULE_ACTOR,
 ) {
+  // The nightly walk and a pressed recrawl are the same code doing the same
+  // work, and they are separated here because they are not the same decision:
+  // one is the cost of running the app, the other is somebody choosing to spend
+  // it. A page that merged them could not tell you which.
+  return withFeature(
+    startedBy === SCHEDULE_ACTOR ? "Nightly access graph rebuild" : "Full GitHub recrawl",
+    () => walkGraph(fallbackToken, startedBy));
+}
+
+async function walkGraph(fallbackToken: string | undefined, startedBy: string) {
   // Stamped before the walk, so a run that dies mid-way still leaves evidence
   // it was tried. The success timestamp is written only once edges are on disk.
   //
@@ -59,7 +70,7 @@ async function runAggregation(fallbackToken?: string) {
     return;
   }
 
-  const octokit = new Octokit({ auth: token });
+  const octokit = createOctokit(token);
   const org = getOrg();
   const edges: GraphEdge[] = [];
   // Keyed to the table this job actually writes.
