@@ -248,21 +248,17 @@ async function invokeEngine(payload: Record<string, unknown>): Promise<any> {
 /**
  * Re-evaluate the rules whose exclusions have just changed.
  *
- * Synchronous on purpose. The alternative is returning a saved rule while the
- * findings behind it still say the opposite, which is precisely the bug this
- * exists to close: a resource stays marked "skipped" after the list excluding
- * it has been taken away, and pressing refresh cannot fix it, because refresh
- * re-reads stored findings rather than producing new ones.
+ * Synchronous on purpose. Returning a saved rule while the findings still say
+ * the opposite leaves a resource marked "skipped" after the list excluding it
+ * has gone, and refresh cannot fix it, because refresh re-reads stored findings
+ * rather than producing new ones.
  *
  * Scoped to the affected rules, so this is one collector pass rather than a
- * whole sweep, and skipped entirely when nothing exclusion-related moved,
- * renaming a rule or toggling its mode stays instant.
+ * sweep, and skipped when nothing exclusion-related moved.
  *
- * A failure here is not a failed save. The change is already stored and is
- * correct; only the re-check did not run. Rejecting the request would tell
- * somebody their edit had not taken, which is both worse and untrue, so the
- * outcome is reported instead, and the caller can say the findings are still
- * from before rather than implying they are current.
+ * A failure here is not a failed save: the change is stored and correct, only
+ * the re-check did not run. The outcome is reported so the caller can say the
+ * findings are still from before, rather than implying they are current.
  */
 async function recheckRules(ruleIds: string[]): Promise<boolean> {
   if (ruleIds.length === 0) return false;

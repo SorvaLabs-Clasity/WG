@@ -91,29 +91,16 @@ export class GitHubControlHubStack extends cdk.Stack {
       enforceSSL: true,
     });
 
-    // Lambda log groups, created here rather than left to Lambda.
-    //
-    // A function that creates its own log group creates one that never expires,
-    // and nothing in the console says so, the cost simply grows for ever, which
-    // is the shape of bill nobody notices. Three months is long enough to debug
-    // an incident from and short enough to bound.
+    // Lambda log groups, created here rather than left to Lambda, which makes
+    // one that never expires and says nothing about it. Three months is long
+    // enough to debug an incident from and short enough to bound.
     //
     // **Not named `/aws/lambda/<function>`.** That is where Lambda puts a group
-    // it makes itself, on the first invocation, and CloudFormation refuses to
-    // create a resource whose physical name already exists. Any account where
-    // these functions had ever run, which is every account this has been
-    // deployed to, failed the change set with "already exists" and could not
-    // be deployed at all.
-    //
-    // Renaming is the supported way out: CDK's own guidance on moving from the
-    // deprecated `logRetention` prop to `logGroup` says in as many words that
-    // the group's name changes. The alternative, `logRetention`, is deprecated
-    // and ships a custom resource and a second Lambda to call PutRetentionPolicy
-    // after every deploy.
-    //
-    // The old `/aws/lambda/*` groups are left where they are. Nothing writes to
-    // them once this deploys, they still hold whatever history was there, and
-    // they can be deleted whenever convenient, see docs/operations/deploying.md.
+    // it creates itself, and CloudFormation refuses a resource whose physical
+    // name already exists, so any account these functions had run in could not
+    // deploy. Renaming is the supported way out, and what CDK's guidance for
+    // moving off the deprecated `logRetention` prop says to expect. The old
+    // groups keep their history; see docs/operations/deploying.md.
     const logGroupFor = (id: string, fnName: string) =>
       new logs.LogGroup(this, `${id}Logs`, {
         // e.g. github-control-hub/lambda/alarm-evaluator
@@ -194,15 +181,11 @@ export class GitHubControlHubStack extends cdk.Stack {
       // cannot quietly start doing something this account never agreed to
       // without the policy visibly changing.
       //
-      // Granted unconditionally. It used to sit behind `-c enforce=true`, so a
-      // deploy that forgot the flag produced an app whose rules reported
-      // violations and never fixed them, the feature half-working, silently,
-      // until somebody noticed weeks later that nothing had changed.
-      //
-      // Whether a rule acts is already a decision, made per rule in the AWS
-      // tab, visible there, and defaulting to report. That is the right place
-      // for it: a second gate in IAM only duplicated the choice somewhere
-      // nobody could see it.
+      // Granted unconditionally. Behind a deploy flag, forgetting the flag
+      // produces an app whose rules report violations and never fix them:
+      // half-working, silently. Whether a rule acts is already a per-rule
+      // decision in the AWS tab, visible there and defaulting to report, and a
+      // second gate in IAM only duplicates it somewhere nobody can see.
       guardrailFn.addToRolePolicy(new iam.PolicyStatement({
         sid: "RemediateThreeThings",
         actions: [
@@ -299,24 +282,19 @@ export class GitHubControlHubStack extends cdk.Stack {
 
     // ── The GitHub half ─────────────────────────────────────────────────
     //
-    // Everything from here to the outputs exists to serve GitHub: the webhook
-    // endpoint and its queue, the alarm evaluator, and the access graph rebuild.
+    // Everything from here to the outputs serves GitHub: the webhook endpoint
+    // and its queue, and the access graph rebuild. Deploy with
+    // `-c awsOnly=true` and none of it is created, for an organization whose
+    // guardrails watch a production account that holds nothing about its GitHub
+    // organization. See scripts/setup-aws-only.sh.
     //
-    // An organization can reasonably want the guardrails watching a production
-    // account while nothing about its GitHub organization lives there, no App
-    // key, no access graph, no webhook. Deploy with `-c awsOnly=true` and none of
-    // this is created, leaving the guardrail function, the alarm evaluator, their
-    // schedules and the tables. See scripts/setup-aws-only.sh.
-    //
-    // The alarm evaluator used to sit inside this gate, which was right when the
-    // only thing it could watch was a GitHub widget. Guardrails can raise alarms
-    // now, so an AWS-only account had rules that could detect a violation and no
-    // way to tell anyone: the tab was there, the alarms saved, and nothing ever
-    // evaluated them. It is created either way, and skips the GitHub half of a
-    // pass when there is no App to read it with.
-    // Shared by every function in the stack, so defined outside the GitHub
-    // gate below: the alarm evaluator is built with it too, and it now runs
-    // in AWS-only installs where nothing under that gate exists.
+    // The alarm evaluator is outside the gate, because guardrails can raise
+    // alarms: inside it, an AWS-only account could save an alarm that nothing
+    // would ever evaluate. It skips the GitHub half of a pass when there is no
+    // App to read it with.
+
+    // Shared by every function, so defined outside the gate: the alarm
+    // evaluator is built with it and runs in AWS-only installs too.
     const webhookBundling = {
       externalModules: [],
       minify: false,
@@ -697,50 +675,27 @@ export class GitHubControlHubStack extends cdk.Stack {
         ],
       }));
 
-      // Daily, not six-hourly, and the reason is what this pass is actually for.
+      // Daily at 10pm Eastern. Webhooks patch the graph as changes arrive and
+      // the thirty-minute pass carries repository and team facts, so this walk
+      // exists to reconcile: it re-reads everything and deletes what GitHub no
+      // longer has, bounding a missed delivery to a day rather than forever.
+      // It is the heaviest GitHub traffic the app produces.
       //
-      // Almost nothing here is collected only by this walk any more: webhooks
-      // patch access as it changes, and the thirty-minute pass carries
-      // repository facts and team composition. What remains is reconciliation.
-      // Webhook delivery is best-effort, and a missed one leaves the graph
-      // holding something that is no longer true, with nothing else in the
-      // system able to notice. This walk re-reads everything and deletes what
-      // GitHub no longer has, so a missed delivery is wrong for a day rather
-      // than forever.
-      //
-      // Running it four times a day bought a worst case of six hours instead of
-      // twenty-four on a failure that is already rare, at four times the GitHub
-      // traffic. The manual recrawl covers anyone who needs it sooner.
-      //
-      // **At 10pm Eastern, not "once every 24 hours".** A `rate(1 day)` fires
-      // 24 hours after the rule was last written, so the hour it lands on is
-      // whenever the stack happened to be deployed, and it moves every time
-      // the rule is touched. This walk reads every repository in the
-      // organization and is the heaviest GitHub traffic the app produces, so
-      // the hour it runs at is worth deciding rather than inheriting.
-      //
-      // EventBridge Scheduler rather than an `events.Rule`, because a Rule's
-      // cron is UTC only. Pinning 03:00 UTC would be 10pm in winter and 11pm
-      // once the clocks go forward. Naming the zone keeps it at 10pm all year
-      // and moves the UTC hour instead, which is the way round that matches
-      // what somebody means by "10pm".
+      // Scheduler rather than events.Rule: a Rule's cron is UTC only, so a
+      // fixed hour would drift by one when the clocks change. Naming the zone
+      // keeps it at 10pm all year.
+
       // ── the construct id is deliberately not "GraphAggregationSchedule" ──
       //
-      // That id belonged to an `events.Rule`, and CloudFormation will not change
-      // the Type of a resource under an existing logical id. Reusing it fails
-      // the whole changeset before it starts, with:
+      // That id held an events.Rule, and CloudFormation cannot change a
+      // resource's Type under an existing logical id: reusing it fails the
+      // changeset with "Update of resource type is not permitted". A new id
+      // lets CloudFormation create the schedule and delete the rule in one
+      // deployment. Do not tidy this name back.
       //
-      //   Update of resource type is not permitted. The new template modifies
-      //   resource type of the following resources: [GraphAggregationSchedule…]
-      //
-      // A new id means CloudFormation creates the schedule and deletes the old
-      // rule in the same deployment, which is the only way to move between two
-      // resource types. So this name must not be "tidied" back.
-      //
-      // The two coexist for the minutes between create and cleanup. Harmless:
-      // an EventBridge *rule* and an EventBridge *Scheduler* schedule are
-      // separate services with separate name spaces, so the shared name does
-      // not collide, and the walk is idempotent if both happen to fire.
+      // The two coexist for a few minutes. A rule and a Scheduler schedule are
+      // separate services with separate name spaces, and the walk is
+      // idempotent, so a shared name and a double fire are both harmless.
       const graphSchedule = new scheduler.Schedule(this, "NightlyGraphRebuild", {
         scheduleName: `${stackPrefix}-graph-aggregation`,
         description: "Rebuilds the access graph from GitHub, nightly at 10pm Eastern",
@@ -766,21 +721,16 @@ export class GitHubControlHubStack extends cdk.Stack {
 
       // The cheap half, far more often.
       //
-      // Six checks read edges the six-hourly walk is otherwise the only writer
-      // of, repository visibility, archival, last push, team ownership and
-      // team membership. None of that is per-repository work: the metadata
-      // arrives with the repository listing at no extra cost, and team
-      // composition is two calls per team. Under a hundred requests, against
-      // an allowance of fifteen thousand an hour.
+      // Six checks read edges the six-hourly walk otherwise owns: visibility,
+      // archival, last push, team ownership and membership. None is
+      // per-repository work, so this is under a hundred requests against an
+      // allowance of fifteen thousand an hour.
       //
-      // The expensive part of the rebuild, every repository's collaborators,
-      // branches, workflows and alerts, four requests each, stays on six
-      // hours. Running *that* every thirty minutes is what this deliberately
-      // is not.
+      // The expensive part, every repository's collaborators, branches,
+      // workflows and alerts, stays on six hours.
       //
-      // Webhooks already patch these edges as changes arrive. This is the
-      // backstop for a delivery that was missed, arrived out of order, or was
-      // never sent, which nothing else would correct until the next rebuild.
+      // Webhooks already patch these edges. This is the backstop for a delivery
+      // that was missed, arrived out of order, or was never sent.
       new events.Rule(this, "GraphLightRefreshSchedule", {
         ruleName: `${stackPrefix}-graph-light-refresh`,
         description: "Refreshes repository metadata and team composition",

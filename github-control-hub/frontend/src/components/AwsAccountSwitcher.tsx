@@ -5,22 +5,16 @@ import { fetchAwsProfiles, useAwsProfile, triggerAwsSsoLogin, AwsProfile } from 
 /**
  * Moving between AWS accounts without ending the GitHub session.
  *
- * The app used to be signed into one account for the life of a launch. Reaching
- * another meant going back to the login screen, and the switch invalidated the
- * session on the way, `JWT_SECRET` is read from each account's secret, so the
- * token minted under the last account stopped verifying the moment the new
- * one's secrets loaded. Changing which AWS account you were looking at
- * therefore signed you out of GitHub, which is not a thing anybody asked for.
+ * `JWT_SECRET` is read from each account's secret, so a token minted under one
+ * account stops verifying the moment another's secrets load. The switch
+ * endpoint re-signs the session and the API layer adopts it, so the identity
+ * survives. That matters beyond convenience: whether you may run a sweep is
+ * decided by your membership of `aws-guardrail-admins`, and that is asked in
+ * every account, including ones holding no GitHub credentials.
  *
- * The session is now re-signed by the switch endpoint and adopted by the API
- * layer, so the identity survives. That matters beyond convenience: whether you
- * may run a sweep is decided by your membership of `aws-guardrail-admins`, and
- * that question is asked in every account, including the ones holding no GitHub
- * credentials at all.
- *
- * What the account has decides what the app shows. Switching into an account
- * whose secret holds nothing GitHub-shaped leaves the AWS and Activity tabs and
- * takes the rest away, which is the same state as signing in there would give.
+ * What the account holds decides what the app shows. Switching into one with
+ * nothing GitHub-shaped leaves the AWS, Alarms and Activity tabs and takes the
+ * rest away.
  */
 export default function AwsAccountSwitcher({ current, onSwitched }: {
   /** The profile in use, from /auth/status. */

@@ -1,24 +1,17 @@
 /**
  * Asked before a full re-read of the organization, wherever it is triggered.
  *
- * There are two buttons for it, on Access and on Overview, and they must not
- * warn differently: one of them having the dialog and the other not is how
- * somebody learns the warning is optional.
+ * Shared by the buttons on Access and Overview: one of them warning and the
+ * other not is how somebody learns the warning is optional.
  *
- * "Full GitHub recrawl" rather than "Sync data", because the old label read as
- * a refresh and this is not one. It re-reads every repository, team and member,
- * spends the organization's shared GitHub rate limit doing it, and runs in this
- * application rather than in AWS, so closing the window stops it partway.
+ * "Full GitHub recrawl" rather than "Sync data", because this is not a refresh.
+ * It re-reads every repository, team and member, spends the organization's
+ * shared rate limit, and runs in this application, so closing the window stops
+ * it partway.
  *
- * The cadence in here has been wrong twice. It is the nightly schedule in
- * infra/cdk-stack.ts ("NightlyGraphRebuild", 22:00 America/New_York) and
- * nothing else; a number typed here from memory is a number that goes stale
- * the next time the schedule moves.
- *
- * What it does *not* do is touch GitHub: it is read-only there, and it updates
- * the stored map by writing the differences rather than clearing it. Worth
- * knowing, and not worth putting in a dialog whose job is to slow somebody
- * down for a moment.
+ * The cadence quoted here belongs to infra/cdk-stack.ts
+ * ("NightlyGraphRebuild", 22:00 America/New_York). A number typed from memory
+ * goes stale the next time that schedule moves.
  */
 export function confirmRebuild(edgeCount?: number): boolean {
   const stored = edgeCount

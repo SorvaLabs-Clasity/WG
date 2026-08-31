@@ -1,11 +1,8 @@
 /**
  * The credentials block, in whichever shape AWS handed it over.
  *
- * The access portal's "Command line or programmatic access" dialog offers
- * four, and this used to require the literal word `export`, so the bash one
- * worked and the other three parsed to nothing at all. Combined with a button
- * that returned silently when nothing parsed, pasting the wrong-but-perfectly-
- * valid format did nothing whatsoever and said nothing about why:
+ * The access portal's "Command line or programmatic access" dialog offers four,
+ * and accepting only one means pasting a perfectly valid block does nothing:
  *
  *   export AWS_ACCESS_KEY_ID="ASIA..."      bash / zsh
  *   set AWS_ACCESS_KEY_ID=ASIA...           Windows command prompt
@@ -14,8 +11,7 @@
  *
  * Line-based rather than one regex, because the shapes differ in prefix,
  * quoting and case, and a regex covering all four is unreadable and untestable.
- * Splitting on the *first* `=` matters: session tokens are base64 and routinely
- * end in `=`.
+ * Split on the *first* `=`: session tokens are base64 and routinely end in `=`.
  */
 export function parseExportBlock(block: string): Record<string, string> {
   // The credentials-file spellings, which are lower case and unprefixed.

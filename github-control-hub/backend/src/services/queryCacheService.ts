@@ -5,27 +5,19 @@ import {
 /**
  * Per-subject answers for the checks that cost a GitHub request each.
  *
- * Three security checks ask GitHub something once per subject:
  * `dormant-privileged-users` runs a commit search per privileged account, and
  * the two branch-protection checks read protection and merged pull requests per
- * repository. The cost is therefore the size of the organization, and the
- * budget it draws on is fixed, commit search allows thirty requests a *minute*.
+ * repository. The cost is the size of the organization; the budget is fixed,
+ * and commit search allows thirty requests a *minute*.
  *
- * Two facts make caching the right answer rather than a shortcut:
+ * Caching works here because the questions are slow-moving, "has this person
+ * committed in six months" does not change between two evaluations, and
+ * because subjects are independent, so the work divides into batches instead
+ * of needing three hundred requests in one minute it does not have.
  *
- *   - **The questions are slow-moving.** "Has this person committed in six
- *     months" cannot meaningfully change between one fifteen-minute evaluation
- *     and the next. Re-deriving it ninety-six times a day is ninety-six times
- *     the cost of the answer being wrong by at most a few hours.
- *   - **A subject is independent of the others.** Nothing about checking Alice
- *     depends on having just checked Bob, so the work divides. That is what lets
- *     a three-hundred-account organization be covered a batch at a time instead
- *     of needing three hundred requests in one minute it does not have.
- *
- * So each subject's verdict is stored on its own, with when it was taken. A pass
- * refreshes the most stale handful within its budget and assembles the answer
- * from everything on file. Coverage grows until it is complete and then stays
- * complete, refreshing oldest-first forever.
+ * Each subject's verdict is stored with when it was taken. A pass refreshes the
+ * most stale handful within its budget and assembles the answer from everything
+ * on file, so coverage grows until complete and then refreshes oldest-first.
  */
 
 const TABLE = () => tableName("ALARMS_TABLE");
@@ -53,10 +45,9 @@ export interface CachedVerdict {
  * How long a verdict is worth keeping.
  *
  * Long enough that a large organization is not re-reading itself constantly,
- * short enough that a person who starts committing stops being reported as
- * dormant within a working day. Refresh is oldest-first and continuous, so in
- * practice entries are replaced well before this; it is the outer bound at which
- * one is no longer allowed to count toward coverage.
+ * short enough that somebody who starts committing stops being reported as
+ * dormant within a working day. Refresh is oldest-first and continuous, so this
+ * is the outer bound at which an entry stops counting toward coverage.
  */
 export const VERDICT_TTL_HOURS = 24;
 

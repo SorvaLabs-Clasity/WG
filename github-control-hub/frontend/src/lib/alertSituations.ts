@@ -50,10 +50,9 @@ export interface Situation {
   /**
    * How many of these were later undone on GitHub.
    *
-   * Not "how many are still open". Nothing is open. This used to be
-   * `unresolved`, a count of rows where `resolved` was false, and on an
-   * account where somebody had once worked through the old queue that was
-   * zero for every group, so every group claimed to have been undone.
+   * Not "how many are still open": nothing is open. Counting rows where
+   * `resolved` is false gives zero on an account where somebody once worked
+   * through the old queue, so every group claims to have been undone.
    */
   reverted: number;
   first: string;
@@ -179,15 +178,13 @@ export function trends(alerts: AlertLike[], now = Date.now()): Trend[] {
 /**
  * Nothing here is a task.
  *
- * `needsDecision` used to live here: critical and high, still unresolved, shown
- * as a queue with a Resolve button on each. The trouble is that almost every
- * one of them was a change somebody made on purpose, so clearing it recorded
- * only that a person had pressed a button, in a row nobody opened again. A
- * queue that is right 99.999% of the time is a queue nobody reads, and the
- * 0.001% is then invisible inside it.
+ * A queue of unresolved criticals with a Resolve button records only that a
+ * person pressed a button, because almost every one of them is a change
+ * somebody made on purpose. A queue that is right 99.999% of the time is a
+ * queue nobody reads, and the 0.001% is then invisible inside it.
  *
- * So an alert is a log line. It arrives, it is counted, it ages out. What
- * replaces the queue is a window: what has happened lately, which empties
+ * So an alert is a log line: it arrives, it is counted, it ages out. What
+ * replaces the queue is a window on what has happened lately, which empties
  * itself whether or not anybody looks.
  */
 
@@ -219,16 +216,13 @@ export function wasReverted(a: { resolved?: boolean; resolvedBy?: string }): boo
 }
 
 /**
- * Is this an ordinary week?
+ * Is this an ordinary week? Gives the page a resting state, so a quiet week
+ * looks visibly quiet rather than like a list that failed to load.
  *
- * Used to give the page a resting state. A quiet week should look visibly
- * quiet, rather than looking like a list that failed to load.
- *
- * **Severity counts, not only rate.** This used to ask about rate alone, which
- * meant an organization that makes a repository public most weeks would see
- * "Nothing unusual" over a repository that had just gone public. The rate was
- * ordinary and the event was not, and it is the event somebody needs to see.
- * One critical is enough to end the resting state whatever the rate says.
+ * **Severity counts, not only rate.** On rate alone, an organization that makes
+ * a repository public most weeks sees "Nothing unusual" over a repository that
+ * has just gone public: the rate is ordinary and the event is not. One critical
+ * ends the resting state whatever the rate says.
  */
 export function isRestingState(alerts: AlertLike[], now = Date.now()): boolean {
   if (worstIn(recent(alerts, RECENT_DAYS, now)) === "critical") return false;

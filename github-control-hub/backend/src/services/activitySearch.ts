@@ -1,22 +1,18 @@
 /**
  * Searching and paging the activity feed, where the rows actually are.
  *
- * The tab used to fetch the newest hundred rows once and do everything in the
- * browser: paging, searching, every filter. That made the pager a lie. Page two
- * was the end of the list whatever the table held, and a search for a
- * repository touched last March matched nothing, because March was never
- * fetched. Twelve months in, the feed could hold fifty thousand rows and the
- * screen could reach a hundred of them.
+ * Filtering in the browser over the newest hundred rows makes the pager a lie:
+ * page two is the end of the list whatever the table holds, and a search for a
+ * repository touched last March matches nothing because March was never
+ * fetched. Twelve months in, the feed holds tens of thousands of rows.
  *
- * So filtering happens here. The complication is that DynamoDB's `Limit` counts
- * rows **read**, not rows that survive a filter, so asking for fifty matches
- * cannot be done in one request: the query is paged until enough match or the
- * examined budget runs out.
+ * The complication is that DynamoDB's `Limit` counts rows **read**, not rows
+ * that survive a filter, so fifty matches cannot be asked for in one request:
+ * the query is paged until enough match or the examined budget runs out.
  *
- * That budget is the honest part. A search matching nothing in the last three
- * thousand rows returns no matches **and says it stopped early**, with a cursor
- * to carry on from, rather than reporting "no results" for a question it only
- * partly asked.
+ * That budget is the honest part. A search matching nothing in three thousand
+ * rows says it stopped early and carries a cursor, rather than reporting "no
+ * results" for a question it only partly asked.
  */
 import { docClient, usesDynamo, tableName, QueryCommand } from "../utils/dynamo";
 import type { ActivityEntry } from "./activityService";

@@ -527,17 +527,16 @@ export async function processDelivery({ event, payload, token, receivedAt }: Del
       }
     }
 
-    // ── the facts the rebuild used to be the only source of ──────────────
+    // ── the facts the rebuild would otherwise be the only source of ──────
     //
-    // Everything below arrives on an event this handler was already receiving
-    // and already acting on. It raised a security alert and then left the
-    // graph alone. So the Security tab knew a repository had gone public
-    // within seconds while the widget that counts public repositories went on
-    // showing the old number for up to six hours.
+    // Everything below arrives on an event this handler already receives and
+    // acts on. Raising the alert without touching the graph means the Security
+    // tab knows a repository went public within seconds while the widget
+    // counting public repositories shows the old number for up to six hours.
     //
-    // These are the six checks that read edges no webhook wrote:
-    // public-repos, archived-repos-with-access, stale-repos, unowned-repos,
-    // empty-teams and repos-dependent-on.
+    // The six checks reading these edges: public-repos,
+    // archived-repos-with-access, stale-repos, unowned-repos, empty-teams and
+    // repos-dependent-on.
 
     // Visibility and archival. `repo_meta` carries a dozen fields the rebuild
     // collected, so this merges rather than replaces, see patchRepoMeta.

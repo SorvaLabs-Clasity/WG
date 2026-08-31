@@ -73,12 +73,10 @@ export interface EmailGroup {
   /**
    * People this group also DMs in Teams, by work email address.
    *
-   * Addresses rather than webhooks. The organization has one shared flow and
-   * the destination travels with each message, so adding somebody here is
-   * typing who they are, exactly like the email column beside it, rather than
-   * asking them to go and build a pipe of their own first.
-   *
-   * Optional, so every group created before this behaves exactly as it did.
+   * Addresses rather than webhooks: the organization has one shared flow and
+   * the destination travels with each message, so adding somebody is typing who
+   * they are, exactly like the email column beside it, rather than asking them
+   * to build a pipe of their own first.
    */
   teamsRecipients?: string[];
   /**
@@ -1065,15 +1063,15 @@ export async function readPrSnapshot(): Promise<
 /**
  * A widget's rows, computed on the schedule rather than while somebody waits.
  *
- * Every check used to run inside the request that drew the card, so opening the
- * Overview meant a full scan of the graph table, live GitHub calls for the
- * dependency widgets, and, for the three subject-by-subject checks, up to
- * twenty-five commit searches against a budget of thirty a minute. All of it in
- * the page load, on a cold process, immediately after launching the app.
+ * Run inside the request that draws the card, opening Overview means a full
+ * scan of the graph table, live GitHub calls for the dependency widgets, and,
+ * for the three subject-by-subject checks, up to twenty-five commit searches
+ * against a budget of thirty a minute, all on a cold process immediately after
+ * launch.
  *
- * The scheduled pass already computes exactly these rows for any widget an
- * alarm watches. Storing them for every widget costs that pass a little more
- * and takes the whole of it off the page load.
+ * The scheduled pass already computes these rows for any widget an alarm
+ * watches. Storing them for every widget costs that pass a little more and
+ * takes the whole of it off the page load.
  */
 export interface WidgetSnapshot {
   id: string;
@@ -1118,12 +1116,11 @@ export async function saveWidgetSnapshot(
    * How many repositories the count is out of, at the moment the rows were
    * computed.
    *
-   * Stored with the answer because it *is* part of the answer. The dashboard
-   * used to take the rows from here and the denominator from a separate
-   * repository listing that arrived a few seconds later, so every card opened
-   * with no share, drew itself amber, then repainted to its real colour once
-   * the second request landed. A stored answer that needs a live request to be
-   * read is not a stored answer.
+   * Stored with the answer because it *is* part of the answer. Taking the rows
+   * from here and the denominator from a separate listing that lands seconds
+   * later opens every card with no share, drawn amber, repainting to its real
+   * colour afterwards. A stored answer that needs a live request to be read is
+   * not a stored answer.
    */
   repoTotal?: number | null,
 ): Promise<void> {

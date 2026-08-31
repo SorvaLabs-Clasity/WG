@@ -99,25 +99,19 @@ class GitHubTokenManager {
   getToken(): string {
     if (this.isFresh()) return this.cachedToken;
 
-    // Stale is not the same as expired, and this used to hand back a personal
-    // access token instead, a second, broader credential kept permanently for
-    // a case that should be rare.
+    // Stale is not expired. isFresh() goes false for the last five minutes of a
+    // token's hour, and a token inside that window still works, so returning it
+    // is right: scheduleRefresh() is already fetching the replacement.
     //
-    // isFresh() goes false for the last five minutes of a token's hour, and a
-    // token inside that window still works. Returning it is better than
-    // returning anything else: scheduleRefresh() is already fetching the
-    // replacement, and this call succeeds meanwhile.
+    // Past real expiry it returns the expired token and GitHub answers 401,
+    // which is the honest outcome. The App is the only credential, so a broken
+    // App should look broken rather than quietly running on a fallback nobody
+    // remembers configuring.
     //
-    // Past real expiry it returns the expired token, GitHub answers 401, and
-    // that is the honest outcome, the App is the only credential, so a
-    // broken App should look broken rather than quietly running on a fallback
-    // nobody remembers configuring.
-    //
-    // But honest is not the same as stuck. Nothing here can await, so the
-    // refresh is started and this call still returns what it has: the next
-    // caller gets a live token seconds later instead of the app needing a
-    // restart. getTokenAsync() de-duplicates concurrent refreshes, so a page
-    // issuing twenty of these produces one token request.
+    // Honest is not stuck, though. Nothing here can await, so the refresh is
+    // started and this call returns what it has; the next caller gets a live
+    // token seconds later instead of the app needing a restart. getTokenAsync()
+    // de-duplicates concurrent refreshes.
     if (Date.now() >= this.expiresAt) {
       this.getTokenAsync().catch((err) =>
         console.error("[TokenManager] Refresh after expiry failed:", (err as Error).message)
@@ -243,11 +237,9 @@ export function disposeTokenManager(): void {
 /**
  * The GitHub App's installation token. The only credential this app has.
  *
- * There used to be a fallback to a `SYSTEM_GITHUB_TOKEN` personal access token,
- * held permanently against the chance that the App failed. It has been removed:
- * a classic PAT with `admin:org` is broader than the App it was backing up,
- * belongs to one person, usually never expires, and, because it worked, meant
- * a broken App could go unnoticed for weeks.
+ * No fallback to a personal access token: a classic PAT with `admin:org` is
+ * broader than the App it backs up, belongs to one person, usually never
+ * expires, and, because it works, lets a broken App go unnoticed for weeks.
  *
  * Empty means the App is not configured or not working, which is a thing to fix
  * rather than paper over.

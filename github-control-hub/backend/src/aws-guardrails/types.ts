@@ -189,13 +189,11 @@ export interface AwsAccount {
    * How to get into it.
    *
    *   home          the account the app runs in; ambient credentials, no setup
-   *   organization  a role AWS Organizations already put there. Nothing to
-   *                 create, nothing to deploy in the target account
+   *   organization  a role AWS Organizations already put there
    *   role          a role someone made deliberately, named by ARN
    *   keys          an access key pair, kept in Secrets Manager
    *
-   * Defaults to "role" when a roleArn is present and "organization" otherwise,
-   * so accounts stored before this existed keep behaving as they did.
+   * Defaults to "role" when a roleArn is present, "organization" otherwise.
    */
   access?: AwsAccessMethod;
   /**

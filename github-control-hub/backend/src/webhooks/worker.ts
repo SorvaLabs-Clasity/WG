@@ -62,27 +62,20 @@ function bootstrapOnce(): Promise<void> {
 export async function handler(event: SQSEvent): Promise<void> {
   await bootstrapOnce();
 
-  // Resolved once per invocation rather than read from the module singleton.
-  // The refresh timer behind the synchronous getter does not fire on schedule
-  // in a frozen container, so this is what keeps the token live.
+  // Resolved once per invocation rather than read from the module singleton:
+  // the refresh timer behind the synchronous getter does not fire on schedule
+  // in a frozen container.
   //
-  // Not awaited bare: initTokenManager assigns the module-level manager before
-  // awaiting its own init(), so a container whose GitHub App init failed is
-  // left with a non-null manager whose internal auth() is never set. Every
-  // invocation on that container would then have getTokenAsync() throw here,
-  // outside processDelivery's try/catch, failing the whole batch to the DLQ for
+  // Not awaited bare. initTokenManager assigns the module-level manager before
+  // awaiting its own init(), so a container whose App init failed holds a
+  // manager whose auth() was never set, and every invocation on it would throw
+  // outside processDelivery's try/catch and fail the whole batch to the DLQ for
   // as long as the container stays warm.
   //
-  // So the throw is still caught, but there is nothing to fall back *to*. This
-  // used to reach for a SYSTEM_GITHUB_TOKEN personal access token, a second and
-  // broader credential kept permanently against this case; it is gone, because
-  // an App failure that keeps working on someone's PAT is an App failure nobody
-  // notices.
-  //
-  // An empty token is already understood downstream as "skip GitHub work", so
-  // the delivery still records its activity and alerts, which are DynamoDB
-  // writes and need no GitHub, and only the parts that call GitHub are missed.
-  // Logged loudly, because that is the signal something needs fixing.
+  // Caught, with nothing to fall back to. An empty token is understood
+  // downstream as "skip GitHub work", so the delivery still records its
+  // activity and alerts, which need no GitHub. Logged loudly: an App failure
+  // that keeps working on a second credential is one nobody notices.
   let token = "";
   try {
     token = await getSystemTokenAsync();

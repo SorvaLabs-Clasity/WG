@@ -89,6 +89,10 @@ export default function CostPanel() {
 
   const biggest = data.lines[0]?.cost ?? 0;
 
+  const installedDays = data.installedAt
+    ? (Date.now() - new Date(data.installedAt).getTime()) / 86_400_000
+    : null;
+
   /**
    * The same money, grouped by service.
    *
@@ -139,6 +143,19 @@ export default function CostPanel() {
           </div>
           <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
         </div>
+
+        {/* A window longer than the install is the one case where two windows
+            give the same answer, and without saying so that reads as a stuck
+            number rather than as a young install. */}
+        {installedDays !== null && installedDays < data.days && (
+          <div className="px-5 pt-3">
+            <Note intent="info">
+              This install is {Math.floor(installedDays)} days old, so a {data.days}-day
+              window shows {Math.floor(installedDays)} days of charges. Fixed costs are
+              billed for the time each resource has existed, not for the window.
+            </Note>
+          </div>
+        )}
 
         <div className="px-5 py-4 flex items-end gap-6 flex-wrap">
           <div>
@@ -266,6 +283,11 @@ export default function CostPanel() {
                     {/* A bar, because "which one is the problem" is a
                         comparison and a column of numbers makes the reader do
                         it themselves. */}
+                    {line.billedDays < data.days - 0.5 && (
+                      <span className="block text-[10.5px] text-amber-700 dark:text-amber-500">
+                        billed {Math.max(0, Math.floor(line.billedDays))} of {data.days} days
+                      </span>
+                    )}
                     <span className="block h-1 rounded-full bg-slate-100 dark:bg-white/[0.07] mt-1 overflow-hidden">
                       <span className="block h-full rounded-full bg-slate-900/70 dark:bg-white/60"
                         style={{ width: `${Math.max(share, line.cost > 0 ? 2 : 0)}%` }} />

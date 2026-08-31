@@ -3,22 +3,20 @@ import { awsRegion } from "../utils/region";
 /**
  * Two secrets, kept deliberately apart.
  *
- * The receiver needs exactly one value, the webhook HMAC secret, and it is
- * the only component in this system reachable from the internet. The worker
- * needs the whole application bundle, including the GitHub App private key,
- * and nothing outside the queue can reach it.
+ * The receiver needs one value, the webhook HMAC secret, and is the only
+ * component reachable from the internet. The worker needs the whole bundle,
+ * including the GitHub App private key, and nothing outside the queue reaches
+ * it.
  *
- * These used to be one secret. That meant the internet-facing function held a
- * key to the App private key it never read, so any bug in the receiver's
- * pre-authentication path, the base64 decode and the HMAC, which necessarily
- * touch bytes nobody has verified yet, would have surrendered the whole
- * organization rather than the ability to check signatures. Since no amount of
- * review proves that path bug-free, the containment has to be real: separate
- * secrets, separate grants, and two code paths below that never share a fetch.
+ * As one secret, the internet-facing function held a key to a private key it
+ * never read, so a bug in its pre-authentication path, the base64 decode and
+ * the HMAC, which necessarily touch unverified bytes, would surrender the
+ * organization rather than the ability to check signatures. No amount of review
+ * proves that path bug-free, so the containment is structural: separate
+ * secrets, separate grants, two code paths that never share a fetch.
  *
- * Fetched once per container rather than per delivery. A fetch per invocation
- * would add latency against GitHub's ten-second budget, cost a call per
- * delivery, and make every webhook depend on an API that an organization's
+ * Fetched once per container. Per delivery would add latency against GitHub's
+ * ten-second budget and make every webhook depend on an API an organization's
  * service control policies may restrict.
  */
 const CACHE_TTL_MS = 15 * 60 * 1000;

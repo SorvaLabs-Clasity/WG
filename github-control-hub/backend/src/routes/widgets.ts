@@ -8,15 +8,13 @@ const router = Router();
 /**
  * There is one dashboard, not one per person.
  *
- * listWidgets scans the table with no user filter, so every widget is on
- * everyone's dashboard, `createdBy` is recorded but never used to scope
- * anything. That makes a widget shared configuration rather than a personal
- * preference, and left ungated it meant any member could delete a panel the
- * whole team reads, or undo someone else's.
+ * listWidgets scans with no user filter, so every widget is on everyone's
+ * dashboard and `createdBy` scopes nothing. That makes a widget shared
+ * configuration rather than a personal preference, so ungated any member could
+ * delete a panel the whole team reads.
  *
  * No repository or AWS access rides on this, so it is not an escalation. It is
- * gated for the same reason the rest is: shared state should not be editable by
- * everyone who can see it.
+ * gated because shared state should not be editable by everyone who can see it.
  */
 async function refusedWidgetChange(res: Response, login: string, verb: string, userToken?: string): Promise<boolean> {
   if (await isControlHubAdmin(login, userToken)) return false;

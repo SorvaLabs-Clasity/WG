@@ -1,23 +1,14 @@
 /**
- * Naming a timezone the way the people reading it do.
+ * Naming a timezone the way the people reading it do: `EDT · GMT-4 · New York`.
  *
- * The lists used to read "New York  GMT-4", grouped under long region headings,
- * which is the database's view of a zone rather than anybody's. What appears in
- * a notification is "EDT", so that is what the list leads with.
- *
- * Three parts, in the order they answer questions:
- *
- *   `EDT · GMT-4 · New York`
- *
- * The code first, because it is what the message says and what somebody is
- * looking for. The offset next, because a code alone does not say how far from
- * anywhere else it is. The city last, and it stays: without it, a list of four
- * hundred zones contains dozens of rows reading "EDT · GMT-4" with no way to
- * tell which is which, and picking the wrong one gets the right time today and
- * the wrong one when a government changes its rules.
+ * The code first, because it is what a notification says and what somebody is
+ * scanning for. The offset next, because a code alone does not place it. The
+ * city last, and it stays: without it, four hundred zones contain dozens of
+ * rows reading "EDT · GMT-4", and picking the wrong one is right today and
+ * wrong when a government changes its rules.
  *
  * Zones with no letter code, which is most of the world, lead with the offset
- * and their own name instead: `GMT+5:30 · Kolkata`.
+ * instead: `GMT+5:30 · Kolkata`.
  */
 
 /** What a zone is called in a message: "EDT", or "" when it has no letters. */

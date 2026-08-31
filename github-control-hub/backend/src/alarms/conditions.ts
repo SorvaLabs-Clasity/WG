@@ -246,18 +246,15 @@ export const TICK_MINUTES = 5;
 /**
  * Minutes between evaluations, by what the widget actually reads.
  *
- * Dependabot alarms cost one org-wide sweep per run, paginated at 100 alerts
- * per request, and memoised in the handler so that however many alarms read it,
- * the run fetches once. The cost therefore tracks how many alerts are open, not
- * how many repositories, widgets or alarms exist, which is what makes a short
- * interval affordable: at a few thousand open alerts a ten-minute cadence is a
- * low single-digit percentage of an installation's hourly budget.
+ * Dependabot alarms cost one org-wide sweep per run, paginated at 100 alerts a
+ * request and memoised so the run fetches once however many alarms read it. The
+ * cost tracks how many alerts are open rather than how many repositories,
+ * widgets or alarms exist, which is what makes a short interval affordable: at
+ * a few thousand open alerts, ten minutes is a low single-digit percentage of
+ * an installation's hourly budget.
  *
- * It was hourly when the same data cost one request per repository. That was
- * the right interval for that implementation and the wrong one for this.
- *
- * Everything else reads configuration state out of the graph tables, which is
- * cheap, and changes whenever a person changes it.
+ * Everything else reads configuration out of the graph tables, which is cheap
+ * and changes when a person changes it.
  */
 export const INTERVAL_MINUTES = {
   /** Readings paid for in GitHub API calls. */
@@ -297,22 +294,16 @@ export const GITHUB_BACKED_QUERIES = new Set([
 /**
  * How often an alarm is re-read: every tick, whatever it watches.
  *
- * Alarms used to be tiered by how expensive their reading was, and the tiering
- * bought nothing. The same pass that evaluates alarms then recomputes **every**
- * widget to store its snapshot for the dashboard, so the Dependabot sweep, the
- * Renovate search and every graph scan already happen once per tick regardless.
- * The sources are memoised for the pass, so an alarm reading one of them is
- * served from a call that has already been made. Making it wait a second tick
- * added five minutes of latency and saved zero requests.
+ * Tiering by how expensive a reading is buys nothing here, because the same
+ * pass recomputes **every** widget afterwards to store its snapshot. The
+ * Dependabot sweep, the Renovate search and every graph scan therefore happen
+ * once per tick regardless, memoised, so an alarm reading one is served from a
+ * call already made. Waiting a second tick would add five minutes and save no
+ * requests.
  *
- * The tiering was right when this was the only thing making those requests. It
- * stopped being right when snapshots became universal, and nothing noticed
- * because the cost it was protecting had simply moved.
- *
- * **If the snapshot pass ever stops recomputing everything**, this becomes the
- * wrong answer again and the tiering has to come back: `GITHUB_BACKED_QUERIES`
- * above still records which readings are bought, and repro-alarms.ts keeps that
- * list honest against the code that buys them.
+ * **If the snapshot pass ever stops recomputing everything**, tiering has to
+ * come back. `GITHUB_BACKED_QUERIES` above records which readings are bought,
+ * and repro-alarms.ts keeps that list honest against the code that buys them.
  */
 export function intervalFor(_widget: {
   type: string; presetId?: string; queryId?: string;

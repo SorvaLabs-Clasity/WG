@@ -1,18 +1,15 @@
 /**
  * Which AWS region this process is talking to.
  *
- * Every client here used to be constructed with
- * `process.env.AWS_REGION || "us-east-1"`, which is worse than passing nothing
- * at all. The SDK resolves a region on its own, from AWS_REGION, then
- * AWS_DEFAULT_REGION, then the signed-in profile's `region`, then the instance
- * or Lambda environment, and a hardcoded fallback *overrides* that chain.
- *
- * So a desktop user whose profile lives in eu-west-1, with no AWS_REGION
- * exported, silently read DynamoDB in us-east-1 and found an empty account.
- * Nothing failed; there was simply nothing there.
+ * A hardcoded fallback like `process.env.AWS_REGION || "us-east-1"` is worse
+ * than passing nothing: the SDK resolves a region itself, from AWS_REGION, then
+ * AWS_DEFAULT_REGION, then the signed-in profile, then the instance or Lambda
+ * environment, and a fallback *overrides* that chain. A desktop user whose
+ * profile lives in eu-west-1 then reads DynamoDB in us-east-1 and finds an
+ * empty account, with nothing failing.
  *
  * Returning undefined hands the question back to the SDK, which is the only
- * thing that can answer it correctly.
+ * thing that can answer it.
  */
 export function awsRegion(): string | undefined {
   return process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || undefined;

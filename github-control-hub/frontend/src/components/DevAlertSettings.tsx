@@ -149,11 +149,10 @@ export default function DevAlertSettings() {
   /**
    * Save shortly after somebody stops, rather than on every keystroke.
    *
-   * Each control here used to put a request on the wire as it moved, which
-   * made the time field lag under its own saves. It also had a consequence
-   * past the UI: changing the time decides whether today's summary is still
-   * owed, so dragging through 10:15, 10:20, 10:25 asked that question three
-   * times. Only where somebody stopped is a real answer.
+   * A request per keystroke makes the time field lag under its own saves, and
+   * has a consequence past the UI: changing the time decides whether today's
+   * summary is still owed, so dragging through 10:15, 10:20, 10:25 asks that
+   * question three times. Only where somebody stopped is a real answer.
    */
   const queued = useRef<any>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);

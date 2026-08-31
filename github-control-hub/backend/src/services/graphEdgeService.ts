@@ -205,20 +205,17 @@ export async function addRepoEdges(token: string, org: string, repoName: string)
 /**
  * Everything the graph holds about one repository, removed.
  *
- * A deleted repository used to leave every one of its edges behind: its
- * `repo_meta`, its collaborators, its branches, the team links pointing at it.
- * Nothing removed them, so every check reading those edges kept reporting a
- * repository that no longer existed, and kept doing so until the next full
- * rebuild cleared the table. Up to six hours of a widget naming something you
- * had already deleted, with a refresh button that could not help because the
- * rows it re-read were still there.
+ * Left behind, a deleted repository's `repo_meta`, collaborators, branches and
+ * team links keep every check reporting something that no longer exists, until
+ * the next full rebuild clears the table, with a refresh button that cannot
+ * help because the rows it re-reads are still there.
  *
- * The light pass does not cover it either: it prunes inside teams it has just
- * read, and a vanished repository is not under any team it reads.
+ * The light pass does not cover it: it prunes inside teams it has just read,
+ * and a vanished repository is under no team it reads.
  *
- * Both directions are removed. An edge from a team or a user *to* this
- * repository lives under that team's or user's partition key, so deleting the
- * repository's own partition would leave the other half dangling.
+ * Both directions are removed. An edge from a team or user *to* this repository
+ * lives under that partition key, so deleting the repository's own would leave
+ * the other half dangling.
  */
 export async function removeAllRepoEdges(repo: string): Promise<number> {
   if (!hasTable("GRAPH_EDGES_TABLE")) return 0;

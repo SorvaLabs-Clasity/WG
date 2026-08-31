@@ -270,25 +270,19 @@ const serverModeGuard = (_req: Request, res: Response, next: Function) => {
 /**
  * Refuse state-changing requests that some other site caused the browser to make.
  *
- * These routes are reachable without a session by design, reconnecting AWS is
- * how you get a session back, so the usual token check is not available. That
- * left CSRF: any page the user happened to have open could POST to
- * http://localhost:4321/auth/invalidate-aws and disconnect their account. CORS
- * does not help, because it governs reading the response, not sending the
- * request; a simple POST is delivered and acted on whatever CORS says
- * afterwards.
+ * These routes are reachable without a session by design, since reconnecting
+ * AWS is how you get a session back, so the usual token check is unavailable
+ * and any page the user has open could POST to `/auth/invalidate-aws`. CORS
+ * governs reading the response, not sending the request, so it does not help.
  *
- * Two signals. `Sec-Fetch-Site` is attached by current browsers and cannot be
- * set by page script, so `cross-site` is a definite no. It is deliberately the
- * weaker of the two checks: ports are not part of a "site", so the dev server
- * on :5173 calling the backend on :4000 reports `same-site`, and rejecting
- * anything short of `same-origin` would refuse every request in development
- * while adding nothing against a cross-origin attacker.
+ * Two signals. `Sec-Fetch-Site` cannot be set by page script, so `cross-site`
+ * is a definite no; it is deliberately the weaker check, because ports are not
+ * part of a "site" and demanding `same-origin` would refuse every request in
+ * development while adding nothing against a cross-origin attacker.
  *
- * `Origin` does the precise work. It carries the port, and is compared against
- * the URL this app actually serves. A request carrying neither header did not
- * come from a browser; after the listener moved to loopback that means a
- * process on this machine, which is already inside anything this can protect.
+ * `Origin` does the precise work, since it carries the port. A request with
+ * neither header did not come from a browser, and on a loopback listener that
+ * means a local process, already inside anything this can protect.
  */
 const sameOriginOnly = (req: Request, res: Response, next: NextFunction) => {
   const refuse = () =>
@@ -314,17 +308,15 @@ const sameOriginOnly = (req: Request, res: Response, next: NextFunction) => {
 
 // There is deliberately no route here that hands out the system token.
 //
-// There used to be: GET /auth/system-token, guarded only by serverModeGuard,
-// returning the GitHub App installation token, org-wide admin over every
-// repository, to anyone who asked. The desktop backend listens on a TCP port,
-// so "anyone who asked" included every other process on the machine and, until
-// the listener was moved to loopback, every device on the same network.
+// A GET /auth/system-token guarded only by serverModeGuard returns the GitHub
+// App installation token, org-wide admin over every repository, to anyone who
+// asks. The desktop backend listens on a TCP port, so that includes every other
+// process on the machine.
 //
-// Its one caller was the auto-updater in the Electron main process, which runs
-// this backend in-process (desktop/src/server.ts require()s it). It reads the
-// token by calling getSystemToken() directly. A function call inside one
-// process cannot be reached from off it, which no amount of guarding an HTTP
-// route achieves.
+// Its one caller is the auto-updater in the Electron main process, which runs
+// this backend in-process and reads the token by calling getSystemToken()
+// directly. A function call inside one process cannot be reached from off it,
+// which no amount of guarding an HTTP route achieves.
 
 // During initial setup (no GitHub OAuth secrets loaded yet), allow AWS credential
 // endpoints without authentication. Once secrets are loaded, require auth.
@@ -408,18 +400,15 @@ async function completeAwsSwitch(
 /**
  * Load GitHub secrets for the account now in use.
  *
- * This used to begin `if (process.env.GITHUB_CLIENT_ID) return`, which meant
- * the first account to load its secrets kept them for the life of the process.
- * Switching to another AWS account left the previous one's GitHub credentials
- * in the environment. Its OAuth app, its organization, and its App private
- * key. An account holding no GitHub credentials at all therefore behaved as
- * though it held the other account's, which is the exact opposite of what
- * keeping them apart is for.
+ * Keyed on the account. Returning early once any secrets are loaded keeps the
+ * first account's credentials for the life of the process, so switching AWS
+ * accounts leaves the previous one's OAuth app, organization and App private
+ * key in the environment, and an account holding no GitHub credentials behaves
+ * as though it held another's.
  *
- * Keyed on the account instead. Same account, nothing to do; different account,
- * read again, and **clear** every key the new secret does not set, because a
- * stale value is worse than a missing one: missing is visible and says so,
- * stale silently belongs to somewhere else.
+ * Same account, nothing to do. Different account, read again and **clear**
+ * every key the new secret does not set: a stale value is worse than a missing
+ * one, because missing says so and stale silently belongs somewhere else.
  */
 async function reloadSecretsIfNeeded(): Promise<boolean> {
   let account = "";
@@ -512,16 +501,14 @@ router.post("/reconnect-aws", serverModeGuard, sameOriginOnly, setupOrAuthMiddle
     process.env.AWS_PROFILE = profile;
     // Cleared, because the environment beats the profile.
     //
-    // The AWS credential chain reads AWS_ACCESS_KEY_ID before it ever looks at
-    // AWS_PROFILE, so keys left over from an earlier access-key sign-in kept
-    // winning, and this route went on reporting the profile it had just set.
-    // Every screen then named one account while every call went to another,
-    // which is unfalsifiable from inside the app: it looked exactly like a
-    // resource that was missing rather than an account that was wrong.
+    // The AWS credential chain reads AWS_ACCESS_KEY_ID before AWS_PROFILE, so
+    // keys left from an earlier sign-in keep winning while this route reports
+    // the profile it just set. Every screen then names one account while every
+    // call goes to another, which is unfalsifiable from inside the app: it
+    // looks like a missing resource rather than a wrong account.
     //
-    // Only when a profile was named. Without one this is "try again with
-    // whatever we already have", and clearing them would sign out anybody who
-    // connected by pasting keys.
+    // Only when a profile was named. Without one this is "try again with what
+    // we have", and clearing them would sign out anybody using pasted keys.
     delete process.env.AWS_ACCESS_KEY_ID;
     delete process.env.AWS_SECRET_ACCESS_KEY;
     delete process.env.AWS_SESSION_TOKEN;
@@ -967,13 +954,12 @@ router.post("/aws-access-keys", serverModeGuard, sameOriginOnly, setupOrAuthMidd
   if (sessionToken) process.env.AWS_SESSION_TOKEN = sessionToken;
   else delete process.env.AWS_SESSION_TOKEN;
   /**
-   * The same rule as the profile route, and it matters more here: keys carry
-   * no region at all, so this field is the only thing that can name one, and
-   * it is optional.
+   * The same rule as the profile route, and it matters more here: keys carry no
+   * region, so this optional field is the only thing that can name one.
    *
-   * Left blank, the region used to be whichever account was open before, so
-   * connecting to a second account with keys read the first account's tables
-   * under the second's credentials. Nothing failed; the dashboard was empty.
+   * Left blank and inherited, connecting to a second account with keys reads
+   * the first account's tables under the second's credentials. Nothing fails;
+   * the dashboard is empty.
    */
   if (region) process.env.AWS_REGION = region;
   else (await import("../utils/region")).resetRegionToBoot();

@@ -4,20 +4,15 @@ import { fetchAlerts } from "../api/alerts";
 /**
  * Alerts, newest first, a window at a time.
  *
- * The server used to return the whole table and the client polled it **every
- * ten seconds** with the comment "for demo" beside it: a full scan and a full
- * transfer, 360 times an hour, per open app. Fine at seventeen rows; megabytes
- * at ten thousand.
+ * The server bounds the read to the twelve weeks the page charts and returns a
+ * cursor if that window did not fit. `complete` says which happened, so the
+ * page can state what it is showing rather than drawing a truncated list as
+ * though it were everything. Returning the whole table is a full scan and a
+ * full transfer per poll: fine at seventeen rows, megabytes at ten thousand.
  *
- * Now the server bounds the read to the twelve weeks the page charts and hands
- * back a cursor if that window did not fit. `complete` says which happened, so
- * the page can state what it is showing rather than drawing a truncated list as
- * though it were everything.
- *
- * A minute between polls rather than ten seconds. Nothing is lost: an alert
- * reaches whoever asked to hear about it by email within seconds of the webhook
- * arriving, so the tab does not need to be a live ticker, and React Query still
- * refetches on window focus, which is when somebody actually looks.
+ * A minute between polls. An alert reaches whoever asked to hear about it by
+ * email within seconds of the webhook, so the tab need not be a live ticker,
+ * and React Query still refetches on focus, which is when somebody looks.
  */
 export function useAlerts() {
   const q = useInfiniteQuery({

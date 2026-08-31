@@ -3,17 +3,14 @@ import { Response } from "express";
 /**
  * Turns GitHub's rate-limit refusals into an answer a person can act on.
  *
- * GitHub reports two different things through the same 403:
+ * GitHub reports two different things through the same 403, and a generic 500
+ * reads as "the app is broken" rather than "wait four minutes":
  *
  *   Primary, the hourly budget is spent. `x-ratelimit-remaining: 0`, and
  *               `x-ratelimit-reset` says when it refills. Nothing helps but
  *               waiting, so the time is the only useful thing to show.
  *   Secondary, too much too fast, or too many concurrent requests. Carries
  *               `retry-after` in seconds and clears in well under a minute.
- *
- * Both used to surface as a generic 500, which reads as "the app is broken"
- * rather than "wait four minutes". Only the Dependabot route handled it, and
- * that route is not the only one that can exhaust the budget.
  */
 
 export interface RateLimitInfo {

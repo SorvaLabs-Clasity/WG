@@ -15,31 +15,21 @@ interface NavbarProps {
 }
 
 /**
- * Primary navigation.
- *
- * Follows the theme: light on light, dark on dark. It was previously pinned to
- * a dark colour, which left it unchanged when the theme was toggled and looked
- * like the switch had failed.
- *
- * The active item is a solid pill rather than an underline, so the current
- * location is obvious at a glance instead of needing to be hunted for.
+ * Primary navigation. Follows the theme, and marks the active item with a solid
+ * pill so the current location is obvious rather than hunted for.
  */
 /**
  * Which tabs survive when GitHub is confined to another AWS account.
  *
- * The backend refuses every GitHub route in that case, so a tab left in the bar
- * is a button that leads to a 403, and the 403 explains itself, but only after
- * a page has half-loaded. Hiding them is presentation; the refusal is the
- * restriction, and it holds whether or not this list is right.
+ * The backend refuses every GitHub route there, so a tab left in the bar leads
+ * to a 403 that only explains itself after a page half-loads. Hiding them is
+ * presentation; the refusal is the restriction.
  *
- * Activity stays, and shows only the AWS rows. It is the one feed carrying both
- * halves, and an account running guardrails needs the record of what they did,
- * which is most of the reason to run them. The server does that filtering.
+ * Activity stays and shows only the AWS rows: it is the one feed carrying both
+ * halves, and an account running guardrails needs the record of what they did.
+ * Alarms stays because guardrails can raise them, and that account needs
+ * somewhere to see what is firing and who is told.
  */
-// Alarms is here because the guardrails can raise them: an account watching
-// only AWS still needs somewhere to see what is firing, who gets told, and to
-// set Teams up. Its GitHub-backed half, alarms on widgets, simply has no
-// widgets to offer there.
 const ALWAYS_AVAILABLE = new Set(["/aws", "/activity", "/alarms"]);
 
 const ITEMS = [

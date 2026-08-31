@@ -6,18 +6,16 @@ import { INTENT } from "../design";
 /**
  * Says that GitHub is rate-limiting us, and for how much longer.
  *
- * A rate limit is unlike every other error here: nothing the user did caused
- * it, nothing they can do fixes it, and it affects every page at once, so a
- * per-request message in the corner of one tab is the wrong shape. It also
- * used to arrive as a generic 500, which reads as "the app is broken" rather
- * than "wait four minutes".
+ * Unlike every other error here, nothing the user did caused it, nothing they
+ * can do fixes it, and it affects every page at once, so a per-request message
+ * in the corner of one tab is the wrong shape.
  *
- * The countdown is the point. "Rate limited, try again later" leaves someone
- * refreshing to find out; a number that reaches zero does not.
+ * The countdown is the point. "Try again later" leaves somebody refreshing to
+ * find out; a number reaching zero does not.
  *
- * Watches both caches, because queries are what usually exhaust the budget,
- * a page load costs one request per repository, while mutations are what the
- * user is actively waiting on.
+ * Watches both caches: queries are what usually exhaust the budget, since a
+ * page load costs a request per repository, and mutations are what the user is
+ * actively waiting on.
  */
 /** A limit, with the moment it clears fixed at the time it was seen. */
 interface Pending {

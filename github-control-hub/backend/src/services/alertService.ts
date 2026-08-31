@@ -27,29 +27,26 @@ export interface SecurityAlert {
   /**
    * Who made the change, from the webhook's `sender.login`.
    *
-   * Optional because rows written before this existed do not have it, and
-   * because a few alerts come from a sweep rather than from somebody acting.
+   * Optional, because a few alerts come from a sweep rather than from somebody
+   * acting, and older rows do not carry it.
    *
-   * It was computed and then dropped: the webhook worker reads it for the
-   * activity log and passed nothing to `createAlert`. So the record of a
-   * privilege change knew who *received* it and not who *granted* it, which
-   * is the half a reviewer actually asks about, and the half any "this is
-   * expected" rule has to match on.
+   * Without it the record of a privilege change knows who *received* it and not
+   * who *granted* it, which is the half a reviewer asks about and the half any
+   * "this is expected" rule has to match on.
    */
   actor?: string;
   /**
    * The specific thing this alert is about, where there is one.
    *
    * The member's login, the branch pattern, the ruleset's name. Not the
-   * repository, which `repo` already holds, and not a description: this is
-   * matched against the reversal event, so it has to be the same string
-   * GitHub sends both times.
+   * repository, which `repo` holds, and not a description: it is matched
+   * against the reversal event, so it must be the same string GitHub sends
+   * both times.
    *
-   * Deliberately the ruleset's **name** rather than its id, because a
-   * recreated ruleset gets a new id and would never match.
+   * The ruleset's **name** rather than its id, because a recreated ruleset gets
+   * a new id and would never match.
    *
-   * Absent on repository-level alerts, where the repository is the subject,
-   * and on rows written before this existed.
+   * Absent on repository-level alerts, where the repository is the subject.
    */
   subject?: string;
   /**
@@ -69,32 +66,28 @@ export interface SecurityAlert {
   /**
    * Constant partition key for the time-ordered index. Always `"ALERT"`.
    *
-   * A DynamoDB scan returns items in hash order, so "the newest five hundred"
-   * is not something a scan with a `Limit` can answer: it returns an arbitrary
-   * five hundred, and presenting those as the newest would be a lie. The index
-   * makes a real time-ordered read possible, so a page costs only what it
-   * returns instead of reading the whole table.
+   * A scan returns items in hash order, so a scan with a `Limit` cannot answer
+   * "the newest five hundred": it returns an arbitrary five hundred. The index
+   * makes a real time-ordered read possible, so a page costs what it returns
+   * rather than the whole table.
    *
-   * One partition for the whole feed, which is what the activity table does
-   * for the same reason. A DynamoDB partition holds 10 GB, far past 13 months
-   * of security events.
+   * One partition for the whole feed, as the activity table does. A partition
+   * holds 10 GB, far past 13 months of security events.
    *
-   * Rows written before this existed have no `feed` and are invisible to the
-   * index until the backfill runs. See scripts/backfill-alert-feed.sh.
+   * Rows with no `feed` are invisible to the index until
+   * scripts/backfill-alert-feed.sh runs.
    */
   feed?: string;
   /**
    * Epoch seconds at which DynamoDB may delete this row.
    *
-   * An alert is a record of something that happened, not a task, so it ages
-   * out the way the activity log does rather than waiting for somebody to
-   * clear it. Before this the table had no expiry at all and the only way a
-   * row ever left was by hand, which is the queue this feature was built to
-   * remove.
+   * An alert records something that happened, not a task, so it ages out the
+   * way the activity log does rather than waiting for somebody to clear it.
+   * With no expiry the only way a row leaves is by hand, which is the queue
+   * this feature exists to remove.
    *
-   * Rows written before this existed have no `ttl` and are never expired by
-   * DynamoDB. That is the intended outcome: turning expiry on does not
-   * retroactively delete history somebody may still want.
+   * Rows with no `ttl` are never expired. That is intended: turning expiry on
+   * does not retroactively delete history somebody may still want.
    */
   ttl?: number;
   resolved: boolean;
@@ -176,13 +169,12 @@ function decode(c?: string): Record<string, any> | undefined {
  * One page of alerts, newest first.
  *
  * Reads through the time index rather than scanning, so the cost is what comes
- * back rather than the size of the table. `GET /alerts` used to return every
- * row on every poll, which was fine at seventeen and ships megabytes at ten
- * thousand.
+ * back rather than the size of the table. Returning every row on every poll is
+ * fine at seventeen and ships megabytes at ten thousand.
  *
- * **Rows with no `feed` attribute are invisible here.** Those were written
- * before the index existed; the backfill script gives them one. Until it runs
- * they are still readable through `getAlerts()`, which scans.
+ * **Rows with no `feed` attribute are invisible here.** The backfill script
+ * gives them one; until it runs they are still readable through `getAlerts()`,
+ * which scans.
  */
 export async function getAlertsPage(opts: {
   since?: string;
@@ -408,21 +400,17 @@ export async function resolveAlert(id: string, user: string): Promise<SecurityAl
  * Close the alerts a reversal actually undoes.
  *
  * `subject` is the member's login, the branch pattern or the ruleset name.
- * Without it this matched on repository and type alone, so removing **one** of
- * two people added to a repository marked *both* their alerts as undone, and
- * restoring protection on one branch marked every branch in the repository.
+ * Matching on repository and type alone would mark both alerts undone when one
+ * of two added people is removed, and every branch undone when one is
+ * reprotected. The page prints "undone" as a statement about what happened on
+ * GitHub, so for the second person that statement would be false.
  *
- * That was survivable while `resolved` only meant "off the queue". It is not
- * survivable now that the page prints "undone" as a statement about what
- * happened on GitHub, because for the second person that statement is false.
- *
- * **A row with no subject is left alone when a subject is given.** Those are
- * rows written before this was recorded, and there is no way to tell what they
- * were about. Closing them would be the original bug; saying nothing is the
- * honest answer. They age out on their own.
+ * **A row with no subject is left alone when a subject is given.** Those
+ * predate the field and there is no way to tell what they were about, so
+ * closing them would be a guess. They age out on their own.
  *
  * Called with no subject for a repository-level reversal, such as a repository
- * being made private again, where the repository *is* the subject.
+ * being made private again, where the repository is the subject.
  */
 export async function autoResolveAlerts(
   repo: string,

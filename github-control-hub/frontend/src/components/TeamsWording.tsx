@@ -4,20 +4,18 @@ import VariableChips from "./TemplateVariables";
 /**
  * A second wording, for Teams, beside the email one.
  *
- * The two channels are read differently. An email is opened deliberately and
- * can carry a paragraph; a Teams message is glanced at in a sidebar, where the
- * first few words decide whether anybody opens it at all. The same text is
- * rarely right for both, and before this there was only one.
+ * An email is opened deliberately and can carry a paragraph; a Teams message is
+ * glanced at in a sidebar, where the first few words decide whether anybody
+ * opens it. The same text is rarely right for both.
  *
- * Empty is the meaningful default: it means "send the email wording", which is
- * what everything written before this existed does, and what anybody who does
- * not want two versions to keep in step should leave it as. So this is a switch
- * rather than two more boxes always on screen, and turning it off clears both
- * fields rather than hiding them, because a hidden value that is still being
- * sent is the kind of thing nobody finds for months.
+ * Empty means "send the email wording", which is what anybody who does not want
+ * two versions to keep in step should leave it as. A switch rather than two
+ * more boxes always on screen, and turning it off clears both fields rather
+ * than hiding them: a hidden value that is still being sent is the kind of
+ * thing nobody finds for months.
  *
  * Both renderings draw on the same variables and the same reading, so the two
- * channels can never report different numbers for one event.
+ * channels cannot report different numbers for one event.
  */
 export default function TeamsWording({
   subject, body, onChange, onCommit, variables, emailSubject, emailBody,

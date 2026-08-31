@@ -6,17 +6,15 @@ import { groupBurst, describeBurst, nameAndCount, worstSeverity, type Axis } fro
  * The Vulnerabilities-tab toggles: email once per Renovate pull request, and
  * once per Dependabot alert.
  *
- * Event-driven, like the security toggle beside it, and for the same reasons.
- * GitHub already tells us the moment either happens, so hooking the webhook
- * costs one SNS call and arrives in seconds. Polling for it would arrive in
- * minutes, spend a GitHub read every cycle whether or not anything changed,
- * and still need somewhere to remember what had already been emailed.
+ * Event-driven, like the security toggle beside it. GitHub tells us the moment
+ * either happens, so hooking the webhook costs one SNS call and arrives in
+ * seconds, where polling would arrive in minutes and spend a GitHub read every
+ * cycle whether or not anything changed.
  *
- * That last part is the real argument. "Every new one" means never emailing the
- * same thing twice, and the webhook gives that for free: the delivery lock in
- * the worker already refuses a redelivered id, so a retried delivery cannot
- * produce a second email. A poller would have to keep that state itself, and
- * getting it wrong is either a duplicate or a silence.
+ * The real argument is "every new one", which means never emailing the same
+ * thing twice. The worker's delivery lock already refuses a redelivered id, so
+ * a retry cannot produce a second email. A poller would have to keep that state
+ * itself, and getting it wrong is either a duplicate or a silence.
  */
 
 /**
@@ -231,20 +229,18 @@ export function buildDigest(
   });
 
   const n = items.length;
-  // Through the same sanitiser every other subject goes through. This one is
-  // built here rather than rendered from a template, so it missed it: an
+  // Through the same sanitiser every other subject goes through. Built here
+  // rather than rendered from a template, so it is easily missed: an
   // organization and repository name together can exceed SNS's 99-character
-  // limit, and SNS rejects the publish outright. That failure leaves the rows
-  // pending by design, so the effect would be a digest retried every tick
-  // forever and never delivered.
-  // The customised subject, rendered against the group rather than discarded.
-  //
-  // This used to be overwritten outright, so anybody who had set a subject to
-  // carry a ticket prefix or a mail-filter keyword silently lost it the moment
-  // two events arrived together, which is exactly when the email matters most.
-  // `rendered.subject` already went through the template with group variables
-  // in scope; the count is prefixed because a digest that does not say how many
-  // it covers reads as a single event.
+  // limit, SNS rejects the publish, and the rows stay pending by design, so the
+  // digest would retry every tick forever and never arrive.
+
+  // The customised subject, rendered against the group rather than discarded:
+  // overwriting it loses a ticket prefix or mail-filter keyword exactly when
+  // two events arrive together, which is when the email matters most.
+  // `rendered.subject` has already been through the template with group
+  // variables in scope, and the count is prefixed because a digest that does
+  // not say how many it covers reads as a single event.
   const subject = sanitizeSubject(
     rendered.subject ? `[${n}] ${rendered.subject}` : `[${n}] ${headline}`,
     `${n} new ${n === 1 ? label.singular : label.plural}`,
@@ -394,11 +390,10 @@ export async function flushPending(deps: FlushDeps): Promise<{
     /**
      * A row-level field, but only where the whole group agrees on it.
      *
-     * `{package}` on a digest covering three different packages used to render
-     * whichever row happened to be first. That is not wrong so much as
-     * arbitrary, and a subject line stating one package when three are affected
-     * reads as a fact rather than as a sample. Where the group disagrees, the
-     * count is the true answer.
+     * `{package}` on a digest covering three packages renders whichever row
+     * came first, which is arbitrary rather than wrong, and a subject naming
+     * one package when three are affected reads as a fact rather than a sample.
+     * Where the group disagrees, the count is the true answer.
      */
     const agreed = (key: string, plural: string) => {
       const values = [...new Set(rows.map(r => r.item[key]).filter(Boolean))];

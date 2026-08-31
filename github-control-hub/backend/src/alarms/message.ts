@@ -176,14 +176,12 @@ export const DEFAULT_DEPENDABOT_BODY =
 /**
  * A timestamp a person can read, and cannot misread.
  *
- * {{time}} used to render the raw ISO string. It is correct, but it is UTC,
- * so to anyone not on UTC it looks like the alarm fired hours in the future or
- * the past, and the only thing saying otherwise is a trailing "Z" that is easy
- * to miss among the milliseconds.
+ * A raw ISO string is correct and unreadable: to anyone not on UTC the alarm
+ * looks hours away, and the only thing saying otherwise is a trailing "Z" lost
+ * among the milliseconds.
  *
- * UTC is still the value sent, because one email reaches a group who may be in
- * several places and a single canonical zone is the only one that means the
- * same thing to all of them. It just says so now.
+ * The zone is named because one email reaches a group who may be in several
+ * places, and a clock with no zone on it means something different to each.
  */
 export function formatTimestamp(iso: string | undefined, timeZone = "UTC"): string {
   if (!iso) return "";

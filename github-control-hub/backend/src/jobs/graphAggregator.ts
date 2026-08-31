@@ -526,17 +526,15 @@ async function runAggregation(fallbackToken?: string) {
       /**
        * A key that cannot be confused with the data in it.
        *
-       * This used to join pk and sk with "::" and split the pair back out of
-       * the string when deciding what to delete. A workflow named "Build ::
-       * Test", or a Dependabot advisory summary, which is free text and ends
-       * up in a DEPENDENCY# key, split into three parts, so the delete was
-       * issued against a truncated sort key that matches nothing. The row it
-       * meant to remove stayed: an edge for a workflow or a package that no
-       * longer exists, which every security check reads as current.
+       * Joining pk and sk with "::" and splitting the pair back out breaks on
+       * any value containing the separator: a workflow named "Build :: Test",
+       * or a Dependabot advisory summary, which is free text and ends up in a
+       * DEPENDENCY# key. The delete is then issued against a truncated sort key
+       * that matches nothing, so the row stays: an edge for a workflow or
+       * package that no longer exists, which every check reads as current.
        *
-       * NUL cannot appear in a DynamoDB string attribute, so it cannot appear
-       * in a pk or an sk either, and the pair is kept alongside the key now
-       * rather than reconstructed from it, so nothing depends on that.
+       * NUL cannot appear in a DynamoDB string attribute, and the pair is kept
+       * alongside the key rather than reconstructed from it.
        */
       const keyOf = (e: { pk: string; sk: string }) => `${e.pk}\u0000${e.sk}`;
 

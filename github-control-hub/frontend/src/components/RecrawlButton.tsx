@@ -3,28 +3,19 @@ import { confirmRebuild } from "../lib/confirmRebuild";
 import { useGraphAggregation, useTriggerAggregation } from "../hooks/useGraph";
 
 /**
- * The one Full GitHub recrawl button, used on Access and on Overview.
+ * The one Full GitHub recrawl button, used on Access and on Overview. Shared
+ * so the same action cannot behave differently depending on which tab you are
+ * standing on.
  *
- * There were two, written separately, and they were already drifting: the same
- * action with the same warning has to behave the same in both places or
- * somebody learns that the rules depend on which tab they are standing on.
+ * Three things come from the server rather than local state, because a recrawl
+ * is an organization-wide event and has to read as one: whether a walk is
+ * running, including the nightly one; whether another may be started, at most
+ * one an hour across the organization; and how long is left, so a refusal is a
+ * number rather than a shrug.
  *
- * Three things it gets from the server rather than from local state:
- *
- * **Whether a walk is running**, anybody's walk, including the nightly one.
- * This used to be `mutation.isPending`, which lives in one component on one
- * machine: switching tabs and back cleared it, and nobody else ever saw it. A
- * recrawl is an organization-wide event and now reads as one.
- *
- * **Whether another may be started.** At most one an hour across the whole
- * organization, counted from whichever walk ran last, scheduled or manual.
- *
- * **How long is left**, so a refusal is a number rather than a shrug.
- *
- * `dense` is for a toolbar. The explanation is a paragraph, and a paragraph
- * inside a row of buttons sets the row's height and width, so on Overview a
- * refusal was pushing the rest of the header around. In dense mode the same
- * words are still reachable, on hover and on focus, but out of the flow.
+ * `dense` is for a toolbar, where a paragraph of explanation would set the
+ * row's height and push the other buttons around. The same words stay
+ * reachable on hover and focus, out of the flow.
  */
 export default function RecrawlButton({ className = "", dense = false }: {
   className?: string; dense?: boolean;

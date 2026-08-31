@@ -46,13 +46,11 @@ export type NotifyOutcome =
  * Which alerts go out at once, and which wait to be grouped.
  *
  * Critical means somebody needs to know now: a repository is public, or branch
- * protection is gone. Those publish immediately, one each, and a burst of them
- * is a burst worth having in the mailbox.
+ * protection is gone. Those publish immediately, one each.
  *
  * Everything below critical waits for the next flush. A team added to a hundred
- * repositories is one action, and it used to arrive as a hundred separate
- * emails, which is the shape that teaches people to filter the whole feed into
- * a folder they never open.
+ * repositories is one action, and a hundred separate emails is the shape that
+ * teaches people to filter the whole feed into a folder they never open.
  */
 export function sendsImmediately(severity: string): boolean {
   return (severity ?? "").toLowerCase() === "critical";

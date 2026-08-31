@@ -261,29 +261,16 @@ export function buildPushRulesetRules(push: PushProtection): any[] {
 /**
  * Does a ruleset's ref condition cover this branch?
  *
- * Both callers used to answer this with
+ * GitHub's own semantics, not a substring test. `~ALL` and `~DEFAULT_BRANCH`
+ * are the two special values; everything else is a full ref with fnmatch
+ * wildcards, where `*` stops at a path separator and `**` crosses it, so
+ * `refs/heads/release/*` covers `release/1.0` and not `release/1.0/hotfix`.
  *
- *     refs.includes(`refs/heads/${branch}`) ||
- *     refs.some(r => r.includes(branch)) ||
- *     (refs.includes("~DEFAULT_BRANCH") && branch === "main")
- *
- * and the middle clause is a substring test, which is not what a ref condition
- * means. A ruleset scoped to `refs/heads/maintenance` "covers" `main`, because
- * "maintenance" contains "main". So the check that asks whether the default
- * branch is protected reads a rule about a different branch entirely and says
- * yes, a security check reporting protection that is not there, which is the
- * one direction it must never be wrong in.
- *
- * The third clause has its own version of the same fault: `~DEFAULT_BRANCH`
- * was compared against the literal "main", so a repository whose default is
- * `master` or `develop` had its default-branch ruleset ignored, and a
- * repository with a branch actually named `main` had somebody else's applied
- * to it.
- *
- * GitHub's own semantics instead. `~ALL` and `~DEFAULT_BRANCH` are the two
- * special values; everything else is a full ref with fnmatch wildcards, where
- * `*` stops at a path separator and `**` crosses it, so `refs/heads/release/*`
- * covers `release/1.0` and not `release/1.0/hotfix`.
+ * A substring test would let a ruleset on `refs/heads/maintenance` claim to
+ * cover `main`, and comparing `~DEFAULT_BRANCH` against the literal "main"
+ * would ignore the ruleset on any repository whose default is `master`. Both
+ * report protection that is not there, which is the one direction a security
+ * check must never be wrong in.
  */
 export function refMatchesBranch(
   pattern: string, branch: string, defaultBranch?: string | null,

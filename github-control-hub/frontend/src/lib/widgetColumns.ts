@@ -1,19 +1,15 @@
 /**
  * The columns a widget's detail table shows, as data rather than as JSX.
  *
- * These were four sets of conditional `<th>`s. Turning them into a list is what
- * lets the same definition drive the `<colgroup>` the widths live on, the
- * headers, and the resize handles, three things that have to agree about how
- * many columns there are and in what order, and that previously agreed only
- * because someone kept them in step by hand.
+ * One list drives the `<colgroup>` the widths live on, the headers, and the
+ * resize handles: three things that must agree about how many columns there are
+ * and in what order, and that otherwise agree only by hand.
  *
- * **The last column is the flexible one.** Every other column is an exact pixel
- * width; the last takes whatever is left over. That is what stops the table
- * having a ragged right edge without any column having to claim `width: 100%`,
- * which is what went wrong before. `w-full` on the Details column meant it
- * claimed *all* the width and every other column collapsed to the narrowest
- * thing it could render, so the repository name, the one people were reading,
- * was squeezed to nothing while the empty column beside it took half the screen.
+ * **The last column is the flexible one.** Every other is an exact pixel width
+ * and the last takes what is left, which is what stops a ragged right edge
+ * without any column claiming `width: 100%`. A `w-full` column takes *all* the
+ * width and collapses every other to its narrowest render, squeezing the
+ * repository name people are actually reading down to nothing.
  */
 
 export interface WidgetColumn {
@@ -95,15 +91,13 @@ export function widgetColumns(opts: {
     );
   }
 
-  // Bypass ranking is offered as an insight query now, and was offered as a
-  // preset before. The preset block above is left exactly as it was rather than
-  // merged into this one: `layoutId` is built from the column ids, so changing
-  // that set would throw away the widths somebody had already dragged on a
-  // widget created under the old form.
+  // Bypass ranking is offered as an insight query and was offered as a preset.
+  // The preset block above is left exactly as it is rather than merged:
+  // `layoutId` is built from the column ids, so changing that set throws away
+  // widths somebody already dragged on a widget created under the old form.
   //
-  // Only the count needs a column here, the shared Details column below
-  // already renders the row's reason, which is what the preset's second column
-  // held.
+  // Only the count needs a column here; the shared Details column below renders
+  // the row's reason, which is what the preset's second column held.
   if (type === "query" && hasBypasses) {
     columns.push({ id: "bypasses", label: "Bypasses", width: 120, align: "center" });
   }

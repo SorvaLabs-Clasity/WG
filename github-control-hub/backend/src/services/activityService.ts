@@ -342,23 +342,16 @@ export function webhookHealth(at: string | null, now = Date.now()) {
  * When GitHub last reached us, and what it was about.
  *
  * The stamp comes from `org-config`, written by the worker as each delivery
- * arrives. What it does *not* come from any more is the activity feed.
+ * arrives, not from the activity feed. Most delivered events write no feed row
+ * at all, since team, membership, member and dependabot_alert only patch the
+ * access graph and push is silent unless detailed logging is on, and the newest
+ * rows fill with the app's own `sync.*` housekeeping. Searching the feed
+ * reported "nothing for 3 days" while the worker was handling deliveries every
+ * few minutes.
  *
- * That earlier version searched the newest sixty feed rows for one with
- * `source: "github"`, which under-reported in two independent ways. Most
- * delivered events write no feed row at all: team, membership, member and
- * dependabot_alert patch the access graph, and push does nothing visible unless
- * detailed logging is on. And the window fills with the app's own `sync.*`
- * housekeeping, so real events fall out of it as the app gets busier. On a live
- * deployment the newest qualifying row sat at position 46 of 60 and was 259
- * hours old, so the badge read "Nothing for 3 days" while the worker was
- * handling deliveries every few minutes.
- *
- * The action is still taken from the feed, because that is where it is
- * recorded, but it is now only a label on an answer the stamp already gave.
- * A deployment that has not received a delivery since this shipped has no stamp
- * yet, and falls back to the old search rather than claiming nothing has ever
- * arrived.
+ * The action is still read from the feed, as a label on an answer the stamp
+ * already gave. A deployment with no stamp yet falls back to that search rather
+ * than claiming nothing has ever arrived.
  */
 export async function lastGitHubEvent(): Promise<{ at: string | null; action: string | null }> {
   const recent = usesDynamo()
@@ -477,18 +470,18 @@ export async function getActivityMerged(limit: number, offset: number): Promise<
 }
 
 /**
- * Every row shares one partition key, so neither of the lookups below can be
- * expressed as a key condition on the base table. They used to scan the newest
- * rows and filter, and in DynamoDB a Limit applies BEFORE the filter, so both
- * were really asking "is it among the most recent N?" rather than "does it
- * exist?". That answer changes as the log grows: correct at 170 rows, wrong at
- * 200, and wrong silently, an empty result is indistinguishable from a parent
- * that genuinely has no children.
+ * Both lookups go through sparse indexes keyed on the attribute being looked
+ * up, because every row shares one partition key and neither can be a key
+ * condition on the base table.
  *
- * Both now go through sparse indexes keyed on the attribute being looked up.
- * Sparse because only rows carrying the attribute are indexed: ID_INDEX covers
- * everything, PARENT_INDEX contains only child rows, which is exactly the set
- * getChildActivities wants.
+ * Scanning the newest rows and filtering does not work: DynamoDB applies a
+ * Limit *before* the filter, so the question becomes "is it among the most
+ * recent N?" rather than "does it exist?". That answer changes as the log
+ * grows, and changes silently, since an empty result is indistinguishable from
+ * a parent with no children.
+ *
+ * Sparse because only rows carrying the attribute are indexed: PARENT_INDEX
+ * holds child rows alone, which is exactly what getChildActivities wants.
  */
 export const ID_INDEX = "id-index";
 export const PARENT_INDEX = "parentId-index";

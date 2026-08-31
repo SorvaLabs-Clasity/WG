@@ -102,10 +102,9 @@ export async function reconnectAws(profile?: string): Promise<AwsSwitchResult> {
 /**
  * Start `aws sso login` for a profile.
  *
- * Throws when it could not be started. This used to discard the response
- * entirely, so a refused profile name, a missing AWS CLI, or a spawn that
- * failed all produced a button that did nothing at all, with the reason sitting
- * unread in a response nobody looked at.
+ * Throws when it could not be started. Discarding the response makes a refused
+ * profile name, a missing AWS CLI and a failed spawn all produce a button that
+ * does nothing, with the reason sitting unread.
  */
 export async function triggerAwsSsoLogin(profile?: string): Promise<void> {
   const res = await fetch(`${BACKEND_URL}/auth/aws-sso-login`, {

@@ -70,18 +70,13 @@ export interface DigestPrefs {
   /**
    * How far back each section reaches, in days of silence. Zero means no limit.
    *
-   * Per section rather than one setting, because the sections age differently.
-   * Two hundred pull requests nobody has touched in a year are not something a
-   * daily summary should carry, and once they are in it the three from this
-   * week that still matter are somewhere in the middle of a list nobody reads
-   * to the end of. A digest that has to be scrolled is a digest that gets
-   * ignored, which costs more than the omission does.
+   * Per section, because sections age differently. Two hundred pull requests
+   * nobody has touched in a year push the three from this week into the middle
+   * of a list nobody reads to the end of, and a digest that has to be scrolled
+   * gets ignored, which costs more than the omission.
    *
-   * Measured from the last commit rather than from when it was opened: a pull
-   * request touched this morning is not stale however long ago it started.
-   *
-   * Absent on rows written before this existed, which reads as no limit and is
-   * exactly the behaviour those rows had.
+   * Measured from the last commit, so something touched this morning is not
+   * stale however long ago it was opened. Absent means no limit.
    */
   maxAgeDays: {
     toReview: number;
@@ -340,35 +335,25 @@ export function whyNotDue(a: DevAlerts, now: number): string | null {
 }
 
 /**
- * At or after the chosen time, not exactly on it. The pass ticks every five
- * minutes, so an exact match would mean a digest set for 9:58 never fired: the
- * ticks near it are 9:55, which is early, and 10:00, which is the next hour.
+ * At or after the chosen time, not exactly on it: the pass ticks every five
+ * minutes, so an exact match would mean 9:58 never fires.
  *
- * Bounded by an hour so a pass that could not run at nine still delivers at half
- * past, while a digest never arrives at eleven at night because nothing ran all
- * morning.
+ * Bounded by an hour, so a pass that could not run at nine still delivers at
+ * half past but never at eleven at night.
  *
- * Defined as "no reason not to", so the decision and the explanation cannot
- * drift apart into two rules that disagree.
+ * Defined as "no reason not to", so the decision and its explanation cannot
+ * drift into two rules that disagree.
  */
 /**
- * What `lastDigestAt` should become when somebody saves their settings.
+ * What `lastDigestAt` becomes when somebody saves their settings.
  *
- * Changing *when* the summary arrives re-decides whether today's is still
- * owed, and the answer depends on whether the new time has already gone by.
+ * Changing when the summary arrives re-decides whether today's is still owed:
+ * a time still ahead clears the record so it can arrive today, and one already
+ * past is marked done so it waits for tomorrow. Setting 12:45 at 12:48 means
+ * tomorrow, not in two minutes.
  *
- * A time still ahead clears the record, so a schedule set this morning can be
- * tested the same day rather than leaving somebody to wonder overnight whether
- * it works.
- *
- * A time already past is marked done instead. Clearing it there made the pass
- * conclude today's was still owed and send one within five minutes, which is
- * not what setting 12:45 at 12:48 asks for. That, with a settings form that
- * saved on every change, is how adjusting the time produced a run of
- * summaries: each save re-opened a window that had already passed.
- *
- * Only the timing counts. Toggling a section at nine in the evening changes
- * what tomorrow's says, not whether tonight gets a second one.
+ * Only the timing counts. Toggling a section in the evening changes what
+ * tomorrow's says, not whether tonight gets a second one.
  */
 export function nextDigestRecord(current: DevAlerts, next: DevAlerts, now = Date.now()): string | undefined {
   const rescheduled = next.digest.hour !== current.digest.hour

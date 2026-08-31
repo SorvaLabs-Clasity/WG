@@ -10,11 +10,10 @@
  * Set at build time by the migration script, from the region that install
  * actually uses. Empty when nothing said.
  *
- * It used to fall back to "us-east-1", which for a link is worse than useless:
- * the console opens, in the wrong region, showing nothing, and reads as the
- * resource having been deleted. Findings carry their own region now, so this
- * is only reached by something that has none, and the honest answer there is
- * no link at all.
+ * A fallback region is worse than useless for a link: the console opens in the
+ * wrong region, shows nothing, and reads as the resource having been deleted.
+ * Findings carry their own region, so this is only reached by something that
+ * has none, and the honest answer there is no link at all.
  */
 const DEFAULT_REGION: string =
   (import.meta.env.VITE_AWS_REGION as string | undefined) || "";

@@ -4,19 +4,17 @@ import { homeAccountId } from "../aws-guardrails/accounts";
 /**
  * Which AWS account the GitHub half of this app belongs to.
  *
- * An organization can reasonably want the AWS guardrails watching production
- * while everything to do with GitHub, the App's private key, the OAuth secrets,
- * the access graph, the activity log, lives only in a development account.
- * Nothing enforced that: the desktop app reads its secrets from whichever
- * account the operator signed into, so signing into production and opening the
- * Repos tab was a request for GitHub credentials in production.
+ * An organization can want the guardrails watching production while everything
+ * GitHub, the App key, the OAuth secrets, the access graph, the activity log,
+ * lives only in a development account. The desktop app reads its secrets from
+ * whichever account the operator signed into, so without this, opening the
+ * Repos tab in production is a request for GitHub credentials there.
  *
- * Set this to the account id where GitHub belongs. Everything except the AWS
- * tab then refuses anywhere else, and says why.
+ * Set it to the account id where GitHub belongs, and everything except the AWS
+ * tab refuses anywhere else, and says why.
  *
- * Unset means unrestricted, which is what every existing install is: a gate
- * that switched itself on would lock people out of an app that was working
- * yesterday, and this is a deployment decision rather than a default.
+ * Unset means unrestricted. A gate that switched itself on would lock people
+ * out of an app that worked yesterday, so this is a deployment decision.
  */
 export const GITHUB_ACCOUNT_ID = process.env.GITHUB_ACCOUNT_ID || "";
 

@@ -48,25 +48,18 @@ let edgeCacheInFlight: Promise<any[]> | null = null;
 /**
  * The graph held for one whole pass, rather than for six seconds.
  *
- * The six-second cache is right for a page load, where several checks run
- * back to back in a moment. It is wrong for the alarm pass, which evaluates
- * alarms and then recomputes every widget's snapshot, **sequentially and
- * deliberately** so that the checks drawing on commit search do not all fire in
- * the same instant. On a large organization that pass runs for a minute or
- * more, so a six-second cache expired over and over inside it and the whole
- * graph was scanned perhaps a dozen times for bytes that had not changed.
+ * The six-second cache suits a page load, where several checks run back to back
+ * in a moment. The alarm pass evaluates alarms and then recomputes every
+ * widget's snapshot **sequentially**, deliberately, so the checks drawing on
+ * commit search do not all fire at once. That runs for a minute or more on a
+ * large organization, long enough for the cache to expire repeatedly inside one
+ * pass and re-scan the whole table for bytes that had not changed.
  *
- * That was the largest line in the DynamoDB bill, and it was invisible: the
- * cache existed, the comment said it covered a pass, and nothing measured
- * whether a pass fitted inside six seconds.
+ * Pinning also makes the pass consistent: every widget in one snapshot is
+ * computed from one reading, so two cards cannot disagree because the graph
+ * moved between them.
  *
- * Pinning also makes the pass *correct* in a way the cache did not. Every
- * widget in one snapshot is now computed from one reading of the graph, so two
- * cards on the same dashboard cannot disagree because the graph moved between
- * them.
- *
- * Nested calls share the outer pin, so a caller need not know whether it is
- * already inside one.
+ * Nested calls share the outer pin, so a caller need not know it is inside one.
  */
 let pinnedEdges: any[] | null = null;
 
@@ -834,15 +827,13 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         }
       }
 
-      // In real scenario we might do all, but limit to 30 to avoid rate limits
       // Every protected repository, not the first 30.
       //
-      // This used to be `.slice(0, 30)`, which kept the cost down by looking at
-      // 30 repositories and saying nothing about the rest, so on an organization
-      // with three hundred protected repositories the check was a sample
-      // presented as a survey. The cost is now spread instead: each pass reads a
-      // batch, the verdicts are kept per repository, and the answer is withheld
-      // until every one of them has been covered.
+      // Capping the list keeps the cost down by looking at thirty repositories
+      // and saying nothing about the rest, so on an organization with three
+      // hundred the check is a sample presented as a survey. The cost is spread
+      // instead: each pass reads a batch, verdicts are kept per repository, and
+      // the answer is withheld until every one is covered.
       const pbrSubjects = Array.from(protectedRepos).sort();
       const pbrCached = await listVerdicts("protection-bypasses-ranking");
       const pbrMay = mayRefresh("protection-bypasses-ranking");
@@ -1098,18 +1089,15 @@ export async function evaluateSecurityQuery(q: string, param?: string, advanced?
         // knowing about those.
         if (edge.metadata?.archived) continue;
 
-        // A repository with no push has never had a commit. It used to be
-        // skipped on the grounds that empty is not abandoned, which quietly
-        // made the one category nobody can explain away invisible: a
-        // repository created two years ago that nobody ever put anything in
-        // is exactly what this check is for.
+        // A repository with no push has never had a commit. Skipping those on
+        // the grounds that empty is not abandoned hides the one category nobody
+        // can explain away: a repository created two years ago that nobody ever
+        // put anything in is exactly what this check is for.
         //
-        // Judged on when it was created instead, so the same "N months"
-        // threshold still means something and a repository made this morning
-        // is not called dormant. Where creation is unknown too (a repository
-        // last written by a rebuild older than this field) it is reported
-        // rather than dropped: the point of the change is that silence is not
-        // an answer.
+        // Judged on creation instead, so the same "N months" threshold still
+        // means something and a repository made this morning is not dormant.
+        // Where creation is unknown too it is reported rather than dropped:
+        // silence is not an answer.
         const pushedAt = edge.metadata?.pushedAt;
         const createdAt = edge.metadata?.createdAt;
         const basis = pushedAt || createdAt;

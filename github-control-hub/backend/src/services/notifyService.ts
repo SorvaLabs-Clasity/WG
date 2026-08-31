@@ -142,26 +142,19 @@ export async function removeMember(subscriptionArn: string): Promise<void> {
 }
 
 /**
- * Send. Returns false rather than throwing when the topic will not accept the
- * message, because a failed notification must not fail the thing that
- * triggered it, a security alert still has to be recorded even if nobody can
- * be emailed about it.
- */
-/**
  * Tell everybody in this group, by every channel they have.
  *
- * The one seam every notification in the app passes through, widget alarms,
- * important events, pull request reminders, the Renovate feed, so a delivery
- * channel added here reaches all of them at once, and none of them has to know
- * it exists.
+ * The one seam every notification passes through, so a delivery channel added
+ * here reaches widget alarms, important events, reminders and the Renovate feed
+ * at once, and none of them has to know it exists.
  *
- * True when *anybody* was reached. A group with a working Teams webhook and a
- * broken topic has still notified somebody, and reporting that as a failure
- * would make the caller record an alarm as unsent when it was seen.
+ * Returns false rather than throwing: a failed notification must not fail the
+ * thing that triggered it, and a security alert still has to be recorded even
+ * if nobody can be emailed about it.
  *
- * The two are attempted independently and neither can fail the other: a stale
- * Teams webhook must not stop the email, which is the channel people are more
- * likely to be relying on.
+ * True when *anybody* was reached, since a group with working Teams and a
+ * broken topic has still notified somebody. The two are attempted
+ * independently, so a stale Teams webhook cannot stop the email.
  */
 export async function publish(
   topicArn: string, subject: string, body: string, teamsText?: NotifyText,

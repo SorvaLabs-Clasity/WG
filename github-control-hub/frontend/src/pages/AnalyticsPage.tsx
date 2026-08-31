@@ -107,10 +107,10 @@ const LEGACY_THRESHOLDS: Record<string, Severity[]> = {
 /**
  * The stored form is prefixed, because a bare severity name is ambiguous.
  *
- * "low" used to mean "low and above", which is everything; as a set it means
- * low alone. Same for "high" and "medium". Without a marker, choosing one
- * severity would silently store the opposite of what was chosen, and the widget
- * would look like it was ignoring the setting.
+ * As a threshold "low" means low and above, which is everything; as a set it
+ * means low alone. Without a marker, choosing one severity silently stores the
+ * opposite of what was chosen and the widget looks like it is ignoring the
+ * setting.
  */
 const SET_PREFIX = "sev:";
 
@@ -147,21 +147,13 @@ export function describeSeverities(picked: Severity[]): string {
 /**
  * The checks, as cards with weight.
  *
- * The page began as a grid of cards and three redesigns walked away from it,
- * bands, then a ledger, then a bar chart, each one flatter and more austere
- * than the last. That was the wrong direction: /.impeccable.md asks for
- * saturated colour, depth and layering, and names Vanta's control dashboard as
- * the reference. A grid was never the problem; a grid of thin grey boxes with a
- * centred number was.
- *
- * So: cards again, built the way the notes actually describe. Each carries a
- * ring showing how much of the organization it concerns, a bar repeating that
- * at full width, and the first few affected repositories by name, because a
- * count tells you the size of a problem and a name tells you where it is.
+ * Each carries a ring showing how much of the organization it concerns, a bar
+ * repeating that at full width, and the first few affected repositories by
+ * name: a count gives the size of a problem, a name gives its location.
  *
  * Severity drives saturation, elevation and the header wash together, so a card
- * that needs attention is heavier on the page than one that does not, without
- * being a different shape.
+ * needing attention is heavier on the page without being a different shape.
+ * See /.impeccable.md for the visual direction.
  */
 
 type Level = "danger" | "warn" | "info" | "clear";
@@ -684,23 +676,14 @@ function Ring({ share, tone, children }: { share: number; tone: typeof TONE[Leve
 }
 
 /**
- * One check, on its own.
- *
- * Detail used to unroll inside the card, which meant a seven-column table in a
- * third of a row, and then, when the card was widened to fit it, a grid that
- * reflowed around whatever was open. Both were the same mistake: making the
- * board carry something the board is the wrong shape for.
- *
- * So the board steps aside instead. This is the pattern the AWS page already
- * uses, and the table gets the whole width without anything moving underneath
- * it.
+ * One check, on its own. The board steps aside rather than carrying a
+ * seven-column table inside a card, so the table gets the whole width and
+ * nothing reflows underneath it. Same pattern as the AWS page.
  */
 /**
- * Exported so the personal board shows the same detail view.
- *
- * It used to open a modal saying "go and look at the Overview tab", which is a
- * screen apologising for not being the other screen. The table, the verdict and
- * the freshness stamp all live here already.
+ * Exported so the personal board shows the same detail view, rather than a
+ * modal pointing at the Overview tab. The table, the verdict and the freshness
+ * stamp all live here.
  */
 export function CheckDetail({ config, onBack, onEdit, canEdit, graphEmpty, orgName,
                       onAlarm, canAlarm, alarmCount, live }: {
@@ -1222,19 +1205,16 @@ export function CheckCard({
 /**
  * A card's rows, from the schedule where possible and live where not.
  *
- * Every check used to run inside the request that drew the card, a scan of the
- * graph table, live GitHub calls for the dependency widgets, and up to
- * twenty-five commit searches for the subject-by-subject ones, all while the
- * page waited. The scheduled pass now computes and stores the same rows, and
- * this reads them.
+ * Running every check inside the request that draws the card means a graph
+ * scan, live GitHub calls and up to twenty-five commit searches while the page
+ * waits. The scheduled pass computes and stores the same rows, and this reads
+ * them.
  *
  * The live sources are switched *off* when a snapshot is in use rather than
- * fetched and ignored. Fetching them anyway would leave the cost exactly where
- * it was and only hide it.
+ * fetched and ignored, which would leave the cost where it was and hide it.
  *
- * Live is still the answer when there is no snapshot yet (a widget added since
- * the last pass), when the stored one records an error, and whenever somebody
- * presses refresh.
+ * Live is still the answer with no snapshot yet, when the stored one records an
+ * error, and whenever somebody presses refresh.
  */
 function useWidgetData(
   config: WidgetConfig,
@@ -1793,14 +1773,12 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
   // of the widget without a schema change.
   const [picked, setSeverities] = useState<Severity[]>(() => parseSeverities(initialData?.queryParam));
   /**
-   * Nothing reads this any more.
+   * Nothing reads this any more. A widget renders as a card carrying both a
+   * number and a table, so the setting changed nothing about what you got.
    *
-   * A widget used to render either as a big number or as a table depending on
-   * it; it now renders as a card that carries both, so the setting was a form
-   * control that changed nothing about what you got. The field itself stays,
-   * the API still requires one and every stored widget still has one, so it is
-   * sent as a constant rather than removed from the payload, which keeps widgets
-   * created before and after this change identical on disk.
+   * The field stays because the API requires one and every stored widget has
+   * one, so it is sent as a constant rather than dropped from the payload,
+   * which keeps widgets created before and after identical on disk.
    */
   const displayType: DisplayType = initialData?.displayType || "table";
 

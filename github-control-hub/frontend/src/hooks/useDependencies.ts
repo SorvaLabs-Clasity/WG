@@ -5,11 +5,10 @@ import type { DependencyAlert } from "../types/Dependabot";
 /**
  * `enabled` so the dashboard can decline to make this call at all.
  *
- * This is an organization-wide read of every Dependabot alert. The Overview
- * used to issue it on every open purely to draw two cards, before anything had
- * been looked at. With a stored snapshot for those cards there is nothing to
- * fetch, and the argument is what lets the caller say so. Defaults to on, so
- * every existing caller behaves exactly as before.
+ * An organization-wide read of every Dependabot alert, issued on every open
+ * purely to draw two cards before anything has been looked at. With a stored
+ * snapshot there is nothing to fetch, and this argument is what lets the caller
+ * say so. Defaults to on.
  */
 export function useDependencies(enabled = true) {
   return useQuery({

@@ -12,29 +12,22 @@ function nextCursor(link: string | undefined): string | undefined {
 }
 
 /**
- * Every open alert, not the first hundred, walked the way these endpoints
- * actually paginate.
+ * Every open alert, walked the way these endpoints actually paginate.
  *
- * Two bugs live here. Originally all three Dependabot calls asked for
- * `per_page: 100` and used the single page they got back, so past a hundred
- * open alerts an organization under-counted every severity and under-listed
- * every repository, silently, in the direction that reads as good news.
- *
- * The fix for that walked pages with `?page=N`, shaped like listRepos' loop
- * because that is the pattern everywhere else here. But listRepos calls an
- * endpoint that supports page numbers and the Dependabot alerts endpoints do
- * not, organization-level and repository-level alike answer:
+ * The Dependabot alert endpoints reject `?page=N` outright:
  *
  *     400  Pagination using the `page` parameter is not supported.
  *
- * They use cursor pagination: a Link header with rel="next" carrying an
- * `after` cursor. So the walk follows that instead, and ends when GitHub stops
- * offering a next link rather than when a page looks short. A short page is not
- * reliable evidence of the end here, and the link is.
+ * They use cursor pagination, a Link header with rel="next" carrying an
+ * `after` cursor, so the walk follows that and ends when GitHub stops offering
+ * a next link. A short page is not reliable evidence of the end here; the
+ * absent link is.
  *
- * Lives in utils rather than in the dependencies route because the alarm
- * evaluator runs in a Lambda and importing a route would pull Express in with
- * it.
+ * Taking only the first page under-counts every severity in the direction that
+ * reads as good news.
+ *
+ * Lives in utils rather than in the route because the alarm evaluator runs in a
+ * Lambda, and importing a route would pull Express in with it.
  */
 export async function fetchAllCursorPages(
   fetchPage: (cursor: string | undefined) => Promise<{ data: any[]; headers?: Record<string, any> }>,

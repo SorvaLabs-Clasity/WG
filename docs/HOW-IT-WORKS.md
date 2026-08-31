@@ -2879,6 +2879,26 @@ quiet install the web ACL is the largest line on the page, so a report that left
 it out, as this one first did, was worse than no report: everything else reads
 as "spend less by doing less", and these do not move.
 
+**A fixed charge is billed for the resource's life, not for the window.** Every
+one of them was first pro-rated by the length of the window instead, so asking
+about ninety days on a nine-day-old install reported ninety days of WAF: $18 of
+a $1.80 charge. That is worse than an overestimate, because the number grew the
+further back you looked, which is the shape real history has, so it looked
+right.
+
+Each line now carries the days it actually existed within the window. Tables,
+log groups, secrets and the API report their own creation date; WAF and
+CloudWatch alarms do not, so the CloudFormation stack's creation time bounds
+them, since nothing in a stack can predate it. A resource created after the
+window bills nothing rather than a negative.
+
+The monthly projection follows from the same figure, per resource rather than
+from the total: nine days of use over a ninety-day window would otherwise be
+divided by ninety and report a fifth of the real rate.
+
+When the window is longer than the install, the page says so. Two windows giving
+the same answer is correct and reads as a stuck number without an explanation.
+
 `repro-costs.ts` derives what should be priced from `cdk-stack.ts` rather than
 from a list, so a resource added to the infrastructure and not to the pricing is
 caught rather than silently missing.

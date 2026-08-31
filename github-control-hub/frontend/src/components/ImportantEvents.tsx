@@ -57,19 +57,15 @@ const SITUATIONS_PER_PAGE = 10;
 /**
  * Every way the page can be narrowed, in one place.
  *
- * **This content becomes a section called "Important events".** Almost every
- * row is a legitimate action: a repository made public on purpose, somebody
- * given the access they were hired to have. "Security alert" promised a
- * vulnerability and delivered a changelog. The section keeps the whole
- * dashboard; only its home and its name change.
+ * One list, with everything above it a filter. Two lists answering different
+ * questions from the same data will always find a way to contradict each other:
+ * a summary of every alert beside a list defaulting to unresolved ones shows
+ * seventeen things and none, both behaving as written.
  *
- * This is the whole reason the page was rebuilt. It used to be two views
- * behind a toggle: an "Overview" that summarised every alert, and an "Every
- * alert" list that defaulted to *unresolved* ones. On an organization where
- * everything had been dealt with, the overview showed seventeen things and the
- * list showed none, and both were behaving as written. Two lists that answer
- * different questions from the same data will always find a way to contradict
- * each other, so now there is one list and everything above it is a filter.
+ * The section is called "Important events" because almost every row is a
+ * legitimate action, a repository made public on purpose or somebody given the
+ * access they were hired to have. "Security alert" promises a vulnerability and
+ * delivers a changelog.
  */
 interface Filters {
   kind: string | null;
@@ -230,14 +226,11 @@ export default function ImportantEvents() {
   /**
    * Severity decides the headline, and rate is the tiebreak.
    *
-   * It used to be the other way round: `rising > 0` set the tone and a critical
-   * only reached `"info"`, so an organization that makes a repository public
-   * most weeks saw a calm blue "Nothing unusual" over a repository that had
-   * just gone public. The rate was ordinary; the event was not.
-   *
-   * One critical is enough. A rate comparison can only ever say "this is more
-   * than usual", and the thing most worth seeing is often exactly one of
-   * something that has happened before.
+   * The other way round, an organization that makes a repository public most
+   * weeks gets a calm blue "Nothing unusual" over a repository that has just
+   * gone public. A rate comparison can only say "more than usual", and the
+   * thing most worth seeing is often exactly one of something that has happened
+   * before, so one critical is enough.
    */
   const tone: Intent =
     bySeverity.critical > 0 ? "danger"

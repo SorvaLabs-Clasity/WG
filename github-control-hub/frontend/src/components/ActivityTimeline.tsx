@@ -7,22 +7,14 @@ import { importantLabel } from "../lib/importantEvents";
 /**
  * The same rows as the table, read as a story instead of a spreadsheet.
  *
- * The table is the right shape for working: seven columns you can sort, resize
- * and read a diff out of. It is the wrong shape for the question people
- * actually open this tab with, which is "what happened last night", because
- * answering that from a table means reading timestamps and doing the grouping
- * in your head.
+ * The table suits working: seven sortable, resizable columns with a diff in
+ * them. It does not suit "what happened last night", which from a table means
+ * reading timestamps and grouping in your head. So this groups by day and lets
+ * the density of a rail carry the volume. Same data, same filters, same order.
  *
- * So this groups by day, puts a rail down the side, and lets the density of
- * the rail carry the volume. Same data, same filters, same order; only the
- * arrangement differs.
- *
- * A row opens the same detail panel a table row opens, which is a modal over
- * the page rather than part of the table, so undo, redo, retry and the diff are
- * all reachable from here without duplicating any of them. It used to switch
- * back to the table first, which threw away the view somebody had deliberately
- * chosen in order to show them something they could have seen without leaving
- * it.
+ * A row opens the same detail modal a table row opens, so undo, redo, retry and
+ * the diff are reachable without switching view and throwing away the
+ * arrangement somebody deliberately chose.
  */
 
 const SOURCE_DOT: Record<string, string> = {

@@ -16,7 +16,7 @@
  * Run:  npx tsx repro-costs.ts   from github-control-hub/backend
  */
 import fs from "node:fs";
-import { PRICES } from "./src/services/costService";
+import { PRICES, billedDays } from "./src/services/costService";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -61,12 +61,12 @@ function check(name: string, ok: boolean, got?: unknown) {
       /const gbSeconds = \(ms \/ 1000\) \* \(f\.memoryMb \/ 1024\);/.test(svc),
       "a fixed memory figure is wrong for every function that is not 1GB");
 
-    check("storage is charged for the share of a month asked about",
-      /PRICES\.dynamo\.storageGbMonth \* \(days \/ 30\)/.test(svc),
+    // These two asserted the bug: storage pro-rated by the window, and a
+    // monthly figure scaled from the total. Both are now checked against the
+    // resource's own billed period, further down.
+    check("storage is charged for a share of a month, not a whole one",
+      /PRICES\.dynamo\.storageGbMonth \* \(alive \/ 30\)/.test(svc),
       "a seven-day window billed a full month of storage would overstate it fourfold");
-
-    check("a monthly figure is scaled from the window, not assumed",
-      /monthly: total \* \(30 \/ days\)/.test(svc));
 
     // Absent metrics are genuinely zero: CloudWatch publishes no datapoint for
     // something that never happened. Absent *permission* is not, and the two
@@ -78,6 +78,92 @@ function check(name: string, ok: boolean, got?: unknown) {
     check("  and one failing section does not lose the rest",
       (svc.match(/catch \(err: any\) \{\s*\n\s*errors\.push/g) ?? []).length >= 4,
       "each service is read in its own try, so no permission gap empties the page");
+  }
+
+  // ── a fixed charge is billed for the resource's life, not the window ─
+  //
+  // The bug: every fixed charge was pro-rated by the length of the window
+  // rather than by how long the resource had existed in it. Asking about
+  // ninety days on a nine-day-old install reported ninety days of WAF, so a
+  // $1.80 charge read as $18.
+  //
+  // Worse than an overestimate: the number grew the further back you looked,
+  // which is exactly the shape of real history, so it looked right.
+  {
+    const to = new Date("2026-08-31T00:00:00Z");
+    const win = (d: number) => new Date(to.getTime() - d * 86_400_000);
+    const madeNineDaysAgo = new Date("2026-08-22T00:00:00Z");
+
+    check("a window shorter than the resource bills the window",
+      Math.abs(billedDays(madeNineDaysAgo, win(7), to) - 7) < 0.01,
+      billedDays(madeNineDaysAgo, win(7), to));
+
+    check("  and a window longer than it bills only its life",
+      Math.abs(billedDays(madeNineDaysAgo, win(90), to) - 9) < 0.01,
+      billedDays(madeNineDaysAgo, win(90), to));
+
+    // The number the user actually saw.
+    const waf90 = (5 + 1) * billedDays(madeNineDaysAgo, win(90), to) / 30;
+    check("  so ninety days of WAF on a nine-day install is $1.80, not $18",
+      Math.abs(waf90 - 1.80) < 0.01, waf90.toFixed(2));
+
+    // The question asked directly: a WAF that has existed for one month, on the
+    // ninety-day view, must read as the one month it was billed for.
+    const madeOneMonthAgo = new Date(to.getTime() - 30 * 86_400_000);
+    const wafOneMonth = (5 + 1) * billedDays(madeOneMonthAgo, win(90), to) / 30;
+    check("a month-old WAF reads as $6 on the ninety-day view",
+      Math.abs(wafOneMonth - 6.00) < 0.01, wafOneMonth.toFixed(2));
+
+    // And the window still bounds it: the same ACL over a week is a week.
+    const wafOneWeek = (5 + 1) * billedDays(madeOneMonthAgo, win(7), to) / 30;
+    check("  and as $1.40 on the seven-day view",
+      Math.abs(wafOneWeek - 1.40) < 0.01, wafOneWeek.toFixed(2));
+
+    // Three months of a $6 charge really is $18, so the original number was not
+    // wrong in form, only in claiming a life the resource had not had.
+    const wafThreeMonths = (5 + 1) * billedDays(new Date(to.getTime() - 90 * 86_400_000), win(90), to) / 30;
+    check("  and a genuinely three-month-old one is $18",
+      Math.abs(wafThreeMonths - 18.00) < 0.01, wafThreeMonths.toFixed(2));
+
+    check("a resource created after the window bills nothing",
+      billedDays(new Date("2027-01-01"), win(30), to) === 0,
+      "negative days would credit the account");
+
+    check("  and an unknown creation date bills the whole window",
+      Math.abs(billedDays(undefined, win(30), to) - 30) < 0.01,
+      "guessing it is new would understate a real charge");
+
+    const svc = fs.readFileSync("./src/services/costService.ts", "utf8");
+
+    // Every pro-rated line, not just the one that was noticed.
+    check("no charge is still pro-rated by the window",
+      !/\* \(days \/ 30\)/.test(svc),
+      "the same mistake was in six places, and WAF was only the loudest");
+
+    check("  they are pro-rated by the resource's own life",
+      (svc.match(/\* \(alive \/ 30\)/g) ?? []).length >= 5,
+      "each fixed charge needs its own billed period");
+
+    // WAF and alarms report no creation date, and both belong to the stack.
+    check("resources that cannot say when they were made fall back to the stack",
+      /const alive = billedDays\(stackAge, from, to\)/.test(svc)
+      && /DescribeStacksCommand/.test(svc),
+      "nothing in a stack can predate it");
+
+    // Scaling the total by the window instead would divide nine days of use by
+    // ninety and report a fifth of the real monthly rate.
+    check("the monthly rate is projected per resource, not from the total",
+      /lines\.reduce\(\s*\n?\s*\(a, l\) => a \+ \(l\.billedDays > 0 \? \(l\.cost \/ l\.billedDays\) \* 30 : 0\), 0\)/.test(svc),
+      "a table made yesterday and one made a year ago do not share a denominator");
+
+    const ui = fs.readFileSync("../frontend/src/components/CostPanel.tsx", "utf8");
+    check("the screen explains a window longer than the install",
+      /This install is \{Math\.floor\(installedDays\)\} days old/.test(ui),
+      "two windows giving one answer reads as a stuck number");
+
+    check("  and marks any line billed for less than the window",
+      /billed \{Math\.max\(0, Math\.floor\(line\.billedDays\)\)\} of \{data\.days\} days/.test(ui),
+      "a small number should read as new, not as cheap");
   }
 
   // ── nothing billable is left out ────────────────────────────────────

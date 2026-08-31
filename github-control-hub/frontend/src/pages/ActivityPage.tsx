@@ -274,37 +274,20 @@ export default function ActivityPage() {
   const cols = useColumnWidths(activityLayoutId(columns, merged), columnDefaults);
 
   /**
-   * Which lens: the table of everything, or the dashboard.
+   * Four things this tab is for, separated rather than stacked, because each
+   * answers a different question and got in the others' way on one screen.
    *
-   * Two readings of the same events. The table answers "what happened,
-   * exactly", down to a single row and its diff. Important events answers
-   * "what has been happening, and is any of it unusual", the same material
-   * as a shape rather than as a list.
-   *
-   * Held apart from `category` on purpose. It is not a fifth stream: the
-   * streams narrow which rows the table shows, and this replaces the table.
-   */
-  /**
-   * Three things this tab is for, separated rather than stacked.
-   *
-   * They were one screen: a chart nobody asked for above a table somebody was
-   * trying to search, with a third view hidden behind a control off to the
-   * side. Each answers a different question and each got in the others' way.
-   *
-   *   Statistics       the shape everything makes. Organization-wide, never
-   *                    filtered, nothing to click through.
+   *   Statistics       the shape everything makes. Never filtered.
    *   Events           find one row. Streams, filters, table or timeline.
    *   Important events the changes worth knowing about, and who is told.
    *   Costs            what the app's own AWS resources have consumed.
    *
-   * Costs is here rather than under AWS Guardrails, where it started, because
-   * that tab is about rules over *your* resources and this is about the app's
-   * own. The bill covers both halves: the webhook receiver and worker, the
-   * graph aggregator and the tables they write are the GitHub side, and putting
-   * their cost under a guardrails page said they were an AWS-side concern.
+   * Not a fifth stream: the streams narrow which rows the table shows, and
+   * these replace the table.
    *
-   * This tab is the one that already carries both halves, and the one that
-   * exists in an AWS-only install as well as a full one.
+   * Costs sits here rather than under AWS Guardrails because the bill covers
+   * both halves of the app, and this is the tab that carries both and exists
+   * in an AWS-only install.
    */
   const [lens, setLens] = useState<"stats" | "feed" | "important" | "costs">(() => {
     try {
@@ -512,12 +495,10 @@ export default function ActivityPage() {
   const filtered = data?.entries ?? [];
 
   /**
-   * No per-stream totals any more, and deliberately none.
+   * No per-stream totals, deliberately.
    *
-   * They used to be counted from the hundred rows the browser held and shown on
-   * the tabs as though they described the stream. Now that the server returns
-   * one filtered page, that number would describe the page, which is a smaller
-   * lie in the same shape. A real total means counting every row in the table
+   * Counted from the rows the browser holds, the number describes the page
+   * rather than the stream. A real total means counting every row in the table
    * on every load, which is not worth a badge.
    */
 

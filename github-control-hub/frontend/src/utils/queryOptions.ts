@@ -1,21 +1,18 @@
 /**
- * `entity` says what a query counts, because nothing else reliably does.
+ * `entity` says what a query counts, declared rather than inferred.
  *
- * It used to be inferred from whether the id began with "repos-", which is why
- * "repos-with-outside-admins" showed a share of the organization and
- * "unowned-repos" did not, though both return repositories. Reading it off the
- * returned rows fails too, an empty result has nothing to read. So it is
- * declared.
+ * Guessing from the id prefix put "repos-with-outside-admins" and
+ * "unowned-repos" on different footings though both return repositories, and
+ * reading it off the rows fails on an empty result.
  */
 /**
- * `paramIcon` is the icon on the *tags somebody types*, which is not the same
- * thing as the icon on the query.
+ * `paramIcon` is the icon on the *tags somebody types*, which is not the icon
+ * on the query.
  *
- * "Repos exposed through vulnerable package(s)" is a vulnerability question, so
- * it carries a package icon in the picker, and the things you type into it are
- * package names. But "Repos matching specific branch rules" carries a shield,
- * and the things you type into it are branch names. Using the query's own icon
- * for both puts a shield on a branch name.
+ * "Repos exposed through vulnerable package(s)" carries a package icon and
+ * takes package names; "Repos matching specific branch rules" carries a shield
+ * and takes branch names. Using the query's icon for both puts a shield on a
+ * branch name.
  *
  * Only meaningful where `useTagInput` is set. Falls back to `icon`.
  */
@@ -59,9 +56,9 @@ export const QUERY_OPTIONS: QueryOption[] = [
  * `paramLabel` read as a noun inside a sentence.
  *
  * The labels are written for a form field, where "Branch Name(s)" is right.
- * Dropped into a placeholder or an error it needs to be "branch name". Every
- * such string used to be hand-written per field, which is how the package
- * widget ended up asking for a branch name.
+ * Dropped into a placeholder or an error it needs to be "branch name". Derived
+ * rather than hand-written per field, which is how a package widget ends up
+ * asking for a branch name.
  */
 export function paramNoun(label?: string): string {
   return (label ?? "value").replace(/\(s\)|\(es\)/gi, "").replace(/\s+/g, " ").trim().toLowerCase();

@@ -133,17 +133,15 @@ async function scanAll<T>(table: string): Promise<T[]> {
 /**
  * A BatchWrite that actually writes everything it was given.
  *
- * BatchWriteItem does not throw when it cannot keep up. It succeeds, and hands
- * back whatever it declined in `UnprocessedItems`, throttling, a hot
- * partition, a burst past the on-demand ramp. Every call here used to discard
- * that field, so a throttled batch was a set of violations the engine found,
- * logged, and never stored: the AWS tab shows fewer findings than exist, and
- * nothing says so. Under-reporting is the one failure a compliance sweep may
- * not have.
+ * BatchWriteItem does not throw when it cannot keep up. It succeeds and hands
+ * back whatever it declined in `UnprocessedItems`: throttling, a hot partition,
+ * a burst past the on-demand ramp. Discarding that field turns violations the
+ * engine found into violations never stored, with nothing saying so.
+ * Under-reporting is the one failure a compliance sweep may not have.
  *
  * Written out here rather than imported from ../utils/dynamo for the reason at
- * the top of this file: this module is bundled into the Lambda on its own, and
- * that helper carries the whole application's table configuration with it.
+ * the top of this file: this module is bundled into the Lambda alone, and that
+ * helper carries the whole application's table configuration with it.
  */
 const BATCH_LIMIT = 25;
 const BATCH_RETRIES = 5;
@@ -211,19 +209,18 @@ export async function deleteAwsExclusion(id: string): Promise<void> {
 }
 
 /**
- * Findings are keyed by account, region, rule and resource so a re-run
- * overwrites in place rather than accumulating history, the table answers
- * "what is true now", and the activity log carries the history of what changed.
+ * Findings are keyed by account, region, rule and resource, so a re-run
+ * overwrites in place: the table answers "what is true now", and the activity
+ * log carries what changed.
  *
  * Account and region are in the key because names are not unique across an
- * organization: two accounts routinely have a log group called
- * /aws/lambda/api, and keying on the name alone would have prod's verdict and
- * dev's overwrite each other on alternate sweeps.
+ * organization. Two accounts routinely have a log group called
+ * /aws/lambda/api, and keying on the name alone has prod's verdict and dev's
+ * overwrite each other on alternate sweeps.
  *
- * Findings written before accounts existed have no accountId and use the old
- * two-part key. They are not migrated. They are deleted on the next sweep by
- * dropLegacyFindings, because the sweep rewrites the same facts under the new
- * key within the same run.
+ * Findings on the older two-part key are not migrated. dropLegacyFindings
+ * deletes them on the next sweep, which rewrites the same facts under the new
+ * key in the same run.
  */
 export function findingKey(f: Finding): string {
   return f.accountId
@@ -234,17 +231,14 @@ export function findingKey(f: Finding): string {
 /**
  * Write a sweep's findings, all of them.
  *
- * BatchWriteItem does not throw when it cannot keep up. It returns what it
- * declined in `UnprocessedItems`, and this loop used to discard that. A
- * throttled batch was therefore a set of violations the engine found, reported
- * in its logs, and never stored: the AWS tab shows fewer findings than exist,
- * and nothing anywhere says so. `batchWriteAll` retries and then throws, so a
- * sweep that could not record what it found fails loudly instead.
+ * `batchWriteAll` retries what DynamoDB declines and then throws, so a sweep
+ * that could not record what it found fails loudly. Discarding
+ * `UnprocessedItems` instead means violations the engine found, logged, and
+ * never stored, with the tab showing fewer findings than exist.
  *
- * Deduplicated first, because two rules of the same kind can produce a finding
- * for the same resource within one sweep, findingKey does not include the
- * rule for the legacy form, and DynamoDB rejects a batch containing two writes
- * to one key outright.
+ * Deduplicated first: two rules of the same kind can produce a finding for one
+ * resource within a sweep, findingKey does not include the rule for the legacy
+ * form, and DynamoDB rejects a batch containing two writes to one key.
  */
 export async function putFindings(findings: Finding[]): Promise<void> {
   if (findings.length === 0) return;

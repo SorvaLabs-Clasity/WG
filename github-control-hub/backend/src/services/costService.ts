@@ -66,12 +66,66 @@ export const PRICES = {
    * WAF is the one resource here with a real fixed charge, and it is the
    * largest single line on a quiet install: a web ACL costs the same whether it
    * inspects one request a day or a million.
+   *
+   * **These monthly rates are pro-rated hourly by AWS**, which is what makes
+   * charging them for the days a resource has existed correct rather than
+   * merely reasonable. A web ACL a month old is billed $5, one nine days old is
+   * billed $1.50, and this reports the same. If AWS ever charged a whole month
+   * for a partial one, every figure here would understate instead.
+   *
+   * The same is true of the alarm and secret rates above and below.
    */
   waf: { webAclMonth: 5.00, ruleMonth: 1.00, millionRequests: 0.60 },
   /** REST API, which is what this uses: HTTP APIs cannot carry a resource policy. */
   apiGateway: { millionRequests: 3.50 },
   sqs: { millionRequests: 0.40 },
 } as const;
+
+/**
+ * How much of the asked-for window a resource actually existed for.
+ *
+ * Fixed charges are pro-rated by the resource's own life, not by the length of
+ * the window: ninety days of WAF on a nine-day-old install is $18 of a $1.80
+ * charge, and it grows the further back you look, so it reads as history.
+ *
+ * Usage-based lines need none of this, since CloudWatch has no datapoints from
+ * before a resource existed.
+ *
+ * An unknown creation date falls back to the CloudFormation stack, which
+ * nothing in it can predate.
+ */
+export function billedDays(
+  createdAt: Date | undefined, from: Date, to: Date,
+): number {
+  const started = createdAt && createdAt > from ? createdAt : from;
+  const ms = to.getTime() - started.getTime();
+  // A resource created after the window closed bills nothing, which is not the
+  // same as a resource that has existed for zero time.
+  return Math.max(0, ms / 86_400_000);
+}
+
+/**
+ * When this install was made, as the floor for anything that cannot say.
+ *
+ * WAF and CloudWatch alarms report no creation date, and both belong to the
+ * stack, so the stack's own age bounds theirs.
+ */
+async function installedAt(prefix: string): Promise<Date | undefined> {
+  try {
+    const { CloudFormationClient, DescribeStacksCommand } =
+      await import("@aws-sdk/client-cloudformation");
+    const cfn = new CloudFormationClient({ region: awsRegion() });
+    // The stack name is the construct id, not the prefix, so both are tried.
+    for (const name of ["GitHubControlHub", prefix]) {
+      try {
+        const res: any = await cfn.send(new DescribeStacksCommand({ StackName: name }));
+        const t = res.Stacks?.[0]?.CreationTime;
+        if (t) return new Date(t);
+      } catch { /* try the other name */ }
+    }
+  } catch { /* no permission, or no stack: the window stands */ }
+  return undefined;
+}
 
 export interface CostLine {
   /** The resource, as it is named in AWS. */
@@ -80,6 +134,13 @@ export interface CostLine {
   /** What it did, in the units the price is charged in. */
   usage: Array<{ label: string; amount: number; unit: string; cost: number }>;
   cost: number;
+  /**
+   * Days of the window this resource actually existed for.
+   *
+   * Shown when it is shorter than the window asked about, so a small number is
+   * read as "new" rather than as "cheap".
+   */
+  billedDays: number;
   /** Set when this line could not be read, so zero is not read as free. */
   error?: string;
 }
@@ -102,8 +163,22 @@ export interface CostReport {
   pricesMayNotApply: boolean;
   lines: CostLine[];
   total: number;
-  /** Scaled to thirty days, which is the number people actually want. */
+  /**
+   * Scaled to thirty days, which is the number people actually want.
+   *
+   * Per line, from that resource's own billed period, then summed. Scaling the
+   * total by the window instead understates a young install: nine days of use
+   * over a ninety-day window would be divided by ninety rather than by nine.
+   */
   monthly: number;
+  /**
+   * When this install was made, when it could be read.
+   *
+   * Shown so that a window longer than the install explains itself, rather than
+   * leaving somebody to wonder why ninety days and thirty days give the same
+   * answer.
+   */
+  installedAt?: string;
   /** What could not be read at all, so the total is understood as partial. */
   errors: string[];
   /**
@@ -202,6 +277,10 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
   // billed for it.
   const counter = { metrics: 0 };
 
+  // Read once, before anything is priced: two sections need it and it is a
+  // single call.
+  const stackAge = await installedAt(prefix);
+
   const region = (await import("../utils/region")).awsRegion() || PRICES.region;
 
   // ── DynamoDB ──
@@ -235,25 +314,31 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
      * made a dozen tables a dozen sequential waits before the page could
      * render anything. They do not depend on each other.
      */
-    const sizes = await Promise.all(names.map(async name => {
+    const described = await Promise.all(names.map(async name => {
       try {
         const d: any = await ddb.send(new DescribeTableCommand({ TableName: name }));
-        return d.Table?.TableSizeBytes ?? 0;
+        return {
+          bytes: d.Table?.TableSizeBytes ?? 0,
+          created: d.Table?.CreationDateTime ? new Date(d.Table.CreationDateTime) : undefined,
+        };
       } catch {
         // Size is a nicety; usage is the number that matters, so a table that
         // will not describe still gets its reads and writes priced.
-        return 0;
+        return { bytes: 0, created: undefined };
       }
     }));
 
     for (const [i, name] of names.entries()) {
       const reads = metrics[idFor("dr", i)] ?? 0;
       const writes = metrics[idFor("dw", i)] ?? 0;
-      const bytes = sizes[i] ?? 0;
+      const bytes = described[i]?.bytes ?? 0;
+      const alive = billedDays(described[i]?.created ?? stackAge, from, to);
 
       // Storage is charged per month, so a shorter window sees its share.
       const storageGb = bytes / 1024 ** 3;
-      const storage = storageGb * PRICES.dynamo.storageGbMonth * (days / 30);
+      // The table's own life in the window, not the window: storage on a table
+      // created last week is not a month of storage.
+      const storage = storageGb * PRICES.dynamo.storageGbMonth * (alive / 30);
 
       const usage = [
         { label: "Reads", amount: reads, unit: "units", cost: reads * PRICES.dynamo.readUnit },
@@ -261,7 +346,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
         { label: "Storage", amount: storageGb, unit: "GB", cost: storage },
       ];
       lines.push({
-        name, kind: "table", usage,
+        name, kind: "table", usage, billedDays: alive,
         cost: usage.reduce((a, u) => a + u.cost, 0),
       });
     }
@@ -309,7 +394,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
         { label: "Compute", amount: gbSeconds, unit: "GB-sec", cost: gbSeconds * PRICES.lambda.gbSecond },
       ];
       lines.push({
-        name: f.name, kind: "function", usage,
+        name: f.name, kind: "function", usage, billedDays: days,
         cost: usage.reduce((a, u) => a + u.cost, 0),
       });
     }
@@ -326,14 +411,17 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
       await import("@aws-sdk/client-cloudwatch-logs");
     const logs = new CloudWatchLogsClient({ region: awsRegion() });
 
-    const groups: Array<{ name: string; bytes: number }> = [];
+    const groups: Array<{ name: string; bytes: number; created?: Date }> = [];
     let token: string | undefined;
     do {
       const page: any = await logs.send(new DescribeLogGroupsCommand({
         logGroupNamePrefix: prefix, nextToken: token,
       }));
       for (const g of page.logGroups ?? []) {
-        groups.push({ name: g.logGroupName, bytes: g.storedBytes ?? 0 });
+        groups.push({
+          name: g.logGroupName, bytes: g.storedBytes ?? 0,
+          created: g.creationTime ? new Date(g.creationTime) : undefined,
+        });
       }
       token = page.nextToken;
     } while (token);
@@ -347,12 +435,13 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
     for (const [i, g] of groups.entries()) {
       const ingestGb = (metrics[idFor("lg", i)] ?? 0) / 1024 ** 3;
       const storedGb = g.bytes / 1024 ** 3;
+      const alive = billedDays(g.created ?? stackAge, from, to);
       const usage = [
         { label: "Ingest", amount: ingestGb, unit: "GB", cost: ingestGb * PRICES.logs.ingestGb },
-        { label: "Stored", amount: storedGb, unit: "GB", cost: storedGb * PRICES.logs.storageGbMonth * (days / 30) },
+        { label: "Stored", amount: storedGb, unit: "GB", cost: storedGb * PRICES.logs.storageGbMonth * (alive / 30) },
       ];
       lines.push({
-        name: g.name, kind: "logs", usage,
+        name: g.name, kind: "logs", usage, billedDays: alive,
         cost: usage.reduce((a, u) => a + u.cost, 0),
       });
     }
@@ -389,7 +478,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
         { label: "Published", amount: published, unit: "messages", cost: published * PRICES.sns.publish },
       ];
       lines.push({
-        name: arn.split(":").pop()!, kind: "topic", usage,
+        name: arn.split(":").pop()!, kind: "topic", usage, billedDays: days,
         cost: usage.reduce((a, u) => a + u.cost, 0),
       });
     }
@@ -411,10 +500,12 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
     const res: any = await sm.send(new ListSecretsCommand({ MaxResults: 100 }));
     for (const s of res.SecretList ?? []) {
       if (!String(s.Name).startsWith(prefix)) continue;
+      const alive = billedDays(s.CreatedDate ? new Date(s.CreatedDate) : stackAge, from, to);
+      const cost = PRICES.secret * (alive / 30);
       lines.push({
-        name: s.Name, kind: "secret",
-        usage: [{ label: "Stored", amount: 1, unit: "secret", cost: PRICES.secret * (days / 30) }],
-        cost: PRICES.secret * (days / 30),
+        name: s.Name, kind: "secret", billedDays: alive,
+        usage: [{ label: "Stored", amount: 1, unit: "secret", cost }],
+        cost,
       });
     }
   } catch (err: any) {
@@ -454,12 +545,19 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
           dims: { WebACL: acl.Name, Rule: "ALL", Region: awsRegion() ?? PRICES.region },
         }], from, to, counter).catch(() => ({} as Record<string, number>)))["waf0"] ?? 0;
 
+        // WAF reports no creation date, so the stack it belongs to bounds its
+        // age. This is the line the bug was worst on: a fixed five dollars a
+        // month, pro-rated over a window the resource had not existed for.
+        const alive = billedDays(stackAge, from, to);
         const usage = [
-          { label: "Web ACL", amount: 1, unit: "ACL", cost: PRICES.waf.webAclMonth * (days / 30) },
-          { label: "Rules", amount: rules, unit: "rules", cost: rules * PRICES.waf.ruleMonth * (days / 30) },
+          { label: "Web ACL", amount: 1, unit: "ACL", cost: PRICES.waf.webAclMonth * (alive / 30) },
+          { label: "Rules", amount: rules, unit: "rules", cost: rules * PRICES.waf.ruleMonth * (alive / 30) },
           { label: "Requests", amount: requests, unit: "requests", cost: (requests / 1_000_000) * PRICES.waf.millionRequests },
         ];
-        lines.push({ name: acl.Name, kind: "waf", usage, cost: usage.reduce((a, u) => a + u.cost, 0) });
+        lines.push({
+          name: acl.Name, kind: "waf", usage, billedDays: alive,
+          cost: usage.reduce((a, u) => a + u.cost, 0),
+        });
       }
     } catch (err: any) {
       errors.push(`WAF could not be read: ${err?.message ?? err}`);
@@ -485,7 +583,10 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
           label: "Requests", amount: calls, unit: "requests",
           cost: (calls / 1_000_000) * PRICES.apiGateway.millionRequests,
         }];
-        lines.push({ name: a.name, kind: "api", usage, cost: usage[0].cost });
+        lines.push({
+          name: a.name, kind: "api", usage, cost: usage[0].cost,
+          billedDays: billedDays(a.createdDate ? new Date(a.createdDate) : stackAge, from, to),
+        });
       }
     } catch (err: any) {
       errors.push(`API Gateway could not be read: ${err?.message ?? err}`);
@@ -514,7 +615,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
           label: "Requests", amount: requests, unit: "requests",
           cost: (requests / 1_000_000) * PRICES.sqs.millionRequests,
         }];
-        lines.push({ name: n, kind: "queue", usage, cost: usage[0].cost });
+        lines.push({ name: n, kind: "queue", usage, cost: usage[0].cost, billedDays: days });
       }
     } catch (err: any) {
       errors.push(`SQS queues could not be read: ${err?.message ?? err}`);
@@ -539,10 +640,13 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
         token = page.NextToken;
       } while (token);
 
+      // An alarm reports only when it was last *configured*, which is not when
+      // it was created, so the stack bounds these too.
+      const alive = billedDays(stackAge, from, to);
       for (const name of names) {
-        const cost = PRICES.cloudwatch.alarmMonth * (days / 30);
+        const cost = PRICES.cloudwatch.alarmMonth * (alive / 30);
         lines.push({
-          name, kind: "alarm",
+          name, kind: "alarm", billedDays: alive,
           usage: [{ label: "Standing charge", amount: 1, unit: "alarm", cost }],
           cost,
         });
@@ -582,7 +686,11 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
     pricesMayNotApply: region !== PRICES.region,
     lines,
     total,
-    monthly: total * (30 / days),
+    // Per resource, from its own life, then summed. A table created yesterday
+    // and a table created a year ago do not share a denominator.
+    monthly: lines.reduce(
+      (a, l) => a + (l.billedDays > 0 ? (l.cost / l.billedDays) * 30 : 0), 0),
+    installedAt: stackAge?.toISOString(),
     errors,
     self: {
       metricsRequested: counter.metrics,

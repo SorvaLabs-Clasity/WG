@@ -1,23 +1,15 @@
 /**
  * The one AWS account this app watches: the one it runs in.
  *
- * ## Why there is only one
+ * The engine runs with the credentials the process already has, against the
+ * account they belong to, and can reach nothing else. A registry of accounts
+ * would need `sts:AssumeRole` on a role name in *any* account, the ability to
+ * store and read other accounts' credentials, and `organizations:ListAccounts`
+ * to discover them: a large standing capability for a tool whose job is to
+ * report.
  *
- * This began as a registry. An organisation could add accounts, each reached by
- * a role it deployed, or by an access key pair kept in Secrets Manager, and the
- * sweep ran across all of them. It worked, and the cost of it was a permission
- * the app had to hold permanently: `sts:AssumeRole` on a role name in *any*
- * account, plus the ability to create and read secrets holding other accounts'
- * credentials, plus `organizations:ListAccounts` to discover them.
- *
- * That is a large standing capability for a tool whose job is to report. It has
- * been removed, along with the screen that used it. What is left needs no
- * assumption, no stored keys and no organisation access: the engine runs with
- * the credentials the process already has, against the account those
- * credentials belong to, and can reach nothing else.
- *
- * The account is still discovered rather than configured, `sts:GetCallerIdentity`
- * answers it, because every finding is stamped with the account it came from,
+ * The account is discovered through `sts:GetCallerIdentity` rather than
+ * configured, because every finding is stamped with the account it came from
  * and a hardcoded id would label somebody else's estate with our name.
  */
 import { awsRegion, resolveAwsRegion } from "../utils/region";

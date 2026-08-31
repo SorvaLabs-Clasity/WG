@@ -322,8 +322,11 @@ function world(opts: { state?: AlarmState; lastCheckedAt?: string } = {}) {
       /if \(current !== null && current === edgeCache\.version\)/.test(svc),
       "a cached graph must only be served against a version somebody checked");
 
+    // Anchored on the code, not on the comment beside it: a test that fails
+    // when somebody rewords a comment is a test nobody trusts.
+    const scanBody = svc.slice(svc.indexOf("edgeCacheInFlight = (async () =>"));
     check("  and the version is read after the scan, never before",
-      /\/\/ Read \*before\* the scan would be wrong[\s\S]{0,400}const version = await readGraphVersion\(\);/.test(svc),
+      scanBody.indexOf("} while (lastKey);") < scanBody.indexOf("await readGraphVersion()"),
       "a change landing mid-scan would be stamped with the older version");
 
     const edges = fs.readFileSync("./src/services/graphEdgeService.ts", "utf8");

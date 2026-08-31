@@ -26,20 +26,15 @@
 /**
  * "Keep waiting", in both spellings AWS uses.
  *
- * This endpoint is RFC 8628, the OAuth device flow, so over the wire it
- * answers with OAuth's own codes: `authorization_pending`, `slow_down`. The
- * AWS SDK surfaces those as exception classes named
+ * This endpoint is RFC 8628, the OAuth device flow, so over the wire it answers
+ * `authorization_pending` and `slow_down`. The SDK surfaces those as
  * `AuthorizationPendingException` and `SlowDownException`, and the API
- * reference lists the class names, which is where a wrong assumption comes
- * from. Only the SDK ever sees those names; calling the endpoint directly gets
- * the snake_case form.
+ * reference lists only the class names, so matching those alone treats "the
+ * person has not clicked yet", the ordinary answer to the first several polls,
+ * as a failure.
  *
- * Matching the class names alone meant "the person has not clicked yet", the
- * ordinary answer to the first several polls, was treated as a failure, and
- * the screen waited for ever for a poll that had already given up.
- *
- * Both are accepted rather than one, because being wrong here is invisible:
- * everything looks fine until somebody actually tries to sign in.
+ * Both are accepted, because being wrong here is invisible until somebody
+ * actually tries to sign in.
  */
 const KEEP_WAITING = new Set([
   "authorization_pending", "AuthorizationPendingException",
@@ -281,26 +276,17 @@ export function alreadyDefined(config: string, header: string): boolean {
 /**
  * Make the AWS SDK re-read `~/.aws/config`.
  *
- * The SDK parses that file once per process and keeps the result in a
- * module-level cache keyed by path, `filePromises` in `@smithy/core/config`.
- * Nothing invalidates it, because nothing normally needs to: a config file is
- * not expected to change underneath a running program.
+ * The SDK parses that file once per process and caches it at module level
+ * (`filePromises` in `@smithy/core/config`), with nothing to invalidate it. A
+ * profile this app writes therefore does not exist as far as the running
+ * process is concerned, so `AWS_PROFILE=<new>` resolves to nothing until a
+ * restart.
  *
- * This app changes it. A profile written by the step above lands on disk, the
- * AWS CLI signs in against it perfectly well from its own process, and the
- * running app goes on resolving credentials from a parse taken before the
- * profile existed, so `AWS_PROFILE=<new>` resolves to a profile the SDK
- * believes is not there. That is the whole of the "created it, signed in, and
- * Verify does nothing, but it works after a restart" report: restarting was
- * clearing this cache.
+ * One read with `ignoreCache` re-reads and *replaces* the cached promise, so
+ * ordinary lookups afterwards see the new content too.
  *
- * One read with `ignoreCache` both re-reads and *replaces* the cached promise,
- * so ordinary cached lookups afterwards see the new content too.
- *
- * Failure is deliberately not fatal. The profile is already written and correct
- * by the time this runs; if the SDK ever moves this module (it has moved once,
- * from `@smithy/shared-ini-file-loader`) the cost is a restart, which is what
- * people did before this existed, not a lost profile.
+ * Not fatal on failure: the profile is already written and correct, and the
+ * cost is a restart. The SDK has moved this module once before.
  */
 export async function refreshAwsConfigCache(): Promise<boolean> {
   try {

@@ -162,13 +162,12 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
 
     if (fire === "alarm" || (fire === "recovery" && alarm.notifyOnRecovery)) {
       /**
-       * Claimed before anything is sent, not after.
+       * Claimed before anything is sent. Whoever wins the conditional write
+       * owns this transition and sends; whoever loses says nothing. Checked
+       * afterwards, the most it could do is report a duplicate already gone
+       * out.
        *
-       * Whoever wins the conditional write owns this transition and sends the
-       * message; whoever loses says nothing. Checked afterwards, the most it
-       * could do is report a duplicate that had already gone out.
-       *
-       * A recovery is claimed the same way. `notifyOnRecovery` decides whether
+       * A recovery is claimed the same way: `notifyOnRecovery` decides whether
        * to speak, and this decides who does.
        */
       const claimed = deps.claimTransition

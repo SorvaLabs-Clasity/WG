@@ -104,16 +104,14 @@ export async function handler(): Promise<void> {
 
   // ── the developers' own digests ───────────────────────────────────
   //
-  // First, not last. It used to run at the end of the pass, behind alarm
-  // evaluation, the widget snapshots, a GraphQL walk of every open pull request
-  // and the reminder pass. None of that is quick on a real organization, so a
-  // summary somebody asked for at 11:45 arrived at 11:48 and read as the
-  // schedule being approximate.
+  // First, not last. Alarm evaluation, the widget snapshots, a GraphQL walk of
+  // every open pull request and the reminder pass are none of them quick on a
+  // real organization, and a summary asked for at 11:45 arriving at 11:48
+  // reads as an approximate schedule.
   //
-  // Nothing here depends on any of it. The digest reads the pull request
-  // snapshot the *previous* pass stored, which is at most five minutes old, and
-  // five minutes of staleness in a daily summary is not worth three minutes of
-  // lateness in delivering it.
+  // Nothing here depends on any of it: the digest reads the snapshot the
+  // *previous* pass stored, and five minutes of staleness in a daily summary
+  // costs less than three minutes of lateness.
   //
   // Still wrapped: one person's broken address must not stop the alarms.
   try {
@@ -126,17 +124,13 @@ export async function handler(): Promise<void> {
     console.error("[DevDigest] Digest pass failed:", (err as Error).message);
   }
 
-  // No fallback. This used to degrade to a SYSTEM_GITHUB_TOKEN personal access
-  // token, which meant a broken App produced alarm runs that quietly worked,
-  // on a credential nobody remembered configuring, until that expired too.
-  //
-  // The App is the only credential now, so a run that cannot get a token fails
-  // and says why. A failed scheduled run is visible in the function's logs and
-  // its DLQ; a run that silently used a different identity is not.
+  // No fallback to a personal access token: a broken App that quietly keeps
+  // working on a credential nobody remembers configuring stays broken until
+  // that one expires too. The App is the only credential, so a run that cannot
+  // get a token fails and says why, which is visible in the logs and the DLQ.
   //
   // Skipped entirely when there is no GitHub to read. An AWS-only account runs
-  // this same pass for its guardrail alarms, which read the findings table and
-  // never touch a token.
+  // this same pass for its guardrail alarms, which never touch a token.
   const hasGitHub = githubConfigured();
   const token = hasGitHub ? await getSystemTokenAsync() : "";
 

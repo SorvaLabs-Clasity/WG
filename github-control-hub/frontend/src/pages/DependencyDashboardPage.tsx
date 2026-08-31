@@ -33,15 +33,13 @@ import { usePermissions } from "../hooks/usePermissions";
 /**
  * The three questions this tab answers, as three views rather than one column.
  *
- * They used to be stacked: every vulnerable repository, then the Dependabot
- * email settings, then Renovate, then the Renovate email settings. Reaching
- * Renovate meant scrolling past the whole of Dependabot, a page of repository
- * cards, which put the two halves of one question at opposite ends of a scroll
- * bar and made the second half easy to forget existed.
+ * Stacked, reaching Renovate means scrolling past the whole of Dependabot, a
+ * page of repository cards, which puts the two halves of one question at
+ * opposite ends of a scroll bar and makes the second easy to forget exists.
  *
- * They are genuinely separate questions asked by the same person at different
- * moments: what is vulnerable, what has been raised to fix it, and who gets
- * told. Nothing on one view needs anything from another to make sense.
+ * They are separate questions asked by the same person at different moments:
+ * what is vulnerable, what has been raised to fix it, and who gets told.
+ * Nothing on one view needs anything from another to make sense.
  */
 type View = "alerts" | "updates" | "notifications";
 

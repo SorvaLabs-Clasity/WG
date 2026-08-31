@@ -15,15 +15,14 @@
  * how long between one reminder and the next.
  *
  * One constant, in the code, governing the scheduled pass and the manual one
- * alike. It was briefly an environment variable, which was wrong twice over:
- * the scheduled pass runs in a Lambda that never saw a value set locally, so
- * changing it moved the manual button and nothing else, and how often people
- * are chased is a product decision, not a deployment detail.
+ * alike. As an environment variable it moved the manual button and nothing
+ * else, because the scheduled pass runs in a Lambda that never saw a local
+ * value, and how often people are chased is a product decision rather than a
+ * deployment detail.
  *
- * To exercise the behaviour in seconds rather than fortnights, set
- * STALE_SECONDS to 10 and deploy. The page shows a banner and the test suite
- * prints a note while it is anything other than seven days, so it cannot be
- * left turned down unnoticed.
+ * To exercise this in seconds rather than fortnights, set STALE_SECONDS to 10
+ * and deploy. The page shows a banner and the suite prints a note while it is
+ * anything but seven days, so it cannot be left turned down unnoticed.
  */
 export const SEVEN_DAYS = 7 * 86_400;
 

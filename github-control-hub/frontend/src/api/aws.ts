@@ -145,6 +145,8 @@ export interface CostLine {
   kind: "table" | "function" | "topic" | "logs" | "secret" | "waf" | "api" | "queue" | "alarm";
   usage: CostUsage[];
   cost: number;
+  /** Days of the window this resource actually existed for. */
+  billedDays: number;
   error?: string;
 }
 export interface CostReport {
@@ -160,6 +162,8 @@ export interface CostReport {
   lines: CostLine[];
   total: number;
   monthly: number;
+  /** When the stack was created, when it could be read. */
+  installedAt?: string;
   errors: string[];
   /** What producing this page cost. Disclosed, not hidden. */
   self: { metricsRequested: number; costPerRun: number; monthlyIfHourly: number };

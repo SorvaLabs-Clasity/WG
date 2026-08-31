@@ -229,16 +229,15 @@ const isQueryRow = (v: ComplianceViolation) => v.branch === "-";
 /**
  * Fold a scoped re-scan into the stored org-wide result.
  *
- * The webhook path calls runScan with a single repository, the one an event
- * touched, and the result used to be written straight over the stored row.
- * So one push replaced "347 scanned, 42 in violation" with "1 scanned, 0 in
- * violation", and every finding for the other 346 repositories vanished from
- * the page until somebody pressed Run again. A compliance screen that reports
- * fewer violations than exist, and reports them because something *worked*, is
- * the worst way for this to fail.
+ * The webhook path calls runScan with the single repository an event touched.
+ * Writing that straight over the stored row replaces "347 scanned, 42 in
+ * violation" with "1 scanned, 0 in violation", and every finding for the other
+ * 346 vanishes until somebody presses Run. A compliance screen reporting fewer
+ * violations than exist, because something *worked*, is the worst way for this
+ * to fail.
  *
- * Merging instead: the re-scanned repositories' rows are replaced, everything
- * else is kept, and the counts are derived from the union.
+ * Merging instead: re-scanned rows are replaced, everything else is kept, and
+ * the counts come from the union.
  */
 export function mergeScanResult(
   previous: ScanResult,

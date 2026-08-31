@@ -84,11 +84,9 @@ export default function LoginPage() {
    * opens.
    *
    * Seeded from `VITE_AWS_REGION`, which the setup script writes for the
-   * install a build was made for, and always editable. It used to be hidden
-   * whenever that was set, because retyping a fact the app holds is a poor
-   * prompt. That stopped being true once each region became its own install:
-   * the one field that picks between them was the one the build was answering
-   * on your behalf.
+   * install a build was made for, and always editable. Hidden whenever that is
+   * set, the one field that picks between regions is the one the build answers
+   * on your behalf, and no profile can be made for another region.
    */
   const [newRegion, setNewRegion] = useState(
     (import.meta.env.VITE_AWS_REGION as string | undefined) || "");
@@ -313,10 +311,10 @@ export default function LoginPage() {
   /**
    * "Verify", I have signed in over there, look again.
    *
-   * The result used to be thrown away. The backend answers `reachable: false`
-   * with the reason when it still cannot reach DynamoDB, and discarding that
-   * turned every failure into a button that visibly did nothing: not signed in
-   * yet, signed into the wrong account, no network, all identical on screen.
+   * The backend answers `reachable: false` with the reason when it still cannot
+   * reach DynamoDB. Discarding that turns every failure into a button that
+   * visibly does nothing: not signed in yet, wrong account, no network, all
+   * identical on screen.
    */
   const handleReconnectAws = async () => {
     setRefreshing("aws");

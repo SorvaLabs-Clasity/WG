@@ -32,10 +32,8 @@ async function refusedAlertChange(res: Response, login: string, verb: string, us
  * `?since=<iso>` bounds the window and defaults to the twelve weeks the
  * Security tab charts. `?cursor=` continues into older rows.
  *
- * This used to return the whole table on every request, which is fine at
- * seventeen rows and ships megabytes at ten thousand. The response now says
- * whether it is complete, so the page can state what it is showing rather than
- * drawing a truncated list as if it were everything.
+ * The response says whether it is complete, so the page can state what it is
+ * showing rather than drawing a truncated list as if it were everything.
  */
 router.get("/", async (req: Request, res: Response) => {
   try {

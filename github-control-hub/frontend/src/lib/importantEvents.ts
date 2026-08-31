@@ -1,18 +1,17 @@
 /**
  * The important events, named.
  *
- * These are the rows the Activity feed shows with an "important" badge: the
- * ones that also raised an alert and may have been emailed. A repository going
- * public, access being granted, branch protection disappearing.
+ * The rows the Activity feed badges as important: the ones that also raised an
+ * alert and may have been emailed. A repository going public, access granted,
+ * branch protection disappearing.
  *
- * They all share one action, `security.alert`, which is how they are found and
- * filtered. What they do not share is what happened, and the feed used to show
- * every one of them as "Security Alert", the name of the drawer rather than
- * the name of the thing in it.
+ * They share one action, `security.alert`, which is how they are found. What
+ * they do not share is what happened, so naming them all "Security Alert" is
+ * naming the drawer rather than the thing in it.
  *
  * Kept in step with TYPE_LABELS in components/ImportantEvents.tsx, which labels
- * the same events on the dashboard. Two lists that name the same things must
- * agree; repro-securitydashboard.ts checks that they do.
+ * the same events on the dashboard. repro-securitydashboard.ts checks they
+ * agree.
  */
 export const IMPORTANT_KINDS: { id: string; label: string }[] = [
   { id: "repo_made_public", label: "Repository made public" },

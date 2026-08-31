@@ -20,14 +20,13 @@ export interface OrgConfig {
   /**
    * The one Power Automate flow every Teams message goes through.
    *
-   * Set once, by an administrator. Before this, each person created their own
-   * flow and pasted their own URL, which meant ten steps in a tool they do not
-   * otherwise use, per person, with one silent failure mode if a dropdown was
-   * wrong. The flow is a pipe: it reads who the message is for out of the
-   * request, so one of them serves everybody.
+   * Set once, by an administrator. A flow per person is ten steps in a tool
+   * they do not otherwise use, with one silent failure mode if a dropdown is
+   * wrong. This one is a pipe: it reads who the message is for out of the
+   * request, so it serves everybody.
    *
-   * Unset means Teams delivery is simply off, and every screen that offers it
-   * says so rather than accepting an address that would go nowhere.
+   * Unset means Teams delivery is off, and every screen that offers it says so
+   * rather than accepting an address that would go nowhere.
    */
   teamsFlow?: {
     url: string;
@@ -56,13 +55,12 @@ export interface OrgConfig {
     /**
      * Set while a walk is under way, cleared when it ends.
      *
-     * Shared, which is the point: the desktop app on one machine and the
-     * nightly Lambda write the same row, so everybody's button says
-     * "recrawling" while anybody's walk is running. Before this it was local
-     * component state, so it vanished on a tab switch and was invisible to
-     * everyone else.
+     * Shared, which is the point: the desktop app and the nightly Lambda write
+     * the same row, so everybody's button says "recrawling" while anybody's
+     * walk runs. As local component state it vanished on a tab switch and was
+     * invisible to everyone else.
      *
-     * Not authoritative on its own. A process that disappears never clears it,
+     * Not authoritative on its own: a process that disappears never clears it,
      * so readers age it out. See RUN_ASSUMED_DEAD_MS in recrawlWindow.ts.
      */
     runningSince?: string;
@@ -88,18 +86,14 @@ export interface OrgConfig {
   /**
    * When a webhook delivery last arrived, whatever it turned out to contain.
    *
-   * Recorded because silence is this feature's only failure mode: a broken
-   * webhook looks exactly like a quiet week, and there is no backfill, so
-   * anything that happened meanwhile is gone rather than late.
+   * Silence is this feature's only failure mode: a broken webhook looks exactly
+   * like a quiet week, and there is no backfill, so anything that happened
+   * meanwhile is gone rather than late.
    *
-   * Written on arrival rather than inferred from the activity feed. The health
-   * check used to look for the newest feed row with `source: "github"` inside a
-   * window of sixty rows, which was wrong twice over: most delivered events
-   * (team, membership, member, dependabot_alert, and push with detailed logging
-   * off) patch the graph and write no feed row at all, and the window fills
-   * with the app's own `sync.*` housekeeping, pushing real events out of sight.
-   * On a live deployment the newest qualifying row sat at position 46 of 60 and
-   * was 259 hours old while deliveries were arriving every few minutes.
+   * Written on arrival rather than inferred from the activity feed. Most
+   * delivered events write no feed row at all, since team, membership, member
+   * and dependabot_alert only patch the graph, and the newest rows fill with
+   * the app's own `sync.*` housekeeping.
    */
   lastWebhookAt?: string;
   /**
