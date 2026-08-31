@@ -189,11 +189,17 @@ export default function AlarmModal({
                 {chosen?.hint && (
                   <p className="mt-1 text-xs text-gray-500 dark:text-slate-400">{chosen.hint}</p>
                 )}
+                {/* The tick is the worst case, not the usual one, for a
+                    guardrail: whatever rewrites the findings evaluates the
+                    alarms reading them in the same invocation. Saying only
+                    "up to 5 minutes" hides that. */}
                 <p className="mt-2 text-xs text-gray-500 dark:text-slate-400">
-                  Checked {describeInterval(spec.intervalMinutes)}, so this can take up to{" "}
-                  {spec.intervalMinutes} minutes to notice.
-                  {spec.intervalMinutes >= 60 &&
-                    " Dependabot data only changes when GitHub rescans, so checking more often would not find it sooner."}
+                  {widgetId.startsWith("guardrail:")
+                    ? <>Checked whenever the findings change, so a sweep, a resource changing,
+                        Run, or an exclusion edit all notice at once. The {describeInterval(spec.intervalMinutes)}{" "}
+                        pass is the backstop.</>
+                    : <>Checked {describeInterval(spec.intervalMinutes)}, so this can take up to{" "}
+                        {spec.intervalMinutes} minutes to notice.</>}
                 </p>
               </div>
 

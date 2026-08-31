@@ -393,6 +393,15 @@ function world(opts: { state?: AlarmState; lastCheckedAt?: string } = {}) {
       && !/interval=\{guardrail \? 60/.test(page),
       "a hardcoded 60 outlives every change to the evaluator");
 
+    const modal = fs.readFileSync("../frontend/src/components/AlarmModal.tsx", "utf8");
+    check("  and a guardrail says it reacts to the change, not to the clock",
+      /Checked whenever the findings change/.test(modal),
+      "the tick is the backstop there, and quoting only it hides the whole point");
+
+    check("  while everything else quotes its interval honestly",
+      /Checked \{describeInterval\(spec\.intervalMinutes\)\}, so this can take up to/.test(modal),
+      "a widget alarm really does wait for the next pass");
+
     check("  with a deleted subject stating no interval at all",
       /interval !== null && <span>checked/.test(page),
       "a number there would be the confident half of a contradiction");
