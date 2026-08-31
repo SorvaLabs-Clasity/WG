@@ -265,16 +265,24 @@ function searchWithBudget(dormant: Set<string>, budget: number): Search {
     check("  and does not poison the next one", after.length === 1, after.length);
 
     // And the hold itself: a second call inside the window must not scan again.
-    let scans = 0;
+    // Counting scans, not calls. A read also fetches the graph version row,
+    // which is one read unit and is the whole reason a scan can be skipped;
+    // counting it as a scan would report the saving as a cost.
+    let scans = 0, versionReads = 0;
     const restore3 = __setDocClientForTests({
-      send: async () => { scans++; return { Items: [{ pk: "USER#a" }] }; },
+      send: async (cmd: any) => {
+        const n = cmd?.constructor?.name;
+        if (n === "GetCommand") { versionReads++; return { Item: { version: 1 } }; }
+        scans++;
+        return { Items: [{ pk: "USER#a" }] };
+      },
     });
     invalidateEdgeCache();
     await scanGraphEdges();
     await scanGraphEdges();
     await scanGraphEdges();
     restore3();
-    check("  three reads in a row cost one scan", scans === 1, scans);
+    check("  three reads in a row cost one scan", scans === 1, { scans, versionReads });
 
     invalidateEdgeCache();
     if (priorActivity === undefined) delete process.env.ACTIVITY_TABLE;

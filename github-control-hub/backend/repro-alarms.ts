@@ -18,6 +18,7 @@ import path from "path";
 import {
   conditionsFor, isValidCondition, metricValue, isBreaching, step, intervalFor,
   isDue, severityRank, INTERVAL_MINUTES, RECOVERY_CHECKS, DUE_TOLERANCE_MS, TICK_MINUTES,
+  GITHUB_BACKED_QUERIES,
   type AlarmCondition, type AlarmRuntime,
 } from "./src/alarms/conditions";
 import {
@@ -178,12 +179,22 @@ function check(name: string, ok: boolean, got?: unknown) {
 
 // ── the schedule ──────────────────────────────────────────────────────
 {
-  check("dependabot-backed widgets are hourly",
-    intervalFor({ type: "preset", presetId: "dependabot" }) === INTERVAL_MINUTES.dependabot
-      && intervalFor({ type: "preset", presetId: "vuln-repos" }) === INTERVAL_MINUTES.dependabot);
-  check("  everything else is on the standard interval",
-    intervalFor({ type: "preset", presetId: "bypasses" }) === INTERVAL_MINUTES.standard
-      && intervalFor({ type: "query" }) === INTERVAL_MINUTES.standard);
+  // Every alarm, every tick, whatever it watches. The tiering bought nothing:
+  // the same pass recomputes every widget for the dashboard afterwards, so the
+  // expensive readings are already made once per tick and memoised, and an
+  // alarm waiting a second tick only arrived later.
+  for (const w of [
+    { type: "preset", presetId: "dependabot" },
+    { type: "preset", presetId: "vuln-repos" },
+    { type: "preset", presetId: "bypasses" },
+    { type: "preset", presetId: "renovate-open" },
+    { type: "query", queryId: "protection-bypasses-ranking" },
+    { type: "query", queryId: "unowned-repos" },
+    { type: "guardrail" },
+  ]) {
+    check(`  ${w.presetId ?? w.queryId ?? w.type} is evaluated every tick`,
+      intervalFor(w as any) === TICK_MINUTES, intervalFor(w as any));
+  }
 
   const now = Date.now();
   check("an alarm never checked is due", isDue(undefined, 60, now));
@@ -262,6 +273,59 @@ function check(name: string, ok: boolean, got?: unknown) {
   check("  and its subject is legal",
     built.subject.length <= SUBJECT_MAX && /^[\x20-\x7E]+$/.test(built.subject),
     built.subject);
+}
+
+// ── how often an alarm is re-read, and why ────────────────────────────
+//
+// The old split was "guardrail or GitHub", and it was wrong in both
+// directions. A guardrail alarm reads a table and was on the slowest interval
+// of all. Most GitHub alarms read the graph table, which the webhook worker
+// keeps current, and were waiting fifteen minutes to re-read something already
+// sitting there. The line that matters is whether the reading is bought.
+{
+  const graph = { type: "query", queryId: "repos-with-outside-admins" };
+  const bought = { type: "query", queryId: "protection-bypasses-ranking" };
+
+  check("a guardrail alarm keeps up with the tick",
+    intervalFor({ type: "guardrail" } as any) === TICK_MINUTES);
+  check("  and so does a query answered from the graph",
+    intervalFor(graph as any) === TICK_MINUTES,
+    "a DynamoDB scan of a table webhooks already updated");
+
+  // Including the ones whose reading is bought, because the snapshot pass has
+  // already bought it: it recomputes every widget on the same tick, from the
+  // same memoised sources.
+  check("  and so does one whose reading is bought",
+    intervalFor(bought as any) === TICK_MINUTES,
+    "waiting a second tick saved no requests, only made the alarm later");
+
+  // The list of GitHub-backed queries sits in conditions.ts and the calls sit
+  // in graphService.ts, so it can drift. Derived here from the cases that
+  // actually construct an Octokit.
+  const gs = fs.readFileSync(path.join(__dirname, "src/services/graphService.ts"), "utf8");
+  const body = gs.slice(gs.indexOf("export async function evaluateSecurityQuery"));
+  const cases = [...body.matchAll(/case "([a-z-]+)":/g)].map(m => ({ id: m[1], at: m.index! }));
+  const octokits = [...body.matchAll(/new [A-Za-z]*Octokit\(/g)].map(m => m.index!);
+
+  // Each Octokit belongs to the case it appears under.
+  const callsGitHub = new Set<string>();
+  for (const at of octokits) {
+    const owner = cases.filter(c => c.at < at).pop();
+    if (owner) callsGitHub.add(owner.id);
+  }
+
+  // Nothing tiers on this list today, and it is kept current anyway: it is the
+  // record of which readings are bought, and the tiering has to come back if
+  // the snapshot pass ever stops recomputing everything.
+  check("the GitHub-backed query list matches the code that calls GitHub",
+    [...GITHUB_BACKED_QUERIES].sort().join() === [...callsGitHub].sort().join(),
+    { declared: [...GITHUB_BACKED_QUERIES].sort(), found: [...callsGitHub].sort() });
+
+  // If this ever finds none, the derivation broke rather than the calls going
+  // away, and a silently empty set would put every query on the fast interval.
+  check("  and the derivation actually found some",
+    callsGitHub.size > 0,
+    "an empty result here would pass the check above for the wrong reason");
 }
 
 // ── timestamps say which clock they are on ────────────────────────────

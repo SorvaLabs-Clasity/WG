@@ -45,6 +45,38 @@ const requireAdmin: RequestHandler = (req, res, next) => {
 };
 
 /** The rule kinds the UI can offer, with their defaults. */
+/**
+ * What each of this app's own resources has cost.
+ *
+ * Computed from metered usage rather than fetched from a bill: AWS does not
+ * meter cost per resource for DynamoDB or Lambda, so a bill can say "$18 of
+ * DynamoDB" and never which table. CloudWatch knows exactly what each one
+ * consumed, and multiplying that by published prices answers the question a
+ * bill cannot.
+ *
+ * Cached for an hour. The numbers move slowly, the underlying calls are a
+ * handful of API requests, and a page somebody leaves open should not re-ask
+ * every time it repaints.
+ */
+let costCache: { at: number; days: number; report: any } | null = null;
+const COST_CACHE_MS = 60 * 60_000;
+
+router.get("/costs", async (req: Request, res: Response) => {
+  try {
+    const days = Math.min(90, Math.max(1, Number(req.query.days) || 30));
+    if (costCache && costCache.days === days && Date.now() - costCache.at < COST_CACHE_MS) {
+      return res.json({ ...costCache.report, cached: true });
+    }
+
+    const { buildCostReport } = await import("../services/costService");
+    const report = await buildCostReport(days);
+    costCache = { at: Date.now(), days, report };
+    res.json({ ...report, cached: false });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "aws costs") });
+  }
+});
+
 router.get("/catalog", (_req: Request, res: Response) => {
   res.json(CATALOG.map(k => ({
     kind: k.kind,

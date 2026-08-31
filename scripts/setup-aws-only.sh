@@ -11,8 +11,8 @@
 #   - the DynamoDB tables this account actually uses, created by
 #     setup-aws-account.sh so their schemas cannot drift from the ones the app
 #     reads. The ones only the GitHub half writes to are not created here.
-#   - one Lambda on a fifteen-minute schedule, plus a CloudTrail rule so it also
-#     reacts to resources being created
+#   - one Lambda on a ten-minute schedule, plus a CloudTrail rule so it also
+#     reacts to resources being created within seconds
 #   - the alarm evaluator, on the five-minute tick. Guardrails can raise alarms,
 #     so an account without this could save one and have nothing ever evaluate
 #     it: the rule detected the violation, the tab agreed, and no message was
@@ -241,7 +241,7 @@ if [ "$TRAILS" != "0" ]; then
   ok "$TRAILS trail(s) already here, guardrails will see creation events"
   skip "Not creating another (a second trail is billed per event)"
 else
-  warn "No trail. Guardrails will still run every fifteen minutes; they just"
+  warn "No trail. Guardrails will still run every ten minutes; they just"
   warn "will not react within seconds of a resource being created."
   if confirm "Create one?"; then
     AWS_REGION="$REGION" TRAIL_NAME="${PREFIX}-trail" bash "$HERE/setup-cloudtrail.sh" \

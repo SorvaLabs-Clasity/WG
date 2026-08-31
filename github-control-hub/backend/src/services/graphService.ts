@@ -1,4 +1,5 @@
 import { docClient, hasTable, tableName, ScanCommand } from "../utils/dynamo";
+import { readGraphVersion, isVersionRow } from "./graphVersion";
 import { getSystemToken } from "../github/client";
 import { rulesetCoversBranch } from "./branchService";
 import fs from "fs";
@@ -33,8 +34,53 @@ function loadLocalEdges() {
  * back-to-back, and short enough that a rebuild is picked up almost at once.
  */
 const EDGE_CACHE_MS = 6_000;
-let edgeCache: { at: number; edges: any[] } | null = null;
+/**
+ * The last full reading, and the graph version it was taken at.
+ *
+ * The version is what lets this be reused for longer than a few seconds: with
+ * it, "is this still current" is a one-row read instead of another full scan.
+ * Null version means the counter could not be read when the scan was taken, so
+ * the copy can only be trusted for the timer's few seconds.
+ */
+let edgeCache: { at: number; edges: any[]; version: number | null } | null = null;
 let edgeCacheInFlight: Promise<any[]> | null = null;
+
+/**
+ * The graph held for one whole pass, rather than for six seconds.
+ *
+ * The six-second cache is right for a page load, where several checks run
+ * back to back in a moment. It is wrong for the alarm pass, which evaluates
+ * alarms and then recomputes every widget's snapshot, **sequentially and
+ * deliberately** so that the checks drawing on commit search do not all fire in
+ * the same instant. On a large organization that pass runs for a minute or
+ * more, so a six-second cache expired over and over inside it and the whole
+ * graph was scanned perhaps a dozen times for bytes that had not changed.
+ *
+ * That was the largest line in the DynamoDB bill, and it was invisible: the
+ * cache existed, the comment said it covered a pass, and nothing measured
+ * whether a pass fitted inside six seconds.
+ *
+ * Pinning also makes the pass *correct* in a way the cache did not. Every
+ * widget in one snapshot is now computed from one reading of the graph, so two
+ * cards on the same dashboard cannot disagree because the graph moved between
+ * them.
+ *
+ * Nested calls share the outer pin, so a caller need not know whether it is
+ * already inside one.
+ */
+let pinnedEdges: any[] | null = null;
+
+export async function withPinnedGraph<T>(fn: () => Promise<T>): Promise<T> {
+  if (pinnedEdges) return fn();
+  pinnedEdges = await scanGraphEdges();
+  try {
+    return await fn();
+  } finally {
+    // Always released, or a warm Lambda container would serve the next
+    // invocation a graph from the last one.
+    pinnedEdges = null;
+  }
+}
 
 /**
  * Every edge in the graph. Exported so the access map can derive its own view.
@@ -52,7 +98,33 @@ let edgeCacheInFlight: Promise<any[]> | null = null;
 export async function scanGraphEdges(): Promise<any[]> {
   if (!hasTable("GRAPH_EDGES_TABLE")) return loadLocalEdges();
 
+  // Pinned for the duration of a pass. See `withPinnedGraph`.
+  if (pinnedEdges) return pinnedEdges;
+
   if (edgeCache && Date.now() - edgeCache.at < EDGE_CACHE_MS) return edgeCache.edges;
+
+  /**
+   * Ask whether anything changed before reading everything to find out.
+   *
+   * A counter row costs about one read unit; the scan it can avoid is the
+   * largest line in the DynamoDB bill on any organization of size. Most passes
+   * run over a graph nobody has touched since the last one, and this is what
+   * makes those passes nearly free.
+   *
+   * Only when the version is *known* and *equal*. An unreadable counter falls
+   * through to the scan: the whole point is that a cached graph is served only
+   * against a version somebody actually checked.
+   */
+  if (edgeCache && edgeCache.version !== null) {
+    const current = await readGraphVersion();
+    if (current !== null && current === edgeCache.version) {
+      // Held for longer now that its currency has been established, rather
+      // than expiring on a timer that knows nothing about the data.
+      edgeCache.at = Date.now();
+      return edgeCache.edges;
+    }
+  }
+
   if (edgeCacheInFlight) return edgeCacheInFlight;
 
   edgeCacheInFlight = (async () => {
@@ -68,8 +140,17 @@ export async function scanGraphEdges(): Promise<any[]> {
       items.push(...(result.Items || []));
       lastKey = result.LastEvaluatedKey;
     } while (lastKey);
-    edgeCache = { at: Date.now(), edges: items };
-    return items;
+    // Read *before* the scan would be wrong: a change landing mid-scan would
+    // be captured in `items` and then stamped with the older version, so the
+    // next reader would trust a copy that had already moved on. Reading after
+    // can only under-claim, which costs one extra scan and never a stale answer.
+    const version = await readGraphVersion();
+    // The counter is a row in this table, so a scan returns it. Kept out of the
+    // graph itself: every reader iterates these edges by type, and a row that
+    // is not an edge has no business being in that list.
+    const edges = items.filter(e => !isVersionRow(e));
+    edgeCache = { at: Date.now(), edges, version };
+    return edges;
   })();
 
   try {

@@ -259,15 +259,65 @@ export const TICK_MINUTES = 5;
  * Everything else reads configuration state out of the graph tables, which is
  * cheap, and changes whenever a person changes it.
  */
-export const INTERVAL_MINUTES = { dependabot: 10, standard: 15 } as const;
+export const INTERVAL_MINUTES = {
+  /** Readings paid for in GitHub API calls. */
+  bought: 10,
+  /** @deprecated The old name for `bought`, kept while callers move over. */
+  dependabot: 10,
+  /** @deprecated Nothing reads stored state on a slower clock than the tick. */
+  standard: 15,
+} as const;
 
-export function intervalFor(widget: { type: string; presetId?: string }): number {
-  // The sweep that produces findings runs hourly, so checking more often is
-  // twelve reads of the same answer and eleven chances to look busy.
-  if (widget.type === "guardrail") return 60;
-  const dependabotBacked = widget.type === "preset"
-    && (widget.presetId === "dependabot" || widget.presetId === "vuln-repos");
-  return dependabotBacked ? INTERVAL_MINUTES.dependabot : INTERVAL_MINUTES.standard;
+/**
+ * The queries that call GitHub, rather than reading the stored graph.
+ *
+ * Everything else in `evaluateSecurityQuery` answers from `scanGraphEdges`, a
+ * table the webhook worker keeps current: a collaborator added, a team changed,
+ * a repository created or a vulnerable dependency appearing all write to it as
+ * they happen. Those readings are a DynamoDB scan, and cost nothing to repeat.
+ *
+ * These three build an Octokit and go out to github.com, one of them per
+ * repository. That is the cost the intervals exist to bound, and it is the only
+ * reason any alarm here waits longer than a tick.
+ *
+ * repro-alarms.ts checks this against the cases that actually construct an
+ * Octokit, because a list of names beside the thing it describes is a list that
+ * drifts from it.
+ */
+export const GITHUB_BACKED_QUERIES = new Set([
+  "repos-with-branch-rules",
+  "stale-branch-protections",
+  "protection-bypasses-ranking",
+  // A commit search per privileged account, and commit search allows thirty
+  // requests a minute: the smallest budget in the app. This one was missing
+  // from the list when it was written by hand, and the check found it.
+  "dormant-privileged-users",
+]);
+
+/**
+ * How often an alarm is re-read: every tick, whatever it watches.
+ *
+ * Alarms used to be tiered by how expensive their reading was, and the tiering
+ * bought nothing. The same pass that evaluates alarms then recomputes **every**
+ * widget to store its snapshot for the dashboard, so the Dependabot sweep, the
+ * Renovate search and every graph scan already happen once per tick regardless.
+ * The sources are memoised for the pass, so an alarm reading one of them is
+ * served from a call that has already been made. Making it wait a second tick
+ * added five minutes of latency and saved zero requests.
+ *
+ * The tiering was right when this was the only thing making those requests. It
+ * stopped being right when snapshots became universal, and nothing noticed
+ * because the cost it was protecting had simply moved.
+ *
+ * **If the snapshot pass ever stops recomputing everything**, this becomes the
+ * wrong answer again and the tiering has to come back: `GITHUB_BACKED_QUERIES`
+ * above still records which readings are bought, and repro-alarms.ts keeps that
+ * list honest against the code that buys them.
+ */
+export function intervalFor(_widget: {
+  type: string; presetId?: string; queryId?: string;
+}): number {
+  return TICK_MINUTES;
 }
 
 /**

@@ -19,7 +19,7 @@
 import fs from "node:fs";
 import {
   conditionsFor, metricValue, intervalFor, isValidCondition,
-  guardrailSubjectId, guardrailRuleOf, GUARDRAIL_PREFIX,
+  guardrailSubjectId, guardrailRuleOf, GUARDRAIL_PREFIX, TICK_MINUTES,
 } from "./src/alarms/conditions";
 import { buildCard } from "./src/services/teamsClient";
 
@@ -102,10 +102,26 @@ const f = (over: Record<string, any> = {}) => ({
 
   // ── how often it is worth checking ──────────────────────────────────
   {
-    // The sweep that writes findings runs hourly.
-    check("a guardrail alarm is checked hourly, not every five minutes",
-      intervalFor(GUARD as any) === 60,
-      "twelve reads of one answer, and eleven chances to look busy");
+    // Was hourly, on the reasoning that the sweep writing findings was hourly
+    // too, so checking faster was twelve reads of one answer. The premise was
+    // wrong: a CloudTrail event rewrites a resource's findings within seconds,
+    // so the table moves between sweeps and an hourly alarm cannot see it. The
+    // symptom was the tab going red at once and the alarm arriving an hour on,
+    // from the same data.
+    check("a guardrail alarm is checked on every tick",
+      intervalFor(GUARD as any) === TICK_MINUTES,
+      "the findings can change between sweeps, so a slower alarm misses it");
+
+    // The cost argument that justified an hour does not apply: this reading is
+    // a scan of a table already written, not a sweep of an estate or a call to
+    // GitHub, which is what makes every tick affordable.
+    // No longer a special case: every alarm is evaluated every tick, because
+    // the pass recomputes every widget afterwards anyway. What still makes a
+    // guardrail alarm different is the trigger, not the interval.
+    check("  the same as every other alarm",
+      intervalFor({ type: "preset", presetId: "dependabot" } as any) === intervalFor(GUARD as any)
+      && intervalFor({ type: "query", queryId: "unowned-repos" } as any) === intervalFor(GUARD as any),
+      "one rule is easier to hold than three, and the tiering bought nothing");
   }
 
   // ── delivery ────────────────────────────────────────────────────────

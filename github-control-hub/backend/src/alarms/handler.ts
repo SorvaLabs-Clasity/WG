@@ -15,7 +15,7 @@ import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
 import {
   listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings,
   getFeedSettings, listPending, markPendingSent,
-  getPrState, recordNudge, touchPrState, getPrSettings, getPrMutes,
+  getPrState, recordNudge, touchPrState, getPrSettings, getPrMutes, claimTransition,
 } from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
@@ -240,7 +240,17 @@ export async function handler(): Promise<void> {
     },
   };
 
-  const summary = await evaluateAlarms({
+  /**
+   * One reading of the graph for the whole pass.
+   *
+   * Everything from here to the end of the snapshot pass runs inside it: alarm
+   * evaluation and then every widget's snapshot, computed sequentially. Without
+   * this the six-second cache expired repeatedly inside a pass that runs for a
+   * minute or more, and the whole graph was scanned again each time.
+   */
+  const { withPinnedGraph } = await import("../services/graphService");
+
+  const summary = await withPinnedGraph(async () => evaluateAlarms({
     now: Date.now(),
     org,
     timezone: (await getSecuritySettings()).timezone,
@@ -265,7 +275,9 @@ export async function handler(): Promise<void> {
     computeRows: (widget) => computeWidgetRows(widget, sources),
     publish,
     saveRuntime: saveAlarmRuntime,
-  });
+    // One message per transition, whoever noticed it first.
+    claimTransition,
+  }));
 
   console.log(
     `[Alarm] ${summary.evaluated} evaluated of ${summary.considered} enabled ` +
@@ -305,6 +317,10 @@ export async function handler(): Promise<void> {
       .catch(() => null);
 
     let stored = 0, failed = 0;
+    // One graph reading for every widget in this snapshot, so two cards cannot
+    // disagree because the graph moved between them, and the table is scanned
+    // once rather than once every six seconds for the length of the loop.
+    await withPinnedGraph(async () => {
     for (const widget of all) {
       try {
         const result = await computeWidgetRows(widget as any, sources);
@@ -321,6 +337,7 @@ export async function handler(): Promise<void> {
         }).catch(() => { /* nothing further to do for this one */ });
       }
     }
+    });
     console.log(`[Alarm] widget snapshots: ${stored} stored, ${failed} unreadable of ${all.length}`);
   } catch (err) {
     // The snapshots are an optimisation; the dashboard falls back to computing

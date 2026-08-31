@@ -569,8 +569,10 @@ const text = (card: any) => JSON.stringify(card);
     const handler = fs.readFileSync("./src/alarms/handler.ts", "utf8");
     // Compared on the call sites, not the imports: an import sits at the top of
     // the file whatever order the work runs in.
+    // Matched on `evaluateAlarms({` rather than `await evaluateAlarms(`, because
+    // the call is wrapped in withPinnedGraph and no longer has its own await.
     check("the digest runs before the slow work, not after it",
-      handler.indexOf("await runDigestPass()") < handler.indexOf("await evaluateAlarms(")
+      handler.indexOf("await runDigestPass()") < handler.indexOf("evaluateAlarms({")
       && handler.indexOf("await runDigestPass()") < handler.indexOf("fetchOpenPrs(graphql"),
       "everything ahead of it is minutes on a real organization");
     check("  and still cannot take the alarms down with it",

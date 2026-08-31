@@ -87,6 +87,29 @@ export async function handler(event: Incoming): Promise<RunResult & { trigger: s
   // A dry run must not overwrite stored findings with hypothetical ones.
   if (!options.dryRun) {
     await putFindings(result.findings);
+
+    /**
+     * The alarms that read these findings, checked now rather than on the next
+     * five-minute tick.
+     *
+     * Whatever rewrote the table evaluates what depends on it, so the alarm is
+     * never older than the data. A sweep, a CloudTrail event, a manual Run and
+     * an exclusion list being edited all arrive here, which is why this sits
+     * beside the write rather than at any one of those call sites.
+     *
+     * Wrapped, because an alarm that cannot be evaluated must not fail a sweep
+     * that has already run and may already have remediated something. The
+     * scheduled pass is still there and will pick it up.
+     */
+    try {
+      const { evaluateGuardrailAlarms } = await import("./alarmsAfterSweep");
+      const alarms = await evaluateGuardrailAlarms();
+      if (alarms.evaluated > 0) {
+        console.log(`[guardrails] alarms: ${alarms.evaluated} evaluated, ${alarms.fired} fired`);
+      }
+    } catch (err: any) {
+      console.warn(`[guardrails] could not evaluate alarms after the sweep: ${err?.message ?? err}`);
+    }
     // Only after a full sweep: a narrow run has not rewritten the rows it would
     // be deleting, so doing this there would erase findings and replace them
     // with nothing.

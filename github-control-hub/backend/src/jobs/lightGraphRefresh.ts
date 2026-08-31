@@ -1,6 +1,7 @@
 import { Octokit } from "octokit";
 import { getOrg, getSystemTokenAsync } from "../github/client";
 import { docClient, tableName, QueryCommand, batchWrite } from "../utils/dynamo";
+import { bumpGraphVersion } from "../services/graphVersion";
 import { buildRepoMeta } from "./repoMeta";
 
 /**
@@ -216,12 +217,14 @@ for (const repo of repos) {
     const unique = new Map<string, Edge>();
     for (const e of writes) unique.set(`${e.pk}\u0000${e.sk}`, e);
     await batchWrite(TABLE(), [...unique.values()].map(Item => ({ PutRequest: { Item } })));
+    await bumpGraphVersion();
     result.edgesWritten = unique.size;
   }
   if (deletes.length) {
     const unique = new Map<string, { pk: string; sk: string }>();
     for (const d of deletes) unique.set(`${d.pk}\u0000${d.sk}`, d);
     await batchWrite(TABLE(), [...unique.values()].map(Key => ({ DeleteRequest: { Key } })));
+    await bumpGraphVersion();
     result.edgesRemoved = unique.size;
   }
 

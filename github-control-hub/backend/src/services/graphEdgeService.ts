@@ -1,16 +1,23 @@
 import { Octokit } from "octokit";
 import { docClient, hasTable, tableName, PutCommand, DeleteCommand, QueryCommand, batchWrite } from "../utils/dynamo";
 
+import { bumpGraphVersion } from "./graphVersion";
+
 const TABLE = () => tableName("GRAPH_EDGES_TABLE");
 
+// Every write bumps the version. Bumped *after* the write lands, so a counter
+// that moved is a promise the graph really did change; the other order would
+// let a failed write invalidate every cached copy for nothing.
 async function putEdge(pk: string, sk: string, type: string, metadata?: Record<string, any>) {
   if (!hasTable("GRAPH_EDGES_TABLE")) return;
   await docClient.send(new PutCommand({ TableName: TABLE(), Item: { pk, sk, type, metadata } }));
+  await bumpGraphVersion();
 }
 
 async function deleteEdge(pk: string, sk: string) {
   if (!hasTable("GRAPH_EDGES_TABLE")) return;
   await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { pk, sk } }));
+  await bumpGraphVersion();
 }
 
 async function putEdgesBatch(edges: Array<{ pk: string; sk: string; type: string; metadata?: Record<string, any> }>) {
@@ -26,6 +33,7 @@ async function putEdgesBatch(edges: Array<{ pk: string; sk: string; type: string
   // response and threw it away, so a throttled write was an edge that never
   // existed and a repository that looked like it had no branches.
   await batchWrite(TABLE(), [...unique.values()].map(item => ({ PutRequest: { Item: item } })));
+  await bumpGraphVersion();
 }
 
 export async function addBranchEdge(repo: string, branch: string, isProtected: boolean) {
@@ -240,6 +248,7 @@ export async function removeAllRepoEdges(repo: string): Promise<number> {
   if (all.length === 0) return 0;
 
   await batchWrite(TABLE(), all.map(k => ({ DeleteRequest: { Key: k } })));
+  await bumpGraphVersion();
   console.log(`[Graph] Removed ${all.length} edges for deleted repository ${repo}`);
   return all.length;
 }

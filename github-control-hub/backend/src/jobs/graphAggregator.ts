@@ -1,6 +1,7 @@
 import { Octokit } from "octokit";
 import { getOrg, getSystemTokenAsync } from "../github/client";
 import { tableName, scanAll, batchWrite } from "../utils/dynamo";
+import { bumpGraphVersion } from "../services/graphVersion";
 import { buildRepoMeta } from "./repoMeta";
 import { invalidateAccessMap } from "../services/accessMapService";
 import { invalidateEdgeCache } from "../services/graphService";
@@ -611,6 +612,10 @@ async function runAggregation(fallbackToken?: string) {
       // reported as a successful sync.
       try {
         await batchWrite(edgesTable, puts.map(item => ({ PutRequest: { Item: item } })));
+        // Per batch, not once at the end. A rebuild that fails halfway has
+        // still changed the graph, and a version that never moved would leave
+        // every cached copy believing it had not.
+        await bumpGraphVersion();
       } catch (e) {
         // Rethrown rather than logged. A partial write is a graph that
         // disagrees with GitHub, and the success stamp below must not be
@@ -622,6 +627,7 @@ async function runAggregation(fallbackToken?: string) {
       try {
         await batchWrite(edgesTable,
           deletes.map(k => ({ DeleteRequest: { Key: { pk: k.pk, sk: k.sk } } })));
+        await bumpGraphVersion();
       } catch (e) {
         // Not fatal, and deliberately not. Everything current is on disk by
         // here; what is left is rows for things that no longer exist, which the

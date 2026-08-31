@@ -122,6 +122,13 @@ export class GitHubControlHubStack extends cdk.Stack {
         removalPolicy: cdk.RemovalPolicy.DESTROY,
       });
 
+    // The name prefix is the boundary: topics are created as
+    // `${stackPrefix}-notify-<slug>`, so this grant cannot reach a topic
+    // belonging to anything else in the account, and cannot subscribe anyone
+    // to anything. Adding recipients happens in the desktop app, under the
+    // operator's own credentials.
+    const notifyTopics = `arn:aws:sns:${this.region}:${this.account}:${stackPrefix}-notify-*`;
+
     const guardrailFn = new NodejsFunction(this, "GuardrailEnforcer", {
       functionName: `${stackPrefix}-guardrail-enforcer`,
       logGroup: logGroupFor("GuardrailEnforcer", `${stackPrefix}-guardrail-enforcer`),
@@ -222,6 +229,16 @@ export class GitHubControlHubStack extends cdk.Stack {
       resources: ["*"],
     }));
 
+    // The sweep evaluates the alarms that read what it just wrote, so it needs
+    // to be able to send one. Same prefix boundary as the alarm evaluator: it
+    // can publish to this stack's notify topics and to nothing else in the
+    // account.
+    guardrailFn.addToRolePolicy(new iam.PolicyStatement({
+      sid: "PublishGuardrailAlarms",
+      actions: ["sns:Publish"],
+      resources: [notifyTopics],
+    }));
+
     guardrailFn.addToRolePolicy(new iam.PolicyStatement({
       sid: "GuardrailTables",
       actions: [
@@ -265,7 +282,18 @@ export class GitHubControlHubStack extends cdk.Stack {
     // fallback.
     new events.Rule(this, "GuardrailSweep", {
       description: "Periodic guardrail sweep across the account",
-      schedule: events.Schedule.rate(cdk.Duration.hours(1)),
+      // Ten minutes, not an hour.
+      //
+      // The event rule above catches a change within seconds, but only where a
+      // CloudTrail trail exists and only for the six API calls it names. This
+      // is the path that finds everything else, and an hour of it meant an
+      // account could be failing a rule for most of a morning with nothing
+      // saying so.
+      //
+      // A sweep is ListBuckets plus two reads per bucket plus a paged
+      // DescribeLogGroups, so six times an hour on a fifty-bucket account is
+      // pennies a month against a materially shorter time to notice.
+      schedule: events.Schedule.rate(cdk.Duration.minutes(10)),
       targets: [new targets.LambdaFunction(guardrailFn, { deadLetterQueue: guardrailDlq })],
     });
 
@@ -316,12 +344,6 @@ export class GitHubControlHubStack extends cdk.Stack {
       // SYSTEM_GITHUB_TOKEN. The real fix belongs in client.ts, not here.
     };
 
-    // The name prefix is the boundary: topics are created as
-    // `${stackPrefix}-notify-<slug>`, so this grant cannot reach a topic
-    // belonging to anything else in the account, and cannot subscribe anyone
-    // to anything. Adding recipients happens in the desktop app, under the
-    // operator's own credentials.
-    const notifyTopics = `arn:aws:sns:${this.region}:${this.account}:${stackPrefix}-notify-*`;
 
     // ── widget alarms ───────────────────────────────────────────────────
     //

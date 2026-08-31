@@ -378,6 +378,47 @@ const branch = (repo: string, name: string, prot: boolean): EdgeLike =>
       /--update-expression "SET #a = :new"/.test(script));
   }
 
+// ── how often the guardrail sweep runs, said in four places ───────────
+//
+// The stack schedules it, the AWS tab tells people what to expect, the setup
+// script says what it just created, and HOW-IT-WORKS draws it. Nothing tied
+// them together, so when the sweep moved from fifteen minutes to an hour the
+// other three kept saying fifteen, and the only way to find out was to read the
+// stack.
+{
+  const stack = fs.readFileSync("../infra/cdk-stack.ts", "utf8");
+  const sweep = stack.slice(stack.indexOf('new events.Rule(this, "GuardrailSweep"'));
+
+  // The schedule is the fact; everything else is a description of it.
+  const tenMinutes = /schedule: events\.Schedule\.rate\(cdk\.Duration\.minutes\(10\)\)/.test(sweep);
+  check("the guardrail sweep is scheduled every ten minutes", tenMinutes, sweep.slice(-200));
+
+  const page = fs.readFileSync("../frontend/src/pages/AwsPage.tsx", "utf8");
+  check("  and the AWS tab says the same",
+    tenMinutes === /every 10 minutes/.test(page),
+    "a rule that says one interval and runs another is the tab lying to you");
+
+  check("  without also claiming a different one",
+    !/every fifteen minutes|every 15 minutes|every hour/.test(page),
+    "two intervals on one screen means one of them is wrong");
+
+  for (const [what, file] of [
+    ["the setup script", "../../scripts/setup-aws-only.sh"],
+    ["HOW-IT-WORKS", "../../docs/HOW-IT-WORKS.md"],
+  ] as const) {
+    const text = fs.readFileSync(file, "utf8");
+    check(`  and ${what} does not still name an older interval`,
+      !/fifteen minutes|fifteen-minute|every 15 minutes|every hour/.test(text),
+      "this is the drift that already happened twice");
+  }
+
+  // The fast path is the other half of the answer, and leaving it out makes an
+  // hour sound like the worst case for everything rather than for the sweep.
+  check("the tab also names the two faster paths",
+    /when resources are created/.test(page) && /on demand/.test(page),
+    "creation events fire within seconds, and Run is immediate");
+}
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

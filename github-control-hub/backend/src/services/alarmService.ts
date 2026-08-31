@@ -1,7 +1,7 @@
 import crypto from "crypto";
 
 import { logActivity } from "./activityService";
-import { docClient, hasTable, tableName, PutCommand, ScanCommand, GetCommand, DeleteCommand, scanAll } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, ScanCommand, GetCommand, DeleteCommand, UpdateCommand, scanAll } from "../utils/dynamo";
 import type { AlarmCondition, AlarmState, Severity } from "../alarms/conditions";
 import {
   DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY,
@@ -382,6 +382,56 @@ export async function updateAlarm(
 }
 
 /** Written by the evaluator. Never touches the user's configuration fields. */
+/**
+ * Take ownership of one state change, so exactly one sender acts on it.
+ *
+ * Returns true if this caller moved the alarm from `from` to `to`, and false if
+ * somebody else already did.
+ *
+ * The evaluator publishes and *then* records the new state, so two passes
+ * reading the same `OK` both see the breach and both send. That is reachable
+ * today with one evaluator: the pass has a five-minute timeout on a
+ * five-minute schedule, so an overrun overlaps the next run. It becomes
+ * ordinary rather than rare as soon as anything else may evaluate an alarm,
+ * which is the point of triggering on data changes.
+ *
+ * A conditional update is the whole mechanism: DynamoDB applies it only if the
+ * state is still what this caller read, so the loser is told no and stays
+ * quiet. The claim is taken *before* the message goes out, because a claim
+ * checked afterwards can only report a duplicate that has already been sent.
+ *
+ * Without the table, the in-memory store is single-process and cannot race.
+ */
+export async function claimTransition(
+  id: string, from: AlarmState, to: AlarmState, at: string,
+): Promise<boolean> {
+  if (!hasTable("ALARMS_TABLE")) {
+    const row = memStore.find(r => r.id === id) as WidgetAlarm | undefined;
+    if (!row || row.state !== from) return false;
+    row.state = to;
+    row.lastFiredAt = at;
+    return true;
+  }
+  try {
+    await docClient.send(new UpdateCommand({
+      TableName: TABLE(),
+      Key: { id },
+      UpdateExpression: "SET #s = :to, lastFiredAt = :at",
+      // The alarm must still exist and still be in the state this caller based
+      // its decision on.
+      ConditionExpression: "attribute_exists(id) AND #s = :from",
+      ExpressionAttributeNames: { "#s": "state" },
+      ExpressionAttributeValues: { ":to": to, ":from": from, ":at": at },
+    }));
+    return true;
+  } catch (err: any) {
+    // Somebody else got there first, which is the answer this exists to give
+    // and not a failure.
+    if (err?.name === "ConditionalCheckFailedException") return false;
+    throw err;
+  }
+}
+
 export async function saveAlarmRuntime(
   id: string,
   runtime: { state: AlarmState; cleanStreak: number; lastCheckedAt: string;

@@ -133,7 +133,7 @@ because a person clicked, or GitHub sent a webhook.
 
 | What | Runs | Which Lambda |
 |---|---|---|
-| Guardrail sweep | every hour | `github-control-hub-guardrail-enforcer` |
+| Guardrail sweep | every 10 minutes, plus within seconds of a CloudTrail event | `github-control-hub-guardrail-enforcer` |
 | Guardrail run for one resource | seconds after a covered resource changes, via CloudTrail | the same function |
 | Alarm evaluation, then the PR walk | every 5 minutes, whenever **Monitor pull requests** is on | `github-control-hub-alarm-evaluator` |
 | Light graph refresh | every 30 minutes | `github-control-hub-graph-aggregator` (`mode: light`) |
@@ -808,7 +808,7 @@ app has no checking logic of its own, which is what makes a sweep you started
 identical to one the clock started.
 
 ```
-  every 15 minutes ─────────────┐
+  every 10 minutes ─────────────┐
                                 │
   something in your AWS         │        ┌──────────────────────────────────┐
   account just changed ─────────┼───────▶│          the sweeper             │
@@ -834,7 +834,7 @@ identical to one the clock started.
 
 | In the diagram | What it is |
 |---|---|
-| every 15 minutes | An EventBridge rule, an AWS timer pointed at the sweeper |
+| every 10 minutes | An EventBridge rule, an AWS timer pointed at the sweeper (`rate(10 minutes)` in the stack) |
 | something just changed | CloudTrail (AWS's own record of who did what) noticing one of six specific API calls, creating a bucket, changing a bucket policy, changing log retention, and firing the sweeper within seconds, for just that one thing |
 | you press "Run" | The AWS tab's backend asking AWS to run the sweeper and waiting for the answer (`routes/awsGuardrails.ts`) |
 | the sweeper | A Lambda: `github-control-hub-guardrail-enforcer`, 512 MB, 10-minute limit (`aws-guardrails/engine.ts` is the judging part) |
@@ -994,7 +994,7 @@ watches for six specific API calls, `CreateBucket`, `PutBucketPolicy`,
 just the resource that changed.
 
 Those events only exist if CloudTrail is recording. No trail means no fast path;
-the sweep still catches everything, up to fifteen minutes later. Setup only
+the sweep still catches everything, up to ten minutes later. Setup only
 offers to create a trail if the account has none, because a second trail is
 billed per event and the first one's management events are free.
 
@@ -2183,6 +2183,83 @@ keeps trying.
 
 ---
 
+## How quickly an alarm notices
+
+Two clocks, and they used to disagree badly.
+
+**The data** is refreshed three ways: a CloudTrail event rewrites one resource's
+findings within seconds of it changing, the sweep re-reads everything every ten
+minutes, and Run does it now.
+
+**The alarm** is evaluated on the five-minute tick, subject to its own interval:
+
+**Every alarm, every tick.** There is no tiering, and there used to be two
+different ones, both wrong.
+
+The first split on "guardrail or GitHub", which was wrong in both directions: a
+guardrail alarm reads a table and was on the slowest interval of all, while most
+GitHub alarms read the graph, which webhooks keep current, and waited three
+ticks to re-read something already in DynamoDB.
+
+The second split on whether a reading was bought from GitHub, which was better
+and still bought nothing. **The same pass recomputes every widget afterwards**,
+to store the snapshot the dashboard reads, so the Dependabot sweep, the Renovate
+search and every per-repository walk already happen once per tick regardless.
+The sources are memoised for the pass, so an alarm reading one is served from a
+call already made. Waiting a second tick added five minutes and saved no
+requests.
+
+`GITHUB_BACKED_QUERIES` in `conditions.ts` still records which readings are
+bought, because that stops being true the moment the snapshot pass stops
+recomputing everything, and the tiering would have to come back.
+`repro-alarms.ts` keeps the list honest by deriving it from the cases that
+actually construct an Octokit, which is how `dormant-privileged-users` was found
+missing from it: a commit search per privileged account, against the
+thirty-per-minute limit that is the smallest budget in the app.
+
+Guardrail alarms were hourly, on the reasoning that the sweep behind them was
+hourly too, so checking more often was twelve reads of one answer. **The premise
+was wrong**: the sweep is not the only writer, and a CloudTrail event moves the
+table between sweeps. The visible symptom was the tab and the alarm disagreeing,
+a bucket going red on screen at once and the alarm about it arriving up to an
+hour later, from the same data.
+
+The cost argument did not apply either. Every other reading is bought from
+GitHub or from an estate-wide AWS sweep; this one is a scan of a table that has
+already been written.
+
+### Guardrail alarms are also checked when the data moves
+
+The five-minute tick is the backstop, not the mechanism. **Whatever rewrites the
+findings evaluates the alarms that read them, in the same invocation**, so an
+alarm is never older than the data behind it. That covers all four writers at
+once, because the trigger sits beside the write rather than at any call site: a
+scheduled sweep, a CloudTrail event, somebody pressing Run, and an exclusion
+list being edited.
+
+A pass triggered this way ignores each alarm's interval. The interval answers
+"how often is this worth looking at", and something has just answered it.
+
+**Only guardrail alarms.** Their reading is a scan of the table the invocation
+just wrote. Every other alarm buys its reading from GitHub or an estate-wide AWS
+sweep, so triggering those on every data change would multiply that cost by how
+often the data changes, which is exactly what their intervals exist to bound.
+
+### One message per transition, not per evaluation
+
+Two evaluators are only safe because firing is **claimed before anything is
+sent**. `claimTransition` is a conditional write: whoever moves an alarm from
+`OK` to `ALARM` owns that transition and sends, and anybody else is told no and
+stays quiet. Checked afterwards, the most a claim could do is report a duplicate
+that had already gone out.
+
+That guarantee was needed before any of this. The evaluator publishes and *then*
+records the new state, and the alarm pass has a five-minute timeout on a
+five-minute schedule, so an overrunning pass already overlapped the next one and
+could send twice. A run that stands down is counted as `duplicatesAvoided`,
+which is normally zero: anything else means two passes overlapped, and that is
+worth seeing rather than inferring from duplicate emails nobody noticed.
+
 ## Alarms on the AWS guardrails
 
 A guardrail alarm is an ordinary alarm. It is not a second alarm system, and
@@ -2201,8 +2278,10 @@ and then knows nothing about what kind it was.
 | Rules with a failure | How many separate rules have at least one failure |
 | Resources being skipped | Deliberately excluded, worth watching, because an exclusion list that quietly grows is how a rule stops covering anything while still reporting green |
 
-Checked hourly rather than every five minutes: the sweep that writes the
-findings runs hourly, so checking faster is twelve reads of one answer.
+Checked on every five-minute tick. It reads a table rather than an estate, so a
+check is one DynamoDB read, and the findings behind it can change at any moment:
+a CloudTrail event rewrites one resource's within seconds. See **How quickly an
+alarm notices**.
 
 It reads the findings table and evaluates nothing. A sweep started by an alarm
 would make the reading a consequence of the check.
@@ -2730,6 +2809,72 @@ credentials anyway. Activity is not gated. It filters itself to AWS rows, becaus
 an account running guardrails needs the record of what they did.
 
 ---
+
+## What it costs to keep checking
+
+The largest line in the DynamoDB bill was never the alarms. It was that **every
+graph-backed check starts by reading the whole edge table**, and the alarm pass
+runs every five minutes.
+
+Two changes, in the order they matter:
+
+**A version counter.** One row in the edges table, incremented atomically by
+every writer: webhook patches, the light refresh, the full rebuild. A reader
+fetches that row, about one read unit, and skips the scan entirely when it
+matches the version its cached copy was taken at. Most passes run over a graph
+nobody has touched, and those passes now cost almost nothing.
+
+The counter is read **after** a scan, never before: a change landing mid-scan
+would be captured in the results and then stamped with the older version, so the
+next reader would trust a copy that had already moved on. Reading afterwards can
+only under-claim, which costs one extra scan and never a stale answer. An
+unreadable counter falls through to scanning, because a cached graph should only
+be served against a version somebody actually checked.
+
+A failure to bump is logged, never thrown. A counter that does not move makes a
+cached copy look current for longer than it is, which is stale; a counter that
+takes its write down with it loses the edge, which is wrong. Stale is
+recoverable.
+
+**A pin for the length of a pass.** The pass evaluates alarms and then
+recomputes every widget's snapshot, sequentially and deliberately so the checks
+drawing on commit search do not all fire at once. That runs for a minute or more
+on a large organization, and webhooks keep writing while it does. Pinning takes
+one reading and holds it, so a change mid-pass neither triggers another scan nor
+leaves two cards on the same dashboard computed from different graphs.
+
+On a modelled thousand-repository organization this takes the graph line from
+about $15.82 a month to under a dollar when the graph is quiet, and leaves it
+unchanged only in the case where the graph really is being rewritten every five
+minutes.
+
+## The cost breakdown in the AWS tab
+
+**AWS → Costs** shows what each of this app's own resources has consumed, one
+line per table, function, log group, topic and secret, largest first.
+
+**It is computed, not fetched, and that is not a shortcut.** Cost Explorer bills
+a cent a call and groups by *service*: it can say "DynamoDB, $18" and never
+which table, because AWS does not meter cost per resource for DynamoDB or Lambda
+at all. The resource-level answer would need Cost and Usage Reports, an S3
+bucket and Athena, which is a data pipeline for a question CloudWatch can
+already answer.
+
+So it multiplies **metered usage** by **published prices**: consumed read and
+write units per table, invocations and duration times that function's own
+memory, bytes ingested per log group, messages published per topic.
+
+The trade is stated beside the number rather than in a footnote: this is list
+price, and it knows nothing about the free tier, committed-use discounts,
+credits or tax, so a real bill is usually lower. Somebody comparing it against
+an invoice needs to know why they differ before concluding one of them is
+broken. Prices carry the region and month they were taken from, and the panel
+says so when the account is in a different region.
+
+Each service is read in its own try, and anything unreadable is listed rather
+than counted as zero: a total quietly missing DynamoDB reads as a cheap app. The
+report is cached for an hour, since the numbers move slowly and every refresh is
+real API calls.
 
 ## When the desktop app checks for an update
 

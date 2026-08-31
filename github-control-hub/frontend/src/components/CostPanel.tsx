@@ -1,0 +1,287 @@
+import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { fetchCosts, type CostLine } from "../api/aws";
+import { Spinner, Note, SURFACE, TYPE } from "../design";
+
+/**
+ * What this app's own resources have cost, resource by resource.
+ *
+ * The number is computed from metered usage times published prices, not read
+ * from a bill, and the panel says so rather than letting somebody reconcile it
+ * against their invoice and conclude one of them is broken.
+ *
+ * That is not a shortcut. AWS does not meter cost per resource for DynamoDB or
+ * Lambda: a bill can say "$18 of DynamoDB" and never which table, and the
+ * resource-level answer needs Cost and Usage Reports, an S3 bucket and Athena.
+ * CloudWatch already knows what each resource consumed, so this asks it.
+ *
+ * The tradeoff is stated where the number is: no free tier, no committed-use
+ * discount, no credits, no tax. A real bill is usually lower. What this is good
+ * at is the half a bill is bad at, which is saying *which* of your resources
+ * is responsible.
+ */
+
+const KIND: Record<CostLine["kind"], { icon: string; label: string; tone: string }> = {
+  table:    { icon: "ph-table",          label: "DynamoDB",     tone: "text-sky-500" },
+  function: { icon: "ph-function",       label: "Lambda",       tone: "text-amber-500" },
+  logs:     { icon: "ph-list-magnifying-glass", label: "Logs",  tone: "text-slate-400" },
+  topic:    { icon: "ph-megaphone",      label: "SNS",          tone: "text-violet-500" },
+  secret:   { icon: "ph-key",            label: "Secret",       tone: "text-emerald-500" },
+};
+
+/**
+ * Money, at the precision the number deserves.
+ *
+ * Two decimals hides everything below a cent, and most individual resources
+ * here cost less than that. Showing "$0.00" beside a real number invites the
+ * reading that it is free rather than small.
+ */
+function money(n: number): string {
+  if (n === 0) return "$0";
+  if (n < 0.01) return `<$0.01`;
+  return `$${n.toFixed(2)}`;
+}
+
+function amount(n: number, unit: string): string {
+  if (unit === "GB") return `${n < 0.01 ? n.toFixed(4) : n.toFixed(2)} GB`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M ${unit}`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k ${unit}`;
+  return `${Math.round(n).toLocaleString()} ${unit}`;
+}
+
+export default function CostPanel() {
+  const [days, setDays] = useState(30);
+  const [open, setOpen] = useState<string | null>(null);
+
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ["aws", "costs", days],
+    queryFn: () => fetchCosts(days),
+    staleTime: 60 * 60_000,
+    retry: false,
+  });
+
+  if (isLoading) return <div className="py-16 flex justify-center"><Spinner /></div>;
+
+  if (isError) {
+    return (
+      <Note intent="warn">
+        Costs could not be read: {(error as Error)?.message}. This needs
+        permission to read CloudWatch metrics and to list this account's tables,
+        functions, log groups, topics and secrets. Nothing else on this tab
+        depends on it.
+      </Note>
+    );
+  }
+  if (!data) return null;
+
+  const biggest = data.lines[0]?.cost ?? 0;
+
+  /**
+   * The same money, grouped by service.
+   *
+   * Not a substitute for the list below. This one answers "which service
+   * should I be looking at"; the list answers "which of my resources inside it
+   * is responsible", and only the second is actionable.
+   */
+  const byService = Object.entries(
+    data.lines.reduce((acc, l) => {
+      const cur = acc[l.kind] ?? { sum: 0, count: 0 };
+      acc[l.kind] = { sum: cur.sum + l.cost, count: cur.count + 1 };
+      return acc;
+    }, {} as Record<CostLine["kind"], { sum: number; count: number }>),
+  )
+    .map(([kind, v]) => [kind as CostLine["kind"], v.sum, v.count] as const)
+    .sort((a, b) => b[1] - a[1]);
+
+  return (
+    <div className="grid gap-4">
+      <section className={`${SURFACE.card} overflow-hidden`}>
+        <div className="px-5 pt-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+                What this app costs
+              </h3>
+              {/* The scope, said first. This runs in accounts that hold plenty
+                  of other people's work, and a page headed "what this app
+                  costs" showing the department's DynamoDB bill would be worse
+                  than no page. */}
+              <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+                Only resources named <code className="font-mono text-[11px]">{data.prefix}-*</code>,
+                over the last {data.days} days, at {data.region} list rates.
+                Nothing else in this account is counted.
+              </p>
+            </div>
+            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-white/10">
+              {[7, 30, 90].map(d => (
+                <button key={d} type="button" onClick={() => setDays(d)}
+                  className={`px-2.5 py-1 text-[12px] font-bold transition-colors ${
+                    d === days
+                      ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
+                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.05]"}`}>
+                  {d}d
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+        </div>
+
+        <div className="px-5 py-4 flex items-end gap-6 flex-wrap">
+          <div>
+            <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Over {data.days} days</p>
+            <p className="text-[26px] font-black tabular-nums text-slate-900 dark:text-white leading-none mt-1">
+              {money(data.total)}
+            </p>
+          </div>
+          <div>
+            <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Per month at this rate</p>
+            <p className="text-[26px] font-black tabular-nums text-slate-900 dark:text-white leading-none mt-1">
+              {money(data.monthly)}
+            </p>
+          </div>
+        </div>
+
+        {/* Said next to the number, not in a footnote. Somebody comparing this
+            against an invoice needs to know why they differ before they
+            conclude one of them is wrong. */}
+        <div className="px-5 pb-4">
+          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 leading-relaxed">
+            An estimate at list price, from what each resource actually
+            consumed. It does not know about the free tier, committed-use
+            discounts, credits or tax, so a real bill is usually lower. AWS does
+            not meter cost per resource for DynamoDB or Lambda, so this is the
+            only way to see which of them is responsible.
+            {data.pricesMayNotApply && (
+              <> <span className="text-amber-700 dark:text-amber-500">
+                These are {data.pricesAsOf} prices for {"us-east-2"}, and this account
+                is in {data.region}, where some of them differ.
+              </span></>
+            )}
+          </p>
+        </div>
+      </section>
+
+      {data.errors.length > 0 && (
+        <Note intent="warn">
+          Part of the account could not be read, so the total is lower than the truth:{" "}
+          {data.errors.join(" · ")}
+        </Note>
+      )}
+
+      {/* Both levels, because they answer different questions. The rollup says
+          which service to look at; the list below says which resource inside it
+          is responsible. A bill gives the first and can never give the second,
+          which is the whole reason this page exists. */}
+      <section className={`${SURFACE.card} overflow-hidden`}>
+        <div className="px-5 pt-4 pb-1">
+          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+            By service
+          </h3>
+        </div>
+        <div className="px-5 pb-4 pt-2 grid gap-1.5">
+          {byService.map(([kind, sum, count]) => {
+            const k = KIND[kind];
+            const share = data.total > 0 ? (sum / data.total) * 100 : 0;
+            return (
+              <div key={kind} className="flex items-center gap-3">
+                <i className={`ph-fill ${k.icon} ${k.tone} text-[14px] shrink-0`} aria-hidden="true" />
+                <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 w-20 shrink-0">
+                  {k.label}
+                </span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 w-20 shrink-0 tabular-nums">
+                  {count} {count === 1 ? "resource" : "resources"}
+                </span>
+                <span className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.07] overflow-hidden">
+                  <span className="block h-full rounded-full bg-slate-900/70 dark:bg-white/60"
+                    style={{ width: `${Math.max(share, sum > 0 ? 2 : 0)}%` }} />
+                </span>
+                <span className="text-[11px] text-slate-400 dark:text-slate-500 w-9 text-right tabular-nums shrink-0">
+                  {Math.round(share)}%
+                </span>
+                <span className="text-[12.5px] font-bold tabular-nums text-slate-900 dark:text-white w-16 text-right shrink-0">
+                  {money(sum)}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className={`${SURFACE.card} overflow-hidden`}>
+        <div className="px-5 pt-4 pb-2">
+          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+            By resource
+          </h3>
+          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+            Largest first. Open one to see what it did.
+          </p>
+        </div>
+
+        <ul className="px-2 pb-3">
+          {data.lines.map(line => {
+            const k = KIND[line.kind];
+            const share = biggest > 0 ? (line.cost / biggest) * 100 : 0;
+            const isOpen = open === line.name;
+            return (
+              <li key={line.name}>
+                <button
+                  type="button"
+                  onClick={() => setOpen(isOpen ? null : line.name)}
+                  className="w-full px-3 py-2 flex items-center gap-3 text-left rounded-lg
+                             hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors"
+                >
+                  <i className={`ph-fill ${k.icon} ${k.tone} text-[15px] shrink-0`} aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[12.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+                      {line.name}
+                    </span>
+                    {/* A bar, because "which one is the problem" is a
+                        comparison and a column of numbers makes the reader do
+                        it themselves. */}
+                    <span className="block h-1 rounded-full bg-slate-100 dark:bg-white/[0.07] mt-1 overflow-hidden">
+                      <span className="block h-full rounded-full bg-slate-900/70 dark:bg-white/60"
+                        style={{ width: `${Math.max(share, line.cost > 0 ? 2 : 0)}%` }} />
+                    </span>
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-300 dark:text-slate-600 shrink-0">
+                    {k.label}
+                  </span>
+                  <span className="text-[12.5px] font-bold tabular-nums text-slate-900 dark:text-white shrink-0 w-16 text-right">
+                    {money(line.cost)}
+                  </span>
+                </button>
+
+                {isOpen && (
+                  <div className="px-3 pb-3 pl-11">
+                    <table className="w-full text-[12px]">
+                      <tbody>
+                        {line.usage.map(u => (
+                          <tr key={u.label}>
+                            <td className="py-0.5 text-slate-500 dark:text-slate-400">{u.label}</td>
+                            <td className="py-0.5 text-right tabular-nums text-slate-600 dark:text-slate-300">
+                              {amount(u.amount, u.unit)}
+                            </td>
+                            <td className="py-0.5 text-right tabular-nums font-semibold text-slate-800 dark:text-slate-200 w-16">
+                              {money(u.cost)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        {data.lines.length === 0 && (
+          <p className="px-5 pb-5 text-[12.5px] text-slate-400 dark:text-slate-500">
+            Nothing found with the prefix this install uses.
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}

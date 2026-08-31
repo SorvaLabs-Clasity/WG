@@ -138,3 +138,30 @@ export const createAwsExclusion = (body: Partial<AwsExclusionList>) => apiPost<A
 export const updateAwsExclusion = (id: string, body: Partial<AwsExclusionList>) =>
   apiPut<AwsExclusionList>(`/aws/exclusions/${id}`, body);
 export const deleteAwsExclusion = (id: string) => apiDelete<{ message: string }>(`/aws/exclusions/${id}`);
+
+export interface CostUsage { label: string; amount: number; unit: string; cost: number }
+export interface CostLine {
+  name: string;
+  kind: "table" | "function" | "topic" | "logs" | "secret";
+  usage: CostUsage[];
+  cost: number;
+  error?: string;
+}
+export interface CostReport {
+  days: number;
+  /** The name prefix every counted resource carries, and the report's boundary. */
+  prefix: string;
+  from: string;
+  to: string;
+  region: string;
+  pricesAsOf: string;
+  /** The prices are for one region; say so when this is not it. */
+  pricesMayNotApply: boolean;
+  lines: CostLine[];
+  total: number;
+  monthly: number;
+  errors: string[];
+  cached: boolean;
+}
+
+export const fetchCosts = (days = 30) => apiGet<CostReport>(`/aws/costs?days=${days}`);

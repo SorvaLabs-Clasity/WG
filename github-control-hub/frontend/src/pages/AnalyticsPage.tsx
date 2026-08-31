@@ -29,11 +29,35 @@ import { IncompleteQueryError } from "../api/client";
  * per-subject answers. Kept in one place because three separate lists of the
  * same three names is three chances for one of them to fall behind.
  */
+/**
+ * The checks whose answers are stored per subject rather than derived on the
+ * spot, and so have an age and a "re-check now".
+ *
+ * Keyed by the query they run, not by how a widget happens to be configured:
+ * "Protection rule bypasses" exists both as a preset and as a Security Insight
+ * Query, and both run `protection-bypasses-ranking`. Matching only the query
+ * form meant the preset showed neither its age nor the button, so somebody who
+ * had just fixed a violation had no way to re-check and nothing telling them
+ * the number was up to a day old.
+ */
 const BATCHED_CHECKS = new Set([
   "dormant-privileged-users",
   "stale-branch-protections",
   "protection-bypasses-ranking",
 ]);
+
+/** Presets that are one of those checks wearing a friendlier name. */
+const PRESET_QUERIES: Record<string, string> = {
+  bypasses: "protection-bypasses-ranking",
+};
+
+/** The batched query a widget runs, however it was configured. */
+function batchedQueryOf(config: { type: string; queryId?: string; presetId?: string }): string | null {
+  const q = config.type === "query"
+    ? config.queryId
+    : PRESET_QUERIES[config.presetId ?? ""];
+  return q && BATCHED_CHECKS.has(q) ? q : null;
+}
 
 /**
  * How long ago, in the shortest form that is still honest.
@@ -926,8 +950,9 @@ export function CheckCard({
   // Only for the checks that keep per-subject answers. Everything else is
   // derived from the graph on the spot, so "when was this last checked" has no
   // meaning and asking would be a request that answers nothing.
-  const batchedQuery = config.type === "query" && BATCHED_CHECKS.has(config.queryId ?? "");
-  const { data: freshness } = useQueryFreshness(batchedQuery ? config.queryId! : null);
+  const batchedId = batchedQueryOf(config);
+  const batchedQuery = batchedId !== null;
+  const { data: freshness } = useQueryFreshness(batchedId);
 
   const verdict = useMemo(() => verdictFor(items, total, config), [items, total, config]);
   const n = useCountUp(verdict.value);
@@ -989,7 +1014,7 @@ export function CheckCard({
           </p>
           {canEdit && (
             <button
-              onClick={e => { e.stopPropagation(); refreshNow.mutate(config.queryId!); }}
+              onClick={e => { e.stopPropagation(); refreshNow.mutate(batchedId!); }}
               disabled={refreshNow.isPending}
               className="mt-3 text-[12.5px] font-bold text-gh-blue hover:underline disabled:opacity-50">
               {refreshNow.isPending ? "Checking…" : "Check the rest now"}
@@ -1177,7 +1202,7 @@ export function CheckCard({
             </span>
             {canEdit && (
               <button
-                onClick={e => { e.stopPropagation(); refreshNow.mutate(config.queryId!); }}
+                onClick={e => { e.stopPropagation(); refreshNow.mutate(batchedId!); }}
                 disabled={refreshNow.isPending}
                 className="text-[12px] font-bold text-gh-blue hover:underline disabled:opacity-50 shrink-0">
                 {refreshNow.isPending ? "Re-checking…" : "Re-check all"}

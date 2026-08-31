@@ -46,6 +46,28 @@ export interface EvaluatorDeps {
     state: AlarmState; cleanStreak: number; lastCheckedAt: string;
     lastValue?: number | null; lastFiredAt?: string; lastError?: string;
   }) => Promise<void>;
+  /**
+   * Move this alarm from one state to another, and say whether this caller is
+   * the one that did it.
+   *
+   * The seam that makes a notification happen once per transition rather than
+   * once per evaluation, so an overrunning pass, or anything else that
+   * evaluates on a data change, cannot produce a second message about one
+   * event. Omitted by tests that are not about that.
+   */
+  claimTransition?: (id: string, from: AlarmState, to: AlarmState, at: string) => Promise<boolean>;
+  /**
+   * Evaluate now, whatever each alarm's interval says.
+   *
+   * For a pass triggered by the data changing rather than by a clock. The
+   * interval answers "how often is this worth looking at", and something has
+   * just answered it: the reading these alarms are made of was rewritten a
+   * moment ago. Without this, a sweep landing two minutes after a tick would
+   * evaluate nothing, which is the whole point of the trigger.
+   *
+   * Absent means the ordinary scheduled behaviour.
+   */
+  ignoreInterval?: boolean;
 }
 
 export interface EvaluationSummary {
@@ -56,6 +78,14 @@ export interface EvaluationSummary {
   recovered: number;
   unreadable: number;
   publishFailures: number;
+  /**
+   * Transitions another evaluator had already claimed.
+   *
+   * Normally zero. Anything else means two passes overlapped, which is worth
+   * seeing in the log rather than inferring from an absence of duplicate
+   * emails nobody was going to notice.
+   */
+  duplicatesAvoided: number;
 }
 
 function thresholdText(condition: any): string {
@@ -78,7 +108,7 @@ function displayValue(condition: any, value: number | null): string {
 export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSummary> {
   const summary: EvaluationSummary = {
     considered: 0, evaluated: 0, skippedNotDue: 0,
-    fired: 0, recovered: 0, unreadable: 0, publishFailures: 0,
+    fired: 0, recovered: 0, unreadable: 0, publishFailures: 0, duplicatesAvoided: 0,
   };
 
   const alarms = await deps.listAlarms();
@@ -101,7 +131,7 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
       continue;
     }
 
-    if (!isDue(alarm.lastCheckedAt, intervalFor(widget), deps.now)) {
+    if (!deps.ignoreInterval && !isDue(alarm.lastCheckedAt, intervalFor(widget), deps.now)) {
       summary.skippedNotDue++;
       continue;
     }
@@ -131,6 +161,31 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
     let lastFiredAt: string | undefined;
 
     if (fire === "alarm" || (fire === "recovery" && alarm.notifyOnRecovery)) {
+      /**
+       * Claimed before anything is sent, not after.
+       *
+       * Whoever wins the conditional write owns this transition and sends the
+       * message; whoever loses says nothing. Checked afterwards, the most it
+       * could do is report a duplicate that had already gone out.
+       *
+       * A recovery is claimed the same way. `notifyOnRecovery` decides whether
+       * to speak, and this decides who does.
+       */
+      const claimed = deps.claimTransition
+        ? await deps.claimTransition(alarm.id, alarm.state, runtime.state, nowIso)
+        : true;
+
+      if (!claimed) {
+        // Somebody else is sending this one. The reading still happened, so the
+        // check is recorded, but the state is theirs to write.
+        summary.duplicatesAvoided++;
+        await deps.saveRuntime(alarm.id, {
+          state: runtime.state, cleanStreak: runtime.cleanStreak, lastCheckedAt: nowIso,
+          lastValue: value,
+        });
+        continue;
+      }
+
       const topicArn = await deps.topicArnFor(alarm.groupId);
       if (!topicArn) {
         summary.publishFailures++;
