@@ -162,6 +162,20 @@ export default function CostPanel() {
         </div>
       </section>
 
+      {/* A page about cost that quietly costs something is the one page that
+          must not. The ceiling, not a guess at how often somebody looks: the
+          report is cached for an hour, so this is the most it can cost however
+          hard the page is refreshed. */}
+      <p className="text-[11.5px] text-slate-400 dark:text-slate-500 px-1 leading-relaxed">
+        Producing this reads {data.self.metricsRequested} CloudWatch metrics, about{" "}
+        {data.self.costPerRun < 0.001 ? "a tenth of a cent" : money(data.self.costPerRun)} a
+        time, and it is cached for an hour: at most{" "}
+        <span className="font-semibold">{money(data.self.monthlyIfHourly)}</span> a month even
+        if somebody watches it all day. Listing your tables, functions, log groups and topics
+        is free. Nothing is created, stored or queried to produce it: no Cost Explorer, no
+        S3, no Athena.
+      </p>
+
       {data.errors.length > 0 && (
         <Note intent="warn">
           Part of the account could not be read, so the total is lower than the truth:{" "}

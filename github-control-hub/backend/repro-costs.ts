@@ -80,6 +80,27 @@ function check(name: string, ok: boolean, got?: unknown) {
       "each service is read in its own try, so no permission gap empties the page");
   }
 
+  // ── what the report itself spends ───────────────────────────────────
+  {
+    const svc = fs.readFileSync("./src/services/costService.ts", "utf8");
+
+    check("the only billed call is the metrics read",
+      /cloudwatch: \{ metricRequested: 0\.01 \/ 1_000 \}/.test(svc),
+      "$0.01 per 1,000 metrics; everything else it calls is control plane");
+
+    // The thing somebody actually worries about when a tool offers cost
+    // reporting: that it quietly stands up a pipeline to do it.
+    for (const forbidden of ["client-cost-explorer", "client-athena", "client-s3", "GetCostAndUsage"]) {
+      check(`  and it does not reach for ${forbidden}`,
+        !new RegExp(`import[^;]*${forbidden}|new [A-Za-z]*${forbidden}`).test(svc),
+        "a cost page that builds a data pipeline costs more than it reports");
+    }
+
+    check("metrics are counted as they are requested, not guessed afterwards",
+      /if \(counter\) counter\.metrics \+= queries\.length;/.test(svc),
+      "a section that failed asked for nothing and should not be billed for it");
+  }
+
   // ── only this app's resources ───────────────────────────────────────
   //
   // These accounts hold other people's work. A company with two hundred of its
@@ -159,6 +180,21 @@ function check(name: string, ok: boolean, got?: unknown) {
     check("  and each resource opens into what it actually did",
       /line\.usage\.map\(u =>/.test(ui),
       "a cost with no usage behind it cannot be argued with or acted on");
+
+    // A page about cost that quietly costs something is the one page that must
+    // not, so what it spends is on it.
+    check("the page discloses what producing it costs",
+      /data\.self\.metricsRequested/.test(ui) && /data\.self\.monthlyIfHourly/.test(ui),
+      "an unstated cost on a cost page is the one surprise that undermines the rest");
+
+    check("  as a ceiling, since it is cached and cannot be asked more often",
+      /monthlyIfHourly: counter\.metrics \* PRICES\.cloudwatch\.metricRequested \* 24 \* 30/
+        .test(fs.readFileSync("./src/services/costService.ts", "utf8")),
+      "a guess at how often somebody looks is a number nobody can check");
+
+    check("  and names what it does not use",
+      /no Cost Explorer, no\s*\n?\s*S3, no Athena/.test(ui),
+      "the obvious worry is that a cost page builds a data pipeline");
 
     check("prices from another region are flagged",
       /pricesMayNotApply/.test(ui),

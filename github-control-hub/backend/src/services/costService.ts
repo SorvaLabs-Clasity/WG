@@ -51,6 +51,13 @@ export const PRICES = {
     storageGbMonth: 0.03,
   },
   secret: 0.40,
+  /**
+   * What asking CloudWatch costs, which is what producing this page costs.
+   *
+   * The only billed call in the report. Everything else it makes, listing
+   * tables, functions, log groups and topics, is control plane and free.
+   */
+  cloudwatch: { metricRequested: 0.01 / 1_000 },
 } as const;
 
 export interface CostLine {
@@ -86,6 +93,14 @@ export interface CostReport {
   monthly: number;
   /** What could not be read at all, so the total is understood as partial. */
   errors: string[];
+  /**
+   * What this report cost to produce, and how often it can be asked for.
+   *
+   * Disclosed because a page about cost that quietly costs something is the one
+   * page that must not. It is the CloudWatch metrics it requested; every other
+   * call it makes is control plane and free.
+   */
+  self: { metricsRequested: number; costPerRun: number; monthlyIfHourly: number };
 }
 
 /**
@@ -121,8 +136,10 @@ async function cw() {
 async function sums(
   queries: Array<{ id: string; namespace: string; metric: string; dims: Record<string, string>; stat?: string }>,
   from: Date, to: Date,
+  counter?: { metrics: number },
 ): Promise<Record<string, number>> {
   if (queries.length === 0) return {};
+  if (counter) counter.metrics += queries.length;
   const { client, GetMetricDataCommand } = await cw();
   const out: Record<string, number> = {};
 
@@ -167,6 +184,10 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
   const prefix = PREFIX();
   const errors: string[] = [];
   const lines: CostLine[] = [];
+  // Counted as they are asked for, rather than derived from the resource count
+  // afterwards: a section that failed asked for nothing and should not be
+  // billed for it.
+  const counter = { metrics: 0 };
 
   const region = (await import("../utils/region")).awsRegion() || PRICES.region;
 
@@ -188,7 +209,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
       { id: idFor("dr", i), namespace: "AWS/DynamoDB", metric: "ConsumedReadCapacityUnits", dims: { TableName: name } },
       { id: idFor("dw", i), namespace: "AWS/DynamoDB", metric: "ConsumedWriteCapacityUnits", dims: { TableName: name } },
     ]);
-    const metrics = await sums(q, from, to).catch(err => {
+    const metrics = await sums(q, from, to, counter).catch(err => {
       errors.push(`DynamoDB usage could not be read: ${err?.message ?? err}`);
       return {} as Record<string, number>;
     });
@@ -241,7 +262,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
       { id: idFor("li", i), namespace: "AWS/Lambda", metric: "Invocations", dims: { FunctionName: f.name } },
       { id: idFor("ld", i), namespace: "AWS/Lambda", metric: "Duration", dims: { FunctionName: f.name } },
     ]);
-    const metrics = await sums(q, from, to).catch(err => {
+    const metrics = await sums(q, from, to, counter).catch(err => {
       errors.push(`Lambda usage could not be read: ${err?.message ?? err}`);
       return {} as Record<string, number>;
     });
@@ -287,7 +308,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
       id: idFor("lg", i), namespace: "AWS/Logs", metric: "IncomingBytes",
       dims: { LogGroupName: g.name },
     }));
-    const metrics = await sums(q, from, to).catch(() => ({} as Record<string, number>));
+    const metrics = await sums(q, from, to, counter).catch(() => ({} as Record<string, number>));
 
     for (const [i, g] of groups.entries()) {
       const ingestGb = (metrics[idFor("lg", i)] ?? 0) / 1024 ** 3;
@@ -323,7 +344,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
       id: idFor("sn", i), namespace: "AWS/SNS", metric: "NumberOfMessagesPublished",
       dims: { TopicName: arn.split(":").pop()! },
     }));
-    const metrics = await sums(q, from, to).catch(() => ({} as Record<string, number>));
+    const metrics = await sums(q, from, to, counter).catch(() => ({} as Record<string, number>));
 
     for (const [i, arn] of arns.entries()) {
       const published = metrics[idFor("sn", i)] ?? 0;
@@ -375,5 +396,13 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
     total,
     monthly: total * (30 / days),
     errors,
+    self: {
+      metricsRequested: counter.metrics,
+      costPerRun: counter.metrics * PRICES.cloudwatch.metricRequested,
+      // The ceiling, not a guess at how often somebody looks: the report is
+      // cached for an hour, so this is the most it can cost however hard the
+      // page is refreshed.
+      monthlyIfHourly: counter.metrics * PRICES.cloudwatch.metricRequested * 24 * 30,
+    },
   };
 }

@@ -161,6 +161,8 @@ export interface CostReport {
   total: number;
   monthly: number;
   errors: string[];
+  /** What producing this page cost. Disclosed, not hidden. */
+  self: { metricsRequested: number; costPerRun: number; monthlyIfHourly: number };
   cached: boolean;
 }
 
