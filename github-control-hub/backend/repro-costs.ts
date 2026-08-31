@@ -147,6 +147,21 @@ function check(name: string, ok: boolean, got?: unknown) {
   {
     const ui = fs.readFileSync("../frontend/src/components/CostPanel.tsx", "utf8");
 
+    // It started under AWS Guardrails, which was wrong: that tab is about rules
+    // over *your* resources, and this is the app's own bill, which covers both
+    // halves. The webhook receiver and worker, the graph aggregator and the
+    // tables they write are the GitHub side.
+    const activity = fs.readFileSync("../frontend/src/pages/ActivityPage.tsx", "utf8");
+    const aws = fs.readFileSync("../frontend/src/pages/AwsPage.tsx", "utf8");
+    check("costs live on the tab that carries both halves",
+      /\["costs", "ph-currency-dollar", "Costs"\]/.test(activity)
+      && /lens === "costs" \? \(\s*\n?\s*<CostPanel \/>/.test(activity),
+      "a bill for the whole app under a guardrails page reads as an AWS-only concern");
+
+    check("  and not on the guardrails tab any more",
+      !/CostPanel/.test(aws),
+      "two homes for one page is one of them going stale");
+
     check("the estimate says it is one, next to the number",
       /does not know about the free tier/.test(ui),
       "a footnote is where somebody looks after deciding the number is wrong");

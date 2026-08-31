@@ -24,6 +24,7 @@ import { useOrgConfig } from "../hooks/useOrgConfig";
 import { useWebhookHealth } from "../hooks/useWebhookHealth";
 import type { Activity, ActivityAction } from "../types/Activity";
 import { buildConflictComparison } from "../utils/conflictComparison";
+import CostPanel from "../components/CostPanel";
 
 
 function formatTimestamp(ts: string): string {
@@ -294,14 +295,24 @@ export default function ActivityPage() {
    *                    filtered, nothing to click through.
    *   Events           find one row. Streams, filters, table or timeline.
    *   Important events the changes worth knowing about, and who is told.
+   *   Costs            what the app's own AWS resources have consumed.
+   *
+   * Costs is here rather than under AWS Guardrails, where it started, because
+   * that tab is about rules over *your* resources and this is about the app's
+   * own. The bill covers both halves: the webhook receiver and worker, the
+   * graph aggregator and the tables they write are the GitHub side, and putting
+   * their cost under a guardrails page said they were an AWS-side concern.
+   *
+   * This tab is the one that already carries both halves, and the one that
+   * exists in an AWS-only install as well as a full one.
    */
-  const [lens, setLens] = useState<"stats" | "feed" | "important">(() => {
+  const [lens, setLens] = useState<"stats" | "feed" | "important" | "costs">(() => {
     try {
       const v = localStorage.getItem("activity:lens");
-      return v === "stats" || v === "important" ? v : "feed";
+      return v === "stats" || v === "important" || v === "costs" ? v : "feed";
     } catch { return "feed"; }
   });
-  const setLensPersistent = (v: "stats" | "feed" | "important") => {
+  const setLensPersistent = (v: "stats" | "feed" | "important" | "costs") => {
     setLens(v);
     try { localStorage.setItem("activity:lens", v); } catch { /* the view still changes */ }
   };
@@ -790,7 +801,9 @@ export default function ActivityPage() {
                   ? "The shape of everything, across the whole organization."
                   : lens === "important"
                     ? "Changes worth knowing about, grouped by what caused them. Most are somebody doing their job."
-                    : "Everything this app and GitHub have recorded, newest first."}
+                    : lens === "costs"
+                      ? "What this app's own AWS resources have consumed, resource by resource."
+                      : "Everything this app and GitHub have recorded, newest first."}
               </p>
             </div>
             <WebhookPulse />
@@ -813,6 +826,7 @@ export default function ActivityPage() {
               ["stats", "ph-chart-line-up", "Statistics"],
               ["feed", "ph-list-magnifying-glass", "Events"],
               ["important", "ph-shield-warning", "Important events"],
+              ["costs", "ph-currency-dollar", "Costs"],
             ] as const).map(([v, icon, label]) => (
               <button key={v} onClick={() => setLensPersistent(v)} aria-pressed={lens === v}
                 className={`px-3.5 py-2 rounded-lg text-[13px] font-semibold whitespace-nowrap
@@ -1012,7 +1026,9 @@ export default function ActivityPage() {
           )}
         </header>
 
-        {lens === "stats" ? (
+        {lens === "costs" ? (
+          <CostPanel />
+        ) : lens === "stats" ? (
           <div className="grid gap-4">
             {/* The chart keeps its own window control, and Statistics reads the
                 same one, so the whole view moves together. */}

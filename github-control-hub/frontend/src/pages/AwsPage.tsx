@@ -14,7 +14,6 @@ import {
 import type { Guardrail, CatalogEntry, Finding, AwsExclusionList, ParamSpec, AwsAccount, AwsAccessMethod } from "../api/aws";
 import { awsConsoleUrl, consoleLinkLabel } from "../utils/awsConsole";
 import AlarmModal from "../components/AlarmModal";
-import CostPanel from "../components/CostPanel";
 
 const KIND_LABELS: Record<string, string> = {
   s3_https_only: "S3, deny non-TLS requests",
@@ -43,9 +42,6 @@ export default function AwsPage() {
   const updateRule = useUpdateGuardrail();
 
   /** Each rule opens as its own page rather than expanding in place. */
-  // Separate from `view`, which is where you are inside the rules: a rule, the
-  // exclusion lists, the accounts. This is which half of the page you are on.
-  const [section, setSection] = useState<"rules" | "costs">("rules");
   const [view, setView] = useState<{ k: "list" } | { k: "rule"; id: string } | { k: "exclusions" } | { k: "accounts" }>({ k: "list" });
   const [editing, setEditing] = useState<Guardrail | "new" | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
@@ -73,23 +69,12 @@ export default function AwsPage() {
     <Page user={user}>
         <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
           <div>
-            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-              {section === "costs" ? "AWS Costs" : "AWS Guardrails"}
-            </h1>
+            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">AWS Guardrails</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {section === "costs"
-                ? "What this app's own resources have consumed, resource by resource."
-                : "Checked when resources are created, every 10 minutes, and on demand."}
+              Checked when resources are created, every 10 minutes, and on demand.
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            {/* Costs beside the rules rather than on a tab of its own: it is a
-                property of this account's AWS half, which is what this page
-                already is, and a tab nobody passes is a tab nobody opens. */}
-            <Segmented value={section} onChange={v => setSection(v as typeof section)} options={[
-              ["rules", "Rules"],
-              ["costs", "Costs"],
-            ]} />
             <RefreshButton
               busy={rulesFetching || findingsFetching}
               onRefresh={() => Promise.all([refetchRules(), refetchFindings(), refetchExclusions(), refetchAccounts()])}
@@ -105,13 +90,6 @@ export default function AwsPage() {
             )}
           </div>
         </div>
-
-        {/* The costs half is its own screen, so everything below is skipped
-            rather than hidden: the rules body reads and computes a good deal,
-            and none of it is on screen here. */}
-        {section === "costs" && <CostPanel />}
-
-        {section === "rules" && (<>
 
         {runError && <Note intent="danger">{runError}</Note>}
         {runRules.isSuccess && !runError && (
@@ -203,8 +181,6 @@ export default function AwsPage() {
             onClose={() => setEditing(null)}
           />
         )}
-        </>)}
-
     </Page>
   );
 }

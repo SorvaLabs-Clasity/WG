@@ -2848,10 +2848,17 @@ about $15.82 a month to under a dollar when the graph is quiet, and leaves it
 unchanged only in the case where the graph really is being rewritten every five
 minutes.
 
-## The cost breakdown in the AWS tab
+## The cost breakdown
 
-**AWS → Costs** shows what each of this app's own resources has consumed, one
+**Activity → Costs** shows what each of this app's own resources has consumed, one
 line per table, function, log group, topic and secret, largest first.
+
+It sits on Activity rather than under AWS Guardrails, where it started. That
+tab is about rules over *your* resources; this is the app's own bill, and it
+covers both halves: the webhook receiver and worker, the graph aggregator and
+the tables they write are the GitHub side. Activity is the tab that already
+carries both, and the one that exists in an AWS-only install as well as a full
+one.
 
 **It is computed, not fetched, and that is not a shortcut.** Cost Explorer bills
 a cent a call and groups by *service*: it can say "DynamoDB, $18" and never

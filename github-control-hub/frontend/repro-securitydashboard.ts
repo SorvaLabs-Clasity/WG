@@ -306,14 +306,15 @@ const allResolved: AlertLike[] = [
     check("the dashboard is a view inside Activity",
       /<ImportantEvents \/>/.test(activity) && /import ImportantEvents/.test(activity));
 
-    // Three views, not two slices and a toggle. Statistics, Events and
-    // Important events answer different questions and each was getting in the
+    // Named views, not slices and a toggle. Statistics, Events, Important
+    // events and Costs answer different questions and each was getting in the
     // others' way on one screen.
-    check("  one of three named views",
+    check("  one of several named views",
       /\["stats", "ph-chart-line-up", "Statistics"\]/.test(activity)
-        && /\["important", "ph-shield-warning", "Important events"\]/.test(activity));
+        && /\["important", "ph-shield-warning", "Important events"\]/.test(activity)
+        && /\["costs", "ph-currency-dollar", "Costs"\]/.test(activity));
     check("  chosen by a segmented control, not by the stream tabs",
-      /const \[lens, setLens\] = useState<"stats" \| "feed" \| "important">/.test(activity),
+      /const \[lens, setLens\] = useState<"stats" \| "feed" \| "important" \| "costs">/.test(activity),
       "the streams are slices of one list; these are different jobs");
     check("  and the choice survives a reload",
       /localStorage\.setItem\("activity:lens"/.test(activity));

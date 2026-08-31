@@ -192,6 +192,7 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
   const region = (await import("../utils/region")).awsRegion() || PRICES.region;
 
   // ── DynamoDB ──
+  const dynamoSection = async () => {
   try {
     const { DynamoDBClient, ListTablesCommand, DescribeTableCommand } =
       await import("@aws-sdk/client-dynamodb");
@@ -214,14 +215,28 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
       return {} as Record<string, number>;
     });
 
+    /**
+     * Sizes fetched together, not one after another.
+     *
+     * DescribeTable is a round trip per table, and awaiting it inside the loop
+     * made a dozen tables a dozen sequential waits before the page could
+     * render anything. They do not depend on each other.
+     */
+    const sizes = await Promise.all(names.map(async name => {
+      try {
+        const d: any = await ddb.send(new DescribeTableCommand({ TableName: name }));
+        return d.Table?.TableSizeBytes ?? 0;
+      } catch {
+        // Size is a nicety; usage is the number that matters, so a table that
+        // will not describe still gets its reads and writes priced.
+        return 0;
+      }
+    }));
+
     for (const [i, name] of names.entries()) {
       const reads = metrics[idFor("dr", i)] ?? 0;
       const writes = metrics[idFor("dw", i)] ?? 0;
-      let bytes = 0;
-      try {
-        const d: any = await ddb.send(new DescribeTableCommand({ TableName: name }));
-        bytes = d.Table?.TableSizeBytes ?? 0;
-      } catch { /* size is a nicety; usage is the number that matters */ }
+      const bytes = sizes[i] ?? 0;
 
       // Storage is charged per month, so a shorter window sees its share.
       const storageGb = bytes / 1024 ** 3;
@@ -241,7 +256,10 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
     errors.push(`DynamoDB could not be listed: ${err?.message ?? err}`);
   }
 
+  };
+
   // ── Lambda ──
+  const lambdaSection = async () => {
   try {
     const { LambdaClient, ListFunctionsCommand } = await import("@aws-sdk/client-lambda");
     const lambda = new LambdaClient({ region: awsRegion() });
@@ -286,7 +304,10 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
     errors.push(`Lambda could not be listed: ${err?.message ?? err}`);
   }
 
+  };
+
   // ── CloudWatch Logs ──
+  const logsSection = async () => {
   try {
     const { CloudWatchLogsClient, DescribeLogGroupsCommand } =
       await import("@aws-sdk/client-cloudwatch-logs");
@@ -326,7 +347,10 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
     errors.push(`Log groups could not be read: ${err?.message ?? err}`);
   }
 
+  };
+
   // ── SNS ──
+  const snsSection = async () => {
   try {
     const { SNSClient, ListTopicsCommand } = await import("@aws-sdk/client-sns");
     const sns = new SNSClient({ region: awsRegion() });
@@ -364,6 +388,9 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
   //
   // Priced per secret per month rather than per call, so there is no metric to
   // read: the count is the cost.
+  };
+
+  const secretsSection = async () => {
   try {
     const { SecretsManagerClient, ListSecretsCommand } =
       await import("@aws-sdk/client-secrets-manager");
@@ -380,6 +407,24 @@ export async function buildCostReport(days = 30): Promise<CostReport> {
   } catch (err: any) {
     errors.push(`Secrets could not be read: ${err?.message ?? err}`);
   }
+
+  };
+
+  /**
+   * The five run together, because none of them needs another's answer.
+   *
+   * In turn, this was five round trips of listing before the first number
+   * appeared, and the page sat empty for the length of all of them. They push
+   * into the same two arrays, which is safe here: JavaScript runs one of them
+   * at a time, and the order of the lines is decided by the sort below rather
+   * than by which listing came back first.
+   *
+   * Each already catches its own failures, so `all` cannot reject and one
+   * missing permission still leaves the other four on screen.
+   */
+  await Promise.all([
+    dynamoSection(), lambdaSection(), logsSection(), snsSection(), secretsSection(),
+  ]);
 
   lines.sort((a, b) => b.cost - a.cost);
   const total = lines.reduce((a, l) => a + l.cost, 0);
