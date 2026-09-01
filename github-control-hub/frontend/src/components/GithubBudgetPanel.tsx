@@ -259,6 +259,24 @@ export default function GithubBudgetPanel() {
   const biggest = usage[0]?.count ?? 0;
   const measured = Object.values(totals).reduce((a: number, n) => a + (Number(n) || 0), 0);
   const viaUser = usage.reduce((a, r) => a + (r.viaUser ?? 0), 0);
+
+  /**
+   * How many of each allowance's requests went out on a signed-in account.
+   *
+   * The reason a count of five thousand can sit beside an allowance GitHub
+   * reports as untouched: those requests spent the person's own budget, not the
+   * app's. Without this the pair looks like a bug, which is exactly how it was
+   * read.
+   *
+   * A plain reduce, not a memo. Everything above this point can return early,
+   * so a hook here runs on some renders and not others, which is what React
+   * refuses. Memoising a loop over a few dozen rows would have bought nothing
+   * and cost the whole tab.
+   */
+  const userByBucket: Record<string, number> = {};
+  for (const row of usage) {
+    userByBucket[row.bucket] = (userByBucket[row.bucket] ?? 0) + (row.viaUser ?? 0);
+  }
   // Named exactly. "This hour" was read as "the last sixty minutes", which is
   // not what the counters bucket by and is where the confusion started.
   const windowLabel = hours === 1
@@ -337,7 +355,7 @@ export default function GithubBudgetPanel() {
           <div className="p-5 grid sm:grid-cols-3 gap-5">
             {limits.map(l => {
               const b = BUCKET[l.bucket];
-              const left = l.limit > 0 ? l.remaining / l.limit : 0;
+              const onUser = userByBucket[l.bucket] ?? 0;
               return (
                 <div key={l.bucket}>
                   <div className="flex items-center gap-1.5">
@@ -356,23 +374,30 @@ export default function GithubBudgetPanel() {
                     </span>
                   </p>
 
-                  {/* Headroom, not a second count of the same thing. What is
-                      left is a live fact about right now and needs no window to
-                      be understood. */}
-                  <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.07] mt-2 overflow-hidden">
-                    <div className={`h-full rounded-full ${
-                      left > 0.5 ? "bg-emerald-500" : left > 0.2 ? "bg-amber-500" : "bg-rose-500"}`}
-                      style={{ width: `${Math.max(1, Math.min(100, left * 100))}%` }} />
-                  </div>
+                  {/* No bar. It measured GitHub's headroom while sitting under
+                      a count of requests, so it read as a progress bar of that
+                      count and sat at full while the number above said five
+                      thousand. A bar under a number it is not a fraction of is
+                      worse than no bar. */}
+                  {onUser > 0 && (
+                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
+                      <span className="font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
+                        {onUser.toLocaleString()}
+                      </span>{" "}
+                      of those went out on your own sign-in, so they spent your
+                      allowance rather than the app's.
+                    </p>
+                  )}
+                  {/* Headroom is not in this box, and that is the fix rather
+                      than an omission. A count over a period and a reading of
+                      this instant are different quantities, and side by side in
+                      one box they read as one number contradicting itself:
+                      eight requests beside "30 of 30 available" looks like a
+                      bug however carefully each half is labelled. Search makes
+                      it worst, because its allowance refills every minute and
+                      is therefore nearly always full. It has its own row
+                      below. */}
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
-                    GitHub says{" "}
-                    <span className="font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
-                      {l.remaining.toLocaleString()}
-                    </span>{" "}
-                    of {l.limit.toLocaleString()} still available, refilling in{" "}
-                    {untilReset(l.resetsAt)}.
-                  </p>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
                     {b.blurb}
                   </p>
                 </div>
@@ -381,6 +406,56 @@ export default function GithubBudgetPanel() {
           </div>
         )}
       </section>
+
+      {/* ── headroom, on its own ────────────────────────────────────
+          One row for all three, away from the counts, because it answers a
+          different question: not what has been spent, but whether there is
+          room right now. */}
+      {limits.length > 0 && (
+        <section className={`${SURFACE.card} px-5 py-4`}>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
+              Room left right now
+            </span>
+            <span className="text-[11px] text-slate-400 dark:text-slate-500">
+              read from GitHub, this instant
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-x-6 gap-y-2 mt-2">
+            {limits.map(l => {
+              const b = BUCKET[l.bucket];
+              const left = l.limit > 0 ? l.remaining / l.limit : 0;
+              return (
+                <div key={l.bucket} className="flex items-baseline gap-1.5">
+                  <i className={`ph-bold ${b.icon} ${b.tone} text-[12px]`} aria-hidden="true" />
+                  <span className="text-[12.5px] font-semibold text-slate-600 dark:text-slate-300">
+                    {b.label}
+                  </span>
+                  <span className={`text-[12.5px] font-bold tabular-nums ${
+                    left > 0.5 ? "text-emerald-600 dark:text-emerald-400"
+                      : left > 0.2 ? "text-amber-600 dark:text-amber-400"
+                      : "text-rose-600 dark:text-rose-400"}`}>
+                    {l.remaining.toLocaleString()}
+                  </span>
+                  <span className="text-[11.5px] text-slate-400 dark:text-slate-500">
+                    of {l.limit.toLocaleString()}, refills in {untilReset(l.resetsAt)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* The sentence that stops somebody reading a full allowance as a
+              contradiction of the counts above it. */}
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2.5 leading-relaxed max-w-[85ch]">
+            These refill on GitHub's own clock rather than at the top of the
+            hour, and search refills every minute, so a full reading here is
+            normal even after a busy hour. It is also per token: requests made on
+            your own sign-in never appear against the app's allowance.
+          </p>
+        </section>
+      )}
 
       {/* ── who spent it ───────────────────────────────────────────── */}
       <section className={`${SURFACE.card} overflow-hidden`}>

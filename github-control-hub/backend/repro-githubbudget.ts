@@ -168,9 +168,39 @@ function filesCallingGitHub(): string[] {
     else bad("GitHub's used figure is shown as a count again",
       "it is measured over a different window and will not match");
 
+    /**
+     * And headroom is not in the same box as a count.
+     *
+     * They are different quantities: one is cumulative over a window, the other
+     * is a reading of this instant. Side by side they read as one number
+     * contradicting itself, and no amount of labelling fixed it across three
+     * attempts. Search is the worst case, because its allowance refills every
+     * minute and is therefore almost always full while the count beside it is
+     * not zero.
+     */
+    const countBox = panel.slice(
+      panel.indexOf("What this app spent"), panel.indexOf("Room left right now"));
+    if (!/l\.remaining/.test(countBox)) ok("  headroom is not inside a count box");
+    else bad("a count and a headroom figure share a box",
+      "eight requests beside \"30 of 30 available\" reads as a bug, however it is labelled");
+
     // Still shown, as the one thing GitHub knows that this app cannot.
-    if (/still available/.test(panel)) ok("  while what is left is still reported");
-    else bad("headroom is gone entirely", "how much room is left is the reason to read this page");
+    if (/Room left right now/.test(panel) && /l\.remaining/.test(panel)) {
+      ok("  while what is left is still reported, in its own row");
+    } else {
+      bad("headroom is gone entirely", "how much room is left is the reason to read this page");
+    }
+
+    // The sentence that stops a full allowance reading as a contradiction.
+    // Whitespace normalised first: the sentence wraps in the source, and a
+    // regex over the raw file is really a test of where the line breaks.
+    const prose = panel.replace(/\s+/g, " ");
+    if (/own clock rather than at the top of the hour/.test(prose)) {
+      ok("    and says why a full reading is normal");
+    } else {
+      bad("nothing explains a full allowance beside a non-zero count",
+        "search refills every minute, so full is its usual state");
+    }
 
     // The window has to be named, not implied. "This hour" was read as "the
     // last sixty minutes", which is not what the counters bucket by.

@@ -3125,6 +3125,41 @@ keyed on `kind:metric` rather than the metric alone: one metric is now offered
 twice, and keying on the name gave two options with one value and made the first
 unselectable.
 
+## Why the Vulnerabilities tab is fast now
+
+Working the tab out takes an org-wide alert sweep plus two paged status reads.
+On an organization where Dependabot has just been switched on everywhere, that
+is long enough that the first open after launch looks broken.
+
+There was already a sixty-second in-memory cache, and it does nothing for the
+case that hurts: a freshly started process has none.
+
+So the answer is **stored**, in the alarms table. The tab paints from it
+immediately and, when it is older than ten minutes, a fresh sweep runs **behind
+the reader** rather than in front of them. Ten minutes because that is roughly
+how often the underlying data changes: GitHub rescans on its own schedule, and
+an alert that appeared thirty seconds ago is not visible any sooner by asking
+again.
+
+**Stored compressed.** Two thousand alerts is about 434KB as JSON, past
+DynamoDB's 400KB item limit; the data is extremely repetitive, so gzip takes it
+to roughly 15KB.
+
+**Never truncated.** The widget snapshots trim rows to fit, which is right for
+something backing a count and a preview. This backs the table itself, where a
+missing repository is a repository somebody concludes is clean, so a payload
+that will not fit is refused with a log line and the tab keeps computing live.
+
+**Every write refreshes it.** The bulk action and both single-repo toggles
+recompute in the background, because the stored answer describes the account as
+it was and changing it was the point. Recomputed rather than deleted: deleting
+would make the next open slow again, which is what the store exists to prevent.
+
+One sweep function serves both the route and the background refresh. Two copies
+would be two places for the repository markers and the two status reads to
+drift, and the drift shows as a repository appearing clean on one path and
+unwatched on the other.
+
 ## Managing Dependabot in bulk
 
 **Vulnerabilities → Manage Dependabot** lists every repository the last sweep
@@ -3252,6 +3287,28 @@ figure its own rows add up to**, so the headline, the per-bucket totals and the
 list are always the same measurement. GitHub's number is still there, doing the
 one job this app cannot do for itself: saying **how much room is left**, which
 is a fact about this moment and needs no window to be understood.
+
+**And headroom is not in the same box as a count.** That was the third attempt
+at this, and the first two were both wording. A count is cumulative over a
+window; headroom is a reading of this instant. Side by side they read as one
+number contradicting itself, and no label fixes that.
+
+**Search is the worst case**, because its allowance refills *every minute*: over
+a busy hour the count says eight and GitHub says thirty of thirty available,
+because none of the eight were in the current minute. Both true, and together
+they look like a bug.
+
+So the three boxes now hold only what this app spent, and headroom has its own
+row underneath: all three allowances, what is left, when each refills, and one
+sentence saying that a full reading is normal because these refill on GitHub's
+clock rather than at the top of the hour, and are per token besides.
+
+**And no progress bar.** One sat under the count, measuring GitHub's headroom,
+so it read as a progress bar of the number above it and sat at full while that
+number said five thousand. A bar under a figure it is not a fraction of is worse
+than no bar. Where some of a bucket's requests went out on a signed-in account,
+the box now says how many, which is what explains a large count beside an
+allowance GitHub reports as untouched.
 
 The window is also named exactly rather than implied. "This hour" was being read
 as "the last sixty minutes", which is not what the counters bucket by.
