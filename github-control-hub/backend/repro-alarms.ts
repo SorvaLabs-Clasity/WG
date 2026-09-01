@@ -46,7 +46,15 @@ function check(name: string, ok: boolean, got?: unknown) {
   check("a dependabot widget offers severity counts", dep.includes("dependabot.critical") && dep.includes("dependabot.high"), dep);
   check("  a vuln-repos widget offers worst-severity", vuln.includes("vulnRepos.worstSeverity"), vuln);
   check("  a bypasses widget offers bypass counts", byp.includes("bypasses.total"), byp);
-  check("  a query widget offers a row count", qry.length === 1 && qry[0] === "query.rows", qry);
+  // Counted as distinct metrics, not as options: one metric is now offered
+  // twice, once as a threshold and once as "tell me about each new one".
+  const qryMetrics = [...new Set(qry)];
+  check("  a query widget offers a row count",
+    qryMetrics.length === 1 && qryMetrics[0] === "query.rows", qry);
+  check("    read both as a threshold and as each new row",
+    conditionsFor({ type: "query" }).filter(c => c.kind === "each").length === 1
+      && conditionsFor({ type: "query" }).filter(c => c.kind === "count").length === 1,
+    conditionsFor({ type: "query" }).map(c => `${c.kind}:${c.metric}`));
 
   // The point of a per-widget catalogue is that they do not overlap.
   const overlap = dep.filter(m => byp.includes(m) || qry.includes(m));

@@ -27,14 +27,19 @@ import { INTENT, TYPE, SURFACE, EASE, enter, COMPANY_NAME, type Intent, Button, 
 /**
  * Sign-in.
  *
- * Two credentials have to be turned before the app opens, and the old page
- * buried that: a 440px column of 11px text where every element, step pills,
- * status chips, action links, competed at the same weight, on a background
- * hardcoded dark so light mode did nothing.
+ * Two credentials, and the second cannot be turned until the first is: the
+ * GitHub OAuth keys live in the AWS account this app is pointed at. Any
+ * arrangement that draws them as equal siblings is lying about that, and the
+ * question people arrive with is not which two things there are, it is which
+ * one is their turn.
  *
- * Here the count of what is connected is the largest thing on the page, and
- * the two connections are full cards carrying their own state colour. You can
- * tell across a room whether you are one step away or ready.
+ * So the window is two rooms. The one that wants something from you is the
+ * wide lit surface; the one that cannot open yet is left as bare page ground
+ * with a seam, so the dependency is a material fact rather than a caption. The
+ * split moves as you make progress, which makes the geometry the status.
+ *
+ * The way out runs under both rooms and turns the app's own green the moment it
+ * works, because this is a screen whose entire purpose is to be left.
  */
 
 type Stage = "loading" | "offline" | "aws" | "github" | "ready";
@@ -519,41 +524,63 @@ export default function LoginPage() {
   const awsBusy = loading || refreshing === "aws";
 
   return (
-    <div className={`min-h-screen ${SURFACE.page} text-slate-900 dark:text-slate-100`}>
-      <button
-        onClick={toggle}
-        className="fixed top-5 right-5 z-50 w-10 h-10 flex items-center justify-center rounded-xl text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-900/[0.06] dark:hover:bg-white/10 transition-colors"
-        title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-      >
-        <i className={"ph-bold " + (theme === "dark" ? "ph-sun" : "ph-moon") + " text-lg"}></i>
-      </button>
+    <div className={`min-h-screen flex flex-col ${SURFACE.page} text-slate-900 dark:text-slate-100`}>
 
-      <div className="mx-auto max-w-[1080px] px-6 py-10 lg:py-20 grid lg:grid-cols-[minmax(0,1fr)_480px] gap-10 lg:gap-16 items-center min-h-screen">
+      {/* Chrome at the height the signed-in navbar uses, so arriving at the
+          dashboard is the same window continuing rather than a different one
+          replacing it. */}
+      <header className="sticky top-0 z-30 shrink-0 h-14 flex items-center gap-3 px-5 bg-white dark:bg-[#11141c] border-b border-slate-200 dark:border-white/[0.08]">
+        <span className="w-8 h-8 rounded-lg bg-slate-900 dark:bg-white flex items-center justify-center shrink-0">
+          <i className="ph-fill ph-shield-check text-[16px] text-white dark:text-slate-900"></i>
+        </span>
+        <span className="min-w-0 truncate">
+          <span className="text-[13.5px] font-black tracking-tight">GitHub Control Hub</span>
+          <span className="ml-2.5 text-[12px] text-slate-400 dark:text-slate-500">{COMPANY_NAME}</span>
+        </span>
 
-        {/* ── Posture. The largest thing on the page. ── */}
-        <section style={enter(0)}>
-          <div className="flex items-center gap-3 mb-10">
-            <div className="w-11 h-11 rounded-xl bg-slate-900 dark:bg-white flex items-center justify-center shrink-0">
-              <i className="ph-fill ph-shield-check text-[21px] text-white dark:text-slate-900"></i>
-            </div>
-            <div>
-              <div className="text-[15px] font-black tracking-tight leading-none">GitHub Control Hub</div>
-              <div className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">{COMPANY_NAME}</div>
-            </div>
-          </div>
+        <span className="ml-auto flex items-center gap-3.5 shrink-0">
+          {/* Said before anything is typed, because the next thing this screen
+              asks for is a set of AWS keys and the reasonable worry is where
+              they are about to go. */}
+          <span className="hidden sm:flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
+            <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">
+              Running locally on this machine
+            </span>
+          </span>
 
-          <Posture stage={stage} connected={connected} org={status?.github.org ?? undefined} />
-        </section>
+          {/* Also here, not only in the account menu.
+              The menu needs somebody signed in, and the moment you most want to
+              know which build you are running is the moment the app is not
+              working. Which is this screen. */}
+          {appVersion && (
+            <span className="text-[11px] font-mono text-slate-400 dark:text-slate-600">
+              v{appVersion}
+            </span>
+          )}
+          <button
+            onClick={toggle}
+            className="w-9 h-9 flex items-center justify-center rounded-lg text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-900/[0.06] dark:hover:bg-white/10 transition-colors"
+            title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+          >
+            <i className={"ph-bold " + (theme === "dark" ? "ph-sun" : "ph-moon") + " text-lg"}></i>
+          </button>
+        </span>
+      </header>
 
-        {/* ── The two keys ── */}
-        <section className="w-full space-y-3">
+      {/* Above both rooms rather than inside one. A dead backend makes both
+          panels unknowable, and a wrong-account error arrives while the GitHub
+          panel may still be sealed and recessed, which is exactly where nobody
+          would read it. */}
+      {((authError && !authErrorDismissed) || error) && (
+        <div className="shrink-0 px-5 pt-4 space-y-3">
           {authError && !authErrorDismissed && (
             <Banner
               intent="danger"
               icon="ph-fill ph-warning-circle"
               title={authError.kind === "not_member" ? "Wrong GitHub account" : "Authentication failed"}
               onDismiss={() => setAuthErrorDismissed(true)}
-              index={1}
+              index={0}
             >
               {authError.kind === "not_member" ? (
                 <>Signed in as <span className="font-mono font-bold">@{authError.login}</span>, which is not a
@@ -565,650 +592,664 @@ export default function LoginPage() {
           )}
 
           {error && (
-            <Banner intent="danger" icon="ph-fill ph-plugs" title="Backend unreachable" index={1}>
+            <Banner intent="danger" icon="ph-fill ph-plugs" title="Backend unreachable" index={0}>
               Nothing is responding on the local API. Make sure{" "}
               <code className="font-mono text-[12.5px] px-1.5 py-0.5 rounded bg-rose-500/15">ghch serve</code>{" "}
               is running, then reload.
             </Banner>
           )}
+        </div>
+      )}
 
-          {/* ── AWS ── */}
-          <KeyCard
-            index={2}
-            intent={awsOk ? "good" : error ? "danger" : "neutral"}
-            icon="ph-fill ph-cloud"
-            busy={awsBusy}
-            title="Amazon Web Services"
-            state={awsOk ? "connected" : error ? "offline" : "waiting"}
-            subtitle={
-              awsOk && status?.aws.profile
-                ? <>Profile <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{status.aws.profile}</span></>
-                : awsOk ? "DynamoDB and Secrets Manager reachable"
-                : "Needed to read and write the app's own data"
-            }
-            action={awsOk && !loading && !error
-              ? <div className="flex items-center gap-1">
-                  {/* Reachable while connected, because "add a profile for the
-                      other account" is exactly when somebody wants it, and
-                      before this, the only way to reach it was to disconnect
-                      from the account they were happily using. */}
-                  <Quiet onClick={() => { setAwsMethod("new"); setNewStep("form"); setAddingProfile(true); }}
-                    icon="ph-bold ph-plus" label="Add profile" />
-                  <Quiet onClick={handleDisconnectAws} disabled={refreshing === "aws"} icon="ph-bold ph-plugs" label="Disconnect" />
-                </div>
-              : undefined}
-          >
-            {!loading && !error && awsOk && addingProfile && (
-              <div className="mb-3 flex items-center justify-between rounded-lg bg-slate-50 dark:bg-slate-800/60 px-3 py-2">
-                <span className="text-xs text-slate-600 dark:text-slate-300">
-                  Adding a profile. You stay signed in to <strong>{status?.aws.profile || "this account"}</strong>.
-                </span>
-                <button onClick={() => setAddingProfile(false)}
-                  className="text-xs font-semibold text-slate-500 hover:text-slate-900 dark:hover:text-white">
-                  Cancel
-                </button>
-              </div>
-            )}
+      <main
+        className={`flex-1 grid grid-cols-1 ${splitFor(stage, addingProfile)} transition-[grid-template-columns] duration-700`}
+        style={{ transitionTimingFunction: EASE }}
+      >
+        {/* ── AWS ── */}
+        <Panel
+          index={1}
+          intent={awsOk ? "good" : error ? "danger" : "neutral"}
+          icon="ph-fill ph-cloud"
+          busy={awsBusy}
+          service="Amazon Web Services"
+          title={loading ? "Checking" : awsOk ? "Connected" : error ? "Offline" : "Not connected"}
+          subtitle={
+            awsOk && status?.aws.profile
+              ? <>Profile <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300">{status.aws.profile}</span></>
+              : awsOk ? "DynamoDB and Secrets Manager reachable"
+              : "Needed to read and write the app's own data"
+          }
+          actions={awsOk && !loading && !error
+            ? <>
+                {/* Reachable while connected, because "add a profile for the
+                    other account" is exactly when somebody wants it, and
+                    before this, the only way to reach it was to disconnect
+                    from the account they were happily using. */}
+                <Quiet onClick={() => { setAwsMethod("new"); setNewStep("form"); setAddingProfile(true); }}
+                  icon="ph-bold ph-plus" label="Add profile" />
+                <Quiet onClick={handleDisconnectAws} disabled={refreshing === "aws"} icon="ph-bold ph-plugs" label="Disconnect" />
+              </>
+            : undefined}
+        >
+          {!loading && !error && awsOk && addingProfile && (
+            <div className={`mb-4 flex items-center justify-between gap-3 rounded-xl px-3.5 py-2.5 ${SURFACE.inset}`}>
+              <span className="text-xs text-slate-600 dark:text-slate-300">
+                Adding a profile. You stay signed in to <strong>{status?.aws.profile || "this account"}</strong>.
+              </span>
+              <button onClick={() => setAddingProfile(false)}
+                className="shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white">
+                Cancel
+              </button>
+            </div>
+          )}
 
-            {!loading && !error && (!awsOk || addingProfile) && (
-              <div className="space-y-3">
-                {profilesError && (
-                  <Hint intent="warn">
-                    Could not read your AWS profiles: {profilesError}. Access keys still work.
+          {!loading && !error && (!awsOk || addingProfile) && (
+            <div className="space-y-3.5">
+              {profilesError && (
+                <Hint intent="warn">
+                  Could not read your AWS profiles: {profilesError}. Access keys still work.
+                </Hint>
+              )}
+              {/* Shown above the tabs rather than inside one, because a
+                  sign-in can be started from more than one of them and an
+                  error rendered in the panel you have since left is an error
+                  nobody sees. */}
+              {newError && awsMethod !== "new" && (
+                <Hint intent="danger">{newError}</Hint>
+              )}
+              {!addingProfile && <Segmented
+                value={awsMethod}
+                onChange={(v) => { touchedMethod.current = true; setAwsMethod(v); setAwsSsoStarted(false); }}
+                options={([
+                  ["sso", "SSO"] as [typeof awsMethod, string],
+                  ["keys", "Access keys"] as [typeof awsMethod, string],
+                  ["profile", "Profile"] as [typeof awsMethod, string],
+                  ["new", "New profile"] as [typeof awsMethod, string],
+                ]).filter(([id]) =>
+                  // Access keys always work. SSO and Profile need a profile to
+                  // exist already, and "New profile" is the way out of having
+                  // none, so it is the one option that must never be hidden.
+                  // SSO stays whether or not one exists yet: hiding it meant a
+                  // machine with no SSO profile showed nothing mentioning SSO
+                  // at all, and the way to make one was a tab called "New
+                  // profile", so the people who most needed it were the only
+                  // ones who could not find it. Empty, the tab explains itself.
+                  id === "keys" || id === "new" || id === "sso" ||
+                  (id === "profile" && awsProfiles.length > 0)
+                )}
+              />}
+
+              {awsMethod === "sso" && awsProfiles.every(p => p.type !== "sso") && (
+                <div className="space-y-2.5">
+                  <Hint intent="info">
+                    No SSO profiles on this machine yet. Creating one asks AWS which
+                    accounts and roles you have, so you pick from a list instead of
+                    hunting for an account number.
                   </Hint>
-                )}
-                {/* Shown above the tabs rather than inside one, because a
-                    sign-in can be started from more than one of them and an
-                    error rendered in the panel you have since left is an error
-                    nobody sees. */}
-                {newError && awsMethod !== "new" && (
-                  <Hint intent="danger">{newError}</Hint>
-                )}
-                {!addingProfile && <Segmented
-                  value={awsMethod}
-                  onChange={(v) => { touchedMethod.current = true; setAwsMethod(v); setAwsSsoStarted(false); }}
-                  options={([
-                    ["sso", "SSO"] as [typeof awsMethod, string],
-                    ["keys", "Access keys"] as [typeof awsMethod, string],
-                    ["profile", "Profile"] as [typeof awsMethod, string],
-                    ["new", "New profile"] as [typeof awsMethod, string],
-                  ]).filter(([id]) =>
-                    // Access keys always work. SSO and Profile need a profile to
-                    // exist already, and "New profile" is the way out of having
-                    // none, so it is the one option that must never be hidden.
-                    // SSO stays whether or not one exists yet: hiding it meant a
-                    // machine with no SSO profile showed nothing mentioning SSO
-                    // at all, and the way to make one was a tab called "New
-                    // profile", so the people who most needed it were the only
-                    // ones who could not find it. Empty, the tab explains itself.
-                    id === "keys" || id === "new" || id === "sso" ||
-                    (id === "profile" && awsProfiles.length > 0)
-                  )}
-                />}
-
-                {awsMethod === "sso" && awsProfiles.every(p => p.type !== "sso") && (
-                  <div className="space-y-2.5">
-                    <Hint intent="info">
-                      No SSO profiles on this machine yet. Creating one asks AWS which
-                      accounts and roles you have, so you pick from a list instead of
-                      hunting for an account number.
-                    </Hint>
-                    <div className="flex justify-end">
-                      <Button variant="primary"
-                        onClick={() => { setAwsMethod("new"); setNewStep("form"); }}
-                        className="w-full sm:w-auto">
-                        <i className="ph-bold ph-plus mr-2"></i>Create an SSO profile
-                      </Button>
-                    </div>
+                  <div className="flex justify-end">
+                    <Button variant="primary"
+                      onClick={() => { setAwsMethod("new"); setNewStep("form"); }}
+                      className="w-full sm:w-auto">
+                      <i className="ph-bold ph-plus mr-2"></i>Create an SSO profile
+                    </Button>
                   </div>
-                )}
+                </div>
+              )}
 
-                {awsMethod === "sso" && awsProfiles.some(p => p.type === "sso") && (
-                  <div className="space-y-2.5">
-                    {awsProfiles.filter(p => p.type === "sso").length > 1 && !awsSsoStarted && (
-                      <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)} className={SURFACE.input}>
-                        {awsProfiles.filter(p => p.type === "sso").map(p => (
-                          <option key={p.name} value={p.name}>
-                            {p.name}{p.accountId ? ` (${p.accountId})` : ""}{p.roleName ? `, ${p.roleName}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    {awsSsoStarted && (
-                      <Hint intent="info">
-                        A browser tab opened for AWS SSO. Finish signing in there, then come back and hit Verify.
-                      </Hint>
-                    )}
-                    <div className="flex justify-end gap-2">
-                      {!awsSsoStarted ? (
-                        <Button variant="primary" onClick={() => handleAwsSsoLogin()} className="w-full sm:w-auto">
-                          <i className="ph-bold ph-browser mr-2"></i>
-                          Sign in as {selectedProfile || "default"}
-                        </Button>
-                      ) : (
-                        <>
-                          <Button variant="ghost" onClick={() => handleAwsSsoLogin()}>Reopen browser</Button>
-                          <Button variant="primary" onClick={handleReconnectAws} disabled={refreshing === "aws"}>
-                            <i className="ph-bold ph-arrow-clockwise mr-2"></i>Verify
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {awsMethod === "profile" && (
-                  <div className="space-y-2.5">
+              {awsMethod === "sso" && awsProfiles.some(p => p.type === "sso") && (
+                <div className="space-y-2.5">
+                  {awsProfiles.filter(p => p.type === "sso").length > 1 && !awsSsoStarted && (
                     <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)} className={SURFACE.input}>
-                      {awsProfiles.map(p => (
+                      {awsProfiles.filter(p => p.type === "sso").map(p => (
                         <option key={p.name} value={p.name}>
-                          {p.name} ({p.type}){p.accountId ? `, ${p.accountId}` : ""}{p.roleName ? ` / ${p.roleName}` : ""}
+                          {p.name}{p.accountId ? ` (${p.accountId})` : ""}{p.roleName ? `, ${p.roleName}` : ""}
                         </option>
                       ))}
                     </select>
-                    <div className="flex justify-end">
-                      <Button variant="primary" onClick={handleUseProfile} disabled={refreshing === "aws" || !selectedProfile}>
-                        <i className="ph-bold ph-user-switch mr-2"></i>Use {selectedProfile || "profile"}
+                  )}
+                  {awsSsoStarted && (
+                    <Hint intent="info">
+                      A browser tab opened for AWS SSO. Finish signing in there, then come back and hit Verify.
+                    </Hint>
+                  )}
+                  <div className="flex justify-end gap-2">
+                    {!awsSsoStarted ? (
+                      <Button variant="primary" onClick={() => handleAwsSsoLogin()} className="w-full sm:w-auto">
+                        <i className="ph-bold ph-browser mr-2"></i>
+                        Sign in as {selectedProfile || "default"}
                       </Button>
-                    </div>
-                  </div>
-                )}
-
-                {awsMethod === "new" && (
-                  <div className="space-y-3">
-                    {newError && (
-                      <div className="rounded-lg bg-rose-50 dark:bg-rose-950/40 px-3 py-2 text-sm text-rose-700 dark:text-rose-300">
-                        {newError}
-                      </div>
-                    )}
-
-                    {newStep === "form" && (
-                      <>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Creates an AWS profile on this computer, so you do not have to
-                          edit files or use a terminal. You need the sign-in link. It
-                          usually ends in <code>.awsapps.com/start</code>.
-                        </p>
-                        <div>
-                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
-                            AWS sign-in link
-                          </label>
-                          <input value={newStartUrl} onChange={e => setNewStartUrl(e.target.value)}
-                            placeholder="https://your-company.awsapps.com/start"
-                            className={SURFACE.input} />
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
-                            Region of that sign-in link
-                          </label>
-                          <input value={newSsoRegion} onChange={e => setNewSsoRegion(e.target.value)}
-                            placeholder="us-east-2" className={SURFACE.input} />
-                          <p className="mt-1 text-[11px] text-slate-400">
-                            Where your company's AWS login lives, one region for the whole
-                            company.
-                          </p>
-                        </div>
-
-                        {/* Always asked, and pre-filled when the build knows one.
-                            It used to be hidden whenever `VITE_AWS_REGION` was
-                            baked in, on the reasoning that the app already knew
-                            the answer. That held while there was one install.
-                            With one per region it made the app unable to create
-                            a profile for any region but the one it was built
-                            for, and it did not say so: the field was simply not
-                            there, and every profile came out pointing at the
-                            same region. */}
-                        <div>
-                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
-                            Region this app runs in
-                          </label>
-                          <input value={newRegion} onChange={e => setNewRegion(e.target.value)}
-                            placeholder="us-east-2" className={SURFACE.input} />
-                          <p className="mt-1 text-[11px] text-slate-400">
-                            Where this app's tables and secrets are, which is the install this
-                            profile opens. Often a different region from the sign-in above.
-                            {import.meta.env.VITE_AWS_REGION && (
-                              <> This build was made for{" "}
-                                <code>{import.meta.env.VITE_AWS_REGION as string}</code>, so that is
-                                filled in. Change it to reach another region's install.</>
-                            )}
-                          </p>
-                        </div>
-                        <div className="flex justify-end">
-                          <Button variant="primary" onClick={handleNewSsoStart}
-                            disabled={newBusy || !newStartUrl.trim() || !newSsoRegion.trim() || !newRegion.trim()}>
-                            <i className="ph-bold ph-arrow-square-out mr-2"></i>
-                            Continue in browser
-                          </Button>
-                        </div>
-                      </>
-                    )}
-
-                    {newStep === "waiting" && (
-                      <div className="text-center py-4 space-y-2">
-                        <Spinner />
-                        <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
-                          Approve the sign-in in your browser
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          A tab should have opened. Confirm the code shown there, then come back -
-                          this page carries on by itself.
-                        </p>
-                        {newAuth && (
-                          <p className="text-xs text-slate-400">
-                            Code: <code className="font-mono">{newAuth.userCode}</code>
-                            {" · "}
-                            <a href={newAuth.verificationUriComplete} target="_blank" rel="noreferrer"
-                              className="underline">open it again</a>
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {newStep === "choose" && (
-                      <>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Signed in. These are the accounts you can reach, pick the one this
-                          app is deployed in.
-                        </p>
-                        <div>
-                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
-                            Account
-                          </label>
-                          <select value={newAccountId} className={SURFACE.input}
-                            onChange={e => {
-                              setNewAccountId(e.target.value);
-                              // The role list belongs to the account, so a stale
-                              // one would offer a role that account does not have.
-                              const acct = newAccounts.find(a => a.accountId === e.target.value);
-                              setNewRoleName(acct?.roles.length === 1 ? acct.roles[0] : "");
-                            }}>
-                            <option value="">Choose an account…</option>
-                            {newAccounts.map(a => (
-                              <option key={a.accountId} value={a.accountId}>
-                                {a.accountName}: {a.accountId}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
-                            Role
-                          </label>
-                          <select value={newRoleName} onChange={e => setNewRoleName(e.target.value)}
-                            className={SURFACE.input} disabled={!newAccountId}>
-                            <option value="">Choose a role…</option>
-                            {(newAccounts.find(a => a.accountId === newAccountId)?.roles ?? []).map(r => (
-                              <option key={r} value={r}>{r}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold mb-1 text-slate-600 dark:text-slate-300">
-                            Name this profile
-                          </label>
-                          <input value={newProfileName} onChange={e => setNewProfileName(e.target.value)}
-                            placeholder="work" className={SURFACE.input} />
-                          <p className="mt-1 text-[11px] text-slate-400">
-                            Letters, numbers, dots, dashes and underscores. What you will pick
-                            from the Profile tab later.
-                          </p>
-                        </div>
-                        <div className="flex justify-end">
-                          <Button variant="primary" onClick={handleNewSsoCreate}
-                            disabled={newBusy || !newAccountId || !newRoleName || !newProfileName.trim()}>
-                            <i className="ph-bold ph-floppy-disk mr-2"></i>
-                            {newBusy ? "Saving…" : "Save profile"}
-                          </Button>
-                        </div>
-                      </>
-                    )}
-
-                    {newStep === "done" && (
-                      <div className="space-y-2.5">
-                        <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-300">
-                          Saved <strong>{newProfileName}</strong> to your AWS config.
-                        </div>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Now sign in with it. This is the same step you will take each time
-                          the session expires.
-                        </p>
-                        <div className="flex justify-end">
-                          <Button variant="primary" disabled={refreshing === "aws"}
-                            onClick={() => {
-                              // Named explicitly. This is the one place where
-                              // the profile to use is known for certain and the
-                              // selection has not caught up.
-                              const created = newProfileName.trim();
-                              setAwsMethod("sso");
-                              setAddingProfile(false);
-                              void handleAwsSsoLogin(created);
-                            }}>
-                            <i className="ph-bold ph-sign-in mr-2"></i>Sign in with {newProfileName}
-                          </Button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {awsMethod === "keys" && (
-                  <div className="space-y-2.5">
-                    <Segmented
-                      value={akPasteMode ? "paste" : "manual"}
-                      onChange={(v) => setAkPasteMode(v === "paste")}
-                      options={[["paste", "Paste block"], ["manual", "One field at a time"]]}
-                    />
-                    {akPasteMode ? (
-                      <>
-                        <textarea
-                          rows={4}
-                          spellCheck={false}
-                          placeholder={'export AWS_ACCESS_KEY_ID="AKIA…"\nexport AWS_SECRET_ACCESS_KEY="wJal…"\nexport AWS_SESSION_TOKEN="IQoJ…"'}
-                          value={akPasteBlock}
-                          onChange={e => setAkPasteBlock(e.target.value)}
-                          className={`${SURFACE.input} font-mono text-[12.5px] leading-relaxed resize-none`}
-                        />
-                        {akPasteBlock && !pasteBlockValid && (
-                          <Hint intent="danger">
-                            No <span className="font-mono">AWS_ACCESS_KEY_ID</span> and{" "}
-                            <span className="font-mono">AWS_SECRET_ACCESS_KEY</span> found in that. Paste the whole
-                            export block.
-                          </Hint>
-                        )}
-                        <div className="flex justify-end">
-                          <Button variant="primary" onClick={handlePasteBlockConnect} disabled={refreshing === "aws" || !pasteBlockValid}>
-                            <i className="ph-bold ph-key mr-2"></i>Connect
-                          </Button>
-                        </div>
-                      </>
                     ) : (
                       <>
-                        <Field label="Access key ID">
-                          <input type="text" value={akId} onChange={e => setAkId(e.target.value)}
-                            placeholder="AKIA…" className={`${SURFACE.input} font-mono text-[12.5px]`} />
-                        </Field>
-                        <Field label="Secret access key">
-                          <input type="password" value={akSecret} onChange={e => setAkSecret(e.target.value)}
-                            placeholder="••••••••" className={`${SURFACE.input} font-mono text-[12.5px]`} />
-                        </Field>
-                        <Field label="Session token" optional>
-                          <input type="password" value={akSession} onChange={e => setAkSession(e.target.value)}
-                            placeholder="••••••••" className={`${SURFACE.input} font-mono text-[12.5px]`} />
-                        </Field>
-                        {/* Optional, but worth naming: a key pair carries no
-                            region, so this is the only thing here that can say
-                            which one. Left blank the app falls back to the
-                            region it was started with, which is right on a
-                            machine that sets one and nothing at all on a
-                            machine that does not. */}
-                        <Field label="Region" optional>
-                          <input type="text" value={akRegion} onChange={e => setAkRegion(e.target.value)}
-                            placeholder="us-east-2" className={`${SURFACE.input} font-mono text-[12.5px]`} />
-                          <p className="mt-1 text-[11.5px] text-slate-400 dark:text-slate-500">
-                            Which region's install to open. Access keys do not carry one, and with
-                            one install per region this is what picks between them.
-                          </p>
-                        </Field>
-                        <div className="flex justify-end">
-                          <Button variant="primary" onClick={handleAccessKeys} disabled={refreshing === "aws" || !akId || !akSecret}>
-                            <i className="ph-bold ph-key mr-2"></i>Connect
-                          </Button>
-                        </div>
+                        <Button variant="ghost" onClick={() => handleAwsSsoLogin()}>Reopen browser</Button>
+                        <Button variant="primary" onClick={handleReconnectAws} disabled={refreshing === "aws"}>
+                          <i className="ph-bold ph-arrow-clockwise mr-2"></i>Verify
+                        </Button>
                       </>
                     )}
                   </div>
-                )}
-              </div>
-            )}
-          </KeyCard>
+                </div>
+              )}
 
-          {/* ── GitHub ── */}
-          <KeyCard
-            index={3}
-            intent={ghAuthed ? "good" : "neutral"}
-            icon="ph-fill ph-github-logo"
-            avatar={ghAuthed ? userInfo?.avatarUrl : undefined}
-            busy={loading || refreshing === "github" || (awsOk && !ghConfigured && settling)}
-            locked={!awsOk && !ghAuthed}
-            title={ghAuthed && userInfo ? userInfo.login : "GitHub"}
-            state={ghAuthed ? "connected" : !awsOk ? "locked" : "waiting"}
-            subtitle={
-              ghAuthed
-                ? status?.github.org
-                  ? <>Member of <span className="font-bold">{status.github.org}</span></>
-                  : "Authenticated"
-                /* AWS first, because the OAuth secrets live in Secrets
-                   Manager. Until AWS connects, ghConfigured is false for a
-                   reason that has nothing to do with the build, and saying
-                   "OAuth is not configured on this build" there sends someone
-                   looking at their packaging when the answer is one card
-                   above. */
-                : !awsOk ? "Unlocks once AWS is connected"
-                : !ghConfigured
-                  ? settling
-                    ? "Loading credentials…"
-                    /* Name the step that has not been done, rather than the
-                       build. An install whose secret was never created is the
-                       ordinary state before setup, not a packaging fault, and
-                       saying so sends people to the right place. */
-                    : status?.github.reason === "secret_missing"
-                      ? "No GitHub credentials stored yet. Run scripts/migrate-to-account.sh"
-                      : status?.github.reason === "secret_unreadable"
-                        ? "The credentials secret exists but could not be read. Check this account's permissions"
-                        : status?.github.reason === "secret_incomplete"
-                          ? "The credentials secret is missing its OAuth keys"
-                          : "OAuth is not configured on this build"
-                : "Your own account, the app acts as you, never as someone else"
-            }
-            action={!loading && !error && ghAuthed
-              ? <Quiet onClick={handleSignOutGithub} disabled={signingOut}
-                  icon="ph-bold ph-sign-out" label={signingOut ? "Signing out…" : "Sign out"} />
-              : undefined}
-          >
-            {!loading && !error && !ghAuthed && ghConfigured && awsOk && (
-              <div className="space-y-2.5">
-                {justSignedOut && <Hint intent="neutral">Signed out. Sign in below to use a different account.</Hint>}
+              {awsMethod === "profile" && (
+                <div className="space-y-2.5">
+                  <select value={selectedProfile} onChange={e => setSelectedProfile(e.target.value)} className={SURFACE.input}>
+                    {awsProfiles.map(p => (
+                      <option key={p.name} value={p.name}>
+                        {p.name} ({p.type}){p.accountId ? `, ${p.accountId}` : ""}{p.roleName ? ` / ${p.roleName}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="flex justify-end">
+                    <Button variant="primary" onClick={handleUseProfile} disabled={refreshing === "aws" || !selectedProfile}>
+                      <i className="ph-bold ph-user-switch mr-2"></i>Use {selectedProfile || "profile"}
+                    </Button>
+                  </div>
+                </div>
+              )}
 
-                {remembered ? (
-                  /* GitHub still holds a session for this account, so signing in
-                     completes the moment it is asked, no page, no choice. Say
-                     whose account it will be before that happens, rather than
-                     announcing it afterwards. */
-                  <>
-                    <a
-                      /* Name the account. Without it GitHub signs in as
-                         whichever session the browser holds, which is how
-                         "Continue with alice" could produce bob. */
-                      href={`${loginUrl}?login=${encodeURIComponent(remembered.login)}`}
-                      className="flex items-center gap-3 w-full p-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 no-underline shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
-                    >
-                      {remembered.avatarUrl
-                        ? <img src={remembered.avatarUrl} alt="" className="w-9 h-9 rounded-lg object-cover shrink-0" />
-                        : <span className="w-9 h-9 rounded-lg bg-white/15 dark:bg-slate-900/10 flex items-center justify-center shrink-0">
-                            <i className="ph-fill ph-github-logo text-lg"></i>
-                          </span>}
-                      <span className="flex-1 min-w-0 text-left">
-                        <span className="block text-[11px] uppercase tracking-[0.14em] font-bold opacity-60">Continue with</span>
-                        <span className="block text-sm font-bold truncate">{remembered.login}</span>
-                      </span>
-                      <i className="ph-bold ph-arrow-right text-sm mr-1 opacity-70"></i>
-                    </a>
+              {awsMethod === "new" && (
+                <div className="space-y-3">
+                  {newError && (
+                    <Hint intent="danger">{newError}</Hint>
+                  )}
 
-                    {canSwitchAccount && (
-                      <button
-                        onClick={handleUseDifferentAccount}
-                        disabled={switchingAccount}
-                        className="w-full py-2.5 rounded-xl text-[13px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.06] transition-colors disabled:opacity-50"
-                      >
-                        {switchingAccount ? "Signing out of GitHub…" : "Use a different account"}
-                      </button>
-                    )}
-                  </>
-                ) : (
+                  {newStep === "form" && (
+                    <>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Creates an AWS profile on this computer, so you do not have to
+                        edit files or use a terminal. You need the sign-in link. It
+                        usually ends in <code>.awsapps.com/start</code>.
+                      </p>
+                      <Field label="AWS sign-in link">
+                        <input value={newStartUrl} onChange={e => setNewStartUrl(e.target.value)}
+                          placeholder="https://your-company.awsapps.com/start"
+                          className={SURFACE.input} />
+                      </Field>
+                      <Field label="Region of that sign-in link">
+                        <input value={newSsoRegion} onChange={e => setNewSsoRegion(e.target.value)}
+                          placeholder="us-east-2" className={SURFACE.input} />
+                        <Aside>
+                          Where your company's AWS login lives, one region for the whole
+                          company.
+                        </Aside>
+                      </Field>
+
+                      {/* Always asked, and pre-filled when the build knows one.
+                          It used to be hidden whenever `VITE_AWS_REGION` was
+                          baked in, on the reasoning that the app already knew
+                          the answer. That held while there was one install.
+                          With one per region it made the app unable to create
+                          a profile for any region but the one it was built
+                          for, and it did not say so: the field was simply not
+                          there, and every profile came out pointing at the
+                          same region. */}
+                      <Field label="Region this app runs in">
+                        <input value={newRegion} onChange={e => setNewRegion(e.target.value)}
+                          placeholder="us-east-2" className={SURFACE.input} />
+                        <Aside>
+                          Where this app's tables and secrets are, which is the install this
+                          profile opens. Often a different region from the sign-in above.
+                          {import.meta.env.VITE_AWS_REGION && (
+                            <> This build was made for{" "}
+                              <code>{import.meta.env.VITE_AWS_REGION as string}</code>, so that is
+                              filled in. Change it to reach another region's install.</>
+                          )}
+                        </Aside>
+                      </Field>
+                      <div className="flex justify-end">
+                        <Button variant="primary" onClick={handleNewSsoStart}
+                          disabled={newBusy || !newStartUrl.trim() || !newSsoRegion.trim() || !newRegion.trim()}>
+                          <i className="ph-bold ph-arrow-square-out mr-2"></i>
+                          Continue in browser
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
+                  {newStep === "waiting" && (
+                    <div className="text-center py-2 space-y-2">
+                      <Spinner />
+                      <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+                        Approve the sign-in in your browser
+                      </p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        A tab should have opened. Confirm the code shown there, then come back -
+                        this page carries on by itself.
+                      </p>
+                      {newAuth && (
+                        <p className="text-xs text-slate-400">
+                          Code: <code className="font-mono">{newAuth.userCode}</code>
+                          {" · "}
+                          <a href={newAuth.verificationUriComplete} target="_blank" rel="noreferrer"
+                            className="underline">open it again</a>
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {newStep === "choose" && (
+                    <>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Signed in. These are the accounts you can reach, pick the one this
+                        app is deployed in.
+                      </p>
+                      <Field label="Account">
+                        <select value={newAccountId} className={SURFACE.input}
+                          onChange={e => {
+                            setNewAccountId(e.target.value);
+                            // The role list belongs to the account, so a stale
+                            // one would offer a role that account does not have.
+                            const acct = newAccounts.find(a => a.accountId === e.target.value);
+                            setNewRoleName(acct?.roles.length === 1 ? acct.roles[0] : "");
+                          }}>
+                          <option value="">Choose an account…</option>
+                          {newAccounts.map(a => (
+                            <option key={a.accountId} value={a.accountId}>
+                              {a.accountName}: {a.accountId}
+                            </option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Role">
+                        <select value={newRoleName} onChange={e => setNewRoleName(e.target.value)}
+                          className={SURFACE.input} disabled={!newAccountId}>
+                          <option value="">Choose a role…</option>
+                          {(newAccounts.find(a => a.accountId === newAccountId)?.roles ?? []).map(r => (
+                            <option key={r} value={r}>{r}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="Name this profile">
+                        <input value={newProfileName} onChange={e => setNewProfileName(e.target.value)}
+                          placeholder="work" className={SURFACE.input} />
+                        <Aside>
+                          Letters, numbers, dots, dashes and underscores. What you will pick
+                          from the Profile tab later.
+                        </Aside>
+                      </Field>
+                      <div className="flex justify-end">
+                        <Button variant="primary" onClick={handleNewSsoCreate}
+                          disabled={newBusy || !newAccountId || !newRoleName || !newProfileName.trim()}>
+                          <i className="ph-bold ph-floppy-disk mr-2"></i>
+                          {newBusy ? "Saving…" : "Save profile"}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+
+                  {newStep === "done" && (
+                    <div className="space-y-2.5">
+                      <Hint intent="good">
+                        Saved <strong>{newProfileName}</strong> to your AWS config.
+                      </Hint>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Now sign in with it. This is the same step you will take each time
+                        the session expires.
+                      </p>
+                      <div className="flex justify-end">
+                        <Button variant="primary" disabled={refreshing === "aws"}
+                          onClick={() => {
+                            // Named explicitly. This is the one place where
+                            // the profile to use is known for certain and the
+                            // selection has not caught up.
+                            const created = newProfileName.trim();
+                            setAwsMethod("sso");
+                            setAddingProfile(false);
+                            void handleAwsSsoLogin(created);
+                          }}>
+                          <i className="ph-bold ph-sign-in mr-2"></i>Sign in with {newProfileName}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {awsMethod === "keys" && (
+                <div className="space-y-2.5">
+                  <Segmented
+                    value={akPasteMode ? "paste" : "manual"}
+                    onChange={(v) => setAkPasteMode(v === "paste")}
+                    options={[["paste", "Paste block"], ["manual", "One field at a time"]]}
+                  />
+                  {akPasteMode ? (
+                    <>
+                      <textarea
+                        rows={4}
+                        spellCheck={false}
+                        placeholder={'export AWS_ACCESS_KEY_ID="AKIA…"\nexport AWS_SECRET_ACCESS_KEY="wJal…"\nexport AWS_SESSION_TOKEN="IQoJ…"'}
+                        value={akPasteBlock}
+                        onChange={e => setAkPasteBlock(e.target.value)}
+                        className={`${SURFACE.input} font-mono text-[12.5px] leading-relaxed resize-none`}
+                      />
+                      {akPasteBlock && !pasteBlockValid && (
+                        <Hint intent="danger">
+                          No <span className="font-mono">AWS_ACCESS_KEY_ID</span> and{" "}
+                          <span className="font-mono">AWS_SECRET_ACCESS_KEY</span> found in that. Paste the whole
+                          export block.
+                        </Hint>
+                      )}
+                      <div className="flex justify-end">
+                        <Button variant="primary" onClick={handlePasteBlockConnect} disabled={refreshing === "aws" || !pasteBlockValid}>
+                          <i className="ph-bold ph-key mr-2"></i>Connect
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Field label="Access key ID">
+                        <input type="text" value={akId} onChange={e => setAkId(e.target.value)}
+                          placeholder="AKIA…" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                      </Field>
+                      <Field label="Secret access key">
+                        <input type="password" value={akSecret} onChange={e => setAkSecret(e.target.value)}
+                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                      </Field>
+                      <Field label="Session token" optional>
+                        <input type="password" value={akSession} onChange={e => setAkSession(e.target.value)}
+                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                      </Field>
+                      {/* Optional, but worth naming: a key pair carries no
+                          region, so this is the only thing here that can say
+                          which one. Left blank the app falls back to the
+                          region it was started with, which is right on a
+                          machine that sets one and nothing at all on a
+                          machine that does not. */}
+                      <Field label="Region" optional>
+                        <input type="text" value={akRegion} onChange={e => setAkRegion(e.target.value)}
+                          placeholder="us-east-2" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                        <Aside>
+                          Which region's install to open. Access keys do not carry one, and with
+                          one install per region this is what picks between them.
+                        </Aside>
+                      </Field>
+                      <div className="flex justify-end">
+                        <Button variant="primary" onClick={handleAccessKeys} disabled={refreshing === "aws" || !akId || !akSecret}>
+                          <i className="ph-bold ph-key mr-2"></i>Connect
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+
+        {/* ── GitHub ── */}
+        <Panel
+          index={2}
+          intent={ghAuthed ? "good" : "neutral"}
+          icon="ph-fill ph-github-logo"
+          avatar={ghAuthed ? userInfo?.avatarUrl : undefined}
+          busy={loading || refreshing === "github" || (awsOk && !ghConfigured && settling)}
+          sealed={!awsOk && !ghAuthed}
+          service="GitHub"
+          title={ghAuthed && userInfo ? userInfo.login : !awsOk ? "Locked" : "Not signed in"}
+          subtitle={
+            ghAuthed
+              ? status?.github.org
+                ? <>Member of <span className="font-bold">{status.github.org}</span></>
+                : "Authenticated"
+              /* AWS first, because the OAuth secrets live in Secrets
+                 Manager. Until AWS connects, ghConfigured is false for a
+                 reason that has nothing to do with the build, and saying
+                 "OAuth is not configured on this build" there sends someone
+                 looking at their packaging when the answer is on the panel
+                 beside it. */
+              : !awsOk ? "Unlocks once AWS is connected"
+              : !ghConfigured
+                ? settling
+                  ? "Loading credentials…"
+                  /* Name the step that has not been done, rather than the
+                     build. An install whose secret was never created is the
+                     ordinary state before setup, not a packaging fault, and
+                     saying so sends people to the right place. */
+                  : status?.github.reason === "secret_missing"
+                    ? "No GitHub credentials stored yet. Run scripts/migrate-to-account.sh"
+                    : status?.github.reason === "secret_unreadable"
+                      ? "The credentials secret exists but could not be read. Check this account's permissions"
+                      : status?.github.reason === "secret_incomplete"
+                        ? "The credentials secret is missing its OAuth keys"
+                        : "OAuth is not configured on this build"
+              : "Your own account, the app acts as you, never as someone else"
+          }
+          actions={!loading && !error && ghAuthed
+            ? <Quiet onClick={handleSignOutGithub} disabled={signingOut}
+                icon="ph-bold ph-sign-out" label={signingOut ? "Signing out…" : "Sign out"} />
+            : undefined}
+        >
+          {!loading && !error && !ghAuthed && ghConfigured && awsOk && (
+            <div className="space-y-3">
+              {justSignedOut && <Hint intent="neutral">Signed out. Sign in below to use a different account.</Hint>}
+
+              {remembered ? (
+                /* GitHub still holds a session for this account, so signing in
+                   completes the moment it is asked, no page, no choice. Say
+                   whose account it will be before that happens, rather than
+                   announcing it afterwards. */
+                <>
                   <a
-                    href={loginUrl}
-                    className="flex items-center justify-center gap-2.5 w-full py-3 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-bold no-underline shadow-sm hover:shadow-md hover:scale-[1.01] active:scale-[0.99] transition-all"
+                    /* Name the account. Without it GitHub signs in as
+                       whichever session the browser holds, which is how
+                       "Continue with alice" could produce bob. */
+                    href={`${loginUrl}?login=${encodeURIComponent(remembered.login)}`}
+                    className="flex items-center gap-4 w-full p-3 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 no-underline shadow-sm hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all"
                   >
-                    <i className="ph-fill ph-github-logo text-base"></i>
-                    Sign in with GitHub
+                    {remembered.avatarUrl
+                      ? <img src={remembered.avatarUrl} alt="" className="w-11 h-11 rounded-xl object-cover shrink-0" />
+                      : <span className="w-11 h-11 rounded-xl bg-white/15 dark:bg-slate-900/10 flex items-center justify-center shrink-0">
+                          <i className="ph-fill ph-github-logo text-xl"></i>
+                        </span>}
+                    <span className="flex-1 min-w-0 text-left">
+                      <span className="block text-[11px] uppercase tracking-[0.14em] font-bold opacity-60">Continue with</span>
+                      <span className="block text-[15px] font-black tracking-tight truncate">{remembered.login}</span>
+                    </span>
+                    <i className="ph-bold ph-arrow-right text-base mr-1 opacity-70"></i>
                   </a>
-                )}
-              </div>
-            )}
-          </KeyCard>
 
-          {/* ── Enter ── */}
-          <div style={enter(4)} className="pt-2">
+                  {canSwitchAccount && (
+                    <button
+                      onClick={handleUseDifferentAccount}
+                      disabled={switchingAccount}
+                      className="w-full py-2.5 rounded-xl text-[13px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-900/[0.04] dark:hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                    >
+                      {switchingAccount ? "Signing out of GitHub…" : "Use a different account"}
+                    </button>
+                  )}
+                </>
+              ) : (
+                <a
+                  href={loginUrl}
+                  className="flex items-center gap-4 w-full px-5 py-4 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 no-underline shadow-sm hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 transition-all"
+                >
+                  <i className="ph-fill ph-github-logo text-[26px]"></i>
+                  <span className="flex-1 text-[15px] font-black tracking-tight">Sign in with GitHub</span>
+                  <i className="ph-bold ph-arrow-right text-base opacity-70"></i>
+                </a>
+              )}
+            </div>
+          )}
+        </Panel>
+      </main>
+
+      {/* ── The way out ── */}
+      {/*
+          Full width, under both rooms, and the app's own green the moment it
+          works. This is a screen whose entire purpose is to be left, so leaving
+          is the largest thing on it, and the sentence beside the count says why
+          you cannot go yet rather than making anyone infer it from two panels.
+      */}
+      {/* The shadow is thrown upwards, not down. SURFACE.raised is the token
+          for a lifted surface and casts downwards, which on a bar pinned to the
+          bottom edge lands off screen and lifts nothing. */}
+      <footer
+        className={`sticky bottom-0 z-30 shrink-0 border-t transition-colors duration-500
+          shadow-[0_-10px_28px_-14px_rgba(15,23,42,0.3)] dark:shadow-[0_-10px_28px_-14px_rgba(0,0,0,0.75)] ${
+          canEnter
+            ? `${INTENT.good.solid} border-transparent`
+            : "bg-white dark:bg-[#11141c] border-slate-200 dark:border-white/[0.08]"}`}
+      >
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-5 py-3.5">
+          <span className="flex items-baseline gap-2.5 min-w-0">
+            <span className={`text-[15px] font-black tabular-nums tracking-tight shrink-0 ${
+              canEnter ? "text-white" : "text-slate-500 dark:text-slate-400"}`}>
+              {connected}/2
+            </span>
+            <span className={`text-[13px] leading-snug ${
+              canEnter ? "text-white/75" : "text-slate-500 dark:text-slate-400"}`}>
+              {REMAINING[stage](status?.github.org)}
+            </span>
+          </span>
+
+          <span className="ml-auto flex items-center gap-4 shrink-0">
+            {(awsOk || ghAuthed) && !loading && !error && (
+              <button
+                onClick={handleDisconnectAll}
+                disabled={refreshing !== null}
+                className={`text-[12px] font-semibold transition-colors flex items-center gap-1.5 disabled:opacity-50 ${
+                  canEnter
+                    ? "text-white/60 hover:text-white"
+                    : "text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400"}`}
+              >
+                <i className="ph-bold ph-power text-[13px]"></i>
+                Reset both connections
+              </button>
+            )}
+
             <button
               onClick={() => navigate("/analytics")}
               disabled={!canEnter}
               className={
-                "w-full py-4 rounded-2xl text-[15px] font-black tracking-tight transition-all flex items-center justify-center gap-2.5 " +
+                "px-6 py-3 rounded-xl text-[14.5px] font-black tracking-tight transition-all flex items-center justify-center gap-2.5 " +
                 (canEnter
-                  ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/25 hover:shadow-xl hover:shadow-emerald-600/30 hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-                  : "bg-slate-200/70 dark:bg-white/[0.06] text-slate-400 dark:text-slate-500 cursor-not-allowed")
+                  ? "bg-white text-emerald-800 shadow-lg hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
+                  : "bg-slate-100 dark:bg-white/[0.06] text-slate-400 dark:text-slate-500 cursor-not-allowed")
               }
             >
               {canEnter ? <>Open the dashboard<i className="ph-bold ph-arrow-right"></i></> : "Open the dashboard"}
             </button>
-
-            {(awsOk || ghAuthed) && !loading && !error && (
-              <div className="flex justify-center mt-4">
-                <button
-                  onClick={handleDisconnectAll}
-                  disabled={refreshing !== null}
-                  className="text-[12px] font-semibold text-slate-400 dark:text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 transition-colors flex items-center gap-1.5 disabled:opacity-50"
-                >
-                  <i className="ph-bold ph-power text-[13px]"></i>
-                  Reset both connections
-                </button>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Also here, not only in the account menu.
-            The menu needs somebody signed in, and the moment you most want to
-            know which build you are running is the moment the app is not
-            working. Which is this screen. */}
-        {appVersion && (
-          <p className="mt-6 text-center text-[11px] font-mono text-slate-400 dark:text-slate-600">
-            v{appVersion}
-          </p>
-        )}
-      </div>
+          </span>
+        </div>
+      </footer>
     </div>
   );
 }
 
-/* ── Posture ─────────────────────────────────────────────────────────── */
+/* ── The split ───────────────────────────────────────────────────────── */
 
-function Posture({ stage, connected, org }: { stage: Stage; connected: number; org?: string }) {
-  const copy: Record<Stage, { intent: Intent; eyebrow: string; head: string; body: React.ReactNode }> = {
-    loading:  { intent: "neutral", eyebrow: "Checking",     head: "One moment",        body: "Looking at what is already connected." },
-    offline:  { intent: "danger",  eyebrow: "No backend",   head: "Nothing is running", body: <>The local API is not responding, so neither connection can be checked.</> },
-    aws:      { intent: "info",    eyebrow: "Step 1 of 2",  head: "Connect AWS",       body: "The app keeps its own state in DynamoDB, so it needs credentials before anything else works." },
-    github:   { intent: "info",    eyebrow: "Step 2 of 2",  head: "Sign in to GitHub", body: <>Every change is made with your account, so {org ? <span className="font-bold">{org}</span> : "GitHub"} decides what you may do.</> },
-    ready:    { intent: "good",    eyebrow: "Ready",        head: "Both connected",    body: "You are signed in and the dashboard is available." },
-  };
-  const c = copy[stage];
-  const tone = INTENT[c.intent];
-
-  return (
-    <div>
-      <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full ${tone.soft} ${tone.text} ${TYPE.label} mb-6`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${tone.mark}`} />
-        {c.eyebrow}
-      </div>
-
-      <div className="flex items-end gap-5 mb-6">
-        <span className={`${TYPE.metric} ${tone.figure}`} style={{ transition: `color 400ms ${EASE}` }}>
-          {connected}
-        </span>
-        <span className="text-[30px] font-black text-slate-300 dark:text-slate-600 leading-none pb-2">/ 2</span>
-      </div>
-
-      <h1 className="text-[34px] sm:text-[42px] font-black tracking-[-0.03em] leading-[1.02] mb-4">
-        {c.head}
-      </h1>
-      <p className="text-[15px] leading-relaxed text-slate-500 dark:text-slate-400 max-w-[38ch]">
-        {c.body}
-      </p>
-
-      <div className="hidden lg:flex items-center gap-2 mt-12">
-        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400" />
-        <span className="text-[12px] font-semibold text-slate-400 dark:text-slate-500">
-          Running locally on this machine
-        </span>
-      </div>
-    </div>
-  );
+/**
+ * How the window is divided between the two connections.
+ *
+ * The side that wants something from you is the wide one, so the geometry is
+ * the status and there is nothing to read to know whose turn it is.
+ *
+ * Adding a profile has to override the stage rather than follow it: it happens
+ * while AWS is already connected, so by stage alone the tallest form on the
+ * screen would open in the narrow half.
+ */
+function splitFor(stage: Stage, addingProfile: boolean): string {
+  if (addingProfile) return "lg:grid-cols-[1.6fr_1fr]";
+  if (stage === "github") return "lg:grid-cols-[1fr_1.6fr]";
+  if (stage === "ready") return "lg:grid-cols-[1fr_1fr]";
+  return "lg:grid-cols-[1.6fr_1fr]";
 }
 
-/* ── One connection ──────────────────────────────────────────────────── */
+/**
+ * Why you cannot leave yet, one sentence per stage.
+ *
+ * It lives in the bar you leave by rather than in a headline of its own,
+ * because it is only ever read as the answer to "so what is stopping me".
+ */
+const REMAINING: Record<Stage, (org?: string | null) => React.ReactNode> = {
+  loading: () => "Checking what is already connected.",
+  offline: () => "The local API is not answering, so neither connection can be checked.",
+  aws:     () => "AWS first. The app keeps its own state there, and GitHub's credentials with it.",
+  /* The organization is named before the sign-in rather than after it. It is
+     the one thing that decides what the account you are about to use may do,
+     and the moment to find out you are pointed at the wrong one is now. */
+  github:  (org) => <>One to go. Every change is made with your account, so{" "}
+             {org ? <span className="font-bold">{org}</span> : "GitHub"} decides what you may do.</>,
+  ready:   () => "Both connections are live.",
+};
 
-function KeyCard({ index, intent, icon, avatar, title, subtitle, state, busy, locked, action, children }: {
+/* ── One connection, one room ────────────────────────────────────────── */
+
+/**
+ * A full-height half of the window.
+ *
+ * `sealed` is the whole point of the layout: a panel that cannot be used yet is
+ * left as bare page ground with nothing but a seam, so the dependency between
+ * the two credentials is something you see rather than something you read.
+ *
+ * It withholds the surface rather than dimming what is on it. A sealed panel is
+ * the one panel that has to explain itself, and blanket opacity takes the
+ * contrast off the sentence doing the explaining.
+ */
+function Panel({ index, intent, icon, avatar, busy, sealed, service, title, subtitle, actions, children }: {
   index: number; intent: Intent; icon: string; avatar?: string;
-  title: string; subtitle: React.ReactNode;
-  state: "connected" | "waiting" | "locked" | "offline";
-  busy?: boolean; locked?: boolean; action?: React.ReactNode; children?: React.ReactNode;
+  busy?: boolean; sealed?: boolean;
+  service: string; title: string; subtitle: React.ReactNode;
+  actions?: React.ReactNode; children?: React.ReactNode;
 }) {
   const tone = INTENT[intent];
-  const hasBody = !!children;
 
   return (
-    <div
+    <section
       style={enter(index)}
-      className={`${SURFACE.card} overflow-hidden ${locked ? "opacity-60" : ""} transition-opacity duration-300`}
+      className={`relative min-w-0 flex flex-col border-slate-200 dark:border-white/[0.08]
+        border-b last:border-b-0 lg:border-b-0 lg:border-r lg:last:border-r-0
+        ${sealed ? "" : "bg-white dark:bg-[#151a23]"}`}
     >
-      <div className="flex">
-        {/* Colour rail. State is visible before you read a word. */}
-        <div className={`w-1.5 shrink-0 ${tone.mark} transition-colors duration-300`} />
+      {/* The state edge takes the whole width of the room, so posture is
+          something noticed from across the desk rather than something read. */}
+      <span aria-hidden="true"
+        className={`h-1 shrink-0 ${tone.mark} ${sealed ? "opacity-40" : ""} transition-colors duration-500`} />
 
-        <div className="flex-1 min-w-0 p-5">
-          <div className="flex items-start gap-3.5">
-            {avatar ? (
-              <img src={avatar} alt={title}
-                className="w-11 h-11 rounded-xl object-cover shrink-0 ring-2 ring-emerald-500/30" />
-            ) : (
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${tone.soft} ${tone.text}`}>
-                <i className={(busy ? "ph-bold ph-circle-notch animate-spin" : icon) + " text-[21px]"}></i>
-              </div>
+      <div className="flex-1 px-6 py-7 sm:px-8 sm:py-9">
+        <div className="flex items-start gap-4">
+          {avatar ? (
+            <img src={avatar} alt={title}
+              className="w-12 h-12 rounded-xl object-cover shrink-0 ring-2 ring-emerald-500/30" />
+          ) : (
+            <span className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${
+              sealed ? "bg-slate-200/70 dark:bg-white/[0.06] text-slate-400 dark:text-slate-500"
+                     : `${tone.soft} ${tone.text}`}`}>
+              <i className={(busy ? "ph-bold ph-circle-notch animate-spin" : icon) + " text-[23px]"}></i>
+            </span>
+          )}
+
+          <div className="min-w-0 flex-1">
+            {/* One step darker than the app's usual muted label. This one names
+                which of the two rooms you are looking at, and at 11px uppercase
+                on a white panel slate-400 does not carry that. */}
+            <p className={`${TYPE.label} text-slate-500 dark:text-slate-400`}>{service}</p>
+            {/* The state is the headline, not a chip beside the service name.
+                Which of the two this is can be told from the icon and from
+                which side of the window it is on; whether it is done cannot. */}
+            <h2 className={`text-[26px] sm:text-[30px] font-black tracking-[-0.025em] leading-none mt-2 truncate ${
+              sealed ? "text-slate-500 dark:text-slate-400"
+                     : intent === "neutral" ? "text-slate-900 dark:text-white" : tone.figure}`}>
+              {sealed && <i className="ph-fill ph-lock-simple text-[0.62em] mr-2.5"></i>}
+              {title}
+            </h2>
+            <p className="text-[13px] leading-snug text-slate-500 dark:text-slate-400 mt-2.5 max-w-[46ch]">
+              {subtitle}
+            </p>
+
+            {/* Under the identity rather than opposite it. The half of the
+                window that has settled is the narrow one, which leaves these
+                about 340px, not enough to sit beside a heading without
+                wrapping them a word at a time. */}
+            {actions && (
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 mt-4">{actions}</div>
             )}
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className={`${TYPE.heading} truncate`}>{title}</h2>
-                <StateTag state={state} busy={busy} />
-              </div>
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">{subtitle}</p>
-            </div>
-
-            {action}
           </div>
-
-          {hasBody && <div className="mt-4">{children}</div>}
         </div>
+
+        {children && <div className="mt-8 max-w-[540px]">{children}</div>}
       </div>
-    </div>
-  );
-}
-
-function StateTag({ state, busy }: { state: "connected" | "waiting" | "locked" | "offline"; busy?: boolean }) {
-  if (busy) return <Tag intent="neutral">Checking</Tag>;
-  if (state === "connected") return <Tag intent="good"><i className="ph-fill ph-check-circle text-[13px]" />Connected</Tag>;
-  if (state === "offline") return <Tag intent="danger">Offline</Tag>;
-  if (state === "locked") return <Tag intent="neutral"><i className="ph-bold ph-lock-simple text-[12px]" />Locked</Tag>;
-  return <Tag intent="info">Waiting</Tag>;
-}
-
-function Tag({ intent, children }: { intent: Intent; children: React.ReactNode }) {
-  const tone = INTENT[intent];
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] uppercase tracking-[0.12em] font-black ${tone.soft} ${tone.text}`}>
-      {children}
-    </span>
+    </section>
   );
 }
 
@@ -1240,11 +1281,26 @@ function Field({ label, optional, children }: {
 }) {
   return (
     <label className="block">
-      <span className="block text-[11px] uppercase tracking-[0.14em] font-bold text-slate-400 dark:text-slate-500 mb-1.5">
+      <span className="block text-[11px] uppercase tracking-[0.14em] font-bold text-slate-500 dark:text-slate-400 mb-1.5">
         {label}{optional && <span className="normal-case tracking-normal font-medium text-slate-300 dark:text-slate-600"> · optional</span>}
       </span>
       {children}
     </label>
+  );
+}
+
+/**
+ * The line under a field that says which of two similar answers it wants.
+ *
+ * Sized to be read rather than skimmed past. Two of the three fields in the
+ * profile form ask for an AWS region and mean entirely different ones, and this
+ * line is the only thing on screen that tells them apart.
+ */
+function Aside({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="block mt-1.5 text-[11.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+      {children}
+    </span>
   );
 }
 

@@ -3,7 +3,7 @@ import { GUARDRAIL_PREFIX, guardrailRuleOf } from "../alarms/conditions";
 import { computeWidgetRows } from "../alarms/widgetValues";
 import { listGuardrails } from "./store";
 import {
-  listAlarms, getGroup, saveAlarmRuntime, claimTransition, getSecuritySettings,
+  listAlarms, getGroup, saveAlarmRuntime, claimTransition, claimSeen, getSecuritySettings,
 } from "../services/alarmService";
 import { publish } from "../services/notifyService";
 
@@ -56,6 +56,7 @@ export async function evaluateGuardrailAlarms(): Promise<{ evaluated: number; fi
     publish,
     saveRuntime: saveAlarmRuntime,
     claimTransition,
+    claimSeen,
   });
 
   return { evaluated: summary.evaluated, fired: summary.fired };

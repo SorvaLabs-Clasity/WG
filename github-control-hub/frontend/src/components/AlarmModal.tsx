@@ -71,8 +71,15 @@ export default function AlarmModal({
 
   const tpl = useTemplateInsert(subject, setSubject, body, setBody);
 
+  /**
+   * The selection is `kind:metric`, not the metric alone.
+   *
+   * "Every new matching row" and "matching rows is at or above N" are the same
+   * metric read two different ways, so keying the dropdown on the metric gave
+   * two options with one value and made the first unselectable.
+   */
   const chosen = useMemo(
-    () => spec?.conditions.find(c => c.metric === metric),
+    () => spec?.conditions.find(c => `${c.kind}:${c.metric}` === metric),
     [spec, metric],
   );
 
@@ -81,11 +88,11 @@ export default function AlarmModal({
     setError("");
     if (existing) {
       setName(existing.name);
-      setMetric(existing.condition.metric);
+      setMetric(`${existing.condition.kind}:${existing.condition.metric}`);
       if (existing.condition.kind === "count") {
         setOp(existing.condition.op);
         setThreshold(String(existing.condition.threshold));
-      } else {
+      } else if (existing.condition.kind === "severity") {
         setAtLeast(existing.condition.atLeast);
       }
       setGroupId(existing.groupId);
@@ -98,7 +105,8 @@ export default function AlarmModal({
       setNotifyOnRecovery(existing.notifyOnRecovery);
     } else {
       setName(spec.title || "Alarm");
-      setMetric(spec.conditions[0]?.metric ?? "");
+      const first = spec.conditions[0];
+      setMetric(first ? `${first.kind}:${first.metric}` : "");
       setOp("gte");
       setThreshold("1");
       setAtLeast("high");
@@ -115,6 +123,11 @@ export default function AlarmModal({
     if (!chosen) return null;
     if (chosen.kind === "severity") {
       return { kind: "severity", metric: "vulnRepos.worstSeverity", atLeast };
+    }
+    // No number to carry: the metric rides along only so the message can still
+    // say how many there are in total.
+    if (chosen.kind === "each") {
+      return { kind: "each", metric: chosen.metric as any };
     }
     const n = Number(threshold);
     if (!Number.isFinite(n)) return null;
@@ -184,11 +197,20 @@ export default function AlarmModal({
                   <select value={metric} onChange={e => setMetric(e.target.value)}
                     className={inputClass + " flex-1 min-w-[12rem]"}>
                     {spec.conditions.map(c => (
-                      <option key={c.metric} value={c.metric}>{c.label}</option>
+                      <option key={`${c.kind}:${c.metric}`} value={`${c.kind}:${c.metric}`}>
+                        {c.label}
+                      </option>
                     ))}
                   </select>
 
-                  {chosen?.kind === "severity" ? (
+                  {/* Nothing to configure. The whole point of this option is
+                      that there is no number to choose, so showing a disabled
+                      comparison beside it would only invite the question. */}
+                  {chosen?.kind === "each" ? (
+                    <span className="self-center text-sm text-gray-600 dark:text-slate-400">
+                      — told once about each new one, as it appears
+                    </span>
+                  ) : chosen?.kind === "severity" ? (
                     <>
                       <span className="self-center text-sm text-gray-600 dark:text-slate-400">reaches</span>
                       <select value={atLeast} onChange={e => setAtLeast(e.target.value as Severity)}

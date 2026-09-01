@@ -1,6 +1,6 @@
 import {
   conditionsFor, intervalFor, isDue, isBreaching, metricValue, step,
-  severityRank, type AlarmState,
+  severityRank, newRows, type AlarmState,
 } from "./conditions";
 import { buildMessage, formatTimestamp, formatTimestampAcross } from "./message";
 import type { WidgetLike, WidgetRows } from "./widgetValues";
@@ -28,6 +28,8 @@ export interface AlarmLike {
   state: AlarmState;
   cleanStreak: number;
   lastCheckedAt?: string;
+  /** For an "each" alarm: the rows it has already reported. */
+  seenKeys?: string[];
 }
 
 export interface EvaluatorDeps {
@@ -45,6 +47,15 @@ export interface EvaluatorDeps {
   saveRuntime: (id: string, runtime: {
     state: AlarmState; cleanStreak: number; lastCheckedAt: string;
     lastValue?: number | null; lastFiredAt?: string; lastError?: string;
+    /**
+     * What an "each" alarm should remember, when nothing was sent.
+     *
+     * A pass where a row cleared and recovery messages are switched off sends
+     * nothing, so it never reaches the claim — and without writing the set
+     * here, that row stays remembered for ever and its return is never
+     * reported.
+     */
+    seenKeys?: string[];
   }) => Promise<void>;
   /**
    * Move this alarm from one state to another, and say whether this caller is
@@ -56,6 +67,12 @@ export interface EvaluatorDeps {
    * event. Omitted by tests that are not about that.
    */
   claimTransition?: (id: string, from: AlarmState, to: AlarmState, at: string) => Promise<boolean>;
+  /**
+   * Record the rows an "each" alarm has reported, and say whether this caller
+   * won the write. The equivalent of `claimTransition` for the kind of alarm
+   * whose news is the set of rows rather than the state.
+   */
+  claimSeen?: (id: string, from: string[] | undefined, to: string[], at: string) => Promise<boolean>;
   /**
    * Evaluate now, whatever each alarm's interval says.
    *
@@ -103,6 +120,11 @@ function displayValue(condition: any, value: number | null): string {
   if (condition?.kind !== "severity") return String(value);
   const name = (["", "low", "medium", "high", "critical"] as const)[value];
   return name || String(value);
+}
+
+/** What a row is about, for a message that has to name it. */
+function subjectOf(row: any): string {
+  return String(row?.repo ?? row?.user ?? row?.team ?? row?.resourceId ?? "");
 }
 
 export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSummary> {
@@ -156,7 +178,52 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
     }
 
     const breaching = isBreaching(alarm.condition, value);
-    const { runtime, fire } = step({ state: alarm.state, cleanStreak: alarm.cleanStreak }, breaching);
+    let { runtime, fire } = step({ state: alarm.state, cleanStreak: alarm.cleanStreak }, breaching);
+
+    /**
+     * "Tell me about each new one" is not a state machine question.
+     *
+     * A count alarm speaks on the way from clean to not-clean and then stays
+     * quiet however many more arrive, because the state is already ALARM. This
+     * kind compares the rows against the ones it has already reported and
+     * speaks about the difference, which is what somebody means by "alert me on
+     * every finding".
+     */
+    let freshRows: any[] | null = null;
+    let clearedKeys: string[] = [];
+    let seenKeys: string[] | undefined;
+
+    if (alarm.condition?.kind === "each") {
+      const each = newRows(Array.isArray(rows) ? rows : [], alarm.seenKeys);
+      freshRows = each.fresh;
+      clearedKeys = each.gone;
+
+      /**
+       * Symmetric with the arrivals, because anything else is a surprise.
+       *
+       * Told about each resource as it starts failing and then once about all
+       * of them clearing would mean the all-clear never arrives while anything
+       * else is still wrong — so a resource you fixed goes unacknowledged for as
+       * long as an unrelated one stays broken. The state machine's recovery is
+       * the right rule for a threshold and the wrong one here.
+       *
+       * Arrivals take the pass when both happen. The departures are held in the
+       * remembered set rather than dropped, so they are announced next pass
+       * instead of being lost to the same write.
+       */
+      if (each.fresh.length > 0) {
+        fire = "alarm";
+        seenKeys = each.seenAfterAlarm;
+      } else if (each.gone.length > 0 && alarm.notifyOnRecovery) {
+        fire = "recovery";
+        seenKeys = each.seenAfterRecovery;
+      } else {
+        // Nothing new and nothing gone. Silent however long it has been
+        // failing, which is the whole point of remembering.
+        if (fire === "alarm") fire = null;
+        seenKeys = each.seenAfterRecovery;
+      }
+    }
 
     let lastFiredAt: string | undefined;
 
@@ -170,9 +237,22 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
        * A recovery is claimed the same way: `notifyOnRecovery` decides whether
        * to speak, and this decides who does.
        */
-      const claimed = deps.claimTransition
-        ? await deps.claimTransition(alarm.id, alarm.state, runtime.state, nowIso)
-        : true;
+      /**
+       * For an "each" alarm the transition is not what is being claimed.
+       *
+       * It commonly fires while already in ALARM, where there is no state
+       * change to compete over, so the thing two passes would race on is the
+       * remembered set. Claiming that instead means the winner is whoever
+       * records having reported these rows, and the loser stays quiet — the
+       * same guarantee, over the value that actually changes.
+       */
+      const claimed = alarm.condition?.kind === "each"
+        ? (deps.claimSeen
+          ? await deps.claimSeen(alarm.id, alarm.seenKeys, seenKeys ?? [], nowIso)
+          : true)
+        : deps.claimTransition
+          ? await deps.claimTransition(alarm.id, alarm.state, runtime.state, nowIso)
+          : true;
 
       if (!claimed) {
         // Somebody else is sending this one. The reading still happened, so the
@@ -192,6 +272,21 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
       } else {
         // Everything except the time, which is the one value that differs by
         // who is reading it.
+        /**
+         * `items` names what changed, which is the whole message for an alarm
+         * with no threshold.
+         *
+         * "Back to normal" without a name is unreadable on an alarm watching
+         * twenty resources: it says something recovered and leaves the reader
+         * to work out which. Empty for a threshold alarm, where the number is
+         * the news and there is no subset to name.
+         */
+        const changed = alarm.condition?.kind === "each"
+          ? (fire === "alarm"
+            ? (freshRows ?? []).map(r => subjectOf(r)).filter(Boolean)
+            : clearedKeys.map(k => k.split("\u0000")[0]).filter(Boolean))
+          : [];
+
         const base = {
           widget: widget.title || alarm.name,
           metric: metricLabel(widget, alarm.condition),
@@ -199,6 +294,8 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
           threshold: thresholdText(alarm.condition),
           state: fire === "alarm" ? "ALARM" : "OK",
           org: deps.org,
+          items: changed.length ? [...new Set(changed)].slice(0, 20).join(", ") : "",
+          count: changed.length || undefined,
         };
         const varsFor = (zones: string[]) => ({ ...base, time: formatTimestampAcross(nowIso, zones) });
         const vars = varsFor(deps.timezone ? [deps.timezone] : []);
@@ -249,6 +346,11 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
       cleanStreak: runtime.cleanStreak,
       lastCheckedAt: nowIso,
       lastValue: value,
+      // Only when nothing was sent. A pass that spoke already wrote the set
+      // through the claim, and writing it again here unconditionally would
+      // overwrite whichever pass won that race.
+      ...(alarm.condition?.kind === "each" && !lastFiredAt && seenKeys
+        ? { seenKeys } : {}),
       ...(lastFiredAt ? { lastFiredAt } : {}),
     });
   }
