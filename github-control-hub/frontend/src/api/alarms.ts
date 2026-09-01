@@ -58,6 +58,13 @@ export interface WidgetAlarm {
   lastValue?: number | null;
   lastFiredAt?: string;
   lastError?: string;
+  /**
+   * The alarm fired, and a channel it was meant to reach did not take it.
+   *
+   * Separate from `lastError`, which is about the reading. An alarm can be
+   * perfectly healthy and still not be arriving.
+   */
+  lastDeliveryError?: string;
 }
 
 export interface GroupMember {

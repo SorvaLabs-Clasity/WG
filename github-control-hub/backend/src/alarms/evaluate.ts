@@ -40,13 +40,24 @@ export interface EvaluatorDeps {
   getWidget: (id: string) => Promise<WidgetLike | undefined>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
   computeRows: (widget: WidgetLike) => Promise<WidgetRows>;
+  /**
+   * Send it, and say what each channel did.
+   *
+   * A single boolean could not tell "the email went and Teams failed" from
+   * "everything went", so a broken Teams workflow left no trace anywhere: the
+   * alarm recorded a successful firing and the tab had nothing to show.
+   */
   publish: (topicArn: string, subject: string, body: string,
     teamsText?: { subject: string; body: string },
     renderFor?: (timeZones: string[], channel: "email" | "teams") => { subject: string; body: string },
-  ) => Promise<boolean>;
+  ) => Promise<boolean | {
+    delivered: boolean; emailSent?: boolean; teamsSent?: boolean; teamsError?: string;
+  }>;
   saveRuntime: (id: string, runtime: {
     state: AlarmState; cleanStreak: number; lastCheckedAt: string;
     lastValue?: number | null; lastFiredAt?: string; lastError?: string;
+    /** A channel that was expected and did not arrive. Cleared on a clean send. */
+    lastDeliveryError?: string;
     /**
      * What an "each" alarm should remember, when nothing was sent.
      *
@@ -95,6 +106,8 @@ export interface EvaluationSummary {
   recovered: number;
   unreadable: number;
   publishFailures: number;
+  /** Fired, and the Teams half did not arrive. */
+  teamsFailures?: number;
   /**
    * Transitions another evaluator had already claimed.
    *
@@ -242,6 +255,15 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
     }
 
     let lastFiredAt: string | undefined;
+    /**
+     * A channel that was expected and did not arrive.
+     *
+     * Kept apart from `lastError`, which means "no reading could be taken" and
+     * governs whether the alarm is trusted at all. This one is about delivery:
+     * the reading was fine, the alarm fired, and one of the ways it was
+     * supposed to reach somebody did not work.
+     */
+    let deliveryError: string | undefined;
 
     if (fire === "alarm" || (fire === "recovery" && alarm.notifyOnRecovery)) {
       /**
@@ -351,9 +373,20 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
             : buildMessage(alarm.subjectTemplate, alarm.bodyTemplate, v);
         };
 
-        const ok = await deps.publish(topicArn, subject, body, teamsText, renderFor);
+        const result = await deps.publish(topicArn, subject, body, teamsText, renderFor);
+        // A test may still hand back a plain boolean; the shape is what the
+        // real one reports.
+        const ok = typeof result === "boolean" ? result : result.delivered;
         if (ok) lastFiredAt = nowIso;
         else summary.publishFailures++;
+
+        // Recorded even when the email went, because half a delivery reported
+        // as a success is how a broken Teams workflow stays invisible.
+        if (typeof result !== "boolean" && result.teamsError) {
+          deliveryError = result.teamsError;
+          summary.teamsFailures = (summary.teamsFailures ?? 0) + 1;
+          console.warn(`[Alarm] ${alarm.name}: Teams did not deliver: ${result.teamsError}`);
+        }
       }
       if (fire === "alarm") summary.fired++;
       else summary.recovered++;
@@ -367,6 +400,7 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
       cleanStreak: runtime.cleanStreak,
       lastCheckedAt: nowIso,
       lastValue: value,
+      ...(deliveryError ? { lastDeliveryError: deliveryError } : { lastDeliveryError: undefined }),
       // Only when nothing was sent. A pass that spoke already wrote the set
       // through the claim, and writing it again here unconditionally would
       // overwrite whichever pass won that race.

@@ -77,6 +77,14 @@ export interface WidgetAlarm {
   lastFiredAt?: string;
   /** Set when an evaluation could not read a value, so the UI can say so. */
   lastError?: string;
+  /**
+   * Set when the alarm fired but a channel it was meant to reach did not take
+   * it: a Teams workflow that is not set up, or one that refused the message.
+   *
+   * Separate from `lastError`, which is about the reading rather than the
+   * delivery. An alarm can be perfectly healthy and still not be arriving.
+   */
+  lastDeliveryError?: string;
 
   createdBy: string;
   createdAt: string;
@@ -564,12 +572,16 @@ export async function saveAlarmRuntime(
   id: string,
   runtime: { state: AlarmState; cleanStreak: number; lastCheckedAt: string;
              lastValue?: number | null; lastFiredAt?: string; lastError?: string;
+             lastDeliveryError?: string;
              seenKeys?: string[] },
 ): Promise<void> {
   const existing = await getAlarm(id);
   if (!existing) return;
   const updated: WidgetAlarm = { ...existing, ...runtime };
   if (runtime.lastError === undefined) delete updated.lastError;
+  // Cleared on a pass that delivered cleanly, or a workflow somebody fixed
+  // would keep showing the failure that made them fix it.
+  if (runtime.lastDeliveryError === undefined) delete updated.lastDeliveryError;
   await put(updated);
 }
 

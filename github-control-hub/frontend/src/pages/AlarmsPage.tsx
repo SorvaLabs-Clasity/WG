@@ -154,6 +154,16 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
           </p>
         )}
 
+        {/* Fired, and did not arrive. Kept apart from the reading error below,
+            because the two send somebody to completely different places: one is
+            a broken check, the other is a healthy check nobody heard. */}
+        {alarm.lastDeliveryError && (
+          <p className="mt-1 text-[11.5px] text-amber-700 dark:text-amber-500/90 leading-relaxed">
+            <i className="ph-bold ph-warning-circle mr-1 text-[11px]" aria-hidden="true" />
+            Sent, but not delivered everywhere: {alarm.lastDeliveryError}
+          </p>
+        )}
+
         {/* A check that could not take a reading is not a passing check, and
             the difference is the whole reason this line exists. */}
         {alarm.lastError && (
