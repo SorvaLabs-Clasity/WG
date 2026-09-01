@@ -116,9 +116,34 @@ export interface OrgConfig {
 
 const TABLE = () => tableName("ORG_CONFIG_TABLE");
 
+/**
+ * The row this deployment's configuration lives in.
+ *
+ * A constant, and deliberately not the GitHub organization's name.
+ *
+ * There is one configuration per table and the table is per deployment, so the
+ * name bought nothing and cost two things. In an install with no GitHub there
+ * is no name, and DynamoDB refuses an empty string as a key attribute, so every
+ * read threw. And a process that is kept away from GitHub on purpose, like the
+ * guardrail function, has no way to know the name even where one exists: it
+ * read the empty key too, which is why a guardrail alarm could send its email
+ * and never its Teams message. The flow URL lives in this row.
+ */
+const CONFIG_KEY = "config";
+
+/**
+ * The row this deployment used to live in, when there is one.
+ *
+ * Reads fall back to it so an existing install keeps its Teams flow, its
+ * Renovate bot and its rebuild history. Every writer here reads the whole row
+ * and puts the whole row back, so the first write of any kind moves it, and
+ * nothing has to be migrated by hand.
+ */
+const legacyKey = () => process.env.GITHUB_ORG || "";
+
 // In-memory fallback for local development
 let memConfig: OrgConfig = {
-  org: process.env.GITHUB_ORG || "",
+  org: "config",
   features: {
     rulesetsSupported: true,
     advancedSecurity: false,
@@ -127,14 +152,23 @@ let memConfig: OrgConfig = {
 
 export async function getOrgConfig(): Promise<OrgConfig> {
   if (hasTable("ORG_CONFIG_TABLE")) {
-    const org = process.env.GITHUB_ORG || "";
-    const result = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { org } }));
-    if (result.Item) {
-      return result.Item as OrgConfig;
+    const result = await docClient.send(
+      new GetCommand({ TableName: TABLE(), Key: { org: CONFIG_KEY } }));
+    if (result.Item) return result.Item as OrgConfig;
+
+    // Written before the key stopped being the organization's name. Returned
+    // under the new key so the next write, which puts the whole row back,
+    // lands in the right place.
+    const legacy = legacyKey();
+    if (legacy) {
+      const old = await docClient.send(
+        new GetCommand({ TableName: TABLE(), Key: { org: legacy } }));
+      if (old.Item) return { ...(old.Item as OrgConfig), org: CONFIG_KEY };
     }
+
     // First access: seed default config
     const defaultConfig: OrgConfig = {
-      org,
+      org: CONFIG_KEY,
       features: { rulesetsSupported: true, advancedSecurity: false },
     };
     await docClient.send(new PutCommand({ TableName: TABLE(), Item: defaultConfig }));

@@ -3125,6 +3125,36 @@ keyed on `kind:metric` rather than the metric alone: one metric is now offered
 twice, and keying on the name gave two options with one value and made the first
 unselectable.
 
+## Why the Teams half never arrived
+
+The Teams workflow URL lives in the organization-config row, and that row was
+keyed on the **GitHub organization's name**. Two kinds of process cannot supply
+one:
+
+- An install with no GitHub has no name at all, and DynamoDB refuses an empty
+  string as a key attribute, so every read threw outright.
+- The **guardrail function is kept away from GitHub credentials on purpose**. It
+  is given no secret to read and never loads one, so it could not know the name
+  even where one existed.
+
+The error was exact and said so: *The AttributeValue for a key attribute cannot
+contain an empty string value. Key: org.* Email was unaffected, because SNS
+needs nothing from that row. So a guardrail alarm sent its email and never its
+Teams message, which is a narrow enough symptom to look like anything.
+
+The name bought nothing. There is one configuration per table and the table is
+per deployment, so the row is now keyed on a **constant** that every process can
+compute without knowing anything about GitHub.
+
+**Nothing has to be migrated.** A read falls back to the old key when
+`GITHUB_ORG` is set, and hands the row back under the new one. Every writer
+here reads the whole row and puts the whole row back, so the first write of any
+kind moves it.
+
+The alternative was giving the guardrail function the secret so it could learn
+the name. That would hand the function that acts on the AWS account the GitHub
+App's private key, to solve a problem caused by a key that did not need to exist.
+
 ## A notification that half arrived
 
 `publish` sends to two channels and returned **one boolean**. The caller read it
