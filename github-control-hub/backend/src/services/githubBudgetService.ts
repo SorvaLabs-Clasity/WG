@@ -348,10 +348,17 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "tab beside a pass does not pay for either twice.",
   },
   "Turning Dependabot on or off": {
-    trigger: "The toggle on a repository",
-    endpoints: ["PUT /repos/{o}/{r}/vulnerability-alerts", "DELETE …"],
-    files: ["routes/dependencies.ts"],
-    scalesWith: "how often it is toggled",
+    trigger: "The toggle on a repository, or the bulk action on the Vulnerabilities tab",
+    endpoints: [
+      "PUT /repos/{o}/{r}/vulnerability-alerts", "DELETE …",
+      "PUT /repos/{o}/{r}/automated-security-fixes", "DELETE …",
+    ],
+    files: ["routes/dependencies.ts", "services/dependabotBulk.ts"],
+    scalesWith: "how many repositories are switched",
+    note: "Two requests per repository when security updates are turned on, "
+      + "because GitHub raises no updates for a repository it is not scanning. "
+      + "Paced deliberately: these are writes, and GitHub refuses a burst of "
+      + "them under a secondary rate limit.",
   },
   "Repository list": {
     trigger: "Any screen that lists repositories",
