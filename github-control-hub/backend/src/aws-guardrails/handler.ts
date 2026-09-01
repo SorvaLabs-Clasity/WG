@@ -114,9 +114,20 @@ export async function handler(event: Incoming): Promise<RunResult & { trigger: s
     try {
       const { evaluateGuardrailAlarms } = await import("./alarmsAfterSweep");
       const alarms = await evaluateGuardrailAlarms();
-      if (alarms.evaluated > 0) {
-        console.log(`[guardrails] alarms: ${alarms.evaluated} evaluated, ${alarms.fired} fired`);
-      }
+      /**
+       * Logged either way, including zero.
+       *
+       * Only the non-zero case was printed, which made the one failure that
+       * matters invisible: with no ALARMS_TABLE in this function's environment,
+       * `listAlarms` fell back to an empty in-memory store and reported nothing
+       * to do. That is also what a quiet account looks like, so the log said
+       * the same thing in both cases, which was nothing at all.
+       */
+      console.log(
+        `[guardrails] alarms: ${alarms.evaluated} evaluated, ${alarms.fired} fired`
+        + (alarms.evaluated === 0
+          ? " (no guardrail alarms are configured, or this function cannot reach them)"
+          : ""));
     } catch (err: any) {
       console.warn(`[guardrails] could not evaluate alarms after the sweep: ${err?.message ?? err}`);
     }
