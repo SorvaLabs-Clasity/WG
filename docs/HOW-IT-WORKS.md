@@ -3080,17 +3080,46 @@ the set is written on a silent pass too. Without that it would stay remembered
 for ever and its return would never be reported, which is the one thing this
 kind of alarm exists to catch.
 
+**It names the rows the metric counts, not every row the check returned.**
+`metricValue` filters before it counts — a guardrail's violation count skips the
+passing and the deliberately excluded — so reading the raw rows announced an
+excluded bucket as newly failing. `rowsForMetric` sits beside `metricValue` so
+the two cannot drift: whatever one counts, the other names.
+
 The message carries **`{{items}}`** and **`{{count}}`**: which ones changed, by
 name. "Back to normal" without a name is unreadable on an alarm watching twenty
 resources — it says something recovered and leaves the reader to work out what.
 
 An unreadable check still never counts as breaching.
 
+**One metric is now offered twice**, and everything that looks a spec up has to
+match on the metric *and* the reading. `isValidCondition` matched on the name
+alone, found whichever was declared first, and refused the other for having the
+wrong kind — so switching a guardrail alarm from "every new failing resource" to
+"failing resources" was rejected with a message listing the very option that had
+been chosen. The message builder had the same bug and labelled messages with the
+wrong reading.
+
 The condition is `{ kind: "each", metric }`. The metric rides along only so the
 message can still say how many there are in total. In the form, the selector is
 keyed on `kind:metric` rather than the metric alone: one metric is now offered
 twice, and keying on the name gave two options with one value and made the first
 unselectable.
+
+## When an alarm has never been checked
+
+The evaluator runs as a **deployed Lambda**, on a five-minute schedule, and
+again immediately whenever guardrail findings are rewritten. The app's own
+server does not evaluate alarms at all.
+
+That means a new alarm kind, or a fix to how alarms are evaluated, does nothing
+until the stack is deployed again. The API accepts the alarm, the tab lists it,
+and nothing ever reads it.
+
+An alarm with no `lastCheckedAt` now says **never checked** and explains what
+that usually means. It rendered as nothing before, which made "never evaluated"
+and "evaluated a moment ago and quiet" identical on screen: the same absence
+told as a definite answer that this codebase keeps having to remove.
 
 ## Which team owns an alarm
 

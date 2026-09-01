@@ -125,13 +125,34 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
           </span>
           <span aria-hidden="true">·</span>
           {interval !== null && <span>checked {describeInterval(interval)}</span>}
-          {alarm.lastCheckedAt && (
+          {alarm.lastCheckedAt ? (
             <>
               <span aria-hidden="true">·</span>
               <span>last {new Date(alarm.lastCheckedAt).toLocaleString()}</span>
             </>
+          ) : (
+            /* Never evaluated is not the same as recently evaluated and quiet,
+               and an absent timestamp rendered as nothing made the two
+               identical. An alarm that has never been read is usually an
+               evaluator that is not running: a stack deployed before the alarm
+               existed, or one deployed without it. That is worth saying, since
+               nothing else on the page would ever mention it. */
+            <>
+              <span aria-hidden="true">·</span>
+              <span className="text-amber-600 dark:text-amber-500 font-medium">
+                never checked
+              </span>
+            </>
           )}
         </div>
+
+        {!alarm.lastCheckedAt && (
+          <p className="mt-1 text-[11.5px] text-amber-700 dark:text-amber-500/90 leading-relaxed">
+            Nothing has evaluated this yet. The evaluator runs in AWS on a
+            five-minute schedule, so a stack deployed before this alarm existed
+            will not pick it up until it is deployed again.
+          </p>
+        )}
 
         {/* A check that could not take a reading is not a passing check, and
             the difference is the whole reason this line exists. */}

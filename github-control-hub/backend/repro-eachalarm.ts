@@ -184,6 +184,79 @@ const KEY_API = rowKey({ repo: "api" });
     }
   }
 
+  console.log("\na guardrail alarm can be switched between its two readings");
+  {
+    // The error somebody actually hit: switching "every new failing resource"
+    // to "failing resources" was refused with a message listing the very option
+    // that had been chosen. One metric is offered twice, and the validator
+    // looked it up by name alone, so it always found the first of the pair and
+    // rejected the second for having the wrong kind.
+    const guard = { type: "guardrail" } as any;
+    check("the count reading is accepted",
+      isValidCondition(guard, {
+        kind: "count", metric: "guardrail.violations", op: "gte", threshold: 1,
+      } as any));
+    check("  and so is the each reading",
+      isValidCondition(guard, { kind: "each", metric: "guardrail.violations" } as any));
+    check("  while a reading the subject does not offer is still refused",
+      !isValidCondition(guard, {
+        kind: "count", metric: "dependabot.critical", op: "gte", threshold: 1,
+      } as any));
+
+    // The same shape on the widget side, where the pair also exists.
+    check("  a query widget can be switched too",
+      isValidCondition({ type: "query" } as any, {
+        kind: "count", metric: "query.rows", op: "gte", threshold: 1,
+      } as any)
+        && isValidCondition({ type: "query" } as any, {
+          kind: "each", metric: "query.rows",
+        } as any));
+  }
+
+  console.log("\nguardrail findings drive it the same way widget rows do");
+  {
+    // Findings carry their own verdict, so an excluded or passing resource is
+    // not a failing one. An each alarm that counted every row the sweep wrote
+    // would report a clean account as broken.
+    const finding = (resourceId: string, over: Record<string, unknown> = {}) =>
+      ({ resourceId, ruleId: "s3-public", verdict: "violation", excluded: false, ...over });
+
+    const sent: string[] = [];
+    let saved: string[] | undefined;
+    const alarm: any = {
+      id: "g1", widgetId: "guardrail:s3-public", name: "Any failing bucket",
+      condition: { kind: "each", metric: "guardrail.violations" },
+      groupId: "g", subjectTemplate: "{{items}}", bodyTemplate: "{{items}}",
+      notifyOnRecovery: true, enabled: true, state: "OK", cleanStreak: 0,
+    };
+    const run = (rows: any[]) => evaluateAlarms({
+      now: Date.now(), org: "acme",
+      listAlarms: async () => [alarm],
+      getWidget: async () => ({ id: alarm.widgetId, type: "guardrail", title: "Guardrail" }) as any,
+      topicArnFor: async () => "arn:topic",
+      computeRows: async () => ({ rows }) as any,
+      publish: async (_a: string, subj: string) => { sent.push(subj); return true; },
+      saveRuntime: async (_id: string, rt: any) => { if (rt.seenKeys) saved = rt.seenKeys; },
+      claimSeen: async (_id: string, _f: any, to: string[]) => { saved = to; return true; },
+      ignoreInterval: true,
+    } as any);
+
+    await run([finding("bucket-a"), finding("bucket-b", { excluded: true })]);
+    check("only the failing resource is reported", sent.length === 1, sent);
+    check("  and the message names it", sent[0]?.includes("bucket-a"), sent);
+    check("    without naming the excluded one", !sent[0]?.includes("bucket-b"), sent);
+
+    alarm.seenKeys = saved; alarm.state = "ALARM"; sent.length = 0;
+    await run([finding("bucket-a"), finding("bucket-c")]);
+    check("  a newly failing resource is reported on its own",
+      sent.length === 1 && sent[0].includes("bucket-c") && !sent[0].includes("bucket-a"), sent);
+
+    alarm.seenKeys = saved; sent.length = 0;
+    await run([finding("bucket-c")]);
+    check("  and one returning to normal is reported by name",
+      sent.length === 1 && sent[0].includes("bucket-a"), sent);
+  }
+
   console.log("\ntwo passes cannot both report the same rows");
   {
     // The evaluator runs on a tick and again whenever guardrail findings are

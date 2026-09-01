@@ -1,6 +1,6 @@
 import {
   conditionsFor, intervalFor, isDue, isBreaching, metricValue, step,
-  severityRank, newRows, type AlarmState,
+  severityRank, newRows, rowsForMetric, type AlarmState,
 } from "./conditions";
 import { buildMessage, formatTimestamp, formatTimestampAcross } from "./message";
 import type { WidgetLike, WidgetRows } from "./widgetValues";
@@ -110,7 +110,12 @@ function thresholdText(condition: any): string {
 }
 
 function metricLabel(widget: WidgetLike, condition: any): string {
-  const spec = conditionsFor(widget).find(s => s.metric === condition?.metric);
+  // Both keys, for the same reason the validator needs both: one metric is
+  // offered twice and matching on the name alone labels the message with
+  // whichever reading happened to be declared first.
+  const spec = conditionsFor(widget)
+    .find(s => s.metric === condition?.metric && s.kind === condition?.kind)
+    ?? conditionsFor(widget).find(s => s.metric === condition?.metric);
   return spec?.label ?? String(condition?.metric ?? "value");
 }
 
@@ -194,7 +199,12 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
     let seenKeys: string[] | undefined;
 
     if (alarm.condition?.kind === "each") {
-      const each = newRows(Array.isArray(rows) ? rows : [], alarm.seenKeys);
+      // The rows this metric counts, not every row the check returned. The
+      // number and the names have to describe the same set, or the message
+      // announces something the count never included.
+      const counted = rowsForMetric(
+        alarm.condition.metric, Array.isArray(rows) ? rows : []);
+      const each = newRows(counted, alarm.seenKeys);
       freshRows = each.fresh;
       clearedKeys = each.gone;
 
