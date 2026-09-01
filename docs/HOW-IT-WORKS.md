@@ -3125,6 +3125,32 @@ keyed on `kind:metric` rather than the metric alone: one metric is now offered
 twice, and keying on the name gave two options with one value and made the first
 unselectable.
 
+## A notification that half arrived
+
+`publish` sends to two channels and returned **one boolean**. The caller read it
+as "delivered", so an alarm whose email went and whose Teams message did not
+recorded a clean firing: no error on the alarm, nothing on the tab, nothing in
+the feed. The only evidence was the email that did arrive, which is exactly what
+makes somebody conclude the Teams half was never built.
+
+It now reports each channel, and the alarm carries a **`lastDeliveryError`**
+when one it was meant to reach did not take it. That is deliberately separate
+from `lastError`, which means the reading could not be taken and governs whether
+the alarm is trusted at all. An alarm can be perfectly healthy and simply not be
+arriving, and those two send somebody to completely different places.
+
+Three cases are kept apart, because collapsing any two of them is how this hid:
+
+| Case | Recorded |
+| --- | --- |
+| nobody on the group uses Teams | nothing; not a failure |
+| addresses expect Teams, no workflow is set up | the count and what is missing |
+| the workflow refused some or all of them | which addresses, and why |
+
+The tab shows it as "Sent, but not delivered everywhere", and a clean send
+**deletes** the stored error rather than leaving it, or a workflow somebody
+fixed keeps showing the failure that made them fix it.
+
 ## Why the instant guardrail alarm did nothing
 
 The guardrail function evaluates alarms the moment it rewrites findings, so a

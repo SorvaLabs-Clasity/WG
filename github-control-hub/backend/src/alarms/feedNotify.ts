@@ -63,7 +63,7 @@ export interface FeedNotifyDeps {
   publish: (topicArn: string, subject: string, body: string,
     teamsText?: { subject: string; body: string },
     renderFor?: (timeZones: string[], channel: "email" | "teams") => { subject: string; body: string },
-  ) => Promise<boolean>;
+  ) => Promise<boolean | { delivered: boolean; teamsError?: string }>;
   timezone: () => Promise<string>;
   org: string;
 }
@@ -303,7 +303,7 @@ export interface FlushDeps {
   publish: (topicArn: string, subject: string, body: string,
     teamsText?: { subject: string; body: string },
     renderFor?: (timeZones: string[], channel: "email" | "teams") => { subject: string; body: string },
-  ) => Promise<boolean>;
+  ) => Promise<boolean | { delivered: boolean; teamsError?: string }>;
   timezone: () => Promise<string>;
   org: string;
 }

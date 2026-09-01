@@ -159,7 +159,7 @@ export async function removeMember(subscriptionArn: string): Promise<void> {
 export async function publish(
   topicArn: string, subject: string, body: string, teamsText?: NotifyText,
   renderFor?: RenderForZone,
-): Promise<boolean> {
+): Promise<PublishOutcome> {
   // Read once and handed to both halves. Both need it, and it is a table read.
   const group = renderFor
     ? await (await import("./alarmService")).groupByTopic(topicArn).catch(() => null)
@@ -186,7 +186,22 @@ export async function publish(
     // existing alarm sending exactly what it sends today.
     publishTeams(topicArn, teamsText?.subject || subject, teamsText?.body || body, renderFor, group),
   ]);
-  return email || teams;
+
+  /**
+   * Delivered if either channel did, and the Teams failure is carried out
+   * regardless.
+   *
+   * The two are not alternatives. Somebody with an email address and a Teams
+   * address expects both, and reporting plain success because the email went
+   * is how a broken Teams workflow stayed invisible: the alarm recorded a
+   * successful firing and nothing anywhere mentioned the half that failed.
+   */
+  return {
+    delivered: email || teams.sent,
+    emailSent: email,
+    teamsSent: teams.sent,
+    ...(teams.error ? { teamsError: teams.error } : {}),
+  };
 }
 
 /** A rendered subject and body for one channel. */
@@ -283,24 +298,53 @@ export function previewTitle(subject: string): string {
   return m ? `${m[1]} - ${m[2]}` : subject;
 }
 
+/**
+ * What happened on the Teams half, rather than whether anything happened.
+ *
+ * A boolean here was indistinguishable in the two cases that matter: nobody has
+ * asked for Teams on this group, and everybody has and none of it arrived. The
+ * caller reported success either way as long as the email went, so a broken
+ * flow was invisible everywhere: no error on the alarm, nothing on the tab,
+ * nothing to look at but the email that did arrive.
+ */
+/** What each channel did with one notification. */
+export interface PublishOutcome {
+  /** At least one channel took it. */
+  delivered: boolean;
+  emailSent: boolean;
+  teamsSent: boolean;
+  /** Set only when Teams was expected and did not arrive. */
+  teamsError?: string;
+}
+
+export interface TeamsOutcome {
+  sent: boolean;
+  /** Absent when there was nobody to send to, which is not a failure. */
+  error?: string;
+}
+
 async function publishTeams(
   topicArn: string, subject: string, body: string, renderFor?: RenderForZone,
   known?: any,
-): Promise<boolean> {
+): Promise<TeamsOutcome> {
   try {
     const { groupByTopic } = await import("./alarmService");
     // Reuse the read `publish` already did when it made one.
     const group = known ?? await groupByTopic(topicArn);
     const people = group?.teamsRecipients ?? [];
-    if (people.length === 0) return false;
+    // Nobody asked for Teams on this group. Not a failure, and reported as
+    // such, so the caller does not record an error about a channel nobody uses.
+    if (people.length === 0) return { sent: false };
 
     // One shared flow for the whole organization. Unset means nobody has set
     // Teams up yet, which is not a failure of this alarm.
     const { getOrgConfig } = await import("./orgConfigService");
     const flowUrl = (await getOrgConfig()).teamsFlow?.url;
     if (!flowUrl) {
-      console.warn(`[Notify] "${group!.name}" has Teams recipients but no flow is configured`);
-      return false;
+      const error = `${people.length} address${people.length > 1 ? "es" : ""} on `
+        + `"${group!.name}" expect Teams, but no Teams workflow is set up`;
+      console.warn(`[Notify] ${error}`);
+      return { sent: false, error };
     }
 
     const { buildCard, sendToPerson } = await import("./teamsClient");
@@ -326,13 +370,21 @@ async function publishTeams(
     // parallel, and one bad address does not stop the rest.
     const results = await Promise.all(
       people.map((address: string) => sendToPerson(flowUrl, address, cardFor(address))));
-    results.forEach((r, i) => {
-      if (!r.ok) console.warn(`[Notify] Teams to ${people[i]} for "${group!.name}": ${r.error}`);
-    });
-    return results.some(r => r.ok);
+    const failures = results
+      .map((r, i) => (r.ok ? null : `${people[i]}: ${r.error}`))
+      .filter(Boolean) as string[];
+    for (const f of failures) console.warn(`[Notify] Teams for "${group!.name}", ${f}`);
+
+    if (results.some(r => r.ok)) {
+      return failures.length
+        ? { sent: true, error: `${failures.length} of ${people.length} failed: ${failures[0]}` }
+        : { sent: true };
+    }
+    return { sent: false, error: failures[0] ?? "no address accepted the message" };
   } catch (err) {
     // Never allowed to take the email down with it.
-    console.warn("[Notify] Teams delivery failed:", (err as Error).message);
-    return false;
+    const error = (err as Error).message;
+    console.warn("[Notify] Teams delivery failed:", error);
+    return { sent: false, error };
   }
 }

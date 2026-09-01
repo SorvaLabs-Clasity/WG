@@ -26,10 +26,17 @@ export interface SecurityNotifyDeps {
     teamsSubjectTemplate?: string; teamsBodyTemplate?: string;
   }>;
   topicArnFor: (groupId: string) => Promise<string | undefined>;
+  /**
+   * Send it, and say what each channel did.
+   *
+   * The boolean this widened from could not tell a clean send from one where
+   * the email went and Teams did not, so a broken workflow left no trace.
+   * Callers here only need "did anything arrive", so both shapes are accepted.
+   */
   publish: (topicArn: string, subject: string, body: string,
     teamsText?: { subject: string; body: string },
     renderFor?: (timeZones: string[], channel: "email" | "teams") => { subject: string; body: string },
-  ) => Promise<boolean>;
+  ) => Promise<boolean | { delivered: boolean; teamsError?: string }>;
   org: string;
   /** Absent in tests that only exercise the immediate path. */
   buffer?: (row: {

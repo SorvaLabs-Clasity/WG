@@ -147,13 +147,24 @@ const f = (over: Record<string, any> = {}) => ({
     check("  attempted independently, so one cannot fail the other",
       /await Promise\.all\(\[\s*\n\s*publishEmail/.test(notify),
       "a stale Teams webhook must not stop the email");
+    // The claim is unchanged; `publish` now reports each channel rather than
+    // one boolean for both, so that a Teams failure beside a delivered email is
+    // visible instead of being rounded up to success.
     check("  and delivered-to-anybody counts as delivered",
-      /return email \|\| teams;/.test(notify),
+      /delivered: email \|\| teams\.sent/.test(notify),
       "reporting a reached recipient as a failure records a sent alarm as unsent");
+    check("    while still saying which half did not arrive",
+      /teamsSent: teams\.sent/.test(notify) && /teamsError/.test(notify),
+      "one boolean for two channels is how a broken Teams workflow stayed invisible");
+    // Anchored on the Teams catch specifically, not on any `return false` that
+    // happens to follow a catch somewhere in the file.
     check("  Teams never throws into the caller",
-      /catch \(err\) \{[\s\S]{0,200}return false;/.test(notify));
+      /\/\/ Never allowed to take the email down with it\.[\s\S]{0,220}return \{ sent: false, error \};/
+        .test(notify));
+    // Stronger than it was: not a failure now means carrying no error, so a
+    // group nobody uses for Teams does not mark every firing as undelivered.
     check("  a group with nobody in Teams is not a failure",
-      /if \(people\.length === 0\) return false;/.test(notify));
+      /if \(people\.length === 0\) return \{ sent: false \};/.test(notify));
     check("  one request per person, so one bad address does not stop the rest",
       /people\.map\(\(address: string\) => sendToPerson\(flowUrl, address, /.test(notify)
       && /Promise\.all\(\s*\n?\s*people\.map/.test(notify),
