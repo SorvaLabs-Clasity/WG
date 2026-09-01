@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Thirty Minute Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --paper:#f6f7f9; --card:#fff; --ink:#151b26; --ink-2:#39424f; --muted:#697485;
+  --rule:#dcdfe6; --rule-2:#c3c8d2; --accent:#2f4b7c; --accent-soft:#eaeff7;
+  --good:#1f6b4f; --hot:#9c4a1e; --hot-soft:#f8ede6;
+  --shadow:0 1px 2px rgba(21,27,38,.05), 0 10px 30px -20px rgba(21,27,38,.25);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0f131a; --card:#161b24; --ink:#e8ebf0; --ink-2:#b7bfcc; --muted:#8b95a5;
+  --rule:#262d38; --rule-2:#39424f; --accent:#93b1de; --accent-soft:#1a2333;
+  --good:#7cc3a4; --hot:#e0a077; --hot-soft:#2a1e17;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px -20px rgba(0,0,0,.8);
+}}
+:root[data-theme="dark"]{
+  --paper:#0f131a; --card:#161b24; --ink:#e8ebf0; --ink-2:#b7bfcc; --muted:#8b95a5;
+  --rule:#262d38; --rule-2:#39424f; --accent:#93b1de; --accent-soft:#1a2333;
+  --good:#7cc3a4; --hot:#e0a077; --hot-soft:#2a1e17;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 10px 30px -20px rgba(0,0,0,.8);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,sans-serif; font-size:16px; line-height:1.6;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:900px; margin:0 auto; padding:0 24px 80px}
+
+header{padding:64px 0 30px; border-bottom:2px solid var(--ink)}
+.kicker{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--muted); margin:0 0 14px}
+h1{font-family:Newsreader,Georgia,serif; font-weight:500; font-size:clamp(2.2rem,5vw,3.1rem);
+  line-height:1.08; letter-spacing:-.02em; margin:0 0 16px; text-wrap:balance}
+.lede{font-size:1.1rem; color:var(--ink-2); max-width:58ch; margin:0}
+.budget{display:flex; gap:0; margin-top:26px; border:1px solid var(--rule); border-radius:3px;
+  overflow:hidden; font-family:"IBM Plex Mono",monospace; font-size:11.5px}
+.budget div{flex:1; padding:9px 12px; background:var(--card); border-right:1px solid var(--rule);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.budget div:last-child{border-right:none}
+.budget b{display:block; font-size:15px; font-weight:600; margin-bottom:2px}
+.budget span{color:var(--muted)}
+
+section{margin-top:46px}
+h2{font-family:Newsreader,Georgia,serif; font-weight:500; font-size:1.55rem; margin:0 0 4px}
+h2 + .dek{color:var(--muted); margin:0 0 22px; font-size:.95rem; max-width:60ch}
+
+/* ── run sheet ────────────────────────────────────── */
+.beat{background:var(--card); border:1px solid var(--rule); border-radius:4px;
+  margin-bottom:14px; box-shadow:var(--shadow); overflow:hidden}
+.beat-head{display:flex; align-items:baseline; gap:12px; padding:14px 20px 10px;
+  border-bottom:1px solid var(--rule)}
+.beat-head .t{font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:600;
+  color:var(--accent); background:var(--accent-soft); padding:3px 8px; border-radius:3px;
+  white-space:nowrap}
+.beat-head h3{margin:0; font-size:1.05rem; font-weight:600; flex:1}
+.beat-head .tab{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--muted); white-space:nowrap}
+.beat-body{padding:14px 20px 18px}
+.beat-body > p{margin:0 0 12px; color:var(--ink-2); font-size:.95rem; max-width:62ch}
+.beat-body > p:last-child{margin-bottom:0}
+.do{margin:0; padding:0; list-style:none}
+.do li{padding:5px 0 5px 22px; position:relative; font-size:.94rem; max-width:62ch}
+.do li::before{content:""; position:absolute; left:6px; top:14px; width:5px; height:5px;
+  border-radius:50%; background:var(--accent)}
+.do li b{font-weight:600}
+.say{border-left:3px solid var(--rule-2); padding:2px 0 2px 14px; margin:12px 0 0;
+  color:var(--ink-2); font-style:italic; max-width:60ch; font-size:.94rem}
+.say::before{content:"Say: "; font-style:normal; font-weight:600; color:var(--muted);
+  font-size:11px; letter-spacing:.08em; text-transform:uppercase}
+
+.pill{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:11px;
+  background:var(--accent-soft); color:var(--accent); padding:1px 6px; border-radius:3px;
+  white-space:nowrap}
+
+/* ── if asked ─────────────────────────────────────── */
+.qa{border:1px solid var(--rule); border-radius:4px; overflow:hidden}
+.qa .row{display:grid; grid-template-columns:minmax(180px,1fr) 2fr; gap:18px;
+  padding:13px 18px; background:var(--card); border-bottom:1px solid var(--rule)}
+.qa .row:last-child{border-bottom:none}
+@media (max-width:640px){ .qa .row{grid-template-columns:1fr; gap:4px} }
+.qa .q{font-weight:600; font-size:.93rem}
+.qa .a{color:var(--ink-2); font-size:.93rem; margin:0}
+
+.warn{background:var(--hot-soft); border:1px solid var(--rule); border-left:3px solid var(--hot);
+  border-radius:0 4px 4px 0; padding:15px 20px; margin-top:20px}
+.warn p{margin:0; font-size:.94rem; max-width:62ch}
+.warn b{color:var(--hot)}
+
+footer{margin-top:52px; padding-top:18px; border-top:1px solid var(--rule);
+  color:var(--muted); font-size:12.5px}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="kicker">GitHub Control Hub</p>
+  <h1>Thirty minute demo</h1>
+  <p class="lede">A running order for the live walkthrough. Timings are a budget, not a script,
+  and the last five minutes are deliberately held back for questions.</p>
+
+  <div class="budget">
+    <div><b>25 min</b><span>in the app</span></div>
+    <div><b>5 min</b><span>questions</span></div>
+    <div><b>8 beats</b><span>four tabs, four features</span></div>
+    <div><b>0 slides</b><span>this page is the notes</span></div>
+  </div>
+</header>
+
+<section>
+  <h2>Running order</h2>
+  <p class="dek">Each beat names what to click. If a beat runs long, drop beat 6 before
+  anything else; it is the most self-explanatory.</p>
+
+  <div class="beat">
+    <div class="beat-head"><span class="t">0:00 &middot; 2m</span><h3>Open cold, on purpose</h3><span class="tab">Overview</span></div>
+    <div class="beat-body">
+      <p>Launch the app in front of them rather than having it already open. The point is how
+      fast it is, and that only lands if they see it start.</p>
+      <ul class="do">
+        <li>Sign in with <b>Continue as &hellip;</b> to show it remembered the last account.</li>
+        <li>Let the Overview draw. Do not narrate while it loads, it will be finished before
+        you finish the sentence.</li>
+        <li>Point at the freshness line under the cards: <span class="pill">Updated 3 minutes ago</span></li>
+      </ul>
+      <p class="say">These numbers were worked out in the background a few minutes ago. Nothing
+      is being fetched while you wait.</p>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="beat-head"><span class="t">0:02 &middot; 5m</span><h3>Three cards that find real problems</h3><span class="tab">Overview</span></div>
+    <div class="beat-body">
+      <p>Do not tour every card. Open three, in this order, because each one raises the next
+      question.</p>
+      <ul class="do">
+        <li><b>Repos with no protected branch at all.</b> Click through to the table. The
+        finding everybody understands without explanation: anyone with write can push straight
+        to the default branch, no review, no record.</li>
+        <li><b>Repos with no push in N months.</b> Change the months parameter live to show the
+        threshold is yours. Note the rows that read <b>Never pushed to</b>: repositories created
+        and then abandoned without a single commit.</li>
+        <li><b>Repos exposed through vulnerable package(s).</b> Type a package name and get the
+        list back. This is the card that gets a reaction, because it is the question people
+        actually ask at four in the afternoon when an advisory lands.</li>
+      </ul>
+      <p class="say">Every card is a question you can change or delete. These are the ones I
+      picked; you will want different ones.</p>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="beat-head"><span class="t">0:07 &middot; 4m</span><h3>Follow one person through</h3><span class="tab">Access</span></div>
+    <div class="beat-body">
+      <p>The strongest single moment in the demo. Pick a real person, ideally someone in the
+      room.</p>
+      <ul class="do">
+        <li>Click their name. Every repository they can reach, on one screen.</li>
+        <li>Point at the <b>how</b> column: <span class="pill">direct</span>
+        <span class="pill">via team</span> <span class="pill">org owner</span></li>
+        <li>Click a <b>team</b> and show the repositories that team grants access to.</li>
+        <li>Show the count of <b>outside collaborators</b> and <b>people with personal
+        grants</b> at the top.</li>
+      </ul>
+      <p class="say">On github.com this is one repository at a time, and there is no page that
+      answers it for a person.</p>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="beat-head"><span class="t">0:11 &middot; 4m</span><h3>What has been happening</h3><span class="tab">Activity</span></div>
+    <div class="beat-body">
+      <p>Open on <b>Statistics</b>, not on the table. The shape first, the rows second.</p>
+      <ul class="do">
+        <li>Point at the chart and switch <span class="pill">Compare</span> to
+        <span class="pill">Compose</span>. Same events, two questions: which stream is busiest,
+        and what a given day was made of.</li>
+        <li>Change the window to <span class="pill">30 days</span>. Note <b>busiest hour</b> and
+        <b>busiest day</b>, in your own timezone.</li>
+        <li>Switch to <b>Events</b>. Point at the badge top right:
+        <span class="pill">Receiving events</span>. Every row here arrived by webhook within
+        seconds of happening, with the actor's name on it.</li>
+        <li>Open any row to show what actually changed, field by field.</li>
+      </ul>
+      <p class="say">Nobody had to be watching. This is recorded whether the change was made in
+      this app or on github.com, and it is kept for thirteen months.</p>
+      <p>Then the flip side: find a row <em>this app</em> made and press <b>Undo</b>. That is the
+      difference between a log and a control.</p>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="beat-head"><span class="t">0:15 &middot; 3m</span><h3>Detailed logging, on and off</h3><span class="tab">Activity</span></div>
+    <div class="beat-body">
+      <p>Shows the app has an opinion about noise, which reads well to anyone who has drowned
+      in an audit tool.</p>
+      <ul class="do">
+        <li>Top of the <b>Organization</b> stream, flip <b>Detailed GitHub logging</b> on.</li>
+        <li>Open <b>Choose kinds</b> and uncheck <b>Commits pushed</b>.</li>
+        <li>Flip the toggle back off, and say the line that matters.</li>
+      </ul>
+      <p class="say">Turning it off stops recording from here. It does not delete anything
+      already collected.</p>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="beat-head"><span class="t">0:18 &middot; 3m</span><h3>Who is chasing whom</h3><span class="tab">Pull requests</span></div>
+    <div class="beat-body">
+      <p>Drop this beat first if you are running late.</p>
+      <ul class="do">
+        <li>Show the list grouped by what is actually blocking each one: approved and unmerged,
+        waiting on review, changes requested, checks failing.</li>
+        <li>Open the settings to show what counts as stale.</li>
+        <li><b>Pause</b> one pull request, and <b>mute</b> a person, to show the escape hatch
+        exists before anyone asks.</li>
+      </ul>
+      <p class="say">The reminder replaces its own comment each time rather than stacking a new
+      one, so a stale pull request has one comment on it, not eleven.</p>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="beat-head"><span class="t">0:21 &middot; 4m</span><h3>The AWS half, and the safety catch</h3><span class="tab">AWS</span></div>
+    <div class="beat-body">
+      <p>This is where someone senior usually starts paying closer attention. Lead with the
+      restraint, not the capability.</p>
+      <ul class="do">
+        <li>Show a rule set to <b>report</b>, and its findings.</li>
+        <li>Say clearly that <b>report is the default</b> and nothing is changed unless a rule
+        is deliberately set to enforce.</li>
+        <li>Press <b>Fix</b> on a single finding. Show that the rule stays on report: it fixed
+        that one resource, once, and did not become an enforcing rule.</li>
+        <li>Show an <b>exclusion</b>, for the resource that is meant to be that way.</li>
+      </ul>
+      <p class="say">Two separate decisions: fix this one thing now, and enforce this rule from
+      now on. The button does the first and never the second.</p>
+    </div>
+  </div>
+
+  <div class="beat">
+    <div class="beat-head"><span class="t">0:25 &middot; 5m</span><h3>Questions</h3><span class="tab">Hold this back</span></div>
+    <div class="beat-body">
+      <p>Do not fill it. If nothing comes, the answers below are the ones most likely to be
+      asked, and a short one is better than a tour.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2>If asked</h2>
+  <p class="dek">Short answers. Resist expanding them unless pressed.</p>
+
+  <div class="qa">
+    <div class="row">
+      <div class="q">What does it cost to run?</div>
+      <p class="a">About seven dollars a month, and most of that is one AWS firewall component
+      we could remove. Measured, not estimated.</p>
+    </div>
+    <div class="row">
+      <div class="q">Where does our data go?</div>
+      <p class="a">Our own AWS account. GitHub credentials never leave it and nothing is sent to
+      a third party.</p>
+    </div>
+    <div class="row">
+      <div class="q">Can it change things in GitHub?</div>
+      <p class="a">Yes, and only where someone pressed a button. Every write is recorded in the
+      activity log with a name against it, and most can be undone.</p>
+    </div>
+    <div class="row">
+      <div class="q">What if it breaks or we stop using it?</div>
+      <p class="a">It reads far more than it writes. Stop running it and GitHub is exactly as it
+      was; nothing depends on it being there.</p>
+    </div>
+    <div class="row">
+      <div class="q">Will it hit GitHub's rate limits?</div>
+      <p class="a">At our size it uses about 15% of the hourly allowance at peak. It backs off
+      rather than failing if it ever gets close.</p>
+    </div>
+    <div class="row">
+      <div class="q">How current are these numbers?</div>
+      <p class="a">Access data is at most six hours old and usually far fresher, because changes
+      arrive by webhook within seconds. Every screen says how old its answer is.</p>
+    </div>
+    <div class="row">
+      <div class="q">Who can use it?</div>
+      <p class="a">Anyone in the organization can look. Changing anything needs membership of an
+      admin team, and the AWS side is a separate team again.</p>
+    </div>
+  </div>
+
+  <div class="warn">
+    <p><b>Before you start:</b> have a throwaway repository ready for beat 4, a browser tab
+    already signed in to github.com, and check the Activity badge reads
+    <b>Receiving events</b>. If it does not, the live change will not appear and that beat
+    falls flat.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Deeper material exists if the room wants it: a full architecture briefing and a measured
+  cost and rate-limit breakdown. Do not open either during the demo.</p>
+</footer>
+
+</div>
+</body>
+</html>

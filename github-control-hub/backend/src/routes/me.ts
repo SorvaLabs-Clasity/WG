@@ -281,6 +281,20 @@ router.put("/alerts", async (req: Request, res: Response) => {
       ...current,
       teamsAddress,
       events: { ...current.events, ...(body.events ?? {}) },
+      /**
+       * The ceiling on how many reviewers a request may have.
+       *
+       * Null and zero both clear it, because "no limit" is a thing somebody
+       * chooses and it needs a value to choose. Anything else is clamped into
+       * a range a person could plausibly mean: a limit of 400 is not a limit,
+       * and a negative one would withhold every request and read as the
+       * notification being broken.
+       */
+      reviewerLimit: body.reviewerLimit === null || body.reviewerLimit === 0
+        ? undefined
+        : body.reviewerLimit === undefined
+          ? current.reviewerLimit
+          : Math.min(20, Math.max(1, Number(body.reviewerLimit) || 1)),
       digest: {
         ...current.digest,
         ...(body.digest ?? {}),

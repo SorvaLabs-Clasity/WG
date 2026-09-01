@@ -123,6 +123,14 @@ export interface DevAlerts {
    * being unable to see what you typed is how a typo survives.
    */
   teamsAddress?: string;
+  /**
+   * Only tell me about a review request when at most this many people were
+   * asked, counting me and counting each team as one.
+   *
+   * Unset means every request, which is what everybody had before this existed
+   * and so is what an absent value has to mean.
+   */
+  reviewerLimit?: number;
   /** Whether an administrator has set the shared flow up. Nothing sends without it. */
   teamsReady: boolean;
   events: EventPrefs;

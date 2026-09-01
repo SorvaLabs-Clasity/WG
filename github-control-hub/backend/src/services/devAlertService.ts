@@ -46,6 +46,21 @@ export interface EventPrefs {
   changesRequested: boolean;
 }
 
+/**
+ * The most reviewers a pull request may have before a review request stops
+ * being worth interrupting for.
+ *
+ * One means "only when nobody else was asked", which is the case where the
+ * review genuinely will not happen without you. Two means "you and at most one
+ * other". Absent means every request, which is what everybody had before this
+ * existed and so is what an unset value has to mean.
+ *
+ * A ceiling rather than an exact count, because the question somebody is asking
+ * is "is this mine to do", and that gets less true as the list grows, never
+ * more.
+ */
+export type ReviewerLimit = number | undefined;
+
 export interface DigestPrefs {
   enabled: boolean;
   /** Local hour, 0-23, in `timeZone`. */
@@ -110,6 +125,11 @@ export interface DevAlerts {
    */
   teamsAddress?: string;
   events: EventPrefs;
+  /**
+   * Only tell me about a review request when at most this many people were
+   * asked. Unset means always, which is what every existing row means.
+   */
+  reviewerLimit?: ReviewerLimit;
   digest: DigestPrefs;
   /**
    * When a digest was last sent, so the five-minute tick can tell "due now"

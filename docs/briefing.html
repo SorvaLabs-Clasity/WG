@@ -1,0 +1,816 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Control Hub Briefing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  /* The reset the artifact runtime supplies, restored so a standalone file
+     renders identically. The page's own CSS follows and wins. */
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin: 0; }
+  h1, h2, h3, h4, h5, h6, p, dl, dd, ol, ul, figure, blockquote { margin: 0; }
+</style>
+<style>
+  /* Single-theme by design: a deck is shown on one screen in one room, and a
+     viewer's OS preference should not decide how it reads to an audience.
+     Every colour is stated, so it holds on any host ground. */
+  :root {
+    --ground:   #0A1118;
+    --surface:  #121D27;
+    --raised:   #182632;
+    --line:     #24384A;
+    --line-2:   #1B2A38;
+    --ink:      #EAF2F6;
+    --ink-2:    #A9BECC;
+    --muted:    #6E8798;
+    --accent:   #4ECBA8;
+    --accent-2: #1F6B58;
+    --signal:   #E8955C;
+    --danger:   #E4736B;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+
+  html { background: var(--ground); }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: Archivo, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    scroll-snap-type: y mandatory;
+    overflow-y: scroll;
+    height: 100vh;
+  }
+  h1, h2, h3, p, ul, ol, dl, dd, figure { margin: 0; }
+  ul, ol { padding: 0; list-style: none; }
+
+  /* ── progress + counter ─────────────────────────────────────────── */
+  .progress {
+    position: fixed; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--line-2); z-index: 50;
+  }
+  .progress i {
+    display: block; height: 100%; width: 0;
+    background: var(--accent); transition: width .25s ease;
+  }
+  .counter {
+    position: fixed; right: 26px; bottom: 22px; z-index: 50;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12px; color: var(--muted);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: .08em;
+  }
+  .counter b { color: var(--ink-2); font-weight: 600; }
+
+  /* ── contents rail ──────────────────────────────────────────────── */
+  /* Hidden below 1100px: on a narrow screen the slide needs the width more
+     than the deck needs an index. */
+  nav.toc { display: none; }
+  @media (min-width: 1100px) {
+    nav.toc {
+      display: block;
+      position: fixed; top: 0; left: 0; bottom: 0; width: 244px;
+      background: var(--surface); border-right: 1px solid var(--line-2);
+      padding: 30px 0 30px 24px; z-index: 40;
+      overflow-y: auto;
+    }
+    nav.toc h2 {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 10px; letter-spacing: .2em; text-transform: uppercase;
+      color: var(--muted); font-weight: 600; margin-bottom: 16px;
+    }
+    nav.toc ol { display: grid; gap: 1px; padding-right: 16px; }
+    nav.toc a {
+      display: grid; grid-template-columns: 20px 1fr; gap: 10px;
+      align-items: baseline; padding: 7px 10px;
+      color: var(--muted); text-decoration: none;
+      font-size: 13px; line-height: 1.3;
+      border-left: 2px solid transparent;
+      transition: color .15s, background .15s, border-color .15s;
+    }
+    nav.toc a span.n {
+      font-family: "IBM Plex Mono", ui-monospace, monospace;
+      font-size: 10.5px; font-variant-numeric: tabular-nums;
+    }
+    nav.toc a:hover { color: var(--ink-2); background: var(--raised); }
+    nav.toc a.on {
+      color: var(--ink); background: var(--raised);
+      border-left-color: var(--accent); font-weight: 600;
+    }
+    nav.toc a.on span.n { color: var(--accent); }
+    nav.toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    body { padding-left: 244px; }
+    .progress { left: 244px; }
+  }
+
+  /* ── slide shell ────────────────────────────────────────────────── */
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100vh;
+    display: grid;
+    align-content: center;
+    padding: 72px clamp(32px, 5vw, 80px) 84px;
+    max-width: 1400px; margin: 0 auto;
+    border-bottom: 1px solid var(--line-2);
+  }
+  .eyebrow {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: clamp(10px, 1vw, 12px); font-weight: 600;
+    letter-spacing: .22em; text-transform: uppercase;
+    color: var(--accent); margin-bottom: 20px;
+  }
+  .slide h2 {
+    font-size: clamp(30px, 4.4vw, 58px);
+    line-height: 1.04; font-weight: 700; letter-spacing: -.026em;
+    text-wrap: balance; margin-bottom: 28px;
+    max-width: 22ch;
+  }
+  .lead {
+    font-size: clamp(17px, 1.9vw, 23px);
+    line-height: 1.45; color: var(--ink-2); max-width: 56ch;
+    font-weight: 400;
+  }
+
+  /* ── title slide ────────────────────────────────────────────────── */
+  .title h1 {
+    font-size: clamp(46px, 8.6vw, 122px);
+    line-height: .94; font-weight: 800; letter-spacing: -.04em;
+    margin-bottom: 26px; text-wrap: balance;
+  }
+  .title .sub {
+    font-size: clamp(18px, 2.3vw, 28px);
+    color: var(--ink-2); max-width: 30ch; line-height: 1.32; font-weight: 400;
+  }
+  .title .foot {
+    margin-top: 56px; display: flex; flex-wrap: wrap; gap: 12px 40px;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 12.5px; color: var(--muted); letter-spacing: .04em;
+  }
+  .title .foot b { color: var(--ink-2); font-weight: 600; }
+
+  /* ── fact lists ─────────────────────────────────────────────────── */
+  ul.facts { display: grid; gap: 16px; max-width: 62ch; }
+  ul.facts li {
+    display: grid; grid-template-columns: 15px 1fr; gap: 18px;
+    font-size: clamp(16px, 1.75vw, 21px); line-height: 1.42; color: var(--ink-2);
+  }
+  ul.facts li::before {
+    content: ""; margin-top: .62em; height: 2px; background: var(--accent);
+  }
+  ul.facts li b { color: var(--ink); font-weight: 600; }
+
+  /* ── data grid: label / value pairs ─────────────────────────────── */
+  /* A closing sentence under a spec list, smaller than the list above it. The
+     opening sentence uses .lead, which the deck already has. */
+  .slide > p.foot {
+    font-size: clamp(13px, 1.3vw, 15px); line-height: 1.5; color: var(--muted);
+    max-width: 62ch; margin: clamp(18px, 2.2vh, 28px) 0 0;
+    padding-top: 14px; border-top: 1px solid var(--rule, rgba(128,128,128,.25));
+  }
+  dl.spec {
+    display: grid; gap: 0; margin-top: 8px;
+    border-top: 1px solid var(--line);
+    max-width: 1000px;
+  }
+  dl.spec > div {
+    display: grid; grid-template-columns: 1fr; gap: 4px;
+    padding: 16px 0; border-bottom: 1px solid var(--line-2);
+  }
+  @media (min-width: 760px) {
+    dl.spec > div { grid-template-columns: 210px 1fr; gap: 28px; align-items: baseline; }
+  }
+  dl.spec dt {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: clamp(11px, 1.05vw, 13px); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted); font-weight: 500;
+  }
+  dl.spec dd {
+    font-size: clamp(15px, 1.6vw, 19px); line-height: 1.42; color: var(--ink);
+  }
+  dl.spec dd span.q { color: var(--ink-2); }
+
+  /* ── stat strip ─────────────────────────────────────────────────── */
+  .stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1px; background: var(--line-2);
+    border: 1px solid var(--line-2); margin-top: 4px;
+  }
+  .stats > div { background: var(--surface); padding: clamp(20px, 2.4vw, 32px); }
+  .stats .v {
+    display: block; font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: clamp(34px, 5vw, 62px); font-weight: 600; line-height: 1;
+    color: var(--accent); font-variant-numeric: tabular-nums; letter-spacing: -.03em;
+  }
+  .stats .k {
+    display: block; margin-top: 12px;
+    font-size: clamp(12px, 1.2vw, 15px); color: var(--ink-2); line-height: 1.3;
+  }
+
+  /* ── schedule table ─────────────────────────────────────────────── */
+  .tablewrap { overflow-x: auto; margin-top: 6px; }
+  table.grid { border-collapse: collapse; width: 100%; min-width: 620px; }
+  table.grid th {
+    text-align: left; padding: 12px 20px 12px 0;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: clamp(10px, 1vw, 12px); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; border-bottom: 1px solid var(--line);
+    white-space: nowrap;
+  }
+  table.grid td {
+    padding: clamp(9px, 1.3vh, 15px) 20px clamp(9px, 1.3vh, 15px) 0;
+    border-bottom: 1px solid var(--line-2);
+    font-size: clamp(14px, 1.5vw, 18px); color: var(--ink-2); line-height: 1.4;
+    vertical-align: top;
+  }
+  table.grid td.when {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    color: var(--accent); white-space: nowrap; font-size: clamp(13px, 1.35vw, 16px);
+  }
+  table.grid td.what { color: var(--ink); font-weight: 600; white-space: nowrap; }
+  table.grid tr:last-child td { border-bottom: 0; }
+
+  /* ── architecture diagram ───────────────────────────────────────── */
+  .arch {
+    display: grid; gap: 14px; margin-top: 8px;
+    grid-template-columns: 1fr;
+  }
+  .zone {
+    border: 1px solid var(--line); background: var(--surface);
+    padding: clamp(18px, 2vw, 26px);
+  }
+  .zone h3 {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: clamp(10px, 1vw, 12px); letter-spacing: .16em; text-transform: uppercase;
+    color: var(--muted); font-weight: 600; margin-bottom: 4px;
+  }
+  .zone .zt {
+    font-size: clamp(17px, 1.9vw, 23px); font-weight: 700; color: var(--ink);
+    margin-bottom: 16px; letter-spacing: -.01em;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: clamp(11px, 1.1vw, 13px);
+    padding: 6px 11px; border: 1px solid var(--line);
+    color: var(--ink-2); background: var(--raised);
+  }
+  .chip.on { border-color: var(--accent-2); color: var(--accent); }
+  .flow {
+    margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line-2);
+    font-size: clamp(13px, 1.35vw, 16px); color: var(--ink-2); line-height: 1.5;
+  }
+  .flow b { color: var(--ink); font-weight: 600; }
+
+  /* ── two-up comparison ──────────────────────────────────────────── */
+  .twoup { display: grid; gap: 14px; grid-template-columns: 1fr; margin-top: 6px; }
+  @media (min-width: 860px) { .twoup { grid-template-columns: 1fr 1fr; gap: 20px; } }
+  .col { border: 1px solid var(--line); padding: clamp(20px, 2.2vw, 30px); background: var(--surface); }
+  .col.mark { border-left: 3px solid var(--accent); }
+  .col.warn { border-left: 3px solid var(--signal); }
+  .col h3 {
+    font-size: clamp(16px, 1.7vw, 21px); font-weight: 700; color: var(--ink);
+    margin-bottom: 6px; letter-spacing: -.01em;
+  }
+  .col .note {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: clamp(10px, 1vw, 12px); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--muted); margin-bottom: 14px;
+  }
+  .col ul { display: grid; gap: 10px; }
+  .col li {
+    font-size: clamp(14px, 1.45vw, 17px); color: var(--ink-2); line-height: 1.4;
+    padding-left: 16px; position: relative;
+  }
+  .col li::before {
+    content: ""; position: absolute; left: 0; top: .6em;
+    width: 6px; height: 1px; background: var(--muted);
+  }
+  .col li b { color: var(--ink); font-weight: 600; }
+
+  /* ── three-state panel ──────────────────────────────────────────── */
+  .states { display: grid; gap: 1px; background: var(--line-2); border: 1px solid var(--line-2); margin-top: 6px; }
+  @media (min-width: 820px) { .states { grid-template-columns: repeat(3, 1fr); } }
+  .states > div { background: var(--surface); padding: clamp(20px, 2.3vw, 30px); }
+  .states .s {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: clamp(11px, 1.1vw, 13px); letter-spacing: .12em; text-transform: uppercase;
+    margin-bottom: 12px; font-weight: 600;
+  }
+  .states .a .s { color: var(--muted); }
+  .states .b .s { color: var(--accent); }
+  .states .c .s { color: var(--signal); }
+  .states p { font-size: clamp(14px, 1.45vw, 17px); color: var(--ink-2); line-height: 1.45; }
+  .states .c { box-shadow: inset 0 0 0 1px var(--signal); }
+
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .88em; color: var(--accent);
+    background: var(--raised); padding: 2px 7px; border: 1px solid var(--line-2);
+  }
+
+  .hint {
+    position: fixed; left: 26px; bottom: 22px; z-index: 50;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 11px; color: var(--muted); letter-spacing: .06em;
+    opacity: 1; transition: opacity .5s ease;
+  }
+  .hint.gone { opacity: 0; pointer-events: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; scroll-behavior: auto !important; }
+  }
+</style>
+</head>
+<body>
+<nav class="toc" aria-label="Contents">
+  <h2>Contents</h2>
+  <ol>
+      <li><a href="#s1"><span class="n">01</span><span>Title</span></a></li>
+      <li><a href="#s2"><span class="n">02</span><span>Scope</span></a></li>
+      <li><a href="#s3"><span class="n">03</span><span>Security alerts</span></a></li>
+      <li><a href="#s4"><span class="n">04</span><span>Architecture</span></a></li>
+      <li><a href="#s5"><span class="n">05</span><span>Automation</span></a></li>
+      <li><a href="#s6"><span class="n">06</span><span>Access map</span></a></li>
+      <li><a href="#s7"><span class="n">07</span><span>Refresh tiers</span></a></li>
+      <li><a href="#s7b"><span class="n">08</span><span>Who knows this</span></a></li>
+      <li><a href="#s8"><span class="n">09</span><span>Dashboard checks</span></a></li>
+      <li><a href="#s9"><span class="n">10</span><span>Vulnerabilities</span></a></li>
+      <li><a href="#s10"><span class="n">11</span><span>AWS guardrails</span></a></li>
+      <li><a href="#s10b"><span class="n">12</span><span>Producing a finding</span></a></li>
+      <li><a href="#s10c"><span class="n">13</span><span>Schedule and event</span></a></li>
+      <li><a href="#s11"><span class="n">14</span><span>Alarms</span></a></li>
+      <li><a href="#s12"><span class="n">15</span><span>PR reminders</span></a></li>
+      <li><a href="#s12b"><span class="n">16</span><span>REST and GraphQL</span></a></li>
+      <li><a href="#s13"><span class="n">17</span><span>Activity log</span></a></li>
+      <li><a href="#s14"><span class="n">18</span><span>Data model</span></a></li>
+      <li><a href="#s15"><span class="n">19</span><span>The alarms table</span></a></li>
+  </ol>
+</nav>
+
+<div class="progress"><i id="bar"></i></div>
+<div class="counter"><b id="cur">1</b> / <span id="tot">19</span></div>
+<div class="hint" id="hint">← → or space to advance</div>
+
+<!-- 1 -->
+<section id="s1" class="slide title">
+  <h1>GitHub Control Hub</h1>
+  <p class="sub">Continuous checks on a GitHub organization and the AWS account behind it.</p>
+  <div class="foot">
+    <span>Build <b>v1.0.78</b></span>
+    <span><b>6</b> Lambda functions</span>
+    <span><b>12</b> DynamoDB tables</span>
+    <span><b>0</b> servers</span>
+  </div>
+</section>
+
+<!-- 2 -->
+<section id="s2" class="slide">
+  <p class="eyebrow">Scope</p>
+  <h2>What it covers</h2>
+  <div class="twoup">
+    <div class="col mark">
+      <h3>GitHub organization</h3>
+      <p class="note">Read continuously</p>
+      <ul>
+        <li>Repository access, by person and by team</li>
+        <li>Branch protection and rulesets</li>
+        <li>Dependabot alerts and coverage</li>
+        <li>Renovate pull requests</li>
+        <li>Stale and blocked pull requests</li>
+        <li>Detailed GitHub logging</li>
+      </ul>
+    </div>
+    <div class="col mark">
+      <h3>AWS account</h3>
+      <p class="note">Read continuously, corrected on request</p>
+      <ul>
+        <li>S3 bucket policies and public access</li>
+        <li>CloudWatch log group retention</li>
+        <li>Resource configuration against defined rules</li>
+        <li>Change events via CloudTrail</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- 3 -->
+<section id="s3" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>Security alerts</h2>
+  <p class="lead" style="margin-bottom:24px">
+    Raised from GitHub webhooks as changes happen, not found on a sweep. Each alert stays
+    open until someone resolves it.
+  </p>
+  <div class="twoup">
+    <div class="col warn">
+      <h3>Critical</h3>
+      <p class="note">Immediate</p>
+      <ul>
+        <li><b>Repository made public</b></li>
+        <li><b>Branch protection removed</b> entirely</li>
+        <li><b>Repository ruleset deleted</b></li>
+      </ul>
+    </div>
+    <div class="col mark">
+      <h3>High and medium</h3>
+      <p class="note">Reviewed</p>
+      <ul>
+        <li><b>Protection drift</b>, rules modified rather than removed</li>
+        <li><b>Team permissions changed</b> on a repository</li>
+        <li><b>Admin added</b> to a repository</li>
+        <li><b>Team added or removed</b> from a repository</li>
+        <li><b>User promoted</b> or team access elevated</li>
+      </ul>
+    </div>
+  </div>
+  <dl class="spec" style="margin-top:22px">
+    <div><dt>Pipeline</dt><dd>GitHub → API Gateway → <code>webhook-receiver</code> Lambda → SQS queue → <code>webhook-worker</code> Lambda. The queue means a burst of events is absorbed rather than dropped, and a failure is retried instead of lost.</dd></div>
+    <div><dt>Why a queue</dt><dd>The receiver only validates the signature and enqueues, so GitHub gets an immediate answer. All the work happens in the worker, out of band.</dd></div>
+    <div><dt>Stored</dt><dd>One row per alert with its severity, repository, and time of the change. No expiry.</dd></div>
+    <div><dt>Resolution</dt><dd>Manual, or automatic when the same condition is observed to have been reversed.</dd></div>
+  </dl>
+</section>
+
+<!-- 4 -->
+<section id="s4" class="slide">
+  <p class="eyebrow">Architecture</p>
+  <h2>Where it runs</h2>
+  <div class="arch">
+    <div class="zone">
+      <h3>Where it runs</h3>
+      <p class="zt">Desktop application</p>
+      <div class="chips">
+        <span class="chip">Electron</span>
+        <span class="chip">Local backend</span>
+        <span class="chip">localhost:4321</span>
+        <span class="chip">Self-updating release</span>
+      </div>
+      <p class="flow">
+        Runs on the operator's machine and uses <b>the operator's own AWS access</b> -
+        SSO, a named profile, or session keys. It holds no credential of its own.
+        GitHub credentials are read from Secrets Manager in the connected AWS account
+        at startup, so reach into GitHub is gated behind AWS access.
+      </p>
+      <p class="flow">
+        Nothing is stored on the machine beyond the selected profile name.
+        The OAuth callback returns to <b>localhost</b>, so a sign-in code never
+        passes through a shared server.
+      </p>
+      <p class="flow">
+        <b>Sessions do not survive a restart.</b> The session token is held in
+        <code>sessionStorage</code>, which the browser clears when the window closes.
+        Only the login name and avatar persist, in <code>localStorage</code>, enough to
+        offer "Continue with <em>name</em>", holding no access of its own. The sign-in
+        that follows is a real one; it is quick because GitHub recognises the browser.
+      </p>
+      <p class="flow">
+        The token is a JWT signed with a secret held in Secrets Manager rather than on
+        the machine, so rotating it ends every outstanding session at once.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- 6 -->
+<section id="s5" class="slide">
+  <p class="eyebrow">Automation</p>
+  <h2>What runs with nobody watching</h2>
+  <div class="tablewrap">
+    <table class="grid">
+      <thead>
+        <tr><th>Interval</th><th>Job</th><th>Function</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="when">1 hour</td><td class="what">AWS guardrail sweep</td><td>Every rule, against every covered resource in the account</td></tr>
+        <tr><td class="when">5 minutes</td><td class="what">Alarm evaluation</td><td>Every armed alarm, against the stored result its check produced</td></tr>
+        <tr><td class="when">5 minutes</td><td class="what">Pull request walk</td><td>Finds stale and blocked pull requests, posts reminders, records the snapshot</td></tr>
+        <tr><td class="when">30 minutes</td><td class="what">Light graph refresh</td><td>Repository metadata and team composition only, under 100 requests</td></tr>
+        <tr><td class="when">nightly, 22:00 ET</td><td class="what">Access graph rebuild</td><td>Full walk of the GitHub organization, rewriting the access table</td></tr>
+        <tr><td class="when">seconds</td><td class="what">Targeted AWS re-check</td><td>On any of 6 CloudTrail events, scoped to the resource that changed</td></tr>
+        <tr><td class="when">on event</td><td class="what">Security alerts</td><td>Raised from GitHub webhooks: public repositories, protection changes, permission changes</td></tr>
+        <tr><td class="when">on event</td><td class="what">Access graph patch</td><td>Single rows corrected as GitHub reports membership and protection changes</td></tr>
+        <tr><td class="when">on event</td><td class="what">Scanner runs</td><td>Configured scanners re-run against a repository that changed</td></tr>
+              </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 7 -->
+<section id="s6" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>Access map</h2>
+  <dl class="spec">
+    <div><dt>Answers</dt><dd>Who can reach a repository, and by which route: directly, through a team, or as an organization owner.</dd></div>
+    <div><dt>Runs in</dt><dd><code>graph-aggregator</code> Lambda, on an EventBridge rule. Nothing else writes this table.</dd></div>
+    <div><dt>Source</dt><dd>Full walk of the GitHub API: every repository, its collaborators, its teams, its branches.</dd></div>
+    <div><dt>Stored</dt><dd><code>graph-edges</code>, one row per connection, holding subject, repository and role.</dd></div>
+    <div><dt>Refresh</dt><dd>Three tiers. Webhooks patch individual rows as changes arrive; a light pass re-reads repository metadata and team composition every 30 minutes; the full walk rebuilds everything once a night, at 22:00 America/New_York.</dd></div>
+    <div><dt>Why three</dt><dd>The full walk is four requests per repository, about 1,300 for 300. The facts six checks depend on cost almost nothing: repository metadata arrives with the listing, team composition is two calls per team. Refreshing the cheap half often and the expensive half rarely is what keeps those checks current without spending the rate limit.</dd></div>
+    <div><dt>Cost</dt><dd>≈ 4 GitHub requests per repository. 300 repositories ≈ 1,300 requests, against 15,000 per hour.</dd></div>
+    <div><dt>Staleness</dt><dd>Last rebuild time is displayed on the page, not inferred.</dd></div>
+  </dl>
+</section>
+
+<section id="s7" class="slide">
+  <p class="eyebrow">Access map</p>
+  <h2>Two refresh tiers</h2>
+  <p class="lead" style="margin-bottom:22px">
+    The same Lambda, invoked with a different payload. The cost of a rebuild is
+    almost entirely per-repository work, and almost none of it is what the
+    ownership and metadata checks read.
+  </p>
+  <div class="tablewrap">
+    <table class="grid">
+      <thead><tr><th></th><th>Light</th><th>Full</th></tr></thead>
+      <tbody>
+        <tr><td class="what">Runs</td><td class="when">every 30 minutes</td><td class="when">nightly, 22:00 ET</td></tr>
+        <tr><td class="what">GitHub requests</td><td>~85</td><td>~1,300</td></tr>
+        <tr><td class="what">Per repository</td><td>0 extra, metadata arrives with the listing</td><td>4, collaborators, branches, workflows, alerts</td></tr>
+        <tr><td class="what">Per team</td><td>2</td><td>2</td></tr>
+        <tr><td class="what">Edge types written</td><td>5</td><td>13</td></tr>
+        <tr><td class="what">Rows actually written</td><td>only what changed</td><td>only what changed</td></tr>
+        <tr><td class="what">Clears the table first</td><td>no</td><td>no</td></tr>
+        <tr><td class="what">Removes stale edges by</td><td>pruning inside a team it just read</td><td>diffing against what is stored, then deleting what is gone</td></tr>
+        <tr><td class="what">Covers</td><td>repository facts, team composition</td><td>everything</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <dl class="spec" style="margin-top:22px">
+    <div><dt>Why two</dt><dd>Six checks read edges the full walk was otherwise the only writer of. Refreshing just those is cheap enough to do often; refreshing everything is not.</dd></div>
+    <div><dt>Never pruned blind</dt><dd>The light pass removes an edge only when it read both halves of that team successfully. A team whose members could not be listed is indistinguishable from a team that lost all of them.</dd></div>
+    <div><dt>"Last synced"</dt><dd>Moved by the full rebuild only. That timestamp means the complete picture, and a marker that advanced every half hour while collaborators were still a night old would be a marker that lies.</dd></div>
+  </dl>
+</section>
+
+<!-- 8 -->
+<!-- 7b -->
+<section id="s7b" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>Who knows this</h2>
+  <dl class="spec">
+    <div><dt>Answers</dt><dd>Who to ask about a repository, a path inside one, or a library used anywhere in the organization. The question behind it is "this broke at 3am, who do I wake".</dd></div>
+    <div><dt>Runs in</dt><dd>The application, on demand. No schedule and nothing stored: a question asked during an incident deserves a live answer, and a cached one would be stale exactly when it matters. Three requests for a repository, one for a path, one search plus up to twelve history reads for a library.</dd></div>
+    <div><dt>Reads with</dt><dd>The asker's own GitHub token, never the application's. This concerns a repository they may not be allowed to see, so GitHub decides what they can read rather than the application reimplementing that rule.</dd></div>
+    <div><dt>Signals</dt><dd>Commits, who changed it, weight 1.0. Reviews, who read it, 0.7. Comments, who discussed it, 0.25. A review sits close to a commit deliberately: during an incident the person who reviewed the change that broke it is often the fastest to recognise it.</dd></div>
+    <div><dt>Ranking</dt><dd>Recency is applied per contribution rather than to the total, halving every 90 days, so ten commits last week outrank two hundred from three years ago. Scores are then normalised to 100 against the top person, because the question is who to ask first rather than how expert anyone is in the abstract.</dd></div>
+    <div><dt>Excluded</dt><dd>Bots, which would otherwise top every list and push the humans off it. Matched on "bot" as a whole word so Abbot and Robotics are not caught, and Copilot by name, which that test cannot catch.</dd></div>
+    <div><dt>A library</dt><dd>"Who knows React" is answered by finding the files that declare it &mdash; <code>package.json</code>, <code>go.mod</code>, <code>requirements.txt</code> &mdash; and reading the history of those files. Whoever added, bumped or removed the dependency is the answer. Searching commit messages for the name instead would return whoever typed the word, which is mostly release bots.</dd></div>
+    <div><dt>Not lockfiles</dt><dd>A lockfile names the library too, but is rewritten whenever anyone installs anything. Counted, it would make whoever last ran an install the expert on every dependency in the project.</dd></div>
+    <div><dt>Counts are a floor</dt><dd>GitHub returns one page, so a hundred results means "at least a hundred", not a hundred. The answer says when it is a sample rather than reporting the page size as a total.</dd></div>
+  </dl>
+</section>
+
+<section id="s8" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>Dashboard checks</h2>
+  <dl class="spec">
+    <div><dt>Answers</dt><dd>15 defined checks. Unowned repositories, admins outside the owning team, dormant privileged accounts, repositories without branch protection, and others.</dd></div>
+    <div><dt>Runs in</dt><dd>The desktop application's own backend, on demand when a card is drawn. No Lambda is involved unless an alarm is attached to the same check.</dd></div>
+    <div><dt>Source</dt><dd>Most read the stored access graph and make <b>no GitHub call</b>. A minority require live search against GitHub.</dd></div>
+    <div><dt>Stored</dt><dd>Widget definition only. Search-bound checks additionally store one verdict per subject with its check time.</dd></div>
+    <div><dt>Scope</dt><dd>One dashboard shared by the organization. Editing restricted to an admin group.</dd></div>
+  </dl>
+</section>
+
+<!-- 9 -->
+<section id="s9" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>Vulnerabilities</h2>
+  <dl class="spec">
+    <div><dt>Runs in</dt><dd>The desktop application's backend. Read live on each visit; nothing is stored or scheduled.</dd></div>
+    <div><dt>Dependabot</dt><dd>Read organization-wide in a single API call, not per repository.</dd></div>
+    <div><dt>Renovate</dt><dd>Live GitHub search by the bot account's authorship. Nothing stored; there is no Renovate API.</dd></div>
+    <div><dt>Coverage</dt><dd>Repositories with scanning disabled are reported separately from repositories with no findings.</dd></div>
+    <div><dt>Notifications</dt><dd>Separate email routing for new alerts and for raised update pull requests.</dd></div>
+  </dl>
+</section>
+
+<!-- 10 -->
+<section id="s10" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>AWS guardrails</h2>
+  <dl class="spec">
+    <div><dt>Answers</dt><dd>Whether each resource of a covered type matches a defined rule.</dd></div>
+    <div><dt>Runs in</dt><dd><code>guardrail-enforcer</code> Lambda, in the account being checked, under an IAM role listing named actions. Three of which are writes.</dd></div>
+    <div><dt>Triggers</dt><dd>Two EventBridge rules: a 15-minute schedule, and a CloudTrail event pattern matching six API calls. Both target the same function, with a dead-letter queue behind them so a failed invocation is retained rather than lost.</dd></div>
+    <div><dt>Stored</dt><dd>One finding per resource checked, whatever the verdict, replaced on each sweep. See the next slide.</dd></div>
+    <div><dt>Enforcement</dt><dd>Report by default. Enforce is enabled per rule. Every correction is logged with an undo.</dd></div>
+    <div><dt>Drift</dt><dd>Each evaluation is independent of the last. A reverted setting is a violation again and is corrected again.</dd></div>
+    <div><dt>Deployment</dt><dd>Can run in an account with no GitHub components deployed at all.</dd></div>
+  </dl>
+</section>
+
+<!-- 10b -->
+<section id="s10b" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>How a finding is produced</h2>
+  <p class="lead">The AWS tab opens instantly because it is not asking AWS. Every
+  figure on it was worked out beforehand and stored. This is that path, end to end.</p>
+  <dl class="spec">
+    <div><dt>1 &middot; Trigger</dt><dd>A 15-minute EventBridge schedule, or a CloudTrail event pattern matching six API calls, which re-checks only the resource that changed. Both invoke the same Lambda; a dead-letter queue holds anything that fails five times, with a CloudWatch alarm on it.</dd></div>
+    <div><dt>2 &middot; Collect</dt><dd>Per resource type rather than per rule. S3 lists buckets and, for each, its policy, encryption, public-access block and tags; CloudWatch Logs lists log groups and their retention and tags. Optional settings that are simply absent are recorded as absent rather than treated as errors, because a bucket with no policy is an ordinary bucket.</dd></div>
+    <div><dt>3 &middot; Exclude</dt><dd>Before evaluation, not after. A resource matched by a rule's exclusion list is recorded as <em>not applicable</em> with the list and clause that matched, and is never evaluated or written to. This ordering is what stops the per-resource Fix button touching a resource somebody deliberately carved out.</dd></div>
+    <div><dt>4 &middot; Evaluate</dt><dd>Each remaining resource against the rule's parameters, producing one of three verdicts: compliant, violation, or not applicable. A rule set to <b>enforce</b> then corrects a violation and records what it changed; a rule set to <b>report</b> writes the finding and stops. Report is the default.</dd></div>
+    <div><dt>5 &middot; Store</dt><dd>One row per resource per rule in the <code>aws-findings</code> table, keyed <code>account # region # rule # resource</code>. Every verdict is stored, not only failures, so the tab can distinguish "checked and fine" from "never checked". A sweep overwrites the rows it produced.</dd></div>
+    <div><dt>6 &middot; Read</dt><dd>Opening the tab is a single query against that table, sorted violations first. No AWS API call, no evaluation, no waiting. <b>Refresh</b> re-reads the stored rows; <b>Sweep all</b> runs steps 1 to 5 again.</dd></div>
+  </dl>
+  <p class="foot">Consequence worth stating: a finding can be up to an hour old,
+  and the screen is showing the last sweep's conclusion rather than the account's
+  current state. Where a change fired a CloudTrail event, which is the ordinary
+  case, it is seconds old.</p>
+</section>
+
+<!-- 10c -->
+<section id="s10c" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>Why both a schedule and an event</h2>
+  <p class="lead">CloudTrail is the fast path and the sweep is the floor. Five
+  things can stop the fast path firing, and the sweep is unaffected by all of
+  them.</p>
+  <dl class="spec">
+    <div><dt>No trail</dt><dd>The event rule reads CloudTrail. An account without a trail logging management events never fires it at all, and the guardrails would be silent rather than slow. The sweep needs nothing but the schedule.</dd></div>
+    <div><dt>An unmatched call</dt><dd>CloudTrail records every API call made in the account, of which S3 alone has around a hundred. The rule listens for six names, chosen because they are the ones that can change what the two current rules check. A future rule about, say, bucket encryption would care about <code>PutBucketEncryption</code>, which is not on the list, and would be found by the sweep rather than in seconds until the list grew.</dd></div>
+    <div><dt>A rule that opted out</dt><dd>Each rule has a <b>Reacts to changes</b> switch. Turned off, that rule is skipped by the event path entirely and the sweep is the only thing that ever runs it. The rule card says which: <em>within seconds</em>, or <em>waits for the sweep</em>.</dd></div>
+    <div><dt>A missed delivery</dt><dd>Four ways an event does not arrive, none of them exotic. CloudTrail delivers management events on a <b>best-effort</b> basis and typically within about fifteen minutes, not instantly. EventBridge retries a failing target for <b>24 hours</b> and then gives up. A Lambda that throws five times sends the event to the dead-letter queue, where it waits for a person rather than being reprocessed. And the trail itself can be stopped, deleted or have its S3 bucket policy broken, at which point the events simply stop with nothing announcing it. In every case the schedule is what notices.</dd></div>
+    <div><dt>A new rule</dt><dd>Adding a rule does not retroactively fire events for resources that already exist. The first sweep after it is created is what checks the estate against it.</dd></div>
+    <div><dt>Cost of the floor</dt><dd>About <b>11 cents a month</b>. It was four times that at a fifteen-minute interval, which bought a worst case of fifteen minutes instead of an hour on a path that is already the fallback. Under a quarter of one percent of the Lambda free allowance.</dd></div>
+  </dl>
+  <p class="foot">The two together give the same guarantee twice over: normally a
+  drift is corrected in seconds, and if anything about the fast path fails the
+  worst case is an hour rather than never.</p>
+</section>
+
+<!-- 11 -->
+<section id="s11" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>Alarms and notification</h2>
+  <dl class="spec">
+    <div><dt>Answers</dt><dd>Any check, above or below a threshold, routed to an email group.</dd></div>
+    <div><dt>Runs in</dt><dd><code>alarm-evaluator</code> Lambda, on a 5-minute EventBridge schedule. It re-runs each armed alarm's check itself, so an alarm fires whether or not anyone has the application open.</dd></div>
+    <div><dt>Delivery path</dt><dd>Lambda → SNS topic → email. One topic per group, created when the group is created.</dd></div>
+    <div><dt>Stored</dt><dd>Threshold, recipients, and current firing state. State is what makes a notification a change rather than a repeat.</dd></div>
+    <div><dt>Delivery</dt><dd>SNS, one topic per group. Recipients confirm their own subscription.</dd></div>
+  </dl>
+</section>
+
+<!-- 12 -->
+<section id="s12" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>Pull request reminders</h2>
+  <dl class="spec">
+    <div><dt>Answers</dt><dd>Pull requests approved and unmerged, awaiting review, or stale beyond a configured interval.</dd></div>
+    <div><dt>Runs in</dt><dd>The same <code>alarm-evaluator</code> Lambda, on the same 5-minute schedule. One invocation does both jobs rather than two functions waking separately.</dd></div>
+    <div><dt>Source</dt><dd>Read from GitHub during that pass. One request returns a page of open pull requests together with their reviews and status, rather than one request per pull request.</dd></div>
+    <div><dt>Stored</dt><dd>A snapshot of the list, and per pull request: last reminder, its comment id, and any pause or mute.</dd></div>
+    <div><dt>Comments</dt><dd>One per pull request. Each reminder deletes the previous before posting.</dd></div>
+    <div><dt>Overrides</dt><dd>Mute per person, organization-wide or per repository. Pause per pull request.</dd></div>
+    <div><dt>Display</dt><dd>Snapshot served under 15 minutes old, refreshed in the background. Manual refresh forces a live read.</dd></div>
+  </dl>
+</section>
+
+<!-- 12b -->
+<section id="s12b" class="slide">
+  <p class="eyebrow">Interface</p>
+  <h2>REST and GraphQL</h2>
+  <dl class="spec">
+    <div><dt>Default</dt><dd>The REST API, for everything that reads one thing at a time: repository settings, branch protection, collaborators, team membership.</dd></div>
+    <div><dt>GraphQL</dt><dd>Used where one question spans many objects and REST would require a request per object. Three distinct queries across six call sites.</dd></div>
+    <div><dt>Query 1</dt><dd>Open pull requests with their reviews, requested reviewers, last commit and check status. One request covers a page. Serves the Pull requests tab, the reminder pass, and pull request alarms.</dd></div>
+    <div><dt>Query 2</dt><dd>Which repositories have Dependabot enabled, walked across the organization in one query rather than a page of names per repository.</dd></div>
+    <div><dt>Query 3</dt><dd>Pull request review counts, for two checks: stale branch protections, and ranking repositories by protection bypasses.</dd></div>
+    <div><dt>Rate limits</dt><dd>Separate budgets. REST is 15,000 requests an hour per installation; GraphQL is 5,000 points an hour, where a point cost is calculated from how many objects a query could return rather than from the number of calls.</dd></div>
+    <div><dt>Page size</dt><dd>Learned rather than configured. A GraphQL query's cost scales with the page requested, and what an organization can afford depends on its own pull request volume, so the application discovers the size once and stores it.</dd></div>
+  </dl>
+</section>
+
+<!-- 13 -->
+<section id="s13" class="slide">
+  <p class="eyebrow">Feature</p>
+  <h2>Activity log</h2>
+  <dl class="spec">
+    <div><dt>Streams</dt><dd>Three: actions taken in the application, changes reported by GitHub, and AWS guardrail findings.</dd></div>
+    <div><dt>Retention</dt><dd>13 months, stamped on each row from that row's own timestamp. Nothing is deleted on an age-of-system basis.</dd></div>
+    <div><dt>Always recorded</dt><dd>Changes to structure and access: repositories created, deleted or made public; branch protection and rulesets changing.</dd></div>
+    <div><dt>Detailed logging</dt><dd>An administrator toggle that additionally records routine traffic: branches and tags, commits pushed, pull requests opened, merged and closed. Each kind can be disabled individually.</dd></div>
+    <div><dt>On turning it off</dt><dd>Collection stops; nothing already recorded is removed. Rows keep their full retention and remain visible, and a view filter hides them for readers who do not want them.</dd></div>
+    <div><dt>Runs in</dt><dd>The webhook worker Lambda. No additional infrastructure: it records deliveries the application already receives.</dd></div>
+    <div><dt>Reversal</dt><dd>Actions taken by the application record an undo where one exists.</dd></div>
+  </dl>
+</section>
+
+<!-- 14 -->
+<section id="s14" class="slide">
+  <p class="eyebrow">Data</p>
+  <h2>Twelve tables</h2>
+  <div class="tablewrap">
+    <table class="grid">
+      <thead><tr><th>Table</th><th>What each row is</th><th>Kept</th></tr></thead>
+      <tbody>
+        <tr><td class="what">activity</td><td>One recorded action: something the application did, a change GitHub reported, or a guardrail finding</td><td class="when">13 months</td></tr>
+        <tr><td class="what">graph-edges</td><td>One access relationship: a person or team, a repository, and the role between them</td><td class="when">rewritten nightly</td></tr>
+        <tr><td class="what">aws-findings</td><td>One AWS resource currently failing one rule, with the reason</td><td class="when">replaced each sweep</td></tr>
+        <tr><td class="what">alarms</td><td>Ten different kinds of row share this one table, broken out on the next slide</td><td class="when">see next</td></tr>
+        <tr><td class="what">alerts</td><td>One security alert raised from a webhook, with its severity</td><td class="when">until resolved</td></tr>
+        <tr><td class="what">widgets</td><td>One dashboard card: which check it runs and what it is called</td><td class="when">no expiry</td></tr>
+        <tr><td class="what">scanners</td><td>One scanner definition</td><td class="when">no expiry</td></tr>
+        <tr><td class="what">org-config</td><td>A single row: feature flags, the Renovate bot's account name, and when the access graph was last rebuilt</td><td class="when">no expiry</td></tr>
+        <tr><td class="what">aws-guardrails</td><td>One guardrail rule: what it checks and whether it may correct</td><td class="when">no expiry</td></tr>
+        <tr><td class="what">aws-exclusions</td><td>One resource a rule is told to ignore, with the stated reason</td><td class="when">no expiry</td></tr>
+        <tr><td class="what">auth-codes</td><td>A sign-in code, or the token tying a sign-in to the browser that started it</td><td class="when">5–10 minutes</td></tr>
+        <tr><td class="what">webhook-deliveries</td><td>The id of a webhook already handled, so GitHub re-sending it changes nothing</td><td class="when">10–15 minutes</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- 15 -->
+<section id="s15" class="slide">
+  <p class="eyebrow">Data</p>
+  <h2>Inside the alarms table</h2>
+  <p class="lead" style="margin-bottom:22px">
+    One table, ten kinds of row, each tagged with what it is. Grouped here by how long it lives.
+  </p>
+  <div class="tablewrap">
+    <table class="grid">
+      <thead><tr><th>Row kind</th><th>What it holds</th><th>Kept</th></tr></thead>
+      <tbody>
+        <tr><td class="what">alarm</td><td>What one alarm watches, its threshold, who it emails, and whether it is currently firing</td><td class="when">no expiry</td></tr>
+        <tr><td class="what">group</td><td>A named list of email recipients, and the SNS topic that delivers to them</td><td class="when">no expiry</td></tr>
+        <tr><td class="what">settings</td><td>Four rows: which emails go out for Dependabot and for Renovate, the security-alert switch, and the pull request reminder rules</td><td class="when">no expiry</td></tr>
+        <tr><td class="what">mutes</td><td>People who have opted out of pull request reminders, organization-wide or per repository</td><td class="when">no expiry</td></tr>
+        <tr><td class="what">pr-state</td><td>Per pull request: when it was last reminded, the id of that comment, and whether it is paused</td><td class="when">180 days</td></tr>
+        <tr><td class="what">verdicts</td><td>For checks that need a live GitHub search, the last answer for each person or repository and the time it was taken</td><td class="when">48 hours</td></tr>
+        <tr><td class="what">snapshot</td><td>The pull request list exactly as the last 5-minute pass saw it, so the tab opens without waiting on GitHub</td><td class="when">24 hours</td></tr>
+        <tr><td class="what">pending</td><td>A notification composed but not yet delivered</td><td class="when">24 hours</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+
+
+<script>
+  (function () {
+    var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+    var cur = document.getElementById('cur');
+    var tot = document.getElementById('tot');
+    var bar = document.getElementById('bar');
+    var hint = document.getElementById('hint');
+    tot.textContent = slides.length;
+
+    var tocLinks = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+
+    var index = 0;
+    function paint() {
+      cur.textContent = index + 1;
+      bar.style.width = ((index + 1) / slides.length * 100) + '%';
+      tocLinks.forEach(function (a, i) { a.classList.toggle('on', i === index); });
+    }
+    function go(n) {
+      index = Math.max(0, Math.min(slides.length - 1, n));
+      slides[index].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      paint();
+    }
+
+    // Keep the counter honest when scrolled by hand or by trackpad.
+    if ('IntersectionObserver' in window) {
+      var obs = new IntersectionObserver(function (entries) {
+        entries.forEach(function (e) {
+          if (e.isIntersecting && e.intersectionRatio > 0.5) {
+            index = slides.indexOf(e.target);
+            paint();
+          }
+        });
+      }, { threshold: [0.5] });
+      slides.forEach(function (s) { obs.observe(s); });
+    }
+
+    document.addEventListener('keydown', function (e) {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      var k = e.key;
+      if (k === 'ArrowRight' || k === 'ArrowDown' || k === 'PageDown' || k === ' ') {
+        e.preventDefault(); go(index + 1); hide();
+      } else if (k === 'ArrowLeft' || k === 'ArrowUp' || k === 'PageUp') {
+        e.preventDefault(); go(index - 1); hide();
+      } else if (k === 'Home') { e.preventDefault(); go(0); }
+      else if (k === 'End') { e.preventDefault(); go(slides.length - 1); }
+    });
+
+    var hidden = false;
+    function hide() {
+      if (hidden) return;
+      hidden = true;
+      hint.classList.add('gone');
+    }
+    setTimeout(hide, 6000);
+    paint();
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,690 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Running Costs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+:root{
+  --paper:#f6f7f9; --card:#ffffff; --ink:#151b26; --ink-2:#39424f; --muted:#697485;
+  --rule:#dcdfe6; --rule-2:#c3c8d2;
+  --accent:#2f4b7c; --accent-soft:#eaeff7;
+  --scale:#9c4a1e; --scale-soft:#f8ede6;
+  --fixed:#1f6b4f; --fixed-soft:#e7f2ec;
+  --shadow:0 1px 2px rgba(21,27,38,.05), 0 8px 24px -16px rgba(21,27,38,.18);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --paper:#0f131a; --card:#161b24; --ink:#e8ebf0; --ink-2:#b7bfcc; --muted:#8b95a5;
+    --rule:#262d38; --rule-2:#39424f;
+    --accent:#93b1de; --accent-soft:#1a2333;
+    --scale:#e0a077; --scale-soft:#2a1e17;
+    --fixed:#7cc3a4; --fixed-soft:#15251e;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#0f131a; --card:#161b24; --ink:#e8ebf0; --ink-2:#b7bfcc; --muted:#8b95a5;
+  --rule:#262d38; --rule-2:#39424f;
+  --accent:#93b1de; --accent-soft:#1a2333;
+  --scale:#e0a077; --scale-soft:#2a1e17;
+  --fixed:#7cc3a4; --fixed-soft:#15251e;
+  --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -16px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:16px; line-height:1.65; -webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1180px; margin:0 auto; padding:0 24px 96px;
+  display:grid; grid-template-columns:1fr; gap:0 56px}
+@media (min-width:1040px){ .wrap{grid-template-columns:214px minmax(0,1fr)} }
+
+header.masthead{grid-column:1/-1; padding:64px 0 40px; border-bottom:2px solid var(--ink)}
+.kicker{font-family:"IBM Plex Mono",monospace; font-size:11px; letter-spacing:.16em;
+  text-transform:uppercase; color:var(--muted); margin:0 0 14px}
+h1{font-family:Newsreader,Georgia,serif; font-weight:500; font-size:clamp(2.4rem,5.2vw,3.6rem);
+  line-height:1.06; letter-spacing:-.018em; margin:0 0 18px; text-wrap:balance}
+.standfirst{font-size:1.09rem; color:var(--ink-2); max-width:64ch; margin:0}
+
+.headline{display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule);
+  grid-template-columns:repeat(auto-fit,minmax(168px,1fr)); margin:34px 0 0; border-radius:3px; overflow:hidden}
+.hf{background:var(--card); padding:18px 20px}
+.hf .lbl{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--muted); display:block; margin-bottom:8px}
+.hf .fig{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:1.72rem; font-weight:600; letter-spacing:-.02em; display:block; line-height:1.1}
+.hf .sub{font-size:12.5px; color:var(--muted); display:block; margin-top:5px}
+
+nav.toc{display:none}
+@media (min-width:1040px){
+  nav.toc{display:block; padding-top:44px}
+  nav.toc .inner{position:sticky; top:32px}
+  nav.toc p{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.14em;
+    text-transform:uppercase; color:var(--muted); margin:0 0 12px}
+  nav.toc ol{list-style:none; margin:0; padding:0; counter-reset:s}
+  nav.toc li{counter-increment:s; margin-bottom:2px}
+  nav.toc a{display:flex; gap:9px; text-decoration:none; color:var(--ink-2);
+    font-size:13.5px; padding:5px 0; line-height:1.35}
+  nav.toc a::before{content:counter(s,decimal-leading-zero);
+    font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted); padding-top:2px}
+  nav.toc a:hover{color:var(--accent)}
+}
+
+main{padding-top:44px; min-width:0}
+section{margin-bottom:60px; scroll-margin-top:24px}
+h2{font-family:Newsreader,Georgia,serif; font-weight:500; font-size:1.85rem;
+  letter-spacing:-.012em; margin:0 0 6px; text-wrap:balance}
+h2 + .dek{color:var(--muted); margin:0 0 26px; max-width:64ch; font-size:.97rem}
+h3{font-size:.83rem; font-family:"IBM Plex Mono",monospace; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--muted); margin:34px 0 12px; font-weight:600}
+p{max-width:68ch}
+strong{font-weight:600}
+code{font-family:"IBM Plex Mono",monospace; font-size:.87em; background:var(--accent-soft);
+  color:var(--accent); padding:1px 5px; border-radius:3px}
+
+.scroll{overflow-x:auto; margin:0 0 8px; -webkit-overflow-scrolling:touch}
+table{width:100%; border-collapse:collapse; font-size:14.5px; min-width:560px}
+caption{text-align:left; font-size:12.5px; color:var(--muted); padding-bottom:9px}
+th{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.11em;
+  text-transform:uppercase; color:var(--muted); font-weight:600; text-align:left;
+  padding:0 14px 8px 0; border-bottom:1px solid var(--rule-2); white-space:nowrap}
+td{padding:9px 14px 9px 0; border-bottom:1px solid var(--rule); vertical-align:top}
+th.n,td.n{text-align:right; padding-right:0; font-family:"IBM Plex Mono",monospace;
+  font-variant-numeric:tabular-nums; white-space:nowrap}
+td.n{font-weight:500}
+tr.sub td{border-top:1px solid var(--rule-2); border-bottom:none; font-weight:600; padding-top:11px}
+tr.total td{border-top:2.5px double var(--rule-2); border-bottom:none;
+  font-weight:600; padding-top:12px; font-size:15.5px}
+tr.big td.n{color:var(--scale)}
+td .note{display:block; color:var(--muted); font-size:12.5px; margin-top:2px; line-height:1.45}
+
+.tag{font-family:"IBM Plex Mono",monospace; font-size:9.5px; letter-spacing:.08em;
+  text-transform:uppercase; padding:2px 6px; border-radius:3px; font-weight:600; white-space:nowrap}
+.tag.s{background:var(--scale-soft); color:var(--scale)}
+.tag.f{background:var(--fixed-soft); color:var(--fixed)}
+.tag.m{background:var(--accent-soft); color:var(--accent)}
+
+.note-box{background:var(--card); border:1px solid var(--rule); border-left:3px solid var(--accent);
+  padding:16px 20px; margin:22px 0; border-radius:0 3px 3px 0; box-shadow:var(--shadow)}
+.note-box.warn{border-left-color:var(--scale)}
+.note-box.good{border-left-color:var(--fixed)}
+.note-box p{margin:0; max-width:64ch}
+.note-box p + p{margin-top:10px}
+.note-box .h{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.12em;
+  text-transform:uppercase; color:var(--muted); display:block; margin-bottom:7px}
+
+.meter{display:grid; grid-template-columns:auto 1fr auto; gap:14px; align-items:center;
+  margin:11px 0; font-size:14px}
+.meter .who{font-weight:500; white-space:nowrap}
+.meter .bar{height:9px; background:var(--rule); border-radius:2px; overflow:hidden}
+.meter .fill{height:100%; background:var(--accent); border-radius:2px}
+.meter .fill.hot{background:var(--scale)}
+.meter .pct{font-family:"IBM Plex Mono",monospace; font-variant-numeric:tabular-nums;
+  font-size:13px; color:var(--muted); white-space:nowrap}
+
+footer{grid-column:1/-1; border-top:1px solid var(--rule); padding-top:22px; margin-top:16px;
+  color:var(--muted); font-size:13px}
+footer p{max-width:72ch}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <p class="kicker">GitHub Control Hub &middot; Operating Reference</p>
+  <h1>What it costs to run</h1>
+  <p class="standfirst">Every AWS resource the application creates, every source of GitHub API
+  traffic, and where the real ceilings are. Measured from an actual bill on a live
+  356-repository deployment. <strong>Assume the free tier is already spent</strong> by
+  everything else in the account, and read the full-price column.</p>
+
+  <div class="headline">
+    <div class="hf">
+      <span class="lbl">Fixed, any size</span>
+      <span class="fig">$6.60</span>
+      <span class="sub">before a single request</span>
+    </div>
+    <div class="hf">
+      <span class="lbl">Largest single item</span>
+      <span class="fig">$6.00</span>
+      <span class="sub">AWS WAF, 91% of the floor</span>
+    </div>
+    <div class="hf">
+      <span class="lbl">500 repos, free tier spent</span>
+      <span class="fig">$9.94</span>
+      <span class="sub">assume this figure</span>
+    </div>
+    <div class="hf">
+      <span class="lbl">2,000 repos, free tier spent</span>
+      <span class="fig">$21.44</span>
+      <span class="sub">1,000 developers</span>
+    </div>
+  </div>
+</header>
+
+<nav class="toc"><div class="inner">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#bill">The actual bill</a></li>
+    <li><a href="#waf">The WAF</a></li>
+    <li><a href="#free">Free tier</a></li>
+    <li><a href="#lambda">Lambda</a></li>
+    <li><a href="#dynamo">DynamoDB</a></li>
+    <li><a href="#rest">Everything else</a></li>
+    <li><a href="#totals">Totals</a></li>
+    <li><a href="#requests">GitHub requests</a></li>
+    <li><a href="#limits">Rate limits</a></li>
+    <li><a href="#graphql">GraphQL, exactly</a></li>
+    <li><a href="#ceilings">Real ceilings</a></li>
+    <li><a href="#levers">Levers</a></li>
+  </ol>
+</div></nav>
+
+<main>
+
+<section id="bill">
+  <h2>The actual bill</h2>
+  <p class="dek">Cost Explorer, 1 to 26 August 2026, on a deployment with 356 repositories.
+  Services belonging to other workloads in the same account have been excluded. Three lines
+  were absorbed by that account's free tier and are shown here at their full price instead,
+  because yours probably will not be.</p>
+
+  <div class="scroll"><table>
+    <caption>Billed amounts scaled to a full month. Every line is a real charge, not an estimate.</caption>
+    <thead><tr><th>Service</th><th>What for</th><th></th><th class="n">$/month</th></tr></thead>
+    <tbody>
+      <tr class="big"><td><strong>AWS WAF</strong><span class="note">Web ACL $5.00, one rule $1.00, requests $0.60/M</span></td>
+        <td>Rate limit in front of the webhook endpoint</td>
+        <td><span class="tag f">Fixed</span></td><td class="n">6.00</td></tr>
+      <tr><td>Secrets Manager<span class="note">One secret, $0.40 each</span></td>
+        <td>GitHub App key and OAuth credentials</td>
+        <td><span class="tag f">Fixed</span></td><td class="n">0.40</td></tr>
+      <tr><td>CloudWatch alarms<span class="note">Two, $0.10 each</span></td>
+        <td>Both dead-letter queues</td>
+        <td><span class="tag f">Fixed</span></td><td class="n">0.20</td></tr>
+      <tr><td>DynamoDB<span class="note">738,728 read units, 95,230 write units in 25 days</span></td>
+        <td>All fifteen tables</td>
+        <td><span class="tag s">Scales</span></td><td class="n">0.18</td></tr>
+      <tr><td>S3 configuration reads<span class="note">Policy, encryption, public-access block and tags, per bucket, per sweep. Billed as ordinary GET requests at $0.40 per million</span></td>
+        <td>The guardrail sweep looking at each bucket</td>
+        <td><span class="tag s">Scales</span></td><td class="n">0.04</td></tr>
+      <tr><td>KMS<span class="note">32,631 requests</span></td>
+        <td>Encryption on DynamoDB, SQS, S3</td>
+        <td><span class="tag s">Scales</span></td><td class="n">0.05</td></tr>
+      <tr><td>API Gateway<span class="note">REST API at $3.50/M, not HTTP API at $1.00/M</span></td>
+        <td>The webhook endpoint</td>
+        <td><span class="tag s">Scales</span></td><td class="n">0.02</td></tr>
+      <tr><td>Lambda<span class="note">73,384 GB-seconds, 20,280 invocations</span></td>
+        <td>All five functions</td>
+        <td><span class="tag s">Scales</span></td><td class="n">1.23</td></tr>
+      <tr><td>CloudWatch Logs<span class="note">Well under 1 GB ingested</span></td>
+        <td>Six log groups</td>
+        <td><span class="tag s">Scales</span></td><td class="n">0.01</td></tr>
+      <tr><td>SQS, SNS, EventBridge<span class="note">Three queues, notification topics, five rules. EventBridge schedules are free outright</span></td>
+        <td>Webhook pipeline, email, schedules</td>
+        <td><span class="tag s">Scales</span></td><td class="n">0.01</td></tr>
+      <tr class="sub"><td colspan="3">Charged on this account, where the free tier absorbed Lambda, Logs and SQS</td><td class="n">$6.85</td></tr>
+      <tr class="total"><td colspan="3">Same usage at full price, with no free tier left</td><td class="n">$8.09</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note-box warn">
+    <span class="h">Correction</span>
+    <p>An earlier version of this page omitted the WAF entirely, priced API Gateway as an HTTP
+    API rather than the REST API actually deployed, and left out CloudWatch alarms and KMS. It
+    also treated the account's free tier as available, which it usually is not, and counted
+    CloudTrail, which almost every account already runs for its own reasons. The figures above
+    replace those, and come from Cost Explorer rather than from a model.</p>
+  </div>
+</section>
+
+<section id="waf">
+  <h2>The WAF is the bill</h2>
+  <p class="dek">Six dollars a month, fixed, whatever the organization does. Everything else
+  put together is under a dollar.</p>
+
+  <p>AWS WAF charges <strong>$5.00 per Web ACL per month</strong> and <strong>$1.00 per rule per
+  month</strong> before a single request is inspected. The deployment has one of each. Request
+  charges are $0.60 per million and, at 3,623 requests in 25 days, round to nothing.</p>
+
+  <p>It sits in front of the webhook API and holds exactly one rule: a rate limit of 2,000
+  requests per five minutes per source address. It deliberately does <em>not</em> use the AWS
+  common rule set, because two of those rules would reject legitimate deliveries. The body size
+  cap is 8 KB and GitHub payloads routinely exceed it, and the XSS and SQL-injection body rules
+  inspect what on a webhook is somebody's branch name or commit message.</p>
+
+  <div class="note-box">
+    <span class="h">Is it worth six dollars</span>
+    <p>That is a judgement rather than a calculation, and it is worth making deliberately. The
+    controls that actually gate the endpoint are the API Gateway resource policy, which admits
+    only GitHub's published address ranges, and the HMAC signature the receiver verifies before
+    anything is queued. The WAF is defence in depth on top of both.</p>
+    <p><strong>Removing it would cut the fixed floor by 91% and leave two other controls in place.</strong>
+    Keeping it costs about seventy dollars a year. Both are defensible; what is not defensible is
+    paying for it without knowing it is there, which is what the previous version of this page
+    allowed.</p>
+  </div>
+</section>
+
+<section id="free">
+  <h2>The free tier, and what happens without it</h2>
+  <p class="dek">Several services on this bill were absorbed by an allowance. That allowance is
+  per AWS account, not per application, so whether you get it depends on everything else
+  sharing the account.</p>
+
+  <div class="note-box warn">
+    <span class="h">Read the right column</span>
+    <p>An account already running other workloads has usually spent these allowances on them.
+    If this application is going into an account with existing Lambdas, <strong>assume none of
+    the free tier is available</strong> and use the full-price figures throughout this page.
+    Nothing below depends on getting it.</p>
+  </div>
+
+  <div class="scroll"><table>
+    <caption>Allowances are per account, per month. Lambda, SQS and SNS are permanent; the
+    CloudWatch Logs allowance is a 12-month trial and expires.</caption>
+    <thead><tr>
+      <th>Service</th><th>Free allowance</th><th>Full price beyond it</th>
+      <th class="n">356 repos</th><th class="n">2,000 repos</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>Lambda duration</td><td>400,000 GB-seconds</td><td>$0.0000166667 per GB-second</td>
+        <td class="n">73,384</td><td class="n">481,219</td></tr>
+      <tr><td>Lambda requests</td><td>1,000,000</td><td>$0.20 per million</td>
+        <td class="n">20,280</td><td class="n">1,513,080</td></tr>
+      <tr><td>SQS requests</td><td>1,000,000</td><td>$0.40 per million</td>
+        <td class="n">~7,000</td><td class="n">1,500,000</td></tr>
+      <tr><td>SNS publishes</td><td>1,000,000</td><td>$0.50 per million</td>
+        <td class="n">tens</td><td class="n">hundreds</td></tr>
+      <tr><td>CloudWatch Logs ingest</td><td>5 GB <em>(expires)</em></td><td>$0.50 per GB</td>
+        <td class="n">&lt;1 GB</td><td class="n">~1.5 GB</td></tr>
+      <tr><td>DynamoDB storage</td><td>25 GB</td><td>$0.25 per GB-month</td>
+        <td class="n">~50 MB</td><td class="n">~300 MB</td></tr>
+      <tr><td>DynamoDB requests</td><td><strong>none</strong></td><td>$1.25/M writes, $0.25/M reads</td>
+        <td class="n">billed</td><td class="n">billed</td></tr>
+      <tr class="sub"><td colspan="3">What the free tier is worth, if you have it</td>
+        <td class="n">$1.24</td><td class="n">$9.68</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>So the free tier is worth about <strong>a dollar a month at 356 repositories</strong> and
+  about <strong>ten at two thousand</strong>. Worth knowing, and not worth planning around: it
+  moves the total by roughly 15% and 45% respectively, and every figure elsewhere on this page
+  is quoted both ways.</p>
+
+  <p><strong>DynamoDB request pricing has no free tier at all</strong>, which is why it is the
+  one usage line that shows a real number on an otherwise-idle account.</p>
+</section>
+
+<section id="lambda">
+  <h2>Lambda</h2>
+  <p class="dek">Five functions. Four on a clock, one per webhook delivery. Durations measured
+  over 24 hours on the live deployment.</p>
+
+  <div class="scroll"><table>
+    <thead><tr>
+      <th>Function</th><th>Runs</th><th>Memory</th><th class="n">Mean</th>
+      <th class="n">Calls / month</th><th class="n">GB-s / month</th>
+    </tr></thead>
+    <tbody>
+      <tr>
+        <td>alarm-evaluator<span class="note">Evaluates every alarm, writes every widget snapshot</span></td>
+        <td>every 5 min</td><td>512 MB</td><td class="n">5,688 ms</td><td class="n">8,640</td><td class="n">24,573</td>
+      </tr>
+      <tr>
+        <td>graph-aggregator <em>(full)</em><span class="note">Every repository, team, member, branch, workflow, alert</span></td>
+        <td>every 6 h</td><td>1024 MB</td><td class="n">310,000 ms</td><td class="n">120</td><td class="n">37,200</td>
+      </tr>
+      <tr>
+        <td>graph-aggregator <em>(light)</em><span class="note">Repository facts and team composition only</span></td>
+        <td>every 30 min</td><td>1024 MB</td><td class="n">5,300 ms</td><td class="n">1,440</td><td class="n">7,632</td>
+      </tr>
+      <tr>
+        <td>guardrail-enforcer<span class="note">Sweeps AWS resources against each enabled rule</span></td>
+        <td>every hour</td><td>512 MB</td><td class="n">2,471 ms</td><td class="n">720</td><td class="n">890</td>
+      </tr>
+      <tr>
+        <td>webhook-receiver<span class="note">Verifies the HMAC and enqueues. Nothing else</span></td>
+        <td>per delivery</td><td>256 MB</td><td class="n">~40 ms</td><td class="n">varies</td><td class="n">tiny</td>
+      </tr>
+      <tr>
+        <td>webhook-worker<span class="note">Does the work: alerts, graph patches, activity rows</span></td>
+        <td>per delivery</td><td>512 MB</td><td class="n">214 ms</td><td class="n">varies</td><td class="n">small</td>
+      </tr>
+      <tr class="sub"><td colspan="5">Total at 356 repos, against 400,000 free</td><td class="n">73,384</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>The full rebuild is the largest consumer despite running only four times a day, because it
+  runs for five minutes at 1 GB. It is also the line that scales hardest: its duration is
+  roughly proportional to repository count.</p>
+</section>
+
+<section id="dynamo">
+  <h2>DynamoDB</h2>
+  <p class="dek">Fifteen tables, all on-demand. In 25 days the whole application used 738,728
+  read units and 95,230 write units, for eighteen cents a month.</p>
+
+  <div class="scroll"><table>
+    <caption>Only one of the fifteen tables is created by CloudFormation. The rest are made by
+    the setup script, which is why they do not appear in a stack diff.</caption>
+    <thead><tr><th>Table</th><th>Write pattern</th><th>Retention</th></tr></thead>
+    <tbody>
+      <tr><td>graph-edges<span class="note">Largest table. One row per access relationship</span></td>
+        <td>Rebuilt 4&times;/day, but only the difference is written</td><td>replaced</td></tr>
+      <tr><td>aws-findings<span class="note">One row per resource checked, whatever the verdict, so the tab can tell "checked and fine" from "never checked"</span></td>
+        <td>Replaced every hour</td><td>replaced</td></tr>
+      <tr><td>alarms<span class="note">Eleven row kinds share it, including widget snapshots</span></td>
+        <td>Snapshots overwritten every 5 min</td><td>mixed, 24 h to 180 d</td></tr>
+      <tr><td>activity<span class="note">Every recorded action</span></td>
+        <td>Append only</td><td>13 months</td></tr>
+      <tr><td>webhook-deliveries<span class="note">The only table CDK creates</span></td>
+        <td>One row per delivery, for de-duplication</td><td>10 to 15 min</td></tr>
+      <tr><td>activity <em>(repo-index)</em><span class="note">A second lookup list on the activity table, so filtering the feed by repository is a direct query rather than a scan</span></td>
+        <td>One extra write per row that names a repository</td><td>follows the table</td></tr>
+      <tr><td>ten others<span class="note">org-config, widgets, scanners, alerts, exclusions, guardrails, templates, auth-codes, ci-failures, compliance-cache</span></td>
+        <td>Written when a person changes a setting</td><td>mostly never</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note-box">
+    <span class="h">The one index worth its cost</span>
+    <p><code>repo-index</code> duplicates the rows it covers, which is what an
+    index does. It stays small because it is <strong>sparse</strong>: a row that
+    is not about one repository omits the attribute entirely rather than storing
+    an empty string, so roughly a third of rows are not indexed at all. Storing
+    <code>""</code> would have indexed every one of them under a single empty
+    key.</p>
+    <p>Measured against the alternative it replaces: about <strong>one cent a
+    month</strong> at 500 events a day, and <strong>28 cents</strong> at 5,000.
+    What it buys is that filtering the feed by a repository returns every match
+    at any depth instead of giving up after three thousand rows.</p>
+  </div>
+
+  <p><strong>Reads cost more than writes here</strong>, which is unusual and worth knowing: 738,728
+  read units against 95,230 write units. Most of that is the graph rebuild scanning the edge
+  table to work out what changed before writing the difference. That scan is what keeps the
+  write count low, so it is a deliberate trade and a good one, since reads are a fifth of the
+  price of writes.</p>
+</section>
+
+<section id="rest">
+  <h2>Everything else in the stack</h2>
+  <p class="dek">Enumerated from the deployed CloudFormation stack, so nothing is missed by
+  memory. CloudTrail is listed for completeness and costs nothing here: it is a dependency the
+  account already satisfies, not something this application stands up.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th class="n">Count</th><th>Resource</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td class="n">5</td><td>Lambda functions</td><td>Free tier at this size</td></tr>
+      <tr><td class="n">7</td><td>Lambda permissions</td><td>None</td></tr>
+      <tr><td class="n">6</td><td>CloudWatch log groups</td><td>Free tier under 5 GB ingest</td></tr>
+      <tr><td class="n">6</td><td>IAM roles</td><td>None</td></tr>
+      <tr><td class="n">5</td><td>IAM policies</td><td>None</td></tr>
+      <tr><td class="n">5</td><td>EventBridge rules<span class="note">Four schedules plus one CloudTrail pattern</span></td><td>None</td></tr>
+      <tr><td class="n">3</td><td>SQS queues<span class="note">Webhook queue, webhook DLQ, guardrail DLQ</span></td><td>Free tier</td></tr>
+      <tr><td class="n">3</td><td>SQS queue policies</td><td>None</td></tr>
+      <tr><td class="n">2</td><td>CloudWatch alarms<span class="note">One per dead-letter queue</span></td><td><strong>$0.20</strong></td></tr>
+      <tr><td class="n">1</td><td>WAFv2 Web ACL</td><td><strong>$5.00</strong></td></tr>
+      <tr><td class="n">1</td><td>WAFv2 rule<span class="note">Counted inside the ACL, billed separately</span></td><td><strong>$1.00</strong></td></tr>
+      <tr><td class="n">1</td><td>WAFv2 association</td><td>None</td></tr>
+      <tr><td class="n">7</td><td>API Gateway resources<span class="note">REST API, stage, deployment, account, method, validator, 2 resources</span></td><td>$3.50 per million calls</td></tr>
+      <tr><td class="n">1</td><td>Lambda event source mapping</td><td>None</td></tr>
+      <tr><td class="n">1</td><td>DynamoDB table in the stack</td><td>On-demand</td></tr>
+      <tr><td class="n">14</td><td>DynamoDB tables outside the stack<span class="note">Created by the setup script</span></td><td>On-demand</td></tr>
+      <tr><td class="n">0</td><td>CloudTrail<span class="note">A dependency, not a resource this application creates. Most accounts already run a trail, and the guardrail's creation-event rule reads from whichever one exists</span></td><td>Not counted here</td></tr>
+      <tr><td class="n">1</td><td>Secrets Manager secret</td><td><strong>$0.40</strong></td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="totals">
+  <h2>Totals by size</h2>
+  <p class="dek">Both ways. The right-hand column is the one to quote unless you know the
+  account's free tier is untouched.</p>
+
+  <div class="scroll"><table>
+    <thead><tr>
+      <th>Organization</th><th class="n">Fixed</th><th class="n">Usage</th>
+      <th class="n">With free tier</th><th class="n">Free tier spent</th>
+    </tr></thead>
+    <tbody>
+      <tr><td>Small<span class="note">50 repos, 20 developers</span></td>
+        <td class="n">6.60</td><td class="n">0.10</td>
+        <td class="n">$6.70</td><td class="n">$6.96</td></tr>
+      <tr><td>This deployment<span class="note">356 repos, measured from the bill</span></td>
+        <td class="n">6.60</td><td class="n">0.25</td>
+        <td class="n">$6.85</td><td class="n">$8.09</td></tr>
+      <tr><td>Big<span class="note">500 repos, 300 developers, detailed logging on</span></td>
+        <td class="n">6.60</td><td class="n">1.04</td>
+        <td class="n">$7.64</td><td class="n">$9.94</td></tr>
+      <tr class="total"><td>Very large<span class="note">2,000 repos, 1,000 developers</span></td>
+        <td class="n">6.60</td><td class="n">5.19</td>
+        <td class="n">$11.79</td><td class="n">$21.44</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>Quadrupling from 500 to 2,000 repositories roughly quadruples the usage half and moves the
+  total by about eleven dollars. <strong>The fixed floor still dominates at every realistic
+  size</strong>, and most of that floor is one WAF.</p>
+</section>
+
+<section id="requests">
+  <h2>GitHub requests</h2>
+  <p class="dek">The resource actually worth managing.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Source</th><th>Frequency</th><th class="n">Per pass</th><th class="n">Per day</th></tr></thead>
+    <tbody>
+      <tr><td>Full graph rebuild<span class="note">4 per repository, 2 per team</span></td>
+        <td>every 6 h</td><td class="n">2,100</td><td class="n">8,400</td></tr>
+      <tr><td>Light graph refresh<span class="note">Listing pages plus 2 per team. Zero per repository</span></td>
+        <td>every 30 min</td><td class="n">106</td><td class="n">5,088</td></tr>
+      <tr><td>Widget checks<span class="note">Most read stored edges and call GitHub not at all</span></td>
+        <td>every 5 min</td><td class="n">0 to ~25</td><td class="n">bounded</td></tr>
+      <tr><td>Webhook deliveries<span class="note">Inbound. GitHub pushes, the app never polls</span></td>
+        <td>continuous</td><td class="n">0</td><td class="n">0</td></tr>
+      <tr class="sub"><td colspan="3">500 repos, 50 teams</td><td class="n">13,488</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note-box">
+    <span class="h">Why the light pass is nearly free</span>
+    <p>The full rebuild costs four requests per repository. The light pass costs <strong>zero per
+    repository</strong>: everything it writes arrives inside the listing response it was already
+    paying for. That is why it can run twelve times more often for a fraction of the traffic, and
+    why six otherwise-stale checks are current within thirty minutes rather than six hours.</p>
+  </div>
+</section>
+
+<section id="limits">
+  <h2>Rate limits</h2>
+  <p class="dek">15,000 requests per hour, per installation, shared by everything.</p>
+
+  <p>The application authenticates as a <strong>GitHub App installation</strong>, which on
+  Enterprise Cloud gets 15,000 REST requests per hour. Scheduled rebuilds, widget checks and
+  page loads all draw on the same pool.</p>
+
+  <h3>Worst hour, as a share of the limit</h3>
+  <p style="margin-bottom:18px">The hour containing a full rebuild and its two light passes.</p>
+
+  <div class="meter">
+    <span class="who">Small &middot; 50 repos</span>
+    <span class="bar"><span class="fill" style="width:1.6%"></span></span>
+    <span class="pct">234 &middot; 1.6%</span>
+  </div>
+  <div class="meter">
+    <span class="who">Big &middot; 500 repos</span>
+    <span class="bar"><span class="fill" style="width:15.4%"></span></span>
+    <span class="pct">2,312 &middot; 15.4%</span>
+  </div>
+  <div class="meter">
+    <span class="who">Very large &middot; 2,000 repos</span>
+    <span class="bar"><span class="fill hot" style="width:61.6%"></span></span>
+    <span class="pct">9,242 &middot; 61.6%</span>
+  </div>
+
+  <h3>The secondary limit</h3>
+  <p>Separate from the hourly quota, GitHub enforces a burst and concurrency limit that triggers
+  regardless of the hourly figure. This is why the alarm pass runs its checks sequentially: firing
+  every check in the same instant is exactly the shape that trips it.</p>
+
+  <p>The commit-search endpoint is stricter again, at <strong>30 requests per minute</strong>. The
+  three subject-by-subject checks that use it are budgeted at 25 accounts per pass and cache
+  answers for 48 hours, which is why those widgets fill in progressively rather than answering
+  at once.</p>
+</section>
+
+<section id="graphql">
+  <h2>GraphQL, exactly where</h2>
+  <p class="dek">Six call sites, three distinct queries, metered against a separate budget of
+  5,000 points per hour rather than the 15,000 REST requests.</p>
+
+  <h3>Query 1 &middot; open pull requests</h3>
+  <p>Defined once as <code>OPEN_PRS_QUERY</code> in <code>services/prNudgeService.ts</code>.
+  A <code>search</code> over open pull requests returning, per node: number, head branch, author,
+  repository, last commit date, <code>statusCheckRollup</code>, requested reviewers and
+  <code>latestReviews</code>. Three call sites share it:</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Call site</th><th>Use case</th><th>Token</th></tr></thead>
+    <tbody>
+      <tr><td><code>routes/pulls.ts</code></td>
+        <td>Drawing the Pull requests tab</td>
+        <td><strong>The caller's own.</strong> The App token can see every private repository, so
+        using it would show somebody pull requests they cannot open on github.com</td></tr>
+      <tr><td><code>services/prNudgeService.ts</code></td>
+        <td>The 5-minute pass that decides which pull requests have gone quiet and posts a reminder</td>
+        <td>App installation</td></tr>
+      <tr><td><code>alarms/handler.ts</code></td>
+        <td>Pull request state for alarm evaluation, so an alarm on stale pull requests can fire</td>
+        <td>App installation</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Query 2 &middot; Dependabot status per repository</h3>
+  <p><code>fetchRepoAlertStatus</code> in <code>services/dependencyService.ts</code>, called from
+  <code>routes/dependencies.ts</code>. Walks <code>organization.repositories</code> to find which
+  repositories have Dependabot enabled at all. The comment in the code is explicit about why it is
+  GraphQL: doing it over REST would be four more pages fetching names GraphQL has already handed
+  over.</p>
+
+  <h3>Query 3 &middot; pull request reviews, for two widget checks</h3>
+  <p>Two near-identical queries in <code>services/graphService.ts</code>, each asking
+  <code>repository.pullRequests.nodes.reviews.totalCount</code>:</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Check</th><th>Use case</th></tr></thead>
+    <tbody>
+      <tr><td><code>stale-branch-protections</code></td>
+        <td>Finds protection rules that no longer match how the repository is actually used, by
+        looking at whether recent pull requests were reviewed at all</td></tr>
+      <tr><td><code>protection-bypasses-ranking</code></td>
+        <td>Ranks repositories by how often protection was bypassed, which needs review counts per
+        pull request</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note-box">
+    <span class="h">Why the pull request page size is learned rather than configured</span>
+    <p>A GraphQL query's point cost scales with the page requested, and the size an organization
+    can afford is a property of that organization: how many pull requests, how many reviewers, how
+    much CI. The app discovers it by asking for a large page and stepping down when GitHub gives
+    up, then stores the answer in <code>org-config</code>. Held in memory alone, that discovery ran
+    once per process, which meant twenty to thirty seconds on the first load of the tab after every
+    app launch and again after every Lambda cold start.</p>
+  </div>
+</section>
+
+<section id="ceilings">
+  <h2>The real ceilings</h2>
+  <p class="dek">Cost is not what limits this application. Two other things do, and they arrive
+  in a specific order.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Repositories</th><th class="n">Full rebuild takes</th><th>What happens</th></tr></thead>
+    <tbody>
+      <tr><td>356 <em>(today)</em></td><td class="n">310 s</td><td>Comfortable</td></tr>
+      <tr><td>500</td><td class="n">435 s</td><td>Comfortable</td></tr>
+      <tr><td>1,000</td><td class="n">871 s</td><td>Within 30 seconds of the timeout</td></tr>
+      <tr class="big"><td><strong>1,035</strong></td><td class="n">901 s</td><td><strong>Exceeds the 900-second Lambda limit. The rebuild stops finishing</strong></td></tr>
+      <tr><td>2,000</td><td class="n">1,742 s</td><td>Would need a different shape entirely</td></tr>
+      <tr><td>~3,000</td><td class="n">n/a</td><td>One rebuild would also consume the entire hourly GitHub quota</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="note-box warn">
+    <span class="h">What "1,035 repositories" means</span>
+    <p>The full rebuild runs inside a Lambda function, and <strong>900 seconds is the hard
+    maximum a Lambda may run for</strong>. It cannot be raised, by configuration or by paying
+    more. On the live deployment the rebuild takes 310 seconds for 356 repositories, which is
+    about 0.87 seconds per repository. Multiply that out and it reaches 900 seconds at roughly
+    1,035 repositories.</p>
+    <p>This is not a cost ceiling. It is the size at which the six-hourly rebuild stops
+    finishing.</p>
+  </div>
+
+  <div class="note-box warn">
+    <span class="h">Why that is worse than it sounds</span>
+    <p>The rebuild writes its edges only at the end, so a run that times out writes
+    <em>nothing</em>. The symptom would be a graph that silently stops
+    updating while the light pass keeps working, which is close to the failure this deployment
+    already had for a different reason.</p>
+    <p>The fix when it comes is to make the rebuild resumable, walking a slice per invocation and
+    keeping a cursor, rather than doing it all in one pass. That is a real piece of work and it is
+    not needed yet.</p>
+  </div>
+</section>
+
+<section id="levers">
+  <h2>Levers</h2>
+  <p class="dek">In the order worth pulling them.</p>
+
+  <div class="scroll"><table>
+    <thead><tr><th>Lever</th><th>Saves</th><th>Cost of pulling it</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Remove the WAF</strong></td>
+        <td><strong>$6.00/month, 91% of the fixed floor</strong></td>
+        <td>Loses one layer of three. The IP allow-list and HMAC verification remain</td></tr>
+      <tr><td>Full rebuild every 12 h rather than 6</td>
+        <td>Half the GitHub traffic and half the largest Lambda consumer</td>
+        <td>Little. The light pass already covers the checks that need freshness</td></tr>
+      <tr><td>Guardrail sweep hourly rather than every 15 min<span class="note">Already done. Kept because it is the shape of the trade: the interval only sets the worst case on a path that is already the fallback</span></td>
+        <td>Three quarters of the sweep, about 34 cents</td>
+        <td>Worst case moves from 15 minutes to an hour, and only where CloudTrail did not fire</td></tr>
+      <tr><td>Uncheck <em>Commits pushed</em> in detailed logging</td>
+        <td>About half the detailed rows</td>
+        <td>No push history in the activity feed</td></tr>
+      <tr><td>Shorten CloudWatch Logs retention</td>
+        <td>Nothing today, the free tier covers it</td>
+        <td>Less history when debugging. Only worth it well past 2,000 repositories</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+</main>
+
+<footer>
+  <p>AWS figures are from Cost Explorer for 1 to 26 August 2026 on a deployment with 356
+  repositories, scaled to a full month, with services belonging to other workloads in the same
+  account excluded. Lambda durations, memory ceilings, invocation counts and DynamoDB row sizes
+  were measured from CloudWatch and DynamoDB over a 24-hour window. Resource counts were
+  enumerated from the deployed CloudFormation stack. Figures for other organization sizes are
+  modelled from those measurements. GitHub rate limits are those published for GitHub App
+  installations on Enterprise Cloud and vary with installation size.</p>
+</footer>
+
+</div>
+</body>
+</html>

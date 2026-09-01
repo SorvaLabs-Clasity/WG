@@ -3125,6 +3125,61 @@ keyed on `kind:metric` rather than the metric alone: one metric is now offered
 twice, and keying on the name gave two options with one value and made the first
 unselectable.
 
+## Only the reviews that are yours to do
+
+A review request notification now says **who else is on it**, and can be limited
+to requests small enough to be worth interrupting for.
+
+The card names the other outstanding reviewers, or says outright that you are
+the only one. That is usually the whole message: "review requested" tells you
+whether to switch to Teams, and who else was asked tells you whether to switch
+*now*.
+
+The limit is a ceiling, chosen per person: **only me**, **me and at most one
+other**, and so on up to five. Absent means every request, which is what
+everybody had before and so is what an unset value has to mean.
+
+Three counting rules, each of which would be a bug the other way:
+
+- **You are counted.** "Only me" has to mean nobody else was asked, which is
+  only true if the reader is in the total.
+- **A team counts as one.** Treating it as nobody would make a request to four
+  teams look like a request to one person, which is the opposite of what
+  somebody choosing "only me" is asking for.
+- **A list that cannot be read is sent.** The alternative is losing a review
+  request to a number nobody could see.
+
+The list comes from the pull request's `requested_reviewers`, not from the
+event. The event names the one person just added; the pull request carries who
+is still outstanding, and anybody who has already reviewed has correctly left
+it. The reader's own name is removed before the card is built, because seeing
+your own name in "also reviewing" reads as a bug.
+
+Skipping is quiet: it is a preference, not a failure, so nothing is recorded as
+a delivery error, and anything skipped is still in the daily summary.
+
+## One measurement, not two that disagree
+
+The GitHub requests page led each allowance with GitHub's own used-of-limit and
+put this app's counts beside it. The two never matched, often by two orders of
+magnitude: zero used against nine hundred counted.
+
+Both were right. GitHub meters over a **rolling window of its own** that can have
+opened a minute ago, so it reports almost nothing used; these counters bucket by
+the **wall-clock hour** and hold everything since the top of it. Shown as a pair
+they read as one number contradicting itself, and no amount of labelling fixed
+that: the second attempt named both periods precisely and the page was still
+being asked about.
+
+The answer was to stop showing two counts. Each allowance now leads with **the
+figure its own rows add up to**, so the headline, the per-bucket totals and the
+list are always the same measurement. GitHub's number is still there, doing the
+one job this app cannot do for itself: saying **how much room is left**, which
+is a fact about this moment and needs no window to be understood.
+
+The window is also named exactly rather than implied. "This hour" was being read
+as "the last sixty minutes", which is not what the counters bucket by.
+
 ## Why the Teams half never arrived
 
 The Teams workflow URL lives in the organization-config row, and that row was
