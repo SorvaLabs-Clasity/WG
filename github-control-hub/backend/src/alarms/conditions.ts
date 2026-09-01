@@ -152,9 +152,17 @@ export function isValidCondition(
   condition: AlarmCondition,
 ): boolean {
   const allowed = conditionsFor(widget);
-  const spec = allowed.find(s => s.metric === condition.metric);
+  /**
+   * Matched on the metric *and* the reading, because one metric is now offered
+   * twice.
+   *
+   * `guardrail.violations` is both "every new failing resource" and "failing
+   * resources is at or above N". Finding it by name alone returns whichever was
+   * declared first, so switching an alarm to the other one was refused with a
+   * message listing the very option that had been chosen.
+   */
+  const spec = allowed.find(s => s.metric === condition.metric && s.kind === condition.kind);
   if (!spec) return false;
-  if (spec.kind !== condition.kind) return false;
   if (condition.kind === "count") {
     // A non-finite threshold compares false against everything, so an alarm
     // holding one is an alarm that never fires.
@@ -207,6 +215,28 @@ export function metricValue(metric: MetricSpec["metric"], rows: any[] | null | u
       return rows.filter(r => r?.excluded).length;
     case "renovatePrs.open": return rows.length;
     default: return null;
+  }
+}
+
+/**
+ * The rows a metric actually counts.
+ *
+ * `metricValue` filters before it counts — a guardrail's violation count skips
+ * the passing and the deliberately excluded — so an "each" alarm reading the
+ * raw rows reports things the number it sits beside never included. The first
+ * version did exactly that and announced an excluded bucket as newly failing.
+ *
+ * Kept beside `metricValue` so the two cannot drift: whatever one counts, the
+ * other names.
+ */
+export function rowsForMetric(metric: string, rows: any[]): any[] {
+  switch (metric) {
+    case "guardrail.violations":
+      return rows.filter(r => r?.verdict === "violation" && !r?.excluded);
+    case "guardrail.excluded":
+      return rows.filter(r => r?.excluded);
+    default:
+      return rows;
   }
 }
 
