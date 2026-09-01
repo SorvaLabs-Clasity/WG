@@ -3125,6 +3125,39 @@ keyed on `kind:metric` rather than the metric alone: one metric is now offered
 twice, and keying on the name gave two options with one value and made the first
 unselectable.
 
+## Why the instant guardrail alarm did nothing
+
+The guardrail function evaluates alarms the moment it rewrites findings, so a
+resource that starts failing is notified in seconds rather than at the next
+five-minute tick.
+
+It never worked. The function's environment named its own three tables and
+`ORG_CONFIG_TABLE` and `ACTIVITY_TABLE`, and **not `ALARMS_TABLE`**.
+
+`hasTable` asks whether the variable is set, and every service falls back to an
+in-memory store when it is not. That fallback is right for local development and
+catastrophic in Lambda: `listAlarms` returned the empty store, the evaluation
+found nothing to do, and returned success. Groups live in the same table, so
+even a found alarm would have had no topic to publish to.
+
+**Nothing reported it.** There was no error to catch, because zero alarms is an
+ordinary answer, and the handler only logged when it had evaluated at least one.
+So the failing case and a quiet account printed the same thing: nothing. Every
+symptom pointed elsewhere, which is why several rounds of real fixes to the
+alarm logic changed nothing anybody could see.
+
+Two changes, and the second matters more than the first:
+
+- The stack gives that function `ALARMS_TABLE`.
+- The sweep logs the zero case too, and says which of the two it might be.
+
+**`repro-lambdaenv.ts` walks the static and dynamic import graph from each
+Lambda's entry point**, collects every table the reachable code asks for by
+name, and checks the stack names it. Derived from the code rather than from a
+list, because a list is exactly the thing that was already wrong. Tables reached
+only through code a function never runs are listed individually with the reason,
+so a genuinely missing one still fails.
+
 ## Three reasons an alarm did not fire
 
 All three were found by chasing one report: an AWS-only account whose guardrail

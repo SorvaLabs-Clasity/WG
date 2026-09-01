@@ -140,6 +140,20 @@ export class GitHubControlHubStack extends cdk.Stack {
         GUARDRAIL_FINDINGS_TABLE: `${stackPrefix}-aws-findings`,
         ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
         ACTIVITY_TABLE: `${stackPrefix}-activity`,
+        /**
+         * The alarms this function evaluates the moment it rewrites findings.
+         *
+         * Without it `hasTable("ALARMS_TABLE")` is false, `listAlarms` falls
+         * back to the empty in-memory store, and the evaluation finds nothing
+         * to do. It reports zero evaluated and returns, so there is no error and
+         * no warning: the sweep succeeds, the findings update, and the alarm
+         * waits for the scheduled evaluator instead. Every symptom of that is
+         * "it noticed, but the notification came minutes later".
+         *
+         * Groups live in this table too, so the topic to publish to is
+         * unreachable without it as well.
+         */
+        ALARMS_TABLE: `${stackPrefix}-alarms`,
       },
       deadLetterQueue: guardrailDlq,
       bundling: {
