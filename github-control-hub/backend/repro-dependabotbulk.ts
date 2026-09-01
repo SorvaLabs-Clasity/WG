@@ -160,6 +160,32 @@ function stub(behaviour: (repo: string, calls: number) => void = () => {}) {
       "the import satisfied the compiler and nothing satisfied the reader");
     check("  only on the view it belongs to",
       /view === "alerts" && managing/.test(page));
+
+    // Per repository, next to the findings, which is where somebody is when
+    // they decide they want it.
+    check("each repository can be switched on its own",
+      /runFixes\(repo\)/.test(page) && /Auto-fix PRs/.test(page));
+    check("  offered only where scanning is on",
+      /!off && fixes === false/.test(page),
+      "GitHub raises no updates for a repository it is not scanning");
+    check("  and only where the answer is known",
+      /fixes === false/.test(page) && /fixes === true/.test(page)
+        && !/!fixes\b/.test(page),
+      "undefined means the caller cannot see the field, and a button there can only fail");
+    check("  reusing the paced endpoint rather than a second one",
+      /bulkDependabot\(\[repo\], "fixes-on"\)/.test(page),
+      "a separate route is a second place for the retry rules to drift");
+
+    // Three states, because the field is absent for a repository the caller
+    // does not administer, and absent is not off.
+    const service = fs.readFileSync(
+      path.join(__dirname, "src/services/dependencyService.ts"), "utf8");
+    check("the status reader keeps unknown out of the map",
+      /if \(state === "enabled" \|\| state === "disabled"\)/.test(service),
+      "marking an unreadable repository as off invites turning on what is already on");
+    check("  and reads the organization listing rather than one repository at a time",
+      /listForOrg\(\{[\s\S]{0,80}per_page: 100/.test(service),
+      "three hundred repositories is three hundred requests the other way");
   }
 
   console.log(failures === 0 ? "\nALL PASS\n" : `\n${failures} FAILED\n`);

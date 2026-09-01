@@ -30,6 +30,13 @@ export interface DependencyAlert {
   clean?: boolean;
   disabled?: boolean;
   scanning?: boolean;
+  /**
+   * Dependabot security updates, the switch that opens pull requests.
+   *
+   * Undefined means nobody could read it, which is not the same as off:
+   * the field is only returned for repositories the caller administers.
+   */
+  fixesEnabled?: boolean;
 }
 
 export function mapAlert(alert: any, repoName: string, orgName: string): DependencyAlert {
@@ -176,6 +183,48 @@ const ALERT_STATUS_QUERY = `query($org:String!, $cursor:String) {
 
 /** Guards against an endless walk if a cursor ever stops advancing. */
 const MAX_REPO_PAGES = 50;
+
+/**
+ * Which repositories have Dependabot **security updates** on.
+ *
+ * A different switch from alerts, and the one that opens pull requests. GraphQL
+ * has no field for it, so this is REST, and it reads the organization listing a
+ * hundred at a time rather than asking per repository: four requests for three
+ * hundred repositories instead of three hundred.
+ *
+ * `security_and_analysis` is only returned for repositories the caller
+ * administers. A repository missing from the map is therefore **unknown**, not
+ * off, and the difference matters: drawing a "turn it on" button over a
+ * repository that already has it, because the caller could not see the field,
+ * is a worse answer than drawing nothing.
+ */
+export async function fetchRepoFixStatus(
+  octokit: any,
+  org: string,
+): Promise<Map<string, boolean> | null> {
+  try {
+    const status = new Map<string, boolean>();
+    for (let page = 1; page <= MAX_REPO_PAGES; page++) {
+      const { data } = await octokit.rest.repos.listForOrg({
+        org, per_page: 100, page, type: "all",
+      });
+      for (const repo of data ?? []) {
+        const state = repo?.security_and_analysis?.dependabot_security_updates?.status;
+        // Absent means the caller cannot see it. Left out of the map entirely,
+        // so "unknown" stays distinguishable from "off".
+        if (state === "enabled" || state === "disabled") {
+          status.set(repo.name, state === "enabled");
+        }
+      }
+      if (!data || data.length < 100) return status;
+    }
+    return status;
+  } catch (err) {
+    // A page that cannot say beats a page that says the wrong thing.
+    console.error("[Dependencies] Could not read security-update status:", (err as Error).message);
+    return null;
+  }
+}
 
 export async function fetchRepoAlertStatus(
   graphql: GraphQlFn,

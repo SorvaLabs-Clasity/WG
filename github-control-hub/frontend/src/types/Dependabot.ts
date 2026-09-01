@@ -18,6 +18,15 @@ export interface DependencyAlert {
    * `clean`: one means "looked, found nothing", the other "has not looked yet".
    */
   scanning?: boolean;
+  /**
+   * Dependabot security updates, the switch that opens pull requests.
+   *
+   * Undefined means it could not be read, which is not the same as off:
+   * GitHub returns the field only for repositories the signed-in account
+   * administers, and offering to turn it on elsewhere is a button that can
+   * only fail.
+   */
+  fixesEnabled?: boolean;
 }
 
 export interface DependencySummary {

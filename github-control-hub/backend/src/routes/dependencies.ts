@@ -8,7 +8,7 @@ import { fetchAllCursorPages } from "../utils/cursorPages";
 import { fetchRenovatePrs } from "../services/renovateService";
 import { getOrgConfig, updateRenovateBot } from "../services/orgConfigService";
 import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authorizationService";
-import { mapAlert, fetchOrgDependencyAlerts, fetchRepoAlertStatus } from "../services/dependencyService";
+import { mapAlert, fetchOrgDependencyAlerts, fetchRepoAlertStatus , fetchRepoFixStatus} from "../services/dependencyService";
 import { isValidRepoName } from "../utils/validation";
 
 const router = Router();
@@ -91,6 +91,24 @@ router.get("/dependencies", async (req: Request, res: Response) => {
       for (const [name, enabled] of alertStatus ?? []) {
         if (reposWithAlerts.has(name)) continue;
         allAlerts.push(enabled ? mockCleanAlert(name, org) : mockDisabledAlert(name, org));
+      }
+
+      /**
+       * Which of them also open pull requests.
+       *
+       * Read alongside the alert flag rather than per row, and stamped onto
+       * every row of a repository so the table can offer the switch next to a
+       * finding, which is where somebody is when they want it.
+       *
+       * Missing stays missing: a repository the caller cannot administer is
+       * left undefined rather than marked off.
+       */
+      const fixStatus = await fetchRepoFixStatus(octokit, org);
+      if (fixStatus) {
+        for (const alert of allAlerts) {
+          const known = fixStatus.get(alert.repo);
+          if (known !== undefined) alert.fixesEnabled = known;
+        }
       }
     }
 

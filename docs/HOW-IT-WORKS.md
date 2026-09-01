@@ -3172,6 +3172,27 @@ Turning fixes on turns alerts on first, because GitHub raises no updates for a
 repository it is not scanning, and doing only the second would report success
 while nothing ever arrived.
 
+### One repository at a time, too
+
+Each repository card carries its own **Auto-fix PRs** button, beside its
+findings, which is where somebody is when they decide they want it. It goes
+through the same bulk endpoint with a list of one: a second route would be a
+second place for the pacing and the retry rules to live, and it is the same
+write that trips the same limit.
+
+**Three states, not two.** Whether a repository already opens fix pull requests
+is read from `security_and_analysis.dependabot_security_updates`, and GitHub
+returns that field only for repositories the signed-in account administers. A
+repository where it is missing is left **unknown** rather than marked off:
+drawing "turn it on" over a repository that already has it, because the caller
+could not see the field, is worse than drawing nothing. So the button appears
+only where the answer is known to be off, a pill says so where it is known to be
+on, and neither appears where it could not be read.
+
+The status comes from the **organization listing**, a hundred repositories at a
+time. Asking per repository would be three hundred requests to draw one column,
+on the budget that this page has already had to be careful with twice.
+
 ### The caller's own token
 
 Like every other write in that file. GitHub decides per repository whether

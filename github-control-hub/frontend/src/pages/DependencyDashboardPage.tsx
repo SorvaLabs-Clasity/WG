@@ -30,6 +30,7 @@ import RenovatePanel from "../components/RenovatePanel";
 import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
 import DependabotManager from "../components/DependabotManager";
+import { bulkDependabot } from "../api/dependencies";
 
 /**
  * The three questions this tab answers, as three views rather than one column.
@@ -106,6 +107,33 @@ export default function DependencyDashboardPage() {
 
   const enable = useEnableDependabot();
   const disable = useDisableDependabot();
+
+  /**
+   * Turn security updates on for one repository.
+   *
+   * Goes through the same bulk endpoint as the panel above, with a list of one.
+   * A second route would be a second place for the pacing and the retry rules
+   * to live, and this is the same write that trips the same limit.
+   */
+  const runFixes = async (repo: string) => {
+    setBusyRepo(repo);
+    setNotice(null);
+    try {
+      const out = await bulkDependabot([repo], "fixes-on");
+      const failed = out.results.find(r => !r.ok);
+      setNotice(failed
+        ? { msg: `${repo}: ${failed.error}`, ok: false }
+        // Said as a wait, not as a result. GitHub raises the pull requests on
+        // its own schedule, and somebody watching for one to appear should
+        // know it is not coming this second.
+        : { msg: `${repo} will now get fix pull requests. GitHub opens them itself, usually within a few minutes.`, ok: true });
+      await refetchDeps();
+    } catch (e) {
+      setNotice({ msg: (e as Error).message, ok: false });
+    } finally {
+      setBusyRepo(null);
+    }
+  };
 
   const [filter, setFilter] = useState<"alerts" | "critical" | "high" | "off" | "all">("alerts");
   const [search, setSearch] = useState("");
@@ -327,6 +355,15 @@ export default function DependencyDashboardPage() {
               const real = alerts.filter(a => !a.clean && !a.disabled && !a.scanning);
               const critical = real.filter(a => a.severity === "critical").length;
               const intent: Intent = off || scanning ? "neutral" : critical > 0 ? "danger" : real.length > 0 ? "warn" : "good";
+              /**
+               * Whether GitHub opens pull requests for this repository.
+               *
+               * Three states, not two. Undefined means the field was not
+               * returned, which happens for a repository the signed-in account
+               * does not administer, and offering "turn it on" there would be a
+               * button that can only fail.
+               */
+              const fixes = alerts.find(a => a.fixesEnabled !== undefined)?.fixesEnabled;
               const isOpen = expanded.has(repo);
               const visible = isOpen ? real : real.slice(0, COLLAPSED);
               const hidden = real.length - visible.length;
@@ -368,6 +405,19 @@ export default function DependencyDashboardPage() {
                           <i className="ph-fill ph-github-logo"></i>GitHub
                         </a>
                       )}
+                      {/* Only where scanning is on, because GitHub raises no
+                          updates for a repository it is not scanning, and only
+                          where the answer is known. */}
+                      {!off && fixes === false && (
+                        <Button disabled={busyRepo === repo}
+                          onClick={() => runFixes(repo)}>
+                          {busyRepo === repo ? "…" : "Auto-fix PRs"}
+                        </Button>
+                      )}
+                      {!off && fixes === true && (
+                        <Pill intent="good">auto-fix on</Pill>
+                      )}
+
                       {off ? (
                         <Button variant="primary" disabled={busyRepo === repo}
                           onClick={() => runDependabot(repo, enable.mutateAsync, `Now watching ${repo}`)}>
