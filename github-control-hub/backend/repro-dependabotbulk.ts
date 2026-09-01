@@ -140,6 +140,26 @@ function stub(behaviour: (repo: string, calls: number) => void = () => {}) {
       path.join(__dirname, "..", "frontend", "src", "api", "dependencies.ts"), "utf8");
     check("  the client sends the whole selection in one call",
       /bulkDependabot\(repos: string\[\]/.test(api));
+
+    /**
+     * And that the panel is actually reachable.
+     *
+     * It was not, for a whole round: the component and the route were written,
+     * imported and committed, and the page never rendered either of them. An
+     * unused import is not a type error and a build over a component nobody
+     * mounts still succeeds, so every check passed on a feature that did not
+     * exist on screen.
+     */
+    const page = fs.readFileSync(
+      path.join(__dirname, "..", "frontend", "src", "pages", "DependencyDashboardPage.tsx"), "utf8");
+    check("the page has a control that opens it",
+      /setManaging\(m => !m\)/.test(page) && /Manage Dependabot/.test(page),
+      "importing the component is not the same as putting it on screen");
+    check("  and renders the panel when it is open",
+      /<DependabotManager\s/.test(page),
+      "the import satisfied the compiler and nothing satisfied the reader");
+    check("  only on the view it belongs to",
+      /view === "alerts" && managing/.test(page));
   }
 
   console.log(failures === 0 ? "\nALL PASS\n" : `\n${failures} FAILED\n`);

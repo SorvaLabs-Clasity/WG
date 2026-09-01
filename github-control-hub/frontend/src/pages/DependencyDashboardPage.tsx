@@ -187,16 +187,39 @@ export default function DependencyDashboardPage() {
             : "Who gets emailed when something is found, or when an update is raised."
         }
         actions={
-          // Refreshes what you are looking at. Refetching all three from here
-          // would spend GitHub's rate limit on two views nobody has open.
-          <RefreshButton
-            busy={view === "updates" ? renovateFetching : depsFetching || sumFetching}
-            onRefresh={() => view === "updates"
-              ? refetchRenovate()
-              : Promise.all([refetchDeps(), refetchSummary()])}
-          />
+          <>
+            {/* Only on the Dependabot view. The panel switches Dependabot, and
+                offering it beside Renovate would be a control for a tool the
+                page is not showing. */}
+            {view === "alerts" && (
+              <Button onClick={() => setManaging(m => !m)}>
+                <i className="ph-bold ph-sliders-horizontal mr-1.5 text-[12px]" aria-hidden="true" />
+                {managing ? "Hide" : "Manage Dependabot"}
+              </Button>
+            )}
+            {/* Refreshes what you are looking at. Refetching all three from here
+                would spend GitHub's rate limit on two views nobody has open. */}
+            <RefreshButton
+              busy={view === "updates" ? renovateFetching : depsFetching || sumFetching}
+              onRefresh={() => view === "updates"
+                ? refetchRenovate()
+                : Promise.all([refetchDeps(), refetchSummary()])}
+            />
+          </>
         }
       />
+
+      {/* Above the findings, because the question it answers comes first: a
+          repository nobody is scanning produces no findings, so its absence
+          from the list below is not good news. */}
+      {view === "alerts" && managing && (
+        <div className="mb-5">
+          <DependabotManager
+            rows={dependencies ?? []}
+            onDone={() => { refetchDeps(); refetchSummary(); }}
+          />
+        </div>
+      )}
 
       <div className="mb-5">
         <Segmented
