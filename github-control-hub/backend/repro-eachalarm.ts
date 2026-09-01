@@ -257,6 +257,42 @@ const KEY_API = rowKey({ repo: "api" });
       sent.length === 1 && sent[0].includes("bucket-a"), sent);
   }
 
+  console.log("\nthe message never mentions a limit that does not exist");
+  {
+    // What somebody actually received: "your limit is undefined". The count
+    // template ends with the threshold, and an each condition has none, so
+    // String(undefined) went straight into the body.
+    const conditions = await import("./src/alarms/conditions");
+    const message = await import("./src/alarms/message");
+
+    check("the each wording does not ask for a threshold",
+      !message.DEFAULT_EACH_BODY.includes("{{threshold}}"),
+      "an alarm with no limit should not have a sentence about its limit");
+    check("  it names what changed instead",
+      message.DEFAULT_EACH_BODY.includes("{{items}}")
+        && message.DEFAULT_EACH_BODY.includes("{{change}}"));
+    check("  and both new variables are declared, or the form cannot offer them",
+      message.TEMPLATE_VARIABLES.some(v => v.name === "items")
+        && message.TEMPLATE_VARIABLES.some(v => v.name === "count")
+        && message.TEMPLATE_VARIABLES.some(v => v.name === "change"));
+
+    // Alarms written before that wording existed still carry the count
+    // template, so the value has to read sensibly inside "your limit is …".
+    const rendered = message.buildMessage(
+      "s", message.DEFAULT_ALARM_BODY,
+      { widget: "W", metric: "M", value: "3", threshold: "any", state: "ALARM", org: "o", time: "t" },
+    );
+    check("  an older alarm reads sensibly rather than saying undefined",
+      rendered.body.includes("your limit is any") && !rendered.body.includes("undefined"),
+      rendered.body.split("\n")[2]);
+
+    // And the thing that matters most: none of this ever decided whether to
+    // fire. The threshold is not consulted for an each condition.
+    check("  and the wording never decided whether it fires",
+      conditions.isBreaching({ kind: "each", metric: "query.rows" } as any, 1)
+        && !conditions.isBreaching({ kind: "each", metric: "query.rows" } as any, 0));
+  }
+
   console.log("\ntwo passes cannot both report the same rows");
   {
     // The evaluator runs on a tick and again whenever guardrail findings are

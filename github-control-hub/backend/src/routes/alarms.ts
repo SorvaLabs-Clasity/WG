@@ -18,6 +18,7 @@ import { conditionsFor, isValidCondition, intervalFor, type AlarmCondition } fro
 import {
   TEMPLATE_VARIABLES, unknownVariables, buildMessage,
   DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY,
+  DEFAULT_EACH_SUBJECT, DEFAULT_EACH_BODY,
 } from "../alarms/message";
 import { sanitizeError } from "../utils/errorSanitizer";
 import { logActivity } from "../services/activityService";
@@ -207,7 +208,12 @@ router.get("/widgets/:widgetId/conditions", async (req: Request, res: Response) 
     // Surfaced so the form can say how quickly this alarm will react rather
     // than leaving the user to guess.
     intervalMinutes: intervalFor(widget as any),
+    // Two sets, because the two readings want different wording and the form
+    // has to prefill whichever the person picks. Sent together rather than
+    // fetched again on a dropdown change, which would put a request between a
+    // click and the text appearing.
     defaults: { subject: DEFAULT_ALARM_SUBJECT, body: DEFAULT_ALARM_BODY },
+    eachDefaults: { subject: DEFAULT_EACH_SUBJECT, body: DEFAULT_EACH_BODY },
   });
 });
 

@@ -348,10 +348,25 @@ export class GitHubControlHubStack extends cdk.Stack {
         ALARMS_TABLE: `${stackPrefix}-alarms`,
         WIDGETS_TABLE: `${stackPrefix}-widgets`,
         ACTIVITY_TABLE: `${stackPrefix}-activity`,
-        ALERTS_TABLE: `${stackPrefix}-alerts`,
-        SCANNERS_TABLE: `${stackPrefix}-scanners`,
         ORG_CONFIG_TABLE: `${stackPrefix}-org-config`,
-        GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+        /**
+         * The GitHub-only tables, named only where they exist.
+         *
+         * `hasTable` asks whether the variable is set, not whether the table is
+         * there, so naming one an AWS-only install never creates turns "this
+         * install has no access graph" into a ResourceNotFoundException. That
+         * killed the whole alarm pass before a single alarm was evaluated, and
+         * from the tab it read as an alarm that had simply never been checked,
+         * for ever, with nothing anywhere saying why.
+         *
+         * `setup-aws-only.sh` skips exactly these three. The two lists have to
+         * agree, and repro-tablegating.ts checks that they do.
+         */
+        ...(awsOnly ? {} : {
+          ALERTS_TABLE: `${stackPrefix}-alerts`,
+          SCANNERS_TABLE: `${stackPrefix}-scanners`,
+          GRAPH_EDGES_TABLE: `${stackPrefix}-graph-edges`,
+        }),
         // Stated, not inferred. Without this the function would have to read
         // "this install has no GitHub" from a missing GITHUB_ORG, which is
         // also what a secret that failed to load looks like: one is a normal

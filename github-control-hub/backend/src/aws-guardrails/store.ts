@@ -267,6 +267,20 @@ export async function dropLegacyFindings(): Promise<number> {
   return legacy.length;
 }
 
+/**
+ * Every stored finding.
+ *
+ * Read **consistently**, because the most important caller reads this
+ * immediately after writing it. A Query is eventually consistent by default, so
+ * the alarm evaluation that runs the moment a sweep rewrites the findings could
+ * be handed the replica from before the write: it saw the account as it was a
+ * second ago, concluded nothing had changed, and stayed silent. The alarm then
+ * fired on the next five-minute tick, which is exactly the "it noticed, but not
+ * straight away" this table exists to avoid.
+ *
+ * The cost is double the read units on a table holding a few hundred small
+ * rows, which is not a number worth trading correctness for.
+ */
 export async function listFindings(): Promise<Finding[]> {
   const { QueryCommand } = await import("@aws-sdk/lib-dynamodb");
   const items: Finding[] = [];
@@ -277,6 +291,7 @@ export async function listFindings(): Promise<Finding[]> {
       KeyConditionExpression: "pk = :p",
       ExpressionAttributeValues: { ":p": "FINDING" },
       ExclusiveStartKey: key,
+      ConsistentRead: true,
     }));
     items.push(...((page.Items ?? []) as Finding[]));
     key = page.LastEvaluatedKey;

@@ -19,6 +19,7 @@ export const TEMPLATE_VARIABLES: { name: string; description: string }[] = [
   // The message for an alarm with no threshold: which ones, not how many.
   { name: "items", description: "For \"every new one\" alarms: what changed, by name" },
   { name: "count", description: "For \"every new one\" alarms: how many changed" },
+  { name: "change", description: "For \"every new one\" alarms: started failing, or back to normal" },
   { name: "time", description: "When the value was observed (UTC)" },
   { name: "title", description: "For Renovate: the pull request title" },
   { name: "url", description: "For Renovate and Dependabot: a link to it on GitHub" },
@@ -136,6 +137,24 @@ export function sanitizeSubject(raw: string, fallback = "Control Hub alarm"): st
 }
 
 export const DEFAULT_ALARM_SUBJECT = "[{{state}}] {{widget}}: {{metric}} is {{value}}";
+
+/**
+ * The wording for an alarm with no threshold.
+ *
+ * The count template is wrong for it twice over: it leads with a number when
+ * the news is *which* resources changed, and it ends with "your limit is
+ * {{threshold}}" for an alarm that deliberately has no limit, which rendered as
+ * the word "undefined".
+ *
+ * One template for both directions. `{{change}}` carries whether these started
+ * failing or came back, so the same body reads correctly either way and there
+ * is only one piece of text to keep.
+ */
+export const DEFAULT_EACH_SUBJECT = "[{{state}}] {{widget}}: {{items}}";
+export const DEFAULT_EACH_BODY =
+  `{{widget}}\n\n{{count}} {{change}}:\n{{items}}\n\n` +
+  `Organization: {{org}}\nObserved at: {{time}}\n\n` +
+  `This is an automated message from GitHub Control Hub.`;
 export const DEFAULT_ALARM_BODY =
   `{{widget}}\n\n{{metric}} is now {{value}} (your limit is {{threshold}}).\n\n` +
   `Organization: {{org}}\nObserved at: {{time}}\n\n` +

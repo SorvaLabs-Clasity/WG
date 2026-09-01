@@ -65,7 +65,29 @@ let pinnedEdges: any[] | null = null;
 
 export async function withPinnedGraph<T>(fn: () => Promise<T>): Promise<T> {
   if (pinnedEdges) return fn();
-  pinnedEdges = await scanGraphEdges();
+
+  /**
+   * An unreadable graph must not take the pass with it.
+   *
+   * This is an optimisation: it reads the graph once so six checks do not read
+   * it six times. Letting the read throw made it load-bearing instead, and a
+   * pass containing one guardrail alarm, which never touches the graph, died
+   * before evaluating anything because a table belonging to the GitHub half
+   * could not be read.
+   *
+   * Unpinned, each check that genuinely needs the graph fails on its own and is
+   * recorded as a reading that could not be taken, which is the existing and
+   * correct answer for one alarm. The ones that do not need it are unaffected.
+   */
+  try {
+    pinnedEdges = await scanGraphEdges();
+  } catch (err: any) {
+    console.warn(
+      "[Graph] Could not pin the access graph for this pass, so each check that "
+      + `needs it will read for itself: ${err?.message ?? err}`);
+    return fn();
+  }
+
   try {
     return await fn();
   } finally {

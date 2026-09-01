@@ -3086,8 +3086,27 @@ passing and the deliberately excluded — so reading the raw rows announced an
 excluded bucket as newly failing. `rowsForMetric` sits beside `metricValue` so
 the two cannot drift: whatever one counts, the other names.
 
-The message carries **`{{items}}`** and **`{{count}}`**: which ones changed, by
-name. "Back to normal" without a name is unreadable on an alarm watching twenty
+### Its own wording
+
+The threshold template ends "your limit is `{{threshold}}`", and an alarm with
+no threshold has none, so `String(undefined)` put the word **undefined** in the
+message where a number belonged. Cosmetic only: `isBreaching` never consults a
+threshold for this kind, so nothing about firing was affected. It was still the
+wrong message.
+
+An "each" alarm now gets its own default wording, chosen at creation from the
+condition and prefilled in the form as soon as the reading is picked. The form
+only replaces the text while it is still one of the defaults, so switching the
+dropdown never discards a message somebody wrote.
+
+The message carries **`{{items}}`**, **`{{count}}`** and **`{{change}}`**: which
+ones changed, how many, and whether they started failing or came back. One
+template serves both directions, so there is one piece of text to keep rather
+than two that drift.
+
+Alarms created before that wording existed still carry the count template, so
+`{{threshold}}` renders **any** for this kind rather than being left empty: it
+has to read sensibly inside a sentence that is already written. "Back to normal" without a name is unreadable on an alarm watching twenty
 resources — it says something recovered and leaves the reader to work out what.
 
 An unreadable check still never counts as breaching.
@@ -3105,6 +3124,54 @@ message can still say how many there are in total. In the form, the selector is
 keyed on `kind:metric` rather than the metric alone: one metric is now offered
 twice, and keying on the name gave two options with one value and made the first
 unselectable.
+
+## Three reasons an alarm did not fire
+
+All three were found by chasing one report: an AWS-only account whose guardrail
+alarm said "never checked" and never reacted, and a full account where it
+reacted but not straight away.
+
+### A table named but never created
+
+`hasTable` asks whether the environment variable is set, not whether the table
+exists. The alarm Lambda was given `GRAPH_EDGES_TABLE`, `ALERTS_TABLE` and
+`SCANNERS_TABLE` unconditionally, while `setup-aws-only.sh` deliberately creates
+none of the three.
+
+So in an AWS-only install the first read threw `ResourceNotFoundException`,
+which killed the whole pass before a single alarm was evaluated. Nothing was
+written, so `lastCheckedAt` stayed empty for ever, and the tab showed an alarm
+that had simply never been checked with nothing anywhere explaining why.
+
+The stack now withholds those three variables when `awsOnly`, and
+`repro-tablegating.ts` derives the list from `GITHUB_ONLY_TABLES` in the setup
+script and checks both directions: every skipped table is withheld, and nothing
+else is.
+
+### A pass that was all or nothing
+
+Pinning the access graph is an **optimisation**: it reads the graph once so six
+checks do not read it six times. Letting that read throw made it load-bearing,
+so a pass containing one guardrail alarm, which never touches the graph, died
+because a table belonging to the GitHub half could not be read.
+
+A failed pin now falls through to an unpinned pass. Each check that genuinely
+needs the graph fails on its own and is recorded as a reading that could not be
+taken, which is the correct answer for one alarm; the ones that never needed it
+are unaffected.
+
+### A read that arrived before the write
+
+`listFindings` used a Query, which is **eventually consistent by default**. The
+alarm evaluation that runs the moment a sweep rewrites the findings could be
+handed the replica from before the write: it saw the account as it was a second
+ago, concluded nothing had changed, and stayed silent. The alarm then fired on
+the next five-minute tick.
+
+That is precisely the "it noticed, but not straight away" that evaluating
+immediately after a sweep exists to avoid. The read is now consistent. It costs
+double the read units on a table of a few hundred small rows, which is not a
+number worth trading correctness for.
 
 ## When an alarm has never been checked
 

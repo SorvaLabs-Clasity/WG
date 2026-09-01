@@ -25,6 +25,14 @@ export interface WidgetConditions {
   conditions: MetricSpec[];
   intervalMinutes: number;
   defaults: { subject: string; body: string };
+  /**
+   * The wording for a reading with no threshold.
+   *
+   * Optional because a server older than this field simply will not send
+   * it, and the form falls back to the threshold wording rather than
+   * rendering nothing.
+   */
+  eachDefaults?: { subject: string; body: string };
 }
 
 export interface WidgetAlarm {
