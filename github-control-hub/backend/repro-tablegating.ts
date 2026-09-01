@@ -110,6 +110,75 @@ const strip = (s: string) => s.split("\n")
       /GRAPH_EDGES_TABLE:/.test(block));
   }
 
+  // ── a table nobody creates must not be named ────────────────────────
+  {
+    console.log("\nan AWS-only install is not told about tables it never creates");
+
+    const stack = fs.readFileSync(
+      path.join(__dirname, "..", "infra", "cdk-stack.ts"), "utf8");
+    const setup = fs.readFileSync(
+      path.join(__dirname, "..", "..", "scripts", "setup-aws-account.sh"), "utf8");
+
+    /**
+     * `hasTable` asks whether the variable is set, not whether the table is
+     * there. So naming a table an AWS-only install never creates does not
+     * degrade gracefully: the first read throws ResourceNotFoundException.
+     *
+     * It killed the whole alarm pass before one alarm was evaluated, and the
+     * tab showed an alarm that had simply never been checked, for ever.
+     */
+    const listed = /GITHUB_ONLY_TABLES=\(([^)]*)\)/.exec(setup)?.[1] ?? "";
+    const skipped = listed.trim().split(/\s+/).filter(Boolean);
+    check("the setup script names the tables it skips", skipped.length > 0, skipped);
+
+    const envVarFor = (t: string) => `${t.replace(/-/g, "_").toUpperCase()}_TABLE`;
+    const guarded = /\.\.\.\(awsOnly \? \{\} : \{([\s\S]*?)\}\),/.exec(stack)?.[1] ?? "";
+
+    for (const table of skipped) {
+      const envVar = envVarFor(table);
+      check(`  ${envVar} is only set when there is a table behind it`,
+        guarded.includes(envVar),
+        `an AWS-only install would point at ${table}, which it never creates`);
+    }
+
+    // And the other direction: nothing inside the guard should be a table the
+    // script always creates, or a full install would lose it.
+    const insideGuard = [...guarded.matchAll(/(\w+_TABLE):/g)].map(m2 => m2[1]);
+    const expectedGuarded = new Set(skipped.map(envVarFor));
+    const wrongly = insideGuard.filter(v => !expectedGuarded.has(v));
+    check("  and nothing else is withheld", wrongly.length === 0, wrongly);
+  }
+
+  // ── the pass survives a table it cannot read ─────────────────────────
+  {
+    console.log("\none unreadable table does not take the whole pass with it");
+
+    // Pinning the graph is an optimisation: it reads once so six checks do not
+    // read six times. Letting the read throw made it load-bearing, and a pass
+    // holding one guardrail alarm, which never touches the graph, died before
+    // evaluating anything.
+    const graph = fs.readFileSync(path.join(SRC, "services/graphService.ts"), "utf8");
+    const pin = graph.slice(graph.indexOf("export async function withPinnedGraph"));
+    check("a failed pin falls through to an unpinned pass",
+      /catch \(err: any\) \{[\s\S]{0,400}return fn\(\);/.test(pin),
+      "an alarm that never reads the graph should not care that it is missing");
+  }
+
+  // ── read back what was just written ──────────────────────────────────
+  {
+    console.log("\nfindings are read consistently, because they are read right after a write");
+
+    // A Query is eventually consistent by default, so the alarm evaluation that
+    // runs the moment a sweep rewrites findings could be handed the replica
+    // from before the write, conclude nothing had changed, and stay silent
+    // until the next five-minute tick.
+    const store = fs.readFileSync(path.join(SRC, "aws-guardrails/store.ts"), "utf8");
+    const list = store.slice(store.indexOf("export async function listFindings"));
+    check("listFindings asks for a consistent read",
+      /ConsistentRead: true/.test(list.slice(0, 700)),
+      "otherwise an alarm evaluated straight after a sweep reads the account as it was");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

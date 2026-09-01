@@ -5,6 +5,7 @@ import { docClient, hasTable, tableName, PutCommand, ScanCommand, GetCommand, De
 import type { AlarmCondition, AlarmState, Severity } from "../alarms/conditions";
 import {
   DEFAULT_ALARM_SUBJECT, DEFAULT_ALARM_BODY,
+  DEFAULT_EACH_SUBJECT, DEFAULT_EACH_BODY,
   DEFAULT_SECURITY_SUBJECT, DEFAULT_SECURITY_BODY,
   DEFAULT_RENOVATE_SUBJECT, DEFAULT_RENOVATE_BODY,
   DEFAULT_DEPENDABOT_SUBJECT, DEFAULT_DEPENDABOT_BODY,
@@ -325,8 +326,13 @@ export async function createAlarm(
     condition: data.condition,
     groupId: data.groupId,
     ...(data.owner ? { owner: data.owner } : {}),
-    subjectTemplate: data.subjectTemplate || DEFAULT_ALARM_SUBJECT,
-    bodyTemplate: data.bodyTemplate || DEFAULT_ALARM_BODY,
+    // The wording follows the kind of alarm. A threshold template on an alarm
+    // with no threshold ends "your limit is undefined", which is how somebody
+    // first noticed the two did not match.
+    subjectTemplate: data.subjectTemplate
+      || (data.condition?.kind === "each" ? DEFAULT_EACH_SUBJECT : DEFAULT_ALARM_SUBJECT),
+    bodyTemplate: data.bodyTemplate
+      || (data.condition?.kind === "each" ? DEFAULT_EACH_BODY : DEFAULT_ALARM_BODY),
     // No default. Empty is meaningful here: it means the email wording, and
     // filling it in would make every alarm carry two copies of the same text
     // that then drift apart.

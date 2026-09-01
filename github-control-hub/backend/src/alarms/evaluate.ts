@@ -106,7 +106,13 @@ export interface EvaluationSummary {
 }
 
 function thresholdText(condition: any): string {
-  return condition?.kind === "severity" ? String(condition.atLeast) : String(condition?.threshold);
+  if (condition?.kind === "severity") return String(condition.atLeast);
+  // An "each" condition has no limit, and `String(undefined)` put the word
+  // "undefined" in the message where a number belonged. Alarms written before
+  // the wording below existed still carry the count template, so this has to
+  // read sensibly inside "your limit is …" rather than be left empty.
+  if (condition?.kind === "each") return "any";
+  return String(condition?.threshold);
 }
 
 function metricLabel(widget: WidgetLike, condition: any): string {
@@ -306,6 +312,11 @@ export async function evaluateAlarms(deps: EvaluatorDeps): Promise<EvaluationSum
           org: deps.org,
           items: changed.length ? [...new Set(changed)].slice(0, 20).join(", ") : "",
           count: changed.length || undefined,
+          // Which direction, in words. "OK" and "ALARM" are precise and mean
+          // nothing in the middle of a sentence.
+          change: alarm.condition?.kind === "each"
+            ? (fire === "alarm" ? "started failing" : "back to normal")
+            : "",
         };
         const varsFor = (zones: string[]) => ({ ...base, time: formatTimestampAcross(nowIso, zones) });
         const vars = varsFor(deps.timezone ? [deps.timezone] : []);

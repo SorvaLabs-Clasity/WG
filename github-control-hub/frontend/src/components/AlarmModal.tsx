@@ -111,11 +111,37 @@ export default function AlarmModal({
       setThreshold("1");
       setAtLeast("high");
       setGroupId(groups?.[0]?.id ?? "");
-      setSubject(spec.defaults.subject);
-      setBody(spec.defaults.body);
+      const wording = first?.kind === "each" && spec.eachDefaults
+        ? spec.eachDefaults : spec.defaults;
+      setSubject(wording.subject);
+      setBody(wording.body);
       setNotifyOnRecovery(true);
     }
   }, [isOpen, spec, existing, groups]);
+
+  /**
+   * Follow the reading, until somebody has written their own words.
+   *
+   * The two readings want different wording: a threshold template on an alarm
+   * with no threshold ends "your limit is undefined". Switching the dropdown
+   * has to bring its text with it, but only while the text is still one of the
+   * defaults, or changing the dropdown would throw away a message somebody had
+   * spent time on.
+   */
+  const untouched = useMemo(() => {
+    if (!spec) return false;
+    const known = [spec.defaults, spec.eachDefaults].filter(Boolean) as
+      { subject: string; body: string }[];
+    return known.some(d => d.subject === subject && d.body === body);
+  }, [spec, subject, body]);
+
+  useEffect(() => {
+    if (!isOpen || !spec || existing || !chosen || !untouched) return;
+    const wording = chosen.kind === "each" && spec.eachDefaults
+      ? spec.eachDefaults : spec.defaults;
+    setSubject(wording.subject);
+    setBody(wording.body);
+  }, [isOpen, spec, existing, chosen, untouched]);
 
   if (!isOpen) return null;
 
