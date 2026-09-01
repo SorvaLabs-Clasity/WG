@@ -180,6 +180,66 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Turn Dependabot on or off across many repositories in one request.
+ *
+ * One request rather than one per repository, because the client cannot pace
+ * itself usefully: the browser does not know what GitHub told the last call,
+ * and clicking down a list is exactly the burst that trips the secondary rate
+ * limit. Doing it here means the pacing sits next to the errors that cause it.
+ *
+ * The caller's own token, like every other write in this file. GitHub decides
+ * per repository whether they may, so a bulk action can never reach further
+ * than the person could one at a time.
+ */
+router.post("/dependencies/bulk", async (req: Request, res: Response) => {
+  const token = req.user?.accessToken;
+  if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+
+  const { repos, action } = req.body ?? {};
+  const list = Array.isArray(repos)
+    ? repos.filter((r: unknown) => typeof r === "string" && r.length > 0 && r.length <= 200)
+    : [];
+  const actions = ["alerts-on", "alerts-off", "fixes-on", "fixes-off"];
+  if (!actions.includes(action)) {
+    return res.status(400).json({ error: `action must be one of ${actions.join(", ")}` });
+  }
+  if (list.length === 0) return res.status(400).json({ error: "Pick at least one repository" });
+  // A ceiling, because the whole run happens inside one request and a list of
+  // a thousand would outlive the connection waiting for it.
+  if (list.length > 200) {
+    return res.status(400).json({ error: "Up to 200 repositories at a time" });
+  }
+
+  try {
+    const { runDependabotBulk } = await import("../services/dependabotBulk");
+    const octokit = createOctokit(token, "Turning Dependabot on or off");
+    const summary = await runDependabotBulk(octokit, getOrg(), list, action);
+
+    // One row per repository that changed, not one for the batch: the feed is
+    // where somebody looks to find out what happened to a given repository, and
+    // a single "changed 40 repositories" row answers that for none of them.
+    const verb = action === "alerts-off" ? "dependabot.disable" : "dependabot.enable";
+    for (const r of summary.results.filter(x => x.ok)) {
+      await logActivity(verb as any, req.user!.login, r.repo, "Dependabot",
+        action === "alerts-on" ? `Enabled Dependabot alerts on ${r.repo}`
+          : action === "alerts-off" ? `Disabled Dependabot alerts on ${r.repo}`
+          : action === "fixes-on" ? `Enabled Dependabot security updates on ${r.repo}`
+          : `Disabled Dependabot security updates on ${r.repo}`,
+        undefined, "app");
+    }
+
+    // Invalidated so the tab reflects the change rather than the minute-old
+    // sweep it was drawn from.
+    const { invalidateDependencySweep } = await import("../services/dependencyService");
+    invalidateDependencySweep();
+
+    res.json(summary);
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "dependabot bulk") });
+  }
+});
+
 router.get("/summary", async (req: Request, res: Response) => {
   try {
     const token = getSystemToken() || req.user?.accessToken;

@@ -29,6 +29,7 @@ const COLLAPSED = 4;
 import RenovatePanel from "../components/RenovatePanel";
 import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
+import DependabotManager from "../components/DependabotManager";
 
 /**
  * The three questions this tab answers, as three views rather than one column.
@@ -52,6 +53,15 @@ export default function DependencyDashboardPage() {
 
   // In the URL, so the view survives a refresh and can be linked to. An
   // unrecognized value falls back rather than rendering nothing.
+  /**
+   * Whether the management panel is open.
+   *
+   * Not in the URL, unlike the view. It is a drawer somebody opens to do a
+   * thing and closes again, and a link that reopened it for the next reader
+   * would put a page of tick boxes in front of the findings they came for.
+   */
+  const [managing, setManaging] = useState(false);
+
   const [params, setParams] = useSearchParams();
   const raw = params.get("view") as View | null;
   const view: View = raw && VIEWS.includes(raw) ? raw : "alerts";

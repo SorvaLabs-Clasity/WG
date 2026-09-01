@@ -3125,6 +3125,61 @@ keyed on `kind:metric` rather than the metric alone: one metric is now offered
 twice, and keying on the name gave two options with one value and made the first
 unselectable.
 
+## Managing Dependabot in bulk
+
+**Vulnerabilities → Manage Dependabot** lists every repository the last sweep
+saw, whether or not it has a finding, and lets several be switched at once.
+
+That list is built from rows the tab already holds, so opening the panel costs
+nothing. Repositories nobody is scanning sort first: a repository with no
+findings because Dependabot is off looks exactly like a clean one in the list
+below, and its absence is not good news.
+
+### Why it is one request
+
+Doing this a repository at a time is what produced "an unexpected error
+occurred". These are **writes**, GitHub applies a **secondary** rate limit to
+writes made in quick succession, and this app's client is deliberately built to
+surface those rather than retry them. Somebody clicking down a list is a burst,
+and a burst is what that limit exists to stop.
+
+The browser cannot pace itself usefully, because the header asking for the pause
+arrives at the server. So the whole selection goes in one request and the pacing
+sits next to the errors that cause it: three at a time, a quarter second apart,
+backing off on GitHub's own `retry-after` when it gives one.
+
+The two ways to get that wrong are both quiet, and both are tested:
+
+- **Retrying a refusal that will never change** makes a run take minutes to say
+  "you are not an admin on that one". Only a request to slow down is retried.
+- **Not retrying a request to slow down** turns a pause into a failure and
+  leaves half the selection untouched with no clue which half.
+
+A repository that fails stays selected, so pressing again retries exactly those.
+
+### Alerts and fixes are two switches
+
+Alerts tell you a dependency is vulnerable. **Security updates** are what opens
+the pull request that fixes it, and that is what "create fix with Dependabot"
+does in GitHub's own interface.
+
+There is no public API to open a pull request for one alert on demand. Turning
+security updates on is the API equivalent, and GitHub then raises them itself,
+usually within a few minutes rather than while somebody watches. The panel says
+so before the button is pressed.
+
+Turning fixes on turns alerts on first, because GitHub raises no updates for a
+repository it is not scanning, and doing only the second would report success
+while nothing ever arrived.
+
+### The caller's own token
+
+Like every other write in that file. GitHub decides per repository whether
+somebody may, so a bulk action can never reach further than the same person
+could one at a time. It is also why these requests do not move the allowance
+shown at the top of the GitHub requests tab: that figure is the **App's**
+headroom, and these are spent from the signed-in person's own.
+
 ## Only the reviews that are yours to do
 
 A review request notification now says **who else is on it**, and can be limited

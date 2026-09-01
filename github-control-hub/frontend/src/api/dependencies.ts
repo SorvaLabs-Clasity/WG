@@ -34,3 +34,33 @@ export async function fetchDependencySummary(): Promise<DependencySummary> {
   if (DEMO_MODE) return mockFetchDependencySummary();
   return apiGet<DependencySummary>("/security/summary");
 }
+
+// ── many repositories at once ──
+
+export type BulkAction = "alerts-on" | "alerts-off" | "fixes-on" | "fixes-off";
+
+export interface BulkResult {
+  repo: string;
+  ok: boolean;
+  error?: string;
+  rateLimited?: boolean;
+}
+
+export interface BulkSummary {
+  results: BulkResult[];
+  changed: number;
+  failed: number;
+  /** Whole seconds the run spent waiting because GitHub asked it to. */
+  sleptSeconds: number;
+}
+
+/**
+ * One request for the whole selection, not one per repository.
+ *
+ * The pacing that keeps GitHub from refusing a burst of writes lives on the
+ * server, where the response headers that ask for it arrive. A loop here would
+ * be the burst.
+ */
+export function bulkDependabot(repos: string[], action: BulkAction): Promise<BulkSummary> {
+  return apiPost<BulkSummary>("/security/dependencies/bulk", { repos, action });
+}
