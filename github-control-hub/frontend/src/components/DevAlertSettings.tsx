@@ -143,6 +143,7 @@ export default function DevAlertSettings() {
 
   const [address, setAddress] = useState("");
   const [events, setEvents] = useState<EventPrefs | null>(null);
+  const [reviewerLimit, setReviewerLimit] = useState<number | null>(null);
   const [digest, setDigest] = useState<DigestPrefs | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -182,6 +183,7 @@ export default function DevAlertSettings() {
   useEffect(() => {
     if (data && !events) {
       setEvents(data.events);
+      setReviewerLimit(data.reviewerLimit ?? null);
       setDigest(data.digest);
       setAddress(data.teamsAddress ?? "");
     }
@@ -331,6 +333,41 @@ export default function DevAlertSettings() {
             checked={events.reviewRequested}
             onChange={v => patchEvents({ reviewRequested: v })}
           />
+
+          {/* Only where it can apply. A limit under a switch that is off is a
+              control for something that is not happening. */}
+          {events.reviewRequested && (
+            <div className="pl-1 pb-3 -mt-1">
+              <label className="block text-[11.5px] text-slate-500 dark:text-slate-400 mb-1.5">
+                Only when the review is mine to do
+              </label>
+              <select
+                value={reviewerLimit ?? ""}
+                onChange={e => {
+                  const next = e.target.value === "" ? null : Number(e.target.value);
+                  setReviewerLimit(next);
+                  commit({ reviewerLimit: next });
+                }}
+                className={`${SURFACE.input} max-w-sm`}
+              >
+                <option value="">Every request, however many people were asked</option>
+                <option value="1">Only when I am the only reviewer</option>
+                <option value="2">Only me and at most one other</option>
+                <option value="3">At most three of us</option>
+                <option value="4">At most four of us</option>
+                <option value="5">At most five of us</option>
+              </select>
+              {/* The counting rule, said once. Somebody choosing "only me" and
+                  then not hearing about a request to themselves and a team
+                  would reasonably call that broken. */}
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
+                Counts everybody still awaiting review, you included, and a team
+                counts as one. A request whose reviewer list cannot be read is
+                sent rather than withheld. Anything skipped here is still in the
+                daily summary.
+              </p>
+            </div>
+          )}
           <Row
             label="Somebody requests changes on mine"
             hint="Needs the pull_request_review event ticked on the GitHub App. Without it this stays quiet."

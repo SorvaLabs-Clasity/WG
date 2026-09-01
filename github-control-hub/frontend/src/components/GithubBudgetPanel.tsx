@@ -35,6 +35,27 @@ const BUCKET: Record<Bucket, { label: string; icon: string; tone: string; bar: s
   },
 };
 
+/**
+ * How long GitHub's own window has been open.
+ *
+ * The two halves of this page count over different periods, and saying "this
+ * hour" on both made them look like the same number disagreeing with itself.
+ * GitHub's allowance refills on a rolling clock of its own: a window that reset
+ * a minute ago reports almost nothing used, while the counter below still holds
+ * everything since the top of the hour. Naming both periods is the difference
+ * between a contradiction and two facts.
+ */
+function windowAge(iso: string, window: string): string {
+  const resets = new Date(iso).getTime();
+  if (!Number.isFinite(resets)) return "";
+  // Search refills every minute, everything else every hour.
+  const span = window.includes("minute") ? 60_000 : 3_600_000;
+  const mins = Math.round((span - (resets - Date.now())) / 60_000);
+  if (mins <= 0) return "just now";
+  if (mins === 1) return "a minute ago";
+  return `${mins} min ago`;
+}
+
 function untilReset(iso: string): string {
   const ms = new Date(iso).getTime() - Date.now();
   if (!Number.isFinite(ms) || ms <= 0) return "any moment";
@@ -235,11 +256,14 @@ export default function GithubBudgetPanel() {
   const totals = data.totals ?? { core: 0, search: 0, graphql: 0 };
   const stale = !Array.isArray(data.usage);
 
-  const appTotals = data.appTotals ?? { core: 0, search: 0, graphql: 0 };
   const biggest = usage[0]?.count ?? 0;
   const measured = Object.values(totals).reduce((a: number, n) => a + (Number(n) || 0), 0);
   const viaUser = usage.reduce((a, r) => a + (r.viaUser ?? 0), 0);
-  const windowLabel = hours === 1 ? "this hour" : `the last ${hours} hours`;
+  // Named exactly. "This hour" was read as "the last sixty minutes", which is
+  // not what the counters bucket by and is where the confusion started.
+  const windowLabel = hours === 1
+    ? "since the top of the hour"
+    : `over the last ${hours} hours`;
 
   return (
     <div className="grid gap-4">
@@ -249,20 +273,30 @@ export default function GithubBudgetPanel() {
           blank. Restarting the app picks up the matching version.
         </Note>
       )}
-      {/* ── the allowances ─────────────────────────────────────────────
-          Used, not remaining. "14,985 / 15,000" is the same fact told
-          backwards, and every reader takes the first number for what they have
-          spent, because that is what a figure over a total means everywhere
-          else. */}
+      {/* ── what was spent, per allowance ──────────────────────────────
+          The figure a reader takes for "what I have used" has to be the one the
+          rows below add up to. This led with GitHub's own used-of-limit, which
+          is measured over a different window and was routinely a hundred times
+          smaller, so the page appeared to contradict itself. What GitHub knows
+          that this app cannot is how much room is left, and that is what its
+          number is used for now. */}
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
-                Used of each allowance
+                What this app spent, {windowLabel}
               </h3>
+              {/* One measurement on this page, not two.
+                  GitHub's own "used" figure sat here as the headline beside
+                  these counts, and the two never matched: GitHub meters over a
+                  rolling window of its own that can have opened a minute ago,
+                  while these cover the clock hour. Both were right and the pair
+                  read as a contradiction, which is a worse outcome than showing
+                  one of them. GitHub's number is still here, as the headroom it
+                  is, underneath. */}
               <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
-                Read from GitHub. Three separate allowances that do not share, so
+                Counted by this app, per allowance. The three do not share, so
                 running out of one leaves the others untouched.
               </p>
             </div>
@@ -303,7 +337,7 @@ export default function GithubBudgetPanel() {
           <div className="p-5 grid sm:grid-cols-3 gap-5">
             {limits.map(l => {
               const b = BUCKET[l.bucket];
-              const spent = l.limit > 0 ? l.used / l.limit : 0;
+              const left = l.limit > 0 ? l.remaining / l.limit : 0;
               return (
                 <div key={l.bucket}>
                   <div className="flex items-center gap-1.5">
@@ -312,31 +346,31 @@ export default function GithubBudgetPanel() {
                       {b.label} · {l.window}
                     </span>
                   </div>
+                  {/* The number the list below adds up to. Anything else here
+                      invites the reader to reconcile two figures that were
+                      never measuring the same thing. */}
                   <p className="text-[24px] font-black tabular-nums text-slate-900 dark:text-white leading-none mt-1">
-                    {l.used.toLocaleString()}
+                    {(totals[l.bucket] ?? 0).toLocaleString()}
                     <span className="text-[13px] font-bold text-slate-400 dark:text-slate-500">
-                      {" "}used of {l.limit.toLocaleString()}
+                      {" "}request{(totals[l.bucket] ?? 0) === 1 ? "" : "s"}
                     </span>
                   </p>
+
+                  {/* Headroom, not a second count of the same thing. What is
+                      left is a live fact about right now and needs no window to
+                      be understood. */}
                   <div className="h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.07] mt-2 overflow-hidden">
                     <div className={`h-full rounded-full ${
-                      spent < 0.5 ? "bg-emerald-500" : spent < 0.8 ? "bg-amber-500" : "bg-rose-500"}`}
-                      style={{ width: `${Math.max(1, Math.min(100, spent * 100))}%` }} />
+                      left > 0.5 ? "bg-emerald-500" : left > 0.2 ? "bg-amber-500" : "bg-rose-500"}`}
+                      style={{ width: `${Math.max(1, Math.min(100, left * 100))}%` }} />
                   </div>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
-                    {l.remaining.toLocaleString()} left, refilling in {untilReset(l.resetsAt)}.
-                  </p>
-                  {/* The bridge between the two halves of this page. GitHub
-                      meters per token and its window is its own, so this app's
-                      count of what it spent on the App's credentials is close
-                      to, but never exactly, the figure above. Said here rather
-                      than left for somebody to notice and disbelieve. */}
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
-                    This app counted{" "}
+                    GitHub says{" "}
                     <span className="font-semibold text-slate-600 dark:text-slate-300 tabular-nums">
-                      {(appTotals[l.bucket] ?? 0).toLocaleString()}
+                      {l.remaining.toLocaleString()}
                     </span>{" "}
-                    of its own {windowLabel}.
+                    of {l.limit.toLocaleString()} still available, refilling in{" "}
+                    {untilReset(l.resetsAt)}.
                   </p>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 leading-relaxed">
                     {b.blurb}
@@ -353,7 +387,7 @@ export default function GithubBudgetPanel() {
         <div className="px-5 pt-4">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
             <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
-              What spent it, {windowLabel}
+              Which feature spent it
             </h3>
             {measured > 0 && (
               <span className="text-[12px] font-bold tabular-nums text-slate-500 dark:text-slate-400">
@@ -408,12 +442,13 @@ export default function GithubBudgetPanel() {
       </section>
 
       <p className="text-[11.5px] text-slate-400 dark:text-slate-500 px-1 leading-relaxed max-w-[85ch]">
-        The two halves will not match exactly, for two reasons worth knowing.
-        GitHub meters <span className="font-semibold">per token</span>: the
-        allowances above are the app's own, while requests made on a signed-in
-        person's account draw on theirs, so only the app's half is comparable.
-        And the windows differ — GitHub's refills on its own clock, this counts
-        by the hour. Requests made outside a named feature are counted under{" "}
+        Every number on this page is counted by this app, over the window
+        chosen above, so the totals and the rows always agree. The only figure
+        that comes from GitHub is how much is still available, which is a fact
+        about this moment rather than a count over a period: GitHub meters on a
+        rolling window of its own, and comparing it against these totals is
+        comparing two different questions. Requests made outside a named feature
+        are counted under{" "}
         <span className="font-semibold">Unattributed</span> rather than dropped.
         Drawing this page costs one request to{" "}
         <code className="font-mono text-[11px]">GET /rate_limit</code>, the one

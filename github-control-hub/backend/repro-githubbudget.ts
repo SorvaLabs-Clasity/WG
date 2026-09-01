@@ -146,6 +146,38 @@ function filesCallingGitHub(): string[] {
     else bad("the report shape is wrong", JSON.stringify(Object.keys(report)));
   }
 
+  console.log("\nThe page shows one measurement, not two that disagree");
+  {
+    const panel = readFileSync(
+      join(ROOT, "..", "..", "frontend", "src", "components", "GithubBudgetPanel.tsx"), "utf8");
+
+    /**
+     * GitHub's used-of-limit and this app's counts measure different periods:
+     * GitHub meters over a rolling window that may have opened a minute ago,
+     * these bucket by the clock hour. Both are right, and shown as a pair they
+     * read as one number contradicting itself, which is what somebody kept
+     * having to ask about.
+     */
+    const leads = /\{\(totals\[l\.bucket\] \?\? 0\)\.toLocaleString\(\)\}/.test(panel);
+    if (leads) ok("each allowance leads with the figure its rows add up to");
+    else bad("the headline number is not the one the rows sum to",
+      "a reader cannot reconcile two figures that were never the same measurement");
+
+    const usesGitHubUsed = /\{l\.used\.toLocaleString\(\)\}/.test(panel);
+    if (!usesGitHubUsed) ok("  GitHub's own used-of-limit no longer sits beside them");
+    else bad("GitHub's used figure is shown as a count again",
+      "it is measured over a different window and will not match");
+
+    // Still shown, as the one thing GitHub knows that this app cannot.
+    if (/still available/.test(panel)) ok("  while what is left is still reported");
+    else bad("headroom is gone entirely", "how much room is left is the reason to read this page");
+
+    // The window has to be named, not implied. "This hour" was read as "the
+    // last sixty minutes", which is not what the counters bucket by.
+    if (/since the top of the hour/.test(panel)) ok("  and the period is named exactly");
+    else bad("the window is described loosely", "\"this hour\" is what was misread");
+  }
+
   console.log("\nAn empty window says it is empty rather than showing zero");
   {
     // A fresh install and a quiet one produce identical numbers and are

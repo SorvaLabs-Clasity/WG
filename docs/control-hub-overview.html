@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GitHub Control Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500&family=Inter+Tight:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap">
+
+<style>
+:root{
+  --paper:#f4f5f7; --card:#fff; --ink:#14171f; --ink-2:#3d4552; --muted:#6b7280;
+  --rule:#dde0e6; --accent:#2b5f8f; --accent-soft:#e9f1f8;
+  --shadow:0 1px 2px rgba(20,23,31,.05), 0 12px 32px -24px rgba(20,23,31,.3);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#0e1117; --card:#161a22; --ink:#e9ecf1; --ink-2:#b6bdc9; --muted:#8a93a1;
+  --rule:#252a34; --accent:#8fb6da; --accent-soft:#182430;
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 12px 32px -24px rgba(0,0,0,.9);
+}}
+:root[data-theme="dark"]{
+  --paper:#0e1117; --card:#161a22; --ink:#e9ecf1; --ink-2:#b6bdc9; --muted:#8a93a1;
+  --rule:#252a34; --accent:#8fb6da; --accent-soft:#182430;
+  --shadow:0 1px 2px rgba(0,0,0,.35), 0 12px 32px -24px rgba(0,0,0,.9);
+}
+*{box-sizing:border-box}
+body{margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Inter Tight",system-ui,-apple-system,sans-serif; font-size:16.5px; line-height:1.6;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:780px; margin:0 auto; padding:0 24px 80px}
+
+header{padding:80px 0 12px}
+.eyebrow{font-family:"JetBrains Mono",monospace; font-size:11px; letter-spacing:.2em;
+  text-transform:uppercase; color:var(--muted); margin:0 0 18px}
+h1{font-family:Fraunces,Georgia,serif; font-weight:500; font-size:clamp(2.4rem,6vw,3.4rem);
+  line-height:1.06; letter-spacing:-.022em; margin:0 0 22px; text-wrap:balance}
+.sub{font-size:1.16rem; color:var(--ink-2); max-width:50ch; margin:0}
+
+section{margin-top:60px}
+h2{font-family:Fraunces,Georgia,serif; font-weight:500; font-size:1.6rem; margin:0 0 8px;
+  letter-spacing:-.012em}
+h2 + .dek{color:var(--muted); margin:0 0 26px; max-width:56ch; font-size:.96rem}
+p{max-width:60ch}
+strong{font-weight:600}
+
+/* the questions, which are the point of the page */
+.qs{border-top:1px solid var(--rule)}
+.q{display:grid; grid-template-columns:1fr auto; gap:20px; align-items:baseline;
+  padding:15px 2px; border-bottom:1px solid var(--rule)}
+.q .ask{font-family:Fraunces,Georgia,serif; font-size:1.13rem; line-height:1.35;
+  color:var(--ink); min-width:0}
+.q .where{font-family:"JetBrains Mono",monospace; font-size:10.5px; letter-spacing:.09em;
+  text-transform:uppercase; color:var(--muted); white-space:nowrap; padding-top:4px}
+
+.tabs{display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule);
+  border-radius:8px; overflow:hidden}
+.tab{background:var(--card); padding:17px 20px; display:grid;
+  grid-template-columns:112px 1fr; gap:18px; align-items:baseline}
+@media (max-width:560px){ .tab{grid-template-columns:1fr; gap:5px} }
+.tab .n{font-weight:600; font-size:.96rem}
+.tab .d{color:var(--ink-2); font-size:.94rem; margin:0; max-width:48ch}
+
+.facts{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:1px;
+  background:var(--rule); border:1px solid var(--rule); border-radius:8px; overflow:hidden}
+.fact{background:var(--card); padding:19px 20px}
+.fact b{font-family:"JetBrains Mono",monospace; font-size:1.5rem; font-weight:500;
+  display:block; letter-spacing:-.02em; line-height:1.05}
+.fact span{display:block; font-size:12.5px; color:var(--muted); margin-top:7px; line-height:1.4}
+
+.pull{border-left:3px solid var(--accent); padding:6px 0 6px 22px; margin:34px 0;
+  font-family:Fraunces,Georgia,serif; font-size:1.2rem; line-height:1.5; max-width:50ch}
+
+footer{margin-top:64px; padding-top:20px; border-top:1px solid var(--rule);
+  color:var(--muted); font-size:13px}
+a{color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">GitHub Control Hub</p>
+  <h1>Questions about our GitHub organization, already answered</h1>
+  <p class="sub">A desktop app that watches the organization in the background, so the answers
+  are waiting when you open it rather than gathered while you wait.</p>
+</header>
+
+<section>
+  <h2>The questions</h2>
+  <p class="dek">Each of these is a card on the dashboard. Click one and you get the list
+  behind the number.</p>
+
+  <div class="qs">
+    <div class="q"><span class="ask">Which repositories has nobody claimed?</span><span class="where">Overview</span></div>
+    <div class="q"><span class="ask">Who holds admin but has not committed in months?</span><span class="where">Overview</span></div>
+    <div class="q"><span class="ask">Which repositories has nothing been pushed to since spring?</span><span class="where">Overview</span></div>
+    <div class="q"><span class="ask">Which repositories can anyone in the company read?</span><span class="where">Overview</span></div>
+    <div class="q"><span class="ask">Which repositories have no protected branch at all?</span><span class="where">Overview</span></div>
+    <div class="q"><span class="ask">Where are we exposed through <em>this</em> package?</span><span class="where">Overview</span></div>
+    <div class="q"><span class="ask">Everything this person can reach, and how they got in</span><span class="where">Access</span></div>
+    <div class="q"><span class="ask">Which repositories have the worst open advisories right now?</span><span class="where">Vulnerabilities</span></div>
+    <div class="q"><span class="ask">Which repositories are not watching for vulnerabilities at all?</span><span class="where">Vulnerabilities</span></div>
+    <div class="q"><span class="ask">Which dependency updates has nobody merged, and for how long?</span><span class="where">Renovate</span></div>
+    <div class="q"><span class="ask">Who should be emailed when a critical advisory lands?</span><span class="where">Notifications</span></div>
+    <div class="q"><span class="ask">Tell me if unprotected repositories ever go above five</span><span class="where">Alarms</span></div>
+    <div class="q"><span class="ask">Who actually knows this part of the codebase?</span><span class="where">Who knows</span></div>
+    <div class="q"><span class="ask">Which pull requests are stuck, and on whom?</span><span class="where">Pull requests</span></div>
+    <div class="q"><span class="ask">What changed last night, and who changed it?</span><span class="where">Activity</span></div>
+  </div>
+
+  <p style="margin-top:26px">Most of them cannot be answered on github.com without opening one
+  repository at a time. <strong>"Everything Sarah can reach" has no page.</strong> You would
+  check her teams, then every repository she is on directly, then remember that organization
+  owners have admin everywhere anyway.</p>
+</section>
+
+<section>
+  <h2>Where they live</h2>
+  <p class="dek">Eight tabs. These are the five you will see today.</p>
+
+  <div class="tabs">
+    <div class="tab"><span class="n">Overview</span>
+      <p class="d">Cards you choose, each answering one question. Add, edit or remove them.</p></div>
+    <div class="tab"><span class="n">Access</span>
+      <p class="d">Every person and team, and what each can reach. Directly, through a team, or
+      by running the organization.</p></div>
+    <div class="tab"><span class="n">Security</span>
+      <p class="d">Branch protection, rulesets, secret scanning, vulnerable dependencies.</p></div>
+    <div class="tab"><span class="n">Vulnerabilities</span>
+      <p class="d">Dependabot advisories, Renovate's open update pull requests, and who gets
+      emailed about either.</p></div>
+    <div class="tab"><span class="n">Activity</span>
+      <p class="d">Everything that changed, whether it happened here or on github.com. Thirteen
+      months, with an undo where the change came from this app.</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>Three things that make it useful</h2>
+
+  <p><strong>It notices changes nobody announced.</strong> Someone removes branch protection on
+  github.com at two in the morning. Within seconds it is in the activity log with their name on
+  it, and an email goes out if that is something we asked to be told about. Nobody has to be
+  watching.</p>
+
+  <p><strong>It tells you without being asked.</strong> Any card can carry an alarm: set a
+  threshold, name a group of people, and an email goes out when the number crosses it and
+  again when it recovers. Security events do not wait for a threshold at all. A repository
+  going public, branch protection disappearing, a ruleset deleted, an admin added: those are
+  emailed within seconds of happening.</p>
+
+  <p><strong>It changes nothing on its own.</strong> Every write is something a person pressed,
+  recorded with their name, and mostly undoable. The AWS guardrails are set to
+  <em>report</em> by default and only enforce where somebody chose that, rule by rule.</p>
+
+  <p class="pull">Turn it off tomorrow and GitHub is exactly as it is now. It reads far more
+  than it writes, and nothing depends on it running.</p>
+</section>
+
+<section>
+  <h2>The numbers</h2>
+  <div class="facts">
+    <div class="fact"><b>&lt;1 sec</b><span>to open a tab</span></div>
+    <div class="fact"><b>seconds</b><span>to notice a change</span></div>
+    <div class="fact"><b>13 months</b><span>of history kept</span></div>
+    <div class="fact"><b>~$8</b><span>a month to run</span></div>
+  </div>
+</section>
+
+<footer>
+  <p>Runs entirely in an AWS account we own. GitHub credentials never leave it, and no data is
+  sent to a third party.</p>
+</footer>
+
+</div>
+</body>
+</html>

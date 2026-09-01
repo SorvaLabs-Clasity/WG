@@ -1,5 +1,8 @@
 import { getDevAlerts, putDevAlerts } from "../services/devAlertService";
-import { buildEventCard, wants, type DevEvent, type EventKind } from "../services/devAlertContent";
+import {
+  buildEventCard, wants, withinReviewerLimit,
+  type DevEvent, type EventKind,
+} from "../services/devAlertContent";
 import { sendToPerson } from "../services/teamsClient";
 import { getOrgConfig } from "../services/orgConfigService";
 
@@ -25,19 +28,53 @@ import { getOrgConfig } from "../services/orgConfigService";
  * notified that you requested a review from somebody is noise, and it is the
  * fastest way to make somebody turn the whole thing off.
  */
-export function recipientsFor(event: string, payload: any): Array<{ login: string; kind: EventKind; actor?: string }> {
+export function recipientsFor(event: string, payload: any): Array<{
+  login: string; kind: EventKind; actor?: string;
+  /** Everybody else currently asked, and any teams. Absent where it does not apply. */
+  reviewers?: string[]; reviewerTeams?: string[];
+}> {
   const pr = payload?.pull_request;
   if (!pr) return [];
   const actor = payload?.sender?.login as string | undefined;
   const author = pr.user?.login as string | undefined;
-  const out: Array<{ login: string; kind: EventKind; actor?: string }> = [];
+  const out: Array<{
+    login: string; kind: EventKind; actor?: string;
+    reviewers?: string[]; reviewerTeams?: string[];
+  }> = [];
 
   if (event === "pull_request" && payload.action === "review_requested") {
     // GitHub sends either a person or a team; a team request names no
     // individual, so there is nobody to notify and guessing the members would
     // message people who were not asked.
     const asked = payload.requested_reviewer?.login as string | undefined;
-    if (asked && asked !== actor) out.push({ login: asked, kind: "reviewRequested", actor });
+    if (asked && asked !== actor) {
+      /**
+       * Everybody still awaiting review, taken from the pull request rather
+       * than from the event.
+       *
+       * The event names the one person just added; `requested_reviewers` is the
+       * whole outstanding list at this moment, which is what "am I the only
+       * one" needs. Anybody who has already reviewed has left it, and that is
+       * correct: they are no longer who this is waiting on.
+       *
+       * Left undefined when the payload carries no list at all, so a request
+       * whose size could not be read is notified rather than silently withheld.
+       */
+      const all = Array.isArray(pr.requested_reviewers)
+        ? (pr.requested_reviewers as any[]).map(r => r?.login).filter(Boolean) as string[]
+        : undefined;
+      const teams = Array.isArray(pr.requested_teams)
+        ? (pr.requested_teams as any[]).map(t => t?.slug ?? t?.name).filter(Boolean) as string[]
+        : undefined;
+
+      out.push({
+        login: asked, kind: "reviewRequested", actor,
+        // Their own name removed: the card lists who *else* is on it, and a
+        // person reading their own name back in that list reads as a bug.
+        ...(all ? { reviewers: all.filter(l => l !== asked) } : {}),
+        ...(teams ? { reviewerTeams: teams } : {}),
+      });
+    }
     return out;
   }
 
@@ -74,6 +111,11 @@ export async function notifyDevEvents(event: string, payload: any): Promise<numb
       const prefs = await getDevAlerts(target.login);
       if (!wants(prefs, target.kind)) continue;
 
+      // Asked for by somebody who only wants the requests that are theirs to
+      // do. Skipped quietly: it is a preference, not a failure, and it is
+      // still in the daily digest.
+      if (target.kind === "reviewRequested" && !withinReviewerLimit(prefs, target)) continue;
+
       const devEvent: DevEvent = {
         kind: target.kind,
         repo: payload.repository?.name ?? "",
@@ -81,6 +123,8 @@ export async function notifyDevEvents(event: string, payload: any): Promise<numb
         title: String(pr.title ?? "Untitled"),
         url: String(pr.html_url ?? ""),
         actor: target.actor,
+        ...(target.reviewers ? { reviewers: target.reviewers } : {}),
+        ...(target.reviewerTeams ? { reviewerTeams: target.reviewerTeams } : {}),
       };
 
       const result = await sendToPerson(flowUrl, prefs.teamsAddress!, buildEventCard(devEvent));

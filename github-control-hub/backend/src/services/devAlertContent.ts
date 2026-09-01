@@ -158,6 +158,16 @@ export interface DevEvent {
   url: string;
   /** Who caused it, where that is a person and not the system. */
   actor?: string;
+  /**
+   * Everybody currently asked to review, this person included.
+   *
+   * Carried so the card can say who else is on it. "Review requested" answers
+   * whether to switch to Teams; who else was asked answers whether to switch
+   * now, which is the question somebody actually has.
+   */
+  reviewers?: string[];
+  /** Teams asked to review, which name no individual. Counted, never notified. */
+  reviewerTeams?: string[];
 }
 
 /**
@@ -169,13 +179,45 @@ export interface DevEvent {
 const EVENT_TEXT: Record<EventKind, { title: string; line: (e: DevEvent) => string }> = {
   reviewRequested: {
     title: "Review requested",
-    line: e => e.actor ? `${e.actor} asked you to review this.` : "Your review has been requested.",
+    line: e => {
+      const asked = e.actor ? `${e.actor} asked you to review this.` : "Your review has been requested.";
+      return `${asked}${describeReviewers(e)}`;
+    },
   },
   changesRequested: {
     title: "Changes requested",
     line: e => e.actor ? `${e.actor} asked for changes.` : "Somebody asked for changes.",
   },
 };
+
+/**
+ * Who else is on it, said plainly.
+ *
+ * The count matters as much as the names: "you are the only reviewer" is a
+ * different message from the same request with four other people on it, and it
+ * is the difference between reading it now and reading it later.
+ *
+ * Teams are counted but not named individually, because a team request names no
+ * person and listing the slug beside real people reads as though somebody is
+ * called `platform`.
+ */
+function describeReviewers(e: DevEvent): string {
+  const others = (e.reviewers ?? []).filter(Boolean);
+  const teams = (e.reviewerTeams ?? []).filter(Boolean);
+
+  if (others.length === 0 && teams.length === 0) return " You are the only reviewer.";
+
+  const parts: string[] = [];
+  if (others.length) {
+    parts.push(others.length <= 4
+      ? `Also reviewing: ${others.join(", ")}.`
+      : `Also reviewing: ${others.slice(0, 4).join(", ")} and ${others.length - 4} more.`);
+  }
+  if (teams.length) {
+    parts.push(`${plural(teams.length, "team")} asked as well: ${teams.join(", ")}.`);
+  }
+  return ` ${parts.join(" ")}`;
+}
 
 /** One card for one thing that just happened. */
 export function buildEventCard(event: DevEvent): any {
@@ -197,4 +239,30 @@ export function buildEventCard(event: DevEvent): any {
  */
 export function wants(prefs: DevAlerts, kind: EventKind): boolean {
   return !!prefs.teamsAddress && prefs.events[kind] === true;
+}
+
+/**
+ * Whether a review request is small enough to be worth interrupting for.
+ *
+ * The limit counts everybody asked, this person included, so "1" means nobody
+ * else was, which is the case where the review will not happen without them.
+ * A team counts as one: it is one more group of people who might pick it up,
+ * and treating it as nobody would make a request to four teams look like a
+ * request to one person.
+ *
+ * Only ever narrows. An unset limit, or a request whose reviewer list could not
+ * be read, notifies, because the alternative is silently withholding a review
+ * request on the strength of a number nobody could see.
+ */
+export function withinReviewerLimit(
+  prefs: DevAlerts,
+  counts: { reviewers?: string[]; reviewerTeams?: string[] } | undefined,
+): boolean {
+  const limit = prefs.reviewerLimit;
+  if (typeof limit !== "number" || !Number.isFinite(limit) || limit < 1) return true;
+  if (!counts?.reviewers) return true;
+
+  // This person is one of them, and the payload lists the others.
+  const total = 1 + counts.reviewers.length + (counts.reviewerTeams?.length ?? 0);
+  return total <= limit;
 }
