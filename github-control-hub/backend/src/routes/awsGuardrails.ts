@@ -374,18 +374,26 @@ router.post("/remediate", requireAdmin, async (req: Request, res: Response) => {
     });
 
     const fixed = (result.remediated ?? 0) > 0;
-    await logActivity("aws.guardrail.run", req.user!.login, "*", resourceId,
-      fixed
-        ? `Fixed ${resourceId} for "${rule.name}"`
-        : `Asked to fix ${resourceId} for "${rule.name}". Nothing was changed`,
-      undefined, "app", undefined, undefined,
-      {
-        failed: !fixed && (result.errors?.length ?? 0) > 0,
-        // Only when the engine actually changed something, because only then
-        // did it write a row of its own. A fix that found nothing to do leaves
-        // this row as the sole record of the attempt, and it must still count.
-        ...(fixed ? { echoOf: "aws.guardrail" } : {}),
-      });
+
+    /**
+     * One change, one row.
+     *
+     * A successful fix is already recorded by the engine, on a row that carries
+     * what changed, the undo payload, the account and the region — and now the
+     * person who asked, in `triggeredBy`. Writing a second row here as well
+     * meant the feed and the statistics could never agree: one deduplicated the
+     * pair and the other did not, so the same hour had two different totals
+     * depending on which screen you read it from.
+     *
+     * A fix that changed nothing writes no engine row, so this stays as the
+     * sole record of the attempt.
+     */
+    if (!fixed) {
+      await logActivity("aws.guardrail.run", req.user!.login, "*", resourceId,
+        `Asked to fix ${resourceId} for "${rule.name}". Nothing was changed`,
+        undefined, "app", undefined, undefined,
+        { failed: (result.errors?.length ?? 0) > 0 });
+    }
 
     res.json({
       remediated: result.remediated ?? 0,

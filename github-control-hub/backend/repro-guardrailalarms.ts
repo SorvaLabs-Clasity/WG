@@ -51,7 +51,14 @@ const f = (over: Record<string, any> = {}) => ({
   // ── what a guardrail alarm can watch ────────────────────────────────
   {
     const specs = conditionsFor(GUARD as any);
-    check("a guardrail offers its own metrics", specs.length === 2, specs.map(s => s.metric));
+    // Distinct metrics, not options: `guardrail.violations` is offered twice,
+    // once as a threshold and once as "tell me about each new failing resource".
+    const metrics = [...new Set(specs.map(s => s.metric))];
+    check("a guardrail offers its own metrics", metrics.length === 2, metrics);
+    check("  and its failing-resource count can be watched either way",
+      specs.some(s => s.metric === "guardrail.violations" && s.kind === "count")
+        && specs.some(s => s.metric === "guardrail.violations" && s.kind === "each"),
+      specs.map(s => `${s.kind}:${s.metric}`));
     check("  and not a widget's",
       !specs.some(s => String(s.metric).startsWith("dependabot")));
     check("  every one carries a unit or a hint, since none is self-explanatory",

@@ -45,8 +45,56 @@ export default function PersonalBoard() {
   // In place, the way the Overview does it, rather than a modal on top of a
   // grid. The detail is the same component, so the table, the verdict and the
   // freshness stamp cannot drift from the shared board's.
+  /**
+   * The modals, rendered from both branches.
+   *
+   * They used to sit only under the grid, below an early return for the detail
+   * view — so pressing Add alarm from inside a card did nothing at all: the
+   * state was set and the component that reads it was not on screen. Pressing
+   * Edit afterwards left the detail view, which mounted both at once, so the
+   * alarm dialog appeared on the wrong click and the edit form appeared behind
+   * it. One place to declare them, reachable from wherever they were opened.
+   */
+  const modals = (
+    <>
+      {(adding || editing) && (
+        <WidgetFormModal
+          initialData={editing ?? undefined}
+          isSaving={create.isPending || update.isPending}
+          onClose={() => { setAdding(false); setEditing(null); }}
+          onSave={async config => {
+            if (editing) {
+              await update.mutateAsync({ id: editing.id, data: config });
+            } else {
+              // `personal` is what puts it on this board. The server takes the
+              // owner from the session rather than from here, so this cannot be
+              // used to add a card to somebody else's page.
+              //
+              // Straight into the filters afterwards, because narrowing is the
+              // reason most of these cards exist and the choices only become
+              // real once the check has rows to offer.
+              const made = await create.mutateAsync({ ...config, personal: true } as any);
+              if (made) setFiltering(made);
+            }
+            setAdding(false);
+            setEditing(null);
+          }}
+        />
+      )}
+
+      {filtering && (
+        <WidgetFilterEditor config={filtering} onClose={() => setFiltering(null)} />
+      )}
+
+      {alarming && (
+        <AlarmModal isOpen personal widgetId={alarming.id} onClose={() => setAlarming(null)} />
+      )}
+    </>
+  );
+
   if (opened) {
     return (
+      <>
       <CheckDetail
         config={opened}
         onBack={() => setOpened(null)}
@@ -60,6 +108,8 @@ export default function PersonalBoard() {
         canAlarm
         alarmCount={(myAlarms ?? []).filter(a => a.widgetId === opened.id).length}
       />
+      {modals}
+      </>
     );
   }
 
@@ -103,39 +153,7 @@ export default function PersonalBoard() {
         </div>
       )}
 
-      {(adding || editing) && (
-        <WidgetFormModal
-          initialData={editing ?? undefined}
-          isSaving={create.isPending || update.isPending}
-          onClose={() => { setAdding(false); setEditing(null); }}
-          onSave={async config => {
-            if (editing) {
-              await update.mutateAsync({ id: editing.id, data: config });
-            } else {
-              // `personal` is what puts it on this board. The server takes the
-              // owner from the session rather than from here, so this cannot be
-              // used to add a card to somebody else's page.
-              //
-              // Straight into the filters afterwards, because narrowing is the
-              // reason most of these cards exist and the choices only become
-              // real once the check has rows to offer.
-              const made = await create.mutateAsync({ ...config, personal: true } as any);
-              if (made) setFiltering(made);
-            }
-            setAdding(false);
-            setEditing(null);
-          }}
-        />
-      )}
-
-      {filtering && (
-        <WidgetFilterEditor config={filtering} onClose={() => setFiltering(null)} />
-      )}
-
-      {alarming && (
-        <AlarmModal isOpen personal widgetId={alarming.id} onClose={() => setAlarming(null)} />
-      )}
-
+      {modals}
     </>
   );
 }

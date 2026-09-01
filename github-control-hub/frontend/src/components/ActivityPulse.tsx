@@ -30,15 +30,31 @@ const STREAM = {
   app:    { label: "App",    line: "#10b981", area: "rgba(16,185,129,0.28)" },
 } as const;
 type Stream = keyof typeof STREAM;
-const STREAMS = Object.keys(STREAM) as Stream[];
+const ALL_STREAMS = Object.keys(STREAM) as Stream[];
+
+/**
+ * The streams this account can actually produce.
+ *
+ * An account holding no GitHub credentials records no GitHub rows, and the
+ * server already refuses to return them. Drawing the stream anyway put a
+ * permanent "GitHub 0" beside the real numbers, which reads as an organization
+ * that has stopped doing anything rather than as a deployment that was never
+ * watching one.
+ */
+function streamsFor(awsOnly: boolean): Stream[] {
+  return awsOnly ? ALL_STREAMS.filter(s => s !== "github") : ALL_STREAMS;
+}
 type Mode = "lines" | "bars";
 
-export default function ActivityPulse({ pulse, hours, onHours, isLoading }: {
+export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnly = false }: {
   pulse?: Pulse;
   hours: number;
   onHours: (h: number) => void;
   isLoading: boolean;
+  /** This account holds no GitHub credentials, so it records no GitHub rows. */
+  awsOnly?: boolean;
 }) {
+  const STREAMS = useMemo(() => streamsFor(awsOnly), [awsOnly]);
   const [hover, setHover] = useState<number | null>(null);
   /**
    * Whether the pointer is over the bar itself, not merely over its column.
@@ -62,7 +78,7 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading }: {
   };
 
   const buckets = pulse?.buckets ?? [];
-  const shown = useMemo<Stream[]>(() => STREAMS.filter(s => !muted.has(s)), [muted]);
+  const shown = useMemo<Stream[]>(() => STREAMS.filter(s => !muted.has(s)), [muted, STREAMS]);
 
   /**
    * Two scales, because the two modes measure different things.

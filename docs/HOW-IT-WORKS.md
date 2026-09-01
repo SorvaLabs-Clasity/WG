@@ -3003,6 +3003,95 @@ The Costs lens in Activity reads the AWS route, so it is hidden from people who
 are not on the AWS team — left visible it is a tab that only ever renders a
 permission error.
 
+## Usage is per account
+
+The app connects to one AWS account at a time and can be switched between them.
+Everything it counts belongs to the account it was counted in.
+
+The table follows the account already: `docClient` is swapped on every switch, so
+reads and writes land in the connected account's tables. What did not follow was
+the **in-memory buffer**. GitHub request counts buffer for up to thirty seconds
+before being written, so a switch with a full buffer wrote one account's usage
+into another's table — which is how a fresh AWS-only account came to show
+somebody else's numbers.
+
+The buffer is now discarded when the account changes. Discarded rather than
+flushed: by the time the switch runs, the credentials for the account those
+requests belong to are already gone, so there is nowhere correct left to put
+them. Losing a partial minute is the honest outcome; writing it to the wrong
+account is not.
+
+**An account with no GitHub App reports no GitHub anything.** The Statistics
+chart drew all three streams unconditionally, so an AWS-only account carried a
+permanent "GitHub 0" beside its real numbers, which reads as an organization
+that has stopped doing anything rather than as a deployment that was never
+watching one. The stream is dropped there.
+
+The GitHub requests lens is likewise hidden until the app positively knows
+GitHub is available, rather than until it learns it is not: while the answer was
+still loading the lens appeared, and clicking it in that moment opened a tab
+whose route is gated off. Appearing a moment late for everybody beats appearing
+wrongly for the accounts that can never use it.
+
+## Telling me about each new one
+
+Every widget and every guardrail can carry an alarm with **no threshold**:
+*Every new matching row*, or *Every new failing resource*.
+
+A count alarm answers "is this bad enough yet". It fires on the way from clean
+to not-clean and then stays quiet however many more arrive, because the state is
+already ALARM. That is the wrong shape for what most people actually want, which
+is to hear about a finding once, when it turns up — including the sixth one,
+while the alarm is already firing.
+
+So this kind remembers which rows it has reported and speaks about the ones it
+has not.
+
+**A row is identified by what it is, not by how it reads.** The key is built
+from the subject and the finding — repository plus dependency, resource plus
+rule — and never from `reason` or `details`, which are regenerated on every pass
+and would make every row look new every five minutes, for ever.
+
+**What it remembers is rewritten, not accumulated**, and capped at 500 keys. A
+finding that is fixed and then comes back is worth hearing about again;
+remembering it for ever would swallow exactly the recurrence somebody watching
+for regressions cares about.
+
+**The claim is on the remembered set, not on the state.** `claimTransition`
+guards a state change, which is the wrong thing to guard here: this kind
+commonly speaks while already in ALARM, where there is no state change for two
+passes to compete over. What they race on is the set, so `claimSeen` writes it
+conditionally on it still holding what was read, and only the winner sends. That
+matters because the evaluator runs both on the five-minute tick and again
+whenever guardrail findings are rewritten, so two passes overlap in practice.
+
+**Clearing is told the same way as arriving.** The state machine's recovery
+rule is right for a threshold and wrong here: it waits for the *last* row to go,
+so a resource you fixed would go unacknowledged for as long as an unrelated one
+stayed broken. An "each" alarm reports each row as it clears instead, while
+others are still failing.
+
+Arrivals take the pass when both happen in one. The departures are **held in the
+remembered set** rather than dropped by the same write, so they are announced on
+the next pass instead of being lost.
+
+A row that clears is forgotten even when recovery messages are switched off —
+the set is written on a silent pass too. Without that it would stay remembered
+for ever and its return would never be reported, which is the one thing this
+kind of alarm exists to catch.
+
+The message carries **`{{items}}`** and **`{{count}}`**: which ones changed, by
+name. "Back to normal" without a name is unreadable on an alarm watching twenty
+resources — it says something recovered and leaves the reader to work out what.
+
+An unreadable check still never counts as breaching.
+
+The condition is `{ kind: "each", metric }`. The metric rides along only so the
+message can still say how many there are in total. In the form, the selector is
+keyed on `kind:metric` rather than the metric alone: one metric is now offered
+twice, and keying on the name gave two options with one value and made the first
+unselectable.
+
 ## Which team owns an alarm
 
 An alarm belongs to the team that owns **what it watches**, not to one team for
@@ -3281,7 +3370,7 @@ The route now copies only the keys actually present in the body — with `filter
 included whenever the key is there even if it cleans to undefined, because that
 is how the last filter gets removed.
 
-## One change, one event, in Statistics
+## One change, one event, everywhere
 
 Pressing **Fix** on a guardrail finding writes two activity rows on purpose:
 
@@ -3297,10 +3386,19 @@ They are one event, though, and **Statistics** was counting them twice. A person
 fixing ten findings showed twenty events, and the AWS category read as twice as
 busy as it was.
 
-The route's row now carries `echoOf: "aws.guardrail"`, and the pulse walk skips
-any row that has it. The engine's row is the one kept, because it is written
-whether a schedule or a person set the run off, so a remediation counts the same
-way however it was triggered.
+The first attempt at this kept both rows and had **Statistics** skip the
+duplicate. That was worse than the double count it replaced: the feed did not
+skip it, so the same hour reported two different totals depending on which
+screen you read it from.
+
+The route no longer writes that second row at all. The engine's row carries
+`triggeredBy`, so one row says both what changed and who asked, and the feed
+renders the person under the actor. One row, one count, everywhere, with nothing
+lost: a fix that changed nothing writes no engine row, so the route's row stays
+as the sole record of the attempt.
+
+`echoOf` survives as a read-time filter, in both the feed and the statistics,
+because rows written under the old scheme live for thirteen months.
 
 Two details that are easy to get wrong:
 

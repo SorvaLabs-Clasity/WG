@@ -148,6 +148,12 @@ export function matches(e: ActivityEntry, f: ActivityFilters): boolean {
   if (f.source && e.source !== f.source) return false;
   if (f.category && categoryOf(e.action) !== f.category) return false;
   if (f.includeDetailed === false && (e as any).detailed) return false;
+
+  // Never shown, never counted. These are the second half of a pair written
+  // before the route stopped duplicating the engine's row; the engine's is the
+  // one that survives, and it names who asked. Keeping this out of the feed as
+  // well as out of the statistics is what makes the two agree on history.
+  if ((e as any).echoOf) return false;
   if (f.personal === "only" && !(e as any).personal) return false;
   if (f.personal === "hide" && (e as any).personal) return false;
 
@@ -525,18 +531,17 @@ export async function activityPulse(
       if (visible && !visible(e.action)) continue;
 
       /**
-       * One change, one count.
+       * History, not policy.
        *
-       * Pressing Fix on a guardrail finding writes two rows: the route's,
-       * saying who asked, and the engine's, saying what changed. The feed wants
-       * both, because "who triggered this" is the question it exists to answer.
-       * Statistics wants neither doubled: a person fixing ten findings showed
-       * twenty events, and the AWS category read as twice as busy as it was.
+       * Pressing Fix used to write two rows — the route's, saying who asked,
+       * and the engine's, saying what changed — and this skipped the first so a
+       * person fixing ten findings did not show as twenty events. The feed did
+       * not skip it, so the two screens reported different totals for the same
+       * hour, which is worse than the double count it replaced.
        *
-       * The engine's row is the one kept, because it is written whether a
-       * schedule or a person set the run off, so remediations count the same
-       * way however they were triggered. It carries `triggeredBy`, which is
-       * where the person goes.
+       * The route no longer writes that row at all: the engine's carries
+       * `triggeredBy`, so one row says both what changed and who asked. This
+       * stays for the rows already in the table, which live thirteen months.
        */
       if (e.echoOf) continue;
 

@@ -423,6 +423,30 @@ async function reloadSecretsIfNeeded(): Promise<boolean> {
 
   if (account && account === secretsLoadedFor) return false;
 
+  /**
+   * Counts belong to the account they were spent in.
+   *
+   * The GitHub request counters buffer in memory and flush on a timer, and the
+   * table they flush to follows whichever account is connected. So a switch
+   * with a full buffer writes one account's usage into another's table, which
+   * is how the numbers on a fresh AWS-only account came to look like somebody
+   * else's.
+   *
+   * Discarded rather than flushed: the credentials for the account those
+   * requests belong to are already gone by the time this runs, so there is
+   * nowhere correct left to put them. Losing a partial minute is the honest
+   * outcome; writing it to the wrong account is not.
+   */
+  try {
+    const usage = await import("../services/githubUsageService");
+    const dropped = usage.pendingUsage().reduce((a2, r) => a2 + r.count, 0);
+    usage.__resetUsageBuffer();
+    if (dropped > 0) {
+      console.log(`[auth] Discarded ${dropped} unflushed GitHub request counts `
+        + `belonging to account ${secretsLoadedFor || "unknown"}`);
+    }
+  } catch { /* counting must never block a switch */ }
+
   try {
     const { SecretsManagerClient, GetSecretValueCommand } = await import("@aws-sdk/client-secrets-manager");
     const region = awsRegion();

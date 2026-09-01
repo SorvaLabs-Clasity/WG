@@ -300,6 +300,20 @@ const allResolved: AlertLike[] = [
     console.log("\nimportant events, in Activity");
 
     const activity = fs.readFileSync("./src/pages/ActivityPage.tsx", "utf8");
+
+    // An account holding no GitHub credentials records no GitHub rows, and the
+    // server refuses to return them. Drawing the stream anyway put a permanent
+    // "GitHub 0" beside the real numbers, which reads as an organization that
+    // has stopped doing anything.
+    const pulse = fs.readFileSync("./src/components/ActivityPulse.tsx", "utf8");
+    check("  the GitHub stream is dropped in an AWS-only account",
+      /awsOnly \? ALL_STREAMS\.filter\(s => s !== "github"\)/.test(pulse));
+    check("    and the page passes that down",
+      /<ActivityPulse[\s\S]{0,120}awsOnly=\{awsOnly\}/.test(activity));
+    // Shown a moment late for everybody beats shown wrongly on an account where
+    // the route behind it is gated off and the tab only ever errors.
+    check("  the GitHub requests lens waits until GitHub is known to exist",
+      /v === "github" && \(awsOnly \|\| !githubKnown\)/.test(activity));
     const router = fs.readFileSync("./src/router.tsx", "utf8");
     const navbar = fs.readFileSync("./src/components/Navbar.tsx", "utf8");
 

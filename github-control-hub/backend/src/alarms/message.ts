@@ -16,6 +16,9 @@ export const TEMPLATE_VARIABLES: { name: string; description: string }[] = [
   { name: "repo", description: "For important events, Dependabot and Renovate: the repository involved" },
   { name: "message", description: "For important events: what happened" },
   { name: "org", description: "The GitHub organization" },
+  // The message for an alarm with no threshold: which ones, not how many.
+  { name: "items", description: "For \"every new one\" alarms: what changed, by name" },
+  { name: "count", description: "For \"every new one\" alarms: how many changed" },
   { name: "time", description: "When the value was observed (UTC)" },
   { name: "title", description: "For Renovate: the pull request title" },
   { name: "url", description: "For Renovate and Dependabot: a link to it on GitHub" },

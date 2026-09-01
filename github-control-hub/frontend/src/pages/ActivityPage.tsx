@@ -283,13 +283,14 @@ export default function ActivityPage() {
   const { data: perms } = usePermissions();
   const awsAdmin = perms?.isAwsAdmin !== false;
 
+  const githubKnown = !!authStatus;
   const lenses = useMemo(
     () => LENSES.filter(([v]) =>
-      !(awsOnly && v === "github")
+      !(v === "github" && (awsOnly || !githubKnown))
       // Costs reads the AWS account, on the route the AWS tab is gated behind.
       // Left visible it is a tab that only ever renders a permission error.
       && !(v === "costs" && !awsAdmin)),
-    [awsOnly, awsAdmin]);
+    [awsOnly, awsAdmin, githubKnown]);
 
   // Defaults to the organization stream rather than to Everything. That is what
   // this app exists to record, and opening on a merged feed puts dashboard
@@ -762,10 +763,24 @@ export default function ActivityPage() {
         {/* ── 2. who ────────────────────────────────────────────────────── */}
         <td className="px-4 py-3 overflow-hidden">
           <div className="flex items-center gap-2 min-w-0">
-            <UserAvatar login={entry.actor} size={22} />
-            <span className="text-[13px] font-medium text-gh-textBase dark:text-slate-200 truncate" title={entry.actor}>
-              {actorLabel(entry.actor)}
-            </span>
+            <UserAvatar login={entry.triggeredBy || entry.actor} size={22} />
+            <div className="min-w-0">
+              <span className="block text-[13px] font-medium text-gh-textBase dark:text-slate-200 truncate"
+                title={entry.actor}>
+                {actorLabel(entry.actor)}
+              </span>
+              {/* The person behind a row the system wrote. It used to live on a
+                  second row of its own, which meant the feed and the statistics
+                  counted the same change differently; now it sits on the row
+                  that says what changed, which is where somebody looking for it
+                  would think to look anyway. */}
+              {entry.triggeredBy && (
+                <span className="block text-[11px] text-gh-muted dark:text-slate-500 truncate"
+                  title={`Asked for by ${entry.triggeredBy}`}>
+                  asked for by {entry.triggeredBy}
+                </span>
+              )}
+            </div>
           </div>
         </td>
 
@@ -1104,7 +1119,7 @@ export default function ActivityPage() {
           <div className="grid gap-4">
             {/* The chart keeps its own window control, and Statistics reads the
                 same one, so the whole view moves together. */}
-            <ActivityPulse pulse={pulse} hours={pulseHours}
+            <ActivityPulse pulse={pulse} hours={pulseHours} awsOnly={awsOnly}
               onHours={setPulseHoursPersistent} isLoading={pulseLoading} />
             <ActivityStats pulse={pulse} hours={pulseHours}
               windowLabel={pulseHours <= 24 ? "24 hours" : pulseHours <= 168 ? "7 days" : "30 days"} />

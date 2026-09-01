@@ -44,11 +44,25 @@ export type CountMetric =
 
 export type AlarmCondition =
   | { kind: "count"; metric: CountMetric; op: "gte" | "lte"; threshold: number }
-  | { kind: "severity"; metric: "vulnRepos.worstSeverity"; atLeast: Severity };
+  | { kind: "severity"; metric: "vulnRepos.worstSeverity"; atLeast: Severity }
+  /**
+   * Tell me about each new thing, rather than when a number crosses a line.
+   *
+   * A threshold answers "is this bad enough yet", which is the wrong question
+   * for most people most of the time: they want to hear about the finding, once,
+   * when it appears. A count alarm cannot do that — it fires on the way from
+   * clean to not-clean and then stays quiet however many more arrive, because
+   * the state is already ALARM.
+   *
+   * So this one remembers which rows it has already reported and fires on the
+   * ones it has not. `metric` is carried only so the message can still say how
+   * many there are in total.
+   */
+  | { kind: "each"; metric: CountMetric };
 
 export interface MetricSpec {
   metric: CountMetric | "vulnRepos.worstSeverity";
-  kind: "count" | "severity";
+  kind: "count" | "severity" | "each";
   label: string;
   /** Shown after the number in the UI, e.g. "3 alerts". */
   unit?: string;
@@ -87,6 +101,8 @@ export function conditionsFor(widget: { type: string; presetId?: string }): Metr
   // its own thing and was reachable only by looking at it.
   if (widget.type === "guardrail") {
     return [
+      { metric: "guardrail.violations", kind: "each", label: "Every new failing resource",
+        hint: "Told once about each resource as it starts breaking the rule, with no number to choose." },
       { metric: "guardrail.violations", kind: "count", label: "Failing resources", unit: "resources",
         hint: "Every resource currently breaking the rule, across accounts and regions." },
       { metric: "guardrail.excluded", kind: "count", label: "Resources being skipped", unit: "resources",
@@ -95,6 +111,8 @@ export function conditionsFor(widget: { type: string; presetId?: string }): Metr
   }
   if (widget.type === "query") {
     return [
+      { metric: "query.rows", kind: "each", label: "Every new matching row",
+        hint: "Told once about each row as it appears, with no number to choose." },
       { metric: "query.rows", kind: "count", label: "Matching rows", unit: "rows",
         hint: "Use \"at or below 0\" to be told when a check stops returning anything." },
     ];
@@ -142,6 +160,8 @@ export function isValidCondition(
     // holding one is an alarm that never fires.
     return Number.isFinite(condition.threshold);
   }
+  // Nothing to validate: there is no number, which is the point of it.
+  if (condition.kind === "each") return true;
   return severityRank(condition.atLeast) > 0;
 }
 
@@ -194,7 +214,76 @@ export function metricValue(metric: MetricSpec["metric"], rows: any[] | null | u
 export function isBreaching(condition: AlarmCondition, value: number | null): boolean {
   if (value === null) return false;
   if (condition.kind === "severity") return value >= severityRank(condition.atLeast);
+  // "Anything at all" is what breaching means when there is no threshold. Which
+  // of those rows is *new* is decided separately, against what this alarm has
+  // already reported; this only decides whether it is currently clean.
+  if (condition.kind === "each") return value > 0;
   return condition.op === "gte" ? value >= condition.threshold : value <= condition.threshold;
+}
+
+/**
+ * A stable identity for one row, so "have I already said this" has an answer.
+ *
+ * Built from fields that name the thing rather than describe it: a repository
+ * and the finding on it, never the wording of the reason, which is regenerated
+ * on every pass and would make every row look new every time.
+ */
+export function rowKey(row: any): string {
+  const subject = row?.repo ?? row?.user ?? row?.team ?? row?.resourceId ?? "";
+  const detail = row?.dependency ?? row?.ruleId ?? row?.number ?? row?.branch ?? "";
+  return `${subject}\u0000${detail}`;
+}
+
+/** How many keys an alarm remembers. Bounded so one row cannot grow forever. */
+export const MAX_SEEN_KEYS = 500;
+
+/**
+ * The rows this alarm has not reported yet, and the set to remember next.
+ *
+ * Keys that have gone are dropped rather than kept: a finding that is fixed and
+ * then comes back is worth being told about a second time, and remembering it
+ * for ever would silently swallow the recurrence.
+ */
+export function newRows(rows: any[], seen: string[] | undefined): {
+  /** Rows this alarm has not reported yet. */
+  fresh: any[];
+  /** Keys it reported that are no longer present, so each can be cleared. */
+  gone: string[];
+  /**
+   * What to remember after speaking about `fresh`.
+   *
+   * The arrivals are added and the departures are **kept**. Dropping them in
+   * the same write would mean a row that appeared and another that cleared in
+   * one pass cost the second its all-clear: the arrival wins the pass, the
+   * departure is forgotten, and nobody is ever told it recovered. Held, it is
+   * announced on the next pass instead.
+   */
+  seenAfterAlarm: string[];
+  /** What to remember after clearing `gone`: the departures dropped, nothing else. */
+  seenAfterRecovery: string[];
+} {
+  const previous = seen ?? [];
+  const previousSet = new Set(previous);
+  const current: string[] = [];
+  const currentSet = new Set<string>();
+  const fresh: any[] = [];
+
+  for (const row of rows) {
+    const key = rowKey(row);
+    if (currentSet.has(key)) continue;
+    currentSet.add(key);
+    current.push(key);
+    if (!previousSet.has(key)) fresh.push(row);
+  }
+
+  const gone = previous.filter(k => !currentSet.has(k));
+
+  // Capped at the end rather than while building, so the cap trims the oldest
+  // memory rather than silently dropping whichever rows arrived last.
+  const seenAfterAlarm = [...new Set([...previous, ...current])].slice(-MAX_SEEN_KEYS);
+  const seenAfterRecovery = previous.filter(k => currentSet.has(k)).slice(-MAX_SEEN_KEYS);
+
+  return { fresh, gone, seenAfterAlarm, seenAfterRecovery };
 }
 
 // ── firing, and not firing repeatedly ─────────────────────────────────

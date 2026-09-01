@@ -63,6 +63,14 @@ export interface WidgetAlarm {
   // ── runtime, written by the evaluator ──
   state: AlarmState;
   cleanStreak: number;
+  /**
+   * For an "each" alarm: the rows it has already reported.
+   *
+   * Bounded, and rewritten each time it speaks rather than accumulated: a
+   * finding that is fixed and then returns is worth hearing about again, and
+   * remembering it for ever would swallow the recurrence.
+   */
+  seenKeys?: string[];
   lastCheckedAt?: string;
   lastValue?: number | null;
   lastFiredAt?: string;
@@ -464,6 +472,58 @@ export async function updateAlarm(
  *
  * Without the table, the in-memory store is single-process and cannot race.
  */
+/**
+ * Record the rows an "each" alarm has reported, and say whether we won.
+ *
+ * `claimTransition` guards a state change, which is the wrong thing to guard
+ * here: this kind of alarm commonly speaks while already in ALARM, where there
+ * is no state change for two passes to compete over. What they would race on is
+ * the remembered set, so that is what is claimed — conditionally on it still
+ * holding what we read, so exactly one caller reports a given batch.
+ */
+/** Two remembered sets, compared as lists rather than as text. */
+function sameKeys(a: string[] | undefined, b: string[] | undefined): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  if (a.length !== b.length) return false;
+  return a.every((k, i) => k === b[i]);
+}
+
+export async function claimSeen(
+  id: string, from: string[] | undefined, to: string[], at: string,
+): Promise<boolean> {
+  if (!hasTable("ALARMS_TABLE")) {
+    const i = memStore.findIndex(r => r.id === id);
+    if (i < 0) return false;
+    const existing = memStore[i] as any;
+    // Element by element, not as JSON text. Stringifying to decide whether
+    // something changed is how a re-ordered object once produced an email
+    // about nothing, and `sameKeys` is the same comparison the stored path
+    // asks DynamoDB to make.
+    if (!sameKeys(existing.seenKeys, from)) return false;
+    memStore[i] = { ...existing, seenKeys: to, lastFiredAt: at };
+    return true;
+  }
+  try {
+    await docClient.send(new UpdateCommand({
+      TableName: TABLE(), Key: { id },
+      UpdateExpression: "SET seenKeys = :to, lastFiredAt = :at",
+      // `attribute_not_exists` covers the first time it ever speaks, when there
+      // is nothing stored to compare against.
+      ConditionExpression: from === undefined
+        ? "attribute_exists(id) AND attribute_not_exists(seenKeys)"
+        : "attribute_exists(id) AND seenKeys = :from",
+      ExpressionAttributeValues: {
+        ":to": to, ":at": at,
+        ...(from === undefined ? {} : { ":from": from }),
+      },
+    }));
+    return true;
+  } catch (err: any) {
+    if (err?.name === "ConditionalCheckFailedException") return false;
+    throw err;
+  }
+}
+
 export async function claimTransition(
   id: string, from: AlarmState, to: AlarmState, at: string,
 ): Promise<boolean> {
@@ -497,7 +557,8 @@ export async function claimTransition(
 export async function saveAlarmRuntime(
   id: string,
   runtime: { state: AlarmState; cleanStreak: number; lastCheckedAt: string;
-             lastValue?: number | null; lastFiredAt?: string; lastError?: string },
+             lastValue?: number | null; lastFiredAt?: string; lastError?: string;
+             seenKeys?: string[] },
 ): Promise<void> {
   const existing = await getAlarm(id);
   if (!existing) return;

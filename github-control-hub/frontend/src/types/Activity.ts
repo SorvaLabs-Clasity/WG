@@ -82,6 +82,14 @@ export interface Activity {
    * organization's own history harder to read.
    */
   personal?: boolean;
+  /**
+   * The person who caused a row the system wrote.
+   *
+   * A guardrail fix is carried out by the engine whoever set it off, so the
+   * actor stays the system — a row claiming a person changed a bucket policy
+   * directly would be a worse record. This names who asked.
+   */
+  triggeredBy?: string;
 
   id: string;
   source: "app" | "github";

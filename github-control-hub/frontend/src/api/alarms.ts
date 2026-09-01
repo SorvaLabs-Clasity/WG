@@ -4,11 +4,16 @@ export type Severity = "critical" | "high" | "medium" | "low";
 
 export type AlarmCondition =
   | { kind: "count"; metric: string; op: "gte" | "lte"; threshold: number }
-  | { kind: "severity"; metric: "vulnRepos.worstSeverity"; atLeast: Severity };
+  | { kind: "severity"; metric: "vulnRepos.worstSeverity"; atLeast: Severity }
+  /**
+   * Told about each new row as it appears, rather than when a count crosses a
+   * line. Carries a metric only so the message can still say the total.
+   */
+  | { kind: "each"; metric: string };
 
 export interface MetricSpec {
   metric: string;
-  kind: "count" | "severity";
+  kind: "count" | "severity" | "each";
   label: string;
   unit?: string;
   hint?: string;
@@ -195,9 +200,13 @@ export function describeInterval(minutes: number): string {
 
 /** A one-line summary of a condition, for the widget card and the alarm list. */
 export function describeCondition(condition: AlarmCondition, specs: MetricSpec[]): string {
-  const spec = specs.find(s => s.metric === condition.metric);
+  // Matched on both, because one metric now carries two readings of itself and
+  // finding it by name alone returns whichever was declared first.
+  const spec = specs.find(s => s.metric === condition.metric && s.kind === condition.kind)
+    ?? specs.find(s => s.metric === condition.metric);
   const label = spec?.label ?? condition.metric;
   if (condition.kind === "severity") return `${label} reaches ${condition.atLeast}`;
+  if (condition.kind === "each") return spec?.label ?? "Every new one";
   const comparator = condition.op === "gte" ? "is at or above" : "is at or below";
   return `${label} ${comparator} ${condition.threshold}${spec?.unit ? ` ${spec.unit}` : ""}`;
 }

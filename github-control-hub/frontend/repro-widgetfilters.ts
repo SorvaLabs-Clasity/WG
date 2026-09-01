@@ -218,6 +218,27 @@ const rows = [
       /This card is narrowed by its own filters/.test(page));
   }
 
+  console.log("\na dialog opened from a card actually appears");
+  {
+    const board = fs.readFileSync("./src/components/PersonalBoard.tsx", "utf8");
+
+    // The modals sat only under the grid, below an early return for the detail
+    // view. Pressing Add alarm from inside a card set the state and mounted
+    // nothing; pressing Edit afterwards left the detail view and mounted both
+    // at once, so the alarm dialog appeared on the wrong click with the edit
+    // form waiting behind it.
+    const declared = board.indexOf("const modals = (");
+    check("the dialogs are declared once", declared > 0);
+    const detailReturn = board.indexOf("if (opened) {");
+    const uses = [...board.matchAll(/\{modals\}/g)].map(m => m.index!);
+    check("  and rendered from the detail view as well as the grid",
+      uses.length === 2 && uses.some(i => i > detailReturn) && detailReturn > declared,
+      { uses, detailReturn, declared });
+    check("    with no second copy left behind",
+      (board.match(/<WidgetFilterEditor/g) ?? []).length === 1
+        && (board.match(/<AlarmModal/g) ?? []).length === 1);
+  }
+
   console.log(failures === 0 ? "\nALL PASS\n" : `\n${failures} FAILED\n`);
   process.exit(failures === 0 ? 0 : 1);
 })();

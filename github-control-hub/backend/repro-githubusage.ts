@@ -201,6 +201,22 @@ async function attempt(octokit: any, url: string): Promise<void> {
     }
   }
 
+  console.log("\ncounts do not follow you to another account");
+  {
+    // The table already follows the account. The buffer did not, so a switch
+    // with thirty seconds of counts in hand wrote one account's usage into
+    // another's table.
+    const auth = readFileSync(join(ROOT, "routes/auth.ts"), "utf8");
+    check("switching accounts discards what has not been written",
+      /__resetUsageBuffer\(\)/.test(auth),
+      "otherwise one account's requests are recorded against the next one's");
+    check("  and it happens before the new account's secrets are loaded",
+      auth.indexOf("__resetUsageBuffer()") < auth.indexOf("secretsLoadedFor = account"),
+      "clearing it afterwards leaves a window where the wrong table is current");
+    check("  and never blocks the switch itself",
+      /catch \{ \/\* counting must never block a switch \*\/ \}/.test(auth));
+  }
+
   console.log("\nbuckets are read from the route");
   {
     check("graphql is its own allowance", bucketFor("/graphql", "POST") === "graphql");

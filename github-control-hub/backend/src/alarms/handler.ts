@@ -15,7 +15,7 @@ import { logSync, SCHEDULE_ACTOR } from "../services/activityService";
 import {
   listAlarms, getGroup, saveAlarmRuntime, getSecuritySettings,
   getFeedSettings, listPending, markPendingSent,
-  getPrState, recordNudge, touchPrState, getPrSettings, getPrMutes, claimTransition,
+  getPrState, recordNudge, touchPrState, getPrSettings, getPrMutes, claimTransition, claimSeen,
 } from "../services/alarmService";
 import { getWidget } from "../services/widgetService";
 import { publish } from "../services/notifyService";
@@ -272,6 +272,7 @@ export async function handler(): Promise<void> {
     saveRuntime: saveAlarmRuntime,
     // One message per transition, whoever noticed it first.
     claimTransition,
+    claimSeen,
   }));
 
   console.log(
