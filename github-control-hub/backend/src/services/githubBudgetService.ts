@@ -349,6 +349,16 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "what it swept, at most every half hour, so most opens are served from "
       + "storage and cost nothing at all.",
   },
+  "Dependabot pull request count": {
+    trigger: "Opening the Vulnerabilities tab",
+    endpoints: ["GET /search/issues"],
+    files: ["routes/dependencies.ts"],
+    scalesWith: "open Dependabot pull requests, a hundred per request",
+    note: "One search for the whole organization rather than a query per "
+      + "repository, because search allows thirty requests a minute against "
+      + "the core budget's fifteen thousand an hour. Held for a minute, so a "
+      + "refresh and a second view share one answer.",
+  },
   "Turning Dependabot on or off": {
     trigger: "The toggle on a repository, or the bulk action on the Vulnerabilities tab",
     endpoints: [

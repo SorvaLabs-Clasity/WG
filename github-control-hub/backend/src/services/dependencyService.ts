@@ -26,6 +26,8 @@ export interface DependencyAlert {
   ecosystem: string;
   vulnerable_version: string;
   patched_version: string | null;
+  /** "direct", "transitive", "inconclusive", "unknown", or null for unstated. */
+  relationship?: string | null;
   detected_at: string;
   clean?: boolean;
   disabled?: boolean;
@@ -53,6 +55,14 @@ export function mapAlert(alert: any, repoName: string, orgName: string): Depende
     ecosystem: vuln.package?.ecosystem || "",
     vulnerable_version: vuln.vulnerable_version_range || "",
     patched_version: vuln.first_patched_version?.identifier || null,
+    // Whether the vulnerable package is one this repository asked for, or one
+    // pulled in underneath something it asked for. GitHub cannot usually fix
+    // the second without a change to the parent, so it is the difference
+    // between a pull request that never came and one that never could.
+    //
+    // "unknown" and "inconclusive" are GitHub declining to answer, and are
+    // kept as they are rather than folded into either side.
+    relationship: vuln.package?.relationship ?? alert.dependency?.relationship ?? null,
     detected_at: alert.created_at || new Date().toISOString(),
   };
 }
@@ -172,14 +182,81 @@ async function sweepOrgAlerts(
  */
 export type GraphQlFn = (query: string, vars: Record<string, unknown>) => Promise<any>;
 
-const ALERT_STATUS_QUERY = `query($org:String!, $cursor:String) {
+/**
+ * Everything about a repository that decides whether a fix pull request can
+ * appear, on one query.
+ *
+ * The alert flag was already read this way, a hundred repositories at a time,
+ * to replace a REST call per repository. The archived flag and the Dependabot
+ * configuration ride along on that same query: they are extra fields on a page
+ * already being fetched, so they cost no extra request at all, where reading
+ * the configuration over REST would have been another 351.
+ *
+ * Both spellings of the file are read because GitHub accepts either, and a
+ * repository using the one we did not ask for would come back as having no
+ * configuration, which is the wrong answer rather than a missing one.
+ */
+const REPO_FACTS_QUERY = `query($org:String!, $cursor:String) {
   organization(login:$org) {
     repositories(first:100, after:$cursor) {
       pageInfo { hasNextPage endCursor }
-      nodes { name hasVulnerabilityAlertsEnabled }
+      nodes {
+        name
+        hasVulnerabilityAlertsEnabled
+        isArchived
+        yml: object(expression: "HEAD:.github/dependabot.yml") { ... on Blob { text } }
+        yaml: object(expression: "HEAD:.github/dependabot.yaml") { ... on Blob { text } }
+      }
     }
   }
 }`;
+
+/** What the query above establishes about one repository. */
+export interface RepoFacts {
+  alertsEnabled: boolean;
+  archived: boolean;
+  /** The repository's Dependabot configuration, or null where it has none. */
+  config: string | null;
+}
+
+/**
+ * The facts for every repository in the organization, or null if the query
+ * failed.
+ *
+ * Null rather than an empty map, and the distinction is the whole point: an
+ * empty map means an organization with no repositories, and reading a failed
+ * query as that would mark every repository unarchived and unconfigured, which
+ * are assertions nobody made.
+ */
+export async function fetchRepoFacts(
+  graphql: GraphQlFn,
+  org: string,
+): Promise<Map<string, RepoFacts> | null> {
+  try {
+    const facts = new Map<string, RepoFacts>();
+    let cursor: string | null = null;
+    for (let page = 0; page < MAX_REPO_PAGES; page++) {
+      const res: any = await graphql(REPO_FACTS_QUERY, { org, cursor });
+      const repos = res?.organization?.repositories;
+      if (!repos) return null;
+      for (const n of repos.nodes ?? []) {
+        if (!n?.name) continue;
+        facts.set(n.name, {
+          alertsEnabled: !!n.hasVulnerabilityAlertsEnabled,
+          archived: !!n.isArchived,
+          config: n.yml?.text ?? n.yaml?.text ?? null,
+        });
+      }
+      if (!repos.pageInfo?.hasNextPage) return facts;
+      cursor = repos.pageInfo.endCursor ?? null;
+      if (!cursor) return facts;
+    }
+    return facts;
+  } catch (err) {
+    console.error("[Dependencies] Could not read repository facts via GraphQL:", (err as Error).message);
+    return null;
+  }
+}
 
 /** Guards against an endless walk if a cursor ever stops advancing. */
 const MAX_REPO_PAGES = 50;
@@ -230,23 +307,7 @@ export async function fetchRepoAlertStatus(
   graphql: GraphQlFn,
   org: string,
 ): Promise<Map<string, boolean> | null> {
-  try {
-    const status = new Map<string, boolean>();
-    let cursor: string | null = null;
-    for (let page = 0; page < MAX_REPO_PAGES; page++) {
-      const res: any = await graphql(ALERT_STATUS_QUERY, { org, cursor });
-      const repos = res?.organization?.repositories;
-      if (!repos) return null;
-      for (const n of repos.nodes ?? []) {
-        if (n?.name) status.set(n.name, !!n.hasVulnerabilityAlertsEnabled);
-      }
-      if (!repos.pageInfo?.hasNextPage) return status;
-      cursor = repos.pageInfo.endCursor ?? null;
-      if (!cursor) return status;
-    }
-    return status;
-  } catch (err) {
-    console.error("[Dependencies] Could not read alert status via GraphQL:", (err as Error).message);
-    return null;
-  }
+  const facts = await fetchRepoFacts(graphql, org);
+  if (!facts) return null;
+  return new Map([...facts].map(([name, f]) => [name, f.alertsEnabled]));
 }

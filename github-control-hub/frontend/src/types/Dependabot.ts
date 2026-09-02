@@ -27,6 +27,15 @@ export interface DependencyAlert {
    * only fail.
    */
   fixesEnabled?: boolean;
+  /**
+   * Why this repository has no fix pull requests, where something identifiable
+   * is stopping them.
+   *
+   * Null is the interesting value: nothing is wrong with the repository, and
+   * GitHub simply never did the work. Undefined is a repository nothing was
+   * established about.
+   */
+  fixBlocker?: "archived" | "fixes-off" | "no-patch" | "config-target-branch" | "transitive" | null;
 }
 
 export interface DependencySummary {

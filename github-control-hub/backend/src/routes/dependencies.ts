@@ -15,6 +15,7 @@ import {
 } from "../services/dependencySnapshot";
 import { mockCleanAlert, mockDisabledAlert } from "../services/dependencyMarkers";
 import { buildDependencyView } from "../services/dependencyView";
+import { fetchDependabotPrCounts } from "../services/dependabotPrs";
 
 const router = Router();
 
@@ -48,6 +49,41 @@ function applyFilters(alerts: any[], severity?: string): any[] {
  * Null means nothing is stored, which is what a first open looks like and is
  * different from an old answer.
  */
+/**
+ * Why each repository has the fix pull requests it has, or has none.
+ *
+ * Its own endpoint, and live rather than stored, for two reasons. The stored
+ * sweep is shared with the alarm pass, and a search added there would be spent
+ * every half hour on a question no alarm asks. And this answer goes stale in a
+ * way the sweep does not: somebody presses a button, a pull request appears,
+ * and the count is wrong within the minute.
+ */
+router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
+  try {
+    const token = getSystemToken() || _req.user?.accessToken;
+    if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+
+    const octokit = createOctokit(token, "Dependabot pull request count");
+    const counts = await fetchDependabotPrCounts(
+      async (q, page) => {
+        const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
+          q, per_page: 100, page, advanced_search: "true",
+        });
+        return { items: r.data?.items ?? [] };
+      },
+      getOrg(),
+    );
+
+    // Null stays null across the wire. A client shown {} would render every
+    // repository as having no open pull requests, which is a finding, and
+    // nobody established it.
+    res.json({ counts: counts ? Object.fromEntries(counts) : null });
+  } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "dependencies") });
+  }
+});
+
 router.get("/dependencies/age", async (_req: Request, res: Response) => {
   try {
     const stored = await readDependencySnapshot();

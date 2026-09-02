@@ -1,4 +1,5 @@
-import { fetchOrgDependencyAlerts, fetchRepoAlertStatus, fetchRepoFixStatus } from "./dependencyService";
+import { fetchOrgDependencyAlerts, fetchRepoFacts, fetchRepoFixStatus } from "./dependencyService";
+import { fixBlockerFor } from "./dependencyBlockers";
 import type { DependencyAlert } from "./dependencyService";
 import { mockCleanAlert, mockDisabledAlert } from "./dependencyMarkers";
 
@@ -42,8 +43,9 @@ export async function buildDependencyView(
   // here at all. It would be four more REST pages fetching names GraphQL
   // has already handed over.
   const reposWithAlerts = new Set(allAlerts.map(a => a.repo));
-  const alertStatus = await fetchRepoAlertStatus(
+  const facts = await fetchRepoFacts(
     (query, vars) => (octokit as any).graphql(query, vars), org);
+  const alertStatus = facts && new Map([...facts].map(([n, f]) => [n, f.alertsEnabled]));
 
   // A failed status query means no markers rather than a wrong one:
   // labelling every repository "Dependabot off" would read as 355
@@ -71,7 +73,27 @@ export async function buildDependencyView(
     }
   }
 
-  return allAlerts;
+  /**
+   * And why each repository has no fix pull requests.
+   *
+   * Computed per repository over all of its alerts, not per row: "not one of
+   * these has a patched version" is a statement about the repository, and a
+   * single row cannot make it.
+   *
+   * Stamped onto every row so the table can show it beside a finding, which is
+   * where somebody is standing when they ask the question.
+   */
+  const byRepo = new Map<string, any[]>();
+  for (const alert of allAlerts) {
+    if (alert.clean || alert.disabled) continue;
+    const list = byRepo.get(alert.repo);
+    if (list) list.push(alert);
+    else byRepo.set(alert.repo, [alert]);
+  }
+  for (const [repo, rows] of byRepo) {
+    const blocker = fixBlockerFor(rows, rows[0].fixesEnabled, facts?.get(repo) ?? null);
+    for (const row of rows) row.fixBlocker = blocker;
+  }
 
   return allAlerts;
 }

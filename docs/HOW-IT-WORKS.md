@@ -1252,6 +1252,61 @@ between one request and 350. Two details follow from that:
   it as *no reading*, so an alarm cannot resolve itself because half the answer
   was missing.
 
+### Findings without fixes
+
+A repository can show a hundred findings, a switch reading "auto-fix on", and
+still have nothing open. Both halves are true and the screen used to show only
+one of them, which sent people clicking through repositories one at a time.
+
+Two numbers now sit beside each other, findings and open Dependabot pull
+requests, and where the second is zero the repository says why. There are five
+states and they want different responses:
+
+| State | What it means |
+| --- | --- |
+| `archived` | No pull request can be opened at all. Pressing the switch is a write that changes nothing. |
+| `fixes-off` | The switch is off. Turn it on. |
+| `config-target-branch` | Its `dependabot.yml` sets `target-branch`, which GitHub takes as putting the configuration out of scope for security updates. |
+| `no-patch` | Not one alert has a patched version, so zero is arithmetic rather than failure. |
+| `transitive` | A patch exists but sits under a parent dependency. GitHub: "Dependabot is unable to update an indirect or transitive dependency if it would also require an update to the parent dependency." npm is the documented exception, where the lockfile can be bumped directly, so transitive findings there are still Dependabot's to fix. |
+| `null` | Everything is configured correctly and GitHub never scheduled the work. |
+
+That last one is the interesting answer, not the boring one: it is the
+population a re-trigger can help, and it was invisible while it sat mixed in
+with the four above.
+
+Three rules hold this together, all of them the same rule:
+
+- **Archived outranks everything**, because nothing else about the repository
+  can be acted on.
+- **One patchable alert is enough to make a repository stuck.** Ninety-nine
+  findings with no fix and one with a fix is a repository owed a pull request,
+  and calling the whole repository unpatchable would hide it.
+- **A non-answer is never read as a reason.** The alert relationship has four
+  values, and two of them, `unknown` and `inconclusive`, are GitHub declining to
+  say. Only `transitive` counts as transitive.
+- **Unreadable is never reported as a finding.** `fixesEnabled` is undefined for
+  a repository the token cannot administer, the facts are null when the query
+  failed, and the pull request counts are null when the search failed. Each of
+  those produces no answer rather than a wrong one: a zero nobody measured reads
+  as a repository to act on, and sends somebody to a settings page they cannot
+  open for a problem they may not have.
+
+One place this is worth knowing from the outside: the "Recent update jobs" log
+under Insights, Dependency graph, Dependabot is per manifest and comes from a
+`dependabot.yml`. A repository without one shows an empty page whatever its
+security updates did, so its emptiness is not evidence of anything. Security
+update failures are posted on the individual alert instead, and the REST API
+does not carry them, which is why the relationship field does the work here.
+
+The repository facts, archived and the Dependabot configuration, ride the
+GraphQL query that was already reading the alert flag a hundred repositories at
+a time, so they cost no extra request. Reading `dependabot.yml` over REST would
+have been another 351 per open, which is the exact cost that query was written
+to avoid. The pull request counts are one org-wide search rather than a query
+per repository, because search allows thirty requests a minute where the core
+budget allows fifteen thousand an hour. `repro-fixblockers` pins all of it.
+
 ### Where the answer comes from
 
 The sweep is stored, and the tab reads storage. On an organization with

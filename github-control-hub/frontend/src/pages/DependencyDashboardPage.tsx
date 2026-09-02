@@ -31,7 +31,7 @@ import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
 import DependabotManager from "../components/DependabotManager";
 import { bulkDependabot } from "../api/dependencies";
-import { fetchDependenciesAge } from "../api/dependencies";
+import { fetchDependenciesAge, fetchDependabotPrCounts } from "../api/dependencies";
 
 /**
  * The three questions this tab answers, as three views rather than one column.
@@ -47,6 +47,84 @@ import { fetchDependenciesAge } from "../api/dependencies";
 type View = "alerts" | "updates" | "notifications";
 
 const VIEWS: View[] = ["alerts", "updates", "notifications"];
+
+/**
+ * Why this repository has findings and nothing open to fix them.
+ *
+ * Returns null where there is nothing to say, which includes the case that
+ * matters most: `open` is null when the pull request search could not be made,
+ * and "no pull requests are open" is then something nobody established. Saying
+ * it anyway would send people to repositories that are already being fixed.
+ */
+function stuckReason(
+  blocker: DependencyAlert["fixBlocker"],
+  open: number | null,
+): string | null {
+  switch (blocker) {
+    case "archived":
+      return "Archived, so Dependabot cannot open a pull request here at all. "
+        + "These findings stay until somebody unarchives it.";
+    case "fixes-off":
+      return "Security updates are off here, so no fix pull requests are raised.";
+    case "no-patch":
+      return "No patched version exists for any of these yet, so there is nothing "
+        + "for Dependabot to open. Nothing is broken.";
+    case "transitive":
+      return "These sit underneath a parent dependency rather than in this "
+        + "repository's own manifest, and Dependabot usually cannot bump them "
+        + "without a change to the parent. A re-trigger will not help here.";
+    case "config-target-branch":
+      return "Its .github/dependabot.yml sets target-branch, which GitHub takes as "
+        + "putting the configuration out of scope for security updates. No pull "
+        + "request will arrive while that is set.";
+  }
+  // Nothing is wrong with the repository, which is what makes it worth showing:
+  // the switch is on, patches exist, and GitHub has not done the work.
+  if (blocker === null && open === 0) {
+    return "Set up correctly and nothing open. GitHub has not scheduled these fixes.";
+  }
+  return null;
+}
+
+/**
+ * The org-wide tally of repositories with findings and nothing open.
+ *
+ * A plain function rather than a hook, deliberately: this page has early
+ * returns above the render, and a hook placed after one of them is React error
+ * #310 in production. `repro-hookorder` guards the rule.
+ *
+ * Null when the pull request counts are unavailable, so the banner is absent
+ * rather than wrong.
+ */
+function stuckSummary(alerts: DependencyAlert[], prCounts: Record<string, number> | null) {
+  if (!prCounts) return null;
+
+  const byRepo = new Map<string, DependencyAlert[]>();
+  for (const a of alerts) {
+    if (a.clean || a.disabled || a.scanning) continue;
+    const list = byRepo.get(a.repo);
+    if (list) list.push(a);
+    else byRepo.set(a.repo, [a]);
+  }
+
+  let scheduled = 0, noPatch = 0, archived = 0, targetBranch = 0, fixesOff = 0, transitive = 0;
+  for (const [repo, rows] of byRepo) {
+    if ((prCounts[repo] ?? 0) > 0) continue;
+    switch (rows[0]?.fixBlocker) {
+      case "no-patch": noPatch++; break;
+      case "transitive": transitive++; break;
+      case "archived": archived++; break;
+      case "config-target-branch": targetBranch++; break;
+      case "fixes-off": fixesOff++; break;
+      // Undefined means nothing was established about the repository, which is
+      // not the same as nothing being wrong with it, so it is not counted as
+      // waiting on GitHub.
+      case null: scheduled++; break;
+    }
+  }
+  const total = scheduled + noPatch + archived + targetBranch + fixesOff + transitive;
+  return { total, scheduled, noPatch, archived, targetBranch, fixesOff, transitive };
+}
 
 export default function DependencyDashboardPage() {
   const { data: permissions } = usePermissions();
@@ -77,6 +155,19 @@ export default function DependencyDashboardPage() {
     queryFn: fetchDependenciesAge,
     refetchInterval: 60_000,
   });
+
+  /**
+   * Open fix pull requests per repository, the other half of the question this
+   * screen is asked. A hundred findings and an "auto-fix on" pill both look
+   * healthy on their own; it is the two beside each other that show a
+   * repository where nothing is happening.
+   */
+  const { data: prs } = useQuery({
+    queryKey: ["dependencies", "fix-prs"],
+    queryFn: fetchDependabotPrCounts,
+    refetchInterval: 120_000,
+  });
+  const prCounts = prs?.counts ?? null;
 
   const [params, setParams] = useSearchParams();
   const raw = params.get("view") as View | null;
@@ -264,6 +355,33 @@ export default function DependencyDashboardPage() {
         </p>
       )}
 
+      {/* The gap between findings and fixes, org-wide. Somebody looking at a
+          hundred findings and no pull requests needs to know first whether that
+          is one repository or forty, and which of those are waiting on GitHub
+          rather than on them. */}
+      {view === "alerts" && (() => {
+        const s = stuckSummary(dependencies ?? [], prCounts);
+        if (!s || s.total === 0) return null;
+        const parts = [
+          s.scheduled && `${s.scheduled} set up correctly and waiting on GitHub`,
+          s.noPatch && `${s.noPatch} with no patch available yet`,
+          s.transitive && `${s.transitive} whose findings sit under a parent dependency`,
+          s.fixesOff && `${s.fixesOff} with security updates off`,
+          s.archived && `${s.archived} archived`,
+          s.targetBranch && `${s.targetBranch} whose dependabot.yml sets target-branch`,
+        ].filter(Boolean) as string[];
+        return (
+          <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 px-4 py-3">
+            <p className="text-[13px] font-bold text-amber-900 dark:text-amber-200">
+              {s.total} {s.total === 1 ? "repository has" : "repositories have"} findings and no fix pull request open
+            </p>
+            <p className="text-[12px] text-amber-800/80 dark:text-amber-300/70 mt-0.5">
+              {parts.join(", ")}.
+            </p>
+          </div>
+        );
+      })()}
+
       {/* Above the findings, because the question it answers comes first: a
           repository nobody is scanning produces no findings, so its absence
           from the list below is not good news. */}
@@ -391,6 +509,8 @@ export default function DependencyDashboardPage() {
                * button that can only fail.
                */
               const fixes = alerts.find(a => a.fixesEnabled !== undefined)?.fixesEnabled;
+              const openPrs = prCounts ? (prCounts[repo] ?? 0) : null;
+              const stuck = stuckReason(real[0]?.fixBlocker, openPrs);
               const isOpen = expanded.has(repo);
               const visible = isOpen ? real : real.slice(0, COLLAPSED);
               const hidden = real.length - visible.length;
@@ -419,12 +539,26 @@ export default function DependencyDashboardPage() {
                       {clean && (
                         <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>No known vulnerabilities.</p>
                       )}
+                      {/* Why nothing is being opened, where something identifiable
+                          is stopping it. Only on repositories that actually have
+                          findings: it is an answer to "where are my pull
+                          requests", and a clean repository never asked. */}
+                      {!off && !clean && !scanning && stuck && (
+                        <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>{stuck}</p>
+                      )}
                     </div>
 
                     <div className="shrink-0 flex items-center gap-3">
                       {!off && !clean && !scanning && (
                         <Figure intent={critical > 0 ? "danger" : "warn"} value={real.length}
                           label={real.length === 1 ? "alert" : "alerts"} />
+                      )}
+                      {/* Beside the findings, because the gap between them is the
+                          thing worth seeing. Withheld when the search failed:
+                          a zero nobody measured reads as a repository to act on. */}
+                      {!off && !clean && !scanning && openPrs !== null && (
+                        <Figure intent={openPrs > 0 ? "good" : "neutral"} value={openPrs}
+                          label={openPrs === 1 ? "fix PR" : "fix PRs"} />
                       )}
                       {org && (
                         <a href={`https://github.com/${org}/${repo}/security/dependabot`} target="_blank" rel="noreferrer"

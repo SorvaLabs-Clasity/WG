@@ -74,3 +74,14 @@ export function bulkDependabot(repos: string[], action: BulkAction): Promise<Bul
 export function fetchDependenciesAge(): Promise<{ computedAt: string | null; fresh: boolean }> {
   return apiGet<{ computedAt: string | null; fresh: boolean }>("/security/dependencies/age");
 }
+
+/**
+ * Open Dependabot pull requests per repository.
+ *
+ * `counts` is null when the search could not be made. Callers must keep that
+ * apart from an empty object: no open pull requests anywhere and nobody having
+ * looked render identically and mean opposite things.
+ */
+export function fetchDependabotPrCounts(): Promise<{ counts: Record<string, number> | null }> {
+  return apiGet<{ counts: Record<string, number> | null }>("/security/dependencies/fix-prs");
+}
