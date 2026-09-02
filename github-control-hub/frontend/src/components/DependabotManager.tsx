@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { bulkDependabot, type BulkAction, type BulkSummary } from "../api/dependencies";
 import { Button, Note, SURFACE, TYPE } from "../design";
+import { rolloutDependabotConfig, type RolloutSummary } from "../api/dependencies";
 
 /**
  * Turning Dependabot on and off across the organization, in one place.
@@ -46,6 +47,8 @@ export default function DependabotManager({ rows, onDone }: {
 }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [rollout, setRollout] = useState<RolloutSummary | null>(null);
+  const [rollingOut, setRollingOut] = useState<"pr" | "commit" | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [summary, setSummary] = useState<BulkSummary | null>(null);
@@ -112,6 +115,32 @@ export default function DependabotManager({ rows, onDone }: {
     },
     onError: (e) => { setError((e as Error).message); setRunning(null); },
   });
+
+  /**
+   * Switch on grouped security updates by writing the configuration file.
+   *
+   * Separated from the settings actions above because it is a different kind
+   * of thing: those flip a switch, this writes to the repository. The
+   * confirmation says which repositories and how the file lands, because a
+   * mistake here is a commit somebody has to revert across an organization.
+   */
+  const startRollout = async (mode: "pr" | "commit") => {
+    const n = selected.size;
+    const what = mode === "pr"
+      ? `Open a pull request adding .github/dependabot.yml on ${n} repositor${n === 1 ? "y" : "ies"}?`
+      : `Commit .github/dependabot.yml straight to the default branch of ${n} `
+        + `repositor${n === 1 ? "y" : "ies"}? There is no review step.`;
+    if (!confirm(what)) return;
+
+    setError(""); setRollout(null); setRollingOut(mode);
+    try {
+      setRollout(await rolloutDependabotConfig([...selected], mode));
+    } catch (e: any) {
+      setError(e?.message ?? "Could not write the configuration");
+    } finally {
+      setRollingOut(null);
+    }
+  };
 
   const start = (action: BulkAction) => {
     setError(""); setSummary(null); setRunning(action);
@@ -225,6 +254,99 @@ export default function DependabotManager({ rows, onDone }: {
           ))}
         </div>
 
+        {/* The second kind of action, kept visually apart from the switches
+            above, because this one writes a file into the repository and that
+            is not something to press by accident. */}
+        <div className="mt-1 pt-3.5 border-t border-slate-100 dark:border-white/[0.06]">
+          <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">
+            Findings with patches and no pull requests
+          </p>
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-1">
+            Where the switch is already on and nothing has arrived, GitHub never
+            scheduled the work, and no API asks it to try again. Turning on
+            grouped security updates is the one thing GitHub documents as
+            immediately retrying every open alert that has a patch. That needs a
+            <span className="font-mono text-[11px]"> .github/dependabot.yml</span>,
+            built here from each repository's own alerts. Fixes arrive grouped
+            into one pull request per manifest rather than one per alert.
+            Repositories that already have that file are left alone.
+          </p>
+          {/* First, because it needs nobody's permission. Under branch
+              protection the two buttons below it are a pull request and an
+              approval per repository before a single fix arrives. */}
+          <div className="flex flex-wrap gap-2 mt-2.5">
+            <Button variant="primary"
+              disabled={selected.size === 0 || !!rollingOut || !!running}
+              onClick={() => {
+                if (!confirm(
+                  `Switch security updates off and straight back on for ${selected.size} `
+                  + `repositor${selected.size === 1 ? "y" : "ies"}? They are briefly off `
+                  + `while this runs.`)) return;
+                start("retrigger");
+              }}>
+              {running === "retrigger" ? "Re-triggering…" : "Re-trigger fixes"}
+            </Button>
+          </div>
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-2">
+            Try this one first: it writes nothing and needs no approval. Security
+            updates go briefly off and back on, which asks GitHub to look at the
+            backlog again. GitHub does not document this as a re-trigger, so it
+            may do nothing, and that is the whole reason to try it before the
+            two below. If a repository cannot be switched back on it is named
+            loudly rather than counted, because it is then less protected than
+            before you pressed anything.
+          </p>
+
+          <p className="text-[11.5px] font-bold text-slate-600 dark:text-slate-300 mt-3.5">
+            If that changes nothing, write the config instead
+          </p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <Button variant="primary"
+              disabled={selected.size === 0 || !!rollingOut || !!running}
+              onClick={() => startRollout("pr")}>
+              {rollingOut === "pr" ? "Opening…" : "Open config PRs"}
+            </Button>
+            <Button variant="caution"
+              disabled={selected.size === 0 || !!rollingOut || !!running}
+              onClick={() => startRollout("commit")}>
+              {rollingOut === "commit" ? "Committing…" : "Commit to default branch"}
+            </Button>
+          </div>
+          {rollingOut && (
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2">
+              Four or five writes per repository, paced so GitHub does not refuse
+              the burst. This takes a while.
+            </p>
+          )}
+          {rollout && (
+            <Note intent={rollout.failed ? "warn" : "good"}>
+              {rollout.opened > 0 && <>{rollout.opened} pull request{rollout.opened === 1 ? "" : "s"} opened. </>}
+              {rollout.committed > 0 && <>{rollout.committed} committed. </>}
+              {rollout.skipped > 0 && <>{rollout.skipped} skipped, already configured or with no configurable ecosystem. </>}
+              {rollout.failed > 0 && <>{rollout.failed} could not be written.</>}
+              {rollout.opened > 0 && (
+                <ul className="mt-1.5 grid gap-0.5">
+                  {rollout.results.filter(r => r.url).slice(0, 10).map(r => (
+                    <li key={r.repo} className="text-[11.5px]">
+                      <a href={r.url} target="_blank" rel="noreferrer"
+                        className="font-mono underline underline-offset-2">{r.repo}</a>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {rollout.failed > 0 && (
+                <ul className="mt-1.5 grid gap-0.5">
+                  {rollout.results.filter(r => r.outcome === "failed").slice(0, 8).map(r => (
+                    <li key={r.repo} className="text-[11.5px]">
+                      <span className="font-mono">{r.repo}</span>: {r.detail}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Note>
+          )}
+        </div>
+
         {/* Said before it is pressed, not after. Somebody expecting a pull
             request per vulnerability should know GitHub raises them on its own
             schedule rather than while they watch. */}
@@ -242,6 +364,14 @@ export default function DependabotManager({ rows, onDone }: {
         )}
 
         {error && <Note intent="danger">{error}</Note>}
+
+        {summary && summary.leftOff > 0 && (
+          <Note intent="danger">
+            Security updates are now OFF on {summary.leftOffRepos.join(", ")} and could
+            not be switched back on. Those repositories are less protected than before
+            this ran. Turn them back on with the button above, or in their settings.
+          </Note>
+        )}
 
         {summary && (
           <Note intent={summary.failed ? "warn" : "good"}>

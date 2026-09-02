@@ -359,6 +359,21 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "the core budget's fifteen thousand an hour. Held for a minute, so a "
       + "refresh and a second view share one answer.",
   },
+  "Rolling out Dependabot configuration": {
+    trigger: "Open config PRs, or Commit to default branch, on the Vulnerabilities tab",
+    endpoints: [
+      "GET /repos/{o}/{r}/contents/.github/dependabot.yml", "GET /repos/{o}/{r}",
+      "GET /repos/{o}/{r}/git/ref/heads/{branch}", "POST /repos/{o}/{r}/git/refs",
+      "PUT /repos/{o}/{r}/contents/.github/dependabot.yml", "POST /repos/{o}/{r}/pulls",
+    ],
+    files: ["routes/dependencies.ts", "services/dependabotRollout.ts"],
+    scalesWith: "how many repositories are rolled out to",
+    note: "Six requests per repository for a pull request, four for a straight "
+      + "commit, and capped at fifty repositories a run. Paced harder than the "
+      + "settings bulk: these are writes, and creating branches and pull "
+      + "requests in quick succession is what GitHub's secondary rate limit "
+      + "exists to refuse.",
+  },
   "Turning Dependabot on or off": {
     trigger: "The toggle on a repository, or the bulk action on the Vulnerabilities tab",
     endpoints: [

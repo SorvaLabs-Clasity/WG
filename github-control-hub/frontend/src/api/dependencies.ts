@@ -37,7 +37,7 @@ export async function fetchDependencySummary(): Promise<DependencySummary> {
 
 // ── many repositories at once ──
 
-export type BulkAction = "alerts-on" | "alerts-off" | "fixes-on" | "fixes-off";
+export type BulkAction = "alerts-on" | "alerts-off" | "fixes-on" | "fixes-off" | "retrigger";
 
 export interface BulkResult {
   repo: string;
@@ -47,6 +47,13 @@ export interface BulkResult {
 }
 
 export interface BulkSummary {
+  /**
+   * Repositories left with security updates switched off by a re-trigger that
+   * could not switch them back on. Named rather than only counted: this is the
+   * one outcome that leaves things worse than it found them.
+   */
+  leftOff: number;
+  leftOffRepos: string[];
   results: BulkResult[];
   changed: number;
   failed: number;
@@ -84,4 +91,26 @@ export function fetchDependenciesAge(): Promise<{ computedAt: string | null; fre
  */
 export function fetchDependabotPrCounts(): Promise<{ counts: Record<string, number> | null }> {
   return apiGet<{ counts: Record<string, number> | null }>("/security/dependencies/fix-prs");
+}
+
+export type RolloutOutcome =
+  | "opened" | "committed" | "already-configured" | "no-ecosystem" | "failed";
+
+export interface RolloutSummary {
+  results: { repo: string; outcome: RolloutOutcome; url?: string; detail?: string }[];
+  opened: number;
+  committed: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * Write .github/dependabot.yml into repositories to switch on grouped security
+ * updates, which is the one thing GitHub documents as immediately retrying
+ * every open alert that has a patch.
+ */
+export function rolloutDependabotConfig(
+  repos: string[], mode: "pr" | "commit",
+): Promise<RolloutSummary> {
+  return apiPost<RolloutSummary>("/security/dependencies/config", { repos, mode });
 }

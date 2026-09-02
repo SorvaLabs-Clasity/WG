@@ -1307,6 +1307,87 @@ to avoid. The pull request counts are one org-wide search rather than a query
 per repository, because search allows thirty requests a minute where the core
 budget allows fifteen thousand an hour. `repro-fixblockers` pins all of it.
 
+### Making the fixes actually happen
+
+The organization this was built against had 7,047 open alerts, 6,973 of them
+with a patch GitHub itself had identified, and 85 open pull requests. Opening
+any single alert and pressing "create security update" produced one on the
+spot, so the fixes were never impossible. GitHub had simply not scheduled them,
+and no API asks it to try again.
+
+There is one documented trigger: "when grouped security updates are first
+enabled, Dependabot will immediately try to create grouped pull requests." That
+requires a `.github/dependabot.yml`, so the Vulnerabilities tab writes one, per
+repository, either as a pull request or as a commit to the default branch.
+
+What the generated file says, and why each part of it:
+
+- **Every entry comes from an alert that repository actually raised.** The
+  ecosystem and the manifest's directory both come from the alert, because that
+  is the one source that has already proved a manifest is there and that GitHub
+  can read it. An entry guessed from the repository's shape fails in the worst
+  available way: Dependabot reads the file, finds no manifest, opens nothing,
+  and looks exactly like the bug being fixed.
+- **The alert's ecosystem name is not the config's ecosystem name.** The alerts
+  API says `rubygems`, `go`, `rust`, `erlang`, `actions`; the file wants
+  `bundler`, `gomod`, `cargo`, `hex`, `github-actions`. A wrong value is not a
+  partial failure, it rejects the whole file, so an unmapped ecosystem is
+  dropped rather than guessed at.
+- **`github-actions` is configured at the root**, not at `.github/workflows`
+  where its manifests live.
+- **`open-pull-requests-limit: 0`.** Adding the file switches version updates
+  on, which across 66 repositories is thousands of pull requests nobody asked
+  for. Security updates are documented as not subject to that limit, so the
+  fixes still arrive.
+- **One group per manifest.** GitHub's group options are `patterns`,
+  `exclude-patterns`, `dependency-type`, `update-types` and `group-by`. There is
+  no way to group by advisory severity, so the tab does not offer one. Ungrouped
+  would have been 6,973 pull requests.
+
+### Re-triggering without writing anything
+
+Under branch protection the configuration cannot reach the default branch
+without a pull request and an approval, per repository, before a single fix
+arrives. So the tab offers a cheaper thing to try first: switch security
+updates off and straight back on. Two calls, no file, no review.
+
+GitHub does not document this as a re-trigger and it may do nothing. That is
+worth trying precisely because it is free, and the button says so rather than
+implying a promise GitHub has not made.
+
+What matters is the failure mode, because the first step of this switches a
+security feature **off**:
+
+- **Putting it back is retried harder than anything else here**, six attempts
+  against the usual four, and on every kind of refusal rather than only the ones
+  GitHub asks us to wait out. The alternative to trying again is a repository
+  that quietly stops receiving security fixes.
+- **The restore is not left to the outer retry loop.** That loop restarts the
+  action from the top, which would switch the repository off a second time.
+- **A repository left off is counted and named separately**, and the screen says
+  it in those words: those repositories are less protected than before anybody
+  pressed anything. A count alone cannot be acted on.
+
+`repro-retrigger` pins all of that, including that a transient refusal on the
+way back is retried until it sticks.
+
+And the rules about writing to somebody's repository:
+
+- **A repository that already has a `dependabot.yml` is skipped**, never merged
+  into and never replaced. Somebody wrote that file, possibly to exclude a
+  dependency deliberately.
+- **A read that fails counts as "already configured".** Skipping wrongly leaves
+  a repository without the file, which is visible and can be rerun. The other
+  direction overwrites a file nobody could read.
+- **It runs as the person who pressed it**, not the app, so the pull requests
+  carry their name and GitHub applies their permissions.
+- **Fifty repositories a run**, paced harder than the settings bulk. Six
+  requests per repository for a pull request, and creating branches and pull
+  requests in quick succession is precisely what the secondary rate limit
+  refuses.
+
+`repro-dependabotconfig` pins the generated file.
+
 ### Where the answer comes from
 
 The sweep is stored, and the tab reads storage. On an organization with

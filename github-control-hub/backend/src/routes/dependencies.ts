@@ -287,6 +287,69 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
  * per repository whether they may, so a bulk action can never reach further
  * than the person could one at a time.
  */
+/**
+ * Write the grouped security-updates configuration into repositories.
+ *
+ * Uses the caller's own token rather than the app's, deliberately. This opens
+ * pull requests and commits files, and those should carry the name of the
+ * person who asked for them, not a shared identity nobody can ask about later.
+ * It also means GitHub applies that person's permissions: a repository they
+ * cannot write to refuses, which is the correct answer.
+ */
+router.post("/dependencies/config", async (req: Request, res: Response) => {
+  const token = req.user?.accessToken;
+  if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+
+  const { repos, mode } = req.body ?? {};
+  const list = Array.isArray(repos)
+    ? repos.filter((r: unknown) => typeof r === "string" && r.length > 0 && r.length <= 200)
+    : [];
+  if (mode !== "pr" && mode !== "commit") {
+    return res.status(400).json({ error: "mode must be pr or commit" });
+  }
+  if (list.length === 0) return res.status(400).json({ error: "Pick at least one repository" });
+  // Lower than the settings bulk allows. Each repository here is four or five
+  // writes rather than one, and the whole run has to finish inside the request.
+  if (list.length > 50) {
+    return res.status(400).json({ error: "Up to 50 repositories at a time" });
+  }
+
+  try {
+    const { runDependabotRollout } = await import("../services/dependabotRollout");
+    const octokit = createOctokit(token, "Rolling out Dependabot configuration");
+
+    /**
+     * Each repository's configuration is built from its own alerts, so the
+     * stored sweep is the input. An entry invented from a guess about the
+     * repository's shape fails silently: Dependabot finds no manifest there and
+     * opens nothing, which looks exactly like the bug this is fixing.
+     */
+    const stored = await readDependencySnapshot();
+    const alerts = stored?.alerts ?? await buildDependencyView(octokit, getOrg());
+    const byRepo = new Map<string, any[]>();
+    for (const a of alerts as any[]) {
+      if (a.clean || a.disabled || a.scanning) continue;
+      const rows = byRepo.get(a.repo);
+      if (rows) rows.push(a);
+      else byRepo.set(a.repo, [a]);
+    }
+
+    const summary = await runDependabotRollout(octokit, getOrg(), list, byRepo, mode);
+
+    for (const r of summary.results.filter(x => x.outcome === "opened" || x.outcome === "committed")) {
+      await logActivity("dependabot.enable" as any, req.user!.login, r.repo, "Dependabot",
+        r.outcome === "opened"
+          ? `Opened a pull request enabling grouped Dependabot security updates on ${r.repo}`
+          : `Enabled grouped Dependabot security updates on ${r.repo}`);
+    }
+
+    res.json(summary);
+  } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "dependencies") });
+  }
+});
+
 router.post("/dependencies/bulk", async (req: Request, res: Response) => {
   const token = req.user?.accessToken;
   if (!token) return res.status(401).json({ error: "No GitHub token provided" });
@@ -295,7 +358,7 @@ router.post("/dependencies/bulk", async (req: Request, res: Response) => {
   const list = Array.isArray(repos)
     ? repos.filter((r: unknown) => typeof r === "string" && r.length > 0 && r.length <= 200)
     : [];
-  const actions = ["alerts-on", "alerts-off", "fixes-on", "fixes-off"];
+  const actions = ["alerts-on", "alerts-off", "fixes-on", "fixes-off", "retrigger"];
   if (!actions.includes(action)) {
     return res.status(400).json({ error: `action must be one of ${actions.join(", ")}` });
   }
@@ -319,6 +382,7 @@ router.post("/dependencies/bulk", async (req: Request, res: Response) => {
       await logActivity(verb as any, req.user!.login, r.repo, "Dependabot",
         action === "alerts-on" ? `Enabled Dependabot alerts on ${r.repo}`
           : action === "alerts-off" ? `Disabled Dependabot alerts on ${r.repo}`
+          : action === "retrigger" ? `Re-triggered Dependabot security updates on ${r.repo}`
           : action === "fixes-on" ? `Enabled Dependabot security updates on ${r.repo}`
           : `Disabled Dependabot security updates on ${r.repo}`,
         undefined, "app");

@@ -28,6 +28,8 @@ export interface DependencyAlert {
   patched_version: string | null;
   /** "direct", "transitive", "inconclusive", "unknown", or null for unstated. */
   relationship?: string | null;
+  /** The manifest that raised it, e.g. "services/api/package.json". */
+  manifest_path?: string | null;
   detected_at: string;
   clean?: boolean;
   disabled?: boolean;
@@ -63,6 +65,10 @@ export function mapAlert(alert: any, repoName: string, orgName: string): Depende
     // "unknown" and "inconclusive" are GitHub declining to answer, and are
     // kept as they are rather than folded into either side.
     relationship: vuln.package?.relationship ?? alert.dependency?.relationship ?? null,
+    // Which manifest raised it. The dependabot.yml generator needs the
+    // directory, and a config entry pointed at a directory with no manifest in
+    // it fails silently rather than erroring.
+    manifest_path: alert.dependency?.manifest_path ?? null,
     detected_at: alert.created_at || new Date().toISOString(),
   };
 }

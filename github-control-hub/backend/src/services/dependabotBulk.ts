@@ -16,7 +16,7 @@ import { parseRateLimit } from "../utils/rateLimit";
  * the fast version did not.
  */
 
-export type BulkAction = "alerts-on" | "alerts-off" | "fixes-on" | "fixes-off";
+export type BulkAction = "alerts-on" | "alerts-off" | "fixes-on" | "fixes-off" | "retrigger";
 
 export interface BulkResult {
   repo: string;
@@ -25,6 +25,12 @@ export interface BulkResult {
   error?: string;
   /** True when the failure was GitHub asking us to slow down, after retries. */
   rateLimited?: boolean;
+  /**
+   * True when this repository now has security updates switched off.
+   *
+   * Distinct from an ordinary failure, which leaves the repository as it was.
+   */
+  leftOff?: boolean;
 }
 
 export interface BulkSummary {
@@ -33,6 +39,17 @@ export interface BulkSummary {
   failed: number;
   /** Whole seconds the run spent waiting because GitHub asked it to. */
   sleptSeconds: number;
+  /**
+   * Repositories left with security updates switched off.
+   *
+   * Only "retrigger" can produce these, and it is the one outcome of this
+   * whole file that leaves an organization worse than it found it: the switch
+   * went off, and putting it back was refused for a reason waiting will not
+   * fix. Counted and named separately from ordinary failures because it needs
+   * a different response, immediately, on named repositories.
+   */
+  leftOff: number;
+  leftOffRepos: string[];
 }
 
 /**
@@ -48,6 +65,9 @@ const GAP_MS = 250;
 
 /** Retries per repository, when GitHub asks for a pause rather than refusing. */
 const MAX_ATTEMPTS = 4;
+
+/** More than MAX_ATTEMPTS: giving up here leaves a repository unprotected. */
+const RESTORE_ATTEMPTS = 6;
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -76,7 +96,60 @@ async function apply(octokit: any, org: string, repo: string, action: BulkAction
       return void await octokit.rest.repos.enableAutomatedSecurityFixes(target);
     case "fixes-off":
       return void await octokit.rest.repos.disableAutomatedSecurityFixes(target);
+    case "retrigger": {
+      /**
+       * Off, then straight back on.
+       *
+       * The documented way to make Dependabot revisit a backlog is a grouped
+       * security-updates configuration on the default branch, which under
+       * branch protection is a pull request and an approval per repository.
+       * This asks for the same re-evaluation with two calls and no review.
+       *
+       * GitHub does not promise it works. It is worth trying because it is
+       * free, and the caller is told as much before pressing it.
+       */
+      await octokit.rest.repos.disableAutomatedSecurityFixes(target);
+      await sleep(GAP_MS);
+      // Deliberately not left to the outer retry loop. That loop would start
+      // the action again from the top, switching the repository off a second
+      // time, and it gives up in the same place for the same reasons. Coming
+      // back on is the half that must not be given up on.
+      return void await restoreFixes(octokit, target);
+    }
   }
+}
+
+/**
+ * Put security updates back, and keep trying.
+ *
+ * Every refusal is retried, not only the ones GitHub asks us to wait out: the
+ * alternative to trying again is a repository that silently stops receiving
+ * security fixes. The error raised on giving up says so in those words,
+ * because "403" at the end of a run of sixty-six is not something anybody can
+ * act on.
+ */
+async function restoreFixes(octokit: any, target: { owner: string; repo: string }): Promise<void> {
+  let last: any;
+  for (let attempt = 0; attempt < RESTORE_ATTEMPTS; attempt++) {
+    try {
+      return void await octokit.rest.repos.enableAutomatedSecurityFixes(target);
+    } catch (err: any) {
+      last = err;
+      if (attempt < RESTORE_ATTEMPTS - 1) await sleep(backoffMs(attempt, retryAfterOf(err)));
+    }
+  }
+  throw Object.assign(
+    new Error(
+      `Security updates are now OFF on ${target.repo} and could not be turned back on: `
+      + `${last?.message ?? last}. Turn them back on for this repository.`),
+    { leftOff: true },
+  );
+}
+
+/** GitHub's own retry-after, where it gave one. */
+function retryAfterOf(err: any): number | undefined {
+  const raw = Number(err?.response?.headers?.["retry-after"]);
+  return Number.isFinite(raw) ? raw : undefined;
 }
 
 /** How long to wait before trying this repository again. */
@@ -116,6 +189,12 @@ export async function runDependabotBulk(
         await apply(octokit, org, repo, action);
         return { repo, ok: true };
       } catch (err: any) {
+        // Checked before anything else, including the rate-limit handling: this
+        // error already exhausted its own retries, and it carries the one
+        // outcome somebody has to act on today.
+        if (err?.leftOff) {
+          return { repo, ok: false, leftOff: true, error: err.message };
+        }
         const limit = parseRateLimit(err);
         if (limit?.kind === "secondary" && attempt < MAX_ATTEMPTS - 1) {
           const wait = backoffMs(attempt, limit.retryAfter);
@@ -167,5 +246,7 @@ export async function runDependabotBulk(
     changed: results.filter(r => r.ok).length,
     failed: results.filter(r => !r.ok).length,
     sleptSeconds: slept,
+    leftOff: results.filter(r => r.leftOff).length,
+    leftOffRepos: results.filter(r => r.leftOff).map(r => r.repo).sort(),
   };
 }
