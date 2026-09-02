@@ -32,6 +32,7 @@ import { usePermissions } from "../hooks/usePermissions";
 import DependabotManager from "../components/DependabotManager";
 import { bulkDependabot } from "../api/dependencies";
 import { fetchDependenciesAge, fetchDependabotPrCounts } from "../api/dependencies";
+import { expectedFixPrs } from "../lib/fixExpectations";
 
 /**
  * The three questions this tab answers, as three views rather than one column.
@@ -510,6 +511,8 @@ export default function DependencyDashboardPage() {
                */
               const fixes = alerts.find(a => a.fixesEnabled !== undefined)?.fixesEnabled;
               const openPrs = prCounts ? (prCounts[repo] ?? 0) : null;
+              const grouped = real.some(a => a.groupedConfig);
+              const expected = expectedFixPrs(real, grouped);
               const stuck = stuckReason(real[0]?.fixBlocker, openPrs);
               const isOpen = expanded.has(repo);
               const visible = isOpen ? real : real.slice(0, COLLAPSED);
@@ -546,6 +549,19 @@ export default function DependencyDashboardPage() {
                       {!off && !clean && !scanning && stuck && (
                         <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>{stuck}</p>
                       )}
+                      {/* The unit people reach for is findings, and it is the
+                          wrong one: one bump closes every alert against that
+                          package. Said only where the two numbers differ enough
+                          to mislead. */}
+                      {!off && !clean && !scanning && expected > 0 && real.length > expected && (
+                        <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>
+                          {grouped
+                            ? `${real.length} findings are grouped into ${expected} pull request${expected === 1 ? "" : "s"}, one per manifest, not ${real.length}.`
+                            : `${real.length} findings come from ${expected} package${expected === 1 ? "" : "s"}, so expect about ${expected} pull request${expected === 1 ? "" : "s"} here, not ${real.length}.`}
+                          {openPrs !== null && openPrs > 0 && openPrs < expected
+                            && " Dependabot raises them over several minutes."}
+                        </p>
+                      )}
                     </div>
 
                     <div className="shrink-0 flex items-center gap-3">
@@ -557,8 +573,9 @@ export default function DependencyDashboardPage() {
                           thing worth seeing. Withheld when the search failed:
                           a zero nobody measured reads as a repository to act on. */}
                       {!off && !clean && !scanning && openPrs !== null && (
-                        <Figure intent={openPrs > 0 ? "good" : "neutral"} value={openPrs}
-                          label={openPrs === 1 ? "fix PR" : "fix PRs"} />
+                        <Figure intent={expected > 0 && openPrs >= expected ? "good" : openPrs > 0 ? "info" : "neutral"}
+                          value={expected > 0 ? `${openPrs}/${expected}` : String(openPrs)}
+                          label={expected > 0 ? "fix PRs" : openPrs === 1 ? "fix PR" : "fix PRs"} />
                       )}
                       {org && (
                         <a href={`https://github.com/${org}/${repo}/security/dependabot`} target="_blank" rel="noreferrer"

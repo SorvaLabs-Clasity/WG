@@ -1344,6 +1344,52 @@ What the generated file says, and why each part of it:
   no way to group by advisory severity, so the tab does not offer one. Ungrouped
   would have been 6,973 pull requests.
 
+### Pull requests are counted per package, not per finding
+
+The first thing the re-trigger produced was a number that looked like a
+failure: a repository with over a hundred findings opened four pull requests.
+It was working. Dependabot raises one pull request per vulnerable package it
+can bump, and one bump closes every alert against that package, whether that is
+the same package in three manifests or one package carrying four advisories.
+
+Comparing pull requests against findings compares two different units, and it
+misleads in both directions: a working rollout reads as stalled, and a stalled
+one reads as fine. So each repository shows the ceiling those pull requests are
+climbing towards, `4/18` rather than `4`, and says in words that a hundred
+findings from eighteen packages is about eighteen pull requests.
+
+The care is all in what the ceiling excludes, because an inflated one is the
+worse error: it makes a finished repository read as abandoned and sends
+somebody to re-trigger work that is already done.
+
+- Alerts with **no patched version** cannot become a pull request.
+- **Transitive dependencies outside npm** usually need the parent changed by a
+  person. npm is the documented exception, where the lockfile can be bumped.
+- An **unstated relationship is counted**, not assumed away. `unknown` and
+  `inconclusive` are GitHub declining to say, and dropping them would understate
+  the ceiling and make a stalled rollout look finished.
+- The repository markers, clean, disabled and scanning, are not findings.
+
+A grouped repository has a different ceiling entirely. Once its dependabot.yml
+groups security updates, Dependabot stops opening one pull request per package
+and opens one per manifest carrying every bump in it, so the ceiling becomes the
+manifest count. Keeping the per-package number there would show a finished
+repository as "2/40" forever, which is the same misreading as "4/120", pointing
+the other way. The flag comes from the configuration the facts query already
+fetched, and ungrouped is the default, because that is what a repository is
+until somebody rolls one out to it.
+
+Worth recording, because it is what settled the approach: ungrouped, on a
+repository with 120 findings, Dependabot opened four pull requests covering
+about twenty alerts and stopped, while every remaining alert could still be
+fixed by hand from the alert page. There is no REST endpoint behind that
+button, and the whole Dependabot API surface is alerts, secrets, repository
+access and dismissal requests. Grouping is what makes the remainder reachable:
+one pull request per manifest carrying everything, so a cap on the number of
+pull requests stops mattering.
+
+`repro-fixexpectations` pins it.
+
 ### Re-triggering without writing anything
 
 Under branch protection the configuration cannot reach the default branch

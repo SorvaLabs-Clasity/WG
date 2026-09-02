@@ -1,5 +1,5 @@
 import { fetchOrgDependencyAlerts, fetchRepoFacts, fetchRepoFixStatus } from "./dependencyService";
-import { fixBlockerFor } from "./dependencyBlockers";
+import { fixBlockerFor, groupsSecurityUpdates } from "./dependencyBlockers";
 import type { DependencyAlert } from "./dependencyService";
 import { mockCleanAlert, mockDisabledAlert } from "./dependencyMarkers";
 
@@ -92,7 +92,11 @@ export async function buildDependencyView(
   }
   for (const [repo, rows] of byRepo) {
     const blocker = fixBlockerFor(rows, rows[0].fixesEnabled, facts?.get(repo) ?? null);
-    for (const row of rows) row.fixBlocker = blocker;
+    const grouped = groupsSecurityUpdates(facts?.get(repo)?.config);
+    for (const row of rows) {
+      row.fixBlocker = blocker;
+      row.groupedConfig = grouped;
+    }
   }
 
   return allAlerts;

@@ -89,3 +89,20 @@ export const BLOCKER_LABEL: Record<FixBlocker, string> = {
   "config-target-branch": "Its dependabot.yml sets target-branch",
   "transitive": "Buried under a parent dependency",
 };
+
+/**
+ * Whether this repository's configuration groups security updates.
+ *
+ * Changes what a healthy number of pull requests looks like: grouped,
+ * Dependabot opens one per manifest carrying every bump, rather than one per
+ * package. A screen that does not know this shows a finished repository as a
+ * stalled one.
+ *
+ * Comments are stripped first, for the same reason as target-branch: the
+ * phrase appears in GitHub's own commented examples.
+ */
+export function groupsSecurityUpdates(config: string | null | undefined): boolean {
+  if (!config) return false;
+  const code = config.split("\n").map(line => line.replace(/#.*$/, "")).join("\n");
+  return /applies-to\s*:\s*security-updates/.test(code);
+}

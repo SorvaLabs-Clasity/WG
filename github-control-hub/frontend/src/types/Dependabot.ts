@@ -35,6 +35,15 @@ export interface DependencyAlert {
    * GitHub simply never did the work. Undefined is a repository nothing was
    * established about.
    */
+  /** "direct", "transitive", "inconclusive", "unknown", or null for unstated. */
+  relationship?: string | null;
+  /** The manifest that raised it, for building a dependabot.yml from it. */
+  manifest_path?: string | null;
+  /**
+   * True where the repository's dependabot.yml groups security updates, which
+   * changes how many pull requests to expect from it.
+   */
+  groupedConfig?: boolean;
   fixBlocker?: "archived" | "fixes-off" | "no-patch" | "config-target-branch" | "transitive" | null;
 }
 
