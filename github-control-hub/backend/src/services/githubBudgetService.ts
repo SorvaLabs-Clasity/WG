@@ -342,10 +342,12 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
     endpoints: [
       "GET /orgs/{org}/dependabot/alerts", "POST /graphql", "GET /search/issues",
     ],
-    files: ["routes/dependencies.ts"],
+    files: ["routes/dependencies.ts", "services/dependencyView.ts"],
     scalesWith: "repositories and open alerts",
     note: "Shares the held sweep and search with the alarm pass, so opening the "
-      + "tab beside a pass does not pay for either twice.",
+      + "tab beside a pass does not pay for either twice. The pass also stores "
+      + "what it swept, at most every half hour, so most opens are served from "
+      + "storage and cost nothing at all.",
   },
   "Turning Dependabot on or off": {
     trigger: "The toggle on a repository, or the bulk action on the Vulnerabilities tab",

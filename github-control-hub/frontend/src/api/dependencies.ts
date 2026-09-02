@@ -64,3 +64,13 @@ export interface BulkSummary {
 export function bulkDependabot(repos: string[], action: BulkAction): Promise<BulkSummary> {
   return apiPost<BulkSummary>("/security/dependencies/bulk", { repos, action });
 }
+
+/**
+ * When the stored view was computed, so the tab can say how old it is.
+ *
+ * Null means nothing is stored yet, which is a first open rather than an old
+ * answer, and the page says so differently.
+ */
+export function fetchDependenciesAge(): Promise<{ computedAt: string | null; fresh: boolean }> {
+  return apiGet<{ computedAt: string | null; fresh: boolean }>("/security/dependencies/age");
+}

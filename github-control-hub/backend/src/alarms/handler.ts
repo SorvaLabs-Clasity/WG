@@ -275,6 +275,51 @@ export async function handler(): Promise<void> {
     claimSeen,
   }));
 
+  /**
+   * Keep the Vulnerabilities tab's stored answer warm, but only when this pass
+   * already did the expensive part.
+   *
+   * The sweep here is lazy: it runs when an alarm needs it and not otherwise.
+   * If it ran, the org-wide walk is already paid for and the tab's view costs
+   * only the two marker reads, so the stored copy is refreshed rather than left
+   * to whoever next opens the tab and waits for it.
+   *
+   * Nothing is swept on this account. A pass with no Dependabot alarm does not
+   * start one to warm a screen, because that is the org-wide walk every five
+   * minutes forever for a tab nobody may open.
+   */
+  /**
+   * Read through an explicit type, because the only assignment to
+   * `dependencyPromise` happens inside a closure and the compiler therefore
+   * narrows it to `never` here rather than to the promise it holds.
+   */
+  const swept = dependencyPromise as ReturnType<typeof fetchOrgDependencyAlerts> | null;
+
+  if (swept) {
+    try {
+      const { readDependencySnapshot, saveDependencySnapshot, WARM_MS } =
+        await import("../services/dependencySnapshot");
+      const stored = await readDependencySnapshot();
+      const age = stored?.computedAt ? Date.now() - Date.parse(stored.computedAt) : Infinity;
+
+      if (!(age < WARM_MS)) {
+        const { buildDependencyView } = await import("../services/dependencyView");
+        const result = await swept;
+        // A degraded sweep read some repositories and not others, and storing
+        // it would report the ones it missed as clean. Left for a later pass.
+        if (!result.degraded) {
+          const view = await buildDependencyView(octokit, org, { alerts: result.alerts });
+          await saveDependencySnapshot(view);
+          console.log(`[Alarm] Refreshed the stored Dependabot view, ${view.length} rows`);
+        }
+      }
+    } catch (err: any) {
+      // Warming a cache must never fail a pass that has already evaluated
+      // alarms and sent what it needed to send.
+      console.warn(`[Alarm] Could not refresh the Dependabot view: ${err?.message ?? err}`);
+    }
+  }
+
   console.log(
     `[Alarm] ${summary.evaluated} evaluated of ${summary.considered} enabled ` +
     `(${summary.skippedNotDue} not due), ${summary.fired} fired, ` +

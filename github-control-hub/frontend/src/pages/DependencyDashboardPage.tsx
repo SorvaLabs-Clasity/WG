@@ -31,6 +31,7 @@ import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
 import DependabotManager from "../components/DependabotManager";
 import { bulkDependabot } from "../api/dependencies";
+import { fetchDependenciesAge } from "../api/dependencies";
 
 /**
  * The three questions this tab answers, as three views rather than one column.
@@ -62,6 +63,20 @@ export default function DependencyDashboardPage() {
    * would put a page of tick boxes in front of the findings they came for.
    */
   const [managing, setManaging] = useState(false);
+
+  /**
+   * How old the stored answer is.
+   *
+   * The tab paints from a stored sweep so it opens instantly, and without this
+   * there is nothing to tell a reading taken seconds ago from one taken half an
+   * hour ago. A page that looks equally current in both cases is the failure
+   * this whole screen keeps having to avoid.
+   */
+  const { data: age } = useQuery({
+    queryKey: ["dependencies", "age"],
+    queryFn: fetchDependenciesAge,
+    refetchInterval: 60_000,
+  });
 
   const [params, setParams] = useSearchParams();
   const raw = params.get("view") as View | null;
@@ -236,6 +251,18 @@ export default function DependencyDashboardPage() {
           </>
         }
       />
+
+      {/* How old this picture is, where somebody can see it before reading the
+          findings as current. Only on the Dependabot view, and only once there
+          is something stored: on a first open the tab computed live, and saying
+          "as of now" would be noise. */}
+      {view === "alerts" && age?.computedAt && (
+        <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mb-4">
+          <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
+          Showing the sweep from {new Date(age.computedAt).toLocaleTimeString()}
+          {!age.fresh && ", and a fresh one is running now that will be here next time you look"}.
+        </p>
+      )}
 
       {/* Above the findings, because the question it answers comes first: a
           repository nobody is scanning produces no findings, so its absence

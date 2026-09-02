@@ -1252,6 +1252,35 @@ between one request and 350. Two details follow from that:
   it as *no reading*, so an alarm cannot resolve itself because half the answer
   was missing.
 
+### Where the answer comes from
+
+The sweep is stored, and the tab reads storage. On an organization with
+Dependabot on everywhere the walk takes a while, and paying for it on every open
+made the tab slow every time rather than once.
+
+- **Stored, gzipped**, in the same snapshot table as the widgets. Two thousand
+  alerts are 434KB raw, past DynamoDB's 400KB item limit, and 15KB packed. A
+  payload too large even packed is refused rather than truncated: a partial
+  answer here reads as repositories that are clean.
+- **Under ten minutes old, it is served as it stands.** Older, it is still served
+  immediately and a refresh runs behind it, so nobody waits for a walk to look at
+  findings that are minutes old.
+- **The alarm pass keeps it warm.** When a Dependabot-backed alarm made the pass
+  sweep the organization anyway, the pass hands what it swept to the same builder
+  the tab uses and stores the result, at most once every half hour. Nothing is
+  ever swept for the cache's sake: a pass with no such alarm starts no walk. So
+  most opens find something recent already stored, without adding a request to
+  the five-minute pass.
+- **A degraded sweep is never stored**, for the same reason an alarm will not
+  read one.
+- **The tab says how old the picture is**, under the heading, because a sweep
+  from twenty minutes ago and one from just now look identical otherwise.
+
+One builder, `services/dependencyView.ts`, serves the tab, the background
+refresh and the alarm pass. Two copies would be two places for the "off" and
+"clean" markers to drift, and the drift shows as a repository reading clean on
+one path and unwatched on the other. `repro-depsnapshot` pins this.
+
 ### The three views
 
 The tab answers three questions, and they are three views rather than one

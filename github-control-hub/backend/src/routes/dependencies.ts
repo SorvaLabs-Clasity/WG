@@ -13,69 +13,10 @@ import { isValidRepoName } from "../utils/validation";
 import {
   saveDependencySnapshot, readDependencySnapshot, isFresh,
 } from "../services/dependencySnapshot";
+import { mockCleanAlert, mockDisabledAlert } from "../services/dependencyMarkers";
+import { buildDependencyView } from "../services/dependencyView";
 
 const router = Router();
-
-/**
- * The whole organization's Dependabot picture.
- *
- * Extracted so the route and the background refresh run exactly the same
- * sweep. Two copies of this would be two places for the repository markers and
- * the two status reads to drift, and the drift would show as a repository
- * appearing clean on one path and unwatched on the other.
- */
-async function sweepWholeOrg(octokit: any, org: string): Promise<any[]> {
-    // The alert sweep failing should cost the alerts, not the page. Every
-    // repository below is still listed with its Dependabot state, which is
-    // most of what this screen is for, so a degraded sweep is tolerated
-    // here, and reported rather than thrown. The alarm evaluator reads the
-    // same function and treats `degraded` as "no reading", because an alarm
-    // must not resolve itself off a sweep that never ran.
-    const sweep = await fetchOrgDependencyAlerts(octokit, org);
-    const allAlerts: any[] = sweep.alerts;
-
-
-    // Every repository's alert setting in a handful of requests.
-    //
-    // This was one REST call per repository, 351 of them on this
-    // organization, every time the tab was opened. GraphQL carries the same
-    // flag 100 repositories at a time, and on a different rate-limit budget
-    // from everything else here.
-    // The same query returns the repository list, so listRepos is not called
-    // here at all. It would be four more REST pages fetching names GraphQL
-    // has already handed over.
-    const reposWithAlerts = new Set(allAlerts.map(a => a.repo));
-    const alertStatus = await fetchRepoAlertStatus(
-      (query, vars) => (octokit as any).graphql(query, vars), org);
-
-    // A failed status query means no markers rather than a wrong one:
-    // labelling every repository "Dependabot off" would read as 355
-    // findings nobody caused.
-    for (const [name, enabled] of alertStatus ?? []) {
-      if (reposWithAlerts.has(name)) continue;
-      allAlerts.push(enabled ? mockCleanAlert(name, org) : mockDisabledAlert(name, org));
-    }
-
-    /**
-     * Which of them also open pull requests.
-     *
-     * Read alongside the alert flag rather than per row, and stamped onto
-     * every row of a repository so the table can offer the switch next to a
-     * finding, which is where somebody is when they want it.
-     *
-     * Missing stays missing: a repository the caller cannot administer is
-     * left undefined rather than marked off.
-     */
-    const fixStatus = await fetchRepoFixStatus(octokit, org);
-    if (fixStatus) {
-      for (const alert of allAlerts) {
-        const known = fixStatus.get(alert.repo);
-        if (known !== undefined) alert.fixesEnabled = known;
-      }
-    }
-
-  return allAlerts;
-}
 
 /**
  * Recompute in the background and store the result.
@@ -86,7 +27,7 @@ async function sweepWholeOrg(octokit: any, org: string): Promise<any[]> {
  */
 async function refreshDependencySnapshot(octokit: any, org: string): Promise<void> {
   try {
-    await saveDependencySnapshot(await sweepWholeOrg(octokit, org));
+    await saveDependencySnapshot(await buildDependencyView(octokit, org));
   } catch (err: any) {
     console.warn(`[Dependencies] Background refresh failed: ${err?.message ?? err}`);
   }
@@ -96,6 +37,28 @@ async function refreshDependencySnapshot(octokit: any, org: string): Promise<voi
 function applyFilters(alerts: any[], severity?: string): any[] {
   return severity ? alerts.filter(a => a.severity === severity) : alerts;
 }
+
+/**
+ * When the stored view was last computed.
+ *
+ * A separate request rather than a field on the rows, because the rows are an
+ * array and every caller already treats them as one. A timestamp is not worth
+ * reshaping that contract and touching every consumer for.
+ *
+ * Null means nothing is stored, which is what a first open looks like and is
+ * different from an old answer.
+ */
+router.get("/dependencies/age", async (_req: Request, res: Response) => {
+  try {
+    const stored = await readDependencySnapshot();
+    res.json({
+      computedAt: stored?.computedAt ?? null,
+      fresh: isFresh(stored),
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: sanitizeError(error, "dependencies") });
+  }
+});
 
 router.get("/dependencies", async (req: Request, res: Response) => {
   try {
@@ -177,7 +140,7 @@ router.get("/dependencies", async (req: Request, res: Response) => {
         }
       }
     } else {
-      allAlerts = await sweepWholeOrg(octokit, org);
+      allAlerts = await buildDependencyView(octokit, org);
     }
 
     // Stored before filtering, so the row backs every view rather than the one
@@ -392,37 +355,7 @@ router.get("/summary", async (req: Request, res: Response) => {
 // evaluator so the number on the screen and the number in the email come from
 // the same code.
 
-function mockDisabledAlert(repoName: string, orgName: string) {
-  return {
-    id: `disabled-${repoName}`,
-    repo: repoName,
-    org: orgName,
-    dependency: "Dependabot alerts disabled",
-    severity: "low",
-    cve: "",
-    ecosystem: "",
-    vulnerable_version: "",
-    patched_version: null,
-    detected_at: new Date().toISOString(),
-    disabled: true
-  };
-}
 
-function mockCleanAlert(repoName: string, orgName: string) {
-  return {
-    id: `clean-${repoName}`,
-    repo: repoName,
-    org: orgName,
-    dependency: "No vulnerabilities found",
-    severity: "low",
-    cve: "",
-    ecosystem: "",
-    vulnerable_version: "",
-    patched_version: null,
-    detected_at: new Date().toISOString(),
-    clean: true
-  };
-}
 
 /**
  * Renovate pull requests.

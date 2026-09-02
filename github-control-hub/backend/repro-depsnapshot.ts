@@ -61,9 +61,9 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
     // status reads to drift, and the drift shows as a repository appearing
     // clean on one path and unwatched on the other.
     check("the route and the refresh share it",
-      /async function sweepWholeOrg/.test(route)
-        && (route.match(/sweepWholeOrg\(octokit, org\)/g) ?? []).length >= 2,
-      route.match(/sweepWholeOrg/g)?.length);
+      !/async function sweepWholeOrg/.test(route)
+        && (route.match(/buildDependencyView\(octokit, org/g) ?? []).length >= 2,
+      route.match(/buildDependencyView/g)?.length);
   }
 
   console.log("\nchanging something invalidates what was stored");
@@ -75,6 +75,60 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
     check("  by recomputing rather than deleting",
       !/deleteDependencySnapshot/.test(route),
       "deleting would make the next open slow again, which is what the store prevents");
+  }
+
+  console.log("\nthe alarm pass keeps it warm, but only when it already swept");
+  {
+    const handler = fs.readFileSync(path.join(SRC, "alarms/handler.ts"), "utf8");
+
+    // The whole economy of this: the org-wide walk is the expensive part, and
+    // it has already been paid for when an alarm needed it. Starting one just
+    // to warm a screen is the five-minutes-forever cost that was rejected.
+    check("nothing is swept for the sake of the cache",
+      /if \(swept\) \{/.test(handler) && !/fetchOrgDependencyAlerts\(octokit, org\)[\s\S]{0,200}saveDependencySnapshot/.test(handler),
+      "a pass with no Dependabot alarm must not start a walk to warm a tab");
+    check("  and the alerts already fetched are handed over rather than fetched again",
+      /buildDependencyView\(octokit, org, \{ alerts: result\.alerts \}\)/.test(handler),
+      "re-sweeping inside one invocation spends the org-wide walk twice");
+
+    check("  refreshed on the half hour, not on every tick",
+      /WARM_MS/.test(handler) && /WARM_MS = 30 \* 60_000/.test(store),
+      "every tick would add the two marker reads to every pass forever");
+
+    // A partial sweep stored is repositories reported clean that were never
+    // read, which is the one answer this screen must not give.
+    check("  and a degraded sweep is not stored at all",
+      /if \(!result\.degraded\)/.test(handler));
+
+    // Warming a cache is the least important thing the pass does.
+    check("  while a failure here cannot cost the pass",
+      /catch \(err: any\)[\s\S]{0,200}Could not refresh the Dependabot view/.test(handler));
+  }
+
+  console.log("\none builder, used by the tab and the pass");
+  {
+    // Two copies would be two places for the repository markers to drift, and
+    // the drift shows as a repository appearing clean on one path and
+    // unwatched on the other.
+    const view = fs.readFileSync(path.join(SRC, "services/dependencyView.ts"), "utf8");
+    check("the view is a service both can call", /export async function buildDependencyView/.test(view));
+    check("  the route uses it", /buildDependencyView\(octokit, org\)/.test(route));
+    check("  and the markers are shared rather than defined twice",
+      fs.existsSync(path.join(SRC, "services/dependencyMarkers.ts"))
+        && !/function mockCleanAlert/.test(route));
+  }
+
+  console.log("\nthe tab says how old the picture is");
+  {
+    const page = fs.readFileSync(
+      path.join(SRC, "..", "..", "frontend", "src", "pages", "DependencyDashboardPage.tsx"), "utf8");
+    check("it shows when the sweep was taken", /Showing the sweep from/.test(page));
+    // Nothing stored is a first open, not an old answer, and saying "as of now"
+    // there would be noise.
+    check("  and says nothing when there is nothing stored",
+      /age\?\.computedAt &&/.test(page));
+    check("  while a stale one says a fresh sweep is on its way",
+      /!age\.fresh &&/.test(page));
   }
 
   console.log("\na sweep too large to store is refused, not truncated");

@@ -39,6 +39,18 @@ const TTL_HOURS = 48;
  */
 export const FRESH_MS = 10 * 60_000;
 
+/**
+ * How stale the stored copy must be before a pass that has already swept
+ * bothers to refresh it.
+ *
+ * Half an hour, not the five-minute tick. Refreshing it every tick would add
+ * the two marker reads to every pass forever, which is about eight requests a
+ * time, for a screen nobody may open all day. Half an hour keeps a cold open
+ * minutes-fresh at a twelfth of that, and is well inside how often GitHub
+ * rescans anyway.
+ */
+export const WARM_MS = 30 * 60_000;
+
 export interface StoredSweep {
   alerts: DependencyAlert[];
   computedAt: string;
