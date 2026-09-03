@@ -192,6 +192,65 @@ export function clearSnapshotHold(): void {
   held = null;
 }
 
+/**
+ * How often a background refresh may be started.
+ *
+ * The tab used to start one on every open where the stored sweep was over ten
+ * minutes old. Nothing keeps that sweep warm unless a Dependabot-backed alarm
+ * happens to run, so on an account without one it was always over ten minutes
+ * old, and every open began an organization-wide walk of seventy-odd pages.
+ * Opening the app twice in a morning did it twice; clicking between tabs did
+ * it concurrently, because there was no guard at all.
+ *
+ * Serving the stored copy instantly was never the problem. Deciding to
+ * recompute *because somebody looked* was. Half an hour matches what the alarm
+ * pass already uses to warm the same row, so the two cannot fight.
+ */
+export const REFRESH_EVERY_MS = 30 * 60_000;
+
+let refreshing: Promise<void> | null = null;
+let lastRefreshAt = 0;
+
+/** Whether a background sweep is running right now, so the tab can say so. */
+export function isRefreshing(): boolean {
+  return refreshing !== null;
+}
+
+/**
+ * Start a background refresh, unless one is running or one ran recently.
+ *
+ * Returns when the decision is made, not when the sweep finishes: the caller
+ * has already answered its reader from storage and is not waiting for this.
+ *
+ * The clock is set when the sweep *finishes*, not when it starts, so a walk
+ * that takes four minutes does not immediately permit another.
+ */
+export async function refreshIfDue(run: () => Promise<void>): Promise<void> {
+  if (refreshing) return;
+  if (Date.now() - lastRefreshAt < REFRESH_EVERY_MS) return;
+
+  refreshing = run()
+    .catch(err => {
+      // Swallowed deliberately: nobody is awaiting this, and an unhandled
+      // rejection from a refresh would take the process down.
+      console.warn(`[Dependencies] Background refresh failed: ${err?.message ?? err}`);
+    })
+    .finally(() => {
+      // Set even on failure. Retrying a broken sweep on every open is the
+      // behaviour this whole function exists to stop.
+      lastRefreshAt = Date.now();
+      refreshing = null;
+    });
+
+  await refreshing;
+}
+
+/** Clears the throttle, for tests that need each case to start clean. */
+export function __resetRefreshState(): void {
+  refreshing = null;
+  lastRefreshAt = 0;
+}
+
 /** Whether a stored answer is recent enough to serve without waiting. */
 export function isFresh(
   // Only the timestamp is read, so the age endpoint can pass what it has

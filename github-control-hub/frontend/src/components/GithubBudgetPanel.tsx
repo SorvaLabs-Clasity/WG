@@ -418,7 +418,7 @@ export default function GithubBudgetPanel() {
               Room left right now
             </span>
             <span className="text-[11px] text-slate-400 dark:text-slate-500">
-              read from GitHub, this instant
+              read from GitHub, this instant, for the app's own credentials
             </span>
           </div>
 
@@ -453,6 +453,19 @@ export default function GithubBudgetPanel() {
             hour, and search refills every minute, so a full reading here is
             normal even after a busy hour. It is also per token: requests made on
             your own sign-in never appear against the app's allowance.
+          </p>
+        
+          {/* Why a full budget and a refusal are not a contradiction.
+              Somebody reading "14,999 of 15,000" and then being told to wait a
+              few minutes reasonably concludes this page is wrong. It is not
+              measuring the thing that refused them. */}
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-3 leading-relaxed max-w-[85ch]">
+            These are the hourly budgets. GitHub also applies <strong className="font-semibold">secondary</strong>{" "}
+            limits, on the shape of the traffic rather than its total: too many requests at once,
+            too fast against one endpoint, or too much created too quickly. Those are not reported
+            here and are not visible in any number on this page, so a request can be refused with
+            "wait a few minutes" while every figure above still reads nearly full. Anything that
+            meets one is waited out and retried rather than shown to you.
           </p>
         </section>
       )}

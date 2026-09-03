@@ -173,6 +173,11 @@ export function buildDependabotConfig(alerts: ConfigurableAlert[]): string | nul
         # each is its own entry above and a group never spans entries. Below
         # this there is nothing left to split on: GitHub cannot group by
         # advisory severity, and per-package would be thousands.
+        #
+        # "*" deliberately, so nothing is left outside the group. GitHub raises
+        # an individual pull request for anything that matches no rule, so a
+        # narrower pattern here would produce the grouped pull request AND a
+        # stray one per unmatched dependency.
         patterns:
           - "*"`);
 

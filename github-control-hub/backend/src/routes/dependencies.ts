@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { createOctokit, getOrg, getSystemToken } from "../github/client";
 import { logActivity } from "../services/activityService";
 import { sanitizeError } from "../utils/errorSanitizer";
-import { sendIfRateLimited } from "../utils/rateLimit";
+import { sendIfRateLimited, withSecondaryRetry } from "../utils/rateLimit";
 import { sendIfPermissionDenied } from "../utils/permissionError";
 import { fetchAllCursorPages } from "../utils/cursorPages";
 import { fetchRenovatePrs } from "../services/renovateService";
@@ -11,7 +11,7 @@ import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authoriza
 import { mapAlert, fetchOrgDependencyAlerts, fetchRepoAlertStatus , fetchRepoFixStatus} from "../services/dependencyService";
 import { isValidRepoName } from "../utils/validation";
 import {
-  saveDependencySnapshot, readDependencySnapshot, isFresh,
+  saveDependencySnapshot, readDependencySnapshot, isFresh, refreshIfDue, isRefreshing,
 } from "../services/dependencySnapshot";
 import { mockCleanAlert, mockDisabledAlert } from "../services/dependencyMarkers";
 import { buildDependencyView } from "../services/dependencyView";
@@ -120,6 +120,10 @@ router.get("/dependencies/age", async (_req: Request, res: Response) => {
     res.json({
       computedAt: age.computedAt,
       fresh: isFresh(age),
+      // Whether a sweep is actually running, rather than inferred from the
+      // age. Stale and refreshing are different states, and the tab said the
+      // second whenever the first was true.
+      refreshing: isRefreshing(),
       // So the tab can say why it is slow, rather than just being slow.
       ...snapshotHealth(),
     });
@@ -186,7 +190,9 @@ router.get("/dependencies", async (req: Request, res: Response) => {
           // Deliberately not awaited. The reader already has an answer, and
           // making them wait for the next one is the delay this exists to
           // remove. Failures are logged inside.
-          void refreshDependencySnapshot(octokit, org);
+          // Throttled and deduplicated. Serving the stored copy was always
+          // right; recomputing because somebody looked was not.
+          void refreshIfDue(() => refreshDependencySnapshot(octokit, org));
         }
         return;
       }
@@ -382,7 +388,19 @@ router.post("/dependencies/config", async (req: Request, res: Response) => {
       else byRepo.set(a.repo, [a]);
     }
 
-    const summary = await runDependabotRollout(octokit, getOrg(), list, byRepo, mode);
+    /**
+     * Which of these have security updates switched off.
+     *
+     * Read from the same stored rows, and only where the answer is known:
+     * `fixesEnabled` is undefined for a repository the caller cannot
+     * administer, and warning about one of those would be a claim nobody made.
+     */
+    const fixesOff = new Set<string>();
+    for (const [repo, rows] of byRepo) {
+      if (rows.some(r => r.fixesEnabled === false)) fixesOff.add(repo);
+    }
+
+    const summary = await runDependabotRollout(octokit, getOrg(), list, byRepo, mode, { fixesOff });
 
     for (const r of summary.results.filter(x => x.outcome === "opened" || x.outcome === "committed")) {
       await logActivity("dependabot.enable" as any, req.user!.login, r.repo, "Dependabot",
@@ -527,12 +545,16 @@ router.get("/renovate", async (req: Request, res: Response) => {
 
     const octokit = createOctokit(token, "Renovate pull request search");
     const result = await fetchRenovatePrs(
-      async (q, page) => {
+      // Search is the smallest allowance GitHub gives and the likeliest thing
+      // here to meet a secondary limit, which is a request to wait rather than
+      // a refusal. Without this the widget showed the raw refusal, and a wait
+      // of a few seconds would have answered it.
+      async (q, page) => withSecondaryRetry(async () => {
         const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
           q, per_page: 100, page, advanced_search: "true",
         });
         return { items: r.data?.items ?? [] };
-      },
+      }),
       getOrg(), bot,
     );
     /**

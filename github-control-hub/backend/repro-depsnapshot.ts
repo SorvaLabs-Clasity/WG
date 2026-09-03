@@ -64,8 +64,10 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
       route.indexOf("if (!isFresh(stored))"),
       route.indexOf("if (repoFilter) {"));
     check("  a stale one is refreshed without being waited for",
-      /void refreshDependencySnapshot/.test(staleBranch),
-      "awaiting it would reintroduce exactly the delay this removes");
+      // Through the throttle now, but the claim is the same one: started, not
+      // awaited. Awaiting it would reintroduce exactly the delay this removes.
+      /void refreshIfDue\(/.test(staleBranch),
+      staleBranch.slice(0, 300));
     check("  and the refresh cannot throw into a caller that is not listening",
       /async function refreshDependencySnapshot[\s\S]{0,300}catch \(err: any\)/.test(store + route));
   }
@@ -90,6 +92,70 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
     check("  by recomputing rather than deleting",
       !/deleteDependencySnapshot/.test(route),
       "deleting would make the next open slow again, which is what the store prevents");
+  }
+
+  console.log("\nopening the tab does not start a sweep every time");
+  {
+    /**
+     * "It rescans every time the app opens and I click Vulnerabilities."
+     *
+     * It did. The rule was: if the stored sweep is older than ten minutes,
+     * serve it and start a fresh org-wide walk behind the reader. Nothing kept
+     * the sweep warm unless a Dependabot-backed alarm happened to run, so on an
+     * account without one it was always older than ten minutes, and every
+     * single open started a walk of seventy-one pages. Two clicks in a row
+     * started two, concurrently: there was no guard of any kind.
+     *
+     * The serve-from-storage part was right. The trigger was not.
+     */
+    const { __resetRefreshState, refreshIfDue, isRefreshing, REFRESH_EVERY_MS } =
+      require("./src/services/dependencySnapshot");
+
+    __resetRefreshState();
+    let sweeps = 0;
+    const sweep = async () => { sweeps++; await new Promise(r => setTimeout(r, 20)); };
+
+    // Four opens in quick succession, which is a person clicking between tabs.
+    await Promise.all([refreshIfDue(sweep), refreshIfDue(sweep), refreshIfDue(sweep)]);
+    await refreshIfDue(sweep);
+    check("several opens together start one sweep, not several", sweeps === 1, sweeps);
+
+    await new Promise(r => setTimeout(r, 40));
+    await refreshIfDue(sweep);
+    check("  and another open right after starts none",
+      sweeps === 1, sweeps);
+
+    check("  the gap is measured in tens of minutes, not tens of seconds",
+      REFRESH_EVERY_MS >= 20 * 60_000, REFRESH_EVERY_MS);
+  }
+
+  console.log("\nwhile a sweep is running, the tab can say so truthfully");
+  {
+    const { __resetRefreshState, refreshIfDue, isRefreshing } =
+      require("./src/services/dependencySnapshot");
+
+    __resetRefreshState();
+    check("nothing running means nothing claimed", isRefreshing() === false);
+
+    let release: () => void = () => {};
+    const held = new Promise<void>(r => { release = r; });
+    const running = refreshIfDue(() => held);
+    check("  a running sweep is reported", isRefreshing() === true);
+    release();
+    await running;
+    check("  and stops being reported when it finishes", isRefreshing() === false);
+  }
+
+  console.log("\na sweep that throws does not wedge the next one");
+  {
+    const { __resetRefreshState, refreshIfDue, isRefreshing } =
+      require("./src/services/dependencySnapshot");
+
+    // A failure that left the in-flight marker set would stop every later
+    // refresh for the life of the process, and nothing would say why.
+    __resetRefreshState();
+    await refreshIfDue(async () => { throw new Error("GitHub is down"); });
+    check("the marker is cleared after a failure", isRefreshing() === false);
   }
 
   console.log("\nthe alarm pass keeps it warm, but only when it already swept");
@@ -146,8 +212,12 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
     // there would be noise.
     check("  and says nothing when there is nothing stored",
       /age\?\.computedAt &&/.test(page));
-    check("  while a stale one says a fresh sweep is on its way",
-      /!age\.fresh &&/.test(page));
+    // It used to say this whenever the stored sweep was over ten minutes old,
+    // which was also the condition that started one, so it announced a rescan
+    // on every open and then performed one. Now it says it only while a sweep
+    // is genuinely running, which most opens will not start at all.
+    check("  and says a sweep is on its way only while one is",
+      /age\.refreshing &&/.test(page) && !/!age\.fresh &&/.test(page));
   }
 
   console.log("\na sweep too large to store is refused, not truncated");

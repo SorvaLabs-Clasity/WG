@@ -261,6 +261,83 @@ const a = (ecosystem: string, manifest_path = "package.json") =>
     check("  and it is valid YAML starting at version 2", /^#[\s\S]*?\nversion: 2\n/.test(yml), yml.slice(0, 80));
   }
 
+  console.log("\nthe file does not replace the switches, and says so where it matters");
+  {
+    const rollout = fs.readFileSync(
+      path.join(__dirname, "src/services/dependabotRollout.ts"), "utf8");
+    const route = fs.readFileSync(
+      path.join(__dirname, "src/routes/dependencies.ts"), "utf8");
+    const panel = fs.readFileSync(
+      path.join(__dirname, "..", "frontend", "src", "components", "DependabotManager.tsx"), "utf8");
+
+    /**
+     * GitHub lists Dependabot alerts and security updates as prerequisites for
+     * this file, not alternatives to it: the file controls how fixes are
+     * grouped, the settings control whether there are any. Writing one to a
+     * repository whose switch is off is a silent no-op, and the person who
+     * pressed the button has every reason to think it worked.
+     */
+    check("a file landing on a repository with fixes off is reported",
+      /warning\?: string/.test(rollout) && /Security updates are switched off here/.test(rollout));
+
+    // Only where the answer is known. `fixesEnabled` is undefined for a
+    // repository nobody can administer, and warning about one of those is a
+    // claim nobody established.
+    check("  and only where it was actually read as off",
+      /r\.fixesEnabled === false/.test(route), route.slice(0, 0));
+
+    check("  the panel says the file is not a replacement",
+      /does not replace the two switches/i.test(panel));
+    check("  and the result says which repositories are affected",
+      /security\s*\n?\s*updates switched off/i.test(panel)
+        || /have security[\s\S]{0,40}switched off/i.test(panel), "");
+  }
+
+  console.log("\nrunning it twice is not an error");
+  {
+    const rollout = fs.readFileSync(
+      path.join(__dirname, "src/services/dependabotRollout.ts"), "utf8");
+
+    /**
+     * The observed failure:
+     *
+     *   trx-aws-sso-permisssion: Invalid request. "sha" wasn't supplied.
+     *
+     * The branch from an earlier run was still there, so it was reused, and
+     * then the file was written to it with no sha. GitHub requires the current
+     * blob sha to replace a file that exists, so the second run failed on
+     * every repository the first had already reached, with an error naming an
+     * API parameter rather than the situation.
+     *
+     * A second run should be the same as the first: the same file on the same
+     * branch, and the pull request that is already open.
+     */
+    check("the file's sha is read before writing to our branch",
+      /getContent\([\s\S]{0,300}ref: BRANCH/.test(rollout), rollout.slice(0, 0));
+    // The decision moved into planBranchWrite, which repro-rolloutrerun
+    // exercises directly against every state a rerun can find. Here it is
+    // enough that the sha reaches the write.
+    check("  and passed, so a rerun updates instead of failing",
+      /plan\.sha \? \{ sha: plan\.sha \}/.test(rollout), rollout.slice(0, 0));
+
+    /**
+     * The invariant that must survive this, and the reason the sha is fetched
+     * per branch rather than once: a sha makes a write an overwrite, and on the
+     * default branch that is somebody's file. Commit mode must keep failing
+     * rather than replacing anything.
+     */
+    const commitBlock = rollout.slice(
+      rollout.indexOf('if (mode === "commit")'),
+      rollout.indexOf("const { data: ref }"));
+    check("  while the default branch is still never overwritten",
+      !/sha/.test(commitBlock), commitBlock);
+
+    // Creating a second pull request from the same branch is refused by GitHub
+    // anyway, and reporting the one that exists is the useful answer.
+    check("  and an open pull request is reported rather than duplicated",
+      /pulls\.list\(/.test(rollout) && /already-open/.test(rollout));
+  }
+
   console.log("\nnothing is written over a repository that already has one");
   {
     const rollout = fs.readFileSync(

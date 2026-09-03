@@ -256,8 +256,16 @@ export default function DependabotManager({ rows, onDone }: {
             immediately retrying every open alert that has a patch. That needs a
             <span className="font-mono text-[11px]"> .github/dependabot.yml</span>,
             built here from each repository's own alerts. Fixes arrive grouped
-            into one pull request per manifest rather than one per alert.
-            Repositories that already have that file are left alone.
+            into one pull request per ecosystem and manifest rather than one per
+            alert. Repositories that already have that file are left alone.
+          </p>
+          {/* The obvious wrong conclusion from everything above: that the file
+              replaces the switches. GitHub lists them as prerequisites for it,
+              not alternatives to it. */}
+          <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch] mt-1.5">
+            This does not replace the two switches. Dependabot alerts and security
+            updates both still have to be on: the file decides how fixes are
+            grouped, the switches decide whether there are any.
           </p>
           {/* First, because it needs nobody's permission. Under branch
               protection the two buttons below it are a pull request and an
@@ -330,6 +338,16 @@ export default function DependabotManager({ rows, onDone }: {
                     </li>
                   ))}
                 </ul>
+              )}
+              {/* A file that landed and will do nothing is not a failure and
+                  not a success, and it is the outcome somebody would otherwise
+                  walk away from believing. */}
+              {rollout.results.some(r => r.warning) && (
+                <p className="text-[11.5px] mt-2">
+                  {rollout.results.filter(r => r.warning).length} of these have security
+                  updates switched off, so the file will produce nothing there until it is
+                  on. Select them above and press <strong>Auto-fix PRs</strong> first.
+                </p>
               )}
             </Note>
           )}

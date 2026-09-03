@@ -28,6 +28,8 @@ export type RolloutMode = "pr" | "commit";
 
 export type RolloutOutcome =
   | "opened"
+  /** A pull request from an earlier run is still open. */
+  | "already-open"
   | "committed"
   | "already-configured"
   | "no-ecosystem"
@@ -39,11 +41,24 @@ export interface RolloutResult {
   /** The pull request, where one was opened. */
   url?: string;
   detail?: string;
+  /**
+   * The file landed, and will still produce nothing.
+   *
+   * A dependabot.yml does not switch security updates on. GitHub lists the
+   * repository setting as a prerequisite for the file, not an alternative to
+   * it: the file controls how updates are grouped, the setting controls
+   * whether there are any. Writing one to a repository whose switch is off is
+   * a silent no-op, and the person who pressed the button has every reason to
+   * think it worked.
+   */
+  warning?: string;
 }
 
 export interface RolloutSummary {
   results: RolloutResult[];
   opened: number;
+  /** Reruns that found the earlier pull request still open. */
+  alreadyOpen: number;
   committed: number;
   skipped: number;
   failed: number;
@@ -90,6 +105,38 @@ async function hasConfig(octokit: any, org: string, repo: string): Promise<boole
   return false;
 }
 
+/**
+ * Whether to write the file to our branch, and with what sha.
+ *
+ * Separated out because the interesting cases are all states a *rerun* finds,
+ * and none of them are reachable in a test that has to talk to GitHub. Closing
+ * a pull request leaves its branch behind, so pressing the button again arrives
+ * here with the file already present.
+ *
+ * `existing` is what is on our branch now, or null where there is nothing.
+ */
+export function planBranchWrite(
+  content: string,
+  existing: { sha?: string; content?: string } | null,
+): { write: boolean; sha?: string } {
+  if (!existing) return { write: true };
+
+  // Nothing to change. Writing anyway is a commit with no difference in it,
+  // on somebody's branch, on every run forever. Newlines are normalised
+  // because a branch that has been through a client which rewrites them would
+  // otherwise never compare equal.
+  if (existing.content) {
+    const onBranch = Buffer.from(existing.content, "base64").toString("utf8");
+    const same = onBranch.replace(/\r\n/g, "\n") === content.replace(/\r\n/g, "\n");
+    if (same) return { write: false };
+  }
+
+  // Present, and either different or unreadable. A sha is required to replace
+  // a file that exists, and without one GitHub answers `Invalid request. "sha"
+  // wasn't supplied`, which is what a rerun used to fail with.
+  return { write: true, sha: existing.sha };
+}
+
 async function writeToBranch(
   octokit: any, org: string, repo: string, content: string, mode: RolloutMode,
 ): Promise<RolloutResult> {
@@ -119,12 +166,76 @@ async function writeToBranch(
     if (status !== 422) throw err;
   }
 
-  await octokit.rest.repos.createOrUpdateFileContents({
-    owner: org, repo, path: PATH, branch: BRANCH,
-    message: "Enable grouped Dependabot security updates",
-    content: Buffer.from(content, "utf8").toString("base64"),
-  });
+  /**
+   * The file's current sha on **our** branch, where an earlier run left one.
+   *
+   * GitHub requires it to replace a file that exists, and without it a second
+   * run failed on every repository the first had reached, with an error naming
+   * a missing API parameter rather than the situation:
+   *
+   *   Invalid request. "sha" wasn't supplied.
+   *
+   * Read from `BRANCH` specifically, never from the default branch. A sha is
+   * what turns a write into an overwrite, and on the default branch the file
+   * it would overwrite is somebody else's. Here it is our own from ten minutes
+   * ago.
+   */
+  let onBranch: { sha?: string; content?: string } | null = null;
+  try {
+    const { data } = await octokit.rest.repos.getContent({
+      owner: org, repo, path: PATH, ref: BRANCH,
+    });
+    onBranch = Array.isArray(data)
+      ? { sha: undefined, content: undefined }
+      : { sha: (data as any)?.sha, content: (data as any)?.content };
+  } catch (err: any) {
+    // 404 is the normal case: a branch we just created has no such file.
+    const status = err?.status ?? err?.response?.status;
+    if (status !== 404) throw err;
+  }
 
+  const plan = planBranchWrite(content, onBranch);
+  if (plan.write) {
+    await octokit.rest.repos.createOrUpdateFileContents({
+      owner: org, repo, path: PATH, branch: BRANCH,
+      message: "Enable grouped Dependabot security updates",
+      content: Buffer.from(content, "utf8").toString("base64"),
+      ...(plan.sha ? { sha: plan.sha } : {}),
+    });
+  }
+
+  /**
+   * A pull request from an earlier run, if there is one.
+   *
+   * Creating a second from the same branch is refused by GitHub anyway, and
+   * the one already open is the useful answer: it is where the change is.
+   */
+  const { data: open } = await octokit.rest.pulls.list({
+    owner: org, repo, head: `${org}:${BRANCH}`, state: "open",
+  });
+  if (open?.length) {
+    return { repo, outcome: "already-open", url: open[0].html_url };
+  }
+
+  try {
+    return await createPr(octokit, org, repo, base);
+  } catch (err: any) {
+    // "A pull request already exists for org:branch". GitHub is telling us the
+    // answer; showing its refusal instead would be showing an API error for a
+    // situation the person can act on.
+    if (!/already exists/i.test(String(err?.message ?? ""))) throw err;
+    const { data: any_ } = await octokit.rest.pulls.list({
+      owner: org, repo, head: `${org}:${BRANCH}`, state: "all",
+    });
+    const found = (any_ ?? [])[0];
+    if (!found) throw err;
+    return { repo, outcome: "already-open", url: found.html_url };
+  }
+}
+
+async function createPr(
+  octokit: any, org: string, repo: string, base: string,
+): Promise<RolloutResult> {
   const { data: pr } = await octokit.rest.pulls.create({
     owner: org, repo, head: BRANCH, base,
     title: "Enable grouped Dependabot security updates",
@@ -199,7 +310,15 @@ export async function runDependabotRollout(
   repos: string[],
   alertsByRepo: Map<string, { ecosystem?: string; manifest_path?: string | null }[]>,
   mode: RolloutMode,
-  opts: { onProgress?: (done: number, total: number) => void } = {},
+  opts: {
+    onProgress?: (done: number, total: number) => void;
+    /**
+     * Repositories known to have security updates switched off. Only those
+     * read as off: a repository nobody could read is not one of them, and
+     * warning about it would be a claim nobody established.
+     */
+    fixesOff?: Set<string>;
+  } = {},
 ): Promise<RolloutSummary> {
   const queue = [...new Set(repos)];
   const results: RolloutResult[] = [];
@@ -209,7 +328,16 @@ export async function runDependabotRollout(
     for (;;) {
       const repo = queue.shift();
       if (!repo) return;
-      results.push(await rolloutOne(octokit, org, repo, alertsByRepo.get(repo) ?? [], mode));
+      const result = await rolloutOne(octokit, org, repo, alertsByRepo.get(repo) ?? [], mode);
+      // Said on success, because that is the case somebody walks away from.
+      if (opts.fixesOff?.has(repo)
+          && (result.outcome === "opened" || result.outcome === "committed"
+              || result.outcome === "already-open")) {
+        result.warning = "Security updates are switched off here, so this file will "
+          + "produce nothing until they are on. The file controls how fixes are "
+          + "grouped; the setting controls whether there are any.";
+      }
+      results.push(result);
       done++;
       opts.onProgress?.(done, repos.length);
       // Deliberate even on success: the limit that refuses these is about the
@@ -223,6 +351,7 @@ export async function runDependabotRollout(
   return {
     results,
     opened: results.filter(r => r.outcome === "opened").length,
+    alreadyOpen: results.filter(r => r.outcome === "already-open").length,
     committed: results.filter(r => r.outcome === "committed").length,
     skipped: results.filter(r => r.outcome === "already-configured" || r.outcome === "no-ecosystem").length,
     failed: results.filter(r => r.outcome === "failed").length,

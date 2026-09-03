@@ -81,6 +81,8 @@ export function bulkDependabot(repos: string[], action: BulkAction): Promise<Bul
 export function fetchDependenciesAge(): Promise<{
   computedAt: string | null;
   fresh: boolean;
+  /** True while a background sweep is actually running. */
+  refreshing: boolean;
   /** False when the sweep cannot be kept between openings. */
   storing: boolean;
   /** Why not, in words, when it cannot. */
@@ -131,7 +133,11 @@ export type RolloutOutcome =
   | "opened" | "committed" | "already-configured" | "no-ecosystem" | "failed";
 
 export interface RolloutSummary {
-  results: { repo: string; outcome: RolloutOutcome; url?: string; detail?: string }[];
+  results: {
+    repo: string; outcome: RolloutOutcome; url?: string; detail?: string;
+    /** The file landed but will do nothing until the switch is on. */
+    warning?: string;
+  }[];
   opened: number;
   committed: number;
   skipped: number;

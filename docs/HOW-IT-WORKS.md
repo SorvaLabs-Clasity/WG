@@ -1470,6 +1470,40 @@ security feature **off**:
 `repro-retrigger` pins all of that, including that a transient refusal on the
 way back is retried until it sticks.
 
+**The file does not replace the switches.** GitHub lists Dependabot alerts and
+Dependabot security updates as *prerequisites* for a `dependabot.yml`, not
+alternatives to it: "you must first enable the following features: Dependabot
+security updates". The file decides how fixes are grouped; the settings decide
+whether there are any. Writing one to a repository whose switch is off is a
+silent no-op, so the rollout reports it, on success rather than as a failure,
+because that is the outcome somebody would otherwise walk away from believing
+had worked. Only where the switch was actually read as off: `fixesEnabled` is
+undefined for a repository nobody can administer, and warning about one of
+those is a claim nobody established.
+
+**Pressing the button twice does the obvious thing.** Closing a pull request
+does not delete its branch, so a second run arrives to find
+`control-hub/dependabot-security-updates` already there with the file on it.
+Three things in a row can fail from that state, and the first is what people
+actually hit:
+
+| State | Without handling | Now |
+| --- | --- | --- |
+| File exists on our branch | `Invalid request. "sha" wasn't supplied` | Read its sha and update |
+| File is byte-identical | A commit containing no change, every run | Nothing written |
+| A pull request exists for that head | GitHub refuses the create | That pull request is the answer, with its link |
+
+Newlines are normalised before comparing, because a branch that has been
+through a client which rewrites them would otherwise never compare equal and
+would take a commit on every single run.
+
+The invariant underneath all of it: **a sha is only ever supplied for our own
+branch.** A sha is what turns a write into an overwrite, and on the default
+branch the file it would overwrite is somebody else's, so committing there
+still passes none and still fails rather than replacing anything.
+`repro-rolloutrerun` exercises the decision against every state a rerun can
+find, which is the part no test that talks to GitHub could reach.
+
 And the rules about writing to somebody's repository:
 
 - **A repository that already has a `dependabot.yml` is skipped**, never merged
@@ -1575,6 +1609,30 @@ local process able to reach that port can already read directly.
 on every one of the eight routes. Writing it found three the first list had
 missed, which is why the set is asserted in both directions rather than spot
 checked.
+
+### Opening the tab used to start a sweep. Every time.
+
+The rule was: if the stored sweep is over ten minutes old, serve it and start a
+fresh organization-wide walk behind the reader. Nothing keeps that sweep warm
+unless a Dependabot-backed alarm happens to run, so on an account without one it
+was **always** over ten minutes old, and every open began a walk of seventy-odd
+pages. Opening the app twice in a morning did it twice. Clicking between tabs
+did it concurrently, because there was no guard of any kind.
+
+Serving the stored copy instantly was never the problem. Deciding to recompute
+*because somebody looked* was.
+
+A refresh is now started only if none is running and none has run in the last
+half hour, matching what the alarm pass already uses to warm the same row so the
+two cannot fight. The clock is set when a sweep **finishes**, not when it
+starts, so a four-minute walk does not immediately permit another, and it is set
+on failure too, since retrying a broken sweep on every open is the behaviour
+this exists to stop.
+
+The label was lying in the same way. "(refreshing)" was shown for anything over
+ten minutes old, which was also the condition that started a sweep, so the tab
+announced a rescan on every open and then performed one. It now reports whether
+one is genuinely running, which most opens will not start at all.
 
 ### Why that tab was still slow, and how it now says so
 

@@ -429,12 +429,17 @@ export default function DependencyDashboardPage() {
             )}
             {age?.computedAt && (
               <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums"
-                title={age.fresh
-                  ? "This is the latest sweep."
-                  : "A fresh sweep is running now and will be here next time you look."}>
+                title={age.refreshing
+                  ? "A fresh sweep is running now and will be here next time you look."
+                  : "Opening this tab does not start a sweep. The stored one is served as it "
+                    + "stands, and refreshed at most every half hour. Refresh forces one."}>
                 <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
                 swept {new Date(age.computedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-                {!age.fresh && <span className="ml-1 opacity-60">(refreshing)</span>}
+                {/* Only when one is genuinely running. This used to be shown
+                    for anything over ten minutes old, which was also when a
+                    sweep was started, so it announced a rescan on every open
+                    and then performed one. */}
+                {age.refreshing && <span className="ml-1 opacity-60">(refreshing)</span>}
               </span>
             )}
           </div>

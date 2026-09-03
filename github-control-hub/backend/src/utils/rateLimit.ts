@@ -119,3 +119,40 @@ export function sendIfRateLimited(res: Response, err: unknown): boolean {
   });
   return true;
 }
+
+/**
+ * Retry a call that GitHub refused with a *secondary* rate limit.
+ *
+ * Secondary limits are not the hourly budget and are not reported by it. They
+ * fire on the shape of the traffic rather than its total: too many requests at
+ * once, too fast against one endpoint, too much created too quickly. So a
+ * caller can be refused while `GET /rate_limit` truthfully says fourteen
+ * thousand nine hundred and ninety-nine of fifteen thousand remain, which is
+ * exactly what it looks like from the outside, and exactly what it looks like
+ * to somebody reading a usage page.
+ *
+ * GitHub asks for a wait and means it, so the wait is honoured. Only secondary
+ * limits are retried: the primary budget refills on the hour and waiting out
+ * forty minutes inside a request nobody is watching helps nobody.
+ */
+export async function withSecondaryRetry<T>(
+  run: () => Promise<T>,
+  attempts = 3,
+): Promise<T> {
+  let last: unknown;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      return await run();
+    } catch (err) {
+      last = err;
+      const info = parseRateLimit(err);
+      if (info?.kind !== "secondary" || attempt === attempts - 1) throw err;
+
+      // GitHub's own number where it gave one, capped so a long retry-after
+      // cannot hold a request open past the point somebody has given up.
+      const wait = Math.min(20_000, Math.max(1_000, (info.retryAfter ?? 2 ** attempt) * 1000));
+      await new Promise(r => setTimeout(r, wait));
+    }
+  }
+  throw last;
+}
