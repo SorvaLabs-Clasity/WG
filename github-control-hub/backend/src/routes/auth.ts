@@ -318,35 +318,41 @@ const sameOriginOnly = (req: Request, res: Response, next: NextFunction) => {
 // directly. A function call inside one process cannot be reached from off it,
 // which no amount of guarding an HTTP route achieves.
 
-// During initial setup (no GitHub OAuth secrets loaded yet), allow AWS credential
-// endpoints without authentication. Once secrets are loaded, require auth.
-// This breaks the chicken-and-egg: AWS must be connected before GitHub OAuth
-// secrets can be loaded from Secrets Manager.
-const setupOrAuthMiddleware = async (req: Request, res: Response, next: NextFunction) => {
-  // Never yet configured: the original chicken-and-egg, since the GitHub OAuth
-  // secrets these endpoints would authenticate against live in Secrets Manager,
-  // which needs AWS.
-  if (!process.env.GITHUB_CLIENT_ID) {
-    next();
-    return;
-  }
-
-  // The same knot, retied. Once secrets had loaded, this demanded a GitHub
-  // session, but disconnecting AWS (or "Reset both connections", which also
-  // drops the session) left no way to list AWS profiles and so no way to
-  // reconnect except by pasting access keys. Whenever AWS is not usable, these
-  // endpoints are the only route back and must stay open.
-  //
-  // Safe because of where they can run: serverModeGuard blocks all of them on
-  // EC2, so the only caller is the desktop app on the user's own machine,
-  // reading the ~/.aws/config that machine already owns.
-  const { isAwsLocked } = await import("../middleware/awsHealthMiddleware");
-  if (!process.env.ACTIVITY_TABLE || isAwsLocked()) {
-    next();
-    return;
-  }
-
-  authMiddleware(req, res, next);
+/**
+ * The endpoints that establish or repair a connection, which therefore cannot
+ * require one.
+ *
+ * This used to fall through to `authMiddleware` once the app was configured
+ * and AWS was healthy, and that combination is the ordinary way to reach the
+ * login screen: the app sat open, the session token expired, and the screen
+ * whose whole job is getting a session could not list AWS profiles without
+ * one. "Missing or invalid Authorization header", on the login screen, with no
+ * way forward but reinstalling or pasting access keys.
+ *
+ * Two earlier exceptions were carved for the same knot seen from other angles,
+ * nothing configured yet, and AWS unusable. Both were about AWS. The general
+ * rule they were reaching for is simply that a connection endpoint cannot
+ * demand the session that connecting produces, and `sameOriginOnly` on these
+ * same routes already says so in its own comment: "reachable without a session
+ * by design, since reconnecting AWS is how you get a session back".
+ *
+ * What keeps them safe is where they can run, not who is calling:
+ *
+ *   - `serverModeGuard` refuses them outright on a server deployment, so the
+ *     only caller is the desktop app on somebody's own machine.
+ *   - `sameOriginOnly` refuses anything another site caused the browser to
+ *     send.
+ *
+ * What they expose there is the ~/.aws/config of the machine the app is
+ * installed on, which any local process able to reach this port can already
+ * read directly.
+ *
+ * Kept as a named middleware rather than deleted, so the routes keep saying
+ * what they are, and so this reasoning sits where somebody would otherwise
+ * "restore" the session check and lock the login screen again.
+ */
+const setupOrAuthMiddleware = (_req: Request, _res: Response, next: NextFunction) => {
+  next();
 };
 
 /**

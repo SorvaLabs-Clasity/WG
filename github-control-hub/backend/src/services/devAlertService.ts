@@ -99,6 +99,17 @@ export interface DigestPrefs {
     mergeable: number;
   };
   /**
+   * Cap on how many people are on a review before it stops being yours.
+   *
+   * The same question the review-request notification asks, asked of the daily
+   * list: a pull request with eight reviewers on it will be handled without
+   * you, and a summary full of those is a summary nobody reads to the end of.
+   *
+   * Null means no cap, which is the default: a summary that silently drops
+   * things nobody asked it to drop is worse than a long summary.
+   */
+  reviewerLimit?: number | null;
+  /**
    * A digest with nothing in it is how a channel gets muted.
    *
    * On by default for that reason: somebody who wants the daily "all clear" can
@@ -168,6 +179,7 @@ export function defaults(login: string): DevAlerts {
       // No limit by default: a summary that silently omits things somebody
       // never asked it to omit is worse than a long one.
       maxAgeDays: { toReview: 0, mine: 0, mergeable: 0 },
+      reviewerLimit: null,
       skipWhenEmpty: true,
     },
     updatedAt: new Date().toISOString(),

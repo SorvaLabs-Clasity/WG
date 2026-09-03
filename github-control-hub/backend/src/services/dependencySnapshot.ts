@@ -58,19 +58,41 @@ export interface StoredSweep {
   degraded?: boolean;
 }
 
+/**
+ * Why the last save did not happen, or null if it did.
+ *
+ * Reported to the tab, because a snapshot that is never stored is invisible
+ * from the outside and looks exactly like a tab that is simply slow: every
+ * open recomputes the whole organization, forever, and nothing says so. That
+ * is this codebase's oldest failure shape, an absence rendered as an answer,
+ * and it costs a person an afternoon each time it recurs.
+ */
+let lastSaveProblem: string | null = null;
+
+/** Whether the stored sweep is working, for the tab to explain itself with. */
+export function snapshotHealth(): { storing: boolean; problem: string | null } {
+  return { storing: lastSaveProblem === null, problem: lastSaveProblem };
+}
+
 export async function saveDependencySnapshot(
   alerts: DependencyAlert[], degraded = false,
 ): Promise<void> {
-  if (!hasTable("ALARMS_TABLE")) return;
+  if (!hasTable("ALARMS_TABLE")) {
+    lastSaveProblem = "No storage table is configured for this account, "
+      + "so the sweep cannot be kept between openings.";
+    return;
+  }
   try {
     const payload = gzipSync(Buffer.from(JSON.stringify(alerts), "utf8")).toString("base64");
     // Refused rather than truncated. A tab drawn from half a sweep reports
     // repositories as clean that were never looked at, and that is the one
     // answer this whole feature exists to avoid producing.
     if (Buffer.byteLength(payload) > 380_000) {
+      const kb = Math.round(Buffer.byteLength(payload) / 1024);
+      lastSaveProblem = `This organization's ${alerts.length} findings compress to `
+        + `${kb}KB, past the 371KB a single row can hold, so the sweep cannot be stored.`;
       console.warn(
-        `[Dependencies] ${alerts.length} alerts compress to `
-        + `${Math.round(Buffer.byteLength(payload) / 1024)}KB, which will not fit. `
+        `[Dependencies] ${alerts.length} alerts compress to ${kb}KB, which will not fit. `
         + "The tab will keep computing live.");
       return;
     }
@@ -84,8 +106,12 @@ export async function saveDependencySnapshot(
         ttl: Math.floor(Date.now() / 1000) + TTL_HOURS * 3600,
       },
     }));
+    lastSaveProblem = null;
   } catch (err: any) {
-    // Never lets storing an answer cost the answer.
+    // Never lets storing an answer cost the answer, but does say so: a write
+    // that fails silently every time is a tab that is slow forever with no
+    // visible cause.
+    lastSaveProblem = `The sweep could not be written to storage: ${err?.message ?? err}`;
     console.warn(`[Dependencies] Could not store the sweep: ${err?.message ?? err}`);
   }
 }

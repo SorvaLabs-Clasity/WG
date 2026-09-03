@@ -2,6 +2,7 @@ import { myWork } from "./developerService";
 import type { PullRequest } from "./prNudgeService";
 import { buildCard, type CardSection } from "./teamsClient";
 import type { DevAlerts, EventPrefs } from "./devAlertService";
+import { withinLimit, totalFromEvent, keepWithinLimit } from "./reviewerLimit";
 
 /**
  * What a notification actually says.
@@ -65,7 +66,16 @@ export function buildDigest(prefs: DevAlerts, prs: PullRequest[], now = Date.now
     days > 0 ? rows.filter(p => p.idleDays <= days) : rows;
 
   if (prefs.digest.include.toReview) {
-    const rows = within(work.toReview, prefs.digest.maxAgeDays?.toReview ?? 0);
+    /**
+     * Age first, then how many people are on it.
+     *
+     * Both narrow, and the order does not change the result, but reading it
+     * this way round matches the settings screen: the age control sits on the
+     * row, and the reviewer cap under it.
+     */
+    const rows = keepWithinLimit(
+      within(work.toReview, prefs.digest.maxAgeDays?.toReview ?? 0),
+      prefs.digest.reviewerLimit);
     sections.push({
       heading: `Waiting for your review (${rows.length})`,
       emptyText: "Nobody is waiting on you.",
@@ -258,11 +268,8 @@ export function withinReviewerLimit(
   prefs: DevAlerts,
   counts: { reviewers?: string[]; reviewerTeams?: string[] } | undefined,
 ): boolean {
-  const limit = prefs.reviewerLimit;
-  if (typeof limit !== "number" || !Number.isFinite(limit) || limit < 1) return true;
-  if (!counts?.reviewers) return true;
-
-  // This person is one of them, and the payload lists the others.
-  const total = 1 + counts.reviewers.length + (counts.reviewerTeams?.length ?? 0);
-  return total <= limit;
+  // The rule itself lives in services/reviewerLimit, because the daily summary
+  // and the queue apply the same one to differently shaped objects, and three
+  // copies is how it comes to mean three slightly different things.
+  return withinLimit(prefs.reviewerLimit, totalFromEvent(counts));
 }

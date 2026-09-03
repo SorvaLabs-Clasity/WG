@@ -111,8 +111,11 @@ function PullRow({ pr, showAuthor }: { pr: MyPull; showAuthor?: boolean }) {
  * already use, a rule under the heading rather than a tinted title bar, which
  * was chrome doing the work a line does.
  */
-function Panel({ title, count, note, children }: {
-  title: string; count?: number; note?: string; children: React.ReactNode;
+function Panel({ title, count, note, action, children }: {
+  title: string; count?: number; note?: string;
+  /** A control belonging to this panel, on the heading line. */
+  action?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
     <section className={`${SURFACE.card} overflow-hidden flex flex-col`}>
@@ -122,6 +125,7 @@ function Panel({ title, count, note, children }: {
           {count !== undefined && (
             <span className="text-[12px] font-bold tabular-nums text-slate-300 dark:text-slate-600">{count}</span>
           )}
+          {action && <div className="ml-auto self-center">{action}</div>}
         </div>
         {note && <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">{note}</p>}
         <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
@@ -212,6 +216,42 @@ function Quiet({ children }: { children: React.ReactNode }) {
  * two are supporting facts at supporting size, on one surface divided by
  * hairlines rather than floating apart as peers.
  */
+/**
+ * How many people are still on this review, the reader among them.
+ *
+ * `pending` already includes the reader, unlike the webhook payload the same
+ * cap is applied to elsewhere, so nothing is added here. The backend's
+ * services/reviewerLimit carries the rule in full; this is the browser's copy
+ * of one line of it, applied to rows the page already has rather than by
+ * asking for them again.
+ */
+function reviewerCount(pr: { pending?: string[] }): number | null {
+  return pr.pending ? pr.pending.length : null;
+}
+
+/**
+ * The queue's own cap on how many reviewers before a review stops being yours.
+ *
+ * Kept in this browser rather than in the account's preferences, deliberately:
+ * the notification and summary caps are rules about when to interrupt somebody,
+ * and this is a rule about what to look at right now. They are set in different
+ * places because they answer different questions, and somebody narrowing their
+ * screen for an afternoon should not thereby stop being told about reviews.
+ */
+const QUEUE_LIMIT_KEY = "mywork.reviewerLimit";
+
+function readQueueLimit(): number | null {
+  try {
+    const raw = localStorage.getItem(QUEUE_LIMIT_KEY);
+    const n = raw === null ? NaN : Number(raw);
+    return Number.isFinite(n) && n >= 1 ? n : null;
+  } catch {
+    // Private windows and blocked site data both throw here. No cap is the
+    // honest fallback: it shows more rather than silently hiding work.
+    return null;
+  }
+}
+
 function Headline({ mergeable, onYou, toReview }: {
   mergeable: number; onYou: number; toReview: number;
 }) {
@@ -280,6 +320,10 @@ function MiniStat({ icon, label, value, foot, tone }: {
 }
 
 function Queue() {
+  // Above the early returns below, where a hook would be React error #310 in
+  // production. The lazy form so localStorage is read once rather than on
+  // every render. repro-hookorder guards the rule.
+  const [queueLimit, setQueueLimit] = useState<number | null>(readQueueLimit);
   const { data, isLoading, isError, error, refetch } = useMyWork();
 
   if (isLoading) return <div className="py-16 flex justify-center"><Spinner /></div>;
@@ -297,9 +341,29 @@ function Queue() {
     );
   }
 
+  /**
+   * The reviews this cap leaves, and how many it took away.
+   *
+   * Plain expressions rather than hooks: the guards above return early, and a
+   * hook after one of them is React error #310.
+   *
+   * A row whose reviewer list could not be read is kept, the same way the
+   * notification sends rather than withholds: hiding a review on the strength
+   * of a number nobody could see is how somebody misses one.
+   */
+  const visibleToReview = queueLimit === null
+    ? data.toReview
+    : data.toReview.filter(pr => {
+        const n = reviewerCount(pr);
+        return n === null || n <= queueLimit;
+      });
+  const hiddenToReview = data.toReview.length - visibleToReview.length;
+
   return (
     <>
-      <Headline mergeable={data.mergeable} onYou={data.onYou} toReview={data.toReview.length} />
+      {/* Applied once, above both, because a counter that disagrees with the
+          list under it is worse than either being wrong on its own. */}
+      <Headline mergeable={data.mergeable} onYou={data.onYou} toReview={visibleToReview.length} />
 
       {data.truncated && (
         <Note intent="warn">
@@ -309,12 +373,48 @@ function Queue() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Panel title="Waiting on you" count={data.toReview.length}
-          note="Reviews other people are blocked on.">
-          {data.toReview.length === 0
-            ? <Quiet>Nobody is waiting on a review from you.</Quiet>
-            : <Paged items={data.toReview} keyOf={pr => pr.url}
+        <Panel title="Waiting on you" count={visibleToReview.length}
+          note="Reviews other people are blocked on."
+          action={
+            /* On the panel it filters, so the number and the control that
+               changed it are never read apart. */
+            <select value={queueLimit ?? ""}
+              onChange={e => {
+                const next = e.target.value === "" ? null : Number(e.target.value);
+                setQueueLimit(next);
+                try {
+                  if (next === null) localStorage.removeItem(QUEUE_LIMIT_KEY);
+                  else localStorage.setItem(QUEUE_LIMIT_KEY, String(next));
+                } catch { /* Not being able to remember it does not stop it working now. */ }
+              }}
+              title="Counts everybody still awaiting review, you included."
+              className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-white/[0.06]
+                         border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300">
+              <option value="">any number reviewing</option>
+              <option value="1">only me reviewing</option>
+              <option value="2">me and at most one other</option>
+              <option value="3">at most three of us</option>
+              <option value="4">at most four of us</option>
+              <option value="5">at most five of us</option>
+            </select>
+          }>
+          {visibleToReview.length === 0
+            ? <Quiet>
+                {hiddenToReview > 0
+                  /* Never a bare "nothing to do" when a filter is why: that
+                     reads as an empty queue and is the one wrong impression
+                     this panel can give. */
+                  ? `Nothing matches. ${hiddenToReview} ${hiddenToReview === 1 ? "review has" : "reviews have"} more reviewers than that.`
+                  : "Nobody is waiting on a review from you."}
+              </Quiet>
+            : <Paged items={visibleToReview} keyOf={pr => pr.url}
                 render={pr => <PullRow pr={pr} showAuthor />} />}
+          {visibleToReview.length > 0 && hiddenToReview > 0 && (
+            <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-2">
+              {hiddenToReview} more {hiddenToReview === 1 ? "review has" : "reviews have"} more
+              reviewers than that.
+            </p>
+          )}
         </Panel>
 
         <Panel title="Your pull requests" count={data.mine.length}

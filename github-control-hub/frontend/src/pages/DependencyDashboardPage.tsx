@@ -206,7 +206,7 @@ export default function DependencyDashboardPage() {
   // fetching a second time. It is here only to put a count on the tab.
   const { data: renovate, isFetching: renovateFetching, refetch: refetchRenovate } = useQuery({
     queryKey: ["renovate"],
-    queryFn: fetchRenovate,
+    queryFn: () => fetchRenovate(),
     staleTime: 120_000,
   });
   const renovateOpen = (renovate?.prs ?? []).filter(pr => pr.state === "open").length;
@@ -413,6 +413,19 @@ export default function DependencyDashboardPage() {
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true" />
                 {stuck.total} without fixes
               </button>
+            )}
+            {/* A sweep that cannot be stored is a tab that recomputes the whole
+                organization on every single opening, forever, with nothing on
+                screen to say why. That is the shape of failure this codebase
+                keeps rediscovering: an absence rendered as an answer. It costs
+                a sentence to say instead. */}
+            {age && !age.storing && age.problem && (
+              <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold
+                               text-rose-700 dark:text-rose-400 rounded-lg px-2 py-1 -mx-1"
+                title={`${age.problem} Until that is fixed, every opening of this tab recomputes the whole organization.`}>
+                <i className="ph-bold ph-warning-circle text-[12px]" aria-hidden="true" />
+                not being stored
+              </span>
             )}
             {age?.computedAt && (
               <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums"
@@ -637,30 +650,12 @@ export default function DependencyDashboardPage() {
                       {/* Beside the findings, because the gap between them is the
                           thing worth seeing. Withheld when the search failed:
                           a zero nobody measured reads as a repository to act on. */}
-                      {!off && !clean && !scanning && openPrs !== null && (() => {
-                        const figure = (
-                          <Figure intent={expected > 0 && openPrs >= expected ? "good" : openPrs > 0 ? "info" : "neutral"}
-                            value={expected > 0 ? `${openPrs}/${expected}` : String(openPrs)}
-                            label={expected > 0 ? "fix PRs" : openPrs === 1 ? "fix PR" : "fix PRs"} />
-                        );
-                        // The number is the way in to the pull requests behind
-                        // it, which is where somebody already is when they want
-                        // to know which four of eighteen are open. Not a button
-                        // when there are none, because there would be nothing
-                        // to open.
-                        if (repoPrs.length === 0) return figure;
-                        return (
-                          <button onClick={() => togglePrs(repo)}
-                            title={`${prsOpen ? "Hide" : "Show"} the ${repoPrs.length} open fix pull request${repoPrs.length === 1 ? "" : "s"}`}
-                            className="rounded-xl -m-1 p-1 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors">
-                            {figure}
-                            <span className="flex items-center justify-center gap-1 -mt-0.5 text-[10.5px] font-bold text-slate-400 dark:text-slate-500">
-                              <i className={`ph-bold ph-caret-${prsOpen ? "up" : "down"} text-[9px]`} />
-                              {prsOpen ? "hide" : "view"}
-                            </span>
-                          </button>
-                        );
-                      })()}
+                      {!off && !clean && !scanning && openPrs !== null && (
+                        <FixPrCount open={openPrs} expected={expected}
+                          expandable={repoPrs.length > 0} expanded={prsOpen}
+                          onToggle={() => togglePrs(repo)} />
+                      )}
+
                       {org && (
                         <a href={`https://github.com/${org}/${repo}/security/dependabot`} target="_blank" rel="noreferrer"
                           className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 shadow-sm hover:shadow transition-shadow inline-flex items-center gap-1.5">
@@ -785,6 +780,57 @@ export default function DependencyDashboardPage() {
  * rather than guessed at when it did not come back, so a blank space here
  * means "not established", never "fine".
  */
+/**
+ * The fix-pull-request count on a repository card, and the way in to them.
+ *
+ * Its own component because the first version wrapped the shared `Figure` in a
+ * button and hung a caret and the word "view" underneath it. That put four
+ * things in a space sized for two, and next to the plain alerts figure beside
+ * it the pair no longer read as a pair.
+ *
+ * So the number is laid out here directly, matching the figure it sits beside,
+ * with the chevron on the baseline of the label rather than on a line of its
+ * own. Nothing says "view": a chevron already does, and the word was the part
+ * that made it crowded.
+ */
+function FixPrCount({ open, expected, expandable, expanded, onToggle }: {
+  open: number;
+  expected: number;
+  expandable: boolean;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const intent: Intent = expected > 0 && open >= expected ? "good" : open > 0 ? "info" : "neutral";
+  const body = (
+    <>
+      <div className={`${TYPE.metricSm} ${INTENT[intent].figure} tabular-nums`}>
+        {expected > 0 ? `${open}/${expected}` : open}
+      </div>
+      <div className="flex items-center gap-1 mt-0.5">
+        <span className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
+          {expected > 0 || open !== 1 ? "fix PRs" : "fix PR"}
+        </span>
+        {expandable && (
+          <i className={`ph-bold ph-caret-down text-[9px] text-slate-400 dark:text-slate-500
+                         transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
+        )}
+      </div>
+    </>
+  );
+
+  // Not a button when there is nothing behind it, so the hover state never
+  // promises something that does not open.
+  if (!expandable) return <div className="text-right">{body}</div>;
+
+  return (
+    <button onClick={onToggle} aria-expanded={expanded}
+      title={`${expanded ? "Hide" : "Show"} the ${open} open fix pull request${open === 1 ? "" : "s"}`}
+      className="text-right rounded-xl -m-1.5 p-1.5 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors">
+      {body}
+    </button>
+  );
+}
+
 function FixPrRow({ pr }: { pr: DependabotPr }) {
   const state = (pr.readiness ?? "unknown") as Readiness;
   const r = READINESS[state];

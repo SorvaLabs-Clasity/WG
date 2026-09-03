@@ -1461,6 +1461,118 @@ And the rules about writing to somebody's repository:
 
 `repro-dependabotconfig` pins the generated file.
 
+### "Only when the review is mine to do", in three places
+
+The review-request notification had a cap on how many reviewers a pull request
+could have before it stopped being worth interrupting for. The daily summary
+and the queue did not, so the same person could be told "not yours, eight
+people are on it" at the moment of the request, then handed that same pull
+request in the morning summary and again in their queue.
+
+All three now ask it, and the counting rule lives once, in
+`services/reviewerLimit.ts`. That matters more than it looks, because the two
+shapes it counts differ in a way that invites an off-by-one:
+
+| Source | What it lists | Total |
+| --- | --- | --- |
+| webhook payload | the **other** reviewers, the reader removed | `1 + others + teams` |
+| pull request row | **everybody** still pending, reader included | `pending + teams` |
+
+Adding one to both, or to neither, is wrong in opposite directions and neither
+shows up as an error. `repro-reviewerscope` runs the same three-person review
+through both shapes at every limit and requires the same answer.
+
+The rest of the rule, unchanged from where it started: a team counts as one,
+because it is one more group who might pick it up; the limit is inclusive, so
+"at most three of us" keeps a review with exactly three; and **an unreadable
+list never withholds**, because silently dropping a review on the strength of a
+number nobody could see leaves somebody waiting on a review they were never
+told about.
+
+Where each cap lives is a deliberate split. The notification and summary caps
+are rules about **when to interrupt somebody**, so they belong to the account
+and travel with it. The queue's cap is about **what to look at right now**, so
+it stays in that browser: somebody narrowing their screen for an afternoon
+should not thereby stop being told about reviews. It also never shows a bare
+"nothing to do" when a filter is the reason, since an empty queue and a
+narrowed one are the same picture and opposite facts.
+
+### Widget filters: a short list is not a closed one
+
+Owner rendered as a row of tick boxes with no text field at all, because the
+filter editor read "few distinct values in these rows" as "a fixed set to pick
+from". The two are not the same thing.
+
+Status has a **closed** vocabulary: the app defines it, and fail and pass are
+all there will ever be. Owner has an **open** one that merely happens to be
+short in today's rows, and one new team makes the boxes wrong. A filter is also
+something people save and reuse, so a control built from the values present on
+the day it was made quietly stops offering the right answer later.
+
+The failure was total rather than partial: with no text field, a team that
+happened to be absent from the rows on screen could not be filtered for at all.
+
+So the guess is gone. The closed vocabularies are named, `status`,
+`visibility`, `worst`, `ownerKind`, counts stay ranges, and everything else is
+typed into. The new rule's worst case is a column that could have offered a
+list and instead lets somebody type, which is an inconvenience. The old rule's
+worst case was not being able to express the filter at all.
+
+Typing keeps the help that made the list attractive: the field says what the
+column actually holds, "things like platform, finance", because the commonest
+way to get nothing back is to filter the wrong column, and a username typed
+into a column of repository names matches nothing and looks like a broken
+filter.
+
+### The login screen that required a login
+
+Leave the desktop app open long enough for the session token to expire, come
+back to the login screen, and the AWS profile list was empty with "Missing or
+invalid Authorization header". The screen whose entire job is getting a session
+could not draw itself without one.
+
+`setupOrAuthMiddleware` opened the connection endpoints in two cases: nothing
+configured yet, and AWS unusable. Both are about AWS. Neither covers the
+ordinary way to reach that screen, which is AWS being perfectly healthy while
+the *GitHub session* expired. So the endpoints that exist to establish a
+connection demanded the thing a connection produces.
+
+The rest of the file already assumed otherwise: `sameOriginOnly`, guarding the
+same routes, documents them as "reachable without a session by design, since
+reconnecting AWS is how you get a session back". This aligns the two. What
+keeps them safe is where they can run, not who is calling: `serverModeGuard`
+refuses them outright on a server deployment, so the only caller is the desktop
+app reading the `~/.aws/config` of the machine it is installed on, which any
+local process able to reach that port can already read directly.
+
+`repro-loginlockout` pins that, and pins `serverModeGuard` and `sameOriginOnly`
+on every one of the eight routes. Writing it found three the first list had
+missed, which is why the set is asserted in both directions rather than spot
+checked.
+
+### Why that tab was still slow, and how it now says so
+
+The summary was reading from storage and the tab was still slow on every
+launch, which meant the stored sweep was not there to read. A save that fails
+is invisible from outside: every opening recomputes the whole organization,
+forever, and nothing on screen says why.
+
+So the snapshot now records why its last save did not happen, `/dependencies/age`
+reports it, and the tab shows **"not being stored"** with the reason on hover.
+Three ways it can fail, each with its own wording: no storage table configured
+for the account, a sweep too large for a single row, and a write that was
+refused. This is the same failure shape the rest of this document keeps
+returning to, an absence rendered as an answer, and a sentence is what it costs
+to say instead.
+
+One real cost was found while measuring. The Vulnerabilities page reads the
+Renovate endpoint on **every** open, whichever view is showing, purely to put a
+count on a tab. Enriching every open Renovate pull request with its checks and
+conflicts to do that spent a GraphQL batch on a screen nobody had open, on the
+slowest tab in the app. Those details are now asked for only by the panel that
+shows them, and the search behind both is held for a minute so the second call
+reuses it.
+
 ### Drawers, and why the tab stopped being a stack of bands
 
 Every feature added to the Vulnerabilities tab had become another horizontal
@@ -1639,6 +1751,35 @@ One builder, `services/dependencyView.ts`, serves the tab, the background
 refresh and the alarm pass. Two copies would be two places for the "off" and
 "clean" markers to drift, and the drift shows as a repository reading clean on
 one path and unwatched on the other. `repro-depsnapshot` pins this.
+
+### What a Renovate pull request patches
+
+The row said "Update all non-major dependencies" and stopped, so deciding
+whether to merge meant opening GitHub, which is what this screen exists to
+save. Expanding a row now lists the packages and the versions either side.
+
+Renovate has no API to ask, and the changed files name manifests rather than
+packages, so the body's markdown table is the only statement of what is moving.
+That is prose, and the table has changed shape between Renovate versions and
+between presets: different columns, in different orders, with and without the
+age and confidence badges. So nothing in the parse counts columns. It keys on
+the two things every version of that table has carried, a linked package name
+and a version transition in backticks, and skips any row without both. The
+header and separator rows fall out on their own, having no link.
+
+Fetched per pull request on expansion rather than for all of them up front: a
+grouped update's body is large and most rows are never opened, so the cost is
+proportional to what somebody actually looks at.
+
+A body that yields nothing returns **null, never an empty list**, because "this
+updates nothing" and "nobody could read what this updates" are opposite claims.
+The panel falls back to the changed files there, which is less than the
+packages but is read rather than guessed. `repro-renovatechanges` pins it.
+
+The counts above the list stopped being five large metric tiles in a card of
+their own. They read as the most important thing on the screen when they are
+really a way to narrow the list below, so they are chips on the search row now:
+same numbers, one line instead of a band, and they look like what they do.
 
 ### What a Renovate pull request needs before it can merge
 

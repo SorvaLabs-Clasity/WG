@@ -111,6 +111,11 @@ export interface DigestPrefs {
   include: { toReview: boolean; mine: boolean; mergeable: boolean };
   /** Days of silence each section reaches back. Zero means no limit. */
   maxAgeDays: { toReview: number; mine: number; mergeable: number };
+  /**
+   * Cap on how many people are on a review before it stops being yours.
+   * Null means no cap. Only applies to the reviews section.
+   */
+  reviewerLimit?: number | null;
   skipWhenEmpty: boolean;
 }
 

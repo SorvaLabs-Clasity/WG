@@ -58,28 +58,44 @@ export function valueFor(item: any, column: string): unknown {
   }
 }
 
-/** Whether a column holds numbers, a small fixed set, or free text. */
-function kindOf(column: string, items: any[]): FilterKind {
-  if (["critical", "high", "medium", "low", "total", "alerts", "bypasses", "age"].includes(column)) {
-    return "number";
-  }
-  if (["status", "visibility", "worst", "ownerKind"].includes(column)) return "enum";
+/** Counts, which get a range rather than a list. */
+const NUMERIC = ["critical", "high", "medium", "low", "total", "alerts", "bypasses", "age"];
 
-  // Anything else is decided by the data: a column with a handful of repeated
-  // values is a set to pick from, and one with a different value on every row
-  // is text somebody has to type. Guessing from the id alone would make a
-  // column added later behave as free text forever.
-  const seen = new Set<string>();
-  let sampled = 0;
+/**
+ * The columns whose values are a closed set the app itself defines.
+ *
+ * Closed is the whole test, and it is not the same as short. Status has two
+ * values because fail and pass are all there will ever be. Owner might also
+ * have two today, and one new team makes that wrong.
+ *
+ * This used to be inferred: any column with twelve or fewer distinct values in
+ * the rows became a list to tick. Owner and Entity are names, so they landed
+ * on the wrong side of it and lost their text field entirely. Not partly, but
+ * entirely: a team absent from the rows on screen could not be filtered for at
+ * all, and a saved filter built from the values present the day it was made
+ * quietly stops offering the right answer later.
+ *
+ * So the guess is gone. Naming the closed vocabularies is a list this app can
+ * actually be sure about, and everything else is typed into. The failure mode
+ * of the new rule is a column that could have offered a list and instead lets
+ * somebody type, which is an inconvenience; the failure mode of the old one
+ * was not being able to express the filter at all.
+ */
+const CLOSED_VOCABULARY = ["status", "visibility", "worst", "ownerKind"];
+
+/** Whether a column holds numbers, a closed set of values, or free text. */
+function kindOf(column: string, items: any[]): FilterKind {
+  if (NUMERIC.includes(column)) return "number";
+  if (CLOSED_VOCABULARY.includes(column)) return "enum";
+
+  // A column that turns out to hold numbers still gets a range, since typing
+  // "3" to mean "3 or more" is not something a text match can express.
   for (const item of items) {
     const v = valueFor(item, column);
     if (v === undefined || v === null || v === "") continue;
-    if (typeof v === "number") return "number";
-    seen.add(String(v));
-    sampled++;
-    if (seen.size > 12) return "text";
+    return typeof v === "number" ? "number" : "text";
   }
-  return sampled > 0 && seen.size <= 12 ? "enum" : "text";
+  return "text";
 }
 
 export interface FilterableColumn {

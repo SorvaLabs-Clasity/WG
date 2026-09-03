@@ -43,9 +43,29 @@ export interface RenovateResponse {
   resolvedBot?: string;
 }
 
-export const fetchRenovate = () => apiGet<RenovateResponse>("/security/renovate");
+/**
+ * `details` asks for each open pull request's checks, review and conflicts,
+ * which costs a GraphQL batch. The tab count does not need them, and asking
+ * anyway made every open of the Vulnerabilities page pay for a view nobody was
+ * looking at.
+ */
+export const fetchRenovate = (details = false) =>
+  apiGet<RenovateResponse>(`/security/renovate${details ? "?details=1" : ""}`);
 export const setRenovateBot = (bot: string) =>
   apiPut<{ renovateBot: string | null }>("/security/renovate/bot", { bot });
 
 /** How long a closed PR stays visible. Mirrors CLOSED_RETENTION_MONTHS. */
 export const CLOSED_RETENTION_MONTHS = 3;
+
+export interface RenovateChange { name: string; from: string; to: string; }
+
+/**
+ * What one pull request patches, fetched when somebody expands it.
+ *
+ * `changes` is null when the body could not be read as a package table, which
+ * is not the same as a pull request that changes nothing. The panel keeps them
+ * apart and falls back to the changed files.
+ */
+export const fetchRenovateChanges = (repo: string, number: number) =>
+  apiGet<{ changes: RenovateChange[] | null; files: string[] }>(
+    `/security/renovate/${encodeURIComponent(repo)}/${number}/changes`);

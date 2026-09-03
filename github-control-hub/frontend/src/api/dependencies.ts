@@ -78,8 +78,15 @@ export function bulkDependabot(repos: string[], action: BulkAction): Promise<Bul
  * Null means nothing is stored yet, which is a first open rather than an old
  * answer, and the page says so differently.
  */
-export function fetchDependenciesAge(): Promise<{ computedAt: string | null; fresh: boolean }> {
-  return apiGet<{ computedAt: string | null; fresh: boolean }>("/security/dependencies/age");
+export function fetchDependenciesAge(): Promise<{
+  computedAt: string | null;
+  fresh: boolean;
+  /** False when the sweep cannot be kept between openings. */
+  storing: boolean;
+  /** Why not, in words, when it cannot. */
+  problem: string | null;
+}> {
+  return apiGet("/security/dependencies/age");
 }
 
 export interface DependabotPr {

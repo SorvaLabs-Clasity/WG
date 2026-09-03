@@ -144,6 +144,45 @@ const rows = [
     check("a count becomes a range", bypasses?.kind === "number", bypasses);
   }
 
+  console.log("\na column of names is typed into, however few names there are today");
+  {
+    /**
+     * Owner rendered as a row of tick boxes and no input at all, because the
+     * three rows here carry two owners and "few distinct values" was read as
+     * "a fixed set to pick from".
+     *
+     * The two are not the same thing. Status has a *closed* vocabulary: the
+     * app defines it, and fail and pass are all there will ever be. Owner has
+     * an open one that merely happens to be short in today's rows, and one new
+     * team makes the boxes wrong. A filter is also a thing people save and
+     * reuse, so a control built from the values present the day it was made is
+     * a control that quietly stops offering the answer later.
+     *
+     * And the failure was total rather than partial: with no text field, a
+     * team absent from the current rows could not be filtered for at all.
+     */
+    const cols = widgetColumns({
+      type: "query", hasStatus: true, hasOwner: true, hasVisibility: true, hasBypasses: true,
+    });
+    const available = filterableColumns(cols, rows);
+
+    const owner = available.find(c => c.id === "owner");
+    check("owner is typed into, not picked from", owner?.kind === "text", owner);
+
+    const entity = available.find(c => c.id === "entity");
+    check("  so is the entity, which holds repository names", entity?.kind === "text", entity);
+
+    // The closed vocabularies keep their lists: nobody should have to spell
+    // "fail" correctly to filter on it.
+    check("  while status still offers its values",
+      available.find(c => c.id === "status")?.kind === "enum");
+    check("  and so does visibility",
+      available.find(c => c.id === "visibility")?.kind === "enum");
+    // Counts are still ranges.
+    check("  and a count is still a range",
+      available.find(c => c.id === "bypasses")?.kind === "number");
+  }
+
   console.log("\nan enum with nothing in it is not offered at all");
   {
     // A dropdown of no choices reads as a broken control rather than as an

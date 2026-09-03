@@ -29,12 +29,35 @@ const DAYS = [
  * property of that section, and two hundred year-old pull requests crowding out
  * three from this week is a per-section problem.
  */
-function IncludeRow({ label, checked, onChange, days, onDays }: {
+/**
+ * The reviewer-cap choices, shared by the notification and the summary.
+ *
+ * One list because they are one rule asked in two places, and two lists is how
+ * "only me" comes to mean something slightly different depending on which
+ * screen you set it on.
+ */
+export const REVIEWER_LIMIT_OPTIONS: [string, string][] = [
+  ["", "Any number of reviewers"],
+  ["1", "Only when I am the only reviewer"],
+  ["2", "Only me and at most one other"],
+  ["3", "At most three of us"],
+  ["4", "At most four of us"],
+  ["5", "At most five of us"],
+];
+
+function IncludeRow({ label, checked, onChange, days, onDays, limit, onLimit }: {
   label: string; checked: boolean; onChange: (v: boolean) => void;
   days: number; onDays: (d: number) => void;
+  /**
+   * Only the review row has these. The other two sections are the reader's own
+   * pull requests, where "how many reviewers" is not a reason to leave one out.
+   */
+  limit?: number | null;
+  onLimit?: (v: number | null) => void;
 }) {
   return (
-    <div className="flex items-center gap-3 py-2.5">
+    <div className="py-2.5">
+    <div className="flex items-center gap-3">
       <label className="flex items-center gap-3 cursor-pointer min-w-0 flex-1">
         <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
           className="w-4 h-4 rounded accent-slate-900 dark:accent-white shrink-0" />
@@ -63,6 +86,24 @@ function IncludeRow({ label, checked, onChange, days, onDays }: {
           {[3, 7, 14, 30, 60, 90].map(d => <option key={d} value={d}>{d} days</option>)}
         </select>
       </div>
+    </div>
+
+    {/* Under the row rather than beside it: a second dropdown on the same line
+        made three controls in a row and none of them readable. Shown only for
+        the section it applies to, and only while that section is included. */}
+    {onLimit && checked && (
+      <div className="flex items-center gap-1.5 mt-1.5 ml-7">
+        <span className="text-[11.5px] text-slate-400 dark:text-slate-500">and only when</span>
+        <select value={limit ?? ""} onChange={e => onLimit(e.target.value === "" ? null : Number(e.target.value))}
+          title="Counts everybody still awaiting review, you included, and a team counts as one."
+          className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-white/[0.06]
+                     border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200">
+          {REVIEWER_LIMIT_OPTIONS.map(([v, label]) => (
+            <option key={v} value={v}>{v === "" ? "any number are reviewing" : label.toLowerCase()}</option>
+          ))}
+        </select>
+      </div>
+    )}
     </div>
   );
 }
@@ -552,6 +593,10 @@ export default function DevAlertSettings() {
                 onChange={v => patchDigest({ include: { ...digest.include, [key]: v } })}
                 days={digest.maxAgeDays?.[key] ?? 0}
                 onDays={d => patchDigest({ maxAgeDays: { ...digest.maxAgeDays, [key]: d } })}
+                {...(key === "toReview"
+                  ? { limit: digest.reviewerLimit ?? null,
+                      onLimit: (v: number | null) => patchDigest({ reviewerLimit: v }) }
+                  : {})}
               />
             ))}
             <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">

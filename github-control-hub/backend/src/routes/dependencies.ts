@@ -114,9 +114,12 @@ router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
 router.get("/dependencies/age", async (_req: Request, res: Response) => {
   try {
     const stored = await readDependencySnapshot();
+    const { snapshotHealth } = await import("../services/dependencySnapshot");
     res.json({
       computedAt: stored?.computedAt ?? null,
       fresh: isFresh(stored),
+      // So the tab can say why it is slow, rather than just being slow.
+      ...snapshotHealth(),
     });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "dependencies") });
@@ -538,7 +541,20 @@ router.get("/renovate", async (req: Request, res: Response) => {
      * nothing. On an organization that keeps months of closed ones that is
      * most of the list.
      */
-    const open = result.prs.filter(p => p.state === "open");
+    /**
+     * Only when somebody is looking at the Renovate view.
+     *
+     * The Vulnerabilities page reads this endpoint on every open, whichever
+     * view is showing, purely to put a count on the tab. Enriching every open
+     * pull request to do that spent a GraphQL batch on a screen nobody had
+     * open, on the slowest tab in the app.
+     *
+     * The search behind it is held for a minute, so the second call, the one
+     * that does want details, reuses it rather than searching twice.
+     */
+    const open = req.query.details === "1"
+      ? result.prs.filter(p => p.state === "open")
+      : [];
     if (open.length > 0) {
       const { fetchPullRequestDetails, mergeReadiness } = await import("../services/pullRequestDetails");
       const details = await fetchPullRequestDetails(
@@ -553,6 +569,55 @@ router.get("/renovate", async (req: Request, res: Response) => {
     }
 
     res.json({ configured: true, ...result });
+  } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "renovate") });
+  }
+});
+
+/**
+ * What one Renovate pull request patches.
+ *
+ * Fetched per pull request, when somebody expands it, rather than for all of
+ * them up front: the body of a grouped update is large, and most rows are never
+ * opened. So the cost is proportional to what is actually looked at.
+ */
+router.get("/renovate/:repo/:number/changes", async (req: Request, res: Response) => {
+  try {
+    const token = getSystemToken() || req.user?.accessToken;
+    if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+
+    const repo = String(req.params.repo);
+    const number = Number(req.params.number);
+    // Both become part of a GraphQL document, so both are checked rather than
+    // interpolated on trust.
+    if (!isValidRepoName(repo)) return res.status(400).json({ error: "Invalid repository name" });
+    if (!Number.isInteger(number) || number <= 0) {
+      return res.status(400).json({ error: "Invalid pull request number" });
+    }
+
+    const octokit = createOctokit(token, "Renovate pull request search");
+    const data: any = await (octokit as any).graphql(
+      `query($org:String!, $repo:String!, $number:Int!) {
+        repository(owner: $org, name: $repo) {
+          pullRequest(number: $number) {
+            bodyText
+            files(first: 20) { nodes { path } }
+          }
+        }
+      }`,
+      { org: getOrg(), repo, number },
+    );
+
+    const pr = data?.repository?.pullRequest;
+    const { parseRenovateChanges } = await import("../services/renovateChanges");
+
+    res.json({
+      // Null means the body could not be read as a package table, which is
+      // different from a pull request that changes nothing. The UI says so.
+      changes: parseRenovateChanges(pr?.bodyText),
+      files: (pr?.files?.nodes ?? []).map((f: any) => f?.path).filter(Boolean),
+    });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "renovate") });

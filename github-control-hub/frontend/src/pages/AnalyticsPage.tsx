@@ -1262,7 +1262,7 @@ export function useWidgetData(
   const isRenovate = !fromSnapshot && config.type === "preset" && config.presetId === "renovate-open";
   const { data: renovateData, isLoading: renovateLoading } = useQuery({
     queryKey: ["renovate"],
-    queryFn: fetchRenovate,
+    queryFn: () => fetchRenovate(),
     staleTime: 120_000,
     enabled: isRenovate,
   });
