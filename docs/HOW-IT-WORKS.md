@@ -1252,6 +1252,33 @@ between one request and 350. Two details follow from that:
   it as *no reading*, so an alarm cannot resolve itself because half the answer
   was missing.
 
+### Three budgets, not one
+
+"I keep getting the slow-down message even though the requests tab says I have
+used 8 requests." Both were true. GitHub keeps three separate allowances in
+different units:
+
+| Budget | Allowance | Unit |
+| --- | --- | --- |
+| core | 15,000 | per hour |
+| GraphQL | 5,000 points | per hour |
+| search | 30 | **per minute** |
+
+Thirty a minute is small enough to spend twice over inside a minute of an hour
+whose total reads 8, and the usage screen reports hourly totals, so it can
+never explain a search limit.
+
+The refusal says which budget it was, in `x-ratelimit-resource`, and the
+classifier was discarding that header and then describing every limit as "the
+hourly request budget for this organization is spent". For a search limit that
+is wrong twice over, wrong budget and wrong unit, and it points somebody at a
+screen that cannot account for it. The banner now names the budget and says
+minutes where the unit is minutes.
+
+An unnamed budget stays unnamed. Some responses omit the header, and defaulting
+to core there would be a confident wrong answer in place of a vague right one.
+`repro-ratelimit` pins it.
+
 ### Findings without fixes
 
 A repository can show a hundred findings, a switch reading "auto-fix on", and
@@ -1434,6 +1461,156 @@ And the rules about writing to somebody's repository:
 
 `repro-dependabotconfig` pins the generated file.
 
+### Drawers, and why the tab stopped being a stack of bands
+
+Every feature added to the Vulnerabilities tab had become another horizontal
+band above the findings: a staleness line, an amber summary of repositories
+without fixes, and the repository management panel. Each was reasonable on its
+own. By the third, the thing somebody opened the tab for had been pushed below
+the fold by controls they were not using.
+
+The missing piece was a pattern, not a tidy-up. `Drawer` in the design system
+is the answer to it: **a task with a beginning and an end gets its own surface
+over the page, rather than a band inside it.** Bulk-editing three hundred
+repositories is such a task, and the page it was launched from is not part of
+it.
+
+So the three bands became one row and one drawer:
+
+- The **summary and the panel share the drawer**, because they are two halves
+  of one question, why fixes are not happening and what to do about it. The
+  breakdown opens the drawer, where it says which repositories are worth
+  selecting and which cannot be helped by anything on the panel.
+- The **staleness became four words** on the switcher row that already existed:
+  "swept 2:14 PM", with "(refreshing)" when a sweep is running.
+- What is left above the findings is the heading and one row.
+
+Three things the drawer has to get right, since it covers the page:
+
+- **Escape and the backdrop both close it.** A panel covering the page must be
+  dismissible without hunting for the control that does it, and the button that
+  opens it never toggles: "Hide" rendered underneath the thing it hides is a
+  control nobody can reach.
+- **The page behind is frozen while it is open**, so a scroll over the backdrop
+  does not silently move content the reader cannot see. Its previous overflow
+  is *restored* rather than cleared, because something else may have set it.
+- **The panel inside gave up its own chrome.** Its card border, heading and
+  padding all belonged to the drawer once it moved in. Two titles and two
+  borders is what "just put it in a modal" looks like when nothing is taken
+  away.
+
+`repro-drawer` holds the structure down, because it is the part that quietly
+regresses: the next feature is always easiest to add as one more band.
+
+### The open fix pull requests, in the card that owns them
+
+The card said "4/18 fix PRs" and stopped, so learning *which* four meant going
+to GitHub. They now live behind that number: click the count and they unfold
+inside the repository's own card, above the findings they close, because that
+is where somebody already is when the question occurs to them. Not a band at
+the top of the page, which would be a second list to reconcile against the
+first.
+
+Each row carries what decides whether it can be merged: readiness as a coloured
+left edge, the check rollup, the review, conflicts, the size of the change, the
+age, and the package it bumps. Ready first, then oldest, which is the order
+somebody would clear them in.
+
+The package comes from the **branch**, not the title, because the title is
+prose and prose changes between GitHub releases. `dependabot/npm_and_yarn/
+lodash-4.17.21` is lodash.
+
+The test for that is deliberately inverted, and the first version had it the
+wrong way round. It recognised Dependabot's default `multi-` grouping and read
+every other branch as a package, so a real grouped branch from the
+configuration this app writes, `dependabot/npm_and_yarn/security-fixes-450e0d57a0`,
+had its hash stripped as though it were a version and displayed as the package
+**"security-fixes"**. A group is named by whatever the `dependabot.yml` calls
+it, so group names cannot be enumerated and no list of them would be complete.
+Versions can be recognised; group names cannot. So a package is claimed only
+where the last component starts with a digit and carries a dot, and everything
+else shows the title, which for a grouped pull request already reads correctly.
+That costs the rare bump to a version with no dot, which claims nothing rather
+than claiming wrongly.
+
+One genuine ambiguity is documented rather than hidden, since `babel/core-7.24.0`
+(a scoped package) and `frontend/lodash-4.17.21` (a directory) have the same
+shape.
+
+### When Dependabot actually runs
+
+Worth knowing before waiting on it. Security updates are **event-driven, not
+scheduled**: "when a Dependabot alert is raised for a vulnerable dependency in
+the dependency graph of your repository, Dependabot automatically tries to fix
+it." The `schedule.interval` in the generated configuration drives *version*
+updates only, and those are switched off there by `open-pull-requests-limit: 0`,
+so it governs nothing this app cares about.
+
+Which leaves three moments when pull requests appear: a new advisory affecting
+a repository, a push that changes a manifest, and the one this app uses,
+grouped security updates being switched on for the first time, which GitHub
+documents as an immediate attempt at every open alert that has a patch. There
+is no fourth. Nothing re-runs nightly to pick up what the backfill missed, and
+no REST endpoint asks it to try again, which is why the configuration file is
+the trigger.
+
+One irreversible action, surfaced in the panel where somebody is about to take
+it: **closing a Dependabot pull request without merging stops it being raised
+again**, exactly as the `@dependabot close` command does. On a backlog this
+size that is easy to do to a hundred of them before noticing.
+`@dependabot reopen` undoes it.
+
+The check state comes from `services/pullRequestDetails.ts`, which the Renovate
+view already used. Same question, same objects, so the same code answers it:
+two copies would be two places for "unknown" to quietly become "passing". The
+readiness wording is shared on the frontend too, in `lib/prReadiness.ts`, for
+the same reason. One GraphQL batch per fifty pull requests, on a budget the
+search does not touch.
+
+`repro-dependabotprs` covers the search and the branch parsing;
+`repro-fixprpanel` pins that the panel renders inside the card and above the
+findings, and that nothing on the page can merge anything.
+
+### Why the tab was still slow on the first open
+
+The list was served from storage the moment somebody opened the tab, and the
+tab still took an organization-wide walk to appear, but only on the first open
+after launching the app. Two facts explained it together:
+
+- the spinner is `depsLoading || sumLoading`, so it waits for the severity
+  counts as well as the list, and
+- `/summary` swept the organization **live on every call**, ignoring the stored
+  answer entirely. On 7,047 alerts that is seventy-one sequential pages.
+
+Later opens in the same session were fast because the sweep is held briefly in
+memory. That is exactly why this only ever appeared on the first open after a
+launch, and why it read as a cold-start mystery rather than a missing cache
+read: serving the list instantly bought nothing while the thing beside it still
+walked the whole organization.
+
+The counts are arithmetic over the rows already stored, so the summary now
+reads storage first and sweeps only when nothing is stored, which is the first
+open for an organization that has never had one.
+
+One trap in doing that, and the reason the counting is a single shared
+function: **the stored rows are not the swept rows.** Storage also holds a
+marker for every repository that produced no findings, so a clean repository
+can be told from an unwatched one. Those rows carry a severity, and counting
+them would report findings against every quiet repository in the organization.
+A degraded stored answer is refused exactly as a degraded sweep is.
+`repro-summarysource` pins it.
+
+While measuring this: nothing in the backend compressed anything, on any
+route. The tab's own body is 2.76MB of JSON and 64KB gzipped, a 43x reduction,
+so responses over 4KB are now gzipped by a twenty-line middleware. Written
+rather than installed, because every runtime dependency has to be declared and
+bundled or the packaged desktop build breaks in a way `npm run dev` never
+shows, and an app whose subject is dependency risk should be slow to add
+dependencies. `repro-compression` covers what must *not* be compressed: a
+client that did not offer gzip, a body too small to be worth the headers, and
+anything already encoded, since double-encoding reads as corruption rather than
+as this middleware.
+
 ### Where the answer comes from
 
 The sweep is stored, and the tab reads storage. On an organization with
@@ -1462,6 +1639,43 @@ One builder, `services/dependencyView.ts`, serves the tab, the background
 refresh and the alarm pass. Two copies would be two places for the "off" and
 "clean" markers to drift, and the drift shows as a repository reading clean on
 one path and unwatched on the other. `repro-depsnapshot` pins this.
+
+### What a Renovate pull request needs before it can merge
+
+The Renovate view listed a repository, a number, a title and an age, which is
+enough to know a pull request exists and not enough to decide anything about
+one. The question in front of that screen is which of them can be merged now,
+so the screen leads with that: a row of counts over every open pull request,
+ready, failing, conflicting, waiting, unknown, each clickable as a filter, and
+then per row the check rollup, the review decision, whether it still merges
+cleanly, the size of the change, the branch (which names the package better
+than the title does) and its labels.
+
+Three constraints shaped how those details are fetched:
+
+- **Over GraphQL, fifty pull requests to a request.** REST would be two calls
+  per pull request, the pull request and its check runs, so a hundred open ones
+  is two hundred requests.
+- **Off the search budget.** Search found them, and search is thirty requests a
+  minute, the smallest allowance the app touches. GraphQL is a separate budget.
+- **Open ones only.** Nobody is deciding anything about a closed pull request,
+  and on an organization keeping months of them that is most of the list.
+
+Discovery still goes through the REST search, unchanged, because the bot-name
+resolution depends on its behaviour: search answers an unknown author with 422
+rather than an empty result, which is how a mistyped bot name is told apart
+from a bot with nothing open.
+
+The rule the details turn on: **an unknown check is not a passing one.** A batch
+that fails, a repository with no checks configured, a mergeability GitHub has
+not finished computing, all stay "unknown", and none of them count as ready.
+The value of the label is that it can be trusted without opening the pull
+request, and one wrong "ready" costs more than ten cautious "check this one".
+Responses are matched back by the repository and number inside them rather than
+by alias order, so a null in the middle of a batch cannot shift every later
+pull request onto another one's check status.
+
+`repro-renovatedetails` pins all of it.
 
 ### The three views
 

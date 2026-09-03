@@ -15,7 +15,8 @@ import {
 } from "../services/dependencySnapshot";
 import { mockCleanAlert, mockDisabledAlert } from "../services/dependencyMarkers";
 import { buildDependencyView } from "../services/dependencyView";
-import { fetchDependabotPrCounts } from "../services/dependabotPrs";
+import { summariseAlerts } from "../services/dependencySummary";
+import { fetchDependabotPrs, packageFromBranch } from "../services/dependabotPrs";
 
 const router = Router();
 
@@ -64,20 +65,46 @@ router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
     if (!token) return res.status(401).json({ error: "No GitHub token provided" });
 
     const octokit = createOctokit(token, "Dependabot pull request count");
-    const counts = await fetchDependabotPrCounts(
+    const org = getOrg();
+    const found = await fetchDependabotPrs(
       async (q, page) => {
         const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
           q, per_page: 100, page, advanced_search: "true",
         });
         return { items: r.data?.items ?? [] };
       },
-      getOrg(),
+      org,
     );
 
     // Null stays null across the wire. A client shown {} would render every
     // repository as having no open pull requests, which is a finding, and
     // nobody established it.
-    res.json({ counts: counts ? Object.fromEntries(counts) : null });
+    if (!found) return res.json({ counts: null, prs: null });
+
+    /**
+     * The check state, from the module the Renovate view uses.
+     *
+     * The same question of the same objects, so the same code answers it: two
+     * copies would be two places for "unknown" to quietly become "passing".
+     * One GraphQL batch per fifty, on a budget the search does not touch.
+     */
+    if (found.prs.length > 0) {
+      const { fetchPullRequestDetails, mergeReadiness } = await import("../services/pullRequestDetails");
+      const details = await fetchPullRequestDetails(
+        (query, vars) => (octokit as any).graphql(query, vars),
+        org,
+        found.prs.map(p => ({ repo: p.repo, number: p.number })),
+      );
+      for (const pr of found.prs) {
+        const detail = details.get(`${pr.repo}#${pr.number}`);
+        Object.assign(pr, detail ?? {}, {
+          readiness: mergeReadiness(detail),
+          packageName: packageFromBranch(detail?.headRefName),
+        });
+      }
+    }
+
+    res.json({ counts: found.counts, prs: found.prs });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "dependencies") });
@@ -135,9 +162,21 @@ router.get("/dependencies", async (req: Request, res: Response) => {
      * because the in-memory cache belongs to a process that has just started.
      */
     if (wholeOrg) {
+      /**
+       * Timed, and said out loud, because "the tab is slow" has three
+       * completely different causes and they are indistinguishable from the
+       * outside: nothing stored so it swept live, storage itself being slow to
+       * answer, or a fast answer that is simply large. Each line below names
+       * which one happened.
+       */
+      const startedAt = Date.now();
       const stored = await readDependencySnapshot();
       if (stored) {
-        res.json(applyFilters(stored.alerts, severityFilter));
+        const rows = applyFilters(stored.alerts, severityFilter);
+        console.log(
+          `[Dependencies] Served ${rows.length} rows from storage in `
+          + `${Date.now() - startedAt}ms, swept ${stored.computedAt}`);
+        res.json(rows);
         if (!isFresh(stored)) {
           // Deliberately not awaited. The reader already has an answer, and
           // making them wait for the next one is the delay this exists to
@@ -146,6 +185,13 @@ router.get("/dependencies", async (req: Request, res: Response) => {
         }
         return;
       }
+    }
+
+    if (wholeOrg) {
+      // The expensive path, and the one somebody waits through. Saying so
+      // here is the difference between "the tab is slow" and "the tab had
+      // nothing stored, so it walked the organization while you waited".
+      console.log("[Dependencies] Nothing stored for this organization, sweeping live while the tab waits");
     }
 
     if (repoFilter) {
@@ -185,7 +231,6 @@ router.get("/dependencies", async (req: Request, res: Response) => {
 
     res.json(applyFilters(allAlerts, severityFilter));
   } catch (error: any) {
-    if (sendIfRateLimited(res, error)) return;
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "dependencies") });
   }
@@ -228,7 +273,6 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
     res.json({ success: true });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
-    if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "dependencies") });
   }
 });
@@ -269,7 +313,6 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
 
     res.json({ success: true });
   } catch (error: any) {
-    if (sendIfRateLimited(res, error)) return;
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "dependencies") });
   }
@@ -414,38 +457,40 @@ router.get("/summary", async (req: Request, res: Response) => {
     const octokit = createOctokit(token, "Vulnerabilities tab");
     const org = getOrg();
 
-    // Shares the sweep with the tab above and with the alarm evaluator, which
-    // also brings the 400 tolerance here. This endpoint caught 403 and 404 but
-    // not 400, the same rejected-pagination failure that blanked the
-    // Dependabot tab would have turned this summary into a 500.
+    /**
+     * From storage first, because these counts are arithmetic over exactly the
+     * rows already stored and nothing needs fetching to produce them.
+     *
+     * This endpoint used to sweep the organization live on every call, which
+     * on 7,047 alerts is seventy-one sequential pages. The tab's spinner waits
+     * on the list *and* these counts, so serving the list instantly from
+     * storage bought nothing: every first open after an app launch still
+     * waited for the whole walk. Later opens in the same session were fast
+     * only because the sweep is held briefly in memory, which is what made it
+     * look like a cold-start mystery rather than a missing read.
+     */
+    const stored = await readDependencySnapshot();
+    if (stored) {
+      // A partial sweep understates the organization in the reassuring
+      // direction, so it is refused here exactly as a degraded live sweep is.
+      if (stored.degraded) {
+        return res.json({ critical: 0, high: 0, medium: 0, low: 0, repos_with_vulns: 0 });
+      }
+      return res.json(summariseAlerts(stored.alerts));
+    }
+
+    // Nothing stored: the first open for this organization. Shares the sweep
+    // with the tab above and with the alarm evaluator, which also brings the
+    // 400 tolerance here. This endpoint caught 403 and 404 but not 400, the
+    // same rejected-pagination failure that blanked the Dependabot tab would
+    // have turned this summary into a 500.
     const sweep = await fetchOrgDependencyAlerts(octokit, org);
     if (sweep.degraded) {
       return res.json({ critical: 0, high: 0, medium: 0, low: 0, repos_with_vulns: 0 });
     }
 
-    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
-    const reposWithVulns = new Set<string>();
-
-    for (const alert of sweep.alerts) {
-      // GitHub says "moderate" where this app says "medium". Counting only the
-      // app's spelling meant every moderate alert fell through `severity in
-      // counts` and was reported in no severity at all, the org's totals were
-      // short by however many moderates it had, in the reassuring direction.
-      const severity = alert.severity === "moderate" ? "medium" : alert.severity;
-      if (severity in counts) {
-        counts[severity as keyof typeof counts]++;
-      }
-      if (alert.repo && alert.repo !== "unknown") {
-        reposWithVulns.add(alert.repo);
-      }
-    }
-
-    res.json({
-      ...counts,
-      repos_with_vulns: reposWithVulns.size,
-    });
+    res.json(summariseAlerts(sweep.alerts));
   } catch (error: any) {
-    if (sendIfRateLimited(res, error)) return;
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "dependencies") });
   }
@@ -485,6 +530,28 @@ router.get("/renovate", async (req: Request, res: Response) => {
       },
       getOrg(), bot,
     );
+    /**
+     * The details, for the open ones only.
+     *
+     * Closed pull requests cannot be merged and nobody is deciding anything
+     * about them, so paying a GraphQL batch for their check status would buy
+     * nothing. On an organization that keeps months of closed ones that is
+     * most of the list.
+     */
+    const open = result.prs.filter(p => p.state === "open");
+    if (open.length > 0) {
+      const { fetchPullRequestDetails, mergeReadiness } = await import("../services/pullRequestDetails");
+      const details = await fetchPullRequestDetails(
+        (query, vars) => (octokit as any).graphql(query, vars),
+        getOrg(),
+        open.map(p => ({ repo: p.repo, number: p.number })),
+      );
+      for (const pr of open) {
+        const detail = details.get(`${pr.repo}#${pr.number}`);
+        Object.assign(pr, detail ?? {}, { readiness: mergeReadiness(detail) });
+      }
+    }
+
     res.json({ configured: true, ...result });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;

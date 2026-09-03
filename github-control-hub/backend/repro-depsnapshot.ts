@@ -122,7 +122,11 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
   {
     const page = fs.readFileSync(
       path.join(SRC, "..", "..", "frontend", "src", "pages", "DependencyDashboardPage.tsx"), "utf8");
-    check("it shows when the sweep was taken", /Showing the sweep from/.test(page));
+    // The wording moved onto the switcher row when the page stopped being a
+    // stack of bands. The claim is the same one: a reader can see how old this
+    // picture is without asking.
+    check("it shows when the sweep was taken",
+      /swept \{new Date\(age\.computedAt\)/.test(page));
     // Nothing stored is a first open, not an old answer, and saying "as of now"
     // there would be noise.
     check("  and says nothing when there is nothing stored",

@@ -153,20 +153,8 @@ export default function DependabotManager({ rows, onDone }: {
   }), [repos]);
 
   return (
-    <section className={`${SURFACE.card} overflow-hidden`}>
-      <div className="px-5 pt-4">
-        <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
-          Manage Dependabot
-        </h3>
-        <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 max-w-[80ch]">
-          Every repository the last sweep saw. Pick as many as you like: the work
-          is paced so GitHub does not refuse it, which is what happens when the
-          same switches are flipped quickly one at a time.
-        </p>
-        <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
-      </div>
-
-      <div className="px-5 py-3 flex items-center gap-2 flex-wrap">
+    <div>
+      <div className="pb-3 flex items-center gap-2 flex-wrap">
         {([["all", `All ${repos.length}`], ["off", `Not watched ${counts.off}`],
            ["watched", `Watched ${counts.watched}`]] as const).map(([id, label]) => (
           <button key={id} type="button" onClick={() => setFilter(id as Filter)}
@@ -182,7 +170,7 @@ export default function DependabotManager({ rows, onDone }: {
           placeholder="Filter by name" className={`${SURFACE.input} max-w-[220px] ml-auto`} />
       </div>
 
-      <div className="px-5 pb-2 flex items-center gap-2 flex-wrap border-b border-slate-100 dark:border-white/[0.06]">
+      <div className="pb-2 flex items-center gap-2 flex-wrap border-b border-slate-200/70 dark:border-white/[0.07]">
         <label className="inline-flex items-center gap-2 text-[12.5px] font-semibold
                           text-slate-600 dark:text-slate-300 cursor-pointer">
           <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown}
@@ -203,12 +191,12 @@ export default function DependabotManager({ rows, onDone }: {
 
       <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100 dark:divide-white/[0.06]">
         {shown.length === 0 ? (
-          <p className="px-5 py-6 text-[12.5px] text-slate-400 dark:text-slate-500">
+          <p className="py-6 text-[12.5px] text-slate-400 dark:text-slate-500">
             Nothing matches.
           </p>
         ) : shown.map(r => (
           <label key={r.repo}
-            className="flex items-center gap-3 px-5 py-2.5 cursor-pointer
+            className="flex items-center gap-3 px-2 -mx-2 rounded-lg py-2.5 cursor-pointer
                        hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
             <input type="checkbox" checked={selected.has(r.repo)} onChange={() => toggle(r.repo)}
               className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 shrink-0" />
@@ -237,7 +225,7 @@ export default function DependabotManager({ rows, onDone }: {
         ))}
       </div>
 
-      <div className="px-5 py-4 grid gap-2.5 border-t border-slate-100 dark:border-white/[0.06]">
+      <div className="pt-4 mt-1 grid gap-2.5 border-t border-slate-200/70 dark:border-white/[0.07]">
         <div className="flex flex-wrap gap-2">
           {ACTIONS.map(a => (
             <Button key={a.id}
@@ -401,6 +389,6 @@ export default function DependabotManager({ rows, onDone }: {
           you administer.
         </p>
       </div>
-    </section>
+    </div>
   );
 }

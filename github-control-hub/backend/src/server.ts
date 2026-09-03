@@ -28,6 +28,7 @@ import { awsHealthMiddleware } from "./middleware/awsHealthMiddleware";
 import { initTokenManager } from "./github/client";
 import { awsRegion } from "./utils/region";
 import { startUsageFlushing } from "./services/githubUsageService";
+import { compressJson } from "./middleware/compressJson";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 4000;
@@ -98,6 +99,10 @@ const apiLimiter = rateLimit({
 });
 
 app.use(express.json({ limit: "1mb" }));
+
+// Before the routes, so it wraps their responses. The Vulnerabilities tab
+// alone is 2.76MB of JSON on a large organization, and 64KB gzipped.
+app.use(compressJson);
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });

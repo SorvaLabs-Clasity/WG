@@ -7,7 +7,7 @@ import { useAuth } from "../App";
 import type { DependencyAlert } from "../types/Dependabot";
 import {
   Page, PageHeader, StatusSlab, SlabPercent, Button, Segmented, SearchInput,
-  RailCard, Note, Pill, Empty, Spinner, Figure, TYPE, INTENT, RefreshButton, enter, type Intent,
+  RailCard, Note, Pill, Empty, Spinner, Figure, Drawer, TYPE, INTENT, RefreshButton, enter, type Intent,
 } from "../design";
 
 /** Severity maps onto the shared intents so colour means one thing app-wide. */
@@ -31,7 +31,8 @@ import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
 import DependabotManager from "../components/DependabotManager";
 import { bulkDependabot } from "../api/dependencies";
-import { fetchDependenciesAge, fetchDependabotPrCounts } from "../api/dependencies";
+import { fetchDependenciesAge, fetchDependabotPrs, type DependabotPr } from "../api/dependencies";
+import { READINESS, checkLabel, reviewLabel, type Readiness } from "../lib/prReadiness";
 import { expectedFixPrs } from "../lib/fixExpectations";
 
 /**
@@ -165,10 +166,32 @@ export default function DependencyDashboardPage() {
    */
   const { data: prs } = useQuery({
     queryKey: ["dependencies", "fix-prs"],
-    queryFn: fetchDependabotPrCounts,
+    queryFn: fetchDependabotPrs,
     refetchInterval: 120_000,
   });
   const prCounts = prs?.counts ?? null;
+
+  /**
+   * The open pull requests, grouped by the repository they belong to, so each
+   * card can show its own without every card walking the whole list.
+   *
+   * A plain loop rather than a hook: this page has early returns below, and a
+   * hook after one of them is React error #310 in production. repro-hookorder
+   * guards the rule.
+   */
+  const prsByRepo = new Map<string, DependabotPr[]>();
+  for (const pr of prs?.prs ?? []) {
+    const list = prsByRepo.get(pr.repo);
+    if (list) list.push(pr);
+    else prsByRepo.set(pr.repo, [pr]);
+  }
+  for (const list of prsByRepo.values()) {
+    // Ready first, then oldest, which is the order somebody would clear them in.
+    list.sort((a, b) => {
+      const rank = (p: DependabotPr) => (p.readiness === "ready" ? 0 : 1);
+      return rank(a) - rank(b) || b.ageDays - a.ageDays;
+    });
+  }
 
   const [params, setParams] = useSearchParams();
   const raw = params.get("view") as View | null;
@@ -247,6 +270,13 @@ export default function DependencyDashboardPage() {
   const [busyRepo, setBusyRepo] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  /** Which repositories are showing their open fix pull requests. */
+  const [showPrs, setShowPrs] = useState<Set<string>>(new Set());
+  const togglePrs = (repo: string) => setShowPrs(prev => {
+    const next = new Set(prev);
+    next.has(repo) ? next.delete(repo) : next.add(repo);
+    return next;
+  });
 
   const toggle = (repo: string) =>
     setExpanded(s => {
@@ -310,6 +340,8 @@ export default function DependencyDashboardPage() {
   const safePage = Math.min(page, totalPages);
   const shown = groups.slice((safePage - 1) * REPOS_PER_PAGE, safePage * REPOS_PER_PAGE);
 
+  const stuck = stuckSummary(dependencies ?? [], prCounts);
+
   return (
     <Page user={user}>
       <PageHeader
@@ -325,11 +357,15 @@ export default function DependencyDashboardPage() {
           <>
             {/* Only on the Dependabot view. The panel switches Dependabot, and
                 offering it beside Renovate would be a control for a tool the
-                page is not showing. */}
+                page is not showing.
+
+                Opens, never toggles: the drawer carries its own close, and a
+                button reading "Hide" underneath the thing it hides is a
+                control nobody can reach. */}
             {view === "alerts" && (
-              <Button onClick={() => setManaging(m => !m)}>
+              <Button onClick={() => setManaging(true)}>
                 <i className="ph-bold ph-sliders-horizontal mr-1.5 text-[12px]" aria-hidden="true" />
-                {managing ? "Hide" : "Manage Dependabot"}
+                Manage
               </Button>
             )}
             {/* Refreshes what you are looking at. Refetching all three from here
@@ -344,58 +380,16 @@ export default function DependencyDashboardPage() {
         }
       />
 
-      {/* How old this picture is, where somebody can see it before reading the
-          findings as current. Only on the Dependabot view, and only once there
-          is something stored: on a first open the tab computed live, and saying
-          "as of now" would be noise. */}
-      {view === "alerts" && age?.computedAt && (
-        <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mb-4">
-          <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
-          Showing the sweep from {new Date(age.computedAt).toLocaleTimeString()}
-          {!age.fresh && ", and a fresh one is running now that will be here next time you look"}.
-        </p>
-      )}
+      {/* One row: what you are looking at, and the state of the picture it is
+          drawn from.
 
-      {/* The gap between findings and fixes, org-wide. Somebody looking at a
-          hundred findings and no pull requests needs to know first whether that
-          is one repository or forty, and which of those are waiting on GitHub
-          rather than on them. */}
-      {view === "alerts" && (() => {
-        const s = stuckSummary(dependencies ?? [], prCounts);
-        if (!s || s.total === 0) return null;
-        const parts = [
-          s.scheduled && `${s.scheduled} set up correctly and waiting on GitHub`,
-          s.noPatch && `${s.noPatch} with no patch available yet`,
-          s.transitive && `${s.transitive} whose findings sit under a parent dependency`,
-          s.fixesOff && `${s.fixesOff} with security updates off`,
-          s.archived && `${s.archived} archived`,
-          s.targetBranch && `${s.targetBranch} whose dependabot.yml sets target-branch`,
-        ].filter(Boolean) as string[];
-        return (
-          <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/60 dark:bg-amber-950/20 px-4 py-3">
-            <p className="text-[13px] font-bold text-amber-900 dark:text-amber-200">
-              {s.total} {s.total === 1 ? "repository has" : "repositories have"} findings and no fix pull request open
-            </p>
-            <p className="text-[12px] text-amber-800/80 dark:text-amber-300/70 mt-0.5">
-              {parts.join(", ")}.
-            </p>
-          </div>
-        );
-      })()}
-
-      {/* Above the findings, because the question it answers comes first: a
-          repository nobody is scanning produces no findings, so its absence
-          from the list below is not good news. */}
-      {view === "alerts" && managing && (
-        <div className="mb-5">
-          <DependabotManager
-            rows={dependencies ?? []}
-            onDone={() => { refetchDeps(); refetchSummary(); }}
-          />
-        </div>
-      )}
-
-      <div className="mb-5">
+          These were three stacked bands, a staleness line, an amber summary and
+          the management panel, sitting between the heading and the view
+          switcher. Each was reasonable alone and together they pushed the
+          findings somebody opened the tab for below the fold. The summary and
+          the panel now share a drawer, because they are two halves of one
+          question, and the staleness is four words rather than a band. */}
+      <div className="mb-5 flex items-center justify-between gap-4 flex-wrap">
         <Segmented
           value={view}
           onChange={setView}
@@ -408,7 +402,76 @@ export default function DependencyDashboardPage() {
             ["notifications", "Notifications"] as [View, string],
           ]}
         />
+
+        {view === "alerts" && (
+          <div className="flex items-center gap-3">
+            {stuck && stuck.total > 0 && (
+              <button onClick={() => setManaging(true)}
+                className="inline-flex items-center gap-1.5 text-[11.5px] font-bold
+                           text-amber-700 dark:text-amber-400 rounded-lg px-2 py-1 -mx-1
+                           hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true" />
+                {stuck.total} without fixes
+              </button>
+            )}
+            {age?.computedAt && (
+              <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums"
+                title={age.fresh
+                  ? "This is the latest sweep."
+                  : "A fresh sweep is running now and will be here next time you look."}>
+                <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
+                swept {new Date(age.computedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                {!age.fresh && <span className="ml-1 opacity-60">(refreshing)</span>}
+              </span>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* Over the page rather than pushing it, because this is a task with a
+          beginning and an end and the page is not part of it. */}
+      <Drawer
+        open={view === "alerts" && managing}
+        onClose={() => setManaging(false)}
+        title="Manage Dependabot"
+        subtitle="Every repository the last sweep saw. Pick as many as you like: the work is paced so GitHub does not refuse it, which is what happens when the same switches are flipped quickly one at a time."
+      >
+        {/* The breakdown first, because it is the reason somebody opened this:
+            it says which repositories are worth selecting, and which cannot be
+            helped by anything on this panel. */}
+        {stuck && stuck.total > 0 && (
+          <div className="mb-5 rounded-2xl border border-slate-200 dark:border-white/[0.08] overflow-hidden">
+            <div className="px-4 py-3 bg-slate-50/80 dark:bg-white/[0.02] border-b border-slate-200/70 dark:border-white/[0.07]">
+              <p className="text-[13px] font-bold text-slate-900 dark:text-white">
+                {stuck.total} {stuck.total === 1 ? "repository has" : "repositories have"} findings and no fix pull request
+              </p>
+            </div>
+            <dl className="divide-y divide-slate-100 dark:divide-white/[0.05]">
+              {([
+                [stuck.scheduled, "Set up correctly, waiting on GitHub", "A re-trigger or the grouped config will help these."],
+                [stuck.transitive, "Findings sit under a parent dependency", "Dependabot cannot bump these without the parent."],
+                [stuck.noPatch, "No patch available yet", "Nothing to open. Not a failure."],
+                [stuck.fixesOff, "Security updates are off", "Turn them on below."],
+                [stuck.archived, "Archived", "No pull request can be opened at all."],
+                [stuck.targetBranch, "dependabot.yml sets target-branch", "Puts the config out of scope for security updates."],
+              ] as const).filter(([n]) => n > 0).map(([n, label, hint]) => (
+                <div key={label} className="px-4 py-2.5 flex items-baseline gap-3">
+                  <dt className="w-8 shrink-0 text-[15px] font-black tabular-nums text-slate-900 dark:text-white">{n}</dt>
+                  <dd className="min-w-0">
+                    <span className="text-[12.5px] font-bold text-slate-700 dark:text-slate-200">{label}</span>
+                    <span className="block text-[11.5px] text-slate-400 dark:text-slate-500">{hint}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        )}
+
+        <DependabotManager
+          rows={dependencies ?? []}
+          onDone={() => { refetchDeps(); refetchSummary(); }}
+        />
+      </Drawer>
 
       {notice && (
         <div className={`mb-5 rounded-2xl border p-4 flex items-start gap-3 ${
@@ -511,6 +574,8 @@ export default function DependencyDashboardPage() {
                */
               const fixes = alerts.find(a => a.fixesEnabled !== undefined)?.fixesEnabled;
               const openPrs = prCounts ? (prCounts[repo] ?? 0) : null;
+              const repoPrs = prsByRepo.get(repo) ?? [];
+              const prsOpen = showPrs.has(repo);
               const grouped = real.some(a => a.groupedConfig);
               const expected = expectedFixPrs(real, grouped);
               const stuck = stuckReason(real[0]?.fixBlocker, openPrs);
@@ -572,11 +637,30 @@ export default function DependencyDashboardPage() {
                       {/* Beside the findings, because the gap between them is the
                           thing worth seeing. Withheld when the search failed:
                           a zero nobody measured reads as a repository to act on. */}
-                      {!off && !clean && !scanning && openPrs !== null && (
-                        <Figure intent={expected > 0 && openPrs >= expected ? "good" : openPrs > 0 ? "info" : "neutral"}
-                          value={expected > 0 ? `${openPrs}/${expected}` : String(openPrs)}
-                          label={expected > 0 ? "fix PRs" : openPrs === 1 ? "fix PR" : "fix PRs"} />
-                      )}
+                      {!off && !clean && !scanning && openPrs !== null && (() => {
+                        const figure = (
+                          <Figure intent={expected > 0 && openPrs >= expected ? "good" : openPrs > 0 ? "info" : "neutral"}
+                            value={expected > 0 ? `${openPrs}/${expected}` : String(openPrs)}
+                            label={expected > 0 ? "fix PRs" : openPrs === 1 ? "fix PR" : "fix PRs"} />
+                        );
+                        // The number is the way in to the pull requests behind
+                        // it, which is where somebody already is when they want
+                        // to know which four of eighteen are open. Not a button
+                        // when there are none, because there would be nothing
+                        // to open.
+                        if (repoPrs.length === 0) return figure;
+                        return (
+                          <button onClick={() => togglePrs(repo)}
+                            title={`${prsOpen ? "Hide" : "Show"} the ${repoPrs.length} open fix pull request${repoPrs.length === 1 ? "" : "s"}`}
+                            className="rounded-xl -m-1 p-1 hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors">
+                            {figure}
+                            <span className="flex items-center justify-center gap-1 -mt-0.5 text-[10.5px] font-bold text-slate-400 dark:text-slate-500">
+                              <i className={`ph-bold ph-caret-${prsOpen ? "up" : "down"} text-[9px]`} />
+                              {prsOpen ? "hide" : "view"}
+                            </span>
+                          </button>
+                        );
+                      })()}
                       {org && (
                         <a href={`https://github.com/${org}/${repo}/security/dependabot`} target="_blank" rel="noreferrer"
                           className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-sm font-bold text-slate-700 dark:text-slate-200 shadow-sm hover:shadow transition-shadow inline-flex items-center gap-1.5">
@@ -612,6 +696,35 @@ export default function DependencyDashboardPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Above the findings, because these are what closes them,
+                      and inside the card, because that is the repository they
+                      belong to. */}
+                  {prsOpen && repoPrs.length > 0 && (
+                    <div className="mt-3 rounded-2xl bg-slate-50/80 dark:bg-white/[0.02] border border-slate-200/80 dark:border-white/[0.07] p-3">
+                      <div className="flex items-baseline justify-between gap-3 mb-2 px-0.5">
+                        <span className={`${TYPE.label} text-slate-500 dark:text-slate-400`}>
+                          Open fix pull requests
+                        </span>
+                        <span className="text-[11.5px] text-slate-400 dark:text-slate-500">
+                          {repoPrs.filter(p => p.readiness === "ready").length} ready to merge
+                        </span>
+                      </div>
+                      <div className="grid gap-1.5">
+                        {repoPrs.map(pr => <FixPrRow key={pr.id} pr={pr} />)}
+                      </div>
+                      {/* The one irreversible thing somebody can do from here,
+                          said where they are about to do it. GitHub treats a
+                          manual close as "do not raise this again", the same as
+                          the @dependabot close command, and on a backlog this
+                          size that is easy to do to a hundred of them before
+                          noticing. */}
+                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2.5 px-0.5 leading-relaxed">
+                        Closing one without merging stops Dependabot raising it again.
+                        Comment <span className="font-mono">@dependabot reopen</span> to undo that.
+                      </p>
+                    </div>
+                  )}
 
                   {real.length > 0 && (
                     <>
@@ -660,6 +773,76 @@ export default function DependencyDashboardPage() {
  * reads as a set of distinct findings rather than a paragraph of text. The
  * package name leads because that is what you act on; the CVE links out.
  */
+/**
+ * One open Dependabot pull request, inside the card for the repository it
+ * belongs to.
+ *
+ * The whole row is the link out. This app never merges: merging is GitHub's
+ * job, where GitHub authorizes the person doing it against the repository.
+ *
+ * A left edge coloured by readiness, so a column of these can be read at a
+ * glance without any of the words being read. Every fact after it is withheld
+ * rather than guessed at when it did not come back, so a blank space here
+ * means "not established", never "fine".
+ */
+function FixPrRow({ pr }: { pr: DependabotPr }) {
+  const state = (pr.readiness ?? "unknown") as Readiness;
+  const r = READINESS[state];
+  const checks = checkLabel(pr.checks);
+  const review = reviewLabel(pr.reviewDecision);
+
+  return (
+    <a href={pr.url} target="_blank" rel="noopener noreferrer" title={r.hint}
+      className="group flex items-center gap-3 rounded-xl pl-0 pr-3 py-2 overflow-hidden
+                 bg-white dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.07]
+                 hover:border-slate-300 dark:hover:border-white/20 transition-colors">
+      <span className={`w-1 self-stretch shrink-0 rounded-l-xl ${INTENT[r.intent].mark}`} aria-hidden="true" />
+
+      <span className="min-w-0 flex-1 flex items-baseline gap-2 flex-wrap">
+        {/* The package, where the branch named one. A grouped pull request
+            names none, and its title already reads correctly, so that is what
+            shows instead of an invented name. */}
+        {pr.packageName ? (
+          <>
+            <span className="font-mono text-[12.5px] font-bold text-slate-800 dark:text-slate-100 truncate">
+              {pr.packageName}
+            </span>
+            <span className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate">{pr.title}</span>
+          </>
+        ) : (
+          <span className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+            {pr.title}
+          </span>
+        )}
+        {pr.draft && <Pill intent="neutral">draft</Pill>}
+      </span>
+
+      <span className="shrink-0 flex items-center gap-2.5 text-[11.5px] text-slate-500 dark:text-slate-400">
+        {checks && (
+          <span className={
+            pr.checks === "SUCCESS" ? "text-emerald-700 dark:text-emerald-400 font-bold"
+              : pr.checks === "FAILURE" || pr.checks === "ERROR" ? "text-rose-700 dark:text-rose-400 font-bold"
+              : ""
+          }>{checks}</span>
+        )}
+        {review && <span className="hidden sm:inline">{review}</span>}
+        {pr.mergeable === "CONFLICTING" && (
+          <span className="text-amber-700 dark:text-amber-400 font-bold">conflicts</span>
+        )}
+        {pr.changedFiles !== undefined && (
+          <span className="hidden md:inline tabular-nums">
+            <span className="text-emerald-700 dark:text-emerald-400">+{pr.additions ?? 0}</span>{" "}
+            <span className="text-rose-700 dark:text-rose-400">-{pr.deletions ?? 0}</span>
+          </span>
+        )}
+        <span className="tabular-nums">{pr.ageDays}d</span>
+        <span className="tabular-nums text-slate-400 dark:text-slate-500">#{pr.number}</span>
+        <i className="ph-bold ph-arrow-up-right text-[11px] opacity-40 group-hover:opacity-100 transition-opacity" />
+      </span>
+    </a>
+  );
+}
+
 function VulnRow({ alert: a }: { alert: DependencyAlert }) {
   const sev = SEV_STYLE[a.severity] ?? SEV_STYLE.low;
   return (

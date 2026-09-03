@@ -20,6 +20,18 @@ export interface RateLimitInfo {
   /** Seconds to wait, when GitHub says so directly. */
   retryAfter?: number;
   limit?: number;
+  /**
+   * Which budget was spent: "core", "search", "graphql", or undefined where
+   * GitHub did not say.
+   *
+   * The three are separate allowances in different units, and conflating them
+   * produced the most confusing message this app has shown: a search limit,
+   * which is thirty requests a *minute*, described as the hourly budget being
+   * spent, next to a usage screen reporting eight requests for the hour. Both
+   * numbers were right. Undefined stays undefined rather than defaulting to
+   * core, because naming a budget nobody reported is a confident wrong answer.
+   */
+  resource?: string;
 }
 
 function header(err: unknown, name: string): string | undefined {
@@ -47,17 +59,42 @@ export function parseRateLimit(err: unknown): RateLimitInfo | null {
     resetAt: reset ? new Date(Number(reset) * 1000).toISOString() : undefined,
     retryAfter: retryAfter ? Number(retryAfter) : undefined,
     limit: header(err, "x-ratelimit-limit") ? Number(header(err, "x-ratelimit-limit")) : undefined,
+    resource: header(err, "x-ratelimit-resource"),
   };
 }
 
-function describe(info: RateLimitInfo): string {
+export function describeRateLimit(info: RateLimitInfo): string {
   if (info.kind === "secondary") {
-    return "GitHub is asking us to slow down, too many requests in a short window. " +
-      "This clears on its own in under a minute.";
+    return "GitHub is asking us to slow down, too many requests in a short window"
+      + (info.retryAfter ? `. It asked for about ${info.retryAfter} seconds` : "")
+      + ". This clears on its own in under a minute.";
   }
+
+  // Search is the one people meet, and the one the usage screen cannot
+  // explain: its allowance is per minute, so a minute of searching exhausts it
+  // inside an hour whose total is single digits.
+  if (info.resource === "search") {
+    return "GitHub's search allowance is spent"
+      + (info.limit ? ` (${info.limit} searches per minute)` : " (thirty searches per minute)")
+      + ". It is a separate, much smaller budget than the hourly one, and it "
+      + "refills within the minute.";
+  }
+
+  if (info.resource === "graphql") {
+    return "GitHub's GraphQL allowance is spent"
+      + (info.limit ? ` (${info.limit.toLocaleString()} points per hour)` : "")
+      + ". That is a separate budget from ordinary requests, counted in points "
+      + "rather than calls.";
+  }
+
   return "GitHub's hourly request budget for this organization is spent" +
     (info.limit ? ` (${info.limit.toLocaleString()} requests per hour)` : "") +
     ". Everything that reads from GitHub will fail until it refills.";
+}
+
+/** Kept for callers written before the description was worth exporting. */
+function describe(info: RateLimitInfo): string {
+  return describeRateLimit(info);
 }
 
 /**
@@ -75,6 +112,7 @@ export function sendIfRateLimited(res: Response, err: unknown): boolean {
     error: describe(info),
     code: "GITHUB_RATE_LIMITED",
     kind: info.kind,
+    resource: info.resource,
     resetAt: info.resetAt,
     retryAfter: info.retryAfter,
     limit: info.limit,

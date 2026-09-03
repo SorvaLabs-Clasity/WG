@@ -131,7 +131,13 @@ function githubWith(total: number) {
     // Both files, because the org-wide sweep moved into the service so the
     // alarm evaluator could share it. Reading only the route would have let
     // the tolerance disappear with the code that carried it.
-    const code = ["src/routes/dependencies.ts", "src/services/dependencyService.ts"]
+    const code = [
+      "src/routes/dependencies.ts",
+      "src/services/dependencyService.ts",
+      // The counting moved here when the summary began reading from storage,
+      // which is exactly the drift the comment above warns about.
+      "src/services/dependencySummary.ts",
+    ]
       .map(f => fs.readFileSync(path.join(__dirname, f), "utf8"))
       .map(s => s.split("\n").filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join("\n"))
       .join("\n");

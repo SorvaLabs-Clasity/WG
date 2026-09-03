@@ -97,6 +97,17 @@ html.dark body {
   to { opacity: 1; }
 }
 
+@keyframes slideIn {
+  from { transform: translateX(16px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* A panel that flies in is decoration, and decoration is exactly what somebody
+   asking for reduced motion has asked not to receive. It still appears. */
+@media (prefers-reduced-motion: reduce) {
+  .drawer-panel, .drawer-scrim { animation: none !important; }
+}
+
 @keyframes gradientBG {
   0% { background-position: 0% 50%; }
   50% { background-position: 100% 50%; }

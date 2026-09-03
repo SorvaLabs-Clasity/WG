@@ -82,15 +82,42 @@ export function fetchDependenciesAge(): Promise<{ computedAt: string | null; fre
   return apiGet<{ computedAt: string | null; fresh: boolean }>("/security/dependencies/age");
 }
 
+export interface DependabotPr {
+  id: number;
+  number: number;
+  repo: string;
+  title: string;
+  url: string;
+  draft: boolean;
+  createdAt: string;
+  ageDays: number;
+  /** The package it bumps, where its branch says so. Null for grouped ones. */
+  packageName?: string | null;
+
+  /** All optional: absent means the detail query did not answer for this one. */
+  checks?: string | null;
+  reviewDecision?: string | null;
+  mergeable?: string | null;
+  additions?: number;
+  deletions?: number;
+  changedFiles?: number;
+  headRefName?: string;
+  labels?: string[];
+  readiness?: "ready" | "failing" | "conflicting" | "waiting" | "unknown";
+}
+
 /**
- * Open Dependabot pull requests per repository.
+ * Open Dependabot pull requests, and how many each repository has.
  *
- * `counts` is null when the search could not be made. Callers must keep that
- * apart from an empty object: no open pull requests anywhere and nobody having
+ * Both are null when the search could not be made. Callers must keep that
+ * apart from an empty list: no open pull requests anywhere and nobody having
  * looked render identically and mean opposite things.
  */
-export function fetchDependabotPrCounts(): Promise<{ counts: Record<string, number> | null }> {
-  return apiGet<{ counts: Record<string, number> | null }>("/security/dependencies/fix-prs");
+export function fetchDependabotPrs(): Promise<{
+  counts: Record<string, number> | null;
+  prs: DependabotPr[] | null;
+}> {
+  return apiGet("/security/dependencies/fix-prs");
 }
 
 export type RolloutOutcome =

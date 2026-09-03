@@ -80,7 +80,16 @@ export default function RateLimitBanner() {
         <i className={`ph-fill ph-hourglass-high text-lg shrink-0 mt-0.5 ${tone.text}`}></i>
         <div className="flex-1 min-w-0">
           <p className={`text-sm font-bold ${tone.text}`}>
-            {limit.error.kind === "secondary" ? "GitHub is asking us to slow down" : "GitHub request budget spent"}
+            {limit.error.kind === "secondary"
+              ? "GitHub is asking us to slow down"
+              /* Named, because the three budgets are different sizes in
+                 different units. A search limit reported as "the request
+                 budget" sends somebody to a usage screen showing single
+                 digits for the hour, which cannot explain it and looks like
+                 the app is lying. */
+              : limit.error.resource === "search" ? "GitHub search limit reached"
+              : limit.error.resource === "graphql" ? "GitHub GraphQL budget spent"
+              : "GitHub request budget spent"}
           </p>
           <p className={`text-[13px] mt-1 leading-relaxed ${tone.text} opacity-90`}>{limit.error.message}</p>
           <p className={`text-[13px] mt-2 font-bold tabular-nums ${tone.text}`}>

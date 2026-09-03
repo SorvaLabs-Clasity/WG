@@ -147,13 +147,17 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
   },
   "Renovate pull request search": {
     trigger: "The alarm pass, every 5 minutes, and the Dependencies tab",
-    endpoints: ["GET /search/issues"],
-    files: ["alarms/handler.ts", "routes/dependencies.ts"],
+    endpoints: ["GET /search/issues", "POST /graphql (pull request details)"],
+    files: ["alarms/handler.ts", "routes/dependencies.ts", "services/pullRequestDetails.ts"],
     scalesWith: "open Renovate pull requests",
-    note: "Draws on search, metered per minute and the smallest allowance the "
-      + "app touches. Two requests when the bot name is unknown, because search "
-      + "answers an unrecognised author with 422 rather than an empty result, "
-      + "so each candidate spelling is tried.",
+    note: "Finding them draws on search, metered per minute and the smallest "
+      + "allowance the app touches. Two requests when the bot name is unknown, "
+      + "because search answers an unrecognised author with 422 rather than an "
+      + "empty result, so each candidate spelling is tried. The checks, review "
+      + "and conflict state behind each one come over GraphQL instead, fifty "
+      + "pull requests to a request and on a different budget: over REST that "
+      + "would be two calls per pull request, and open ones only, since nobody "
+      + "is deciding anything about a closed one.",
   },
   "Open pull request walk": {
     trigger: "The alarm pass, every 5 minutes, when monitoring is on",
@@ -352,12 +356,14 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
   "Dependabot pull request count": {
     trigger: "Opening the Vulnerabilities tab",
     endpoints: ["GET /search/issues"],
-    files: ["routes/dependencies.ts"],
+    files: ["routes/dependencies.ts", "services/pullRequestDetails.ts"],
     scalesWith: "open Dependabot pull requests, a hundred per request",
     note: "One search for the whole organization rather than a query per "
       + "repository, because search allows thirty requests a minute against "
       + "the core budget's fifteen thousand an hour. Held for a minute, so a "
-      + "refresh and a second view share one answer.",
+      + "refresh and a second view share one answer. The checks and conflict "
+      + "state behind each one come over GraphQL, fifty pull requests to a "
+      + "request, sharing the module and the budget the Renovate view uses.",
   },
   "Rolling out Dependabot configuration": {
     trigger: "Open config PRs, or Commit to default branch, on the Vulnerabilities tab",

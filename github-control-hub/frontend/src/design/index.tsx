@@ -357,6 +357,87 @@ export function Back({ onClick, children }: { onClick: () => void; children: Rea
   );
 }
 
+/**
+ * A panel that slides in over the page, for a task that needs room.
+ *
+ * This exists because the alternative kept happening: every new feature became
+ * another band stacked down the page, until the thing somebody opened the tab
+ * for was four scrolls below controls they were not using. A task with its own
+ * beginning and end, bulk-editing three hundred repositories being the case
+ * this was built for, belongs on its own surface rather than pushing the page
+ * it was launched from.
+ *
+ * Closes on Escape and on the backdrop, because a panel that covers the page
+ * must be dismissible without hunting for the control that does it. The page
+ * behind it is frozen while it is open, so a scroll gesture over the backdrop
+ * does not silently move the content underneath.
+ */
+export function Drawer({ open, onClose, title, subtitle, children, footer }: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  subtitle?: string;
+  children: React.ReactNode;
+  footer?: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    // Restored rather than cleared: another drawer, or the page itself, may
+    // have set it, and clearing would silently undo theirs.
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="drawer-scrim absolute inset-0 bg-slate-950/40 dark:bg-black/60 backdrop-blur-[2px] animate-[fadeIn_150ms_ease-out]"
+        onClick={onClose} aria-hidden="true" />
+
+      <div className="drawer-panel relative w-full max-w-3xl h-full flex flex-col
+                      bg-white dark:bg-[#151a23] border-l border-slate-200 dark:border-white/[0.09]
+                      shadow-[0_0_60px_-12px_rgba(15,23,42,0.45)]
+                      animate-[slideIn_220ms_cubic-bezier(0.22,1,0.36,1)]">
+        <header className="shrink-0 px-6 py-5 border-b border-slate-200/80 dark:border-white/[0.07]
+                           flex items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="text-[17px] font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
+            {subtitle && (
+              <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1 max-w-[70ch] leading-relaxed">
+                {subtitle}
+              </p>
+            )}
+          </div>
+          <button onClick={onClose} aria-label="Close"
+            className="shrink-0 -mr-1 -mt-1 w-9 h-9 rounded-xl grid place-items-center
+                       text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
+                       hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors">
+            <i className="ph-bold ph-x text-base" />
+          </button>
+        </header>
+
+        {/* The only scrolling region, so the header and the actions stay put
+            while a list of three hundred repositories moves under them. */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+
+        {footer && (
+          <div className="shrink-0 px-6 py-4 border-t border-slate-200/80 dark:border-white/[0.07]
+                          bg-slate-50/80 dark:bg-white/[0.02]">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function Empty({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
   return (
     <div className={`${SURFACE.card} py-20 text-center`}>

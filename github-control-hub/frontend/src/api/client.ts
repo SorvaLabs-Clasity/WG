@@ -60,6 +60,12 @@ export class RateLimitError extends Error {
     readonly resetAt?: string,
     readonly retryAfter?: number,
     readonly kind: "primary" | "secondary" = "primary",
+    /**
+     * Which GitHub budget was spent: "core", "search", "graphql", or absent.
+     * The three are different sizes in different units, and the banner reads
+     * wrong without it.
+     */
+    readonly resource?: string,
   ) {
     super(message);
     this.name = "RateLimitError";
@@ -105,11 +111,11 @@ async function handleResponse<T>(res: Response): Promise<T> {
   }
   if (res.status === 429) {
     const body = await res.json().catch(() => ({})) as {
-      error?: string; resetAt?: string; retryAfter?: number; kind?: "primary" | "secondary";
+      error?: string; resetAt?: string; retryAfter?: number; kind?: "primary" | "secondary"; resource?: string;
     };
     throw new RateLimitError(
       body.error ?? "GitHub rate limit reached.",
-      body.resetAt, body.retryAfter, body.kind ?? "primary",
+      body.resetAt, body.retryAfter, body.kind ?? "primary", body.resource,
     );
   }
   if (!res.ok) {

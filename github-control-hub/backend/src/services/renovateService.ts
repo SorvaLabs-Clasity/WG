@@ -31,6 +31,21 @@ export interface RenovatePr {
   closedAt: string | null;
   /** Days the PR has been open, or was open before closing. */
   ageDays: number;
+
+  /**
+   * What decides whether somebody can merge it. Absent where the detail query
+   * did not run or did not answer, which is different from "nothing blocking".
+   */
+  checks?: string | null;
+  reviewDecision?: string | null;
+  mergeable?: string | null;
+  additions?: number;
+  deletions?: number;
+  changedFiles?: number;
+  headRefName?: string;
+  labels?: string[];
+  /** "ready" | "failing" | "conflicting" | "waiting" | "unknown". */
+  readiness?: string;
 }
 
 /** The one search call this needs, injectable so tests need no GitHub. */

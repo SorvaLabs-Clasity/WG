@@ -153,7 +153,10 @@ function stub(behaviour: (repo: string, calls: number) => void = () => {}) {
     const page = fs.readFileSync(
       path.join(__dirname, "..", "frontend", "src", "pages", "DependencyDashboardPage.tsx"), "utf8");
     check("the page has a control that opens it",
-      /setManaging\(m => !m\)/.test(page) && /Manage Dependabot/.test(page),
+      // The control opens a drawer now rather than toggling a band, so it sets
+      // the state rather than flipping it. The claim is unchanged: something
+      // on the page has to put this on screen.
+      /setManaging\(true\)/.test(page) && /title="Manage Dependabot"/.test(page),
       "importing the component is not the same as putting it on screen");
     check("  and renders the panel when it is open",
       /<DependabotManager\s/.test(page),
