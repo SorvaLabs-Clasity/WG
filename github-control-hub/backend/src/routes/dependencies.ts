@@ -113,11 +113,13 @@ router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
 
 router.get("/dependencies/age", async (_req: Request, res: Response) => {
   try {
-    const stored = await readDependencySnapshot();
-    const { snapshotHealth } = await import("../services/dependencySnapshot");
+    // The two scalars this needs, without pulling the payload over the wire
+    // or decompressing it. This endpoint polls every minute.
+    const { snapshotHealth, readSnapshotAge } = await import("../services/dependencySnapshot");
+    const age = await readSnapshotAge();
     res.json({
-      computedAt: stored?.computedAt ?? null,
-      fresh: isFresh(stored),
+      computedAt: age.computedAt,
+      fresh: isFresh(age),
       // So the tab can say why it is slow, rather than just being slow.
       ...snapshotHealth(),
     });

@@ -107,6 +107,8 @@ export async function saveDependencySnapshot(
       },
     }));
     lastSaveProblem = null;
+    // What was just written is newer than what is held.
+    held = null;
   } catch (err: any) {
     // Never lets storing an answer cost the answer, but does say so: a write
     // that fails silently every time is a tab that is slow forever with no
@@ -116,8 +118,28 @@ export async function saveDependencySnapshot(
   }
 }
 
+/**
+ * The decoded sweep, held briefly in this process.
+ *
+ * Opening the tab makes three requests, and each was reading the row from
+ * DynamoDB and decompressing it independently: the list, the severity counts,
+ * and the age line. The decoding is cheap, about six milliseconds each, but the
+ * round trip to DynamoDB is not, and from a laptop three of them in series is
+ * the part somebody waits through.
+ *
+ * Fifteen seconds is chosen against what it costs to be wrong. The row itself
+ * only changes when a sweep completes, and the age endpoint reads the stored
+ * timestamp rather than this, so a caller can still see that a refresh has
+ * landed. What this window can do is serve a list fifteen seconds behind a
+ * sweep that finished mid-open, which nobody can perceive on data that is
+ * allowed to be ten minutes old.
+ */
+let held: { at: number; value: StoredSweep | null } | null = null;
+const HOLD_MS = 15_000;
+
 /** The stored answer, or null when there has never been one. */
 export async function readDependencySnapshot(): Promise<StoredSweep | null> {
+  if (held && Date.now() - held.at < HOLD_MS) return held.value;
   if (!hasTable("ALARMS_TABLE")) return null;
   try {
     const res = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id: ROW_ID } }));
@@ -125,17 +147,58 @@ export async function readDependencySnapshot(): Promise<StoredSweep | null> {
     if (!row?.payload) return null;
     const alerts = JSON.parse(
       gunzipSync(Buffer.from(row.payload, "base64")).toString("utf8")) as DependencyAlert[];
-    return { alerts, computedAt: row.computedAt, degraded: !!row.degraded };
+    const value = { alerts, computedAt: row.computedAt, degraded: !!row.degraded };
+    held = { at: Date.now(), value };
+    return value;
   } catch (err: any) {
     // A corrupt or unreadable row must not take the tab with it: the caller
     // falls back to computing, which is what it did before this existed.
+    // Deliberately not held: holding a failure would keep answering with it
+    // for fifteen seconds after whatever caused it was fixed.
     console.warn(`[Dependencies] Could not read the stored sweep: ${err?.message ?? err}`);
     return null;
   }
 }
 
+/**
+ * When the sweep was taken, without reading the sweep.
+ *
+ * The age line needs two scalar attributes and was decompressing two and a
+ * half megabytes to get them, and pulling that payload over the wire from
+ * DynamoDB to do it. The projection leaves the payload where it is.
+ */
+export async function readSnapshotAge(): Promise<{ computedAt: string | null; degraded: boolean }> {
+  if (held && Date.now() - held.at < HOLD_MS) {
+    return { computedAt: held.value?.computedAt ?? null, degraded: !!held.value?.degraded };
+  }
+  if (!hasTable("ALARMS_TABLE")) return { computedAt: null, degraded: false };
+  try {
+    const res = await docClient.send(new GetCommand({
+      TableName: TABLE(), Key: { id: ROW_ID },
+      ProjectionExpression: "computedAt, degraded",
+    }));
+    return {
+      computedAt: (res.Item as any)?.computedAt ?? null,
+      degraded: !!(res.Item as any)?.degraded,
+    };
+  } catch (err: any) {
+    console.warn(`[Dependencies] Could not read the sweep's age: ${err?.message ?? err}`);
+    return { computedAt: null, degraded: false };
+  }
+}
+
+/** Drops the held copy, for a caller that has just changed what is stored. */
+export function clearSnapshotHold(): void {
+  held = null;
+}
+
 /** Whether a stored answer is recent enough to serve without waiting. */
-export function isFresh(snapshot: StoredSweep | null, now = Date.now()): boolean {
+export function isFresh(
+  // Only the timestamp is read, so the age endpoint can pass what it has
+  // without having decoded a sweep to get it.
+  snapshot: { computedAt?: string | null } | null,
+  now = Date.now(),
+): boolean {
   if (!snapshot?.computedAt) return false;
   const at = Date.parse(snapshot.computedAt);
   return Number.isFinite(at) && now - at < FRESH_MS;

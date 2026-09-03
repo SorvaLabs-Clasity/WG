@@ -41,8 +41,23 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
 
   console.log("\nthe stored answer is served, and refreshed behind the reader");
   {
+    // Anchored on the block, not on a character distance. The window version
+    // of this broke the moment a log line was added between the read and the
+    // response, which is the failure the comment below already warned about
+    // and which says nothing about whether the behaviour is right.
+    const wholeOrgBranch = route.slice(
+      route.indexOf("if (wholeOrg) {"),
+      route.indexOf("if (repoFilter) {"));
     check("a stored answer answers immediately",
-      /const stored = await readDependencySnapshot\(\);[\s\S]{0,200}res\.json\(/.test(route));
+      /readDependencySnapshot\(\)/.test(wholeOrgBranch)
+        && /res\.json\(/.test(wholeOrgBranch));
+    // The point of the branch: it must answer without waiting for a sweep.
+    check("  without sweeping first",
+      wholeOrgBranch.indexOf("res.json(") < (
+        wholeOrgBranch.includes("buildDependencyView")
+          ? wholeOrgBranch.indexOf("buildDependencyView")
+          : Infinity),
+      "responding after a sweep is the delay this exists to remove");
     // Windows measured in characters break on a comment, and this codebase
     // comments heavily. Anchored on the block instead.
     const staleBranch = route.slice(
