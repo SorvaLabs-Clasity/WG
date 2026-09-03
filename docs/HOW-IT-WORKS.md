@@ -1360,16 +1360,42 @@ What the generated file says, and why each part of it:
   `bundler`, `gomod`, `cargo`, `hex`, `github-actions`. A wrong value is not a
   partial failure, it rejects the whole file, so an unmapped ecosystem is
   dropped rather than guessed at.
+- **The JVM is one ecosystem in the alerts and three in the config.** The
+  alerts API reports every JVM dependency as `maven`, its whole list being
+  "composer, go, maven, npm, nuget, pip, pub, rubygems, rust". The config file
+  has `maven`, `gradle` and `sbt`. So `maven` was being written onto Gradle
+  repositories, where Dependabot looks for a pom.xml, finds a build.gradle, and
+  opens nothing: a file that reads correctly and does nothing, reported by
+  nobody. The manifest **filename** settles it, and the alert carries it, so
+  `pom.xml` is maven, `build.gradle`, `build.gradle.kts`, `settings.gradle` and
+  `libs.versions.toml` are gradle, and `build.sbt` is sbt. A version catalog at
+  `gradle/libs.versions.toml` points at that directory's *parent*, because the
+  build it belongs to is there. A JVM alert with no readable filename is
+  **skipped rather than guessed**: either answer is a coin flip that fails
+  silently when it loses, and a repository reported as having no configurable
+  ecosystem is at least visible. It costs only that entry; the rest of the file
+  still stands.
 - **`github-actions` is configured at the root**, not at `.github/workflows`
   where its manifests live.
 - **`open-pull-requests-limit: 0`.** Adding the file switches version updates
   on, which across 66 repositories is thousands of pull requests nobody asked
   for. Security updates are documented as not subject to that limit, so the
   fixes still arrive.
-- **One group per manifest.** GitHub's group options are `patterns`,
-  `exclude-patterns`, `dependency-type`, `update-types` and `group-by`. There is
-  no way to group by advisory severity, so the tab does not offer one. Ungrouped
-  would have been 6,973 pull requests.
+- **One group per manifest, so ecosystems are already separate.** Each
+  ecosystem and directory is its own `updates` entry, and a Dependabot group
+  only ever spans its own entry, so npm and pip have always produced separate
+  pull requests. What they did not do is *say* so: every group was named
+  `security-fixes`, and the group name is the only part of the title this file
+  controls, GitHub rendering it as "Bump the *name* group with N updates". Sixty
+  identically titled pull requests across an organization gave no way to tell
+  which was which. Groups are now named for their entry, `npm-security`,
+  `bundler-security`, and `npm-web-security` where two directories share an
+  ecosystem, restricted to lowercase letters, digits and dashes because the name
+  ends up inside a branch.
+- **Below that there is nothing left to split on.** GitHub's group options are
+  `patterns`, `exclude-patterns`, `dependency-type`, `update-types` and
+  `group-by`; advisory severity is not among them, and per-package would have
+  been 6,973 pull requests.
 
 ### Pull requests are counted per package, not per finding
 

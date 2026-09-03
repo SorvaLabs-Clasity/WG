@@ -112,6 +112,146 @@ const a = (ecosystem: string, manifest_path = "package.json") =>
       yml);
   }
 
+  console.log("\nthe JVM is three ecosystems in the config and one in the alerts");
+  {
+    /**
+     * The alerts API reports every JVM dependency as `maven`, its ecosystem
+     * list being "composer, go, maven, npm, nuget, pip, pub, rubygems, rust".
+     * The configuration file does not: `maven`, `gradle` and `sbt` are three
+     * different package-ecosystems there.
+     *
+     * So mapping maven to maven wrote `package-ecosystem: "maven"` onto Gradle
+     * repositories, and Dependabot then looked for a pom.xml, found a
+     * build.gradle, and opened nothing. A file that reads correctly and does
+     * nothing is the exact failure this generator exists to avoid, and it is
+     * invisible: no error, no warning, just a repository that never gets its
+     * fixes.
+     *
+     * The manifest filename is what tells them apart, and the alert carries it.
+     */
+    const eco = (yml: string) => [...yml.matchAll(/package-ecosystem: "([^"]+)"/g)].map(m => m[1]);
+
+    check("a pom is maven", eco(buildDependabotConfig([a("maven", "pom.xml")])!)[0] === "maven");
+    check("  a build.gradle is gradle",
+      eco(buildDependabotConfig([a("maven", "build.gradle")])!)[0] === "gradle");
+    check("  a Kotlin build script is gradle too",
+      eco(buildDependabotConfig([a("maven", "build.gradle.kts")])!)[0] === "gradle");
+    check("  a settings.gradle is gradle",
+      eco(buildDependabotConfig([a("maven", "settings.gradle")])!)[0] === "gradle");
+    check("  and a build.sbt is sbt",
+      eco(buildDependabotConfig([a("maven", "build.sbt")])!)[0] === "sbt");
+
+    // Nested, because a multi-module build is the normal shape of a Java repo.
+    const nested = buildDependabotConfig([a("maven", "services/api/build.gradle")])!;
+    check("  a nested build script keeps its directory",
+      /package-ecosystem: "gradle"/.test(nested) && /directory: "\/services\/api"/.test(nested),
+      nested);
+
+    // The three appear as three entries with three names, which is what the
+    // question behind all of this was asking for.
+    const mixed = buildDependabotConfig([
+      a("maven", "pom.xml"), a("maven", "app/build.gradle"), a("npm", "package.json"),
+    ])!;
+    check("  and a repository with several is several entries",
+      eco(mixed).sort().join() === "gradle,maven,npm", eco(mixed));
+    check("    each named for what it is",
+      /maven-security:/.test(mixed) && /gradle-app-security:/.test(mixed)
+        && /npm-security:/.test(mixed), mixed);
+  }
+
+  console.log("\nand a JVM alert that does not say which is skipped, not guessed");
+  {
+    // Without the filename there is no way to tell maven from gradle, and
+    // writing either is a coin flip that fails silently when it loses. No
+    // entry is visible: the repository is reported as having no configurable
+    // ecosystem, which somebody can act on.
+    check("no manifest path means no JVM entry",
+      buildDependabotConfig([a("maven", "")]) === null,
+      buildDependabotConfig([a("maven", "")]));
+    check("  nor does an unrecognised build file",
+      buildDependabotConfig([a("maven", "project.clj")]) === null);
+
+    // And it costs only that entry: the rest of the file still stands.
+    const partial = buildDependabotConfig([a("maven", ""), a("npm", "package.json")])!;
+    check("  while the other ecosystems are unaffected",
+      /package-ecosystem: "npm"/.test(partial) && !/maven|gradle|sbt/.test(partial), partial);
+  }
+
+  console.log("\neach ecosystem's group is named after it, so the pull requests differ");
+  {
+    /**
+     * The separation was already there: one `updates` entry per ecosystem and
+     * directory, and a Dependabot group only ever spans its own entry, so npm
+     * and pip have always produced separate pull requests.
+     *
+     * What was missing is that every group was called `security-fixes`, so
+     * every one of those pull requests was titled "Bump the security-fixes
+     * group with N updates". In a list of sixty they were indistinguishable,
+     * and the group name is the only part of that title this file controls.
+     */
+    const yml = buildDependabotConfig([
+      a("npm", "package.json"),
+      a("pip", "api/requirements.txt"),
+      a("rubygems", "Gemfile"),
+    ])!;
+
+    check("npm's group is named for npm", /npm-security:/.test(yml), yml);
+    // This pip manifest is in api/, so its entry is scoped to that directory
+    // and the name says so. A bare "pip-security" here would have meant the
+    // directory was being dropped.
+    check("  pip's for pip, with the directory it lives in",
+      /pip-api-security:/.test(yml), yml);
+    // The config spelling, not the alert's: this is the name that shows up in
+    // the title, and "rubygems-security" would name a thing the file does not
+    // contain.
+    check("  and bundler's for bundler, the name the file actually uses",
+      /bundler-security:/.test(yml) && !/rubygems-security/.test(yml), yml);
+
+    // Every entry still has exactly one group. Splitting further is not
+    // possible: severity cannot be grouped on, and per-package would be
+    // thousands of pull requests.
+    check("  one group per entry, still",
+      (yml.match(/applies-to: security-updates/g) ?? []).length === 3);
+  }
+
+  console.log("\ntwo directories of the same ecosystem are told apart too");
+  {
+    // Both are npm, so both would be "npm-security" and both pull requests
+    // would carry the same title on the same repository.
+    const yml = buildDependabotConfig([
+      a("npm", "package.json"),
+      a("npm", "web/package.json"),
+      a("npm", "services/api/package.json"),
+    ])!;
+
+    check("the root keeps the plain name", /npm-security:/.test(yml), yml);
+    check("  a subdirectory is named after it", /npm-web-security:/.test(yml), yml);
+    check("  nested paths become one token",
+      /npm-services-api-security:/.test(yml), yml);
+
+    // Group names end up inside branch names, so anything that would break a
+    // ref must not reach them.
+    const names = [...yml.matchAll(/^      ([\w-]+):$/gm)].map(m => m[1]);
+    check("  and every name is safe in a branch",
+      names.length === 3 && names.every(n => /^[a-z0-9-]+$/.test(n)), names);
+  }
+
+  console.log("\nthe grouped branches these produce still name no package");
+  {
+    // The parser must keep returning null for these, or the new names would be
+    // displayed as though they were packages, which is the bug that shipped
+    // once already with "security-fixes".
+    const { packageFromBranch } = require("./src/services/dependabotPrs");
+    for (const branch of [
+      "dependabot/npm_and_yarn/npm-security-450e0d57a0",
+      "dependabot/pip/pip-security-a50e0d57a0",
+      "dependabot/npm_and_yarn/web/npm-web-security-0011223344",
+    ]) {
+      check(`  ${branch} names no package`, packageFromBranch(branch) === null,
+        packageFromBranch(branch));
+    }
+  }
+
   console.log("\nthe file says who wrote it and why");
   {
     const yml = buildDependabotConfig([a("npm")])!;

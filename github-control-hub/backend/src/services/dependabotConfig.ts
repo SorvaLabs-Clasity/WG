@@ -34,6 +34,46 @@ export const ECOSYSTEM_MAP: Record<string, string> = {
   actions: "github-actions",
 };
 
+/**
+ * Which JVM ecosystem a manifest belongs to.
+ *
+ * The alerts API has one value for the whole JVM, its list being "composer,
+ * go, maven, npm, nuget, pip, pub, rubygems, rust". The configuration file has
+ * three: `maven`, `gradle` and `sbt`. Writing `maven` for a Gradle repository
+ * produces a file that reads correctly and does nothing, because Dependabot
+ * looks for a pom.xml and finds a build.gradle, and nothing anywhere reports
+ * it.
+ *
+ * The filename is the only thing that distinguishes them, and the alert
+ * carries it. Null where it does not say, because either answer is a coin flip
+ * that fails silently when it loses, and a repository reported as having no
+ * configurable ecosystem is at least visible.
+ */
+function jvmEcosystem(manifestPath: string): string | null {
+  const file = manifestPath.replace(/\\/g, "/").split("/").pop()?.toLowerCase() ?? "";
+
+  if (file === "pom.xml") return "maven";
+  if (file === "build.sbt") return "sbt";
+  // Groovy and Kotlin build scripts, the settings file, and the version
+  // catalog a newer Gradle build keeps its dependencies in.
+  if (/^(build|settings)\.gradle(\.kts)?$/.test(file)) return "gradle";
+  if (file === "libs.versions.toml") return "gradle";
+
+  return null;
+}
+
+/**
+ * The `package-ecosystem` for one alert, or null where it cannot be settled.
+ *
+ * Everything except the JVM is a straight lookup: the mapping is the whole
+ * job, since a wrong value has the file rejected outright.
+ */
+function configEcosystem(alertEcosystem: string, manifestPath: string): string | null {
+  const mapped = ECOSYSTEM_MAP[alertEcosystem.toLowerCase()];
+  if (!mapped) return null;
+  return mapped === "maven" ? jvmEcosystem(manifestPath) : mapped;
+}
+
 /** The directory an entry should watch, from the manifest raising the alert. */
 function directoryFor(ecosystem: string, manifestPath: string): string {
   // Workflows live in .github/workflows, but the ecosystem is configured at
@@ -41,8 +81,46 @@ function directoryFor(ecosystem: string, manifestPath: string): string {
   // and finds nothing.
   if (ecosystem === "github-actions") return "/";
 
+  // A version catalog lives at gradle/libs.versions.toml, but the build it
+  // belongs to is its parent. Pointing Dependabot at /gradle finds no build
+  // script, which is the same silent nothing as naming the wrong ecosystem.
+  if (ecosystem === "gradle" && /(^|\/)gradle\/libs\.versions\.toml$/i.test(manifestPath)) {
+    const up = manifestPath.replace(/(^|\/)gradle\/libs\.versions\.toml$/i, "");
+    return up ? `/${up}` : "/";
+  }
+
   const dir = manifestPath.replace(/\\/g, "/").split("/").slice(0, -1).join("/");
   return dir ? `/${dir}` : "/";
+}
+
+/**
+ * The name for one entry's security group.
+ *
+ * The group name is the only part of the pull request's title this file
+ * controls: GitHub renders it as "Bump the <name> group with N updates". Every
+ * entry used to be called `security-fixes`, so a repository with npm and pip
+ * produced two pull requests with identical titles, and an organization's pull
+ * request list gave no way to tell which was which.
+ *
+ * The separation itself was never the problem, and is not what changed here.
+ * One `updates` entry per ecosystem and directory was already being written,
+ * and a Dependabot group only spans its own entry, so npm and pip have always
+ * been separate pull requests. This makes them *say* so.
+ *
+ * The directory is included only when it is not the root, because two entries
+ * for the same ecosystem in different directories would otherwise collide on
+ * the same name and the same repository.
+ *
+ * Restricted to lowercase letters, digits and dashes: this ends up inside a
+ * branch name, and anything else there is a ref nobody can push.
+ */
+function groupName(ecosystem: string, directory: string): string {
+  const slug = (text: string) =>
+    text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+  const dir = slug(directory);
+  const eco = slug(ecosystem);
+  return dir ? `${eco}-${dir}-security` : `${eco}-security`;
 }
 
 interface ConfigurableAlert {
@@ -64,9 +142,10 @@ export function buildDependabotConfig(alerts: ConfigurableAlert[]): string | nul
   const entries = new Map<string, { ecosystem: string; directory: string }>();
 
   for (const alert of alerts) {
-    const mapped = ECOSYSTEM_MAP[String(alert.ecosystem ?? "").toLowerCase()];
+    const path = String(alert.manifest_path ?? "");
+    const mapped = configEcosystem(String(alert.ecosystem ?? ""), path);
     if (!mapped) continue;
-    const directory = directoryFor(mapped, String(alert.manifest_path ?? ""));
+    const directory = directoryFor(mapped, path);
     entries.set(`${mapped} ${directory}`, { ecosystem: mapped, directory });
   }
 
@@ -84,11 +163,16 @@ export function buildDependabotConfig(alerts: ConfigurableAlert[]): string | nul
     # Security updates are not subject to this limit, so the fixes still come.
     open-pull-requests-limit: 0
     groups:
-      security-fixes:
+      # Named for this ecosystem and directory, because the group name is what
+      # GitHub puts in the title: "Bump the ${groupName(ecosystem, directory)}
+      # group with N updates". A shared name made every one of these pull
+      # requests read identically.
+      ${groupName(ecosystem, directory)}:
         applies-to: security-updates
-        # Everything in one pull request per manifest. GitHub offers no way to
-        # group by advisory severity, and one pull request per alert would be
-        # thousands.
+        # One pull request per manifest. Ecosystems are already separate, since
+        # each is its own entry above and a group never spans entries. Below
+        # this there is nothing left to split on: GitHub cannot group by
+        # advisory severity, and per-package would be thousands.
         patterns:
           - "*"`);
 
