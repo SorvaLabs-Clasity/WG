@@ -67,6 +67,35 @@ router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
 
     const octokit = createOctokit(token, "Dependabot pull request count");
     const org = getOrg();
+
+    /**
+     * Stored first. This was the last live GitHub call the Vulnerabilities tab
+     * made on every open: a search against the thirty-a-minute budget, then a
+     * GraphQL batch per fifty pull requests. Everything else on that tab reads
+     * from storage, so this was what remained of the wait.
+     */
+    const {
+      readRenovateSnapshot, saveRenovateSnapshot, isRenovateDueForRefresh, refreshRenovateIfDue,
+    } = await import("../services/renovateSnapshot");
+
+    const storedPrs = await readRenovateSnapshot<any>("dependabot-prs");
+    if (storedPrs) {
+      res.json({ counts: storedPrs.data.counts, prs: storedPrs.data.prs, computedAt: storedPrs.computedAt });
+      if (isRenovateDueForRefresh(storedPrs)) {
+        void refreshRenovateIfDue("dependabot-prs", async () => {
+          const fresh = await fetchDependabotPrs(
+            async (q, page) => {
+              const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
+                q, per_page: 100, page, advanced_search: "true",
+              });
+              return { items: r.data?.items ?? [] };
+            }, org);
+          if (fresh) await saveRenovateSnapshot("dependabot-prs", fresh);
+        });
+      }
+      return;
+    }
+
     const found = await fetchDependabotPrs(
       async (q, page) => {
         const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
@@ -105,6 +134,8 @@ router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
       }
     }
 
+    // Stored on the way out, so the next open is served rather than searched.
+    await saveRenovateSnapshot("dependabot-prs", found);
     res.json({ counts: found.counts, prs: found.prs });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
@@ -611,7 +642,7 @@ router.get("/renovate", async (req: Request, res: Response) => {
 
     const octokit = createOctokit(token, "Renovate pull request search");
     const {
-      readRenovateSnapshot, saveRenovateSnapshot, isRenovateFresh,
+      readRenovateSnapshot, saveRenovateSnapshot, isRenovateDueForRefresh,
       refreshRenovateIfDue, isRenovateRefreshing,
     } = await import("../services/renovateSnapshot");
 
@@ -632,7 +663,7 @@ router.get("/renovate", async (req: Request, res: Response) => {
           computedAt: stored.computedAt,
           refreshing: isRenovateRefreshing("renovate-prs"),
         });
-        if (!isRenovateFresh(stored)) {
+        if (isRenovateDueForRefresh(stored)) {
           void refreshRenovateIfDue("renovate-prs", async () => {
             await saveRenovateSnapshot("renovate-prs",
               await buildRenovatePrs(octokit, getOrg(), bot));
@@ -817,7 +848,7 @@ router.get("/renovate/dashboards", async (req: Request, res: Response) => {
 
     const octokit = createOctokit(token, "Renovate dependency dashboards");
     const {
-      readRenovateSnapshot, saveRenovateSnapshot, isRenovateFresh,
+      readRenovateSnapshot, saveRenovateSnapshot, isRenovateDueForRefresh,
       refreshRenovateIfDue, isRenovateRefreshing, renovateSnapshotHealth,
     } = await import("../services/renovateSnapshot");
 
@@ -837,7 +868,7 @@ router.get("/renovate/dashboards", async (req: Request, res: Response) => {
         refreshing: isRenovateRefreshing("renovate-dashboards"),
         ...renovateSnapshotHealth("renovate-dashboards"),
       });
-      if (!isRenovateFresh(stored)) {
+      if (isRenovateDueForRefresh(stored)) {
         void refreshRenovateIfDue("renovate-dashboards", async () => {
           await saveRenovateSnapshot("renovate-dashboards",
             await buildRenovateDashboards(octokit, getOrg(), bot));

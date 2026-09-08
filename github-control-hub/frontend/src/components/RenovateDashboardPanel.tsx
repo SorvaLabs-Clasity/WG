@@ -4,122 +4,153 @@ import {
   fetchRenovateDashboards, fetchDetectedDependencies, tickRenovateDashboard,
   type DashboardCategory, type DashboardItem, type RepoDashboard,
 } from "../api/renovate";
-import { SearchInput, Empty, Spinner, Note, SURFACE, TYPE, INTENT } from "../design";
-import type { Intent } from "../design";
+import { Spinner, Note } from "../design";
 
 /**
- * What Renovate would do and has not.
+ * Renovate's dependency dashboard, organised by what is wrong rather than by
+ * where it is.
  *
- * A self-hosted Renovate has no API and no web dashboard: it runs and exits.
- * The only place its state is written down is the Dependency Dashboard issue it
- * keeps in each repository, and everything in there is invisible from the pull
- * request list this app read before. A repository where Renovate errors on
- * every run looks exactly like one with nothing to do.
+ * The first version listed repositories and put the states inside them, which
+ * is the shape of the underlying data and the wrong shape for the question.
+ * Nobody opens this asking "what is happening in payments-api". They open it
+ * asking "what is broken", and then want every repository it is broken in, in
+ * one place, to act on together.
  *
- * So this leads with the categories nobody can otherwise see, errored and
- * rate-limited and awaiting approval, and puts the pull requests it has already
- * opened last. The other view already covers those.
+ * So the outline inverts that: one foldable section per state, repositories
+ * nested inside, and everything closed by default except the states that need a
+ * person. An organization with two thousand pending updates opens to about
+ * fifteen lines.
  */
 
-/** What each category is, and what pressing its button asks Renovate to do. */
-const CATEGORY: Record<DashboardCategory, {
-  label: string; intent: Intent; verb: string; hint: string;
-}> = {
+interface Style { label: string; verb: string; hint: string; dot: string; text: string; }
+
+/** What each state is, what acting on it asks Renovate to do, and its colour. */
+const STATES: Record<DashboardCategory, Style> = {
   errored: {
-    label: "Errored", intent: "danger", verb: "Retry",
+    label: "Errored", verb: "Retry",
     hint: "Renovate tried and failed. Usually a lockfile it could not resolve, or a registry it could not reach.",
-  },
-  "rate-limited": {
-    label: "Rate-limited", intent: "warn", verb: "Create now",
-    hint: "Held back by Renovate's own limit on how many it opens at once.",
-  },
-  "pending-approval": {
-    label: "Pending approval", intent: "info", verb: "Approve",
-    hint: "Configured to wait for a person before the branch is created.",
-  },
-  "pr-approval-required": {
-    label: "PR approval required", intent: "info", verb: "Approve PR",
-    hint: "The branch exists; the pull request is waiting on approval.",
-  },
-  "group-size-not-met": {
-    label: "Group not full", intent: "info", verb: "Create anyway",
-    hint: "Waiting for more updates before the group is worth a pull request.",
-  },
-  "awaiting-schedule": {
-    label: "Awaiting schedule", intent: "neutral", verb: "Run now",
-    hint: "Queued until its schedule window opens.",
-  },
-  "pending-checks": {
-    label: "Pending checks", intent: "neutral", verb: "Unpend",
-    hint: "Waiting on status checks or an automerge that has not happened.",
+    dot: "bg-rose-500", text: "text-rose-700 dark:text-rose-400",
   },
   blocked: {
-    label: "Blocked", intent: "warn", verb: "Recreate",
-    hint: "Blocked by a closed or edited pull request, and will not come back on its own.",
+    label: "Blocked", verb: "Recreate",
+    hint: "Blocked by a closed or edited pull request. It will not come back on its own.",
+    dot: "bg-orange-500", text: "text-orange-700 dark:text-orange-400",
+  },
+  "rate-limited": {
+    label: "Rate-limited", verb: "Create now",
+    hint: "Held back by Renovate's own limit on how many pull requests it opens at once.",
+    dot: "bg-amber-500", text: "text-amber-700 dark:text-amber-400",
+  },
+  "pending-approval": {
+    label: "Pending approval", verb: "Approve",
+    hint: "Configured to wait for a person before the branch is created.",
+    dot: "bg-violet-500", text: "text-violet-700 dark:text-violet-400",
+  },
+  "pr-approval-required": {
+    label: "Pull request approval", verb: "Approve",
+    hint: "The branch exists. The pull request is waiting on approval.",
+    dot: "bg-violet-400", text: "text-violet-700 dark:text-violet-400",
+  },
+  "group-size-not-met": {
+    label: "Group not full", verb: "Create anyway",
+    hint: "Waiting for more updates before the group is worth raising.",
+    dot: "bg-sky-500", text: "text-sky-700 dark:text-sky-400",
+  },
+  "pending-checks": {
+    label: "Pending checks", verb: "Unpend",
+    hint: "Waiting on status checks, or on an automerge that has not happened.",
+    dot: "bg-slate-400", text: "text-slate-600 dark:text-slate-300",
+  },
+  "awaiting-schedule": {
+    label: "Awaiting schedule", verb: "Run now",
+    hint: "Queued until its schedule window opens.",
+    dot: "bg-slate-400", text: "text-slate-600 dark:text-slate-300",
   },
   other: {
-    label: "Other", intent: "neutral", verb: "Request",
-    hint: "A branch Renovate is tracking that fits none of the other states.",
+    label: "Other branches", verb: "Request",
+    hint: "Branches Renovate is tracking that fit none of the other states.",
+    dot: "bg-slate-300", text: "text-slate-600 dark:text-slate-300",
   },
   open: {
-    label: "Open", intent: "good", verb: "Rebase",
-    hint: "Already raised as a pull request. The Pull requests view lists these.",
+    label: "Already open", verb: "Rebase",
+    hint: "Already raised as a pull request. The Pull requests view lists these in full.",
+    dot: "bg-emerald-500", text: "text-emerald-700 dark:text-emerald-400",
   },
 };
 
-/** The order somebody would work through them: broken first, done last. */
+/**
+ * Worst first, and the first three open by default.
+ *
+ * Everything below them is Renovate working as intended, and opening all ten
+ * would put two thousand lines in front of somebody who came to look at
+ * fourteen.
+ */
 const ORDER: DashboardCategory[] = [
   "errored", "blocked", "rate-limited", "pending-approval", "pr-approval-required",
   "group-size-not-met", "pending-checks", "awaiting-schedule", "other", "open",
 ];
+const OPEN_BY_DEFAULT: DashboardCategory[] = ["errored", "blocked", "rate-limited"];
 
-/** The whole-dashboard checkboxes, in words. */
 const BULK_LABEL: Record<string, string> = {
-  "create-all-rate-limited-prs": "Create every rate-limited update",
-  "approve-all-pending-prs": "Approve everything pending",
-  "create-all-awaiting-schedule-prs": "Run everything awaiting schedule",
-  "rebase-all-open-prs": "Rebase every open pull request",
-  "create-config-migration-pr": "Open the config migration pull request",
-  "manual job": "Ask Renovate to run on this repository now",
+  "create-all-rate-limited-prs": "Create all rate-limited",
+  "approve-all-pending-prs": "Approve all pending",
+  "create-all-awaiting-schedule-prs": "Run all scheduled",
+  "rebase-all-open-prs": "Rebase all open",
+  "create-config-migration-pr": "Open config migration",
+  "manual job": "Run Renovate now",
 };
 
-/**
- * The dependency inventory for one repository.
- *
- * Its own component so the fetch happens on expansion and belongs to the row
- * that caused it. Across an organization this is megabytes, and almost nobody
- * opens it.
- */
-function DetectedDependencies({ repo, issueNumber }: { repo: string; issueNumber: number }) {
+/** A row's disclosure triangle, rotated rather than swapped. */
+function Caret({ open }: { open: boolean }) {
+  return (
+    <svg viewBox="0 0 12 12" aria-hidden="true"
+      className={`w-2.5 h-2.5 shrink-0 transition-transform duration-150 ${open ? "rotate-90" : ""}`}>
+      <path d="M4 2l5 4-5 4z" fill="currentColor" />
+    </svg>
+  );
+}
+
+/** The inventory for one repository, fetched only when its row is opened. */
+function Inventory({ repo, issueNumber, query }: {
+  repo: string; issueNumber: number; query: string;
+}) {
   const { data, isLoading, isError } = useQuery({
     queryKey: ["renovate", "detected", repo, issueNumber],
     queryFn: () => fetchDetectedDependencies(repo, issueNumber),
     staleTime: 300_000,
   });
 
-  if (isLoading) return <p className="text-[12px] text-slate-400 dark:text-slate-500">Reading the dashboard…</p>;
-  if (isError) return <p className="text-[12px] text-slate-400 dark:text-slate-500">Could not read it.</p>;
-  if (!data?.detected?.length) {
+  if (isLoading) return <p className="py-2 pl-8 text-[12px] text-slate-400">Reading…</p>;
+  if (isError) return <p className="py-2 pl-8 text-[12px] text-slate-400">Could not read it.</p>;
+
+  const manifests = (data?.detected ?? [])
+    .map(m => ({
+      ...m,
+      packages: query
+        ? m.packages.filter(p => p.toLowerCase().includes(query))
+        : m.packages,
+    }))
+    .filter(m => m.packages.length > 0);
+
+  if (manifests.length === 0) {
     return (
-      <p className="text-[12px] text-slate-400 dark:text-slate-500">
-        This dashboard lists no detected dependencies.
+      <p className="py-2 pl-8 text-[12px] text-slate-400">
+        {query ? "Nothing here matches." : "No dependencies listed."}
       </p>
     );
   }
 
   return (
-    <div className="grid gap-2.5">
-      {data.detected.map(m => (
-        <div key={`${m.ecosystem} ${m.manifest}`}>
-          <p className="text-[11.5px] font-bold text-slate-700 dark:text-slate-200">
-            <span className="font-mono">{m.manifest}</span>
-            <span className="ml-1.5 font-normal text-slate-400 dark:text-slate-500">{m.ecosystem}</span>
+    <div className="pl-8 pr-3 pb-2">
+      {manifests.map(m => (
+        <div key={`${m.ecosystem} ${m.manifest}`} className="py-1.5">
+          <p className="font-mono text-[11px] text-slate-400 dark:text-slate-500">
+            {m.manifest}
+            <span className="ml-2 not-italic opacity-70">{m.ecosystem}</span>
           </p>
-          <div className="mt-1 flex flex-wrap gap-1">
+          <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
             {m.packages.map(pkg => (
-              <span key={pkg}
-                className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-white/[0.07]
-                           text-slate-600 dark:text-slate-300">
+              <span key={pkg} className="font-mono text-[11.5px] text-slate-600 dark:text-slate-300">
                 {pkg}
               </span>
             ))}
@@ -138,9 +169,17 @@ export default function RenovateDashboardPanel() {
     staleTime: 120_000,
   });
 
-  const [only, setOnly] = useState<DashboardCategory | null>(null);
-  const [search, setSearch] = useState("");
-  const [opened, setOpened] = useState<Set<string>>(new Set());
+  const [raw, setRaw] = useState("");
+  /**
+   * What has been flipped from its default, rather than what is open.
+   *
+   * Sections have different defaults, the first three open and the rest shut,
+   * and repositories default to open inside an open section. Storing "flipped"
+   * rather than "open" means one rule reads both: open is the default, unless
+   * somebody has flipped it.
+   */
+  const [flipped, setFlipped] = useState<Set<string>>(new Set());
+  const [openInventory, setOpenInventory] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; msg: string } | null>(null);
 
@@ -148,69 +187,66 @@ export default function RenovateDashboardPanel() {
   if (error) return <Note intent="danger">Could not read the Renovate dashboards.</Note>;
   if (!data) return null;
 
-  // The specific failure this view shipped with: `author:` wants a GitHub
-  // App's exact login, `<name>[bot]`, and the suffix is invisible in GitHub's
-  // own UI. Its own state rather than an error, because the fix is to correct
-  // the name and no message about a failed search says that.
   if (data.unknownBot) {
     return (
       <Note intent="warn">
-        GitHub does not recognise <code>{data.bot}</code>, so there is nothing to search
-        for. A self-hosted Renovate raises its issues as a GitHub App, whose login carries
-        a <code>[bot]</code> suffix that GitHub's own pages hide. Correct the name in the
-        Pull requests view.
+        GitHub does not recognise <code>{data.bot}</code>. A self-hosted Renovate raises its
+        issues as a GitHub App, whose login carries a <code>[bot]</code> suffix that GitHub's
+        own pages hide. Correct the name in the Pull requests view.
       </Note>
     );
   }
-
   if (!data.configured) {
-    return (
-      <Note intent="info">
-        No Renovate bot account is named, so there is nothing to look for. Set one in the
-        Pull requests view.
-      </Note>
-    );
+    return <Note intent="info">No Renovate bot account is named. Set one in the Pull requests view.</Note>;
   }
 
   const dashboards = data.dashboards ?? [];
-
   if (dashboards.length === 0) {
     return (
-      <Empty
-        title="No dependency dashboards found"
-        body={
-          `Nothing that ${data.bot} has opened parses as a Dependency Dashboard. `
-          + "It is off by default: Renovate only keeps one where its config sets "
-          + "dependencyDashboard to true, or extends the :dependencyDashboard preset. "
-          + "Without it, none of this is written down anywhere."
-        }
-      />
+      <Note intent="info">
+        Nothing {data.bot} has opened parses as a Dependency Dashboard. Renovate only keeps
+        one where its config sets <code>dependencyDashboard</code> to true, or extends the{" "}
+        <code>:dependencyDashboard</code> preset. Without it none of this is written down.
+      </Note>
     );
   }
 
-  /** Counted over every dashboard, which is the summary read before filtering. */
-  const tally = ORDER.map(category => ({
-    category,
-    count: dashboards.reduce(
-      (n, d) => n + d.items.filter(i => i.category === category).length, 0),
-  })).filter(t => t.count > 0);
+  const query = raw.trim().toLowerCase();
+  const hit = (d: RepoDashboard, i: DashboardItem) =>
+    !query || `${d.repo} ${i.title} ${i.branch}`.toLowerCase().includes(query);
 
-  const matches = (d: RepoDashboard, item: DashboardItem) =>
-    (!only || item.category === only)
-    && (!search.trim()
-      || `${d.repo} ${item.title} ${item.branch}`.toLowerCase().includes(search.trim().toLowerCase()));
+  /**
+   * State, then repository, then item.
+   *
+   * Built here rather than by filtering in the render, so a state whose every
+   * item was filtered out disappears entirely rather than showing a heading
+   * above nothing.
+   */
+  const grouped = ORDER.map(state => {
+    const repos = dashboards
+      .map(d => ({ d, items: d.items.filter(i => i.category === state && hit(d, i)) }))
+      .filter(x => x.items.length > 0);
+    return { state, repos, count: repos.reduce((n, r) => n + r.items.length, 0) };
+  }).filter(g => g.count > 0);
 
-  const shown = dashboards
-    .map(d => ({ dashboard: d, items: d.items.filter(i => matches(d, i)) }))
-    .filter(x => x.items.length > 0 || (!only && !search.trim()));
+  const total = grouped.reduce((n, g) => n + g.count, 0);
+
+  /** Repositories whose inventory matches, so search reaches it too. */
+  const inventoryRepos = dashboards.filter(d => d.detectedPackages > 0);
+
+  const toggle = (set: Set<string>, key: string, apply: (s: Set<string>) => void) => {
+    const next = new Set(set);
+    next.has(key) ? next.delete(key) : next.add(key);
+    apply(next);
+  };
 
   const act = async (d: RepoDashboard, marker: string, what: string) => {
-    setBusy(`${d.repo} ${marker}`);
+    setBusy(`${d.repo}|${marker}`);
     setNotice(null);
     try {
       const result = await tickRenovateDashboard(d.repo, d.issueNumber, marker);
       setNotice(result.ticked
-        ? { ok: true, msg: `${what} requested on ${d.repo}. Renovate acts on it at its next run.` }
+        ? { ok: true, msg: `${what} requested on ${d.repo}. Renovate acts at its next run.` }
         : { ok: false, msg: result.reason ?? "Nothing to do." });
       qc.invalidateQueries({ queryKey: ["renovate", "dashboards"] });
     } catch (e: any) {
@@ -221,185 +257,206 @@ export default function RenovateDashboardPanel() {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 max-w-[85ch] leading-relaxed`}>
-          What Renovate would do and has not. A self-hosted bot has no API and no web
-          dashboard, so this reads the Dependency Dashboard issue it keeps in each
-          repository. Everything below is invisible from the pull request list.
-        </p>
-        {/* Read from storage, refreshed hourly by the pass that runs whether or
-            not the app is open. Said here because otherwise a stored answer is
-            indistinguishable from a live one, and somebody acting on an
-            hour-old list deserves to know it is an hour old. */}
-        {data.computedAt && (
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-1.5 tabular-nums">
-            <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
-            read {new Date(data.computedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-            {data.refreshing && <span className="ml-1 opacity-60">(refreshing)</span>}
+    <div className="rounded-2xl border border-slate-200 dark:border-white/10 overflow-hidden
+                    bg-white dark:bg-[#151a23]">
+
+      {/* One bar: what this is, how old it is, and the search. */}
+      <div className="px-4 py-3 border-b border-slate-200 dark:border-white/10
+                      flex items-center gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-bold text-slate-900 dark:text-white">
+            {total.toLocaleString()} pending across {dashboards.length}{" "}
+            {dashboards.length === 1 ? "repository" : "repositories"}
           </p>
-        )}
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
+            {data.computedAt
+              ? <>read {new Date(data.computedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                  {data.refreshing && " · refreshing"}</>
+              : "read just now"}
+            {data.unparsed ? ` · ${data.unparsed} bot issues were not dashboards` : ""}
+          </p>
+        </div>
+        <input
+          value={raw} onChange={e => setRaw(e.target.value)}
+          placeholder="Filter by repository, update or package…"
+          className="w-full sm:w-72 px-3 py-1.5 text-[12.5px] rounded-lg
+                     bg-slate-50 dark:bg-white/[0.06] border border-slate-200 dark:border-white/10
+                     text-slate-700 dark:text-slate-100 placeholder:text-slate-400
+                     focus:outline-none focus:ring-2 focus:ring-slate-900/10 dark:focus:ring-white/20" />
       </div>
 
-      {/* Broken first. Filters rather than a dashboard, on one line. */}
-      {tally.length > 0 && (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          <button onClick={() => setOnly(null)}
-            className={`text-[12px] font-bold rounded-lg px-2.5 py-1.5 border transition-colors ${
-              only === null
-                ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent"
-                : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/25"
-            }`}>
-            All <span className="tabular-nums opacity-70">{tally.reduce((n, t) => n + t.count, 0)}</span>
-          </button>
-          {tally.map(({ category, count }) => {
-            const c = CATEGORY[category];
-            const active = only === category;
-            return (
-              <button key={category} onClick={() => setOnly(active ? null : category)}
-                title={c.hint}
-                className={`inline-flex items-center gap-1.5 text-[12px] font-bold rounded-lg px-2.5 py-1.5 border transition-colors ${
-                  active
-                    ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent"
-                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-slate-300 dark:hover:border-white/25"
-                }`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${INTENT[c.intent].mark}`} aria-hidden="true" />
-                {c.label} <span className="tabular-nums opacity-70">{count}</span>
-              </button>
-            );
-          })}
+      {notice && (
+        <div className={`px-4 py-2 text-[12px] border-b border-slate-200 dark:border-white/10 ${
+          notice.ok
+            ? "text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-500/10"
+            : "text-amber-800 dark:text-amber-300 bg-amber-50/60 dark:bg-amber-500/10"}`}>
+          {notice.msg}
         </div>
       )}
 
-      {/* Not an error, and not noise: it is how somebody notices the parse has
-          stopped recognising dashboards after a Renovate upgrade, which would
-          otherwise look like every repository having nothing pending. */}
-      {data.unparsed > 0 && (
-        <Note intent="info">
-          {data.unparsed} other issue{data.unparsed === 1 ? "" : "s"} from {data.bot}{" "}
-          {data.unparsed === 1 ? "is" : "are"} not a dependency dashboard, so{" "}
-          {data.unparsed === 1 ? "it was" : "they were"} skipped.
-        </Note>
+      {/* ── the outline ─────────────────────────────────────────────────── */}
+      {grouped.length === 0 && (
+        <p className="px-4 py-6 text-[13px] text-slate-400 dark:text-slate-500">
+          {query ? "Nothing matches that." : "Renovate has nothing pending anywhere."}
+        </p>
       )}
 
-      {notice && <Note intent={notice.ok ? "good" : "warn"}>{notice.msg}</Note>}
+      {grouped.map(({ state, repos, count }) => {
+        const st = STATES[state];
+        // Searching opens everything: a shut section hiding the only match is a
+        // search that reports nothing found.
+        const open = query
+          ? true
+          : OPEN_BY_DEFAULT.includes(state) !== flipped.has(`state:${state}`);
 
-      <SearchInput value={search} onChange={setSearch}
-        placeholder="Search repository, update or branch…" />
+        return (
+          <div key={state} className="border-b border-slate-100 dark:border-white/[0.06] last:border-0">
+            <button
+              onClick={() => toggle(flipped, `state:${state}`, setFlipped)}
+              aria-expanded={open}
+              title={st.hint}
+              className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left
+                         hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+              <span className="text-slate-400"><Caret open={open} /></span>
+              <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${st.dot}`} />
+              <span className={`text-[13px] font-bold ${st.text}`}>{st.label}</span>
+              <span className="ml-auto text-[12px] tabular-nums text-slate-400 dark:text-slate-500">
+                {count}
+              </span>
+            </button>
 
-      {shown.length === 0 ? (
-        <Empty title="Nothing matches"
-          body={only ? `No repository has anything ${CATEGORY[only].label.toLowerCase()}.` : "No updates match."} />
-      ) : (
-        <div className="grid gap-2">
-          {shown.map(({ dashboard: d, items }) => {
-            const isOpen = opened.has(d.repo);
-            return (
-              <div key={d.repo} className={`${SURFACE.card} px-4 py-3.5`}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-slate-900 dark:text-slate-100">{d.repo}</span>
-                      <a href={d.url} target="_blank" rel="noopener noreferrer"
-                        className="text-[11.5px] text-slate-400 dark:text-slate-500 underline underline-offset-2">
-                        dashboard #{d.issueNumber}
-                      </a>
-                    </div>
-                    {d.detectedPackages > 0 && (
-                      <button onClick={() => setOpened(prev => {
-                        const next = new Set(prev);
-                        next.has(d.repo) ? next.delete(d.repo) : next.add(d.repo);
-                        return next;
-                      })}
-                        aria-expanded={isOpen}
-                        className="mt-1 inline-flex items-center gap-1.5 text-[11.5px] font-bold
-                                   text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100
-                                   transition-colors">
-                        <i className={`ph-bold ph-caret-down text-[9px] transition-transform ${isOpen ? "rotate-180" : ""}`}
-                          aria-hidden="true" />
-                        {d.detectedPackages} dependencies across {d.detectedManifests}{" "}
-                        manifest{d.detectedManifests === 1 ? "" : "s"}
-                      </button>
-                    )}
-                  </div>
+            {open && repos.map(({ d, items }) => {
+              const key = `${state}|${d.repo}`;
+              const repoOpen = query ? true : !flipped.has(`repo:${key}`);
+              return (
+                <div key={key}>
+                  <button onClick={() => toggle(flipped, `repo:${key}`, setFlipped)}
+                    aria-expanded={repoOpen}
+                    className="w-full flex items-center gap-2 pl-9 pr-4 py-1.5 text-left
+                               hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+                    <span className="text-slate-300 dark:text-slate-600"><Caret open={repoOpen} /></span>
+                    <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 truncate">
+                      {d.repo}
+                    </span>
+                    <span className="text-[11px] tabular-nums text-slate-400 dark:text-slate-500">
+                      {items.length}
+                    </span>
+                    <a href={d.url} target="_blank" rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="ml-auto text-[11px] text-slate-400 hover:text-slate-700
+                                 dark:hover:text-slate-200 underline underline-offset-2">
+                      #{d.issueNumber}
+                    </a>
+                  </button>
 
-                  {/* The whole-dashboard boxes, where Renovate wrote any. */}
-                  <div className="shrink-0 flex flex-wrap gap-1.5 justify-end">
-                    {d.bulk.filter(b => !b.checked && BULK_LABEL[b.marker]).map(b => (
-                      <button key={b.marker}
-                        disabled={busy !== null}
-                        onClick={() => act(d, b.marker, BULK_LABEL[b.marker])}
-                        className="text-[11.5px] font-bold px-2 py-1 rounded-lg border
-                                   border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300
-                                   hover:border-slate-300 dark:hover:border-white/25 transition-colors
-                                   disabled:opacity-50">
-                        {busy === `${d.repo} ${b.marker}` ? "…" : BULK_LABEL[b.marker]}
-                      </button>
-                    ))}
-                  </div>
+                  {repoOpen && items.map(item => {
+                    const marker = `${item.action}-branch=${item.branch}`;
+                    const running = busy === `${d.repo}|${marker}`;
+                    return (
+                      <div key={marker}
+                        className="flex items-center gap-3 pl-[4.5rem] pr-4 py-1.5
+                                   border-l-2 border-transparent hover:bg-slate-50 dark:hover:bg-white/[0.03]">
+                        <span className="min-w-0 flex-1">
+                          <span className="block text-[12.5px] text-slate-700 dark:text-slate-200 truncate">
+                            {item.title}
+                          </span>
+                          <span className="block font-mono text-[10.5px] text-slate-400 dark:text-slate-500 truncate">
+                            {item.branch}
+                          </span>
+                        </span>
+                        {item.checked ? (
+                          <span className="shrink-0 text-[11px] text-slate-400 dark:text-slate-500">requested</span>
+                        ) : (
+                          <button disabled={busy !== null} onClick={() => act(d, marker, st.verb)}
+                            className="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded
+                                       text-slate-600 dark:text-slate-300
+                                       hover:bg-slate-200 dark:hover:bg-white/10
+                                       disabled:opacity-40 transition-colors">
+                            {running ? "…" : st.verb}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
+              );
+            })}
+          </div>
+        );
+      })}
 
-                {items.length > 0 && (
-                  <div className="mt-2.5 grid gap-1.5">
-                    {items.map(item => {
-                      const c = CATEGORY[item.category];
-                      const marker = `${item.action}-branch=${item.branch}`;
-                      return (
-                        <div key={marker}
-                          className="flex items-center gap-3 rounded-xl pl-0 pr-3 py-2 overflow-hidden
-                                     bg-white dark:bg-white/[0.03] border border-slate-200/80 dark:border-white/[0.07]">
-                          <span className={`w-1 self-stretch shrink-0 rounded-l-xl ${INTENT[c.intent].mark}`}
-                            aria-hidden="true" />
-                          <span className="min-w-0 flex-1">
-                            <span className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-100">
-                              {item.title}
-                            </span>
-                            <span className="block font-mono text-[11px] text-slate-400 dark:text-slate-500 truncate">
-                              {item.branch}
-                            </span>
-                          </span>
-                          <span className="shrink-0 text-[11.5px] text-slate-500 dark:text-slate-400">
-                            {c.label}
-                          </span>
-                          {/* A ticked box is a request Renovate has not run
-                              yet. Offering it again would offer to do nothing. */}
-                          {item.checked ? (
-                            <span className="shrink-0 text-[11.5px] font-bold text-slate-400 dark:text-slate-500">
-                              requested
-                            </span>
-                          ) : (
-                            <button
-                              disabled={busy !== null}
-                              onClick={() => act(d, marker, c.verb)}
-                              title={c.hint}
-                              className="shrink-0 text-[11.5px] font-bold px-2.5 py-1 rounded-lg border
-                                         border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200
-                                         hover:border-slate-300 dark:hover:border-white/25 transition-colors
-                                         disabled:opacity-50">
-                              {busy === `${d.repo} ${marker}` ? "…" : c.verb}
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
+      {/* ── the inventory, its own foldable section ─────────────────────── */}
+      {inventoryRepos.length > 0 && (
+        <div className="border-t border-slate-200 dark:border-white/10">
+          <button onClick={() => toggle(flipped, "inv", setFlipped)}
+            aria-expanded={flipped.has("inv")}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 text-left
+                       hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+            <span className="text-slate-400"><Caret open={flipped.has("inv")} /></span>
+            <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-slate-300 dark:bg-slate-600" />
+            <span className="text-[13px] font-bold text-slate-600 dark:text-slate-300">
+              Detected dependencies
+            </span>
+            <span className="ml-auto text-[12px] tabular-nums text-slate-400 dark:text-slate-500">
+              {inventoryRepos.reduce((n, d) => n + d.detectedPackages, 0).toLocaleString()}
+            </span>
+          </button>
 
-                {isOpen && (
-                  <div className="mt-2.5 pt-3 border-t border-slate-200/70 dark:border-white/[0.07]">
-                    <DetectedDependencies repo={d.repo} issueNumber={d.issueNumber} />
-                  </div>
-                )}
+          {flipped.has("inv") && inventoryRepos.map(d => {
+            const shown = openInventory.has(d.repo);
+            return (
+              <div key={`inv-${d.repo}`}>
+                <button onClick={() => toggle(openInventory, d.repo, setOpenInventory)}
+                  aria-expanded={shown}
+                  className="w-full flex items-center gap-2 pl-9 pr-4 py-1.5 text-left
+                             hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+                  <span className="text-slate-300 dark:text-slate-600"><Caret open={shown} /></span>
+                  <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 truncate">
+                    {d.repo}
+                  </span>
+                  <span className="ml-auto text-[11px] tabular-nums text-slate-400 dark:text-slate-500">
+                    {d.detectedPackages} in {d.detectedManifests}
+                  </span>
+                </button>
+                {/* Fetched per repository, on expansion. Across an organization
+                    this is megabytes and almost nobody opens it. */}
+                {shown && <Inventory repo={d.repo} issueNumber={d.issueNumber} query={query} />}
               </div>
             );
           })}
         </div>
       )}
 
-      <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-relaxed max-w-[85ch]">
-        These buttons tick the checkbox on the dashboard issue, which is how a self-hosted
-        Renovate is instructed. It acts at its next run rather than immediately, so a request
-        made now appears as a pull request whenever the bot is scheduled next.
+      {/* ── whole-dashboard actions, last ──────────────────────────────── */}
+      {dashboards.some(d => d.bulk.some(b => !b.checked && BULK_LABEL[b.marker])) && (
+        <div className="px-4 py-3 border-t border-slate-200 dark:border-white/10
+                        bg-slate-50/60 dark:bg-white/[0.02]">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-2">
+            Whole repository
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {dashboards.flatMap(d =>
+              d.bulk.filter(b => !b.checked && BULK_LABEL[b.marker]).map(b => (
+                <button key={`${d.repo}|${b.marker}`}
+                  disabled={busy !== null}
+                  onClick={() => act(d, b.marker, BULK_LABEL[b.marker])}
+                  className="text-[11px] px-2 py-1 rounded-md border border-slate-200 dark:border-white/10
+                             text-slate-600 dark:text-slate-300 hover:border-slate-400
+                             dark:hover:border-white/30 disabled:opacity-40 transition-colors">
+                  <span className="font-semibold">{d.repo}</span>
+                  <span className="mx-1 opacity-40">·</span>
+                  {BULK_LABEL[b.marker]}
+                </button>
+              )))}
+          </div>
+        </div>
+      )}
+
+      <p className="px-4 py-2.5 text-[11px] text-slate-400 dark:text-slate-500
+                    border-t border-slate-100 dark:border-white/[0.06]">
+        Acting here ticks the checkbox on the dashboard issue, which is how a self-hosted
+        Renovate is instructed. It runs on its own schedule, so a request made now appears
+        whenever the bot next runs.
       </p>
     </div>
   );

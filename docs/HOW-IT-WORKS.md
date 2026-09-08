@@ -1887,6 +1887,40 @@ refresh and the alarm pass. Two copies would be two places for the "off" and
 "clean" markers to drift, and the drift shows as a repository reading clean on
 one path and unwatched on the other. `repro-depsnapshot` pins this.
 
+### Two windows, and getting their order right
+
+The tab kept sweeping on every launch even after the throttle was made durable,
+and the reason was a relationship rather than a bug in either half.
+
+**The cloud warm-up was conditional.** It ran only where a Dependabot-backed
+alarm had already made the pass sweep, so that nothing was ever swept for the
+cache's sake. That was a deliberate decision and it was wrong: on an account
+with no such alarm the row was never filled by the pass at all, so `computedAt`
+only advanced when somebody opened the tab, and opening the tab is exactly what
+the row exists to make cheap. It now warms hourly regardless, reusing a sweep
+the pass already made where there was one.
+
+**And the windows were the wrong way round.** The pass warms hourly; the tab
+refreshed anything over half an hour old. So the tab always won, and swept on
+every open. A foreground refresh is a *fallback for when the background one has
+stopped*, which means its window has to be longer than the background cadence,
+not shorter. Three hours against the pass's one.
+
+Three windows now, doing three different jobs, and conflating any two of them
+produces exactly one of the bugs above:
+
+| Window | Length | Governs |
+| --- | --- | --- |
+| Fresh | 10 minutes | What the tab **says** about its data |
+| Warm | 1 hour | How often the **cloud pass** refills the row |
+| Due | 3 hours | When the **tab itself** falls back to sweeping |
+
+The last live GitHub call that tab made is stored too. The Dependabot pull
+request counts were a search on the thirty-a-minute budget plus a GraphQL batch
+per fifty pull requests, on every open, and they are now filled by the same
+hourly pass. Opening the Vulnerabilities tab should now make no request to
+GitHub at all.
+
 ### Renovate, read from storage rather than computed on open
 
 Both halves of the Renovate view cost a search against the smallest budget
@@ -1930,6 +1964,33 @@ reusing it was the whole bug.** The dashboard sweep now shares it, reports
 `unknownBot` the same way, and the panel says which name failed and why the
 suffix is easy to miss. Any status other than 422 is still raised rather than
 retried under a different name, which would only obscure it.
+
+### The dashboard, organised by what is wrong
+
+The first version of that panel listed repositories and put the states inside
+them, which is the shape of the underlying data and the wrong shape for the
+question. Nobody opens it asking "what is happening in payments-api". They open
+it asking "what is broken", and then want every repository it is broken in
+together, to act on in one pass.
+
+So the outline is inverted: one foldable section per state, repositories nested
+inside them, items inside those, and the dependency inventory as its own section
+at the bottom. Everything folds, and it is an outline rather than a grid of
+cards, because the useful shape here is a tree somebody collapses down to the
+part they care about.
+
+Three rules make it usable at organization scale:
+
+- **Worst first, and only the worst open.** Errored, blocked and rate-limited
+  are open by default; the six states below them are Renovate working as
+  intended. Opening all ten would put two thousand lines in front of somebody
+  who came to look at fourteen.
+- **Searching opens everything.** A shut section hiding the only match is a
+  search that reports nothing found. The filter reaches repository names, update
+  titles, branches, and the package inventory inside each repository.
+- **Open is stored as "flipped from default", not as "open".** Sections have
+  different defaults and repositories default to open inside an open section, so
+  one rule reads both rather than two sets that can disagree.
 
 ### The Renovate dependency dashboard
 

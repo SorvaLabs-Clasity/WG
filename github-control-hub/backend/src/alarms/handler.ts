@@ -293,31 +293,61 @@ export async function handler(): Promise<void> {
    * `dependencyPromise` happens inside a closure and the compiler therefore
    * narrows it to `never` here rather than to the promise it holds.
    */
-  const swept = dependencyPromise as ReturnType<typeof fetchOrgDependencyAlerts> | null;
+  /**
+   * Keep the Dependabot view warm, hourly, whether or not an alarm needed it.
+   *
+   * This used to run only when a Dependabot-backed alarm had already made the
+   * pass sweep, so that nothing was ever swept for the cache's sake. The cost
+   * of that was borne somewhere worse: on an account with no such alarm the row
+   * was never filled here at all, so its timestamp only advanced when somebody
+   * opened the tab, and opening the tab is exactly what it was supposed to
+   * stop being expensive.
+   *
+   * An hourly sweep from the pass is the cheaper half of that trade, and it is
+   * the one thing that runs whether or not anybody has the app open.
+   */
+  try {
+    const {
+      readDependencySnapshot, saveDependencySnapshot, WARM_MS,
+    } = await import("../services/dependencySnapshot");
 
-  if (swept) {
-    try {
-      const { readDependencySnapshot, saveDependencySnapshot, WARM_MS } =
-        await import("../services/dependencySnapshot");
-      const stored = await readDependencySnapshot();
-      const age = stored?.computedAt ? Date.now() - Date.parse(stored.computedAt) : Infinity;
+    const stored = await readDependencySnapshot();
+    const age = stored?.computedAt ? Date.now() - Date.parse(stored.computedAt) : Infinity;
 
-      if (!(age < WARM_MS)) {
-        const { buildDependencyView } = await import("../services/dependencyView");
-        const result = await swept;
-        // A degraded sweep read some repositories and not others, and storing
-        // it would report the ones it missed as clean. Left for a later pass.
-        if (!result.degraded) {
-          const view = await buildDependencyView(octokit, org, { alerts: result.alerts });
-          await saveDependencySnapshot(view);
-          console.log(`[Alarm] Refreshed the stored Dependabot view, ${view.length} rows`);
-        }
+    if (!(age < WARM_MS)) {
+      const { buildDependencyView } = await import("../services/dependencyView");
+      const { fetchOrgDependencyAlerts } = await import("../services/dependencyService");
+
+      // Reuse the sweep this pass already made where an alarm needed one, so a
+      // pass that swept does not sweep twice for identical data.
+      const swept = dependencyPromise as ReturnType<typeof fetchOrgDependencyAlerts> | null;
+      const result = await (swept ?? fetchOrgDependencyAlerts(octokit, org));
+
+      // A degraded sweep read some repositories and not others, and storing it
+      // would report the ones it missed as clean. Left for a later pass.
+      if (!result.degraded) {
+        const view = await buildDependencyView(octokit, org, { alerts: result.alerts });
+        await saveDependencySnapshot(view);
+        console.log(`[Alarm] Refreshed the stored Dependabot view, ${view.length} rows`);
+
+        // The tab's other live call. Stored on the same schedule so opening it
+        // makes no request to GitHub at all.
+        const { fetchDependabotPrs } = await import("../services/dependabotPrs");
+        const { saveRenovateSnapshot } = await import("../services/renovateSnapshot");
+        const prs = await fetchDependabotPrs(
+          async (q, page) => {
+            const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
+              q, per_page: 100, page, advanced_search: "true",
+            });
+            return { items: r.data?.items ?? [] };
+          }, org);
+        if (prs) await saveRenovateSnapshot("dependabot-prs", prs);
       }
-    } catch (err: any) {
-      // Warming a cache must never fail a pass that has already evaluated
-      // alarms and sent what it needed to send.
-      console.warn(`[Alarm] Could not refresh the Dependabot view: ${err?.message ?? err}`);
     }
+  } catch (err: any) {
+    // Warming a view must never fail a pass that has already evaluated alarms
+    // and sent what it needed to send.
+    console.warn(`[Alarm] Could not refresh the Dependabot view: ${err?.message ?? err}`);
   }
 
   /**

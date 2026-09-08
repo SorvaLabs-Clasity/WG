@@ -80,7 +80,74 @@ const read = (f: string) => fs.readFileSync(path.join(SRC, f), "utf8");
     check("the in-flight marker is cleared", isRenovateRefreshing("renovate-prs") === false);
   }
 
-  console.log("\nthe pass that runs without the app open is what fills it");
+  console.log("\nthe view refreshes only when the pass has clearly stopped");
+  {
+    /**
+     * The relationship that was the wrong way round.
+     *
+     * The pass warms these rows hourly and the view refreshed anything past its
+     * one-hour freshness window, so there was always a gap where the stored
+     * answer was stale and the pass had not run yet, and whoever opened the
+     * view in that gap paid for the search. Every open, in practice.
+     *
+     * The view's window has to be longer than the pass's cadence, so that it
+     * only acts when the pass has stopped rather than merely not run yet.
+     */
+    const { isRenovateDueForRefresh } = require("./src/services/renovateSnapshot");
+    const now = Date.now();
+    const at = (ms: number) => ({ computedAt: new Date(now - ms).toISOString() });
+
+    check("an hour old is served without recomputing",
+      isRenovateDueForRefresh(at(61 * 60_000), now) === false);
+    check("  two hours is still not the view's job",
+      isRenovateDueForRefresh(at(2 * 60 * 60_000), now) === false);
+    check("  and at four hours the pass has clearly stopped",
+      isRenovateDueForRefresh(at(4 * 60 * 60_000), now) === true);
+
+    // Longer than the hour the pass warms on, which is the whole property.
+    check("  the view's window is longer than the pass's cadence",
+      !isRenovateDueForRefresh(at(FRESH_MS + 60_000), now), FRESH_MS);
+
+    // Nothing stored is a first open, which computes rather than serving stale.
+    check("  and nothing stored is not a refresh",
+      isRenovateDueForRefresh(null, now) === false);
+  }
+
+  console.log("\nthe Dependabot tab makes no live GitHub call either");
+  {
+    const route = read("routes/dependencies.ts");
+    const handler = read("alarms/handler.ts");
+
+    // The last one it made: a search on the thirty-a-minute budget plus a
+    // GraphQL batch per fifty pull requests, on every single open.
+    check("the pull request counts are stored too",
+      /readRenovateSnapshot<any>\("dependabot-prs"\)/.test(route));
+    check("  and filled by the same hourly pass",
+      /saveRenovateSnapshot\("dependabot-prs"/.test(handler));
+  }
+
+  console.log("\nthe pass warms the Dependabot view whether or not an alarm needed it");
+  {
+    const handler = read("alarms/handler.ts");
+
+    /**
+     * It used to run only when a Dependabot-backed alarm had already swept, so
+     * nothing was swept for the cache's sake. On an account with no such alarm
+     * the row was never filled here at all, so its timestamp only advanced when
+     * somebody opened the tab, which is the thing it was meant to make cheap.
+     */
+    check("the warm-up is not gated on an alarm having swept",
+      !/if \(swept\) \{/.test(handler), "gating on `swept` never fills the row without an alarm");
+
+    // But a pass that did sweep must not sweep twice for identical data.
+    check("  while a sweep the pass already made is reused",
+      /swept \?\? fetchOrgDependencyAlerts\(octokit, org\)/.test(handler));
+
+    check("  still hourly rather than every pass", /WARM_MS/.test(handler));
+    check("  and a degraded sweep is still never stored", /!result\.degraded/.test(handler));
+  }
+
+console.log("\nthe pass that runs without the app open is what fills it");
   {
     const handler = read("alarms/handler.ts");
 

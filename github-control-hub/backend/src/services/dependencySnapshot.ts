@@ -193,7 +193,16 @@ export function clearSnapshotHold(): void {
 }
 
 /**
- * How often a background refresh may be started.
+ * How often the *tab* may start a refresh, as a fallback.
+ *
+ * Deliberately much longer than the hour the alarm pass warms this row on, and
+ * that relationship is the point. They were the wrong way round: the pass
+ * filled it hourly while the tab refreshed anything over half an hour old, so
+ * the tab won every time and swept on every open regardless.
+ *
+ * Three hours means the tab only sweeps when the pass has clearly stopped
+ * running, which is the only case where somebody opening the app should pay
+ * for it.
  *
  * The tab used to start one on every open where the stored sweep was over ten
  * minutes old. Nothing keeps that sweep warm unless a Dependabot-backed alarm
@@ -206,7 +215,7 @@ export function clearSnapshotHold(): void {
  * recompute *because somebody looked* was. Half an hour matches what the alarm
  * pass already uses to warm the same row, so the two cannot fight.
  */
-export const REFRESH_EVERY_MS = 30 * 60_000;
+export const REFRESH_EVERY_MS = 3 * 60 * 60_000;
 
 /**
  * Whether the stored answer is old enough to be worth recomputing.

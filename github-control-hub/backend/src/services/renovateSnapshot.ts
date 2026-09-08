@@ -23,7 +23,17 @@ import { docClient, hasTable, tableName, PutCommand, GetCommand } from "../utils
 
 const TABLE = () => tableName("ALARMS_TABLE");
 
-export type RenovateSnapshotKind = "renovate-prs" | "renovate-dashboards";
+export type RenovateSnapshotKind =
+  | "renovate-prs"
+  | "renovate-dashboards"
+  /**
+   * The Dependabot pull request search, stored on the same schedule.
+   *
+   * It lives here rather than beside the Dependabot sweep because this module
+   * is the general one: same row shape, same freshness window, same guards. The
+   * name says what it holds.
+   */
+  | "dependabot-prs";
 
 /** Two days, so a stale row cannot outlive the account it describes. */
 const TTL_HOURS = 48;
@@ -147,7 +157,26 @@ export function isRenovateFresh(
  * every open of a view whose stored answer is older than the freshness window
  * starts a fresh org-wide search, and two opens start two.
  */
-const REFRESH_EVERY_MS = FRESH_MS;
+/**
+ * How long before the *view* refreshes as a fallback.
+ *
+ * Longer than the hour the alarm pass warms these rows on, deliberately. Set
+ * equal to the freshness window, as it first was, there is always a gap in
+ * which the stored answer is stale but the pass has not run yet, and whoever
+ * opens the view in that gap pays for the search. Three hours means the view
+ * only does it when the pass has clearly stopped.
+ */
+const REFRESH_EVERY_MS = 3 * 60 * 60_000;
+
+/** Whether the stored answer is old enough that the view should recompute it. */
+export function isRenovateDueForRefresh(
+  stored: { computedAt?: string | null } | null,
+  now = Date.now(),
+): boolean {
+  if (!stored?.computedAt) return false;
+  const at = Date.parse(stored.computedAt);
+  return Number.isFinite(at) && now - at >= REFRESH_EVERY_MS;
+}
 const refreshing: Partial<Record<RenovateSnapshotKind, Promise<void> | null>> = {};
 const lastRefreshAt: Partial<Record<RenovateSnapshotKind, number>> = {};
 
@@ -178,7 +207,7 @@ export async function refreshRenovateIfDue(
 
 /** Clears everything, for tests that need each case to start clean. */
 export function __resetRenovateSnapshots(): void {
-  for (const k of ["renovate-prs", "renovate-dashboards"] as RenovateSnapshotKind[]) {
+  for (const k of ["renovate-prs", "renovate-dashboards", "dependabot-prs"] as RenovateSnapshotKind[]) {
     held[k] = null;
     refreshing[k] = null;
     lastRefreshAt[k] = 0;

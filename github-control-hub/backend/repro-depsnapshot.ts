@@ -153,8 +153,10 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
       isDueForRefresh(at(5 * 60_000), now) === false);
     check("  nor one from twenty-nine minutes ago",
       isDueForRefresh(at(29 * 60_000), now) === false);
-    check("  while thirty-one minutes is",
-      isDueForRefresh(at(31 * 60_000), now) === true);
+    check("  nor two hours, because the pass warms it hourly",
+      isDueForRefresh(at(2 * 60 * 60_000), now) === false);
+    check("  while four hours means the pass has clearly stopped",
+      isDueForRefresh(at(4 * 60 * 60_000), now) === true);
 
     // The property that matters: the same stored row gives the same answer to
     // a process that has just started as to one that has been running for
@@ -169,8 +171,11 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
     check("  and an unreadable timestamp does not trigger one either",
       isDueForRefresh({ computedAt: "" }, now) === false);
 
-    check("  the window is the half hour the alarm pass also uses",
-      REFRESH_EVERY_MS === 30 * 60_000, REFRESH_EVERY_MS);
+    // Longer than the hour the pass warms on, deliberately. Set equal, there
+    // is always a gap where the row is stale and the pass has not run yet, and
+    // whoever opens the tab in that gap pays for the sweep.
+    check("  the tab's window is longer than the pass's cadence",
+      REFRESH_EVERY_MS > 60 * 60_000, REFRESH_EVERY_MS);
   }
 
   console.log("\nand the route asks that question rather than the freshness one");
@@ -219,9 +224,23 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
     // The whole economy of this: the org-wide walk is the expensive part, and
     // it has already been paid for when an alarm needed it. Starting one just
     // to warm a screen is the five-minutes-forever cost that was rejected.
-    check("nothing is swept for the sake of the cache",
-      /if \(swept\) \{/.test(handler) && !/fetchOrgDependencyAlerts\(octokit, org\)[\s\S]{0,200}saveDependencySnapshot/.test(handler),
-      "a pass with no Dependabot alarm must not start a walk to warm a tab");
+    /**
+     * This assertion has been reversed deliberately, and the reversal is the
+     * point of the change it came with.
+     *
+     * It used to require that nothing was ever swept for the cache's sake: the
+     * warm-up ran only where a Dependabot-backed alarm had already made the
+     * pass sweep. The cost of that landed somewhere worse. On an account with
+     * no such alarm the row was never filled by the pass at all, so its
+     * timestamp only advanced when somebody opened the tab, and opening the tab
+     * is precisely what the row exists to make cheap. Every launch swept.
+     *
+     * An hourly sweep from the pass is the cheaper half of that trade, and the
+     * pass is the only thing that runs whether or not anybody has the app open.
+     */
+    check("the pass warms the row whether or not an alarm needed a sweep",
+      !/if \(swept\) \{/.test(handler),
+      "gating on an alarm's sweep never fills the row on an account without one");
     check("  and the alerts already fetched are handed over rather than fetched again",
       /buildDependencyView\(octokit, org, \{ alerts: result\.alerts \}\)/.test(handler),
       "re-sweeping inside one invocation spends the org-wide walk twice");
