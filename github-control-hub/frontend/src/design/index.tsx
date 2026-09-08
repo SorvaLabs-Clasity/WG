@@ -438,6 +438,93 @@ export function Drawer({ open, onClose, title, subtitle, children, footer }: {
   );
 }
 
+/**
+ * A confirmation before something is done on somebody else's behalf.
+ *
+ * Not `window.confirm`. Two reasons, and the second is the one that bites: the
+ * native dialog cannot say *what* is about to happen in more than a line, and
+ * Electron's dialog handling is its own implementation rather than Chromium's,
+ * which is how the bulk-close button came to be silently dead for a release
+ * (`window.prompt` is not implemented there at all).
+ *
+ * The body is where the honesty lives. Every action this guards is a request to
+ * a bot that acts later, not a change that has happened by the time the dialog
+ * closes, and a dialog that implies otherwise is worse than none.
+ *
+ * Escape and the backdrop both close it, because a dialog covering the page has
+ * to be dismissible without hunting for the control that does it, and the
+ * confirm button takes focus on open so it can be answered from the keyboard.
+ */
+export function ConfirmDialog({
+  open, onClose, onConfirm, title, body, confirmLabel, intent = "info", busy,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  body: React.ReactNode;
+  confirmLabel: string;
+  intent?: Intent;
+  busy?: boolean;
+}) {
+  const confirmRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    // Restored rather than cleared: something else may have set it, and
+    // clearing would silently undo theirs.
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    confirmRef.current?.focus();
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  const t = INTENT[intent];
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center p-4"
+      role="dialog" aria-modal="true" aria-label={title}>
+      <div className="drawer-scrim absolute inset-0 bg-slate-950/40 dark:bg-black/60 backdrop-blur-[2px]
+                      animate-[fadeIn_150ms_ease-out]"
+        onClick={busy ? undefined : onClose} aria-hidden="true" />
+
+      <div className="relative w-full max-w-md overflow-hidden rounded-2xl
+                      bg-white dark:bg-[#151a23] border border-slate-200 dark:border-white/[0.09]
+                      shadow-[0_24px_70px_-20px_rgba(15,23,42,0.5)]
+                      animate-[fadeInUp_200ms_cubic-bezier(0.16,1,0.3,1)]">
+        {/* The state's colour along the top edge rather than a tinted icon
+            block: it says which kind of action this is without spending a
+            quarter of the dialog saying it. */}
+        <span className={`block h-1 w-full ${t.mark}`} aria-hidden="true" />
+
+        <div className="px-6 pt-5 pb-4">
+          <h2 className="text-[17px] font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
+          <div className="text-[13px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+            {body}
+          </div>
+        </div>
+
+        <div className="px-6 py-4 flex justify-end gap-2 border-t border-slate-200/80 dark:border-white/[0.07]
+                        bg-slate-50/80 dark:bg-white/[0.02]">
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <button ref={confirmRef} onClick={onConfirm} disabled={busy}
+            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm
+                        hover:shadow-md hover:scale-[1.02] active:scale-[0.99]
+                        disabled:opacity-50 disabled:pointer-events-none ${t.loud}`}>
+            {busy ? "Working…" : confirmLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function Empty({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
   return (
     <div className={`${SURFACE.card} py-20 text-center`}>

@@ -8,9 +8,11 @@ import {
 import { usePermissions } from "../hooks/usePermissions";
 import { useAccessRepos } from "../hooks/useAccess";
 import {
-  Spinner, Note, Button, SearchInput, Chip, Pill, Empty,
+  Spinner, Note, Button, SearchInput, Chip, Pill, Empty, ConfirmDialog,
   SURFACE, TYPE, INTENT, enter, type Intent,
 } from "../design";
+import { useOrgConfig } from "../hooks/useOrgConfig";
+import { useMyAccess } from "../hooks/useMe";
 
 /**
  * Everything Renovate is doing, as one operations queue.
@@ -112,6 +114,69 @@ const BULK_LABEL: Record<string, string> = {
   "manual job": "Run Renovate now",
 };
 
+/**
+ * A request waiting to be confirmed.
+ *
+ * Held rather than acted on. Everything here instructs a bot that runs later,
+ * on somebody else's repository, and several of them are bulk: "rebase all
+ * open" on a repository with forty updates is forty force-pushes. None of that
+ * is undoable from this screen.
+ */
+interface Pending {
+  repo: string;
+  issueNumber: number;
+  marker: string;
+  /** The button's own word, which is what the dialog confirms. */
+  verb: string;
+  /** What it is being done to, where that is one package rather than a repository. */
+  subject?: string;
+  intent: Intent;
+}
+
+/** Why a control is unavailable, said where somebody hovers it. */
+const NO_WRITE = (repo: string) =>
+  `You need write access to ${repo} to instruct Renovate there. `
+  + "Asking it to act edits its dashboard issue, and this runs as you, not as the app.";
+
+/**
+ * What the confirmation says, per action.
+ *
+ * Kept apart from the button labels because they answer different questions.
+ * The label says what the button does; this says what will actually happen,
+ * which for every one of these is "a checkbox is ticked and a bot acts later".
+ *
+ * "Approve" gets its own paragraph. It is the most misreadable word on the
+ * screen: it looks like approving a pull request and it is not one. It ticks
+ * the box that tells Renovate it may go ahead and raise the update it is
+ * holding back, and it carries no review, no approval and no merge.
+ */
+function explain(p: Pending): React.ReactNode {
+  const what = p.subject
+    ? <><span className="font-mono text-slate-700 dark:text-slate-200">{p.subject}</span> on </>
+    : null;
+  return (
+    <>
+      <p>
+        This ticks a checkbox on {what}
+        <span className="font-mono text-slate-700 dark:text-slate-200">{p.repo}</span>&#39;s Renovate
+        dashboard issue. Renovate reads it on its next run, so nothing happens the moment this
+        closes, and nothing here merges anything.
+      </p>
+      {/^approve$/i.test(p.verb) && (
+        <p className="mt-2">
+          This is not a pull request review. It tells Renovate it may raise the update it is
+          holding back; whoever reviews and merges that pull request is unchanged.
+        </p>
+      )}
+      {/all/i.test(p.verb) && (
+        <p className="mt-2">
+          This one applies to every matching update on the repository, not just one.
+        </p>
+      )}
+    </>
+  );
+}
+
 interface Row {
   repo: string;
   branch: string;
@@ -208,6 +273,27 @@ export default function RenovatePanel() {
   // Renovate has never said anything about. From the stored access graph, held
   // five minutes, and free of GitHub requests.
   const { data: allRepos } = useAccessRepos(true);
+  const { data: orgConfig } = useOrgConfig();
+  const org = orgConfig?.org ?? "";
+  const { data: myAccess } = useMyAccess();
+
+  /**
+   * Whether this person could actually carry out an action on a repository.
+   *
+   * Instructing Renovate means editing its dashboard issue, and the request
+   * runs as the person pressing the button rather than as the app, so GitHub
+   * refuses it without write access. Knowing that here turns a 403 nobody
+   * expected into a control that says why it is unavailable.
+   *
+   * **Open when the answer is not known.** An unbuilt graph returns an empty
+   * list, and reading that as "writes nowhere" would disable every button for
+   * everybody. Unknown means do not narrow: GitHub is still the authority, and
+   * the refusal now explains itself.
+   */
+  const canWrite = (repo: string): boolean => {
+    if (!myAccess || myAccess.unknown) return true;
+    return myAccess.writableRepos.includes(repo);
+  };
 
   const prs = useQuery({
     queryKey: ["renovate", "details"], queryFn: () => fetchRenovate(true), staleTime: 120_000,
@@ -224,6 +310,7 @@ export default function RenovatePanel() {
   const [notice, setNotice] = useState<{ ok: boolean; msg: string } | null>(null);
   const [botDraft, setBotDraft] = useState("");
   const [editing, setEditing] = useState(false);
+  const [pending, setPending] = useState<Pending | null>(null);
 
   const saveBot = useMutation({
     mutationFn: (bot: string) => setRenovateBot(bot),
@@ -526,12 +613,30 @@ export default function RenovatePanel() {
         return (
           <div key={repo} className={`${SURFACE.card} overflow-hidden`} style={enter(gi, 35, 300)}>
 
-            <button onClick={() => toggle(shut, repo, setShut)} aria-expanded={open}
-              className="w-full flex items-center gap-3 px-6 py-4 text-left
-                         hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
-              <i className={`ph-bold ph-caret-right text-slate-400 text-[13px] transition-transform
-                             duration-200 ${open ? "rotate-90" : ""}`} aria-hidden="true" />
-              <h3 className={`${TYPE.heading} font-mono text-slate-900 dark:text-white truncate`}>{repo}</h3>
+            {/* The heading does two jobs, so it is two controls rather than one.
+                The name opens the repository on GitHub; the caret and the space
+                beside it collapse the group. Nesting a link inside a button is
+                not allowed, and making the whole bar a link would take the
+                collapse away, which is the control somebody uses far more. */}
+            <div className="flex items-center gap-3 px-6 py-4 group/head">
+              <button onClick={() => toggle(shut, repo, setShut)} aria-expanded={open}
+                aria-label={`${open ? "Collapse" : "Expand"} ${repo}`}
+                className="shrink-0 w-6 h-6 -ml-1 grid place-items-center rounded-lg
+                           text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
+                           hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors">
+                <i className={`ph-bold ph-caret-right text-[13px] transition-transform duration-200
+                               ${open ? "rotate-90" : ""}`} aria-hidden="true" />
+              </button>
+
+              <a href={org ? `https://github.com/${org}/${repo}` : undefined}
+                target="_blank" rel="noreferrer noopener"
+                title={`Open ${repo} on GitHub`}
+                className={`${TYPE.heading} font-mono text-slate-900 dark:text-white truncate
+                            hover:underline underline-offset-4 decoration-slate-300
+                            dark:decoration-slate-600 transition-colors`}>
+                {repo}
+              </a>
+
               {/* One dot per state present, so a collapsed repository still
                   says whether anything inside it is broken. */}
               <span className="flex items-center gap-1 shrink-0">
@@ -540,16 +645,26 @@ export default function RenovatePanel() {
                     className={`w-1.5 h-1.5 rounded-full ${INTENT[l.intent].mark}`} />
                 ))}
               </span>
-              <span className="ml-auto shrink-0">
+
+              {/* The rest of the bar still collapses. Not reachable by keyboard
+                  on purpose: the caret above already is, and two tab stops for
+                  one action is noise for somebody using a screen reader. */}
+              <button onClick={() => toggle(shut, repo, setShut)}
+                tabIndex={-1} aria-hidden="true"
+                className="flex-1 self-stretch min-w-[16px] cursor-pointer" />
+
+              <span className="shrink-0">
                 <Pill intent={kinds[0]?.intent ?? "neutral"}>{group.length}</Pill>
               </span>
-            </button>
+            </div>
 
             {open && (
               <div className="px-4 pt-1 pb-4 grid gap-1.5">
                 {group.map((r, i) => {
                   const t = INTENT[LENS[r.lens].intent];
                   const running = busy === `${r.repo}|${r.marker}`;
+                  const href = r.pr?.url ?? dashboard?.url;
+                  const writable = canWrite(repo);
                   return (
                     <div key={`${r.repo}|${r.branch}|${r.title}`} style={enter(i, 14, 200)}
                       className={`relative overflow-hidden rounded-xl ${SURFACE.inset}
@@ -560,10 +675,23 @@ export default function RenovatePanel() {
                                       grid-cols-[minmax(0,1fr)_auto]
                                       lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_136px_auto]">
 
-                        <span className={`${TYPE.mono} text-slate-800 dark:text-slate-100 truncate`}
-                          title={r.title}>
-                          {r.name}
-                        </span>
+                        {/* Every row opens something. A row backed by a pull
+                            request opens the pull request; one that exists only
+                            on the dashboard opens the dashboard issue, which is
+                            the only place it is written down. */}
+                        {href ? (
+                          <a href={href} target="_blank" rel="noreferrer noopener" title={r.title}
+                            className={`${TYPE.mono} text-slate-800 dark:text-slate-100 truncate
+                                        hover:underline underline-offset-4 decoration-slate-300
+                                        dark:decoration-slate-600`}>
+                            {r.name}
+                          </a>
+                        ) : (
+                          <span className={`${TYPE.mono} text-slate-800 dark:text-slate-100 truncate`}
+                            title={r.title}>
+                            {r.name}
+                          </span>
+                        )}
 
                         {/* The transition, which is what the row is about. The
                             target carries the state colour, so the eye lands on
@@ -597,11 +725,15 @@ export default function RenovatePanel() {
                             r.requested
                               ? <span className="text-[11px] uppercase tracking-[0.14em] font-bold
                                                  text-slate-400 dark:text-slate-500">sent</span>
-                              : <button disabled={busy !== null}
-                                  onClick={() => act(r.repo, r.issueNumber!, r.marker!, r.verb!)}
+                              : <button disabled={busy !== null || !writable}
+                                  title={writable ? undefined : NO_WRITE(repo)}
+                                  onClick={() => setPending({
+                                    repo: r.repo, issueNumber: r.issueNumber!, marker: r.marker!,
+                                    verb: r.verb!, subject: r.name, intent: LENS[r.lens].intent,
+                                  })}
                                   className={`px-2.5 py-1 rounded-lg text-[12px] font-bold transition-all
                                               ${t.soft} ${t.text} hover:shadow-sm
-                                              disabled:opacity-40 disabled:pointer-events-none`}>
+                                              disabled:opacity-40 disabled:cursor-not-allowed`}>
                                   {running ? "…" : r.verb}
                                 </button>
                           )}
@@ -614,13 +746,17 @@ export default function RenovatePanel() {
                 {dashboard && (
                   <div className="flex flex-wrap items-center gap-2 pt-2 px-1">
                     {dashboard.bulk.filter(b => !b.checked && BULK_LABEL[b.marker]).map(b => (
-                      <button key={b.marker} disabled={busy !== null}
-                        onClick={() => act(repo, dashboard.issueNumber, b.marker, BULK_LABEL[b.marker])}
+                      <button key={b.marker} disabled={busy !== null || !canWrite(repo)}
+                        title={canWrite(repo) ? undefined : NO_WRITE(repo)}
+                        onClick={() => setPending({
+                          repo, issueNumber: dashboard.issueNumber, marker: b.marker,
+                          verb: BULK_LABEL[b.marker], intent: "warn",
+                        })}
                         className="px-2.5 py-1 rounded-lg text-[12px] font-bold
                                    text-slate-500 dark:text-slate-400
                                    hover:bg-slate-100 dark:hover:bg-white/[0.06]
                                    hover:text-slate-900 dark:hover:text-white
-                                   disabled:opacity-40 disabled:pointer-events-none transition-all">
+                                   disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                         {BULK_LABEL[b.marker]}
                       </button>
                     ))}
@@ -695,6 +831,24 @@ export default function RenovatePanel() {
           </div>
         );
       })()}
+
+      <ConfirmDialog
+        open={pending !== null}
+        onClose={() => setPending(null)}
+        busy={busy !== null}
+        intent={pending?.intent ?? "info"}
+        title={pending ? `${pending.verb}?` : ""}
+        confirmLabel={pending?.verb ?? "Confirm"}
+        body={pending ? explain(pending) : null}
+        onConfirm={() => {
+          if (!pending) return;
+          const p = pending;
+          // Held open until the request finishes, so the dialog is what shows
+          // the work. Closed first, the button springs back to normal for the
+          // second or two the call takes and reads as having done nothing.
+          void act(p.repo, p.issueNumber, p.marker, p.verb).finally(() => setPending(null));
+        }}
+      />
 
       <p className={`${TYPE.sub} text-slate-400 dark:text-slate-500 leading-relaxed max-w-[80ch]`}>
         Acting here ticks a checkbox on the repository's dashboard issue, which is how a

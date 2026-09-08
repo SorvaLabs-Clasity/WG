@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import {
-  fetchMyWork, fetchPushCheck, fetchShipped,
+  fetchMyWork, fetchPushCheck, fetchShipped, fetchMyAccess,
   fetchDevAlerts, saveDevAlerts, testDevAlerts,
 } from "../api/me";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -44,6 +44,21 @@ export function useShipped(days: number, login?: string) {
     queryKey: ["me", "ship", days, login ?? "self"],
     queryFn: () => fetchShipped(days, login),
     staleTime: 60_000,
+  });
+}
+
+/**
+ * Where the signed-in person can write.
+ *
+ * Derived from the stored access graph, so it costs no GitHub requests and is
+ * worth holding: team membership and repository grants change on the scale of
+ * days, and this is read to decide whether to offer a control.
+ */
+export function useMyAccess() {
+  return useQuery({
+    queryKey: ["me", "access"],
+    queryFn: fetchMyAccess,
+    staleTime: 300_000,
   });
 }
 

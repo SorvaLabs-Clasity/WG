@@ -954,11 +954,13 @@ router.get("/renovate/dashboards/:repo/:number/dependencies", async (req: Reques
  * person who asked and be authorised as them.
  */
 router.post("/renovate/dashboards/:repo/:number/tick", async (req: Request, res: Response) => {
+  // Read outside the try, because the refusal message below names it and a
+  // `catch` cannot see a binding declared inside the block it guards.
+  const repo = String(req.params.repo);
   try {
     const token = req.user?.accessToken;
     if (!token) return res.status(401).json({ error: "No GitHub token provided" });
 
-    const repo = String(req.params.repo);
     const number = Number(req.params.number);
     const marker = String((req.body ?? {}).marker ?? "");
 
@@ -973,6 +975,10 @@ router.post("/renovate/dashboards/:repo/:number/tick", async (req: Request, res:
       return res.status(400).json({ error: "Invalid checkbox" });
     }
 
+    // The caller's own token, deliberately. Instructing Renovate means editing
+    // its dashboard issue, and GitHub should decide whether this person may
+    // edit it. Using the app's installation token would let anybody who can
+    // open this tab act on any repository in the organization.
     const octokit = createOctokit(token, "Renovate dependency dashboards");
     const { tickDashboard } = await import("../services/renovateDashboards");
     const result = await tickDashboard(octokit, getOrg(), repo, number, marker);
@@ -984,6 +990,27 @@ router.post("/renovate/dashboards/:repo/:number/tick", async (req: Request, res:
     res.json(result);
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
+
+    /**
+     * Refused for want of access, which is an ordinary answer here rather than
+     * a fault.
+     *
+     * Editing somebody else's issue body needs write access to the repository,
+     * so a read-only member pressing one of these gets a 403, and somebody who
+     * cannot see the repository at all gets a 404. Both used to arrive as
+     * "Authorization failed. Please check your permissions.", which does not
+     * say which permission, on what, or that the request never reached
+     * Renovate. Said plainly instead, and as a 403 rather than a 500: nothing
+     * broke.
+     */
+    const status = error?.status ?? error?.response?.status;
+    if (status === 403 || status === 404) {
+      return res.status(403).json({
+        error: `You need write access to ${repo} to instruct Renovate there. `
+          + "Asking it to act means editing its dashboard issue, and this runs as you, "
+          + "not as the app. Nothing was changed.",
+      });
+    }
     res.status(500).json({ error: sanitizeError(error, "renovate") });
   }
 });

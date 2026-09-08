@@ -102,6 +102,26 @@ export const fetchPushCheck = (repo: string, branch: string) =>
 export const fetchShipped = (days: number, login?: string) =>
   apiGet<Shipped>(`/me/ship?days=${days}${login ? `&login=${encodeURIComponent(login)}` : ""}`);
 
+/** What the signed-in person can reach, and where they can write. */
+export interface MyAccess {
+  login: string;
+  orgRole: string;
+  /**
+   * True when the access graph holds nothing about this person.
+   *
+   * Everything below is then empty for want of data rather than as an answer,
+   * and a caller must not read the empty `writableRepos` as "writes nowhere".
+   */
+  unknown: boolean;
+  teams: { slug: string; name: string }[];
+  totals: { repos: number; writable: number; admin: number; direct: number };
+  directRepos: { repo: string; role: string }[];
+  /** Repositories this person can write to, by name. */
+  writableRepos: string[];
+}
+
+export const fetchMyAccess = () => apiGet<MyAccess>("/me/access");
+
 // ── Microsoft Teams notifications ────────────────────────────────────
 
 export interface EventPrefs {

@@ -115,6 +115,19 @@ router.get("/access", async (req: Request, res: Response) => {
       // Named, not counted. "Two direct grants" is a number nobody can act on;
       // the two repository names are a thing somebody can go and check.
       directRepos: direct.map(r => ({ repo: r.repo, role: r.role })),
+      /**
+       * Where this person can actually write, by name.
+       *
+       * For screens that offer an action GitHub would refuse: a control that is
+       * visibly unavailable, with the reason attached, beats one that looks
+       * live and returns a 403 when pressed.
+       *
+       * Paired with `unknown` on purpose. When the graph has not been built
+       * this list is empty, and an empty list read as "writes nowhere" would
+       * disable every control for everybody. A caller must treat `unknown` as
+       * "do not narrow anything" rather than as an answer.
+       */
+      writableRepos: writable.map(r => r.repo).sort(),
     });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "me") });

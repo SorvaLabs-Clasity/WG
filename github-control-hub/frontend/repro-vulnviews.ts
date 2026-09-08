@@ -243,6 +243,116 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
       /toggle\(shut, QUIET_KEY, setShut\)/.test(panel));
   }
 
+  console.log("\neverything in the Renovate queue opens where it lives");
+  {
+    const panel = fs.readFileSync("./src/components/RenovatePanel.tsx", "utf8");
+
+    // Electron sends target="_blank" to the system browser, so an anchor is all
+    // that is needed. What matters is that every one of them has one.
+    check("the repository name opens the repository",
+      /href=\{org \? `https:\/\/github\.com\/\$\{org\}\/\$\{repo\}` : undefined\}/.test(panel));
+
+    /**
+     * A row backed by a pull request opens the pull request; one that exists
+     * only on the dashboard opens the dashboard issue, which is the only place
+     * it is written down. Falling back to nothing would leave the rows that are
+     * hardest to find the only ones with no way to reach them.
+     */
+    check("  and every row opens whatever it is about",
+      /const href = r\.pr\?\.url \?\? dashboard\?\.url;/.test(panel));
+
+    // Nesting a link inside a button is invalid, and making the whole bar a
+    // link would take away the collapse, which is used far more often.
+    check("  the heading is two controls rather than one",
+      /aria-label=\{`\$\{open \? "Collapse" : "Expand"\} \$\{repo\}`\}/.test(panel),
+      "a link cannot live inside a button");
+
+    const blanks = panel.match(/target="_blank"[^>]*/g) ?? [];
+    check("  and each opens outside the app safely",
+      blanks.length >= 3 && blanks.every(a => /rel="noreferrer noopener"/.test(a)),
+      blanks.filter(a => !/rel=/.test(a)));
+  }
+
+  console.log("\nevery Renovate action is confirmed first");
+  {
+    const panel = fs.readFileSync("./src/components/RenovatePanel.tsx", "utf8");
+    const design = fs.readFileSync("./src/design/index.tsx", "utf8");
+
+    /**
+     * These instruct a bot to act on somebody else's repository, several of
+     * them in bulk, and none of it can be undone from this screen.
+     */
+    check("no action reaches the server straight from a click",
+      !/onClick=\{\(\) => act\(/.test(panel),
+      "every one of these is a request a bot carries out later");
+    check("  the row actions ask first", /onClick=\{\(\) => setPending\(\{[\s\S]{0,200}issueNumber: r\.issueNumber/.test(panel));
+    check("  and so do the bulk ones",
+      /onClick=\{\(\) => setPending\(\{[\s\S]{0,160}issueNumber: dashboard\.issueNumber/.test(panel));
+
+    // Not the native one. Electron implements its own dialog handling, which is
+    // how the bulk-close button was silently dead for a release.
+    check("  through the app's own dialog, not the browser's",
+      /<ConfirmDialog/.test(panel)
+        && !/window\.confirm\(/.test(panel) && !/window\.prompt\(/.test(panel));
+    check("  which lives in the design system rather than in this panel",
+      /export function ConfirmDialog/.test(design));
+
+    // A dialog that closes on the click leaves the button looking untouched for
+    // the second the call takes, which reads as nothing having happened.
+    check("  and stays open until the request finishes",
+      /\.finally\(\(\) => setPending\(null\)\)/.test(panel));
+
+    /**
+     * The copy is the point of having a dialog at all. Every one of these ticks
+     * a checkbox that a bot reads later, and "Approve" is the most misreadable
+     * word on the screen: it looks like a pull request review and is not one.
+     */
+    check("the dialog says a bot acts later, not now",
+      /Renovate reads it on its next run/.test(panel));
+    check("  and that approving here is not a review",
+      /This is not a pull request review/.test(panel));
+    check("  and that a bulk action covers every match",
+      /applies to every matching update/.test(panel));
+  }
+
+  console.log("\nan action GitHub would refuse is not offered as though it would work");
+  {
+    const panel = fs.readFileSync("./src/components/RenovatePanel.tsx", "utf8");
+    const route = fs.readFileSync("../backend/src/routes/dependencies.ts", "utf8");
+    const me = fs.readFileSync("../backend/src/routes/me.ts", "utf8");
+
+    /**
+     * The request runs as the person pressing the button, not as the app, so
+     * GitHub refuses it without write access to the repository. That is the
+     * right design, and it means the screen can know the answer in advance.
+     */
+    check("the tick runs as the caller, not as the app",
+      /const token = req\.user\?\.accessToken;/.test(route)
+        && /createOctokit\(token, "Renovate dependency dashboards"\)/.test(route),
+      "the app's own token would let anybody act on any repository");
+
+    check("  where somebody may write is served from the stored graph",
+      /writableRepos: writable\.map/.test(me));
+    check("  and the control says why it is unavailable",
+      /title=\{writable \? undefined : NO_WRITE\(repo\)\}/.test(panel)
+        && /You need write access to \$\{repo\}/.test(panel));
+
+    /**
+     * The direction that matters. An unbuilt graph returns an empty list, and
+     * reading that as "writes nowhere" would disable every control for
+     * everybody. Unknown has to mean "do not narrow".
+     */
+    check("  while not knowing never disables anything",
+      /if \(!myAccess \|\| myAccess\.unknown\) return true;/.test(panel),
+      "an empty list is not the same answer as no data");
+
+    // And when it is attempted anyway, the refusal has to say which permission,
+    // on what, and that nothing was changed.
+    check("a refusal explains itself rather than saying authorization failed",
+      /status === 403 \|\| status === 404/.test(route)
+        && /Nothing was changed/.test(route));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();
