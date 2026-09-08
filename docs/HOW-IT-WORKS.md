@@ -1286,7 +1286,11 @@ still have nothing open. Both halves are true and the screen used to show only
 one of them, which sent people clicking through repositories one at a time.
 
 Two numbers now sit beside each other, findings and open Dependabot pull
-requests, and where the second is zero the repository says why. There are five
+requests, and where the second is zero the repository says why. The pull request
+count is shown on its own rather than as "4/18": the denominator was a ceiling
+this app derived rather than a number GitHub reports, and it invited being read
+as a shortfall against a target somebody had set. The line under the card still
+explains why a hundred findings do not become a hundred pull requests. There are five
 states and they want different responses:
 
 | State | What it means |
@@ -1964,6 +1968,43 @@ reusing it was the whole bug.** The dashboard sweep now shares it, reports
 `unknownBot` the same way, and the panel says which name failed and why the
 suffix is easy to miss. Any status other than 422 is still raised rather than
 retried under a different name, which would only obscure it.
+
+### One Renovate view, joined on the branch
+
+There were two: the pull requests Renovate had raised, and the dashboard
+listing what it would raise. That is the same subject cut down the middle. An
+update Renovate errored on and one it raised last week are the same question
+asked at two moments, and answering them on separate tabs meant checking both
+to learn where a repository stood.
+
+They are joined on the **branch**, which is the key Renovate itself uses: a
+dashboard row under "Open" and the pull request it refers to carry the same
+`headRefName`. One row can then carry the check status *and* the action, rather
+than the two living on different screens. Pull requests on repositories with no
+dashboard are kept as rows of their own, since dropping them would make a
+repository without a dashboard look like one with no Renovate activity at all.
+
+The summary uses **five states somebody acts on**, not Renovate's ten. "Group
+size not met" and "awaiting schedule" are both "held back, nothing for you to
+do", and separating them on the summary buys a precision nobody wanted at the
+cost of the two that matter being a fifth as prominent:
+
+| Ready to merge | Failing | Errored | Waiting on you | Held back |
+| --- | --- | --- | --- | --- |
+| checks passed, nothing blocking | checks failed, or conflicts | Renovate could not raise it | needs an approval | rate limit or schedule |
+
+Those counts lead, at a size that cannot be missed, and each is a filter. The
+fault in the version before this one was that it was an outline: a tree of
+identical grey rows, where the fourteen things broken were exactly as prominent
+as the two thousand that were fine. Folding is still there, per repository and
+for each inventory, but it is no longer carrying the whole job of showing
+somebody what matters.
+
+The two panels no longer share their labels, deliberately: one lists pull
+requests and names their readiness, the other lists updates that may not be
+pull requests yet and names what to do about them. What they still share is the
+layer underneath, the `readiness` the backend computes, so neither decides for
+itself what counts as ready.
 
 ### The dashboard, organised by what is wrong
 

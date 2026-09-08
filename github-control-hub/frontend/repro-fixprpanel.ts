@@ -25,17 +25,26 @@ const read = (f: string) => fs.readFileSync(`./${f}`, "utf8");
 const page = read("src/pages/DependencyDashboardPage.tsx");
 const renovate = read("src/components/RenovatePanel.tsx");
 
-console.log("one vocabulary, so the two views cannot describe the same state differently");
+console.log("one vocabulary underneath, even where the labels differ");
 {
-  check("both panels read the shared map",
-    /from "\.\.\/lib\/prReadiness"/.test(page) && /from "\.\.\/lib\/prReadiness"/.test(renovate));
+  /**
+   * These two panels no longer show the same labels, and that is deliberate.
+   * The Dependabot one lists pull requests and names their readiness; the
+   * Renovate one lists updates that may not be pull requests yet and names
+   * what to do about them, so "Ready to merge" and "Held back" are its words.
+   *
+   * What must stay shared is the layer underneath: both read the `readiness`
+   * the backend computes, rather than deciding for themselves what counts as
+   * ready. That is the value the shared map was protecting, and it survives.
+   */
+  check("the Dependabot panel reads the shared map",
+    /from "\.\.\/lib\/prReadiness"/.test(page));
 
-  // A second local copy is how the wording drifts, and drift here reads as two
-  // different things being described rather than one.
-  check("  and neither defines its own",
-    !/const READINESS[:\s]*(Record|=)/.test(page) && !/const READINESS[:\s]*(Record|=)/.test(renovate));
+  check("  and the Renovate panel derives its own labels from the same readiness",
+    /readiness === "ready"/.test(renovate) && !/mergeReadiness/.test(renovate),
+    "deciding readiness in the browser is what would let the two disagree");
 
-  check("  every state has a label and an explanation",
+  check("  every state in the shared map still has a label and an explanation",
     READINESS_ORDER.every(s => READINESS[s].label.length > 0 && READINESS[s].hint.length > 0));
 }
 

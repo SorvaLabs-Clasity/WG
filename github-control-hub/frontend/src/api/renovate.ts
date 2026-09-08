@@ -41,6 +41,10 @@ export interface RenovateResponse {
   unknownBot?: boolean;
   /** The login that actually matched, a GitHub App's carries a [bot] suffix. */
   resolvedBot?: string;
+  /** When the stored answer was computed, where it came from storage. */
+  computedAt?: string;
+  /** True while a refresh is running behind the reader. */
+  refreshing?: boolean;
 }
 
 /**

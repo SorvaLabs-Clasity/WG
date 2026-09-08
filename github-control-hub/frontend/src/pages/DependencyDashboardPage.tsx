@@ -27,7 +27,6 @@ const REPOS_PER_PAGE = 15;
 const COLLAPSED = 4;
 
 import RenovatePanel from "../components/RenovatePanel";
-import RenovateDashboardPanel from "../components/RenovateDashboardPanel";
 import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
 import DependabotManager from "../components/DependabotManager";
@@ -273,8 +272,6 @@ export default function DependencyDashboardPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   /** Which repositories are showing their open fix pull requests. */
   const [showPrs, setShowPrs] = useState<Set<string>>(new Set());
-  /** Which lens on Renovate is showing: its pull requests, or its dashboard. */
-  const [renovateView, setRenovateView] = useState<"prs" | "dashboard">("prs");
   const togglePrs = (repo: string) => setShowPrs(prev => {
     const next = new Set(prev);
     next.has(repo) ? next.delete(repo) : next.add(repo);
@@ -754,20 +751,12 @@ export default function DependencyDashboardPage() {
         </>
       ))}
 
-      {/* Two lenses on one tool, so a switcher inside the view rather than a
-          fourth tab beside it: the pull requests Renovate has raised, and the
-          dashboard issue saying what it would raise and has not. */}
-      {view === "updates" && (
-        <>
-          <div className="mb-4">
-            <Segmented value={renovateView} onChange={setRenovateView} options={[
-              ["prs", "Pull requests"] as ["prs" | "dashboard", string],
-              ["dashboard", "Dependency dashboard"] as ["prs" | "dashboard", string],
-            ]} />
-          </div>
-          {renovateView === "prs" ? <RenovatePanel /> : <RenovateDashboardPanel />}
-        </>
-      )}
+      {/* One view. It was two, the pull requests Renovate had raised and the
+          dashboard listing what it would raise, which is the same subject split
+          down the middle: an update it errored on and one it raised last week
+          are the same question at two moments, and answering them in separate
+          tabs meant checking both to learn where a repository stood. */}
+      {view === "updates" && <RenovatePanel />}
 
       {/* Both notification panels together: "who gets told" is one question,
           and answering half of it on each of two other views is why the
@@ -825,8 +814,13 @@ function FixPrCount({ open, expected, expandable, expanded, onToggle }: {
   const intent: Intent = expected > 0 && open >= expected ? "good" : open > 0 ? "info" : "neutral";
   const body = (
     <>
+      {/* The count on its own. It read "4/18", and the denominator was a
+          ceiling this app derived rather than a number GitHub reports, so it
+          invited being read as a shortfall against a target somebody set. The
+          line under the card still explains why a hundred findings do not
+          become a hundred pull requests. */}
       <div className={`${TYPE.metricSm} ${INTENT[intent].figure} tabular-nums`}>
-        {expected > 0 ? `${open}/${expected}` : open}
+        {open}
       </div>
       <div className="flex items-center gap-1 mt-0.5">
         <span className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
