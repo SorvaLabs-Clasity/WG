@@ -326,14 +326,14 @@ export async function handler(): Promise<void> {
       // A degraded sweep read some repositories and not others, and storing it
       // would report the ones it missed as clean. Left for a later pass.
       if (!result.degraded) {
-        const view = await buildDependencyView(octokit, org, { alerts: result.alerts });
-        await saveDependencySnapshot(view);
-        console.log(`[Alarm] Refreshed the stored Dependabot view, ${view.length} rows`);
+        const { rows } = await buildDependencyView(octokit, org, { alerts: result.alerts });
+        await saveDependencySnapshot(rows);
+        console.log(`[Alarm] Refreshed the stored Dependabot view, ${rows.length} rows`);
 
         // The tab's other live call. Stored on the same schedule so opening it
         // makes no request to GitHub at all.
         const { fetchDependabotPrs } = await import("../services/dependabotPrs");
-        const { saveRenovateSnapshot } = await import("../services/renovateSnapshot");
+        const { saveView } = await import("../services/viewSnapshot");
         const prs = await fetchDependabotPrs(
           async (q, page) => {
             const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
@@ -341,7 +341,7 @@ export async function handler(): Promise<void> {
             });
             return { items: r.data?.items ?? [] };
           }, org);
-        if (prs) await saveRenovateSnapshot("dependabot-prs", prs);
+        if (prs) await saveView("dependabot-prs", prs);
       }
     }
   } catch (err: any) {
@@ -369,23 +369,75 @@ export async function handler(): Promise<void> {
 
     if (bot) {
       const {
-        readRenovateSnapshot, saveRenovateSnapshot, isRenovateFresh,
-      } = await import("../services/renovateSnapshot");
+        readView, saveView, isViewFresh,
+      } = await import("../services/viewSnapshot");
       const { buildRenovatePrs, buildRenovateDashboards } = await import("../routes/dependencies");
 
       for (const [kind, build] of [
         ["renovate-prs", () => buildRenovatePrs(octokit, org, bot)],
         ["renovate-dashboards", () => buildRenovateDashboards(octokit, org, bot)],
       ] as const) {
-        const stored = await readRenovateSnapshot<any>(kind);
-        if (isRenovateFresh(stored)) continue;
-        await saveRenovateSnapshot(kind, await build());
+        const stored = await readView<any>(kind);
+        if (isViewFresh(kind, stored)) continue;
+        await saveView(kind, await build());
       }
     }
   } catch (err: any) {
     // Warming a view must never fail a pass that has already evaluated alarms
     // and sent what it needed to send.
     console.warn(`[Alarm] Could not refresh the Renovate views: ${err?.message ?? err}`);
+  }
+
+  /**
+   * Keep the My work rows warm, on the half hour.
+   *
+   * "What did I ship" is the one screen here whose answer is true of exactly
+   * one person, so it cannot be served from a shared walk the way the queue is.
+   * Computing it pages the activity table two hundred rows at a time until it
+   * has four hundred of that person's, and doing that while somebody waits is
+   * what made the tab slow to open.
+   *
+   * Only the rows that already exist. A row exists because somebody opened the
+   * tab, so this warms the people who use it and nobody else, and the row's own
+   * two-day expiry drops anyone who stops. Nothing here has, or needs, a list
+   * of the organization's members.
+   *
+   * Capped per pass. This runs every five minutes, so a cap of forty still
+   * covers hundreds of people within the half hour, and it means one very large
+   * organization cannot turn a pass whose real job is alarms into a long walk
+   * through the activity table. Oldest first, so a capped pass makes progress
+   * on the stalest rows rather than the same ones each time.
+   */
+  try {
+    const { listViews, saveView, isViewFresh } = await import("../services/viewSnapshot");
+    const { buildShipped } = await import("../routes/me");
+
+    const rows = (await listViews("shipped#"))
+      .filter(row => !isViewFresh(row.kind, row))
+      .sort((a, b) => a.computedAt.localeCompare(b.computedAt))
+      .slice(0, 40);
+
+    let warmed = 0;
+    for (const row of rows) {
+      // `shipped#<login>#<days>`. A key that does not split into three is one
+      // this pass did not write and must not act on.
+      const parts = row.kind.split("#");
+      const days = Number(parts[2]);
+      if (parts.length !== 3 || !parts[1] || !Number.isFinite(days)) continue;
+
+      try {
+        await saveView(row.kind, await buildShipped(parts[1], days));
+        warmed++;
+      } catch (err: any) {
+        // One person's row must not stop the other thirty-nine.
+        console.warn(`[Alarm] Could not refresh ${row.kind}: ${err?.message ?? err}`);
+      }
+    }
+    if (warmed) console.log(`[Alarm] Refreshed ${warmed} My work rows`);
+  } catch (err: any) {
+    // Warming a view must never fail a pass that has already evaluated alarms
+    // and sent what it needed to send.
+    console.warn(`[Alarm] Could not refresh the My work views: ${err?.message ?? err}`);
   }
 
   console.log(

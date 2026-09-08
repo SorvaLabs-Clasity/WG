@@ -44,6 +44,17 @@ export interface EventPrefs {
   reviewRequested: boolean;
   /** Somebody asked for changes on one of yours. Needs `pull_request_review`. */
   changesRequested: boolean;
+  /**
+   * Somebody approved one of yours. The other half of `pull_request_review`.
+   *
+   * No age limit, deliberately, and none is offered. The daily summary has one
+   * because it is a pile somebody works through and an eight-month-old pull
+   * request at the top of it is noise. An approval is not a pile: it is the
+   * moment a thing you were waiting on stopped being blocked, and it is *most*
+   * worth knowing about on the pull request that has been open longest, which
+   * is exactly the one an age limit would silence.
+   */
+  approved: boolean;
 }
 
 /**
@@ -168,6 +179,7 @@ export function defaults(login: string): DevAlerts {
     events: {
       reviewRequested: true,
       changesRequested: true,
+      approved: true,
     },
     digest: {
       enabled: false,

@@ -149,6 +149,52 @@ const found = [
       /parseRateLimit|isSecondaryLimit|withSecondaryRetry/.test(svc));
   }
 
+  console.log("\nthe guard exists in the page, because a native one does not");
+  {
+    /**
+     * The whole feature was dead on arrival and gave no sign of it. The
+     * confirmation used a native prompt, which Electron does not implement:
+     * alert and confirm open a dialog there, the third does not. It returned
+     * null, the typed value never matched, and the function returned before
+     * making any request. No dialog, no network call, no error, nothing logged.
+     *
+     * It was the only one in the codebase, which is why this was the only
+     * control in the app that appeared to do nothing at all.
+     */
+    const fs = require("node:fs") as typeof import("node:fs");
+    const path = require("node:path") as typeof import("node:path");
+
+    // Comments and strings stripped first. This file explains the bug using
+    // the exact text it searches for, and so does the component's own comment,
+    // so an unstripped scan accuses both of committing it.
+    const code = (src: string) => src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+
+    const ui = code(fs.readFileSync(
+      path.join(__dirname, "..", "frontend", "src", "components", "DependabotManager.tsx"), "utf8"));
+
+    check("the confirmation is not a native prompt", !/window\.prompt\(/.test(ui),
+      "Electron opens alert and confirm, and silently ignores the third");
+
+    // The guard itself must survive: this is the one control here that cannot
+    // be undone by pressing its opposite.
+    check("  typing is still required", /typed !== "CLOSE"/.test(ui));
+    check("  and the consequence is stated where it is armed",
+      /not to raise that pull request again/.test(ui));
+
+    // And nothing anywhere else may reintroduce it.
+    const root = path.join(__dirname, "..", "frontend", "src");
+    const walk = (dir: string): string[] =>
+      fs.readdirSync(dir, { withFileTypes: true }).flatMap(e =>
+        e.isDirectory() ? walk(path.join(dir, e.name))
+          : /\.tsx?$/.test(e.name) ? [path.join(dir, e.name)] : []);
+    const offenders = walk(root)
+      .filter(f => /window\.prompt\(/.test(code(fs.readFileSync(f, "utf8"))));
+    check("  and none is left anywhere in the app", offenders.length === 0, offenders);
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();
+

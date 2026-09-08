@@ -63,6 +63,20 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
   const [rollingOut, setRollingOut] = useState<"pr" | "commit" | null>(null);
   const [closeResult, setCloseResult] = useState<CloseSummary | null>(null);
   const [closing, setClosing] = useState(false);
+  /**
+   * The confirmation, in the page rather than in a native dialog.
+   *
+   * This was `window.prompt`, which Electron does not implement: `alert` and
+   * `confirm` open, `prompt` does not, so the guard returned null and the
+   * whole feature silently did nothing. No dialog, no request, no error. It
+   * was the only `window.prompt` in the codebase, which is why this was the
+   * only button that appeared dead.
+   *
+   * Typing is still required, because every other control on this panel is
+   * undone by pressing its opposite and this one is not.
+   */
+  const [armed, setArmed] = useState(false);
+  const [typed, setTyped] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [summary, setSummary] = useState<BulkSummary | null>(null);
@@ -182,32 +196,12 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
 
   const startClose = async () => {
     const repos = [...selected];
-    const known = prCounts !== null;
-    const total = known ? repos.reduce((n, r) => n + (prCounts![r] ?? 0), 0) : 0;
-
-    if (known && total === 0) {
-      setError("Those repositories have no open Dependabot pull requests.");
-      return;
-    }
-
-    const what = known
-      ? `${total} open Dependabot pull request${total === 1 ? "" : "s"} across `
-        + `${repos.length} repositor${repos.length === 1 ? "y" : "ies"}`
-      : `every open Dependabot pull request on ${repos.length} `
-        + `repositor${repos.length === 1 ? "y" : "ies"}`;
-
-    const typed = window.prompt(
-      `This will close ${what}.\n\n`
-      + "GitHub treats closing a Dependabot pull request as telling it not to raise "
-      + "that one again, so these fixes stop coming back on their own. Reopening is "
-      + "one comment per pull request.\n\n"
-      + "Type CLOSE to confirm.");
-    if (typed !== "CLOSE") return;
-
     setError(""); setCloseResult(null); setClosing(true);
     try {
       const summary = await closeDependabotPrs(repos);
       setCloseResult(summary);
+      setArmed(false);
+      setTyped("");
       onDone();
       qc.invalidateQueries({ queryKey: ["dependencies", "fix-prs"] });
     } catch (e: any) {
@@ -499,8 +493,8 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
               </p>
             </div>
             <Button variant="caution"
-              disabled={selected.size === 0 || closing || !!running || !!rollingOut}
-              onClick={startClose}>
+              disabled={selected.size === 0 || closing || !!running || !!rollingOut || armed}
+              onClick={() => { setArmed(true); setTyped(""); setError(""); }}>
               {closing
                 ? "Closing…"
                 : closeCount === null
@@ -508,6 +502,45 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                   : `Close ${closeCount} PR${closeCount === 1 ? "" : "s"}`}
             </Button>
           </div>
+
+          {/* The guard, in the page. Electron does not implement window.prompt,
+              so the native version of this silently did nothing at all. */}
+          {armed && (
+            <div className="mt-2.5 rounded-xl border border-rose-300 dark:border-rose-500/40
+                            bg-rose-50/70 dark:bg-rose-950/20 p-3.5">
+              <p className="text-[12.5px] font-bold text-rose-900 dark:text-rose-200">
+                {closeCount === null
+                  ? `Close every open Dependabot pull request on ${selected.size} `
+                    + `repositor${selected.size === 1 ? "y" : "ies"}?`
+                  : `Close ${closeCount} open Dependabot pull request${closeCount === 1 ? "" : "s"} `
+                    + `across ${selected.size} repositor${selected.size === 1 ? "y" : "ies"}?`}
+              </p>
+              <p className="text-[11.5px] text-rose-800/80 dark:text-rose-300/70 leading-relaxed mt-1">
+                GitHub reads a close as telling Dependabot not to raise that pull request again,
+                so these fixes stop coming back on their own. Reopening is one comment per pull
+                request.
+              </p>
+              <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                <input
+                  value={typed} onChange={e => setTyped(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter" && typed === "CLOSE") startClose(); }}
+                  placeholder="Type CLOSE"
+                  autoFocus
+                  className="w-36 px-2.5 py-1.5 text-[12.5px] rounded-lg bg-white dark:bg-white/[0.06]
+                             border border-rose-300 dark:border-rose-500/40
+                             text-slate-800 dark:text-slate-100 placeholder:text-slate-400
+                             focus:outline-none focus:ring-2 focus:ring-rose-500/30" />
+                <Button variant="caution" disabled={typed !== "CLOSE" || closing}
+                  onClick={startClose}>
+                  {closing ? "Closing…" : "Close them"}
+                </Button>
+                <button onClick={() => { setArmed(false); setTyped(""); }}
+                  className="text-[12px] text-slate-500 dark:text-slate-400 px-2">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
 
           {closing && (
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2">

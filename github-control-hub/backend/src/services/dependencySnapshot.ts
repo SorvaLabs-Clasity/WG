@@ -137,27 +137,52 @@ export async function saveDependencySnapshot(
 let held: { at: number; value: StoredSweep | null } | null = null;
 const HOLD_MS = 15_000;
 
+/**
+ * The read that is already running, shared rather than repeated.
+ *
+ * The window above could not help the case it was written for. The tab opens
+ * two requests at once, the list and the severity counts, and both call this in
+ * the same tick: neither has finished, so `held` is still empty, and both go on
+ * to fetch and gunzip and parse the same multi-megabyte row. The second one is
+ * pure waste, and because `gunzipSync` and `JSON.parse` block, it also holds up
+ * every other request in flight behind it.
+ *
+ * The sweep cache and the Renovate reader beside it both share their in-flight
+ * promise for exactly this reason. This is the same guard.
+ */
+let inFlight: Promise<StoredSweep | null> | null = null;
+
 /** The stored answer, or null when there has never been one. */
 export async function readDependencySnapshot(): Promise<StoredSweep | null> {
   if (held && Date.now() - held.at < HOLD_MS) return held.value;
   if (!hasTable("ALARMS_TABLE")) return null;
-  try {
-    const res = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id: ROW_ID } }));
-    const row: any = res.Item;
-    if (!row?.payload) return null;
-    const alerts = JSON.parse(
-      gunzipSync(Buffer.from(row.payload, "base64")).toString("utf8")) as DependencyAlert[];
-    const value = { alerts, computedAt: row.computedAt, degraded: !!row.degraded };
-    held = { at: Date.now(), value };
-    return value;
-  } catch (err: any) {
-    // A corrupt or unreadable row must not take the tab with it: the caller
-    // falls back to computing, which is what it did before this existed.
-    // Deliberately not held: holding a failure would keep answering with it
-    // for fifteen seconds after whatever caused it was fixed.
-    console.warn(`[Dependencies] Could not read the stored sweep: ${err?.message ?? err}`);
-    return null;
-  }
+  if (inFlight) return inFlight;
+
+  inFlight = (async () => {
+    try {
+      const res = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { id: ROW_ID } }));
+      const row: any = res.Item;
+      if (!row?.payload) return null;
+      const alerts = JSON.parse(
+        gunzipSync(Buffer.from(row.payload, "base64")).toString("utf8")) as DependencyAlert[];
+      const value = { alerts, computedAt: row.computedAt, degraded: !!row.degraded };
+      held = { at: Date.now(), value };
+      return value;
+    } catch (err: any) {
+      // A corrupt or unreadable row must not take the tab with it: the caller
+      // falls back to computing, which is what it did before this existed.
+      // Deliberately not held: holding a failure would keep answering with it
+      // for fifteen seconds after whatever caused it was fixed.
+      console.warn(`[Dependencies] Could not read the stored sweep: ${err?.message ?? err}`);
+      return null;
+    } finally {
+      // Cleared whatever happened, or one failure would be handed to every
+      // later caller forever.
+      inFlight = null;
+    }
+  })();
+
+  return inFlight;
 }
 
 /**
@@ -262,14 +287,21 @@ export function isRefreshing(): boolean {
  * The clock is set when the sweep *finishes*, not when it starts, so a walk
  * that takes four minutes does not immediately permit another.
  */
-export async function refreshIfDue(run: () => Promise<void>): Promise<void> {
+export async function refreshIfDue(
+  run: () => Promise<void>,
+  opts: { force?: boolean } = {},
+): Promise<void> {
   // Two guards, covering two different things. This one stops a second request
   // in the same session starting a second sweep while the first is running.
   if (refreshing) return;
   // And this one stops a sweep that has just finished being repeated. The
   // durable half of the throttle is isDueForRefresh, read from the stored
   // timestamp, because neither of these survives the process being killed.
-  if (Date.now() - lastRefreshAt < REFRESH_EVERY_MS) return;
+  //
+  // `force` is for a caller that has just *changed* something. The throttle
+  // exists to stop reads recomputing the same answer; it should not stop a
+  // write from being reflected. The guard above still applies either way.
+  if (!opts.force && Date.now() - lastRefreshAt < REFRESH_EVERY_MS) return;
 
   refreshing = run()
     .catch(err => {
@@ -287,10 +319,68 @@ export async function refreshIfDue(run: () => Promise<void>): Promise<void> {
   await refreshing;
 }
 
-/** Clears the throttle, for tests that need each case to start clean. */
+/**
+ * Recompute because something just changed, once, however many asked.
+ *
+ * The three write paths, enabling a repository, disabling one, and the bulk
+ * action, each called the rebuild directly. That skipped every guard: two
+ * toggles in a row started two concurrent organization-wide walks, each of them
+ * paging every repository twice through calls that are not cached, and neither
+ * showed up in `isRefreshing`, so the tab reported "not refreshing" while two
+ * sweeps were running and its timestamp sat still.
+ *
+ * A sweep already in flight started before the change and would store an answer
+ * that does not contain it, so this waits for that one and then runs, rather
+ * than returning and leaving the change unrecorded. Only ever one waiting:
+ * three toggles in a row need one rebuild between them, not three.
+ */
+let queued: Promise<void> | null = null;
+
+export async function refreshNow(run: () => Promise<void>): Promise<void> {
+  // One is already waiting to run after the current sweep. It has not started
+  // yet, so it will see this change too.
+  if (queued) return queued;
+
+  queued = (async () => {
+    // Yielded once, before anything below touches `queued`.
+    //
+    // An async function runs synchronously up to its first `await`, so without
+    // this the body's `queued = null` happens *before* the assignment below it,
+    // and the slot is then occupied by a finished promise for the life of the
+    // process: every later change returns that promise and no rebuild ever runs
+    // again. A behavioural test caught this; a source scan could not have.
+    await Promise.resolve();
+
+    try {
+      // Whatever is running started before this change and will store an
+      // answer that does not contain it.
+      if (refreshing) await refreshing;
+
+      // Cleared here, as the new sweep starts, and not when it finishes. A
+      // change made *during* a sweep needs its own follow-up: that sweep began
+      // before it and cannot contain it either. Clearing this at the end would
+      // mean the whole run counted as "one already waiting" and the change made
+      // halfway through it would never be picked up.
+      queued = null;
+      await refreshIfDue(run, { force: true });
+    } catch (err: any) {
+      // Nobody is awaiting this; every caller starts it with `void`. An
+      // unhandled rejection from a rebuild would take the process down.
+      queued = null;
+      console.warn(`[Dependencies] Rebuild after a change failed: ${err?.message ?? err}`);
+    }
+  })();
+
+  await queued;
+}
+
+/** Clears the throttle and the held read, for tests that start clean. */
 export function __resetRefreshState(): void {
   refreshing = null;
   lastRefreshAt = 0;
+  held = null;
+  inFlight = null;
+  queued = null;
 }
 
 /** Whether a stored answer is recent enough to serve without waiting. */

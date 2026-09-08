@@ -120,7 +120,7 @@ The backend authenticates to GitHub using a **GitHub App** (not a personal acces
 | Members | Read | Org member visibility |
 | Organization administration | Read | Org config and audit logs |
 
-**Required webhook events:** `push`, `pull_request`, `create`, `delete`, `repository`, `branch_protection_rule`, `repository_ruleset`, `member`, `team`, `organization`, `dependabot_alert` for Dependabot alert emails, and `pull_request_review` for the "changes requested" developer notification. Without the last one that notification never fires, and nothing else is affected. The checkboxes in GitHub's UI are labelled in prose rather than by event name, see [setup.md](../docs/operations/setup.md) for which box each one is.
+**Required webhook events:** `push`, `pull_request`, `create`, `delete`, `repository`, `branch_protection_rule`, `repository_ruleset`, `member`, `team`, `organization`, `dependabot_alert` for Dependabot alert emails, and `pull_request_review` for the "changes requested" and "approved" developer notifications. Without the last one neither of those fires, and nothing else is affected. The checkboxes in GitHub's UI are labelled in prose rather than by event name, see [setup.md](../docs/operations/setup.md) for which box each one is.
 
 ## Environment Variables
 

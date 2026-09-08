@@ -17,12 +17,20 @@ import { mockCleanAlert, mockDisabledAlert } from "./dependencyMarkers";
  * `alerts` may be supplied by a caller that has already swept. The alarm pass
  * has, and re-sweeping there would spend the org-wide walk twice in one
  * invocation for identical data.
+ *
+ * Returns whether the sweep behind it was degraded, along with the rows. It
+ * used to return the rows alone, which meant the one fact a caller needs before
+ * *storing* this was the one fact it could not have: a sweep GitHub refused
+ * comes back empty, the view is then nothing but "clean" markers, and stored as
+ * authoritative it reports an organization with no findings at all. The alarm
+ * pass already refused to store a degraded sweep, because it fetches its own
+ * and can see the flag. The route paths could not, so they stored it.
  */
 export async function buildDependencyView(
   octokit: any,
   org: string,
   opts: { alerts?: DependencyAlert[] } = {},
-): Promise<any[]> {
+): Promise<{ rows: any[]; degraded: boolean }> {
 
   // The alert sweep failing should cost the alerts, not the page. Every
   // repository below is still listed with its Dependabot state, which is
@@ -30,7 +38,11 @@ export async function buildDependencyView(
   // here, and reported rather than thrown. The alarm evaluator reads the
   // same function and treats `degraded` as "no reading", because an alarm
   // must not resolve itself off a sweep that never ran.
-  const allAlerts: any[] = opts.alerts ?? (await fetchOrgDependencyAlerts(octokit, org)).alerts;
+  // A caller that supplied its own alerts has already judged them; only a sweep
+  // made here can be reported as degraded by here.
+  const swept = opts.alerts ? null : await fetchOrgDependencyAlerts(octokit, org);
+  const allAlerts: any[] = opts.alerts ?? swept!.alerts;
+  const degraded = !!swept?.degraded;
 
 
   // Every repository's alert setting in a handful of requests.
@@ -99,5 +111,5 @@ export async function buildDependencyView(
     }
   }
 
-  return allAlerts;
+  return { rows: allAlerts, degraded };
 }

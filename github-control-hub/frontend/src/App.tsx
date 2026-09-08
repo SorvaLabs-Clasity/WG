@@ -16,6 +16,22 @@ const queryClient = new QueryClient({
     queries: {
       retry: 1,
       refetchOnWindowFocus: false,
+      /**
+       * A default, so that moving between tabs is not a reload.
+       *
+       * Tab panels are conditionally rendered, so switching away unmounts one
+       * and switching back mounts it again. With no default the answer is stale
+       * the instant it arrives, and coming back to a tab you looked at ten
+       * seconds ago pays for all of it a second time. Half a minute is short
+       * enough that nothing here goes visibly out of date and long enough to
+       * cover flicking between tabs.
+       *
+       * It does not make anything stick: a mutation invalidates its key, which
+       * refetches whatever is on screen regardless of this, and any query that
+       * genuinely has to keep up sets its own `refetchInterval`, which this does
+       * not touch.
+       */
+      staleTime: 30_000,
     },
   },
 });

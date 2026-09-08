@@ -38,7 +38,17 @@ export function resetAwsHealthCache(): void {
   lastCheckResult = true;
 }
 
-async function isAwsHealthy(): Promise<boolean> {
+/**
+ * Exported so the server can pay for it at startup rather than inside the
+ * first request.
+ *
+ * This sits in front of every /api route and awaits a DynamoDB scan before
+ * calling next(), and `lastCheckTime` starts at zero, so the thirty-second
+ * cache always misses on a freshly started process. Running it once at boot
+ * moves that cost, and the whole AWS credential chain underneath it, into the
+ * seconds while somebody is still opening the app.
+ */
+export async function isAwsHealthy(): Promise<boolean> {
   if (awsLocked) return false;
 
   const now = Date.now();

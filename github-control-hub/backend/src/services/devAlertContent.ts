@@ -198,6 +198,13 @@ const EVENT_TEXT: Record<EventKind, { title: string; line: (e: DevEvent) => stri
     title: "Changes requested",
     line: e => e.actor ? `${e.actor} asked for changes.` : "Somebody asked for changes.",
   },
+  approved: {
+    // "Approved" rather than "Your pull request was approved": the toast has
+    // room for one line and the repository and number are already in it, so the
+    // first word is spent on the verdict.
+    title: "Approved",
+    line: e => e.actor ? `${e.actor} approved this.` : "Your pull request was approved.",
+  },
 };
 
 /**

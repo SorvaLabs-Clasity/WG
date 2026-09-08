@@ -410,6 +410,12 @@ export default function DevAlertSettings() {
             </div>
           )}
           <Row
+            label="Somebody approves mine"
+            hint="However old the pull request is. Needs the same pull_request_review event as the row below."
+            checked={events.approved}
+            onChange={v => patchEvents({ approved: v })}
+          />
+          <Row
             label="Somebody requests changes on mine"
             hint="Needs the pull_request_review event ticked on the GitHub App. Without it this stays quiet."
             checked={events.changesRequested}

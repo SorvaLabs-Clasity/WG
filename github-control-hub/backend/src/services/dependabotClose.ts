@@ -72,9 +72,15 @@ export async function closeDependabotPrs(
 
   for (const pr of targets) {
     try {
+      // Timed, because the summary reports the waiting and used to report zero
+      // however long it had waited: a number that is always zero is worse than
+      // no number, since somebody reads it as "GitHub never asked us to pause".
+      const before = Date.now();
       await withSecondaryRetry(() => octokit.rest.pulls.update({
         owner: org, repo: pr.repo, pull_number: pr.number, state: "closed",
       }));
+      const waited = Date.now() - before - GAP_MS;
+      if (waited > 1000) summary.sleptSeconds += Math.round(waited / 1000);
       summary.closed++;
       summary.byRepo[pr.repo] = (summary.byRepo[pr.repo] ?? 0) + 1;
     } catch (err: any) {

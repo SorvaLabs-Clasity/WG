@@ -12,7 +12,7 @@ import { mapAlert, fetchOrgDependencyAlerts, fetchRepoAlertStatus , fetchRepoFix
 import { isValidRepoName } from "../utils/validation";
 import {
   saveDependencySnapshot, readDependencySnapshot, isFresh, isDueForRefresh,
-  refreshIfDue, isRefreshing,
+  refreshIfDue, refreshNow, isRefreshing,
 } from "../services/dependencySnapshot";
 import { mockCleanAlert, mockDisabledAlert } from "../services/dependencyMarkers";
 import { buildDependencyView } from "../services/dependencyView";
@@ -30,7 +30,15 @@ const router = Router();
  */
 async function refreshDependencySnapshot(octokit: any, org: string): Promise<void> {
   try {
-    await saveDependencySnapshot(await buildDependencyView(octokit, org));
+    const { rows, degraded } = await buildDependencyView(octokit, org);
+    // A sweep GitHub refused comes back empty, which becomes a view of nothing
+    // but "clean" markers. Stored, that reports an organization with no
+    // findings, and it would stand until the next sweep succeeded.
+    if (degraded) {
+      console.warn("[Dependencies] Background refresh swept partially; not stored.");
+      return;
+    }
+    await saveDependencySnapshot(rows);
   } catch (err: any) {
     console.warn(`[Dependencies] Background refresh failed: ${err?.message ?? err}`);
   }
@@ -75,14 +83,14 @@ router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
      * from storage, so this was what remained of the wait.
      */
     const {
-      readRenovateSnapshot, saveRenovateSnapshot, isRenovateDueForRefresh, refreshRenovateIfDue,
-    } = await import("../services/renovateSnapshot");
+      readView, saveView, isViewDue, refreshViewIfDue,
+    } = await import("../services/viewSnapshot");
 
-    const storedPrs = await readRenovateSnapshot<any>("dependabot-prs");
+    const storedPrs = await readView<any>("dependabot-prs");
     if (storedPrs) {
       res.json({ counts: storedPrs.data.counts, prs: storedPrs.data.prs, computedAt: storedPrs.computedAt });
-      if (isRenovateDueForRefresh(storedPrs)) {
-        void refreshRenovateIfDue("dependabot-prs", async () => {
+      if (isViewDue("dependabot-prs", storedPrs)) {
+        void refreshViewIfDue("dependabot-prs", async () => {
           const fresh = await fetchDependabotPrs(
             async (q, page) => {
               const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
@@ -90,7 +98,7 @@ router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
               });
               return { items: r.data?.items ?? [] };
             }, org);
-          if (fresh) await saveRenovateSnapshot("dependabot-prs", fresh);
+          if (fresh) await saveView("dependabot-prs", fresh);
         });
       }
       return;
@@ -135,7 +143,7 @@ router.get("/dependencies/fix-prs", async (_req: Request, res: Response) => {
     }
 
     // Stored on the way out, so the next open is served rather than searched.
-    await saveRenovateSnapshot("dependabot-prs", found);
+    await saveView("dependabot-prs", found);
     res.json({ counts: found.counts, prs: found.prs });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
@@ -193,6 +201,9 @@ router.get("/dependencies", async (req: Request, res: Response) => {
     }
 
     let allAlerts: any[] = [];
+    // Whether the sweep behind those rows read the whole organization. A
+    // partial one must not be stored as the answer.
+    let sweptPartially = false;
 
     /**
      * The stored answer, when there is one and it is recent.
@@ -268,12 +279,16 @@ router.get("/dependencies", async (req: Request, res: Response) => {
         }
       }
     } else {
-      allAlerts = await buildDependencyView(octokit, org);
+      const built = await buildDependencyView(octokit, org);
+      allAlerts = built.rows;
+      sweptPartially = built.degraded;
     }
 
     // Stored before filtering, so the row backs every view rather than the one
-    // that happened to be asked for first.
-    if (wholeOrg) await saveDependencySnapshot(allAlerts);
+    // that happened to be asked for first, and never when the sweep behind it
+    // was partial: those rows understate the organization in the reassuring
+    // direction, and stored they would stand as the answer for hours.
+    if (wholeOrg && !sweptPartially) await saveDependencySnapshot(allAlerts);
 
     res.json(applyFilters(allAlerts, severityFilter));
   } catch (error: any) {
@@ -314,7 +329,13 @@ router.post("/dependencies/enable", async (req: Request, res: Response) => {
     // Same reason as the bulk action: the stored answer no longer describes
     // this repository, and recomputing behind the response keeps the next open
     // fast as well as correct.
-    void refreshDependencySnapshot(octokit, org);
+    //
+    // Through the guard, not around it. Called directly, as it was, two toggles
+    // in a row start two concurrent organization-wide walks and neither appears
+    // in the tab's "refreshing" line.
+    const { invalidateDependencySweep } = await import("../services/dependencyService");
+    invalidateDependencySweep();
+    void refreshNow(() => refreshDependencySnapshot(octokit, org));
 
     res.json({ success: true });
   } catch (error: any) {
@@ -355,7 +376,13 @@ router.post("/dependencies/disable", async (req: Request, res: Response) => {
     // Same reason as the bulk action: the stored answer no longer describes
     // this repository, and recomputing behind the response keeps the next open
     // fast as well as correct.
-    void refreshDependencySnapshot(octokit, org);
+    //
+    // Through the guard, not around it. Called directly, as it was, two toggles
+    // in a row start two concurrent organization-wide walks and neither appears
+    // in the tab's "refreshing" line.
+    const { invalidateDependencySweep } = await import("../services/dependencyService");
+    invalidateDependencySweep();
+    void refreshNow(() => refreshDependencySnapshot(octokit, org));
 
     res.json({ success: true });
   } catch (error: any) {
@@ -414,7 +441,7 @@ router.post("/dependencies/config", async (req: Request, res: Response) => {
      * opens nothing, which looks exactly like the bug this is fixing.
      */
     const stored = await readDependencySnapshot();
-    const alerts = stored?.alerts ?? await buildDependencyView(octokit, getOrg());
+    const alerts = stored?.alerts ?? (await buildDependencyView(octokit, getOrg())).rows;
     const byRepo = new Map<string, any[]>();
     for (const a of alerts as any[]) {
       if (a.clean || a.disabled || a.scanning) continue;
@@ -559,7 +586,7 @@ router.post("/dependencies/bulk", async (req: Request, res: Response) => {
     // point of pressing this was to change it. Recomputed behind the response
     // rather than deleted: deleting would make the next open slow again, which
     // is the thing the store exists to prevent.
-    void refreshDependencySnapshot(octokit, getOrg());
+    void refreshNow(() => refreshDependencySnapshot(octokit, getOrg()));
 
     res.json(summary);
   } catch (error: any) {
@@ -642,35 +669,40 @@ router.get("/renovate", async (req: Request, res: Response) => {
 
     const octokit = createOctokit(token, "Renovate pull request search");
     const {
-      readRenovateSnapshot, saveRenovateSnapshot, isRenovateDueForRefresh,
-      refreshRenovateIfDue, isRenovateRefreshing,
-    } = await import("../services/renovateSnapshot");
+      readView, saveView, isViewDue,
+      refreshViewIfDue, isViewRefreshing,
+    } = await import("../services/viewSnapshot");
 
     /**
      * Stored first, for the same reason the dashboards are: the search behind
      * this draws on the thirty-a-minute budget, and the details behind it a
      * GraphQL batch per fifty pull requests.
      *
-     * Only the detailed form is stored. The page reads this endpoint on every
-     * open just for a tab count, and storing that separately would keep two
-     * rows in step for no gain.
+     * Read whichever form was asked for, which is the part that was wrong. Only
+     * the detailed form is *stored*, and the read was gated on the same flag,
+     * so the call the page makes on every open, the one that only wants a
+     * number for the tab, could never be served from the row and ran a live
+     * organization-wide search every single time. It was the last live GitHub
+     * call on opening this page, and it was there to put a count on a label.
+     *
+     * The stored row is a superset of what the count needs, so serving it
+     * answers both. Still only stored below when the details were asked for:
+     * keeping a second, thinner row in step with this one would buy nothing.
      */
-    if (req.query.details === "1") {
-      const stored = await readRenovateSnapshot<any>("renovate-prs");
-      if (stored) {
-        res.json({
-          configured: true, ...stored.data,
-          computedAt: stored.computedAt,
-          refreshing: isRenovateRefreshing("renovate-prs"),
+    const stored = await readView<any>("renovate-prs");
+    if (stored) {
+      res.json({
+        configured: true, ...stored.data,
+        computedAt: stored.computedAt,
+        refreshing: isViewRefreshing("renovate-prs"),
+      });
+      if (isViewDue("renovate-prs", stored)) {
+        void refreshViewIfDue("renovate-prs", async () => {
+          await saveView("renovate-prs",
+            await buildRenovatePrs(octokit, getOrg(), bot));
         });
-        if (isRenovateDueForRefresh(stored)) {
-          void refreshRenovateIfDue("renovate-prs", async () => {
-            await saveRenovateSnapshot("renovate-prs",
-              await buildRenovatePrs(octokit, getOrg(), bot));
-          });
-        }
-        return;
       }
+      return;
     }
 
     const result = await fetchRenovatePrs(
@@ -723,7 +755,7 @@ router.get("/renovate", async (req: Request, res: Response) => {
 
     // Stored on the way out, so the next open is served rather than computed.
     if (req.query.details === "1") {
-      await saveRenovateSnapshot("renovate-prs", result);
+      await saveView("renovate-prs", result);
     }
     res.json({ configured: true, ...result });
   } catch (error: any) {
@@ -848,9 +880,9 @@ router.get("/renovate/dashboards", async (req: Request, res: Response) => {
 
     const octokit = createOctokit(token, "Renovate dependency dashboards");
     const {
-      readRenovateSnapshot, saveRenovateSnapshot, isRenovateDueForRefresh,
-      refreshRenovateIfDue, isRenovateRefreshing, renovateSnapshotHealth,
-    } = await import("../services/renovateSnapshot");
+      readView, saveView, isViewDue,
+      refreshViewIfDue, isViewRefreshing, viewHealth,
+    } = await import("../services/viewSnapshot");
 
     /**
      * Stored first, and served without waiting.
@@ -860,17 +892,17 @@ router.get("/renovate/dashboards", async (req: Request, res: Response) => {
      * that while somebody waits is what made the tab slow; doing it on every
      * open is what kept spending the budget.
      */
-    const stored = await readRenovateSnapshot<any>("renovate-dashboards");
+    const stored = await readView<any>("renovate-dashboards");
     if (stored) {
       res.json({
         configured: true, bot, ...stored.data,
         computedAt: stored.computedAt,
-        refreshing: isRenovateRefreshing("renovate-dashboards"),
-        ...renovateSnapshotHealth("renovate-dashboards"),
+        refreshing: isViewRefreshing("renovate-dashboards"),
+        ...viewHealth("renovate-dashboards"),
       });
-      if (isRenovateDueForRefresh(stored)) {
-        void refreshRenovateIfDue("renovate-dashboards", async () => {
-          await saveRenovateSnapshot("renovate-dashboards",
+      if (isViewDue("renovate-dashboards", stored)) {
+        void refreshViewIfDue("renovate-dashboards", async () => {
+          await saveView("renovate-dashboards",
             await buildRenovateDashboards(octokit, getOrg(), bot));
         });
       }
@@ -879,12 +911,12 @@ router.get("/renovate/dashboards", async (req: Request, res: Response) => {
 
     // Nothing stored: the first open for this organization.
     const sweep = await buildRenovateDashboards(octokit, getOrg(), bot);
-    await saveRenovateSnapshot("renovate-dashboards", sweep);
+    await saveView("renovate-dashboards", sweep);
     res.json({
       configured: true, bot, ...sweep,
       computedAt: new Date().toISOString(),
       refreshing: false,
-      ...renovateSnapshotHealth("renovate-dashboards"),
+      ...viewHealth("renovate-dashboards"),
     });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;

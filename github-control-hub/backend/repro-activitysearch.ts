@@ -134,6 +134,45 @@ const row = (over: Partial<any> = {}): any => ({
       "a cursor describes a walk of the old query");
   }
 
+  console.log("\na window is a bound on what is read, not on what is kept");
+  {
+    /**
+     * "What did I ship in the last week" walked three thousand rows of
+     * organization-wide history newest-first and threw away everything outside
+     * the week in JavaScript. Seven days therefore cost exactly what ninety
+     * did, and on a busy organization neither came back quickly.
+     *
+     * Rows live under one partition key with `timestamp#id` as the sort key,
+     * so the window belongs in the key condition, where DynamoDB never reads
+     * what is outside it.
+     */
+    const src = fs.readFileSync("src/services/activitySearch.ts", "utf8");
+
+    check("the window reaches the key condition",
+      /KeyConditionExpression: "pk = :pk AND sk >= :since"/.test(src),
+      "applied after reading, a week costs what a year costs");
+    check("  and there is still no bound when none was asked for",
+      /KeyConditionExpression: "pk = :pk",/.test(src));
+
+    // The index path and the reader tests inject do not go through that
+    // condition, so the same window has to hold when it is applied to a row.
+    check("a row older than the window does not match",
+      !matches(row({ timestamp: "2026-07-01T00:00:00Z" }), { since: "2026-07-15T00:00:00Z" }));
+    check("  one inside it does",
+      matches(row({ timestamp: "2026-08-01T00:00:00Z" }), { since: "2026-07-15T00:00:00Z" }));
+    check("  the boundary itself is inside",
+      matches(row({ timestamp: "2026-07-15T00:00:00Z" }), { since: "2026-07-15T00:00:00Z" }));
+    check("  and no window keeps everything",
+      matches(row({ timestamp: "2020-01-01T00:00:00Z" }), {}));
+
+    // The caller this was built for.
+    const me = fs.readFileSync("src/routes/me.ts", "utf8");
+    check("what somebody shipped asks for its own window",
+      /searchActivity\(\{ q: login, category: "github", since \}/.test(me));
+    check("  and does not re-filter by date afterwards",
+      !/Date\.parse\(e\.timestamp\) >= since/.test(me));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

@@ -67,6 +67,17 @@ export function clearMembershipCache(): void {
  * back to the last known answer within the grace window, and denies once that
  * runs out, failing open forever would make the check decorative.
  */
+/**
+ * One check in flight per person, however many requests are waiting on it.
+ *
+ * The cache lives in this process, so a freshly started backend has none, and
+ * the app opens by firing four requests at once. Without this every one of them
+ * made its own GitHub round trip before its handler began, which is latency
+ * nobody could see: the routes time themselves from inside the handler, so this
+ * happened entirely before the clock started.
+ */
+const inFlight = new Map<number, Promise<boolean>>();
+
 export async function isStillOrgMember(
   githubId: number, login: string, accessToken: string,
   deps: MembershipDeps = realDeps,
@@ -76,6 +87,18 @@ export async function isStillOrgMember(
 
   if (hit && now - hit.checkedAt < TTL_MS) return hit.member;
 
+  const running = inFlight.get(githubId);
+  if (running) return running;
+
+  const run = check();
+  inFlight.set(githubId, run);
+  try {
+    return await run;
+  } finally {
+    inFlight.delete(githubId);
+  }
+
+  async function check(): Promise<boolean> {
   try {
     const member = await deps.check(accessToken, login);
     cache.set(githubId, { member, checkedAt: now });
@@ -86,5 +109,6 @@ export async function isStillOrgMember(
     // open forever, which is the failure this whole check exists to prevent.
     if (hit?.member) return now - hit.checkedAt < STALE_GRACE_MS;
     return false;
+  }
   }
 }

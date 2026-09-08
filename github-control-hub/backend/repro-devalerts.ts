@@ -351,16 +351,98 @@ const text = (card: any) => JSON.stringify(card);
     });
     check("changes requested reaches the author",
       changes.length === 1 && changes[0].login === "alice" && changes[0].kind === "changesRequested");
-    check("  an approval does not, since nothing is being asked of anybody",
+
+    /**
+     * Approval reaches the author too, which reverses an earlier decision.
+     *
+     * It was left out on the reasoning that nothing is being asked of anybody,
+     * so there is nothing to interrupt for. That reads the message as a request
+     * and it is not one: it is the moment a thing somebody was blocked on
+     * stopped being blocked, and it is the one notification here that lets them
+     * go and merge. Asked for explicitly, and switched on by default alongside
+     * the other two.
+     */
+    const approved = recipientsFor("pull_request_review", {
+      action: "submitted", sender: { login: "bob" }, review: { state: "APPROVED" },
+      pull_request: { number: 5, title: "t", html_url: "u", user: { login: "alice" } },
+    });
+    check("an approval reaches the author",
+      approved.length === 1 && approved[0].login === "alice"
+        && approved[0].kind === "approved" && approved[0].actor === "bob", approved);
+
+    // GitHub sends the verdict in either case, and every other reader here
+    // upper-cases it before comparing.
+    check("  whatever case GitHub sends the verdict in",
       recipientsFor("pull_request_review", {
         action: "submitted", sender: { login: "bob" }, review: { state: "approved" },
         pull_request: { number: 5, title: "t", html_url: "u", user: { login: "alice" } },
+      })[0]?.kind === "approved");
+
+    /**
+     * A review with no verdict is a conversation, not a decision, and it
+     * arrives in the same shape as the two that are. Notifying on it would make
+     * the approval message the one people learn to ignore.
+     */
+    check("  a comment-only review is not an approval",
+      recipientsFor("pull_request_review", {
+        action: "submitted", sender: { login: "bob" }, review: { state: "COMMENTED" },
+        pull_request: { number: 5, title: "t", html_url: "u", user: { login: "alice" } },
       }).length === 0);
 
+    // GitHub does not let somebody approve their own pull request, but an
+    // integration acting as the author can.
+    check("  and nobody is told they approved their own work",
+      recipientsFor("pull_request_review", {
+        action: "submitted", sender: { login: "alice" }, review: { state: "APPROVED" },
+        pull_request: { number: 5, title: "t", html_url: "u", user: { login: "alice" } },
+      }).length === 0);
+
+    /**
+     * No age limit, and none to add.
+     *
+     * The daily summary can be told to ignore pull requests older than N days,
+     * because it is a pile somebody works through. An approval is not a pile,
+     * and it is *most* worth knowing about on the pull request that has been
+     * open longest, which is exactly the one an age limit would silence. So the
+     * event path must carry no date arithmetic at all.
+     */
+    const years = new Date(Date.now() - 900 * 86_400_000).toISOString();
+    check("  an approval on a very old pull request is still sent",
+      recipientsFor("pull_request_review", {
+        action: "submitted", sender: { login: "bob" }, review: { state: "APPROVED" },
+        pull_request: {
+          number: 5, title: "t", html_url: "u", user: { login: "alice" },
+          created_at: years, updated_at: years,
+        },
+      }).length === 1, "the oldest pull request is the one this matters most on");
+
+    const events = fs.readFileSync("./src/webhooks/devEvents.ts", "utf8");
+    check("  because the event path has no age filter to acquire one",
+      !/maxAgeDays|created_at|updated_at|86_?400/.test(events),
+      "an age limit here would silence the case this exists for");
+
     check("an event nobody opted into is not sent",
-      !wants({ ...prefs(), events: { reviewRequested: false, changesRequested: true } }, "reviewRequested"));
+      !wants({ ...prefs(), events: { reviewRequested: false, changesRequested: true, approved: true } },
+        "reviewRequested"));
+    check("  including a new one somebody has switched off",
+      !wants({ ...prefs(), events: { reviewRequested: true, changesRequested: true, approved: false } },
+        "approved"));
     check("  nor is anything at all without an address",
       !wants({ ...prefs(), teamsAddress: undefined }, "reviewRequested"));
+
+    // Merged onto the defaults, so a row written before this preference
+    // existed gets it rather than reading as switched off.
+    check("somebody set up before this existed gets it",
+      defaults("alice").events.approved === true);
+
+    const card = buildEventCard({
+      kind: "approved", repo: "web", number: 5, title: "Fix the thing",
+      url: "https://e/5", actor: "bob",
+    });
+    check("  and the card names who approved it",
+      text(card).includes("bob approved this."), text(card).slice(0, 200));
+    check("  with the pull request in the first line",
+      text(card).includes("Approved: web#5"), text(card).slice(0, 200));
   }
 
   // ── the card itself ─────────────────────────────────────────────────

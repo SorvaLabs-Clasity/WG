@@ -259,19 +259,44 @@ const TABLE = () => tableName("ALARMS_TABLE");
 /** In-memory fallback for local development, as the other services do. */
 let memStore: AnyRecord[] = [];
 
-async function allRecords(): Promise<AnyRecord[]> {
+/**
+ * Every row of a given kind, or everything except the query cache.
+ *
+ * `kinds` is not a convenience. This table holds the small rows these callers
+ * want *and* the stored answers other parts of the app keep in it: the open
+ * pull request walk, the Dependabot sweep, every widget's rows, the Renovate
+ * views. Those are hundreds of kilobytes each, and a scan with no kind filter
+ * pulls all of them across the wire and parses them so that the caller can
+ * throw them away one line later.
+ *
+ * It is not a theoretical cost. `GET /api/me/alarms` wants the handful of rows
+ * one person owns, and without this it read the whole table first, which is
+ * what made opening My work slow while the log recorded a fast handler.
+ *
+ * Paged because a single scan stops at 1MB without saying so, and every caller
+ * reads something that must not silently shrink: the alarms to evaluate, the
+ * email groups to send to, the notifications waiting to go out, and the pull
+ * request rows holding mutes and pauses.
+ *
+ * Filtered server-side rather than after: a filter here still *reads* the whole
+ * table, DynamoDB charges for that either way, but it does not send back or
+ * decode what nobody asked for, and the sending and the decoding are where the
+ * waiting was.
+ */
+async function allRecords(kinds?: readonly string[]): Promise<AnyRecord[]> {
   if (hasTable("ALARMS_TABLE")) {
-    // Paged, and filtered server-side.
-    //
-    // Paged because a single scan stops at 1MB without saying so, and every
-    // caller of this reads something that must not silently shrink: the alarms
-    // to evaluate, the email groups to send to, the notifications waiting to go
-    // out, and the pull request rows holding mutes and pauses.
-    //
-    // Filtered because the security checks keep one cached verdict per account
-    // or repository in this same table, which on a large organization is
-    // hundreds of rows none of these callers want. Excluding them server-side
-    // keeps an alarm pass from paging through a cache it never reads.
+    if (kinds?.length) {
+      const values: Record<string, unknown> = {};
+      kinds.forEach((k, i) => { values[`:k${i}`] = k; });
+      return await scanAll<AnyRecord>(TABLE(), {
+        filter: `#k IN (${kinds.map((_, i) => `:k${i}`).join(", ")})`,
+        names: { "#k": "kind" },
+        values,
+      });
+    }
+    // No kind asked for. The security checks keep one cached verdict per
+    // account or repository in this same table, which on a large organization
+    // is hundreds of rows none of these callers want.
     return await scanAll<AnyRecord>(TABLE(), {
       filter: "attribute_not_exists(#k) OR #k <> :cache",
       names: { "#k": "kind" },
@@ -302,7 +327,7 @@ async function getById<T extends AnyRecord>(id: string): Promise<T | undefined> 
 // ── alarms ────────────────────────────────────────────────────────────
 
 export async function listAlarms(): Promise<WidgetAlarm[]> {
-  return (await allRecords()).filter(r => r.kind === "alarm") as WidgetAlarm[];
+  return (await allRecords(["alarm"])).filter(r => r.kind === "alarm") as WidgetAlarm[];
 }
 
 export async function listAlarmsForWidget(widgetId: string): Promise<WidgetAlarm[]> {
@@ -604,7 +629,7 @@ export async function deleteAlarm(id: string, actor: string): Promise<boolean> {
 // ── email groups ──────────────────────────────────────────────────────
 
 export async function listGroups(): Promise<EmailGroup[]> {
-  return (await allRecords()).filter(r => r.kind === "group") as EmailGroup[];
+  return (await allRecords(["group"])).filter(r => r.kind === "group") as EmailGroup[];
 }
 
 /**
@@ -938,7 +963,7 @@ export async function bufferNotification(
 
 /** Everything buffered and not yet sent, oldest first. */
 export async function listPending(feed?: BufferChannel): Promise<PendingNotification[]> {
-  const rows = (await allRecords()).filter(
+  const rows = (await allRecords(["pending"])).filter(
     r => r.kind === "pending" && !(r as PendingNotification).sentAt,
   ) as PendingNotification[];
   return rows
@@ -1312,7 +1337,7 @@ export interface ReadWidgetSnapshot {
 
 /** Every stored snapshot, in one read, for the dashboard to open with. */
 export async function readWidgetSnapshots(): Promise<ReadWidgetSnapshot[]> {
-  const rows = (await allRecords()).filter(r => r.kind === "widget-snapshot") as WidgetSnapshot[];
+  const rows = (await allRecords(["widget-snapshot"])).filter(r => r.kind === "widget-snapshot") as WidgetSnapshot[];
   const out: ReadWidgetSnapshot[] = [];
   for (const row of rows) {
     try {
@@ -1344,7 +1369,7 @@ export async function deleteWidgetSnapshot(widgetId: string): Promise<void> {
 }
 
 export async function listPrStates(): Promise<PrState[]> {
-  return (await allRecords()).filter(r => r.kind === "pr-state") as PrState[];
+  return (await allRecords(["pr-state"])).filter(r => r.kind === "pr-state") as PrState[];
 }
 
 async function savePrState(row: PrState): Promise<void> {

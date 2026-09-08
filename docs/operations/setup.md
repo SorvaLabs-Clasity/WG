@@ -504,7 +504,7 @@ what you are looking for on the page.
 | **Collaborator add, remove, or changed** | `member` | Access changes in activity and the access map |
 | **Dependabot alerts** | `dependabot_alert` | The vulnerability email, and the dependency edges behind `repos-dependent-on` |
 | **Pull requests** | `pull_request` | The Renovate pull-request email |
-| **Pull request reviews** | `pull_request_review` | The "changes requested" notification a developer can turn on for themselves in My work. Nothing else uses it |
+| **Pull request reviews** | `pull_request_review` | The "changes requested" and "approved" notifications a developer can turn on for themselves in My work. Nothing else uses it |
 | **Pushes** | `push` | The last-push time behind `stale-repos` |
 | **Repositories** | `repository` | Repository created or deleted, and the visibility and archival behind `public-repos` and `archived-repos-with-access` |
 | **Repository rulesets** | `repository_ruleset` | Ruleset changes, the modern form of branch protection |

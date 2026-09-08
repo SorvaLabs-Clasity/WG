@@ -104,6 +104,29 @@ app.use(express.json({ limit: "1mb" }));
 // alone is 2.76MB of JSON on a large organization, and 64KB gzipped.
 app.use(compressJson);
 
+/**
+ * How long a request actually took, from arrival to response.
+ *
+ * The routes time themselves from inside their handlers, which hid the thing
+ * that was actually slow: on a freshly started process the auth middleware
+ * makes a GitHub membership call and the first DynamoDB read resolves
+ * credentials, all before a handler begins. The tab took twenty seconds while
+ * its own log said it had served from storage in 280ms, and both were true.
+ *
+ * Only slow ones, so the log stays readable. A request nobody waited on is not
+ * worth a line.
+ */
+app.use((req, res, next) => {
+  const startedAt = Date.now();
+  res.on("finish", () => {
+    const ms = Date.now() - startedAt;
+    if (ms >= 1000) {
+      console.log(`[Slow] ${req.method} ${req.path} took ${ms}ms (${res.statusCode})`);
+    }
+  });
+  next();
+});
+
 app.get("/health", (_req, res) => {
   res.json({ status: "ok" });
 });
@@ -225,6 +248,54 @@ app.use("/api/alarms", authMiddleware, alarmRoutes);
  * invocations, so a timer there fires at an unrelated moment or not at all.
  */
 startUsageFlushing();
+
+/**
+ * Pay the cold-start costs before anybody is waiting on them.
+ *
+ * The desktop app starts this process when it launches and the person then
+ * signs in and navigates, which is several seconds of nothing. Meanwhile the
+ * first request pays for AWS credential resolution and the first DynamoDB
+ * round trip, entirely inside middleware, before any handler runs. That is why
+ * the tab took twenty seconds while its own log honestly reported serving from
+ * storage in 280ms.
+ *
+ * Reading the stored sweep is the cheapest thing that touches DynamoDB and
+ * exercises the whole path: credentials, client construction, the round trip.
+ * Whatever it returns is discarded; the point is that the next caller finds it
+ * warm.
+ *
+ * Deliberately not awaited and never fatal. Nothing here is required for the
+ * server to serve, and an account with no storage configured must start
+ * normally.
+ */
+void (async () => {
+  try {
+    const started = Date.now();
+
+    /**
+     * The health check first, because it is the one in front of everything.
+     *
+     * awsHealthMiddleware is mounted on all of /api and awaits a DynamoDB scan
+     * before calling next(), and its thirty-second cache starts empty on a
+     * fresh process. So the first request of every app launch paid for that
+     * scan, and the scan paid for the whole AWS credential chain underneath it:
+     * an SSO round trip and two cold TLS handshakes, or an IMDS timeout when
+     * the session has expired. All of it before any handler began, which is why
+     * the tab took twenty seconds while its own log truthfully said it had
+     * served from storage in 280ms.
+     */
+    const { isAwsHealthy } = await import("./middleware/awsHealthMiddleware");
+    await isAwsHealthy();
+
+    // Then the stored sweep, which is what the first screen actually reads.
+    const { readDependencySnapshot } = await import("./services/dependencySnapshot");
+    await readDependencySnapshot();
+
+    console.log(`[Startup] AWS and storage warm in ${Date.now() - started}ms`);
+  } catch (err: any) {
+    console.warn(`[Startup] Could not reach storage: ${err?.message ?? err}`);
+  }
+})();
 
 // When imported by the desktop app, skip auto-listen. It calls listen() itself
 if (!process.env.__STANDALONE__) {

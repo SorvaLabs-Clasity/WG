@@ -21,9 +21,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import {
-  isRenovateFresh, refreshRenovateIfDue, isRenovateRefreshing,
-  __resetRenovateSnapshots, FRESH_MS,
-} from "./src/services/renovateSnapshot";
+  isViewFresh, refreshViewIfDue, isViewRefreshing,
+  __resetViews, FRESH_MS,
+} from "./src/services/viewSnapshot";
 
 let failures = 0;
 function check(name: string, ok: boolean, got?: unknown) {
@@ -39,45 +39,45 @@ const read = (f: string) => fs.readFileSync(path.join(SRC, f), "utf8");
   {
     const now = Date.now();
     check("just computed is fresh",
-      isRenovateFresh({ computedAt: new Date(now - 60_000).toISOString() }, now));
+      isViewFresh("renovate-prs", { computedAt: new Date(now - 60_000).toISOString() }, now));
     check("  an hour and a half is not",
-      !isRenovateFresh({ computedAt: new Date(now - 90 * 60_000).toISOString() }, now));
+      !isViewFresh("renovate-prs", { computedAt: new Date(now - 90 * 60_000).toISOString() }, now));
     check("  the window is the hour that was asked for",
       FRESH_MS === 60 * 60_000, FRESH_MS);
 
     // An unreadable timestamp must not read as current: it is the direction
     // that makes a stale answer look live.
     check("  and a missing or broken timestamp is never fresh",
-      !isRenovateFresh(null, now) && !isRenovateFresh({ computedAt: "" }, now));
+      !isViewFresh("renovate-prs", null, now) && !isViewFresh("renovate-prs", { computedAt: "" }, now));
   }
 
   console.log("\nopening the view does not start a search every time");
   {
-    __resetRenovateSnapshots();
+    __resetViews();
     let runs = 0;
     const run = async () => { runs++; await new Promise(r => setTimeout(r, 10)); };
 
     await Promise.all([
-      refreshRenovateIfDue("renovate-prs", run),
-      refreshRenovateIfDue("renovate-prs", run),
-      refreshRenovateIfDue("renovate-prs", run),
+      refreshViewIfDue("renovate-prs", run),
+      refreshViewIfDue("renovate-prs", run),
+      refreshViewIfDue("renovate-prs", run),
     ]);
     check("three opens together start one search", runs === 1, runs);
 
-    await refreshRenovateIfDue("renovate-prs", run);
+    await refreshViewIfDue("renovate-prs", run);
     check("  and another open right after starts none", runs === 1, runs);
 
     // The two rows are refreshed independently: the cheap view must not be
     // held back by the expensive one's throttle.
-    await refreshRenovateIfDue("renovate-dashboards", run);
+    await refreshViewIfDue("renovate-dashboards", run);
     check("  while the other row is throttled on its own", runs === 2, runs);
   }
 
   console.log("\na search that fails does not wedge the next one");
   {
-    __resetRenovateSnapshots();
-    await refreshRenovateIfDue("renovate-prs", async () => { throw new Error("GitHub is down"); });
-    check("the in-flight marker is cleared", isRenovateRefreshing("renovate-prs") === false);
+    __resetViews();
+    await refreshViewIfDue("renovate-prs", async () => { throw new Error("GitHub is down"); });
+    check("the in-flight marker is cleared", isViewRefreshing("renovate-prs") === false);
   }
 
   console.log("\nthe view refreshes only when the pass has clearly stopped");
@@ -93,24 +93,24 @@ const read = (f: string) => fs.readFileSync(path.join(SRC, f), "utf8");
      * The view's window has to be longer than the pass's cadence, so that it
      * only acts when the pass has stopped rather than merely not run yet.
      */
-    const { isRenovateDueForRefresh } = require("./src/services/renovateSnapshot");
+    const { isViewDue } = require("./src/services/viewSnapshot");
     const now = Date.now();
     const at = (ms: number) => ({ computedAt: new Date(now - ms).toISOString() });
 
     check("an hour old is served without recomputing",
-      isRenovateDueForRefresh(at(61 * 60_000), now) === false);
+      isViewDue("renovate-prs", at(61 * 60_000), now) === false);
     check("  two hours is still not the view's job",
-      isRenovateDueForRefresh(at(2 * 60 * 60_000), now) === false);
+      isViewDue("renovate-prs", at(2 * 60 * 60_000), now) === false);
     check("  and at four hours the pass has clearly stopped",
-      isRenovateDueForRefresh(at(4 * 60 * 60_000), now) === true);
+      isViewDue("renovate-prs", at(4 * 60 * 60_000), now) === true);
 
     // Longer than the hour the pass warms on, which is the whole property.
     check("  the view's window is longer than the pass's cadence",
-      !isRenovateDueForRefresh(at(FRESH_MS + 60_000), now), FRESH_MS);
+      !isViewDue("renovate-prs", at(FRESH_MS + 60_000), now), FRESH_MS);
 
     // Nothing stored is a first open, which computes rather than serving stale.
     check("  and nothing stored is not a refresh",
-      isRenovateDueForRefresh(null, now) === false);
+      isViewDue("renovate-prs", null, now) === false);
   }
 
   console.log("\nthe Dependabot tab makes no live GitHub call either");
@@ -121,9 +121,9 @@ const read = (f: string) => fs.readFileSync(path.join(SRC, f), "utf8");
     // The last one it made: a search on the thirty-a-minute budget plus a
     // GraphQL batch per fifty pull requests, on every single open.
     check("the pull request counts are stored too",
-      /readRenovateSnapshot<any>\("dependabot-prs"\)/.test(route));
+      /readView<any>\("dependabot-prs"\)/.test(route));
     check("  and filled by the same hourly pass",
-      /saveRenovateSnapshot\("dependabot-prs"/.test(handler));
+      /saveView\("dependabot-prs"/.test(handler));
   }
 
   console.log("\nthe pass warms the Dependabot view whether or not an alarm needed it");
@@ -156,7 +156,7 @@ console.log("\nthe pass that runs without the app open is what fills it");
     check("the alarm pass warms both rows",
       /renovate-prs/.test(handler) && /renovate-dashboards/.test(handler));
     check("  only when the stored one is not already fresh",
-      /isRenovateFresh\(stored\)\) continue/.test(handler));
+      /isViewFresh\(kind, stored\)\) continue/.test(handler));
     check("  and only where a bot is configured",
       /if \(bot\)/.test(handler));
 

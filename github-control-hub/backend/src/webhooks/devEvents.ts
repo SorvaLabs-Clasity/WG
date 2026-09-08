@@ -79,9 +79,31 @@ export function recipientsFor(event: string, payload: any): Array<{
   }
 
   if (event === "pull_request_review" && payload.action === "submitted") {
+    /**
+     * Both halves of a submitted review, told to the author.
+     *
+     * `COMMENTED` is deliberately not here. A review with no verdict is a
+     * conversation, not a decision, and it arrives in the same shape as the two
+     * that are, so notifying on it would make the approval message the one
+     * people learn to ignore.
+     *
+     * Neither is aged out. The digest limits how old a pull request may be
+     * before it appears in a pile somebody works through; an approval is the
+     * moment a thing stopped being blocked, and it matters most on the oldest
+     * pull request, which is the one an age limit would silence.
+     */
     const state = String(payload.review?.state ?? "").toUpperCase();
-    if (state === "CHANGES_REQUESTED" && author && author !== actor) {
+
+    // Never to the person who did it. GitHub does not let somebody approve
+    // their own pull request, but an integration acting as the author can, and
+    // "you approved your own work" is the fastest way to make somebody turn
+    // this off.
+    if (!author || author === actor) return out;
+
+    if (state === "CHANGES_REQUESTED") {
       out.push({ login: author, kind: "changesRequested", actor });
+    } else if (state === "APPROVED") {
+      out.push({ login: author, kind: "approved", actor });
     }
     return out;
   }

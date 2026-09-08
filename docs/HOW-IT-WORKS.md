@@ -1891,6 +1891,37 @@ refresh and the alarm pass. Two copies would be two places for the "off" and
 "clean" markers to drift, and the drift shows as a repository reading clean on
 one path and unwatched on the other. `repro-depsnapshot` pins this.
 
+### The tab was never the slow part
+
+The Dependabot tab kept taking twenty seconds on every launch while its own log
+truthfully reported serving from storage in **280ms**. Both were true, and the
+gap between them is where the time went: the route times itself from **inside
+its handler**, and everything expensive happened before any handler ran.
+
+- **`awsHealthMiddleware` is mounted on all of `/api`** and awaits a DynamoDB
+  scan before calling `next()`. Its thirty-second cache starts at zero on a
+  fresh process, so the first request of every launch always paid for it.
+- **That scan resolves the whole AWS credential chain**, which for an SSO
+  profile is a `GetRoleCredentials` round trip and two cold TLS handshakes, and
+  for an expired session is an IMDS timeout.
+- **`isStillOrgMember` runs in the auth middleware on every request**, and its
+  cache is in-process too. The tab opens by firing four requests at once, so a
+  cold process made four identical GitHub round trips, none of them deduplicated.
+
+Three fixes, none of them about the snapshot:
+
+- The server **pays these costs at startup**, in the seconds while somebody is
+  still opening the app: one health check and one storage read, neither awaited
+  by anything and neither fatal.
+- Membership checks are **deduplicated per person**, so four concurrent requests
+  make one call.
+- A middleware logs any request over a second **from arrival to response**, so
+  the next time something is slow the log measures the thing somebody waited
+  for rather than the part after it.
+
+The lesson worth keeping: a timer that starts inside the handler cannot see the
+middleware, and this cost three rounds of looking in the wrong place.
+
 ### Two windows, and getting their order right
 
 The tab kept sweeping on every launch even after the throttle was made durable,
@@ -1968,6 +1999,23 @@ reusing it was the whole bug.** The dashboard sweep now shares it, reports
 `unknownBot` the same way, and the panel says which name failed and why the
 suffix is easy to miss. Any status other than 422 is still raised rather than
 retried under a different name, which would only obscure it.
+
+### A confirmation Electron never showed
+
+The bulk "Close N PRs" button did nothing at all: no dialog, no request, no
+error, nothing logged. Its guard was `window.prompt`, and **Electron implements
+`alert` and `confirm` but not `prompt`** — the call returns nothing, the typed
+value never matched, and the function returned before doing anything.
+
+It was the only `window.prompt` in the codebase, which is exactly why it was the
+only control in the app that appeared dead. Twelve `confirm()` call sites work
+fine.
+
+The guard is now rendered in the page: an armed panel with a typed field, which
+works everywhere and states the consequence where somebody is about to accept
+it. A test walks the whole frontend and fails on any `window.prompt` — with
+comments stripped first, because this codebase explains the bug using the string
+it searches for.
 
 ### One Renovate view, joined on the branch
 
@@ -2967,10 +3015,10 @@ Twelve are subscribed: pushes, repositories, branch or tag creation and deletion
 branch protection rules, repository rulesets, collaborator changes, teams, **team
 membership**, pull requests, **pull request reviews**, and Dependabot alerts.
 
-`pull_request_review` is used by one thing only: the "changes requested"
-notification a developer can switch on for themselves. An installation without it
-loses that notification and nothing else, so it is worth ticking but not worth a
-migration.
+`pull_request_review` is used by two things, both of them notifications a
+developer switches on for themselves: "changes requested" and "approved". An
+installation without it loses both and nothing else, so it is worth ticking but
+not worth a migration.
 
 `membership` is the newest, and the only one that has to be ticked by hand on an
 existing installation. Without it `empty-teams` can only ever be as fresh as the
@@ -2994,12 +3042,31 @@ Teams webhook that person supplies.
 |---|---|---|
 | Review requested of you | seconds | the webhook worker, off `pull_request` |
 | Changes requested on yours | seconds | the webhook worker, off `pull_request_review` |
+| Approved, one of yours | seconds | the webhook worker, off `pull_request_review` |
 | Daily summary | at the hour and timezone they chose | the 5-minute alarm tick |
 
-`pull_request_review` is subscribed for this and nothing else. An installation
-that has not ticked it loses the changes-requested notification and nothing more.
+`pull_request_review` is subscribed for the last two and nothing else. An
+installation that has not ticked it loses both and nothing more.
 
-Only two events are immediate, and the limit is what a webhook can actually
+**An approval is never aged out.** The daily summary can be told to ignore pull
+requests older than a chosen number of days, because it is a pile somebody works
+through and an eight-month-old row at the top of it is noise. An approval is not
+a pile. It is the moment a thing somebody was blocked on stopped being blocked,
+and it matters *most* on the pull request that has been open longest, which is
+exactly the one an age limit would silence. So the event path carries no date
+arithmetic at all, and a test asserts it never acquires any.
+
+Approval was left out at first, on the reasoning that nothing is being asked of
+anybody so there is nothing to interrupt for. That reads the message as a
+request, and it is not one: it is the only notification here that ends with
+somebody going and merging.
+
+A review submitted with no verdict is **not** one of these. It arrives in the
+same shape as the two that are, but it is a conversation rather than a decision,
+and notifying on it would make the approval message the one people learn to
+ignore.
+
+Only three events are immediate, and the limit is what a webhook can actually
 deliver. "Became mergeable" and "checks went red" are conclusions drawn from
 several events rather than events themselves, so they appear in the summary,
 where they are read off the pull request snapshot that already exists. Offering
@@ -4055,10 +4122,99 @@ recompute in the background, because the stored answer describes the account as
 it was and changing it was the point. Recomputed rather than deleted: deleting
 would make the next open slow again, which is what the store exists to prevent.
 
+Through the guard, not around it. All three used to call the rebuild directly,
+which skipped both of the guards the read path uses. Two toggles in a row
+started two concurrent organization-wide walks, each paging every repository
+twice through calls that are not cached, and neither showed up in the
+"refreshing" line, so the tab said it was not refreshing while two sweeps ran
+and its timestamp sat still. They now go through the same one-at-a-time guard,
+with the *time* throttle waived: that throttle exists to stop reads recomputing
+an answer that has not changed, and it should not stop a change from being
+recorded. If a sweep is already running it is waited for first, because it began
+before the change and would store an answer that does not contain it.
+
+**A partial sweep is never stored.** When GitHub refuses part of the walk the
+sweep comes back empty and flagged, and the view built from it is nothing but
+"this repository is clean" markers. Stored as the answer, that reports an
+organization with no findings at all, and it would stand until a sweep
+succeeded. The scheduled pass already refused to store one; the route paths
+could not see the flag, because the view discarded it, so they stored it. The
+view returns it now.
+
+**One read, not two.** The tab opens two requests at once, the list and the
+severity counts, and both read the stored row. Neither had finished when the
+other started, so the short in-process hold could not help and both fetched,
+decompressed and parsed the same multi-megabyte row; the second was pure waste,
+and because decompressing blocks, it also held up everything else in flight.
+They share the read now, the way the sweep cache beside them already did.
+
+**The Renovate count no longer costs a search.** The page reads the Renovate
+endpoint on every open, whichever view is showing, purely to put a number on a
+tab label. Only the detailed form was stored, and the *read* was gated on the
+same flag as the write, so that call could never be served from the row and ran
+a live organization-wide search every single time. It reads the stored row now
+too: the row is a superset of what a count needs.
+
 One sweep function serves both the route and the background refresh. Two copies
 would be two places for the repository markers and the two status reads to
 drift, and the drift shows as a repository appearing clean on one path and
 unwatched on the other.
+
+## Why My work is fast now
+
+Three separate causes, and the obvious one was the smallest.
+
+**The queue was never the expensive tab.** It reads one stored row, the same
+open-pull-request walk the PR tab keeps, and derives one person's view from it
+in memory. It costs a single DynamoDB read.
+
+**"What did I ship" genuinely was.** It is the only screen here whose answer is
+true of exactly one person, so it cannot come from a shared walk. Activity rows
+all live under one partition key with `timestamp#id` as the sort key, and there
+is no index on who did something, so the question was answered by reading three
+thousand rows of organization-wide history newest-first, two hundred at a time,
+and keeping the ones that were this person's and inside the window. Two things
+were wrong with that. It ran while somebody waited, on every open. And the
+window was applied to the rows *after* reading them, so seven days cost exactly
+what ninety days cost.
+
+Both are fixed at the point that caused them. The window is a **key condition**
+now, so seven days reads seven days and everything older is never touched. And
+the answer is **stored**, one row per person and window, served immediately and
+refreshed behind the reader when it is more than half an hour old.
+
+**The scheduled pass keeps those rows warm**, so the first open after launching
+the app is a single read rather than the walk. It warms only rows that already
+exist: a row exists because somebody opened the tab, so this does work for the
+people who use it and for nobody else, and each row's two-day expiry drops
+anyone who stops. Forty per pass at most, oldest first, so one large
+organization cannot turn a pass whose real job is alarms into a long walk
+through the activity table.
+
+**And the cause nobody would have guessed.** `GET /api/me/alarms` wants the
+handful of small rows one person owns. It read the whole alarms table to find
+them, and that table also holds the stored answers the rest of the app keeps in
+it: the pull request walk, the Dependabot sweep, every widget's rows, the
+Renovate views, hundreds of kilobytes each. All of it came across the wire and
+was parsed so that the next line could drop it. Both **My alarms** and **My
+widgets** ask for it on open. The scan is told which kind of row it wants now,
+which does not change what DynamoDB charges for reading, but does stop it
+sending back and decoding what nobody asked for, and the sending and the
+decoding were where the waiting was.
+
+Two smaller ones on the same page. **"Why can't I push?"** filled its repository
+autocomplete from a live walk of the organization one hundred at a time, five or
+six sequential GitHub requests every time the tab was opened, to populate a
+`datalist`; it reads the access map instead, which is derived from the stored
+graph, held for five minutes, and costs GitHub nothing. And the delivery-address
+panel polled a paged AWS subscription listing every thirty seconds for as long
+as the tab was open; it polls only while an address is actually waiting to be
+confirmed, which is the one thing that can change without this app knowing.
+
+**Open pull requests are listed in one place.** They were in the queue and again
+under "What did I ship", which made the second one the same list under a heading
+saying it had gone out. The queue is where an open pull request is acted on, so
+it lives there only.
 
 ## Managing Dependabot in bulk
 

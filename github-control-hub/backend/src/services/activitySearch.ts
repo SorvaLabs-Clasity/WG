@@ -119,6 +119,20 @@ export interface ActivityFilters {
    * means all of them, which is what the feed showed before this existed.
    */
   personal?: "only" | "hide";
+  /**
+   * The oldest timestamp worth reading, as an ISO string.
+   *
+   * A key condition, not a filter. Rows are stored under one partition with
+   * `timestamp#id` as the sort key, so a lower bound on the sort key is a bound
+   * on what DynamoDB *reads*, and everything older is never touched.
+   *
+   * The difference is the whole cost of the question. "What did this person
+   * ship in the last week" was answered by walking three thousand rows of
+   * organization-wide history newest-first and discarding the ones outside the
+   * week in JavaScript, which meant a week cost exactly as much as three
+   * months, and on a busy organization neither of them finished quickly.
+   */
+  since?: string;
 }
 
 export interface ActivityPage {
@@ -145,6 +159,10 @@ function decode(cursor?: string): any {
 }
 
 export function matches(e: ActivityEntry, f: ActivityFilters): boolean {
+  // Applied here as well as in the key condition, because the index path and
+  // the injected reader used by tests do not go through that condition, and a
+  // window that holds on one path and not the other is worse than no window.
+  if (f.since && !(e.timestamp >= f.since)) return false;
   if (f.source && e.source !== f.source) return false;
   if (f.category && categoryOf(e.action) !== f.category) return false;
   if (f.includeDetailed === false && (e as any).detailed) return false;
@@ -271,8 +289,19 @@ export async function searchActivity(
   const readPage = deps?.query ?? (async (start: any) => {
     const out: any = await docClient.send(new QueryCommand({
       TableName: TABLE(),
-      KeyConditionExpression: "pk = :pk",
-      ExpressionAttributeValues: { ":pk": "ACTIVITY" },
+      // The sort key is `timestamp#id`, so a lower bound on it is a bound on
+      // what is read rather than on what is kept. An ISO timestamp sorts
+      // lexicographically, and every sort key for that instant begins with it,
+      // so `>=` on the bare timestamp includes the whole of the first second.
+      ...(filters.since
+        ? {
+          KeyConditionExpression: "pk = :pk AND sk >= :since",
+          ExpressionAttributeValues: { ":pk": "ACTIVITY", ":since": filters.since },
+        }
+        : {
+          KeyConditionExpression: "pk = :pk",
+          ExpressionAttributeValues: { ":pk": "ACTIVITY" },
+        }),
       ScanIndexForward: false,
       // Read in chunks rather than one row at a time; the filter is applied
       // here, so a chunk that matches nothing costs one request, not many.

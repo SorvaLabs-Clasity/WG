@@ -174,9 +174,22 @@ export function useMyDestination(enabled = true) {
   return useQuery({
     queryKey: ["alarms", "mine", "destination"],
     queryFn: fetchMyDestination,
-    // A confirmation link is clicked outside this app, so the state changes
-    // without anything here knowing.
-    refetchInterval: enabled ? 30_000 : false,
+    /**
+     * Polled only while something is actually waiting to be confirmed.
+     *
+     * A confirmation link is clicked outside this app, so that one state does
+     * change without anything here knowing, and it is the only one that does:
+     * every other way this answer changes goes through a mutation on this page,
+     * which invalidates the key itself. Polling regardless meant a paged AWS
+     * subscription listing every thirty seconds, for as long as the tab was
+     * open, to re-read an answer that could not have changed.
+     */
+    refetchInterval: query => {
+      if (!enabled) return false;
+      const pending = query.state.data?.emails?.some(m => !m.confirmed);
+      return pending ? 15_000 : false;
+    },
+    staleTime: 30_000,
     enabled,
   });
 }

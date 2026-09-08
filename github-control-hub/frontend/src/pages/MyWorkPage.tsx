@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { idleLabel } from "../lib/idle";
+import { ago } from "../lib/ago";
 import { useAuth } from "../App";
 import { useMyWork, usePushCheck, useShipped } from "../hooks/useMe";
-import { useRepos } from "../hooks/useRepos";
+import { useAccessRepos } from "../hooks/useAccess";
 import {
   Page, PageHeader, Note, Pill, Empty, Spinner, Segmented,
   SURFACE, TYPE, RefreshButton, LoadFailed,
@@ -546,12 +547,21 @@ function Verdict({ data }: { data: PushCheckData }) {
 }
 
 function PushCheck() {
-  const { data: repos } = useRepos();
+  /**
+   * Names only, from the access map rather than from GitHub.
+   *
+   * This box wants a list of repository names to autocomplete against, and it
+   * used to get them from the repository list, which is a live walk of the
+   * organization one hundred at a time with no cache behind it: five or six
+   * sequential GitHub requests, every time somebody opened this tab, to fill a
+   * `datalist`. The access map is derived from the stored graph, is held for
+   * five minutes, already answers exactly this question, and costs GitHub
+   * nothing.
+   */
+  const { data: names = [] } = useAccessRepos(true);
   const [repo, setRepo] = useState("");
   const [branch, setBranch] = useState("main");
   const { data, isFetching, isError, error } = usePushCheck(repo, branch);
-
-  const names = useMemo(() => (repos ?? []).map(r => r.name).sort(), [repos]);
   const blocks = data?.cannotPushBecause ?? [];
   const needs = data?.mergeNeeds ?? [];
 
@@ -683,7 +693,20 @@ function Shipped() {
 
   return (
     <div className="grid gap-4">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-between gap-3">
+        {/* Said, because it is stored rather than asked for. This is served
+            from a row the scheduled pass keeps warm, so without a stamp a
+            reader who merged something a minute ago reads its absence as the
+            merge not having been recorded. */}
+        <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums">
+          {data?.computedAt && (
+            <>
+              <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
+              counted {ago(data.computedAt)}
+              {data.refreshing && <span className="ml-1 opacity-60">(refreshing)</span>}
+            </>
+          )}
+        </span>
         <Segmented value={String(days)} onChange={v => setDays(Number(v))}
           options={[["7", "7 days"], ["30", "30 days"], ["90", "90 days"]]} />
       </div>
@@ -732,9 +755,6 @@ function Shipped() {
             </div>
 
             <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-white/[0.07]`}>
-              <MiniStat icon="ph-git-pull-request" tone="text-sky-600 dark:text-sky-400"
-                label="Still open" value={data.waiting.length}
-                foot={data.waiting.length ? "yours, not yet out" : "nothing of yours is open"} />
               <MiniStat icon="ph-calendar-check" tone="text-violet-600 dark:text-violet-400"
                 label="Active days" value={byDay.length}
                 foot={byDay.length ? "days you shipped something" : "no merges in the window"} />
@@ -791,21 +811,6 @@ function Shipped() {
                     )} />}
             </Panel>
 
-            <Panel title="Still waiting" count={data.waiting.length} note="Open, and not out yet.">
-              {data.waiting.length === 0
-                ? <Quiet>Nothing of yours is open.</Quiet>
-                : <Paged items={data.waiting} keyOf={pr => pr.url} render={pr => (
-                    <a href={pr.url} target="_blank" rel="noreferrer noopener"
-                      className="block px-5 py-3.5 hover:bg-slate-50/80 dark:hover:bg-white/[0.035] transition-colors">
-                      <div className="text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">
-                        {pr.title}
-                      </div>
-                      <div className="text-[11.5px] font-mono text-slate-400 dark:text-slate-500 mt-1">
-                        {pr.repo}#{pr.number}
-                      </div>
-                    </a>
-                  )} />}
-            </Panel>
           </div>
         </>
       )}

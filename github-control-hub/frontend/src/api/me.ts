@@ -79,10 +79,19 @@ export interface Shipped {
   days: number;
   merged: ShipEntry[];
   pushes: number;
-  waiting: { repo: string; number: number; title: string; url: string }[];
   /** False means merges are not being recorded, which is why `merged` is empty. */
   detailedLogging: boolean;
   exhausted: boolean;
+  /**
+   * When this answer was computed, which is not when it was asked for.
+   *
+   * It is served from a stored row and refreshed behind the reader, so the page
+   * has to be able to say how old what it is showing is. Absent only on a row
+   * written before this existed.
+   */
+  computedAt?: string;
+  /** True while a fresher answer is being computed for the next open. */
+  refreshing?: boolean;
 }
 
 export const fetchMyWork = () => apiGet<MyWork>("/me/work");
@@ -98,6 +107,8 @@ export const fetchShipped = (days: number, login?: string) =>
 export interface EventPrefs {
   reviewRequested: boolean;
   changesRequested: boolean;
+  /** Somebody approved one of yours. Never aged out, whatever the summary does. */
+  approved: boolean;
 }
 
 export interface DigestPrefs {

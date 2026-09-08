@@ -68,8 +68,21 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
       // awaited. Awaiting it would reintroduce exactly the delay this removes.
       /void refreshIfDue\(/.test(staleBranch),
       staleBranch.slice(0, 300));
+    // Anchored on the function rather than on a character window, for the
+    // reason stated twenty lines above: a window measured in characters breaks
+    // the moment somebody adds a comment, and this one did.
+    const refresher = route.slice(
+      route.indexOf("async function refreshDependencySnapshot"),
+      route.indexOf("function applyFilters"));
     check("  and the refresh cannot throw into a caller that is not listening",
-      /async function refreshDependencySnapshot[\s\S]{0,300}catch \(err: any\)/.test(store + route));
+      /catch \(err: any\)/.test(refresher), refresher.slice(0, 200));
+
+    // A sweep GitHub refused comes back empty, so the view is nothing but
+    // "clean" markers. Stored, that reports an organization with no findings,
+    // and it stands until a sweep succeeds.
+    check("  and a partial sweep is never stored as the answer",
+      /if \(degraded\)/.test(refresher) && /return;/.test(refresher),
+      "an empty sweep stored as authoritative reads as a clean organization");
   }
 
   console.log("\none sweep, used by both paths");
@@ -87,8 +100,24 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
   {
     // The stored answer describes the account as it was, and the point of
     // pressing any of these was to change it.
-    const refreshes = (route.match(/void refreshDependencySnapshot\(octokit,/g) ?? []).length;
+    const refreshes = (route.match(/void refreshNow\(\(\) => refreshDependencySnapshot\(octokit,/g) ?? []).length;
     check("every write refreshes it", refreshes >= 3, refreshes);
+
+    /**
+     * Through the guard, not around it.
+     *
+     * These three called the rebuild directly, which skipped both guards: two
+     * toggles in a row started two concurrent organization-wide walks, each
+     * paging every repository twice through calls that are not cached, and
+     * neither appeared in `isRefreshing`, so the tab said "not refreshing"
+     * while two sweeps ran and its timestamp sat still.
+     */
+    check("  through the guard rather than around it",
+      !/void refreshDependencySnapshot\(/.test(route),
+      "calling the rebuild directly skips the one-at-a-time guard");
+    check("  and a change is not held off by the read throttle",
+      /force: true/.test(store),
+      "the throttle stops reads recomputing, not writes being reflected");
     check("  by recomputing rather than deleting",
       !/deleteDependencySnapshot/.test(route),
       "deleting would make the next open slow again, which is what the store prevents");
@@ -329,6 +358,81 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
     check("  and the caller computes when there is nothing stored",
       /if \(stored\) \{/.test(route),
       "no stored answer has to mean compute, not show nothing");
+  }
+
+  console.log("\na change is rebuilt once, however many made it");
+  {
+    /**
+     * Behaviour, not a source scan, because the ordering is the whole point.
+     *
+     * The three write paths called the rebuild directly, which skipped both
+     * guards. Two toggles in a row started two concurrent organization-wide
+     * walks; each pages every repository twice through calls that are not
+     * cached, and neither appeared in `isRefreshing`, so the tab said it was
+     * not refreshing while two sweeps ran.
+     */
+    const { refreshNow, refreshIfDue, isRefreshing, __resetRefreshState } =
+      require("./src/services/dependencySnapshot");
+
+    {
+      __resetRefreshState();
+      let runs = 0;
+      const run = async () => { runs++; await new Promise(r => setTimeout(r, 20)); };
+
+      // Three toggles in a row need one rebuild between them, not three.
+      await Promise.all([refreshNow(run), refreshNow(run), refreshNow(run)]);
+      check("three changes at once cause one rebuild", runs === 1, runs);
+    }
+
+    {
+      __resetRefreshState();
+      let runs = 0;
+      const run = async () => { runs++; await new Promise(r => setTimeout(r, 30)); };
+
+      // The read path's throttle exists to stop reads recomputing the same
+      // answer. A change is a new answer, so it must not be held off by it.
+      await refreshIfDue(run);
+      await refreshNow(run);
+      check("  and a change is not refused by the read throttle", runs === 2, runs);
+    }
+
+    {
+      __resetRefreshState();
+      let runs = 0;
+      let release: () => void = () => {};
+      const slow = async () => {
+        runs++;
+        await new Promise<void>(r => { release = r; });
+      };
+
+      // A sweep already running started before the change, so it will store an
+      // answer that does not contain it. The change has to wait for it and then
+      // run, not be dropped because something happened to be in flight.
+      const first = refreshIfDue(slow);
+      await new Promise(r => setTimeout(r, 5));
+      check("  a rebuild is visible while it runs", isRefreshing() === true);
+
+      const second = refreshNow(async () => { runs++; });
+      await new Promise(r => setTimeout(r, 5));
+      check("  a change during a sweep is not dropped", runs === 1, runs);
+
+      release();
+      await first;
+      await second;
+      check("  it runs once the earlier sweep is done", runs === 2, runs);
+      check("  and nothing is left marked as running", isRefreshing() === false);
+    }
+
+    {
+      __resetRefreshState();
+      // Every caller starts this with `void`, so a rejection escaping it would
+      // be unhandled, and an unhandled rejection takes the process down.
+      let after = 0;
+      await refreshNow(async () => { throw new Error("GitHub is down"); });
+      await refreshNow(async () => { after++; });
+      check("  a failed rebuild does not reject into a caller that is not listening",
+        after === 1, after);
+    }
   }
 
   console.log(failures === 0 ? "\nALL PASS\n" : `\n${failures} FAILED\n`);

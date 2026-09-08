@@ -121,12 +121,20 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
   {
     check("the queue rows are links",
       /href=\{pr\.url\} target="_blank"/.test(page));
-    check("  as are the still-open ones",
-      (page.match(/href=\{pr\.url\} target="_blank"/g) ?? []).length >= 2);
     check("  and the merged ones",
       /href=\{href\} target="_blank"/.test(page));
+
+    /**
+     * The property, rather than a count of the anchors that have it.
+     *
+     * This counted three, which was the number that happened to exist, so
+     * removing the duplicated open-list broke it while nothing about the claim
+     * had changed. What matters is that no outbound link is missing the
+     * attribute, which stays true whatever the page grows or loses.
+     */
+    const blanks = (page.match(/target="_blank"[^>]*/g) ?? []);
     check("  every one of them opens outside the app",
-      (page.match(/rel="noreferrer noopener"/g) ?? []).length >= 3,
+      blanks.length > 0 && blanks.every(a => /rel="noreferrer noopener"/.test(a)),
       "an outbound link without noopener hands the opener to the page it opens");
 
     // A merged row is an activity row, not a pull request record, so it may
@@ -146,8 +154,14 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
   // Sixty open pull requests beside three reviews makes a page nobody can take
   // in at a glance, which was the whole reason for two columns.
   {
-    check("all four pull request lists page",
-      (page.match(/<Paged/g) ?? []).length === 4,
+    /**
+     * Three, not four. The fourth was the open pull requests listed a second
+     * time under "What did I ship", which is the queue's list under a heading
+     * saying it had gone out. The queue is where an open pull request is acted
+     * on, so it lives there only.
+     */
+    check("every pull request list pages",
+      (page.match(/<Paged/g) ?? []).length === 3,
       "one unpaged list is the one that pushes the others off the screen");
     check("  the merged list pages by day, not by row",
       /items=\{byDay\} keyOf=\{day => day\.label\} perPage=\{4\} bare/.test(page),

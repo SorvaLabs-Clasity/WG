@@ -8,13 +8,15 @@ import { getProtection } from "../services/branchService";
 import { fromClassic, explainPush } from "../services/pushExplainer";
 import { searchActivity } from "../services/activitySearch";
 import { getDetailedLogging } from "../services/orgConfigService";
-import { readPrSnapshot as prSnapshot } from "../services/alarmService";
 import {
   getDevAlerts, putDevAlerts, badTeamsAddress, nextDigestRecord, type DevAlerts,
 } from "../services/devAlertService";
 import { buildDigest } from "../services/devAlertContent";
 import { sendToPerson } from "../services/teamsClient";
 import { getOrgConfig } from "../services/orgConfigService";
+import {
+  readView, saveView, isViewDue, refreshViewIfDue, isViewRefreshing,
+} from "../services/viewSnapshot";
 
 /**
  * The app, pointed at whoever is reading it.
@@ -199,50 +201,99 @@ router.get("/push-check", async (req: Request, res: Response) => {
  * logging is on, so when it is off this says so rather than showing an empty
  * week, which would read as having shipped nothing.
  */
+/**
+ * What one person shipped, stored per person.
+ *
+ * The activity search behind this cannot be shared the way the pull request
+ * walk is: it pages the table two hundred rows at a time and filters in
+ * memory until it has four hundred of *this* person's, so on a busy
+ * organization it is many round trips for an answer that is true of nobody
+ * else. Hence a row per person and window rather than one for the account.
+ *
+ * Served from that row without waiting, and refreshed behind the reader at
+ * most every half hour. The window is read from the stored timestamp rather
+ * than from anything this process remembers, so closing the app and reopening
+ * it does not start the work again.
+ *
+ * Exported for the scheduled pass, which warms the rows that already exist so
+ * that the first open after launching the app is a single read rather than the
+ * paging. Same function on both paths deliberately: a warm-up that computes
+ * something slightly different from what the route computes stores an answer
+ * the route then has to redo.
+ */
+export function shippedKey(login: string, days: number): string {
+  // Lower-cased, because GitHub logins are compared without case and two rows
+  // for one person would each be half as warm as one.
+  return `shipped#${login.toLowerCase()}#${days}`;
+}
+
+export async function buildShipped(login: string, days: number) {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+
+  // `q` matches actor, action and details, so the actor is re-checked exactly
+  // afterwards: a free-text hit on somebody's name inside a details string is
+  // not the same as them having done it.
+  //
+  // `since` goes to the search rather than being applied to what comes back.
+  // It is a bound on the sort key, so seven days reads seven days; applied
+  // afterwards, as it was, seven days read the same three thousand rows of
+  // organization-wide history that ninety did, and threw most of them away.
+  //
+  // Started together with the logging flag, because neither answer depends on
+  // the other and the walk is the long one.
+  const [detailed, page] = await Promise.all([
+    getDetailedLogging().catch(() => ({ enabled: false } as any)),
+    searchActivity({ q: login, category: "github", since }, 400),
+  ]);
+
+  const shipped = page.entries.filter(e =>
+    e.actor?.toLowerCase() === login.toLowerCase()
+    && (e.action === "github.pr_merged" || e.action === "github.push"));
+
+  return {
+    login, days,
+    merged: shipped.filter(e => e.action === "github.pr_merged"),
+    pushes: shipped.filter(e => e.action === "github.push").length,
+    // The two ways this list can be short for reasons that are not "you did
+    // not ship anything".
+    detailedLogging: !!detailed.enabled,
+    exhausted: page.exhausted,
+  };
+}
+
 router.get("/ship", async (req: Request, res: Response) => {
   try {
     const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 90);
-    const since = Date.now() - days * 86_400_000;
     const login = String(req.query.login || req.user!.login);
 
-    const detailed = await getDetailedLogging().catch(() => ({ enabled: false } as any));
+    // Checked before it becomes part of a storage key. GitHub logins are
+    // letters, digits and hyphens; anything else is either a typo or an attempt
+    // to write a row under a name that is not a person's, and the key's own
+    // separator is the character that would do it.
+    if (!/^[A-Za-z0-9-]{1,39}$/.test(login)) {
+      return res.status(400).json({ error: "That is not a GitHub username." });
+    }
 
-    // `q` matches actor, action and details, so the actor is re-checked exactly
-    // afterwards: a free-text hit on somebody's name inside a details string is
-    // not the same as them having done it.
-    const page = await searchActivity({ q: login, category: "github" }, 400);
-    const shipped = page.entries.filter(e =>
-      e.actor?.toLowerCase() === login.toLowerCase()
-      && Date.parse(e.timestamp) >= since
-      && (e.action === "github.pr_merged" || e.action === "github.push"));
+    // Keyed on the person and the window, because both change the answer.
+    const key = shippedKey(login, days);
 
-    const snap = await prSnapshot().catch(() => null);
-    const waiting = (snap?.prs ?? [])
-      .filter(pr => pr.author?.toLowerCase() === login.toLowerCase() && !pr.isDraft)
-      .map(pr => ({ repo: pr.repo, number: pr.number, title: pr.title, url: pr.url }));
+    const stored = await readView<any>(key);
+    if (stored) {
+      res.json({ ...stored.data, computedAt: stored.computedAt, refreshing: isViewRefreshing(key) });
+      if (isViewDue(key, stored)) {
+        void refreshViewIfDue(key, async () => saveView(key, await buildShipped(login, days)));
+      }
+      return;
+    }
 
-    res.json({
-      login, days,
-      merged: shipped.filter(e => e.action === "github.pr_merged"),
-      pushes: shipped.filter(e => e.action === "github.push").length,
-      waiting,
-      // The two ways this list can be short for reasons that are not "you did
-      // not ship anything".
-      detailedLogging: !!detailed.enabled,
-      exhausted: page.exhausted,
-    });
+    const fresh = await buildShipped(login, days);
+    await saveView(key, fresh);
+    res.json({ ...fresh, computedAt: new Date().toISOString(), refreshing: false });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "me") });
   }
 });
 
-/**
- * A person's own notification settings.
- *
- * Always their own. There is no login parameter and there deliberately is not
- * one: this holds a webhook that posts into somebody's Teams, and being able to
- * read or set another person's would be a way to send messages as them.
- */
 router.get("/alerts", async (req: Request, res: Response) => {
   try {
     const a = await getDevAlerts(req.user!.login);
@@ -280,7 +331,20 @@ router.put("/alerts", async (req: Request, res: Response) => {
     const next: DevAlerts = {
       ...current,
       teamsAddress,
-      events: { ...current.events, ...(body.events ?? {}) },
+      /**
+       * Only the switches that exist, and only as booleans.
+       *
+       * A spread of whatever arrived would let a client write keys nothing
+       * reads, which then sit in the row forever looking like settings. `wants`
+       * refuses an unknown kind anyway, so this costs nothing and keeps the
+       * stored row equal to the screen that writes it.
+       */
+      events: (["reviewRequested", "changesRequested", "approved"] as const)
+        .reduce((acc, k) => {
+          const sent = body.events?.[k];
+          acc[k] = typeof sent === "boolean" ? sent : current.events[k];
+          return acc;
+        }, {} as DevAlerts["events"]),
       /**
        * The ceiling on how many reviewers a request may have.
        *
@@ -359,7 +423,7 @@ router.post("/alerts/test", async (req: Request, res: Response) => {
       });
       return;
     }
-    const snap = await prSnapshot().catch(() => null);
+    const snap = await readPrSnapshot().catch(() => null);
     // Built from real data, not a fixed "hello". Somebody testing this wants to
     // see what their digest will actually look like, including whether the
     // sections they chose have anything in them.
