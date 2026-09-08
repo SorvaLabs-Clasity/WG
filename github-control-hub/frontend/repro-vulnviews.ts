@@ -153,6 +153,96 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
       !/rounded-\[\d/.test(panel), "the app's radii are rounded-lg, -xl and -2xl");
   }
 
+  console.log("\nthe Renovate flaps open the way somebody left them");
+  {
+    const panel = fs.readFileSync("./src/components/RenovatePanel.tsx", "utf8");
+
+    /**
+     * Two spans, and they are not the same one.
+     *
+     * "Only the top one open" is wanted on the first open *per app launch*.
+     * After that it has to be however it was left, and the tab unmounts every
+     * time somebody switches away from it, so component state would re-collapse
+     * whatever they had just expanded the moment they came back. Module scope
+     * survives a remount and still resets on relaunch, which is exactly the
+     * span asked for.
+     */
+    check("the collapsed set outlives the component",
+      /^let sessionShut: Set<string> \| null = null;/m.test(panel),
+      "component state would re-collapse everything on every tab switch");
+    check("  and is seeded from it on mount",
+      /useState<Set<string>>\(\(\) => sessionShut \?\? new Set\(\)\)/.test(panel));
+    check("  and written back on every change",
+      /sessionShut = next/.test(panel),
+      "state that is not written back is forgotten at the next tab switch");
+
+    // null is "this session has not opened the tab"; an empty set is the real
+    // answer "nothing is collapsed". Collapsing the two reapplies the default
+    // forever, which is the bug this guards.
+    check("  a first open is told apart from nothing being collapsed",
+      /sessionShut !== null/.test(panel),
+      "an empty set is a real answer, not an uninitialised one");
+
+    check("everything but the first is collapsed on a first open",
+      /new Set\(\[\.\.\.queueRepos\.slice\(1\), QUIET_KEY\]\)/.test(panel),
+      "slice(1) keeps the top one open and closes the rest");
+
+    // The list is not known until the queries answer, and the effect that reads
+    // it is a hook, so it cannot sit after the early returns below it.
+    check("  computed before the conditional returns, since a hook cannot follow one",
+      panel.indexOf("const queueRepos = useMemo") < panel.indexOf("if (prs.isLoading"));
+  }
+
+  console.log("\nthe first row is not flush against its heading");
+  {
+    const panel = fs.readFileSync("./src/components/RenovatePanel.tsx", "utf8");
+    // The version this was reported against stacked a 26px row straight onto a
+    // 22px header button with no padding on either, so the first item in every
+    // expanded repository touched the heading above it.
+    check("the expanded list has room at the top",
+      /px-4 pt-1 pb-4 grid gap-1\.5/.test(panel));
+  }
+
+  console.log("\nrepositories Renovate has never touched are listed too");
+  {
+    const panel = fs.readFileSync("./src/components/RenovatePanel.tsx", "utf8");
+
+    /**
+     * The sweep is a search for issues the bot wrote, so it can only return
+     * repositories Renovate is already active on. A repository it has never
+     * touched is invisible to it, which is why this cannot come from the sweep
+     * and has to come from the organization's own repository list.
+     */
+    check("the full repository list comes from the access map",
+      /useAccessRepos\(true\)/.test(panel),
+      "the sweep can only ever return repositories Renovate already writes to");
+    check("  and the quiet ones are what it does not cover",
+      /const active = new Set\(\[\.\.\.dashboards\.map/.test(panel)
+        && /filter\(r => !active\.has\(r\)\)/.test(panel));
+
+    /**
+     * The honesty this screen turns on. Renovate can be perfectly well
+     * onboarded with `dependencyDashboard` off, and with nothing outstanding it
+     * then looks identical to a repository Renovate has never been near. The
+     * heading and the copy must not claim to tell those apart.
+     */
+    check("  described as nothing seen, not as Renovate being off",
+      /No Renovate activity/.test(panel) && !/Renovate is disabled|not enabled/.test(panel),
+      "absence of a dashboard is not proof that Renovate is off");
+    check("  and the ambiguity is stated rather than left implied",
+      /it is not proof/.test(panel) && /dependencyDashboard/.test(panel));
+
+    // It is not part of the queue, so a lens that narrows the queue must not
+    // appear to have narrowed this.
+    check("  hidden while a lens is narrowing the queue",
+      /\{!lens && quiet\.length > 0/.test(panel));
+
+    // Remembered the same way the repositories are, so one mechanism covers
+    // every flap on the page.
+    check("  and it remembers its own state like the rest",
+      /toggle\(shut, QUIET_KEY, setShut\)/.test(panel));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

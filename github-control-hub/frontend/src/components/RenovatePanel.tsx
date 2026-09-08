@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   fetchRenovate, fetchRenovateDashboards, fetchDetectedDependencies,
@@ -6,6 +6,7 @@ import {
   type DashboardCategory, type RenovatePr, type RepoDashboard,
 } from "../api/renovate";
 import { usePermissions } from "../hooks/usePermissions";
+import { useAccessRepos } from "../hooks/useAccess";
 import {
   Spinner, Note, Button, SearchInput, Chip, Pill, Empty,
   SURFACE, TYPE, INTENT, enter, type Intent,
@@ -42,6 +43,31 @@ import {
  */
 
 type Lens = "errored" | "failing" | "waiting" | "ready" | "held";
+
+/**
+ * Which repositories are collapsed, for the life of the app rather than the
+ * life of the component.
+ *
+ * The tab unmounts when somebody switches away from it, so ordinary state would
+ * reset every time they came back and re-collapse everything they had just
+ * opened. Module scope survives that and still resets when the app is
+ * relaunched, which is exactly the span asked for: opened fresh, only the top
+ * one is expanded; opened again in the same session, it is however it was left.
+ *
+ * `null` means this session has not opened the tab yet, which is what triggers
+ * the one-time default below. An empty set is a real answer, "nothing is
+ * collapsed", and the two must not be confused.
+ */
+let sessionShut: Set<string> | null = null;
+
+/**
+ * The collapsing section listing repositories Renovate has said nothing about.
+ *
+ * Kept in the same set as the repositories so both remember their state the
+ * same way. A NUL byte cannot occur in a GitHub repository name, so this can
+ * never collide with one.
+ */
+const QUIET_KEY = "\u0000quiet";
 
 /**
  * Worst first, which is the order somebody works through them.
@@ -178,6 +204,11 @@ export default function RenovatePanel() {
   const { data: permissions } = usePermissions();
   const isAdmin = permissions?.isAwsAdmin ?? false;
 
+  // Every repository in the organization, so the panel can say which ones
+  // Renovate has never said anything about. From the stored access graph, held
+  // five minutes, and free of GitHub requests.
+  const { data: allRepos } = useAccessRepos(true);
+
   const prs = useQuery({
     queryKey: ["renovate", "details"], queryFn: () => fetchRenovate(true), staleTime: 120_000,
   });
@@ -187,7 +218,7 @@ export default function RenovatePanel() {
 
   const [lens, setLens] = useState<Lens | null>(null);
   const [raw, setRaw] = useState("");
-  const [shut, setShut] = useState<Set<string>>(new Set());
+  const [shut, setShutState] = useState<Set<string>>(() => sessionShut ?? new Set());
   const [invOpen, setInvOpen] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; msg: string } | null>(null);
@@ -198,6 +229,33 @@ export default function RenovatePanel() {
     mutationFn: (bot: string) => setRenovateBot(bot),
     onSuccess: () => { setEditing(false); qc.invalidateQueries({ queryKey: ["renovate"] }); },
   });
+
+  /** Written to both, so switching tabs and back does not undo it. */
+  const setShut = (next: Set<string>) => { sessionShut = next; setShutState(next); };
+
+  /**
+   * Every repository the queue has something to say about, in the order it is
+   * drawn. Derived before the early returns below, because the effect that
+   * reads it is a hook and hooks cannot live after a conditional return.
+   */
+  const queueRepos = useMemo(() => {
+    const names = new Set<string>();
+    for (const d of dash.data?.dashboards ?? []) names.add(d.repo);
+    for (const p of prs.data?.prs ?? []) if (p.state === "open") names.add(p.repo);
+    return [...names].sort();
+  }, [dash.data, prs.data]);
+
+  /**
+   * The one-time default: everything collapsed except the first.
+   *
+   * Only when this session has not opened the tab before. Reapplying it on
+   * every mount would throw away whatever somebody had just expanded the moment
+   * they looked at another tab and came back.
+   */
+  useEffect(() => {
+    if (sessionShut !== null || queueRepos.length === 0) return;
+    setShut(new Set([...queueRepos.slice(1), QUIET_KEY]));
+  }, [queueRepos]);
 
   if (prs.isLoading || dash.isLoading) return <Spinner />;
   if (prs.error && dash.error) return <Note intent="danger">Could not read anything from Renovate.</Note>;
@@ -326,6 +384,25 @@ export default function RenovatePanel() {
   const toggle = (set: Set<string>, key: string, apply: (s: Set<string>) => void) => {
     const next = new Set(set); next.has(key) ? next.delete(key) : next.add(key); apply(next);
   };
+
+  /**
+   * Repositories Renovate has said nothing about.
+   *
+   * The sweep is a search for issues the bot wrote, so it can only ever return
+   * repositories Renovate is already active on: a repository it has never
+   * touched is invisible to it, which is why this list could not be built from
+   * the sweep alone. The names come from the access map, which is derived from
+   * the stored graph and costs GitHub nothing.
+   *
+   * Described as "nothing seen" rather than "Renovate is off", because the two
+   * are not the same and this cannot tell them apart. Renovate can be perfectly
+   * well onboarded with `dependencyDashboard` disabled, in which case it writes
+   * no issue and, with no update currently open, looks exactly like a
+   * repository it has never been near.
+   */
+  const active = new Set([...dashboards.map(d => d.repo), ...openPrs.map(p => p.repo)]);
+  const quiet = (allRepos ?? []).filter(r => !active.has(r)).sort();
+  const quietVisible = query ? quiet.filter(r => r.toLowerCase().includes(query)) : quiet;
 
   const stamp = dash.data?.computedAt ?? prs.data?.computedAt;
   const refreshing = dash.data?.refreshing || prs.data?.refreshing;
@@ -469,7 +546,7 @@ export default function RenovatePanel() {
             </button>
 
             {open && (
-              <div className="px-4 pb-4 grid gap-1.5">
+              <div className="px-4 pt-1 pb-4 grid gap-1.5">
                 {group.map((r, i) => {
                   const t = INTENT[LENS[r.lens].intent];
                   const running = busy === `${r.repo}|${r.marker}`;
@@ -568,6 +645,56 @@ export default function RenovatePanel() {
           </div>
         );
       })}
+
+      {/* ── what Renovate is not watching ──────────────────────────────────
+          Hidden while a lens is selected: the lenses narrow the queue, and
+          these repositories are not in it. */}
+      {!lens && quiet.length > 0 && (() => {
+        const open = !shut.has(QUIET_KEY);
+        return (
+          <div className={`${SURFACE.card} overflow-hidden`} style={enter(groups.length, 35, 300)}>
+            <button onClick={() => toggle(shut, QUIET_KEY, setShut)} aria-expanded={open}
+              className="w-full flex items-center gap-3 px-6 py-4 text-left
+                         hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+              <i className={`ph-bold ph-caret-right text-slate-400 text-[13px] transition-transform
+                             duration-200 ${open ? "rotate-90" : ""}`} aria-hidden="true" />
+              <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>
+                No Renovate activity
+              </h3>
+              <span className="ml-auto shrink-0"><Pill intent="neutral">{quiet.length}</Pill></span>
+            </button>
+
+            {open && (
+              <div className="px-6 pt-1 pb-5">
+                <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 leading-relaxed max-w-[80ch]`}>
+                  Renovate has written no dashboard and has no update open on{" "}
+                  {quiet.length === 1 ? "this repository" : "these repositories"}. That usually means
+                  it has not been onboarded, but it is not proof: a repository configured with{" "}
+                  <span className="font-mono text-[12.5px]">dependencyDashboard</span> turned off and
+                  nothing currently outstanding looks the same from here.
+                </p>
+
+                {quietVisible.length === 0 ? (
+                  <p className={`${TYPE.sub} text-slate-400 dark:text-slate-500 mt-4`}>
+                    None of them match that filter.
+                  </p>
+                ) : (
+                  <ul className="mt-4 grid gap-1.5 sm:grid-cols-2 xl:grid-cols-3">
+                    {quietVisible.map(repo => (
+                      <li key={repo}
+                        className={`${SURFACE.inset} rounded-xl px-3.5 py-2 font-mono text-[12.5px]
+                                    text-slate-600 dark:text-slate-300 truncate`}
+                        title={repo}>
+                        {repo}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <p className={`${TYPE.sub} text-slate-400 dark:text-slate-500 leading-relaxed max-w-[80ch]`}>
         Acting here ticks a checkbox on the repository's dashboard issue, which is how a
