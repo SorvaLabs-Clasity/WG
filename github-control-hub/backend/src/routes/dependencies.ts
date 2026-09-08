@@ -606,6 +606,38 @@ router.get("/renovate", async (req: Request, res: Response) => {
     if (!bot) return res.json({ configured: false, prs: [], truncated: false, bot: null });
 
     const octokit = createOctokit(token, "Renovate pull request search");
+    const {
+      readRenovateSnapshot, saveRenovateSnapshot, isRenovateFresh,
+      refreshRenovateIfDue, isRenovateRefreshing,
+    } = await import("../services/renovateSnapshot");
+
+    /**
+     * Stored first, for the same reason the dashboards are: the search behind
+     * this draws on the thirty-a-minute budget, and the details behind it a
+     * GraphQL batch per fifty pull requests.
+     *
+     * Only the detailed form is stored. The page reads this endpoint on every
+     * open just for a tab count, and storing that separately would keep two
+     * rows in step for no gain.
+     */
+    if (req.query.details === "1") {
+      const stored = await readRenovateSnapshot<any>("renovate-prs");
+      if (stored) {
+        res.json({
+          configured: true, ...stored.data,
+          computedAt: stored.computedAt,
+          refreshing: isRenovateRefreshing("renovate-prs"),
+        });
+        if (!isRenovateFresh(stored)) {
+          void refreshRenovateIfDue("renovate-prs", async () => {
+            await saveRenovateSnapshot("renovate-prs",
+              await buildRenovatePrs(octokit, getOrg(), bot));
+          });
+        }
+        return;
+      }
+    }
+
     const result = await fetchRenovatePrs(
       // Search is the smallest allowance GitHub gives and the likeliest thing
       // here to meet a secondary limit, which is a request to wait rather than
@@ -654,6 +686,10 @@ router.get("/renovate", async (req: Request, res: Response) => {
       }
     }
 
+    // Stored on the way out, so the next open is served rather than computed.
+    if (req.query.details === "1") {
+      await saveRenovateSnapshot("renovate-prs", result);
+    }
     res.json({ configured: true, ...result });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
@@ -711,6 +747,57 @@ router.get("/renovate/:repo/:number/changes", async (req: Request, res: Response
 });
 
 /**
+ * The Renovate pull requests with their details, computed fresh.
+ *
+ * Shared by the view when nothing is stored and by the hourly pass that stores
+ * it, so the stored answer and the live one cannot differ in what they carry.
+ */
+export async function buildRenovatePrs(octokit: any, org: string, bot: string) {
+  const result = await fetchRenovatePrs(
+    async (q, page) => withSecondaryRetry(async () => {
+      const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
+        q, per_page: 100, page, advanced_search: "true",
+      });
+      return { items: r.data?.items ?? [] };
+    }),
+    org, bot,
+  );
+
+  const open = result.prs.filter(p => p.state === "open");
+  if (open.length > 0) {
+    const { fetchPullRequestDetails, mergeReadiness } = await import("../services/pullRequestDetails");
+    const details = await fetchPullRequestDetails(
+      (query, vars) => (octokit as any).graphql(query, vars),
+      org, open.map(p => ({ repo: p.repo, number: p.number })));
+    for (const pr of open) {
+      const detail = details.get(`${pr.repo}#${pr.number}`);
+      Object.assign(pr, detail ?? {}, { readiness: mergeReadiness(detail) });
+    }
+  }
+  return result;
+}
+
+/**
+ * The Renovate dashboards, computed fresh.
+ *
+ * A function rather than inline in the route, because two things build this
+ * now: the view when nothing is stored, and the hourly pass that stores it.
+ * Two copies would be two places for the bot-name resolution to drift.
+ */
+export async function buildRenovateDashboards(octokit: any, org: string, bot: string) {
+  const { fetchRenovateDashboards } = await import("../services/renovateDashboards");
+  return fetchRenovateDashboards(
+    async (q, page) => withSecondaryRetry(async () => {
+      const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
+        q, per_page: 100, page, advanced_search: "true",
+      });
+      return { items: r.data?.items ?? [] };
+    }),
+    org, bot,
+  );
+}
+
+/**
  * Every repository's Renovate Dependency Dashboard.
  *
  * Self-hosted Renovate has no API and no service to connect to, so this is the
@@ -722,24 +809,48 @@ router.get("/renovate/dashboards", async (req: Request, res: Response) => {
     if (!token) return res.status(401).json({ error: "No GitHub token provided" });
 
     const bot = (await getOrgConfig()).renovateBot;
-    // The same honest state the pull request view reports: most organizations
-    // do not run Renovate, and an empty table reads as a broken fetch.
     if (!bot) return res.json({ configured: false, dashboards: [], unparsed: 0, bot: null });
 
     const octokit = createOctokit(token, "Renovate dependency dashboards");
-    const { fetchRenovateDashboards } = await import("../services/renovateDashboards");
+    const {
+      readRenovateSnapshot, saveRenovateSnapshot, isRenovateFresh,
+      refreshRenovateIfDue, isRenovateRefreshing, renovateSnapshotHealth,
+    } = await import("../services/renovateSnapshot");
 
-    const sweep = await fetchRenovateDashboards(
-      async (q, page) => withSecondaryRetry(async () => {
-        const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
-          q, per_page: 100, page, advanced_search: "true",
+    /**
+     * Stored first, and served without waiting.
+     *
+     * Both halves of this view cost a search against the thirty-a-minute
+     * budget, and the dashboard half then parses a body per repository. Doing
+     * that while somebody waits is what made the tab slow; doing it on every
+     * open is what kept spending the budget.
+     */
+    const stored = await readRenovateSnapshot<any>("renovate-dashboards");
+    if (stored) {
+      res.json({
+        configured: true, bot, ...stored.data,
+        computedAt: stored.computedAt,
+        refreshing: isRenovateRefreshing("renovate-dashboards"),
+        ...renovateSnapshotHealth("renovate-dashboards"),
+      });
+      if (!isRenovateFresh(stored)) {
+        void refreshRenovateIfDue("renovate-dashboards", async () => {
+          await saveRenovateSnapshot("renovate-dashboards",
+            await buildRenovateDashboards(octokit, getOrg(), bot));
         });
-        return { items: r.data?.items ?? [] };
-      }),
-      getOrg(), bot,
-    );
+      }
+      return;
+    }
 
-    res.json({ configured: true, bot, ...sweep });
+    // Nothing stored: the first open for this organization.
+    const sweep = await buildRenovateDashboards(octokit, getOrg(), bot);
+    await saveRenovateSnapshot("renovate-dashboards", sweep);
+    res.json({
+      configured: true, bot, ...sweep,
+      computedAt: new Date().toISOString(),
+      refreshing: false,
+      ...renovateSnapshotHealth("renovate-dashboards"),
+    });
   } catch (error: any) {
     if (sendIfRateLimited(res, error)) return;
     res.status(500).json({ error: sanitizeError(error, "renovate") });

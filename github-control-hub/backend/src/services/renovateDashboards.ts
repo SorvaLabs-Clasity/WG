@@ -1,4 +1,5 @@
 import { parseDependencyDashboard, tickDashboardBox } from "./renovateDashboard";
+import { botCandidates } from "./renovateService";
 import type { DashboardItem, DetectedManifest } from "./renovateDashboard";
 
 /**
@@ -38,6 +39,16 @@ export interface RepoDashboard {
 
 export interface DashboardSweep {
   dashboards: RepoDashboard[];
+  /** The login that actually matched, which may not be what was configured. */
+  resolvedBot?: string;
+  /**
+   * The configured account does not exist, or is not visible to this token.
+   *
+   * Its own state rather than an error, for the same reason the pull request
+   * search reports it: the fix is to correct the name, and no message about a
+   * failed search says that.
+   */
+  unknownBot?: boolean;
   /**
    * Issues by the bot that are not dashboards, counted rather than listed.
    *
@@ -50,7 +61,39 @@ export interface DashboardSweep {
 
 const MAX_PAGES = 10;
 
+/**
+ * Every dashboard, trying both spellings of the bot's login.
+ *
+ * `author:` wants the exact login, and a GitHub App's is `<name>[bot]` — a
+ * suffix GitHub's own UI hides, so the obvious thing to type is the thing
+ * search rejects. It answers an unknown author with 422 rather than an empty
+ * result, which this used to let through as a 500: the panel said "could not
+ * read the renovate dashboards" on an organization whose dashboards were all
+ * there, because it asked for the wrong spelling of a name that was right.
+ *
+ * The pull request search has resolved this since it was written. Not reusing
+ * that was the bug.
+ */
 export async function fetchRenovateDashboards(
+  search: SearchIssues,
+  org: string,
+  bot: string,
+): Promise<DashboardSweep> {
+  for (const candidate of botCandidates(bot)) {
+    try {
+      const sweep = await sweepFor(search, org, candidate);
+      return { ...sweep, resolvedBot: candidate };
+    } catch (err: any) {
+      const status = err?.status ?? err?.response?.status;
+      // 422 is "no such author". Any other failure is a real one and is not
+      // retried under a different name, which would only obscure it.
+      if (status !== 422) throw err;
+    }
+  }
+  return { dashboards: [], unparsed: 0, unknownBot: true };
+}
+
+async function sweepFor(
   search: SearchIssues,
   org: string,
   bot: string,

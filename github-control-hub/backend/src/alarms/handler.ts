@@ -320,6 +320,44 @@ export async function handler(): Promise<void> {
     }
   }
 
+  /**
+   * Keep the Renovate views warm, at most once an hour.
+   *
+   * This pass already runs in the cloud every five minutes, so it is the only
+   * thing that can fill these rows without somebody having the app open. Both
+   * halves cost a search against GitHub's thirty-a-minute budget, so the hour
+   * is the throttle rather than the cadence of the pass.
+   *
+   * Unlike the Dependabot warm-up beside it, this does start the work rather
+   * than piggybacking on a sweep the pass had already made: nothing else here
+   * reads Renovate, so there is nothing to piggyback on, and an hourly search
+   * is the cost of the tab being instant instead of taking a minute.
+   */
+  try {
+    const { getOrgConfig } = await import("../services/orgConfigService");
+    const bot = (await getOrgConfig()).renovateBot;
+
+    if (bot) {
+      const {
+        readRenovateSnapshot, saveRenovateSnapshot, isRenovateFresh,
+      } = await import("../services/renovateSnapshot");
+      const { buildRenovatePrs, buildRenovateDashboards } = await import("../routes/dependencies");
+
+      for (const [kind, build] of [
+        ["renovate-prs", () => buildRenovatePrs(octokit, org, bot)],
+        ["renovate-dashboards", () => buildRenovateDashboards(octokit, org, bot)],
+      ] as const) {
+        const stored = await readRenovateSnapshot<any>(kind);
+        if (isRenovateFresh(stored)) continue;
+        await saveRenovateSnapshot(kind, await build());
+      }
+    }
+  } catch (err: any) {
+    // Warming a view must never fail a pass that has already evaluated alarms
+    // and sent what it needed to send.
+    console.warn(`[Alarm] Could not refresh the Renovate views: ${err?.message ?? err}`);
+  }
+
   console.log(
     `[Alarm] ${summary.evaluated} evaluated of ${summary.considered} enabled ` +
     `(${summary.skippedNotDue} not due), ${summary.fired} fired, ` +

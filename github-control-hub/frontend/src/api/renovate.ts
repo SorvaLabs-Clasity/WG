@@ -98,6 +98,17 @@ export interface RepoDashboard {
 export interface DashboardSweep {
   configured: boolean;
   bot: string | null;
+  /** The login that actually matched, which may not be what was configured. */
+  resolvedBot?: string;
+  /** The configured account does not exist, or is not visible. */
+  unknownBot?: boolean;
+  /** When the stored answer was computed, so the view can say how old it is. */
+  computedAt?: string;
+  /** True while a refresh is running behind the reader. */
+  refreshing?: boolean;
+  /** False when the answer cannot be kept between openings. */
+  storing?: boolean;
+  problem?: string | null;
   dashboards: RepoDashboard[];
   /** Bot issues that did not parse as a dashboard. */
   unparsed: number;

@@ -1868,6 +1868,50 @@ refresh and the alarm pass. Two copies would be two places for the "off" and
 "clean" markers to drift, and the drift shows as a repository reading clean on
 one path and unwatched on the other. `repro-depsnapshot` pins this.
 
+### Renovate, read from storage rather than computed on open
+
+Both halves of the Renovate view cost a search against the smallest budget
+GitHub gives, thirty requests a minute, and the dashboard half then parses an
+issue body per repository. All of that happened while somebody waited, on every
+open, and spent that budget every time.
+
+Both are stored now, in the same table as the Dependabot sweep and under the
+same rules: compressed, refused rather than truncated when oversized, served
+immediately with a refresh behind the reader, and a failed save reported rather
+than silent. Two rows rather than one, because the pull requests and the
+dashboards are read by different views and a single row would make the cheaper
+view carry the more expensive one's payload.
+
+**Filled hourly by the alarm pass**, which is the only thing that runs whether
+or not the app is open. Unlike the Dependabot warm-up beside it, this one starts
+the work rather than piggybacking: nothing else in the pass reads Renovate, so
+there is nothing to piggyback on, and an hourly search is the price of the tab
+being instant instead of taking a minute. It is skipped entirely where no bot is
+configured, skipped where the stored answer is still fresh, and a failure there
+cannot cost the pass its alarms.
+
+One builder each, shared by the pass and the route, so the stored answer and a
+freshly computed one cannot differ in what they carry.
+
+### The bot's login is resolved, not assumed
+
+The dashboard view shipped saying "Could not read the Renovate dashboards" on an
+organization whose dashboards were all present.
+
+`author:` wants a GitHub App's **exact** login, which is `<name>[bot]`, and that
+suffix is invisible in GitHub's own pages: it shows the display name with a
+separate "Bot" label. So the obvious thing to configure is the thing search
+rejects, and GitHub answers an unknown author with 422 rather than an empty
+result. That 422 became a 500, and the 500 became "could not read".
+
+The pull request search had solved this long before, in `botCandidates`, trying
+both spellings and reporting an unknown name as its own state because the fix is
+to correct the name and no message about a failed search says that. **Not
+reusing it was the whole bug.** The dashboard sweep now shares it, reports
+`unknownBot` the same way, and the panel says which name failed and why the
+suffix is easy to miss. Any status other than 422 is still raised rather than
+retried under a different name, which would only obscure it.
+
 ### The Renovate dependency dashboard
 
 A self-hosted Renovate has no API and no web dashboard: it runs and exits. The

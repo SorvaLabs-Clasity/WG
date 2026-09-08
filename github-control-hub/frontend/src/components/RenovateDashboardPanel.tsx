@@ -148,6 +148,21 @@ export default function RenovateDashboardPanel() {
   if (error) return <Note intent="danger">Could not read the Renovate dashboards.</Note>;
   if (!data) return null;
 
+  // The specific failure this view shipped with: `author:` wants a GitHub
+  // App's exact login, `<name>[bot]`, and the suffix is invisible in GitHub's
+  // own UI. Its own state rather than an error, because the fix is to correct
+  // the name and no message about a failed search says that.
+  if (data.unknownBot) {
+    return (
+      <Note intent="warn">
+        GitHub does not recognise <code>{data.bot}</code>, so there is nothing to search
+        for. A self-hosted Renovate raises its issues as a GitHub App, whose login carries
+        a <code>[bot]</code> suffix that GitHub's own pages hide. Correct the name in the
+        Pull requests view.
+      </Note>
+    );
+  }
+
   if (!data.configured) {
     return (
       <Note intent="info">
@@ -213,6 +228,17 @@ export default function RenovateDashboardPanel() {
           dashboard, so this reads the Dependency Dashboard issue it keeps in each
           repository. Everything below is invisible from the pull request list.
         </p>
+        {/* Read from storage, refreshed hourly by the pass that runs whether or
+            not the app is open. Said here because otherwise a stored answer is
+            indistinguishable from a live one, and somebody acting on an
+            hour-old list deserves to know it is an hour old. */}
+        {data.computedAt && (
+          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-1.5 tabular-nums">
+            <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
+            read {new Date(data.computedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            {data.refreshing && <span className="ml-1 opacity-60">(refreshing)</span>}
+          </p>
+        )}
       </div>
 
       {/* Broken first. Filters rather than a dashboard, on one line. */}
