@@ -30,10 +30,26 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
 (async () => {
   // ── one home each ───────────────────────────────────────────────────
   {
+    /**
+     * Renovate has two lenses now, its pull requests and its dependency
+     * dashboard, and they live inside the one view rather than as a fourth tab
+     * beside it: they are two views of one tool, and a person choosing between
+     * them has already chosen Renovate.
+     */
+    const updatesBranch = page.slice(
+      page.indexOf('{view === "updates" && ('),
+      page.indexOf('{/* Both notification panels together'));
+
     check("Renovate is rendered on its own view",
-      /\{view === "updates" && <RenovatePanel \/>\}/.test(page));
+      updatesBranch.includes("<RenovatePanel />"), updatesBranch.slice(0, 200));
     check("  and only there, not also stacked under the alerts",
       count(/<RenovatePanel \/>/g) === 1, count(/<RenovatePanel \/>/g));
+
+    check("  its dashboard is a lens inside that view, not another tab",
+      updatesBranch.includes("<RenovateDashboardPanel />")
+        && !/\["dashboard", .*\] as \[View/.test(page), updatesBranch.slice(0, 200));
+    check("  and the two are alternatives, never both at once",
+      /renovateView === "prs" \? <RenovatePanel \/> : <RenovateDashboardPanel \/>/.test(page));
 
     check("both notification panels sit together on one view",
       /view === "notifications" &&[\s\S]{0,240}feed="dependabot-alert"[\s\S]{0,200}feed="renovate-pr"/.test(page),

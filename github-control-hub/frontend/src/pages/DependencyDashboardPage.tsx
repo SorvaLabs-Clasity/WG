@@ -27,6 +27,7 @@ const REPOS_PER_PAGE = 15;
 const COLLAPSED = 4;
 
 import RenovatePanel from "../components/RenovatePanel";
+import RenovateDashboardPanel from "../components/RenovateDashboardPanel";
 import VulnNotifyPanel from "../components/VulnNotifyPanel";
 import { usePermissions } from "../hooks/usePermissions";
 import DependabotManager from "../components/DependabotManager";
@@ -272,6 +273,8 @@ export default function DependencyDashboardPage() {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   /** Which repositories are showing their open fix pull requests. */
   const [showPrs, setShowPrs] = useState<Set<string>>(new Set());
+  /** Which lens on Renovate is showing: its pull requests, or its dashboard. */
+  const [renovateView, setRenovateView] = useState<"prs" | "dashboard">("prs");
   const togglePrs = (repo: string) => setShowPrs(prev => {
     const next = new Set(prev);
     next.has(repo) ? next.delete(repo) : next.add(repo);
@@ -751,7 +754,20 @@ export default function DependencyDashboardPage() {
         </>
       ))}
 
-      {view === "updates" && <RenovatePanel />}
+      {/* Two lenses on one tool, so a switcher inside the view rather than a
+          fourth tab beside it: the pull requests Renovate has raised, and the
+          dashboard issue saying what it would raise and has not. */}
+      {view === "updates" && (
+        <>
+          <div className="mb-4">
+            <Segmented value={renovateView} onChange={setRenovateView} options={[
+              ["prs", "Pull requests"] as ["prs" | "dashboard", string],
+              ["dashboard", "Dependency dashboard"] as ["prs" | "dashboard", string],
+            ]} />
+          </div>
+          {renovateView === "prs" ? <RenovatePanel /> : <RenovateDashboardPanel />}
+        </>
+      )}
 
       {/* Both notification panels together: "who gets told" is one question,
           and answering half of it on each of two other views is why the

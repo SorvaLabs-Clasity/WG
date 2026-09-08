@@ -1868,6 +1868,59 @@ refresh and the alarm pass. Two copies would be two places for the "off" and
 "clean" markers to drift, and the drift shows as a repository reading clean on
 one path and unwatched on the other. `repro-depsnapshot` pins this.
 
+### The Renovate dependency dashboard
+
+A self-hosted Renovate has no API and no web dashboard: it runs and exits. The
+hosted Mend app has one; a self-hosted bot does not. What it does have is the
+**Dependency Dashboard issue** it keeps in each repository, and everything worth
+knowing is in there and in nothing else. Read only the pull request list, as
+this app did, and a repository where Renovate errors on every run looks exactly
+like one with nothing to do.
+
+So the Renovate view has two lenses now, inside the one view rather than as a
+fourth tab: the pull requests it has raised, and the dashboard saying what it
+would raise and has not. Errored, blocked, rate-limited, awaiting approval,
+awaiting schedule, pending checks, and the full dependency inventory.
+
+**Keyed on the HTML comment markers, not the section headings.** This is the
+whole design decision. Renovate writes markers like
+`<!-- unlimit-branch=renovate/axios-1.x -->` and then reads them back to learn
+which box somebody ticked, which makes them a machine contract it cannot
+casually change. The headings above them are prose: seventeen of them, worded
+for people and reworded between releases. Keying on a heading would break this
+on a Renovate upgrade, and break *quietly*, in the direction that reads as a
+repository with nothing pending. The marker carries the action too, so an item
+under a heading this parser has never seen still lands in the right bucket.
+
+The ten per-branch markers map to ten states, and the three approval markers
+stay apart: `approve-branch`, `approvePr-branch` and `approveGroup-branch` are
+three different situations, and collapsing them sends somebody to tick a box
+that is not in that section.
+
+Buttons **tick the checkbox**, which is how a self-hosted bot is instructed.
+That makes the write a Markdown edit to an issue that also holds the inventory
+and every other pending update, so it is surgical: exactly one line changes,
+keeping its own indentation and bullet, and a marker that is absent or already
+ticked writes nothing at all. The body is re-read at the moment of writing
+rather than taken from the sweep, because Renovate rewrites this issue on every
+run and a stale body written back would revert what it changed.
+
+Three things sized deliberately:
+
+- **One search finds every dashboard**, carrying the bodies, so the view costs
+  one request rather than an issue read per repository. Found by author rather
+  than by title, since `dependencyDashboardTitle` is configurable and an
+  organization that renamed it would appear to have none.
+- **The inventory is a separate read per repository, on expansion.** Across an
+  organization it is megabytes and almost nobody opens it.
+- **Bot issues that do not parse are counted and reported**, not silently
+  dropped. It is how somebody notices the parse has stopped recognising
+  dashboards after an upgrade, which would otherwise look like every repository
+  having nothing pending.
+
+`repro-renovatedashboard` pins the parse and the tick, including that ticking
+one box leaves every other line byte-identical.
+
 ### What a Renovate pull request patches
 
 The row said "Update all non-major dependencies" and stopped, so deciding

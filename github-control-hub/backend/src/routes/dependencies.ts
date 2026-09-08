@@ -710,6 +710,106 @@ router.get("/renovate/:repo/:number/changes", async (req: Request, res: Response
   }
 });
 
+/**
+ * Every repository's Renovate Dependency Dashboard.
+ *
+ * Self-hosted Renovate has no API and no service to connect to, so this is the
+ * only channel: an issue per repository that the bot writes and reads back.
+ */
+router.get("/renovate/dashboards", async (req: Request, res: Response) => {
+  try {
+    const token = getSystemToken() || req.user?.accessToken;
+    if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+
+    const bot = (await getOrgConfig()).renovateBot;
+    // The same honest state the pull request view reports: most organizations
+    // do not run Renovate, and an empty table reads as a broken fetch.
+    if (!bot) return res.json({ configured: false, dashboards: [], unparsed: 0, bot: null });
+
+    const octokit = createOctokit(token, "Renovate dependency dashboards");
+    const { fetchRenovateDashboards } = await import("../services/renovateDashboards");
+
+    const sweep = await fetchRenovateDashboards(
+      async (q, page) => withSecondaryRetry(async () => {
+        const r: any = await (octokit as any).rest.search.issuesAndPullRequests({
+          q, per_page: 100, page, advanced_search: "true",
+        });
+        return { items: r.data?.items ?? [] };
+      }),
+      getOrg(), bot,
+    );
+
+    res.json({ configured: true, bot, ...sweep });
+  } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "renovate") });
+  }
+});
+
+/** The dependency inventory for one repository, read when somebody opens it. */
+router.get("/renovate/dashboards/:repo/:number/dependencies", async (req: Request, res: Response) => {
+  try {
+    const token = getSystemToken() || req.user?.accessToken;
+    if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+
+    const repo = String(req.params.repo);
+    const number = Number(req.params.number);
+    if (!isValidRepoName(repo)) return res.status(400).json({ error: "Invalid repository name" });
+    if (!Number.isInteger(number) || number <= 0) {
+      return res.status(400).json({ error: "Invalid issue number" });
+    }
+
+    const octokit = createOctokit(token, "Renovate dependency dashboards");
+    const { fetchDetectedDependencies } = await import("../services/renovateDashboards");
+    res.json({ detected: await fetchDetectedDependencies(octokit, getOrg(), repo, number) });
+  } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "renovate") });
+  }
+});
+
+/**
+ * Tick one checkbox on one dashboard.
+ *
+ * The caller's own token, never the app's: this edits an issue in somebody's
+ * repository and instructs a bot to act, so it should carry the name of the
+ * person who asked and be authorised as them.
+ */
+router.post("/renovate/dashboards/:repo/:number/tick", async (req: Request, res: Response) => {
+  try {
+    const token = req.user?.accessToken;
+    if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+
+    const repo = String(req.params.repo);
+    const number = Number(req.params.number);
+    const marker = String((req.body ?? {}).marker ?? "");
+
+    if (!isValidRepoName(repo)) return res.status(400).json({ error: "Invalid repository name" });
+    if (!Number.isInteger(number) || number <= 0) {
+      return res.status(400).json({ error: "Invalid issue number" });
+    }
+    // The marker is matched literally against the issue body, so its shape is
+    // checked rather than trusted. Renovate's own markers are a name, a dash,
+    // and a branch.
+    if (!marker || marker.length > 300 || !/^[\w-]+(=[\w./+-]+)?$|^manual job$/.test(marker)) {
+      return res.status(400).json({ error: "Invalid checkbox" });
+    }
+
+    const octokit = createOctokit(token, "Renovate dependency dashboards");
+    const { tickDashboard } = await import("../services/renovateDashboards");
+    const result = await tickDashboard(octokit, getOrg(), repo, number, marker);
+
+    if (result.ticked) {
+      await logActivity("renovate.request" as any, req.user!.login, repo, "Renovate",
+        `Asked Renovate to act on ${marker} in ${repo}`);
+    }
+    res.json(result);
+  } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "renovate") });
+  }
+});
+
 /** Naming the bot account is org-wide configuration, so it is admin-gated. */
 router.put("/renovate/bot", async (req: Request, res: Response) => {
   try {

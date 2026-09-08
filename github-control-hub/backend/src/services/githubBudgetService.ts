@@ -380,6 +380,22 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "requests in quick succession is what GitHub's secondary rate limit "
       + "exists to refuse.",
   },
+  "Renovate dependency dashboards": {
+    trigger: "Opening the Dependency dashboard view, or pressing one of its buttons",
+    endpoints: [
+      "GET /search/issues", "GET /repos/{o}/{r}/issues/{n}", "PATCH /repos/{o}/{r}/issues/{n}",
+    ],
+    files: ["routes/dependencies.ts", "services/renovateDashboards.ts"],
+    scalesWith: "repositories with a dashboard, and how many are opened",
+    note: "A self-hosted Renovate has no API, so its state is read from the "
+      + "Dependency Dashboard issue it keeps in each repository. One search "
+      + "finds them all and carries their bodies, so the view costs one "
+      + "request. The dependency inventory is a separate read per repository, "
+      + "on expansion, because across an organization it is megabytes and "
+      + "almost nobody opens it. A button is one read and one write: the issue "
+      + "is re-read at the moment of writing, since Renovate rewrites it on "
+      + "every run and a stale body written back would revert what it changed.",
+  },
   "Closing Dependabot pull requests": {
     trigger: "Close open Dependabot pull requests, on the Vulnerabilities tab",
     endpoints: ["GET /search/issues", "PATCH /repos/{o}/{r}/pulls/{n}"],
