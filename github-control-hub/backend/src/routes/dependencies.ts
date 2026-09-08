@@ -416,6 +416,68 @@ router.post("/dependencies/config", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * Close every open Dependabot pull request on the chosen repositories.
+ *
+ * The caller's own token, never the app's. This is a destructive write to
+ * somebody's repositories, and it should carry the name of the person who
+ * asked for it and be authorised as them: a repository they cannot write to
+ * must refuse, which is the correct answer.
+ */
+router.post("/dependencies/close-prs", async (req: Request, res: Response) => {
+  const token = req.user?.accessToken;
+  if (!token) return res.status(401).json({ error: "No GitHub token provided" });
+
+  const { repos } = req.body ?? {};
+  const list = Array.isArray(repos)
+    ? repos.filter((r: unknown) => typeof r === "string" && r.length > 0 && r.length <= 200)
+    : [];
+
+  // An empty list is refused rather than treated as "everything". The service
+  // refuses it too; this is the same guard at the edge, because the cost of
+  // getting it wrong is closing every Dependabot pull request in the
+  // organization and suppressing every one of those fixes.
+  if (list.length === 0) return res.status(400).json({ error: "Pick at least one repository" });
+  if (list.length > 100) {
+    return res.status(400).json({ error: "Up to 100 repositories at a time" });
+  }
+
+  try {
+    const { closeDependabotPrs } = await import("../services/dependabotClose");
+    const octokit = createOctokit(token, "Closing Dependabot pull requests");
+
+    const summary = await closeDependabotPrs(octokit, getOrg(), list, async (q) => {
+      const found: { repo: string; number: number }[] = [];
+      for (let page = 1; page <= 10; page++) {
+        const r: any = await withSecondaryRetry(() =>
+          (octokit as any).rest.search.issuesAndPullRequests({
+            q, per_page: 100, page, advanced_search: "true",
+          }));
+        const items = r.data?.items ?? [];
+        for (const item of items) {
+          const repo = String(item?.repository_url ?? "").split("/").pop();
+          if (repo && Number.isInteger(item?.number)) found.push({ repo, number: item.number });
+        }
+        if (items.length < 100) break;
+      }
+      return found;
+    });
+
+    // One row per repository that lost pull requests, not one for the run: the
+    // feed is where somebody looks to find out what happened to a repository,
+    // and "closed 47 pull requests" answers that for none of them.
+    for (const [repo, count] of Object.entries(summary.byRepo)) {
+      await logActivity("dependabot.disable" as any, req.user!.login, repo, "Dependabot",
+        `Closed ${count} Dependabot pull request${count === 1 ? "" : "s"} on ${repo}`);
+    }
+
+    res.json(summary);
+  } catch (error: any) {
+    if (sendIfRateLimited(res, error)) return;
+    res.status(500).json({ error: sanitizeError(error, "dependencies") });
+  }
+});
+
 router.post("/dependencies/bulk", async (req: Request, res: Response) => {
   const token = req.user?.accessToken;
   if (!token) return res.status(401).json({ error: "No GitHub token provided" });

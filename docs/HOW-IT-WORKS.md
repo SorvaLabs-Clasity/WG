@@ -1443,6 +1443,38 @@ pull requests stops mattering.
 
 `repro-fixexpectations` pins it.
 
+### Closing them all again
+
+The Manage Dependabot panel can close every open Dependabot pull request on the
+selected repositories. It is the most destructive control in the app, and not
+for the reason it looks: **closing is not deferring.** GitHub treats a manual
+close exactly as it treats `@dependabot close` and will not raise that pull
+request again, so a bulk close is a bulk suppression of fixes, per pull request
+rather than per repository, undone only by commenting `@dependabot reopen` on
+each one.
+
+So the guard is the feature. It sits below a rule of its own, in its own
+colour, and takes a **typed confirmation** rather than a click: every other
+control on that panel is recoverable by pressing the opposite one, and a dialog
+somebody can dismiss by reflex is no guard against one that is not. The prompt
+names the number of pull requests, not just the number of repositories, because
+the repository count is the half that looks harmless.
+
+Three ways this could destroy something nobody asked it to, and what stops
+each:
+
+| Risk | What stops it |
+| --- | --- |
+| Closing on a repository nobody selected | The search is organization-wide, so the repository filter is ours. Pinned in both directions. |
+| An empty selection read as "everything" | Refused explicitly, at the route and again in the service. It is the one input whose blast radius is unbounded. |
+| Closing something Dependabot did not open | GitHub does the authorship filtering, `author:app/dependabot`. The config pull requests this app raises are authored by the person who pressed the button, so they are not in the set. |
+
+The held pull request search is dropped afterwards, or the tab reports the pull
+requests it has just closed as still open, which reads as the close having
+silently failed. Writes are paced, and failures are named individually rather
+than counted, since reopening is per pull request and a count cannot be chased.
+`repro-dependabotclose` covers all of it.
+
 ### Re-triggering without writing anything
 
 Under branch protection the configuration cannot reach the default branch

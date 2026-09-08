@@ -380,6 +380,16 @@ export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
       + "requests in quick succession is what GitHub's secondary rate limit "
       + "exists to refuse.",
   },
+  "Closing Dependabot pull requests": {
+    trigger: "Close open Dependabot pull requests, on the Vulnerabilities tab",
+    endpoints: ["GET /search/issues", "PATCH /repos/{o}/{r}/pulls/{n}"],
+    files: ["routes/dependencies.ts", "services/dependabotClose.ts"],
+    scalesWith: "how many pull requests are open on the chosen repositories",
+    note: "One search to find them, then one write each, paced: closing pull "
+      + "requests in quick succession is the shape GitHub's secondary rate "
+      + "limit refuses, and a run of eighty that trips halfway is worse than a "
+      + "slower one that finishes.",
+  },
   "Turning Dependabot on or off": {
     trigger: "The toggle on a repository, or the bulk action on the Vulnerabilities tab",
     endpoints: [

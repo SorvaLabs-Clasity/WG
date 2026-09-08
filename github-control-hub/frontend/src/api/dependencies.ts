@@ -154,3 +154,21 @@ export function rolloutDependabotConfig(
 ): Promise<RolloutSummary> {
   return apiPost<RolloutSummary>("/security/dependencies/config", { repos, mode });
 }
+
+export interface CloseSummary {
+  closed: number;
+  byRepo: Record<string, number>;
+  failed: number;
+  failures: { repo: string; number: number; error: string }[];
+  sleptSeconds: number;
+}
+
+/**
+ * Close every open Dependabot pull request on these repositories.
+ *
+ * Destructive in a way the name does not convey: GitHub treats a manual close
+ * as `@dependabot close` and will not raise that pull request again.
+ */
+export function closeDependabotPrs(repos: string[]): Promise<CloseSummary> {
+  return apiPost<CloseSummary>("/security/dependencies/close-prs", { repos });
+}

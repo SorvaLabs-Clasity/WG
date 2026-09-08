@@ -487,6 +487,7 @@ export default function DependencyDashboardPage() {
 
         <DependabotManager
           rows={dependencies ?? []}
+          prCounts={prCounts}
           onDone={() => { refetchDeps(); refetchSummary(); }}
         />
       </Drawer>

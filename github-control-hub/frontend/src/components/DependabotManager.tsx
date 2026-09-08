@@ -2,7 +2,10 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { bulkDependabot, type BulkAction, type BulkSummary } from "../api/dependencies";
 import { Button, Note, SURFACE, TYPE } from "../design";
-import { rolloutDependabotConfig, type RolloutSummary } from "../api/dependencies";
+import {
+  rolloutDependabotConfig, closeDependabotPrs,
+  type RolloutSummary, type CloseSummary,
+} from "../api/dependencies";
 
 /**
  * Turning Dependabot on and off across the organization, in one place.
@@ -40,15 +43,26 @@ const ACTIONS: Array<{ id: BulkAction; label: string; hint: string; danger?: boo
     hint: "Leaves alerts on, so you still see what is vulnerable." },
 ];
 
-export default function DependabotManager({ rows, onDone }: {
+export default function DependabotManager({ rows, prCounts, onDone }: {
   /** Every alert row the tab holds, findings and markers alike. */
   rows: Array<{ repo: string; clean?: boolean; disabled?: boolean; scanning?: boolean; severity?: string }>;
+  /**
+   * Open Dependabot pull requests per repository, or null where the search
+   * could not be made.
+   *
+   * Only used to say how many a close would actually affect. Null keeps the
+   * confirmation honest: "close every open pull request on 5 repositories" is
+   * true whatever the count, where a fabricated number is not.
+   */
+  prCounts: Record<string, number> | null;
   onDone: () => void;
 }) {
   const qc = useQueryClient();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [rollout, setRollout] = useState<RolloutSummary | null>(null);
   const [rollingOut, setRollingOut] = useState<"pr" | "commit" | null>(null);
+  const [closeResult, setCloseResult] = useState<CloseSummary | null>(null);
+  const [closing, setClosing] = useState(false);
   const [filter, setFilter] = useState<Filter>("all");
   const [search, setSearch] = useState("");
   const [summary, setSummary] = useState<BulkSummary | null>(null);
@@ -139,6 +153,67 @@ export default function DependabotManager({ rows, onDone }: {
       setError(e?.message ?? "Could not write the configuration");
     } finally {
       setRollingOut(null);
+    }
+  };
+
+  /**
+   * Close every open Dependabot pull request on the selected repositories.
+   *
+   * The confirmation carries the consequence rather than the count alone,
+   * because the count is the part that looks harmless. GitHub treats a manual
+   * close as `@dependabot close` and will not raise that pull request again,
+   * so this suppresses fixes rather than deferring them, and undoing it is one
+   * comment per pull request.
+   *
+   * Typed confirmation rather than a click. Every other control here is
+   * recoverable by pressing the opposite one; this one is not, and a dialog
+   * somebody can dismiss by reflex is not a guard against that.
+   */
+  /**
+   * How many pull requests a close would actually affect.
+   *
+   * Null when the pull request search could not be made, and the button says
+   * so rather than showing a zero: "Close 0 PRs" on a selection that has some
+   * is the worst of the three possible labels.
+   */
+  const closeCount = prCounts === null
+    ? null
+    : [...selected].reduce((n, r) => n + (prCounts[r] ?? 0), 0);
+
+  const startClose = async () => {
+    const repos = [...selected];
+    const known = prCounts !== null;
+    const total = known ? repos.reduce((n, r) => n + (prCounts![r] ?? 0), 0) : 0;
+
+    if (known && total === 0) {
+      setError("Those repositories have no open Dependabot pull requests.");
+      return;
+    }
+
+    const what = known
+      ? `${total} open Dependabot pull request${total === 1 ? "" : "s"} across `
+        + `${repos.length} repositor${repos.length === 1 ? "y" : "ies"}`
+      : `every open Dependabot pull request on ${repos.length} `
+        + `repositor${repos.length === 1 ? "y" : "ies"}`;
+
+    const typed = window.prompt(
+      `This will close ${what}.\n\n`
+      + "GitHub treats closing a Dependabot pull request as telling it not to raise "
+      + "that one again, so these fixes stop coming back on their own. Reopening is "
+      + "one comment per pull request.\n\n"
+      + "Type CLOSE to confirm.");
+    if (typed !== "CLOSE") return;
+
+    setError(""); setCloseResult(null); setClosing(true);
+    try {
+      const summary = await closeDependabotPrs(repos);
+      setCloseResult(summary);
+      onDone();
+      qc.invalidateQueries({ queryKey: ["dependencies", "fix-prs"] });
+    } catch (e: any) {
+      setError(e?.message ?? "Could not close those pull requests");
+    } finally {
+      setClosing(false);
     }
   };
 
@@ -401,6 +476,72 @@ export default function DependabotManager({ rows, onDone }: {
             )}
           </Note>
         )}
+
+        {/* Apart from everything above, and last.
+
+            Every other control here is recoverable by pressing the opposite
+            one. This is not: GitHub treats closing a Dependabot pull request as
+            telling it not to raise that one again, so the undo is a comment on
+            each closed pull request rather than a button on this panel. It gets
+            its own rule, its own colour, and a typed confirmation. */}
+        <div className="mt-2 pt-3.5 border-t border-rose-200/70 dark:border-rose-500/20">
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div className="min-w-0">
+              <p className="text-[12px] font-bold text-rose-800 dark:text-rose-300">
+                Close open Dependabot pull requests
+              </p>
+              <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed max-w-[70ch] mt-1">
+                Closes every open Dependabot pull request on the selected repositories.
+                GitHub reads a close as <span className="font-mono text-[11px]">@dependabot close</span>,
+                so it stops raising those fixes again until the dependency moves on.
+                Reopening is one comment per pull request, so this is not a way to
+                clear the list for now.
+              </p>
+            </div>
+            <Button variant="caution"
+              disabled={selected.size === 0 || closing || !!running || !!rollingOut}
+              onClick={startClose}>
+              {closing
+                ? "Closing…"
+                : closeCount === null
+                  ? "Close all their PRs"
+                  : `Close ${closeCount} PR${closeCount === 1 ? "" : "s"}`}
+            </Button>
+          </div>
+
+          {closing && (
+            <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-2">
+              One at a time with a pause between, so GitHub does not refuse the burst.
+            </p>
+          )}
+
+          {closeResult && (
+            <div className="mt-2">
+              <Note intent={closeResult.failed ? "warn" : "good"}>
+                {closeResult.closed} closed
+                {closeResult.failed > 0 && <>, {closeResult.failed} could not be</>}.
+                {closeResult.sleptSeconds > 0 && (
+                  <> GitHub asked us to pause for about {closeResult.sleptSeconds}s along the way.</>
+                )}
+                {closeResult.failed > 0 && (
+                  <ul className="mt-1.5 grid gap-0.5">
+                    {closeResult.failures.slice(0, 8).map(f => (
+                      <li key={`${f.repo}#${f.number}`} className="text-[11.5px]">
+                        <span className="font-mono">{f.repo}#{f.number}</span>: {f.error}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {closeResult.closed > 0 && (
+                  <p className="text-[11.5px] mt-1.5">
+                    To bring any of them back, comment{" "}
+                    <span className="font-mono">@dependabot reopen</span> on it.
+                  </p>
+                )}
+              </Note>
+            </div>
+          )}
+        </div>
 
         <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
           Runs with your own GitHub account, so it can only change repositories
