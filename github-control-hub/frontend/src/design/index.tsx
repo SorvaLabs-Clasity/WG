@@ -455,6 +455,64 @@ export function Drawer({ open, onClose, title, subtitle, children, footer }: {
  * to be dismissible without hunting for the control that does it, and the
  * confirm button takes focus on open so it can be answered from the keyboard.
  */
+/**
+ * The shell both dialogs sit in.
+ *
+ * One implementation, because two would be two places for the backdrop, the
+ * Escape handling and the scroll lock to drift, and a dialog that traps the
+ * page's scroll differently from the one beside it is the kind of difference
+ * nobody notices until it is a bug.
+ *
+ * `dismissible` is false while work is running: closing then would hide a run
+ * that is still going, and the next thing somebody does is press the button
+ * again.
+ */
+function ModalShell({ open, onClose, title, intent, dismissible = true, width = "max-w-md", children }: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  intent: Intent;
+  dismissible?: boolean;
+  width?: string;
+  children: React.ReactNode;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && dismissible) onClose(); };
+    window.addEventListener("keydown", onKey);
+    // Restored rather than cleared: something else may have set it, and
+    // clearing would silently undo theirs.
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [open, onClose, dismissible]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60] grid place-items-center p-4"
+      role="dialog" aria-modal="true" aria-label={title}>
+      <div className="drawer-scrim absolute inset-0 bg-slate-950/40 dark:bg-black/60 backdrop-blur-[2px]
+                      animate-[fadeIn_150ms_ease-out]"
+        onClick={dismissible ? onClose : undefined} aria-hidden="true" />
+
+      <div className={`relative w-full ${width} overflow-hidden rounded-2xl
+                       bg-white dark:bg-[#151a23] border border-slate-200 dark:border-white/[0.09]
+                       shadow-[0_24px_70px_-20px_rgba(15,23,42,0.5)]
+                       animate-[fadeInUp_200ms_cubic-bezier(0.16,1,0.3,1)]`}>
+        {/* The state's colour along the top edge rather than a tinted icon
+            block: it says which kind of thing this is without spending a
+            quarter of the dialog saying it. */}
+        <span className={`block h-1 w-full ${INTENT[intent].mark}`} aria-hidden="true" />
+        {children}
+      </div>
+    </div>
+  );
+}
+
 export function ConfirmDialog({
   open, onClose, onConfirm, title, body, confirmLabel, intent = "info", busy,
 }: {
@@ -468,60 +526,128 @@ export function ConfirmDialog({
   busy?: boolean;
 }) {
   const confirmRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
-    window.addEventListener("keydown", onKey);
-    // Restored rather than cleared: something else may have set it, and
-    // clearing would silently undo theirs.
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    confirmRef.current?.focus();
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = previous;
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
+  useEffect(() => { if (open) confirmRef.current?.focus(); }, [open]);
 
   const t = INTENT[intent];
   return (
-    <div className="fixed inset-0 z-[60] grid place-items-center p-4"
-      role="dialog" aria-modal="true" aria-label={title}>
-      <div className="drawer-scrim absolute inset-0 bg-slate-950/40 dark:bg-black/60 backdrop-blur-[2px]
-                      animate-[fadeIn_150ms_ease-out]"
-        onClick={busy ? undefined : onClose} aria-hidden="true" />
-
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl
-                      bg-white dark:bg-[#151a23] border border-slate-200 dark:border-white/[0.09]
-                      shadow-[0_24px_70px_-20px_rgba(15,23,42,0.5)]
-                      animate-[fadeInUp_200ms_cubic-bezier(0.16,1,0.3,1)]">
-        {/* The state's colour along the top edge rather than a tinted icon
-            block: it says which kind of action this is without spending a
-            quarter of the dialog saying it. */}
-        <span className={`block h-1 w-full ${t.mark}`} aria-hidden="true" />
-
-        <div className="px-6 pt-5 pb-4">
-          <h2 className="text-[17px] font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
-          <div className="text-[13px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-            {body}
-          </div>
-        </div>
-
-        <div className="px-6 py-4 flex justify-end gap-2 border-t border-slate-200/80 dark:border-white/[0.07]
-                        bg-slate-50/80 dark:bg-white/[0.02]">
-          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-          <button ref={confirmRef} onClick={onConfirm} disabled={busy}
-            className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm
-                        hover:shadow-md hover:scale-[1.02] active:scale-[0.99]
-                        disabled:opacity-50 disabled:pointer-events-none ${t.loud}`}>
-            {busy ? "Working…" : confirmLabel}
-          </button>
+    <ModalShell open={open} onClose={onClose} title={title} intent={intent} dismissible={!busy}>
+      <div className="px-6 pt-5 pb-4">
+        <h2 className="text-[17px] font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
+        <div className="text-[13px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
+          {body}
         </div>
       </div>
-    </div>
+
+      <div className="px-6 py-4 flex justify-end gap-2 border-t border-slate-200/80 dark:border-white/[0.07]
+                      bg-slate-50/80 dark:bg-white/[0.02]">
+        <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        <button ref={confirmRef} onClick={onConfirm} disabled={busy}
+          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm
+                      hover:shadow-md hover:scale-[1.02] active:scale-[0.99]
+                      disabled:opacity-50 disabled:pointer-events-none ${t.loud}`}>
+          {busy ? "Working…" : confirmLabel}
+        </button>
+      </div>
+    </ModalShell>
+  );
+}
+
+/** One repository's outcome, as it lands. */
+export interface ProgressLine {
+  repo: string;
+  ok: boolean;
+  /** What happened, where that is more than "it worked". */
+  note?: string;
+}
+
+/**
+ * A long run, while it is running.
+ *
+ * These act on a repository at a time, paced so GitHub does not refuse the
+ * burst, so sixty repositories is a minute or more. What was there before was a
+ * button reading "Working…" and nothing else: no count, no idea which
+ * repository, no way to tell a slow run from a stuck one, and every result
+ * withheld until the last one finished.
+ *
+ * The bar is **real**, not a guess. It advances as each batch actually comes
+ * back, and the rows appear as they land, so a run that stalls on repository
+ * nineteen says so instead of looking identical to one that is nearly done.
+ * Nothing here animates on a timer.
+ */
+export function ProgressDialog({
+  open, onClose, title, done, total, lines, running, footer, intent = "info",
+}: {
+  open: boolean;
+  onClose: () => void;
+  title: string;
+  done: number;
+  total: number;
+  lines: ProgressLine[];
+  running: boolean;
+  /** The closing summary, once there is one. */
+  footer?: React.ReactNode;
+  intent?: Intent;
+}) {
+  const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+  const failed = lines.filter(l => !l.ok).length;
+
+  return (
+    <ModalShell open={open} onClose={onClose} title={title}
+      intent={failed > 0 && !running ? "warn" : intent}
+      dismissible={!running} width="max-w-lg">
+      <div className="px-6 pt-5 pb-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <h2 className="text-[17px] font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
+          <span className="text-[12.5px] tabular-nums text-slate-500 dark:text-slate-400">
+            {done} of {total}
+          </span>
+        </div>
+
+        <div className="mt-3 h-1.5 w-full rounded-full bg-slate-200/80 dark:bg-white/[0.08] overflow-hidden">
+          <div role="progressbar" aria-valuenow={done} aria-valuemin={0} aria-valuemax={total}
+            style={{ width: `${pct}%` }}
+            className={`h-full rounded-full ${INTENT[intent].mark}
+                        transition-[width] duration-300 ease-out`} />
+        </div>
+
+        {lines.length > 0 && (
+          <ul className="mt-4 max-h-64 overflow-y-auto grid gap-1 pr-1">
+            {lines.map(l => (
+              <li key={l.repo}
+                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg
+                           odd:bg-slate-50 dark:odd:bg-white/[0.03]">
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0
+                                  ${INTENT[l.ok ? "good" : "danger"].mark}`} aria-hidden="true" />
+                <span className="font-mono text-[12.5px] text-slate-700 dark:text-slate-200 truncate">
+                  {l.repo}
+                </span>
+                {l.note && (
+                  <span className={`ml-auto text-[11.5px] truncate max-w-[55%] text-right
+                                    ${l.ok ? "text-slate-400 dark:text-slate-500"
+                                           : INTENT.danger.text}`}
+                    title={l.note}>
+                    {l.note}
+                  </span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="px-6 py-4 flex items-center justify-between gap-3
+                      border-t border-slate-200/80 dark:border-white/[0.07]
+                      bg-slate-50/80 dark:bg-white/[0.02]">
+        <span className="text-[12.5px] text-slate-500 dark:text-slate-400 min-w-0 truncate">
+          {running
+            ? "Paced so GitHub does not refuse the burst."
+            : footer}
+        </span>
+        <Button variant={running ? "ghost" : "primary"} onClick={onClose} disabled={running}>
+          {running ? "Working…" : "Done"}
+        </Button>
+      </div>
+    </ModalShell>
   );
 }
 

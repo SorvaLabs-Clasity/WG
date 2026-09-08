@@ -353,6 +353,62 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
         && /Nothing was changed/.test(route));
   }
 
+  console.log("\na bulk Dependabot run reports itself while it runs");
+  {
+    const mgr = fs.readFileSync("./src/components/DependabotManager.tsx", "utf8");
+    const design = fs.readFileSync("./src/design/index.tsx", "utf8");
+
+    /**
+     * Sixty repositories is a minute or more of paced writes. What was there
+     * was a button reading "Working…" and nothing else: no count, no idea which
+     * repository, no way to tell a slow run from a stuck one, and every result
+     * withheld until the last one landed.
+     */
+    check("the run is sent in batches rather than one long request",
+      /const CHUNK = 4;/.test(mgr) && /repos\.slice\(i, i \+ CHUNK\)/.test(mgr),
+      "one request for two hundred repositories outlives the connection");
+
+    /**
+     * The bar has to be real. A timer-driven one that reaches the end and waits
+     * is worse than no bar, because it says the opposite of what is happening.
+     */
+    check("  and the bar advances only when a batch actually returns",
+      /setProgress\(p => \(p \? \{ \.\.\.p, done, lines: \[\.\.\.lines\] \} : p\)\)/.test(mgr));
+    check("  with no timer driving it",
+      !/setInterval|setTimeout/.test(mgr),
+      "a bar on a timer reports progress that is not happening");
+
+    // A batch that never reached GitHub still has to be reported per
+    // repository, or the run silently covers fewer than it claims.
+    check("  a failed batch is named per repository rather than thrown away",
+      /batch\.map\(repo => \(\{ repo, ok: false, note \}\)\)/.test(mgr));
+
+    // Closing mid-run would hide a run that is still going, and the next thing
+    // somebody does is press the button again.
+    check("  the window cannot be dismissed while it is running",
+      /dismissible=\{!running\}/.test(design));
+
+    check("every one of the actions goes through it",
+      /runBatched<BulkSummary>/.test(mgr) && /runBatched<RolloutSummary>/.test(mgr)
+        && /runBatched<CloseSummary>/.test(mgr),
+      "an action without it is the one that looks frozen");
+
+    // Retrying should redo the ones that failed, not the whole list again.
+    check("  and only the failures stay selected afterwards",
+      /const keepFailures = \(lines: ProgressLine\[\]\)/.test(mgr));
+
+    // The shell is shared, so the backdrop, the Escape handling and the scroll
+    // lock cannot drift between the two dialogs.
+    check("both dialogs share one shell",
+      /function ModalShell\(/.test(design)
+        && (design.match(/<ModalShell/g) ?? []).length === 2);
+
+    // Same preference as the Renovate tab: not the browser's dialogs.
+    check("and nothing here uses a native dialog",
+      !/window\.confirm\(|[^.]\bconfirm\(/.test(mgr) && !/window\.prompt\(/.test(mgr),
+      "Electron's dialog handling is its own, and prompt is not implemented at all");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

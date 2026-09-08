@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueryClient } from "@tanstack/react-query";
 import { bulkDependabot, type BulkAction, type BulkSummary } from "../api/dependencies";
-import { Button, Note, SURFACE, TYPE } from "../design";
+import {
+  Button, Note, ConfirmDialog, ProgressDialog, SURFACE, TYPE,
+  type ProgressLine, type Intent,
+} from "../design";
 import {
   rolloutDependabotConfig, closeDependabotPrs,
   type RolloutSummary, type CloseSummary,
@@ -20,6 +23,44 @@ import {
  */
 
 type Filter = "all" | "watched" | "off";
+
+/**
+ * How many repositories go in one request.
+ *
+ * The whole run used to be a single call, which the route itself capped at two
+ * hundred because "a list of a thousand would outlive the connection waiting
+ * for it". Sending it in batches fixes that and buys the thing this was asked
+ * for: the run reports itself as it goes instead of saying nothing for a minute
+ * and then everything at once.
+ *
+ * Four rather than one. Each repository is one or more paced writes, and a
+ * request per repository would spend more time in round trips than in work,
+ * while a batch this size still lands often enough that the bar moves.
+ */
+const CHUNK = 4;
+
+/** "one repository" / "40 repositories", said once rather than at every call. */
+const plural = (n: number) => `${n} repositor${n === 1 ? "y" : "ies"}`;
+
+/** What is on screen while a run is going, and after it has finished. */
+interface Progress {
+  title: string;
+  done: number;
+  total: number;
+  lines: ProgressLine[];
+  running: boolean;
+  footer?: React.ReactNode;
+  intent: Intent;
+}
+
+/** A confirmation waiting to be answered. */
+interface Confirming {
+  title: string;
+  body: React.ReactNode;
+  label: string;
+  intent: Intent;
+  go: () => void;
+}
 
 interface RepoRow {
   repo: string;
@@ -82,6 +123,8 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
   const [summary, setSummary] = useState<BulkSummary | null>(null);
   const [error, setError] = useState("");
   const [running, setRunning] = useState<BulkAction | null>(null);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [confirming, setConfirming] = useState<Confirming | null>(null);
 
   /** One row per repository, from the many alert rows each one produces. */
   const repos = useMemo<RepoRow[]>(() => {
@@ -129,20 +172,50 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
     return next;
   });
 
-  const run = useMutation({
-    mutationFn: ({ action }: { action: BulkAction }) =>
-      bulkDependabot([...selected], action),
-    onSuccess: (result) => {
-      setSummary(result);
-      setRunning(null);
-      // Only the ones that failed stay ticked, so pressing again retries
-      // exactly those rather than redoing the whole list.
-      setSelected(new Set(result.results.filter(r => !r.ok).map(r => r.repo)));
-      qc.invalidateQueries({ queryKey: ["dependencies"] });
-      onDone();
-    },
-    onError: (e) => { setError((e as Error).message); setRunning(null); },
-  });
+  /**
+   * Run something over the selection, a batch at a time, reporting as it goes.
+   *
+   * The progress it shows is real: the bar advances when a batch actually comes
+   * back, and each repository's row appears with it. Nothing is on a timer, so a
+   * run stuck on the nineteenth repository looks stuck rather than looking like
+   * one that is nearly done.
+   *
+   * A batch that fails outright is recorded per repository rather than thrown.
+   * Stopping there would leave the run having changed some repositories and
+   * reported none of them, and the rest of the selection silently untouched.
+   */
+  async function runBatched<S>(
+    title: string,
+    intent: Intent,
+    repos: string[],
+    call: (batch: string[]) => Promise<S>,
+    toLines: (batch: string[], summary: S) => ProgressLine[],
+  ): Promise<{ parts: S[]; lines: ProgressLine[] }> {
+    const parts: S[] = [];
+    const lines: ProgressLine[] = [];
+    setProgress({ title, done: 0, total: repos.length, lines: [], running: true, intent });
+
+    for (let i = 0; i < repos.length; i += CHUNK) {
+      const batch = repos.slice(i, i + CHUNK);
+      try {
+        const summary = await call(batch);
+        parts.push(summary);
+        lines.push(...toLines(batch, summary));
+      } catch (e: any) {
+        const note = e?.message ?? "The request failed";
+        lines.push(...batch.map(repo => ({ repo, ok: false, note })));
+      }
+      const done = Math.min(i + CHUNK, repos.length);
+      setProgress(p => (p ? { ...p, done, lines: [...lines] } : p));
+    }
+
+    setProgress(p => (p ? { ...p, running: false } : p));
+    return { parts, lines };
+  }
+
+  /** Only the ones that failed stay ticked, so pressing again retries those. */
+  const keepFailures = (lines: ProgressLine[]) =>
+    setSelected(new Set(lines.filter(l => !l.ok).map(l => l.repo)));
 
   /**
    * Switch on grouped security updates by writing the configuration file.
@@ -153,21 +226,38 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
    * mistake here is a commit somebody has to revert across an organization.
    */
   const startRollout = async (mode: "pr" | "commit") => {
-    const n = selected.size;
-    const what = mode === "pr"
-      ? `Open a pull request adding .github/dependabot.yml on ${n} repositor${n === 1 ? "y" : "ies"}?`
-      : `Commit .github/dependabot.yml straight to the default branch of ${n} `
-        + `repositor${n === 1 ? "y" : "ies"}? There is no review step.`;
-    if (!confirm(what)) return;
-
     setError(""); setRollout(null); setRollingOut(mode);
-    try {
-      setRollout(await rolloutDependabotConfig([...selected], mode));
-    } catch (e: any) {
-      setError(e?.message ?? "Could not write the configuration");
-    } finally {
-      setRollingOut(null);
-    }
+
+    const { parts, lines } = await runBatched<RolloutSummary>(
+      mode === "pr" ? "Open config pull requests" : "Commit config to default branch",
+      mode === "commit" ? "warn" : "info",
+      [...selected],
+      batch => rolloutDependabotConfig(batch, mode),
+      // The outcome is the interesting part here: "already configured" and
+      // "no ecosystem" are not failures, and counting them as such would make
+      // a clean run look half broken.
+      (_batch, s) => s.results.map(r => ({
+        repo: r.repo,
+        ok: r.outcome !== "failed",
+        note: r.detail ?? r.outcome.replace(/-/g, " "),
+      })),
+    );
+
+    const merged: RolloutSummary = {
+      results: parts.flatMap(p => p.results),
+      opened: parts.reduce((n, p) => n + p.opened, 0),
+      committed: parts.reduce((n, p) => n + p.committed, 0),
+      skipped: parts.reduce((n, p) => n + p.skipped, 0),
+      failed: lines.filter(l => !l.ok).length,
+    };
+
+    setRollout(merged);
+    setRollingOut(null);
+    setProgress(p => (p ? {
+      ...p,
+      footer: `${merged.opened + merged.committed} written, ${merged.skipped} skipped, `
+        + `${merged.failed} failed`,
+    } : p));
   };
 
   /**
@@ -195,25 +285,84 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
     : [...selected].reduce((n, r) => n + (prCounts[r] ?? 0), 0);
 
   const startClose = async () => {
-    const repos = [...selected];
     setError(""); setCloseResult(null); setClosing(true);
-    try {
-      const summary = await closeDependabotPrs(repos);
-      setCloseResult(summary);
-      setArmed(false);
-      setTyped("");
-      onDone();
-      qc.invalidateQueries({ queryKey: ["dependencies", "fix-prs"] });
-    } catch (e: any) {
-      setError(e?.message ?? "Could not close those pull requests");
-    } finally {
-      setClosing(false);
-    }
+
+    const { parts } = await runBatched<CloseSummary>(
+      "Close Dependabot pull requests", "danger",
+      [...selected],
+      batch => closeDependabotPrs(batch),
+      // Reported against the repositories that were asked for, not only the
+      // ones that had something: a repository with nothing open is a real
+      // answer and leaving it out would make the list look short.
+      (batch, s) => batch.map(repo => {
+        const failed = s.failures.filter(f => f.repo === repo);
+        const closed = s.byRepo[repo] ?? 0;
+        return {
+          repo,
+          ok: failed.length === 0,
+          note: failed.length > 0 ? failed[0].error
+            : closed === 0 ? "none open" : `${closed} closed`,
+        };
+      }),
+    );
+
+    const merged: CloseSummary = {
+      closed: parts.reduce((n, p) => n + p.closed, 0),
+      byRepo: Object.assign({}, ...parts.map(p => p.byRepo)),
+      failed: parts.reduce((n, p) => n + p.failed, 0),
+      failures: parts.flatMap(p => p.failures),
+      sleptSeconds: parts.reduce((n, p) => n + p.sleptSeconds, 0),
+    };
+
+    setCloseResult(merged);
+    setArmed(false);
+    setTyped("");
+    setClosing(false);
+    setProgress(p => (p ? {
+      ...p,
+      footer: `${merged.closed} closed, ${merged.failed} could not be`,
+    } : p));
+    onDone();
+    qc.invalidateQueries({ queryKey: ["dependencies", "fix-prs"] });
   };
 
-  const start = (action: BulkAction) => {
+  const start = async (action: BulkAction) => {
     setError(""); setSummary(null); setRunning(action);
-    run.mutate({ action });
+    const label = ACTIONS.find(a => a.id === action)?.label
+      ?? (action === "retrigger" ? "Re-trigger fixes" : "Working");
+
+    const { parts, lines } = await runBatched<BulkSummary>(
+      label, action === "alerts-off" || action === "fixes-off" ? "warn" : "info",
+      [...selected],
+      batch => bulkDependabot(batch, action),
+      // Reported per repository from the batch's own answer, so a repository
+      // the server declined is named rather than counted.
+      (_batch, s) => s.results.map(r => ({
+        repo: r.repo,
+        ok: r.ok,
+        note: (r as any).leftOff ? "left switched off" : r.error,
+      })),
+    );
+
+    const merged: BulkSummary = {
+      results: parts.flatMap(p => p.results),
+      changed: parts.reduce((n, p) => n + p.changed, 0),
+      failed: lines.filter(l => !l.ok).length,
+      sleptSeconds: parts.reduce((n, p) => n + p.sleptSeconds, 0),
+      leftOff: parts.reduce((n, p) => n + p.leftOff, 0),
+      leftOffRepos: parts.flatMap(p => p.leftOffRepos ?? []),
+    };
+
+    setSummary(merged);
+    setRunning(null);
+    keepFailures(lines);
+    setProgress(p => (p ? {
+      ...p,
+      footer: `${merged.changed} changed, ${merged.failed} failed`
+        + (merged.sleptSeconds > 0 ? `, ${merged.sleptSeconds}s waiting on GitHub` : ""),
+    } : p));
+    qc.invalidateQueries({ queryKey: ["dependencies"] });
+    onDone();
   };
 
   const counts = useMemo(() => ({
@@ -302,9 +451,14 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                 : a.danger ? "caution" : undefined}
               disabled={selected.size === 0 || !!running}
               onClick={() => {
-                if (a.danger && !confirm(
-                  `${a.label} on ${selected.size} repositor${selected.size === 1 ? "y" : "ies"}?`)) return;
-                start(a.id);
+                if (!a.danger) { void start(a.id); return; }
+                setConfirming({
+                  title: a.label,
+                  label: a.label,
+                  intent: "warn",
+                  body: <p>{a.hint} This applies to {plural(selected.size)}.</p>,
+                  go: () => void start(a.id),
+                });
               }}>
               {running === a.id ? "Working…" : a.label}
             </Button>
@@ -342,13 +496,26 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
           <div className="flex flex-wrap gap-2 mt-2.5">
             <Button variant="primary"
               disabled={selected.size === 0 || !!rollingOut || !!running}
-              onClick={() => {
-                if (!confirm(
-                  `Switch security updates off and straight back on for ${selected.size} `
-                  + `repositor${selected.size === 1 ? "y" : "ies"}? They are briefly off `
-                  + `while this runs.`)) return;
-                start("retrigger");
-              }}>
+              onClick={() => setConfirming({
+                title: "Re-trigger fixes",
+                label: "Re-trigger",
+                intent: "warn",
+                body: (
+                  <>
+                    <p>
+                      Security updates go off and straight back on for {plural(selected.size)}, which
+                      asks GitHub to look at the backlog again. Nothing is written and no approval
+                      is needed.
+                    </p>
+                    <p className="mt-2">
+                      They are briefly unprotected while this runs, and a repository that cannot be
+                      switched back on is named rather than counted: it is then less protected than
+                      before you pressed anything.
+                    </p>
+                  </>
+                ),
+                go: () => void start("retrigger"),
+              })}>
               {running === "retrigger" ? "Re-triggering…" : "Re-trigger fixes"}
             </Button>
           </div>
@@ -368,12 +535,42 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
           <div className="flex flex-wrap gap-2 mt-2">
             <Button variant="primary"
               disabled={selected.size === 0 || !!rollingOut || !!running}
-              onClick={() => startRollout("pr")}>
+              onClick={() => setConfirming({
+                title: "Open config pull requests",
+                label: "Open pull requests",
+                intent: "info",
+                body: (
+                  <p>
+                    Opens one pull request per repository adding
+                    <span className="font-mono text-[12px]"> .github/dependabot.yml</span>, on
+                    {" "}{plural(selected.size)}. Each still needs review and merge before any fix
+                    arrives. Repositories that already have the file are left alone.
+                  </p>
+                ),
+                go: () => void startRollout("pr"),
+              })}>
               {rollingOut === "pr" ? "Opening…" : "Open config PRs"}
             </Button>
             <Button variant="caution"
               disabled={selected.size === 0 || !!rollingOut || !!running}
-              onClick={() => startRollout("commit")}>
+              onClick={() => setConfirming({
+                title: "Commit to the default branch",
+                label: "Commit",
+                intent: "warn",
+                body: (
+                  <>
+                    <p>
+                      Commits <span className="font-mono text-[12px]">.github/dependabot.yml</span>
+                      {" "}straight to the default branch of {plural(selected.size)}.
+                    </p>
+                    <p className="mt-2">
+                      There is no review step. Undoing it is a revert per repository, and any branch
+                      that is protected against direct pushes will refuse it.
+                    </p>
+                  </>
+                ),
+                go: () => void startRollout("commit"),
+              })}>
               {rollingOut === "commit" ? "Committing…" : "Commit to default branch"}
             </Button>
           </div>
@@ -581,6 +778,30 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
           you administer.
         </p>
       </div>
+      <ConfirmDialog
+        open={confirming !== null}
+        onClose={() => setConfirming(null)}
+        title={confirming?.title ?? ""}
+        body={confirming?.body ?? null}
+        confirmLabel={confirming?.label ?? "Confirm"}
+        intent={confirming?.intent ?? "info"}
+        onConfirm={() => { const c = confirming; setConfirming(null); c?.go(); }}
+      />
+
+      {/* Opened by the run itself rather than by a button, so it covers every
+          one of these actions without each having to remember to show it. */}
+      <ProgressDialog
+        open={progress !== null}
+        onClose={() => setProgress(null)}
+        title={progress?.title ?? ""}
+        done={progress?.done ?? 0}
+        total={progress?.total ?? 0}
+        lines={progress?.lines ?? []}
+        running={progress?.running ?? false}
+        footer={progress?.footer}
+        intent={progress?.intent ?? "info"}
+      />
+
     </div>
   );
 }
