@@ -104,6 +104,55 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
       && /queryKey: \["renovate"\]/.test(fs.readFileSync("./src/components/RenovatePanel.tsx", "utf8")));
   }
 
+  console.log("\nthe Renovate panel is built from the app's design system");
+  {
+    /**
+     * The mistake three rewrites of this panel made, and the only one that
+     * mattered.
+     *
+     * Each was styled from scratch: hand-mixed hex greys, its own radii, its
+     * own type sizes, hard-coded row heights, no shadow and no motion. Each was
+     * defensible on its own and each looked like a different application when
+     * placed next to the rest of the product, which is what "sloppy" meant.
+     *
+     * `tokens.ts` records the agreed direction, saturated colour and depth and
+     * motion with colour only ever carrying meaning, and every other page is
+     * built from `SURFACE`, `TYPE` and `INTENT`. This asserts that this panel
+     * is too, because nothing else stops the next rewrite doing it again.
+     */
+    const panel = fs.readFileSync("./src/components/RenovatePanel.tsx", "utf8");
+
+    check("it draws its surfaces from the system",
+      /SURFACE\.card/.test(panel) && /SURFACE\.inset/.test(panel),
+      "a bespoke surface is why it read as a different app");
+    check("  its type from the system",
+      /TYPE\.metricSm/.test(panel) && /TYPE\.heading/.test(panel) && /TYPE\.label/.test(panel));
+    check("  and its state colours from the system",
+      /INTENT\[/.test(panel) && /intent: "danger"/.test(panel) && /intent: "good"/.test(panel),
+      "an error here must be the same red as an error anywhere else");
+
+    // The app's entrance animation. The direction is "saturated colour, depth
+    // and motion"; the previous version had none of the three.
+    check("  with the same entrance as every other list",
+      /enter\(/.test(panel));
+
+    /**
+     * No hand-mixed colour. Every previous version defined its own greys and
+     * hues as literals, which is precisely how it drifted: a palette that lives
+     * in one component cannot follow the theme the rest of the app follows.
+     */
+    const hexes = panel.match(/#[0-9a-fA-F]{3,8}\b/g) ?? [];
+    check("  and no colour invented inside the component",
+      hexes.length === 0, hexes);
+
+    // Row heights and radii were pinned in pixels, against an app built on the
+    // Tailwind scale, which is why nothing lined up with anything around it.
+    check("  no hard-coded row height",
+      !/h-\[\d+px\]/.test(panel), "fixed pixel rows do not match the app's rhythm");
+    check("  and no bespoke radius",
+      !/rounded-\[\d/.test(panel), "the app's radii are rounded-lg, -xl and -2xl");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

@@ -6,53 +6,59 @@ import {
   type DashboardCategory, type RenovatePr, type RepoDashboard,
 } from "../api/renovate";
 import { usePermissions } from "../hooks/usePermissions";
-import { Spinner, Note } from "../design";
+import {
+  Spinner, Note, Button, SearchInput, Chip, Pill, Empty,
+  SURFACE, TYPE, INTENT, enter, type Intent,
+} from "../design";
 
 /**
- * Everything Renovate is doing, as an operations queue.
+ * Everything Renovate is doing, as one operations queue.
  *
- * Two rewrites got here. The first split pull requests from the dashboard,
- * which is one subject cut down the middle. The second joined them but drew
- * five equal tiles and a tree of identical grey rows, so fourteen broken things
- * carried exactly the same visual mass as two thousand fine ones and nothing
- * told the eye where to go.
+ * Three rewrites got here, and the third was rejected for the reason none of
+ * them had considered: it was styled from scratch. Hand-mixed hex greys, 2px
+ * radii, hard-coded 26px rows, bare rules, no shadow and no motion, dropped
+ * into an app whose every other page is built from `SURFACE.card`, `INTENT`
+ * and `TYPE`. On its own it was defensible. Next to the rest of the product it
+ * read as a different application bolted on, which is what "sloppy" describes.
  *
- * The rules this one holds to, each one a thing the last version did wrong:
+ * `tokens.ts` states the agreed direction: saturated colour, depth and motion,
+ * with colour only ever carrying meaning. The panel speaks that language now
+ * and invents nothing of its own:
  *
- *   - **Two radii.** Zero on every surface, 2px on every pressable. The panel
- *     is border-y only and full-bleed, so it reads as part of the page rather
- *     than a floating card.
- *   - **Three greys per theme**, one per role: data, secondary, tertiary. No
- *     catch-all grey doing four jobs.
- *   - **Colour in exactly two places**: the queue bar, and a 3px status gutter
- *     at the left edge of each row. Nowhere else. Colour that appears in a
- *     dozen tinted borders stops meaning anything.
- *   - **Three type sizes** with gaps you can see: 10px tracked caps for heads,
- *     12.5px for data, 22px for the one total that matters.
- *   - **The face is the hierarchy.** Every machine-authored string is mono:
- *     repository, package, version, branch, number. Prose is not.
- *   - **Fixed row heights**, 26px, on a 4px unit. Not padding you nudge.
- *   - **Hover moves the gutter, not the background.** A background hover in
- *     dark mode is mathematically invisible.
+ *   - **The five states are the app's five intents**, so "errored" is the same
+ *     red as every other error in the product rather than a hue chosen here.
+ *   - **Surfaces are `SURFACE.card` and `SURFACE.inset`**, so a repository
+ *     block sits at the elevation a repository block sits at everywhere else.
+ *   - **Type comes from `TYPE`**, so the count on this page carries the weight
+ *     the count on every other page carries.
+ *   - **Motion is `enter()`**, the staggered entrance the rest of the app uses,
+ *     rather than nothing at all.
  *
- * And the summary is one proportional bar rather than five boxes, so the
- * geometry *is* the distribution: if two thousand updates are held back and
- * fourteen are broken, the bar shows that, and the fourteen still get a
- * minimum width because zero-width is unclickable.
+ * The one idea worth keeping from the last attempt is the proportional bar.
+ * Five equal tiles gave fourteen broken updates the same visual mass as two
+ * thousand held back, which is backwards. So the bar carries the proportion
+ * and the chips beneath it carry the counts and the filtering, because a bar
+ * segment three pixels wide is not a control anybody can hit.
  */
 
 type Lens = "errored" | "failing" | "waiting" | "ready" | "held";
 
-/** Worst first. The order is the order somebody works through them. */
-const LENSES: { id: Lens; label: string; hue: string; text: string }[] = [
-  { id: "errored", label: "Errored", hue: "#e0483d", text: "text-[#c0392b] dark:text-[#ff7a6e]" },
-  { id: "failing", label: "Failing", hue: "#e07b39", text: "text-[#b35c1e] dark:text-[#ffa05c]" },
-  { id: "waiting", label: "Waiting on you", hue: "#7b5cd6", text: "text-[#5b3fb0] dark:text-[#b49cff]" },
-  { id: "ready", label: "Ready", hue: "#2f9e5f", text: "text-[#1f7a46] dark:text-[#5fd08d]" },
-  { id: "held", label: "Held back", hue: "#8b93a3", text: "text-[#6c7488] dark:text-[#8b93a3]" },
+/**
+ * Worst first, which is the order somebody works through them.
+ *
+ * `intent` rather than a colour, and that is the point: the queue borrows the
+ * product's vocabulary for danger, warning, information and success instead of
+ * teaching a second one that exists only on this screen.
+ */
+const LENSES: { id: Lens; label: string; intent: Intent }[] = [
+  { id: "errored", label: "Errored", intent: "danger" },
+  { id: "failing", label: "Failing", intent: "warn" },
+  { id: "waiting", label: "Waiting on you", intent: "info" },
+  { id: "ready", label: "Ready", intent: "good" },
+  { id: "held", label: "Held back", intent: "neutral" },
 ];
 
-const HUE = Object.fromEntries(LENSES.map(l => [l.id, l.hue])) as Record<Lens, string>;
+const LENS = Object.fromEntries(LENSES.map(l => [l.id, l])) as Record<Lens, typeof LENSES[number]>;
 
 /** Which lens a dashboard state belongs to, where it is not already a pull request. */
 const LENS_OF: Record<DashboardCategory, Lens | null> = {
@@ -72,20 +78,13 @@ const VERB: Record<DashboardCategory, string> = {
 };
 
 const BULK_LABEL: Record<string, string> = {
-  "create-all-rate-limited-prs": "create all rate-limited",
-  "approve-all-pending-prs": "approve all pending",
-  "create-all-awaiting-schedule-prs": "run all scheduled",
-  "rebase-all-open-prs": "rebase all open",
-  "create-config-migration-pr": "open config migration",
-  "manual job": "run renovate now",
+  "create-all-rate-limited-prs": "Create all rate-limited",
+  "approve-all-pending-prs": "Approve all pending",
+  "create-all-awaiting-schedule-prs": "Run all scheduled",
+  "rebase-all-open-prs": "Rebase all open",
+  "create-config-migration-pr": "Open config migration",
+  "manual job": "Run Renovate now",
 };
-
-/** The three greys, one per role, and nothing else. */
-const DATA = "text-[#1f2430] dark:text-[#e6e9ef]";
-const SECOND = "text-[#6c7488] dark:text-[#8b93a3]";
-const THIRD = "text-[#9aa1af] dark:text-[#5a6270]";
-const HEAD = `text-[10px] uppercase tracking-[0.16em] font-semibold ${THIRD}`;
-const RULE = "border-[#e4e7ec] dark:border-[#252b36]";
 
 interface Row {
   repo: string;
@@ -119,6 +118,18 @@ function split(title: string): { name: string; from?: string; to?: string } {
   return { name: title };
 }
 
+/** What the row is waiting on, in the fewest words that say it. */
+function stateOf(row: Row): string {
+  if (!row.pr) return LENS[row.lens].label;
+  const pr = row.pr;
+  if (pr.checks === "SUCCESS") return "Checks passed";
+  if (pr.checks === "FAILURE" || pr.checks === "ERROR") return "Checks failed";
+  if (pr.mergeable === "CONFLICTING") return "Conflicts";
+  if (pr.checks === "PENDING") return "Checks running";
+  if (pr.reviewDecision === "REVIEW_REQUIRED") return "Review needed";
+  return "Open";
+}
+
 function Inventory({ repo, issueNumber, query }: { repo: string; issueNumber: number; query: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["renovate", "detected", repo, issueNumber],
@@ -126,28 +137,36 @@ function Inventory({ repo, issueNumber, query }: { repo: string; issueNumber: nu
     staleTime: 300_000,
   });
 
-  if (isLoading) return <div className={`h-[26px] leading-[26px] pl-8 text-[12.5px] ${THIRD}`}>reading…</div>;
+  if (isLoading) {
+    return <p className="text-[13px] text-slate-400 dark:text-slate-500 px-1 py-2">Reading the dashboard…</p>;
+  }
 
   const manifests = (data?.detected ?? [])
     .map(m => ({ ...m, packages: query ? m.packages.filter(p => p.toLowerCase().includes(query)) : m.packages }))
     .filter(m => m.packages.length > 0);
 
   if (manifests.length === 0) {
-    return <div className={`h-[26px] leading-[26px] pl-8 text-[12.5px] ${THIRD}`}>nothing listed</div>;
+    return (
+      <p className="text-[13px] text-slate-400 dark:text-slate-500 px-1 py-2">
+        {query ? "Nothing here matches that." : "This dashboard lists no dependencies."}
+      </p>
+    );
   }
 
   return (
-    <div className="pb-1">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 pt-1">
       {manifests.map(m => (
-        <div key={`${m.ecosystem} ${m.manifest}`}>
-          <div className={`h-[22px] leading-[22px] pl-8 font-mono text-[10px] uppercase tracking-[0.16em] ${THIRD}`}>
+        <div key={`${m.ecosystem} ${m.manifest}`} className={`${SURFACE.inset} rounded-xl px-3.5 py-3`}>
+          <p className={`${TYPE.label} text-slate-400 dark:text-slate-500 truncate`} title={m.manifest}>
             {m.manifest}
-          </div>
-          {m.packages.map(pkg => (
-            <div key={pkg} className={`h-[22px] leading-[22px] pl-12 font-mono text-[12.5px] ${SECOND}`}>
-              {pkg}
-            </div>
-          ))}
+          </p>
+          <ul className="mt-2 space-y-1">
+            {m.packages.map(pkg => (
+              <li key={pkg} className="font-mono text-[12.5px] text-slate-600 dark:text-slate-300 truncate">
+                {pkg}
+              </li>
+            ))}
+          </ul>
         </div>
       ))}
     </div>
@@ -186,32 +205,32 @@ export default function RenovatePanel() {
   const bot = prs.data?.bot ?? dash.data?.bot ?? null;
 
   const botField = (
-    <div className="flex gap-2 max-w-md">
+    <div className="flex flex-wrap gap-2 items-center">
       <input value={botDraft} onChange={e => setBotDraft(e.target.value)}
         placeholder="e.g. my-renovate"
-        className={`flex-1 h-[30px] px-2.5 rounded-[2px] font-mono text-[12.5px] bg-transparent
-                    border ${RULE} ${DATA} focus:outline-none focus:border-[#7b5cd6]`} />
-      <button onClick={() => saveBot.mutate(botDraft)} disabled={!botDraft.trim()}
-        className="h-[30px] px-3 rounded-[2px] text-[12.5px] font-semibold
-                   bg-[#1f2430] dark:bg-[#e6e9ef] text-white dark:text-[#1f2430] disabled:opacity-40">
+        className={`${SURFACE.input} font-mono max-w-xs`} />
+      <Button variant="primary" onClick={() => saveBot.mutate(botDraft)} disabled={!botDraft.trim()}>
         Save
-      </button>
+      </Button>
     </div>
   );
 
   if (prs.data && !prs.data.configured) {
     return (
-      <div className={`border-y ${RULE} py-5`}>
-        <div className={HEAD}>Renovate</div>
-        <p className={`text-[12.5px] ${SECOND} mt-2 max-w-2xl leading-relaxed`}>
+      <div className={`${SURFACE.card} p-6`} style={enter(0)}>
+        <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>Renovate is not set up yet</h3>
+        <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-2 max-w-2xl leading-relaxed`}>
           A self-hosted Renovate raises its pull requests and keeps its dashboard as a GitHub App,
           and its authorship is the only way to find them. Type the name shown beside one of its
-          pull requests; the <span className="font-mono">[bot]</span> suffix an App's login carries
-          is added for you.
+          pull requests. The <span className="font-mono text-[12.5px]">[bot]</span> suffix an App's
+          login carries is added for you.
         </p>
-        <div className="mt-3">
-          {isAdmin ? botField
-            : <p className={`text-[12.5px] ${SECOND}`}>An organization admin has to set the bot account.</p>}
+        <div className="mt-4">
+          {isAdmin ? botField : (
+            <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400`}>
+              An organization admin has to set the bot account.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -219,15 +238,18 @@ export default function RenovatePanel() {
 
   if (dash.data?.unknownBot || prs.data?.unknownBot) {
     return (
-      <div className={`border-y ${RULE} py-5`}>
-        <div className={HEAD}>Bot not found</div>
-        <p className={`text-[12.5px] ${SECOND} mt-2 max-w-2xl leading-relaxed`}>
-          GitHub does not recognise <span className={`font-mono ${DATA}`}>{bot}</span>. A
-          self-hosted Renovate raises its work as a GitHub App, whose login carries a{" "}
-          <span className="font-mono">[bot]</span> suffix that GitHub's own pages hide, so the name
-          shown beside a pull request is not the name search wants.
+      <div className={`${SURFACE.card} p-6`} style={enter(0)}>
+        <div className="flex items-center gap-2.5">
+          <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>That bot was not found</h3>
+          <Pill intent="warn">check the name</Pill>
+        </div>
+        <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-2 max-w-2xl leading-relaxed`}>
+          GitHub does not recognise <span className="font-mono text-slate-700 dark:text-slate-200">{bot}</span>.
+          A self-hosted Renovate raises its work as a GitHub App, whose login carries a{" "}
+          <span className="font-mono text-[12.5px]">[bot]</span> suffix that GitHub's own pages hide,
+          so the name shown beside a pull request is not the name search wants.
         </p>
-        {isAdmin && <div className="mt-3">{botField}</div>}
+        {isAdmin && <div className="mt-4">{botField}</div>}
       </div>
     );
   }
@@ -274,6 +296,7 @@ export default function RenovatePanel() {
   const counts = Object.fromEntries(
     LENSES.map(l => [l.id, rows.filter(r => r.lens === l.id).length])) as Record<Lens, number>;
   const total = rows.length;
+  const repoCount = dashboards.length || new Set(rows.map(r => r.repo)).size;
 
   const query = raw.trim().toLowerCase();
   const visible = rows.filter(r =>
@@ -305,197 +328,248 @@ export default function RenovatePanel() {
   };
 
   const stamp = dash.data?.computedAt ?? prs.data?.computedAt;
+  const refreshing = dash.data?.refreshing || prs.data?.refreshing;
   const present = LENSES.filter(l => counts[l.id] > 0);
+  // The figure takes the colour of the worst thing in the queue, so the number
+  // says whether the queue is healthy before a word of it has been read.
+  const worst = present[0]?.intent ?? "neutral";
 
   return (
-    <div>
-      {/* ── the queue, as one bar ──────────────────────────────────────────
-          Widths are the counts, so the geometry is the distribution. Five
-          equal tiles gave fourteen broken updates the same mass as two
-          thousand held back, which is the opposite of what the eye needs. */}
-      <div className="flex items-end justify-between gap-4 mb-2">
-        <div>
-          <div className={HEAD}>Renovate queue</div>
-          <div className={`text-[22px] font-semibold tabular-nums leading-none mt-1 ${DATA}`}>
-            {total.toLocaleString()}
-            <span className={`ml-2 text-[12.5px] font-normal ${SECOND}`}>
-              across {dashboards.length || new Set(rows.map(r => r.repo)).size} repositories
-            </span>
+    <div className="grid gap-5">
+
+      {/* ── the queue at a glance ───────────────────────────────────────── */}
+      <div className={`${SURFACE.card} overflow-hidden`} style={enter(0)}>
+        <div className="px-6 pt-5 pb-4 flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Renovate queue</p>
+            <div className="flex items-baseline gap-3 mt-1.5">
+              <span className={`${TYPE.metricSm} ${INTENT[worst].figure}`}>
+                {total.toLocaleString()}
+              </span>
+              <span className={`${TYPE.sub} text-slate-500 dark:text-slate-400`}>
+                {total === 1 ? "update" : "updates"} across {repoCount}{" "}
+                {repoCount === 1 ? "repository" : "repositories"}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2.5">
+            {bot && <Chip>{bot}</Chip>}
+            {stamp && (
+              <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums">
+                read {new Date(stamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                {refreshing && <span className="ml-1 opacity-70">· refreshing</span>}
+              </span>
+            )}
+            {isAdmin && (
+              <Button variant="ghost" onClick={() => { setBotDraft(bot ?? ""); setEditing(!editing); }}>
+                {editing ? "Cancel" : "Change bot"}
+              </Button>
+            )}
           </div>
         </div>
-        <div className={`text-[10px] uppercase tracking-[0.16em] ${THIRD} text-right leading-relaxed`}>
-          <div className="font-mono normal-case tracking-normal text-[12.5px]">{bot}</div>
-          {stamp && (
-            <div className="tabular-nums">
-              read {new Date(stamp).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
-              {(dash.data?.refreshing || prs.data?.refreshing) && " · refreshing"}
+
+        {editing && isAdmin && <div className="px-6 pb-5 -mt-1">{botField}</div>}
+
+        {total > 0 && (
+          <div className="px-6 pb-5">
+            {/* Widths are the counts, so the geometry is the distribution: two
+                thousand held back and fourteen broken must not look alike. A
+                floor keeps a tiny segment visible; it is read rather than
+                clicked, because the chips below are the control. */}
+            <div className="flex h-2.5 w-full rounded-full overflow-hidden gap-px" aria-hidden="true">
+              {present.map(l => (
+                <span key={l.id} style={{ flexGrow: counts[l.id] }}
+                  className={`min-w-[3px] transition-opacity duration-200 ${INTENT[l.intent].mark}
+                              ${lens && lens !== l.id ? "opacity-25" : "opacity-100"}`} />
+              ))}
             </div>
-          )}
-        </div>
-      </div>
 
-      {total > 0 && (
-        <div className="flex h-[28px] w-full overflow-hidden rounded-[2px]">
-          {present.map(l => (
-            <button key={l.id} onClick={() => setLens(lens === l.id ? null : l.id)}
-              title={`${counts[l.id]} ${l.label.toLowerCase()}`}
-              style={{ flexGrow: counts[l.id], backgroundColor: l.hue,
-                       opacity: lens && lens !== l.id ? 0.25 : 1 }}
-              className="min-w-[44px] flex items-center justify-center gap-1.5 transition-opacity
-                         text-white text-[11px] font-semibold tabular-nums">
-              {counts[l.id]}
-              <span className="hidden lg:inline font-normal opacity-90 text-[10px] uppercase tracking-[0.12em]">
-                {l.label}
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className={`flex items-center gap-3 mt-2 text-[10px] uppercase tracking-[0.16em] ${THIRD}`}>
-        {lens
-          ? <button onClick={() => setLens(null)} className="hover:opacity-70">
-              showing {LENSES.find(l => l.id === lens)!.label} · clear
-            </button>
-          : <span>click a segment to filter</span>}
-        {isAdmin && (
-          <button onClick={() => { setBotDraft(bot ?? ""); setEditing(!editing); }}
-            className="ml-auto hover:opacity-70">change bot</button>
+            <div className="flex flex-wrap gap-2 mt-3.5">
+              {present.map(l => {
+                const on = lens === l.id;
+                const t = INTENT[l.intent];
+                return (
+                  <button key={l.id} onClick={() => setLens(on ? null : l.id)} aria-pressed={on}
+                    className={`inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-xl border
+                                transition-all ${on
+                                  ? `${t.soft} ${t.border} shadow-sm`
+                                  : "border-transparent hover:bg-slate-100 dark:hover:bg-white/[0.06]"}`}>
+                    <span className={`w-2 h-2 rounded-full ${t.mark}`} />
+                    <span className={`text-[13px] font-bold tabular-nums
+                                      ${on ? t.text : "text-slate-700 dark:text-slate-200"}`}>
+                      {counts[l.id].toLocaleString()}
+                    </span>
+                    <span className={`text-[12.5px] ${on ? t.text : "text-slate-500 dark:text-slate-400"}`}>
+                      {l.label}
+                    </span>
+                  </button>
+                );
+              })}
+              {lens && (
+                <button onClick={() => setLens(null)}
+                  className="px-3 py-1.5 text-[12.5px] font-bold text-slate-400 dark:text-slate-500
+                             hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
         )}
       </div>
 
-      {editing && isAdmin && <div className="mt-2">{botField}</div>}
+      {notice && <Note intent={notice.ok ? "good" : "warn"}>{notice.msg}</Note>}
 
-      {notice && (
-        <div className={`mt-2 h-[26px] leading-[26px] px-2 rounded-[2px] text-[12.5px]
-                         ${notice.ok ? "text-[#1f7a46] dark:text-[#5fd08d]" : "text-[#b35c1e] dark:text-[#ffa05c]"}`}>
-          {notice.msg}
+      {total > 0 && (
+        <div className="flex flex-wrap items-center gap-3">
+          <SearchInput value={raw} onChange={setRaw}
+            placeholder="Filter by repository, package or branch" />
+          {(query || lens) && (
+            <span className={`${TYPE.sub} text-slate-400 dark:text-slate-500 tabular-nums`}>
+              {visible.length.toLocaleString()} of {total.toLocaleString()}
+            </span>
+          )}
         </div>
       )}
 
-      <input value={raw} onChange={e => setRaw(e.target.value)}
-        placeholder="filter"
-        className={`mt-3 w-full h-[30px] px-2.5 rounded-[2px] bg-transparent border ${RULE}
-                    font-mono text-[12.5px] ${DATA} placeholder:${THIRD}
-                    focus:outline-none focus:border-[#7b5cd6]`} />
-
-      {/* ── column heads, the one rule in the whole panel ───────────────── */}
-      <div className={`grid grid-cols-[3px_minmax(0,1fr)_132px_90px_64px] items-center
-                       h-[22px] mt-3 border-b ${RULE} ${HEAD}`}>
-        <span />
-        <span className="pl-3">package</span>
-        <span>version</span>
-        <span>state</span>
-        <span className="text-right pr-1">act</span>
-      </div>
-
+      {/* ── the queue itself, one card per repository ───────────────────── */}
       {groups.length === 0 ? (
-        <div className={`h-[26px] leading-[26px] pl-3 text-[12.5px] ${THIRD}`}>
-          {lens || query ? "nothing matches" : "nothing outstanding"}
-        </div>
-      ) : groups.map(({ repo, rows: group, dashboard }) => {
+        <Empty
+          title={lens || query ? "Nothing matches that" : "Nothing outstanding"}
+          body={lens || query
+            ? "Clear the filter to see the rest of the queue."
+            : "Renovate has nothing waiting on any repository it watches."}
+          action={(lens || query)
+            ? <Button onClick={() => { setLens(null); setRaw(""); }}>Clear filters</Button>
+            : undefined}
+        />
+      ) : groups.map(({ repo, rows: group, dashboard }, gi) => {
         const open = query ? true : !shut.has(repo);
+        const kinds = LENSES.filter(l => group.some(r => r.lens === l.id));
         return (
-          <div key={repo} className={`border-b ${RULE}`}>
+          <div key={repo} className={`${SURFACE.card} overflow-hidden`} style={enter(gi, 35, 300)}>
+
             <button onClick={() => toggle(shut, repo, setShut)} aria-expanded={open}
-              className="w-full h-[22px] flex items-center gap-2 text-left group">
-              <span className="flex h-full w-[3px] shrink-0">
-                {LENSES.filter(l => group.some(r => r.lens === l.id)).map(l => (
-                  <span key={l.id} className="flex-1" style={{ backgroundColor: l.hue }} />
+              className="w-full flex items-center gap-3 px-6 py-4 text-left
+                         hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+              <i className={`ph-bold ph-caret-right text-slate-400 text-[13px] transition-transform
+                             duration-200 ${open ? "rotate-90" : ""}`} aria-hidden="true" />
+              <h3 className={`${TYPE.heading} font-mono text-slate-900 dark:text-white truncate`}>{repo}</h3>
+              {/* One dot per state present, so a collapsed repository still
+                  says whether anything inside it is broken. */}
+              <span className="flex items-center gap-1 shrink-0">
+                {kinds.map(l => (
+                  <span key={l.id} title={l.label}
+                    className={`w-1.5 h-1.5 rounded-full ${INTENT[l.intent].mark}`} />
                 ))}
               </span>
-              <span className={`font-mono text-[12.5px] ${DATA} truncate group-hover:opacity-70`}>
-                {repo}
-              </span>
-              <span className={`text-[10px] tabular-nums ${THIRD}`}>{group.length}</span>
-              <span className={`ml-auto pr-1 text-[10px] uppercase tracking-[0.16em] ${THIRD}`}>
-                {open ? "hide" : "show"}
+              <span className="ml-auto shrink-0">
+                <Pill intent={kinds[0]?.intent ?? "neutral"}>{group.length}</Pill>
               </span>
             </button>
 
-            {open && group.map(r => {
-              const running = busy === `${r.repo}|${r.marker}`;
-              return (
-                <div key={`${r.repo}|${r.branch}|${r.title}`}
-                  className="group grid grid-cols-[3px_minmax(0,1fr)_132px_90px_64px]
-                             items-center h-[26px]">
-                  {/* Colour lives here and in the bar, nowhere else. Hover
-                      widens it rather than tinting the row, because a dark-mode
-                      background hover is invisible. */}
-                  <span className="h-full origin-left transition-transform duration-100
-                                   group-hover:scale-x-[1.67]"
-                    style={{ backgroundColor: HUE[r.lens] }} />
+            {open && (
+              <div className="px-4 pb-4 grid gap-1.5">
+                {group.map((r, i) => {
+                  const t = INTENT[LENS[r.lens].intent];
+                  const running = busy === `${r.repo}|${r.marker}`;
+                  return (
+                    <div key={`${r.repo}|${r.branch}|${r.title}`} style={enter(i, 14, 200)}
+                      className={`relative overflow-hidden rounded-xl ${SURFACE.inset}
+                                  hover:border-slate-300 dark:hover:border-white/20 transition-colors`}>
+                      <span className={`absolute left-0 top-0 bottom-0 w-1 ${t.mark}`} aria-hidden="true" />
 
-                  <span className={`pl-3 font-mono text-[12.5px] ${DATA} truncate`} title={r.title}>
-                    {r.name}
-                  </span>
+                      <div className="relative pl-4 pr-3.5 py-2.5 grid items-center gap-x-4 gap-y-1
+                                      grid-cols-[minmax(0,1fr)_auto]
+                                      lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_136px_auto]">
 
-                  <span className={`font-mono text-[12.5px] ${SECOND} truncate`}>
-                    {r.from ? `${r.from} → ${r.to}` : r.to ?? ""}
-                  </span>
+                        <span className={`${TYPE.mono} text-slate-800 dark:text-slate-100 truncate`}
+                          title={r.title}>
+                          {r.name}
+                        </span>
 
-                  <span className={`text-[12.5px] ${LENSES.find(l => l.id === r.lens)!.text} truncate`}>
-                    {r.pr
-                      ? (r.pr.checks === "SUCCESS" ? "checks passed"
-                        : r.pr.checks === "FAILURE" || r.pr.checks === "ERROR" ? "checks failed"
-                        : r.pr.mergeable === "CONFLICTING" ? "conflicts"
-                        : r.pr.checks === "PENDING" ? "checks running"
-                        : r.pr.reviewDecision === "REVIEW_REQUIRED" ? "review needed" : "open")
-                      : LENSES.find(l => l.id === r.lens)!.label.toLowerCase()}
-                  </span>
+                        {/* The transition, which is what the row is about. The
+                            target carries the state colour, so the eye lands on
+                            what it is moving to. */}
+                        <span className="font-mono text-[12.5px] tabular-nums truncate
+                                         order-3 lg:order-none col-span-2 lg:col-span-1">
+                          {r.from && (
+                            <>
+                              <span className="text-slate-400 dark:text-slate-500">{r.from}</span>
+                              <span className="text-slate-300 dark:text-slate-600 mx-1.5">&rarr;</span>
+                            </>
+                          )}
+                          {r.to && <span className={`font-semibold ${t.text}`}>{r.to}</span>}
+                        </span>
 
-                  <span className="flex items-center justify-end gap-1 pr-1">
-                    {r.pr && (
-                      <a href={r.pr.url} target="_blank" rel="noopener noreferrer"
-                        title={`#${r.pr.number}`}
-                        className={`font-mono text-[11px] tabular-nums ${THIRD} hover:${DATA}`}>
-                        #{r.pr.number}
-                      </a>
+                        <span className={`text-[12.5px] font-semibold ${t.text} truncate
+                                          order-2 lg:order-none justify-self-end lg:justify-self-start`}>
+                          {stateOf(r)}
+                        </span>
+
+                        <span className="flex items-center justify-end gap-2
+                                         order-4 lg:order-none col-span-2 lg:col-span-1">
+                          {r.pr && (
+                            <a href={r.pr.url} target="_blank" rel="noreferrer noopener"
+                              className="font-mono text-[12px] tabular-nums text-slate-400 dark:text-slate-500
+                                         hover:text-slate-900 dark:hover:text-white transition-colors">
+                              #{r.pr.number}
+                            </a>
+                          )}
+                          {r.marker && r.issueNumber !== undefined && (
+                            r.requested
+                              ? <span className="text-[11px] uppercase tracking-[0.14em] font-bold
+                                                 text-slate-400 dark:text-slate-500">sent</span>
+                              : <button disabled={busy !== null}
+                                  onClick={() => act(r.repo, r.issueNumber!, r.marker!, r.verb!)}
+                                  className={`px-2.5 py-1 rounded-lg text-[12px] font-bold transition-all
+                                              ${t.soft} ${t.text} hover:shadow-sm
+                                              disabled:opacity-40 disabled:pointer-events-none`}>
+                                  {running ? "…" : r.verb}
+                                </button>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {dashboard && (
+                  <div className="flex flex-wrap items-center gap-2 pt-2 px-1">
+                    {dashboard.bulk.filter(b => !b.checked && BULK_LABEL[b.marker]).map(b => (
+                      <button key={b.marker} disabled={busy !== null}
+                        onClick={() => act(repo, dashboard.issueNumber, b.marker, BULK_LABEL[b.marker])}
+                        className="px-2.5 py-1 rounded-lg text-[12px] font-bold
+                                   text-slate-500 dark:text-slate-400
+                                   hover:bg-slate-100 dark:hover:bg-white/[0.06]
+                                   hover:text-slate-900 dark:hover:text-white
+                                   disabled:opacity-40 disabled:pointer-events-none transition-all">
+                        {BULK_LABEL[b.marker]}
+                      </button>
+                    ))}
+                    {dashboard.detectedPackages > 0 && (
+                      <button onClick={() => toggle(invOpen, repo, setInvOpen)}
+                        aria-expanded={invOpen.has(repo)}
+                        className="ml-auto px-2.5 py-1 rounded-lg text-[12px] font-bold
+                                   text-slate-500 dark:text-slate-400
+                                   hover:bg-slate-100 dark:hover:bg-white/[0.06]
+                                   hover:text-slate-900 dark:hover:text-white transition-all">
+                        {invOpen.has(repo) ? "Hide" : "Show"} {dashboard.detectedPackages} dependencies
+                      </button>
                     )}
-                    {r.marker && r.issueNumber !== undefined && (
-                      r.requested
-                        ? <span className={`text-[10px] uppercase tracking-[0.16em] ${THIRD}`}>sent</span>
-                        : <button disabled={busy !== null}
-                            onClick={() => act(r.repo, r.issueNumber!, r.marker!, r.verb!)}
-                            className={`h-[18px] px-1.5 rounded-[2px] text-[11px] font-semibold
-                                        ${SECOND} hover:bg-[#eceef2] dark:hover:bg-[#252b36]
-                                        disabled:opacity-40 transition-colors`}>
-                            {running ? "…" : r.verb}
-                          </button>
-                    )}
-                  </span>
-                </div>
-              );
-            })}
+                  </div>
+                )}
 
-            {open && dashboard && (
-              <div className="flex items-center gap-3 pl-3 h-[22px]">
-                {dashboard.bulk.filter(b => !b.checked && BULK_LABEL[b.marker]).map(b => (
-                  <button key={b.marker} disabled={busy !== null}
-                    onClick={() => act(repo, dashboard.issueNumber, b.marker, BULK_LABEL[b.marker])}
-                    className={`text-[10px] uppercase tracking-[0.16em] ${THIRD}
-                                hover:text-[#1f2430] dark:hover:text-[#e6e9ef] disabled:opacity-40`}>
-                    {BULK_LABEL[b.marker]}
-                  </button>
-                ))}
-                {dashboard.detectedPackages > 0 && (
-                  <button onClick={() => toggle(invOpen, repo, setInvOpen)}
-                    aria-expanded={invOpen.has(repo)}
-                    className={`ml-auto pr-1 text-[10px] uppercase tracking-[0.16em] ${THIRD}
-                                hover:text-[#1f2430] dark:hover:text-[#e6e9ef]`}>
-                    {invOpen.has(repo) ? "hide" : "show"} {dashboard.detectedPackages} dependencies
-                  </button>
+                {dashboard && invOpen.has(repo) && (
+                  <Inventory repo={repo} issueNumber={dashboard.issueNumber} query={query} />
                 )}
               </div>
-            )}
-            {open && dashboard && invOpen.has(repo) && (
-              <Inventory repo={repo} issueNumber={dashboard.issueNumber} query={query} />
             )}
           </div>
         );
       })}
 
-      <p className={`mt-3 text-[12.5px] ${THIRD} leading-relaxed max-w-[80ch]`}>
+      <p className={`${TYPE.sub} text-slate-400 dark:text-slate-500 leading-relaxed max-w-[80ch]`}>
         Acting here ticks a checkbox on the repository's dashboard issue, which is how a
         self-hosted Renovate is instructed. It acts at its next run, not immediately. Nothing
         here merges anything.
