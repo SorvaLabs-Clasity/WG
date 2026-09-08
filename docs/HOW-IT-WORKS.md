@@ -1661,6 +1661,25 @@ starts, so a four-minute walk does not immediately permit another, and it is set
 on failure too, since retrying a broken sweep on every open is the behaviour
 this exists to stop.
 
+**The first version of that throttle only held within a session**, which missed
+the case people actually hit. `lastRefreshAt` was module state, and closing the
+desktop app kills the backend process, so the guard was empty on every launch:
+open the app, open the tab, sweep; close it, reopen, open the tab, sweep again.
+Within one session it worked perfectly, which is why it looked fixed.
+
+The decision has to come from something that outlives the process, and one was
+already stored. `computedAt` is the time of the last successful refresh and it
+lives in DynamoDB, so `isDueForRefresh` reads that and a process that has just
+started reaches the same answer as one running for hours. The two in-memory
+guards stay, because they cover a different thing: a second request in the same
+session while a sweep is in flight.
+
+Two windows, doing two jobs, and conflating them was the original fault:
+**freshness is ten minutes and drives what the tab says**; **due is half an hour
+and drives what it does.** Nothing stored is deliberately not "due", since that
+is a first open, which computes live rather than serving a stale answer and
+refreshing behind it.
+
 The label was lying in the same way. "(refreshing)" was shown for anything over
 ten minutes old, which was also the condition that started a sweep, so the tab
 announced a rescan on every open and then performed one. It now reports whether

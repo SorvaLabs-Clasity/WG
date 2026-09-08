@@ -11,7 +11,8 @@ import { isControlHubAdmin, CONTROL_HUB_ADMIN_TEAM } from "../services/authoriza
 import { mapAlert, fetchOrgDependencyAlerts, fetchRepoAlertStatus , fetchRepoFixStatus} from "../services/dependencyService";
 import { isValidRepoName } from "../utils/validation";
 import {
-  saveDependencySnapshot, readDependencySnapshot, isFresh, refreshIfDue, isRefreshing,
+  saveDependencySnapshot, readDependencySnapshot, isFresh, isDueForRefresh,
+  refreshIfDue, isRefreshing,
 } from "../services/dependencySnapshot";
 import { mockCleanAlert, mockDisabledAlert } from "../services/dependencyMarkers";
 import { buildDependencyView } from "../services/dependencyView";
@@ -186,7 +187,10 @@ router.get("/dependencies", async (req: Request, res: Response) => {
           `[Dependencies] Served ${rows.length} rows from storage in `
           + `${Date.now() - startedAt}ms, swept ${stored.computedAt}`);
         res.json(rows);
-        if (!isFresh(stored)) {
+        // Due, not merely stale. Freshness is ten minutes and drives what the
+        // tab *says*; this is half an hour and drives what it *does*. Using the
+        // first for the second is what made every launch sweep.
+        if (isDueForRefresh(stored)) {
           // Deliberately not awaited. The reader already has an answer, and
           // making them wait for the next one is the delay this exists to
           // remove. Failures are logged inside.

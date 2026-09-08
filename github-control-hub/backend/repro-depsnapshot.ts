@@ -61,7 +61,7 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
     // Windows measured in characters break on a comment, and this codebase
     // comments heavily. Anchored on the block instead.
     const staleBranch = route.slice(
-      route.indexOf("if (!isFresh(stored))"),
+      route.indexOf("if (isDueForRefresh(stored))"),
       route.indexOf("if (repoFilter) {"));
     check("  a stale one is refreshed without being waited for",
       // Through the throttle now, but the claim is the same one: started, not
@@ -127,6 +127,60 @@ const route = fs.readFileSync(path.join(SRC, "routes/dependencies.ts"), "utf8");
 
     check("  the gap is measured in tens of minutes, not tens of seconds",
       REFRESH_EVERY_MS >= 20 * 60_000, REFRESH_EVERY_MS);
+  }
+
+  console.log("\nthe throttle survives the app being closed and reopened");
+  {
+    /**
+     * The half of this the first fix missed.
+     *
+     * `lastRefreshAt` was module state, and closing the desktop app kills the
+     * backend process. So the throttle was empty on every launch, and the very
+     * first open after one started a full organization sweep whenever the
+     * stored answer was over ten minutes old, which it almost always is. Close
+     * the app, reopen it, open the tab: another sweep. Exactly the behaviour
+     * the throttle was added to stop, surviving only within one session.
+     *
+     * The decision has to come from something that outlives the process, and
+     * one already exists: the stored answer's own timestamp is the time of the
+     * last successful refresh, and it is in DynamoDB.
+     */
+    const { isDueForRefresh, REFRESH_EVERY_MS } = require("./src/services/dependencySnapshot");
+    const now = Date.now();
+    const at = (msAgo: number) => ({ computedAt: new Date(now - msAgo).toISOString() });
+
+    check("a sweep from five minutes ago is not due",
+      isDueForRefresh(at(5 * 60_000), now) === false);
+    check("  nor one from twenty-nine minutes ago",
+      isDueForRefresh(at(29 * 60_000), now) === false);
+    check("  while thirty-one minutes is",
+      isDueForRefresh(at(31 * 60_000), now) === true);
+
+    // The property that matters: the same stored row gives the same answer to
+    // a process that has just started as to one that has been running for
+    // hours, because nothing in the decision is remembered in memory.
+    check("  and the answer depends only on the stored timestamp",
+      isDueForRefresh(at(31 * 60_000), now) === isDueForRefresh(at(31 * 60_000), now));
+
+    // Nothing stored is not "due for a refresh": it is the first open, which
+    // computes live rather than serving and refreshing behind.
+    check("  nothing stored is not a refresh, it is a first open",
+      isDueForRefresh(null, now) === false);
+    check("  and an unreadable timestamp does not trigger one either",
+      isDueForRefresh({ computedAt: "" }, now) === false);
+
+    check("  the window is the half hour the alarm pass also uses",
+      REFRESH_EVERY_MS === 30 * 60_000, REFRESH_EVERY_MS);
+  }
+
+  console.log("\nand the route asks that question rather than the freshness one");
+  {
+    // Freshness is ten minutes and drives what the tab *says*. Refreshing is
+    // half an hour and drives what it *does*. Using the first for the second
+    // is what made every launch sweep.
+    const branch = route.slice(route.indexOf("if (wholeOrg) {"), route.indexOf("if (repoFilter) {"));
+    check("the refresh is gated on being due, not on being fresh",
+      /isDueForRefresh\(stored\)/.test(branch), branch.slice(0, 400));
   }
 
   console.log("\nwhile a sweep is running, the tab can say so truthfully");

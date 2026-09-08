@@ -208,6 +208,34 @@ export function clearSnapshotHold(): void {
  */
 export const REFRESH_EVERY_MS = 30 * 60_000;
 
+/**
+ * Whether the stored answer is old enough to be worth recomputing.
+ *
+ * Read from the stored timestamp rather than from anything this process
+ * remembers, and that is the whole point of it. The first version of this
+ * throttle kept `lastRefreshAt` in module state, which the desktop app resets
+ * every time it is closed: the guard held within a session and was empty on
+ * every launch, so the first open after starting the app swept the whole
+ * organization whenever the stored answer was over ten minutes old, which it
+ * almost always is. Close the app, reopen, open the tab, sweep again.
+ *
+ * `computedAt` is the time of the last successful refresh and it is in
+ * DynamoDB, so a process that has just started reaches the same decision as one
+ * that has been running for hours.
+ *
+ * Nothing stored is deliberately **not** due: that is a first open, which
+ * computes live rather than serving a stale answer and refreshing behind it.
+ */
+export function isDueForRefresh(
+  stored: { computedAt?: string | null } | null,
+  now = Date.now(),
+): boolean {
+  if (!stored?.computedAt) return false;
+  const at = Date.parse(stored.computedAt);
+  if (!Number.isFinite(at)) return false;
+  return now - at >= REFRESH_EVERY_MS;
+}
+
 let refreshing: Promise<void> | null = null;
 let lastRefreshAt = 0;
 
@@ -226,7 +254,12 @@ export function isRefreshing(): boolean {
  * that takes four minutes does not immediately permit another.
  */
 export async function refreshIfDue(run: () => Promise<void>): Promise<void> {
+  // Two guards, covering two different things. This one stops a second request
+  // in the same session starting a second sweep while the first is running.
   if (refreshing) return;
+  // And this one stops a sweep that has just finished being repeated. The
+  // durable half of the throttle is isDueForRefresh, read from the stored
+  // timestamp, because neither of these survives the process being killed.
   if (Date.now() - lastRefreshAt < REFRESH_EVERY_MS) return;
 
   refreshing = run()
