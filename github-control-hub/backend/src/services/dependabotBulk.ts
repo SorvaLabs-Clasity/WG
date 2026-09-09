@@ -146,6 +146,56 @@ async function restoreFixes(octokit: any, target: { owner: string; repo: string 
   );
 }
 
+/**
+ * Why GitHub refused, asked rather than assumed.
+ *
+ * Every 403 used to be reported as "You do not have admin access to this
+ * repository", which is the common cause and was wrong for the two that
+ * actually come up. An archived repository refuses every settings change
+ * however much access you have, and a repository with the dependency graph
+ * switched off cannot have alerts turned on at all. Both were being blamed on
+ * the person pressing the button, who then went looking for a permission
+ * problem that was not there.
+ *
+ * One extra request, and only for a repository that has already failed, so a
+ * run where nothing fails costs nothing. If that request fails too, the message
+ * falls back to what GitHub said rather than inventing a reason.
+ */
+async function explainRefusal(
+  octokit: any, org: string, repo: string, err: any,
+): Promise<string> {
+  const status = err?.status;
+
+  if (status === 403 || status === 422) {
+    try {
+      const { data } = await octokit.rest.repos.get({ owner: org, repo });
+
+      // First, because it makes every other answer moot.
+      if (data?.archived) {
+        return "Archived. GitHub refuses every settings change on an archived "
+          + "repository, whatever access you have. Unarchive it to change this.";
+      }
+      // Alerts are built on the dependency graph, so this is not a permission
+      // problem and turning it on is a different switch in a different place.
+      if (data?.security_and_analysis?.dependency_graph?.status === "disabled") {
+        return "The dependency graph is off for this repository. Dependabot alerts "
+          + "are built on it, so they cannot be turned on until it is enabled in "
+          + "Settings, Code security.";
+      }
+      if (data?.permissions && !data.permissions.admin) {
+        return "You do not have admin access to this repository.";
+      }
+    } catch {
+      // Could not ask. Falls through to GitHub's own words below rather than
+      // guessing, which is the mistake this function exists to undo.
+    }
+  }
+
+  if (status === 403) return err?.message || "GitHub refused that change.";
+  if (status === 404) return "Not found, or not visible to your account.";
+  return err?.message || "Failed";
+}
+
 /** GitHub's own retry-after, where it gave one. */
 function retryAfterOf(err: any): number | undefined {
   const raw = Number(err?.response?.headers?.["retry-after"]);
@@ -210,16 +260,7 @@ export async function runDependabotBulk(
               : "GitHub's hourly budget for this account is spent.",
           };
         }
-        // 403 from a repository somebody does not administer is the common
-        // case, and saying which repository is the whole value of the row.
-        return {
-          repo, ok: false,
-          error: err?.status === 403
-            ? "You do not have admin access to this repository."
-            : err?.status === 404
-              ? "Not found, or not visible to your account."
-              : err?.message || "Failed",
-        };
+        return { repo, ok: false, error: await explainRefusal(octokit, org, repo, err) };
       }
     }
     return { repo, ok: false, error: "Gave up after several attempts" };

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { bulkDependabot, type BulkAction, type BulkSummary } from "../api/dependencies";
 import {
@@ -51,6 +51,8 @@ interface Progress {
   running: boolean;
   footer?: React.ReactNode;
   intent: Intent;
+  /** What the stop button offers, where stopping is meaningful. */
+  cancel?: { label: string; note?: string } | null;
 }
 
 /** A confirmation waiting to be answered. */
@@ -71,7 +73,39 @@ interface RepoRow {
   /** Open findings, and how bad the worst of them is. */
   findings: number;
   worst?: string;
+  /**
+   * GitHub refuses every settings change on an archived repository, whatever
+   * access somebody has, so these are worth saying before a button is pressed
+   * rather than after sixty-six of them have failed.
+   */
+  archived: boolean;
 }
+
+/**
+ * What stopping a run halfway can honestly offer, per action.
+ *
+ * Only the switches have a true inverse. Turning alerts on is undone by turning
+ * them off, and the repositories it already reached are known exactly, so
+ * "cancel and undo" is a promise that can be kept.
+ *
+ * The others cannot be undone from here and must not pretend to be. A config
+ * pull request could be closed, a commit to the default branch has to be
+ * reverted, and a closed Dependabot pull request is the worst of the three:
+ * GitHub treats the close as `@dependabot close` and will not raise it again,
+ * so "undo" would mean reopening each one by hand. For those, stopping stops,
+ * and the window says what stays done.
+ *
+ * `retrigger` is the odd one. It ends where it began, switched on, so there is
+ * nothing to undo; what a half-finished one needs is the assurance that every
+ * repository it touched is back on, which is `fixes-on` over the same set.
+ */
+const UNDO: Partial<Record<BulkAction, { action: BulkAction; label: string; title: string }>> = {
+  "alerts-on": { action: "alerts-off", label: "Cancel and undo", title: "Undoing: turning alerts back off" },
+  "alerts-off": { action: "alerts-on", label: "Cancel and undo", title: "Undoing: turning alerts back on" },
+  "fixes-on": { action: "fixes-off", label: "Cancel and undo", title: "Undoing: turning fixes back off" },
+  "fixes-off": { action: "fixes-on", label: "Cancel and undo", title: "Undoing: turning fixes back on" },
+  retrigger: { action: "fixes-on", label: "Cancel", title: "Making sure fixes are back on" },
+};
 
 const ACTIONS: Array<{ id: BulkAction; label: string; hint: string; danger?: boolean }> = [
   { id: "alerts-on", label: "Turn alerts on",
@@ -86,7 +120,12 @@ const ACTIONS: Array<{ id: BulkAction; label: string; hint: string; danger?: boo
 
 export default function DependabotManager({ rows, prCounts, onDone }: {
   /** Every alert row the tab holds, findings and markers alike. */
-  rows: Array<{ repo: string; clean?: boolean; disabled?: boolean; scanning?: boolean; severity?: string }>;
+  rows: Array<{
+    repo: string; clean?: boolean; disabled?: boolean; scanning?: boolean;
+    severity?: string;
+    /** Archived. Stamped by the view from the same query that reads the switches. */
+    archived?: boolean;
+  }>;
   /**
    * Open Dependabot pull requests per repository, or null where the search
    * could not be made.
@@ -125,13 +164,24 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
   const [running, setRunning] = useState<BulkAction | null>(null);
   const [progress, setProgress] = useState<Progress | null>(null);
   const [confirming, setConfirming] = useState<Confirming | null>(null);
+  /**
+   * A ref, not state, because the loop reads it between batches.
+   *
+   * State read inside a running async function is the value it closed over when
+   * it started, which would be `false` for the whole run however many times the
+   * button was pressed.
+   */
+  const cancelRef = useRef(false);
+  const [cancelling, setCancelling] = useState(false);
 
   /** One row per repository, from the many alert rows each one produces. */
   const repos = useMemo<RepoRow[]>(() => {
     const worstRank: Record<string, number> = { critical: 4, high: 3, medium: 3, moderate: 2, low: 1 };
     const byRepo = new Map<string, RepoRow>();
     for (const r of rows) {
-      const row = byRepo.get(r.repo) ?? { repo: r.repo, off: false, clean: false, findings: 0 };
+      const row = byRepo.get(r.repo)
+        ?? { repo: r.repo, off: false, clean: false, findings: 0, archived: false };
+      if (r.archived) row.archived = true;
       if (r.disabled) row.off = true;
       if (r.clean) row.clean = true;
       if (!r.disabled && !r.clean && !r.scanning) {
@@ -190,12 +240,22 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
     repos: string[],
     call: (batch: string[]) => Promise<S>,
     toLines: (batch: string[], summary: S) => ProgressLine[],
-  ): Promise<{ parts: S[]; lines: ProgressLine[] }> {
+    cancel?: { label: string; note?: string },
+  ): Promise<{ parts: S[]; lines: ProgressLine[]; stopped: boolean }> {
     const parts: S[] = [];
     const lines: ProgressLine[] = [];
-    setProgress({ title, done: 0, total: repos.length, lines: [], running: true, intent });
+    let stopped = false;
+    setProgress({
+      title, done: 0, total: repos.length, lines: [], running: true, intent,
+      cancel: cancel ?? null,
+    });
 
     for (let i = 0; i < repos.length; i += CHUNK) {
+      // Checked between batches rather than mid-batch. A batch already sent is
+      // going to be carried out whatever this screen does, and pretending
+      // otherwise would leave the undo working from a list that is wrong.
+      if (cancelRef.current) { stopped = true; break; }
+
       const batch = repos.slice(i, i + CHUNK);
       try {
         const summary = await call(batch);
@@ -210,7 +270,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
     }
 
     setProgress(p => (p ? { ...p, running: false } : p));
-    return { parts, lines };
+    return { parts, lines, stopped };
   }
 
   /** Only the ones that failed stay ticked, so pressing again retries those. */
@@ -228,7 +288,9 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
   const startRollout = async (mode: "pr" | "commit") => {
     setError(""); setRollout(null); setRollingOut(mode);
 
-    const { parts, lines } = await runBatched<RolloutSummary>(
+    cancelRef.current = false; setCancelling(false);
+
+    const { parts, lines, stopped } = await runBatched<RolloutSummary>(
       mode === "pr" ? "Open config pull requests" : "Commit config to default branch",
       mode === "commit" ? "warn" : "info",
       [...selected],
@@ -241,6 +303,12 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         ok: r.outcome !== "failed",
         note: r.detail ?? r.outcome.replace(/-/g, " "),
       })),
+      // Stop only. This writes to the repository, and neither half can be taken
+      // back from here: a pull request would have to be closed and a commit
+      // reverted, one repository at a time.
+      { label: "Stop", note: mode === "pr"
+        ? "Stopping leaves the pull requests already opened; close them on GitHub."
+        : "Stopping leaves the commits already made; they have to be reverted." },
     );
 
     const merged: RolloutSummary = {
@@ -253,9 +321,11 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
 
     setRollout(merged);
     setRollingOut(null);
+    setCancelling(false);
     setProgress(p => (p ? {
       ...p,
-      footer: `${merged.opened + merged.committed} written, ${merged.skipped} skipped, `
+      footer: `${stopped ? "Stopped. " : ""}`
+        + `${merged.opened + merged.committed} written, ${merged.skipped} skipped, `
         + `${merged.failed} failed`,
     } : p));
   };
@@ -287,7 +357,9 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
   const startClose = async () => {
     setError(""); setCloseResult(null); setClosing(true);
 
-    const { parts } = await runBatched<CloseSummary>(
+    cancelRef.current = false; setCancelling(false);
+
+    const { parts, stopped } = await runBatched<CloseSummary>(
       "Close Dependabot pull requests", "danger",
       [...selected],
       batch => closeDependabotPrs(batch),
@@ -304,6 +376,11 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             : closed === 0 ? "none open" : `${closed} closed`,
         };
       }),
+      // Stop only, and this is the one where it matters most. GitHub treats a
+      // manual close as `@dependabot close` and will not raise that pull
+      // request again, so the ones already closed cannot be undone from here.
+      { label: "Stop",
+        note: "Stopping leaves the ones already closed; Dependabot will not raise those again." },
     );
 
     const merged: CloseSummary = {
@@ -318,31 +395,81 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
     setArmed(false);
     setTyped("");
     setClosing(false);
+    setCancelling(false);
     setProgress(p => (p ? {
       ...p,
-      footer: `${merged.closed} closed, ${merged.failed} could not be`,
+      footer: `${stopped ? "Stopped. " : ""}${merged.closed} closed, ${merged.failed} could not be`,
     } : p));
     onDone();
     qc.invalidateQueries({ queryKey: ["dependencies", "fix-prs"] });
   };
 
+  /** One batch of switch flips, described the same way wherever it is run. */
+  const switchLines = (_batch: string[], s: BulkSummary): ProgressLine[] =>
+    s.results.map(r => ({
+      repo: r.repo,
+      ok: r.ok,
+      note: (r as any).leftOff ? "left switched off" : r.error,
+    }));
+
   const start = async (action: BulkAction) => {
     setError(""); setSummary(null); setRunning(action);
+    cancelRef.current = false; setCancelling(false);
+
     const label = ACTIONS.find(a => a.id === action)?.label
       ?? (action === "retrigger" ? "Re-trigger fixes" : "Working");
+    const undo = UNDO[action];
 
-    const { parts, lines } = await runBatched<BulkSummary>(
+    const { parts, lines, stopped } = await runBatched<BulkSummary>(
       label, action === "alerts-off" || action === "fixes-off" ? "warn" : "info",
       [...selected],
       batch => bulkDependabot(batch, action),
       // Reported per repository from the batch's own answer, so a repository
       // the server declined is named rather than counted.
-      (_batch, s) => s.results.map(r => ({
-        repo: r.repo,
-        ok: r.ok,
-        note: (r as any).leftOff ? "left switched off" : r.error,
-      })),
+      switchLines,
+      undo && {
+        label: undo.label,
+        note: action === "retrigger"
+          ? "Stopping puts fixes back on everywhere it reached."
+          : "Stopping undoes what it has already changed.",
+      },
     );
+
+    /**
+     * Stopped, so put back exactly what was changed.
+     *
+     * The list is the repositories that actually succeeded, not the selection:
+     * one that failed was never changed and switching it the other way would be
+     * a change nobody asked for.
+     */
+    if (stopped) {
+      const changed = lines.filter(l => l.ok).map(l => l.repo);
+      if (undo && changed.length > 0) {
+        // Cleared before the undo runs. The flag is still set from the press
+        // that stopped the first run, and the undo checks the same flag, so
+        // without this it would break on its first batch and put nothing back,
+        // having just told somebody it would.
+        cancelRef.current = false;
+        const back = await runBatched<BulkSummary>(
+          undo.title, "warn", changed,
+          batch => bulkDependabot(batch, undo.action),
+          switchLines,
+        );
+        const restored = back.lines.filter(l => l.ok).length;
+        setProgress(p => (p ? {
+          ...p,
+          footer: restored === changed.length
+            ? `Stopped. All ${plural(changed.length)} put back.`
+            : `Stopped. ${restored} of ${changed.length} put back; the rest are named above.`,
+        } : p));
+      } else {
+        setProgress(p => (p ? { ...p, footer: "Stopped. Nothing had been changed yet." } : p));
+      }
+      setRunning(null); setCancelling(false);
+      qc.invalidateQueries({ queryKey: ["dependencies"] });
+      onDone();
+      return;
+    }
 
     const merged: BulkSummary = {
       results: parts.flatMap(p => p.results),
@@ -421,6 +548,17 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             <span className="text-[13px] font-medium text-slate-800 dark:text-slate-200 truncate flex-1">
               {r.repo}
             </span>
+            {/* Said before the button is pressed, not after it fails. GitHub
+                refuses every settings change on an archived repository however
+                much access somebody has, and the refusal used to read as a
+                permission problem, which sent people looking for one. */}
+            {r.archived && (
+              <span title="GitHub refuses settings changes on an archived repository. Unarchive it to change this."
+                className="text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0
+                           bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
+                archived
+              </span>
+            )}
             {r.off ? (
               <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0
                                bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
@@ -800,6 +938,12 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         running={progress?.running ?? false}
         footer={progress?.footer}
         intent={progress?.intent ?? "info"}
+        cancel={progress?.cancel ? {
+          label: progress.cancel.label,
+          note: progress.cancel.note,
+          pending: cancelling,
+          run: () => { cancelRef.current = true; setCancelling(true); },
+        } : undefined}
       />
 
     </div>

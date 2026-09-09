@@ -575,7 +575,7 @@ export interface ProgressLine {
  * Nothing here animates on a timer.
  */
 export function ProgressDialog({
-  open, onClose, title, done, total, lines, running, footer, intent = "info",
+  open, onClose, title, done, total, lines, running, footer, intent = "info", cancel,
 }: {
   open: boolean;
   onClose: () => void;
@@ -587,6 +587,15 @@ export function ProgressDialog({
   /** The closing summary, once there is one. */
   footer?: React.ReactNode;
   intent?: Intent;
+  /**
+   * How to stop, and what stopping means.
+   *
+   * The label is the caller's, not this component's, because the two cases are
+   * genuinely different and must not be dressed alike. Where the action has a
+   * true inverse the caller offers to undo; where it does not, the honest offer
+   * is to stop, and `note` says what stays done.
+   */
+  cancel?: { label: string; note?: string; run: () => void; pending?: boolean };
 }) {
   const pct = total > 0 ? Math.round((done / total) * 100) : 0;
   const failed = lines.filter(l => !l.ok).length;
@@ -638,14 +647,21 @@ export function ProgressDialog({
       <div className="px-6 py-4 flex items-center justify-between gap-3
                       border-t border-slate-200/80 dark:border-white/[0.07]
                       bg-slate-50/80 dark:bg-white/[0.02]">
-        <span className="text-[12.5px] text-slate-500 dark:text-slate-400 min-w-0 truncate">
+        <span className="text-[12.5px] text-slate-500 dark:text-slate-400 min-w-0">
           {running
-            ? "Paced so GitHub does not refuse the burst."
+            ? (cancel?.note ?? "Paced so GitHub does not refuse the burst.")
             : footer}
         </span>
-        <Button variant={running ? "ghost" : "primary"} onClick={onClose} disabled={running}>
-          {running ? "Working…" : "Done"}
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          {running && cancel && (
+            <Button variant="caution" onClick={cancel.run} disabled={cancel.pending}>
+              {cancel.pending ? "Stopping…" : cancel.label}
+            </Button>
+          )}
+          <Button variant={running ? "ghost" : "primary"} onClick={onClose} disabled={running}>
+            {running ? "Working…" : "Done"}
+          </Button>
+        </div>
       </div>
     </ModalShell>
   );

@@ -30,11 +30,26 @@ const secondary = () =>
   ghError(403, "You have exceeded a secondary rate limit", { "retry-after": "1" });
 
 /** A stub that records what it was asked, and can be told to fail. */
-function stub(behaviour: (repo: string, calls: number) => void = () => {}) {
+function stub(
+  behaviour: (repo: string, calls: number) => void = () => {},
+  /**
+   * What `repos.get` says about each repository.
+   *
+   * Absent means the read is not available at all, which is the case the
+   * fallback exists for: the reason is then GitHub's own words rather than an
+   * invented one.
+   */
+  facts?: Record<string, any>,
+) {
   const calls: Array<{ repo: string; at: number }> = [];
   const perRepo = new Map<string, number>();
   const rest = {
     repos: {
+      async get({ repo }: any) {
+        calls.push({ repo: `${repo}:get`, at: Date.now() });
+        if (!facts || !(repo in facts)) throw ghError(404, "Not Found");
+        return { data: facts[repo] };
+      },
       async enableVulnerabilityAlerts({ repo }: any) {
         const n = (perRepo.get(repo) ?? 0) + 1;
         perRepo.set(repo, n);
@@ -72,15 +87,75 @@ function stub(behaviour: (repo: string, calls: number) => void = () => {}) {
     // admin on that one".
     const { octokit, calls } = stub((repo) => {
       if (repo === "b") throw ghError(403, "Must have admin rights to Repository.");
-    });
+    }, { b: { archived: false, permissions: { admin: false } } });
     const out = await runDependabotBulk(octokit, "acme", ["a", "b"], "alerts-on");
 
-    check("it is attempted once", calls.filter(c => c.repo === "b").length === 1,
-      calls.map(c => c.repo));
+    check("it is attempted once",
+      calls.filter(c => c.repo === "b").length === 1, calls.map(c => c.repo));
     check("  and reported in words somebody can act on",
       /admin access/i.test(out.results.find(r => r.repo === "b")?.error ?? ""),
       out.results);
     check("  while the others still go through", out.changed === 1, out);
+  }
+
+  console.log("\nwhy GitHub refused is asked, not assumed");
+  {
+    /**
+     * Every 403 used to be reported as "You do not have admin access to this
+     * repository". That is the common cause and it was wrong for the two that
+     * actually come up, so people went looking for a permission problem that
+     * was not there.
+     */
+    const archived = stub(
+      (repo) => { if (repo === "b") throw ghError(403, "Repository was archived so is read-only."); },
+      { b: { archived: true } },
+    );
+    const out = await runDependabotBulk(archived.octokit, "acme", ["a", "b"], "alerts-on");
+    const why = out.results.find(r => r.repo === "b")?.error ?? "";
+
+    check("an archived repository is named as archived",
+      /archived/i.test(why) && !/admin access/i.test(why), why);
+    check("  and says what to do about it", /unarchive/i.test(why), why);
+
+    // Only for a repository that already failed, so a clean run pays nothing.
+    check("  and the extra read happens only for the one that failed",
+      archived.calls.filter(c => c.repo.endsWith(":get")).length === 1,
+      archived.calls.map(c => c.repo));
+  }
+
+  console.log("\nthe dependency graph being off is its own answer");
+  {
+    // Alerts are built on the dependency graph, so this is not a permission
+    // problem and turning it on is a different switch in a different place.
+    const { octokit } = stub(
+      (repo) => { if (repo === "b") throw ghError(422, "Validation Failed"); },
+      { b: { archived: false, security_and_analysis: { dependency_graph: { status: "disabled" } } } },
+    );
+    const out = await runDependabotBulk(octokit, "acme", ["a", "b"], "alerts-on");
+    const why = out.results.find(r => r.repo === "b")?.error ?? "";
+
+    check("it is named rather than blamed on access",
+      /dependency graph/i.test(why) && !/admin access/i.test(why), why);
+    check("  and says where it is turned on", /Code security/i.test(why), why);
+  }
+
+  console.log("\nwhen the reason cannot be read, GitHub's own words stand");
+  {
+    /**
+     * The direction that matters. Guessing is the mistake being undone, so a
+     * read that itself fails must not produce an invented reason.
+     */
+    const { octokit } = stub((repo) => {
+      if (repo === "b") throw ghError(403, "Must have admin rights to Repository.");
+    });   // no facts at all, so repos.get throws
+    const out = await runDependabotBulk(octokit, "acme", ["a", "b"], "alerts-on");
+    const why = out.results.find(r => r.repo === "b")?.error ?? "";
+
+    check("what GitHub said is what is shown",
+      /Must have admin rights/i.test(why), why);
+    check("  and nothing is invented on top of it",
+      !/archived|dependency graph/i.test(why), why);
+    check("  while the run still finishes", out.changed === 1, out);
   }
 
   console.log("\none bad repository does not stop the rest");

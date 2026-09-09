@@ -409,6 +409,105 @@ const count = (re: RegExp) => (page.match(re) ?? []).length;
       "Electron's dialog handling is its own, and prompt is not implemented at all");
   }
 
+  console.log("\na run can be stopped, and undone only where that is true");
+  {
+    const mgr = fs.readFileSync("./src/components/DependabotManager.tsx", "utf8");
+    const design = fs.readFileSync("./src/design/index.tsx", "utf8");
+
+    // Read between batches by a running async function. State would be the
+    // value it closed over when it started, which is false for the whole run.
+    check("the stop flag is a ref, not state",
+      /const cancelRef = useRef\(false\);/.test(mgr)
+        && /if \(cancelRef\.current\) \{ stopped = true; break; \}/.test(mgr),
+      "state read inside a running loop never changes");
+
+    /**
+     * The distinction this turns on. Only the switches have a true inverse, and
+     * the repositories already reached are known exactly, so "cancel and undo"
+     * is a promise that can be kept. The other three cannot be undone from
+     * here, and dressing them alike would be a promise that is not.
+     */
+    check("the four switches offer to undo",
+      /"alerts-on": \{ action: "alerts-off"/.test(mgr)
+        && /"fixes-off": \{ action: "fixes-on"/.test(mgr));
+    check("  and undo what was changed, not what was selected",
+      /const changed = lines\.filter\(l => l\.ok\)\.map\(l => l\.repo\);/.test(mgr),
+      "a repository that failed was never changed and must not be switched the other way");
+
+    /**
+     * The undo reads the same flag the stop set, so without clearing it first
+     * it breaks on its own first batch and puts nothing back, having just
+     * promised to.
+     */
+    check("  with the stop flag cleared before the undo runs",
+      /cancelRef\.current = false;\s*\n\s*const back = await runBatched/.test(mgr),
+      "the undo would stop itself immediately");
+
+    /**
+     * Writing a file and closing a pull request cannot be taken back from here.
+     * A closed Dependabot pull request is the worst of them: GitHub treats the
+     * close as `@dependabot close` and will not raise it again.
+     */
+    check("  while the writes only offer to stop",
+      /\{ label: "Stop", note: mode === "pr"/.test(mgr)
+        && /\{ label: "Stop",\s*\n\s*note: "Stopping leaves the ones already closed/.test(mgr));
+    check("  and say what stays done",
+      /Stopping leaves the pull requests already opened/.test(mgr)
+        && /Stopping leaves the commits already made/.test(mgr)
+        && /Dependabot will not raise those again/.test(mgr));
+
+    // The label belongs to the caller, because the two cases are different and
+    // must not be dressed alike.
+    check("the dialog takes the wording rather than choosing it",
+      /cancel\?: \{ label: string; note\?: string; run: \(\) => void; pending\?: boolean \}/.test(design));
+  }
+
+  console.log("\na repository that cannot be switched says why");
+  {
+    const bulk = fs.readFileSync("../backend/src/services/dependabotBulk.ts", "utf8");
+    const view = fs.readFileSync("../backend/src/services/dependencyView.ts", "utf8");
+    const mgr = fs.readFileSync("./src/components/DependabotManager.tsx", "utf8");
+
+    /**
+     * Every 403 was reported as "You do not have admin access to this
+     * repository", which is the common cause and was wrong for the two that
+     * actually come up: an archived repository refuses every settings change,
+     * and one with the dependency graph off cannot have alerts at all. Both
+     * were blamed on the person pressing the button.
+     */
+    check("the reason is asked for rather than assumed",
+      /async function explainRefusal\(/.test(bulk)
+        && /octokit\.rest\.repos\.get\(\{ owner: org, repo \}\)/.test(bulk));
+    check("  archived is named",
+      /GitHub refuses every settings change on an archived/.test(bulk));
+    check("  and so is the dependency graph",
+      /dependency_graph\?\.status === "disabled"/.test(bulk)
+        && /The dependency graph is off for this repository/.test(bulk),
+      "alerts are built on it, so this is not a permission problem");
+
+    // Only for a repository that has already failed, so a clean run pays
+    // nothing for it.
+    check("  and only asked after a failure",
+      /if \(status === 403 \|\| status === 422\) \{/.test(bulk));
+
+    // And when the read itself fails, it falls back to GitHub's own words
+    // rather than inventing a reason, which is the mistake being undone.
+    check("  falling back to what GitHub said when it cannot ask",
+      /the mistake this function exists to undo/.test(bulk));
+
+    // Said before the button is pressed, not only after it fails.
+    check("archived is visible in the list up front",
+      /if \(r\.archived\) row\.archived = true;/.test(mgr)
+        && />\s*archived\s*<\/span>/.test(mgr));
+    check("  stamped from the same query that reads the switches",
+      /if \(facts\.get\(row\.repo\)\?\.archived\) row\.archived = true;/.test(view));
+
+    // A failed facts query returns null, and marking every repository
+    // unarchived on the strength of that is an assertion nobody made.
+    check("  and never guessed from a failed read",
+      /if \(facts\) \{/.test(view));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

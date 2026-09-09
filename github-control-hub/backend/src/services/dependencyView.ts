@@ -111,5 +111,23 @@ export async function buildDependencyView(
     }
   }
 
+  /**
+   * Archived, stamped onto every row including the markers.
+   *
+   * The bulk manager offers to turn alerts on and off per repository, and
+   * GitHub refuses every settings change on an archived one however much access
+   * somebody has. Carrying the flag lets the screen say so before the button is
+   * pressed rather than after sixty-six repositories have failed.
+   *
+   * Only where the facts query answered. It returns null when it failed, and
+   * marking every repository unarchived on the strength of a failed read is an
+   * assertion nobody made.
+   */
+  if (facts) {
+    for (const row of allAlerts) {
+      if (facts.get(row.repo)?.archived) row.archived = true;
+    }
+  }
+
   return { rows: allAlerts, degraded };
 }
