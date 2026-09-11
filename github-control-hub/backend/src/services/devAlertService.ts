@@ -169,6 +169,32 @@ export interface DevAlerts {
   lastError?: string;
   lastErrorAt?: string;
   lastSentAt?: string;
+  /**
+   * The last immediate event that named this person, and what became of it.
+   *
+   * Recorded because the alternative was a feature nobody could diagnose. The
+   * event path has four ways to decide against sending, all of them correct and
+   * all of them silent: nobody to tell, no Teams flow set up for the
+   * organization, the switch is off, or the reviewer limit excluded it. Then
+   * there is the fifth case, GitHub never delivering the event at all because
+   * the App is not subscribed to it, which looks from in here exactly like the
+   * first one.
+   *
+   * "I get no notifications" is the same sentence for all five, and without
+   * this there is nothing anywhere that tells them apart. It is written
+   * whatever the outcome, including the skips, because the skips are the
+   * answers somebody needs.
+   */
+  lastEvent?: {
+    at: string;
+    /** `approved`, `reviewRequested`, `changesRequested`. */
+    kind: string;
+    /** `owner/repo#12`, so it can be recognised. */
+    subject: string;
+    outcome: "sent" | "skipped" | "failed";
+    /** Why, when it was not sent. */
+    detail?: string;
+  };
   updatedAt: string;
 }
 

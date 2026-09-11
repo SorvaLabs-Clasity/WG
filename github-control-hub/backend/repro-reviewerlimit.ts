@@ -124,9 +124,22 @@ const payload = (reviewers: string[], teams: string[] = []) => ({
     // name in the file is the import line, and a window measured from there
     // lands nowhere near the code being asserted about.
     const callSite = events.indexOf("!withinReviewerLimit(prefs, target)");
+    /**
+     * Still not an error, and now not invisible either.
+     *
+     * The window was 120 characters and the skip now records itself first, so
+     * the `continue` moved past the end of it. The claim is unchanged: nothing
+     * is sent and no delivery failure is stored against somebody for a message
+     * they asked not to receive. What is added is the reason, because "I turned
+     * it on and got nothing" is exactly what this case looks like from outside,
+     * and it was the one outcome with no trace at all.
+     */
+    const skip = events.slice(callSite, callSite + 500);
     check("  and is skipped quietly rather than recorded as an error",
-      callSite > 0 && /continue;/.test(events.slice(callSite, callSite + 120)),
-      events.slice(callSite, callSite + 120));
+      callSite > 0 && /continue;/.test(skip) && !/lastError/.test(skip), skip.slice(0, 200));
+    check("    while still saying why, since silence is the complaint",
+      /"skipped",\s*\n\s*"More reviewers were asked than your limit allows/.test(skip),
+      skip.slice(0, 300));
   }
 
   console.log(failures === 0 ? "\nALL PASS\n" : `\n${failures} FAILED\n`);

@@ -81,10 +81,31 @@ const code = (s: string) => s.split("\n").filter(l => !l.trim().startsWith("//")
     const cfg = read("src/services/orgConfigService.ts");
     const routes = read("src/routes/activity.ts");
     const gateSlice = routes.slice(routes.indexOf("detailed-logging"));
+    /**
+     * The claim is about the activity table, so the check has to be too.
+     *
+     * It used to stand on "this file contains no DeleteCommand at all", which
+     * held only while the file happened to delete nothing. It now removes the
+     * legacy organization-config row once it has copied it forward, in the
+     * organization-config table, which has nothing to do with activity. Pinned
+     * against the toggle's own function instead, which is what the claim was
+     * ever about.
+     */
+    const toggle = code(cfg).slice(code(cfg).indexOf("export async function updateDetailedLogging"));
+    const toggleBody = toggle.slice(0, toggle.indexOf("\nexport "));
+
     check("turning the toggle deletes no activity rows",
-      !/DeleteCommand|BatchWrite/.test(code(cfg))
+      !/DeleteCommand|BatchWrite|deleteActivity/.test(toggleBody)
         && !/DeleteCommand|deleteActivity/.test(code(gateSlice.slice(0, gateSlice.indexOf("export default")))),
       "the setting governs what is written from now on, never what is stored");
+
+    // And the one delete this file does have is the migration, on its own
+    // table, which must never learn to touch the activity one.
+    check("  and the only row it ever removes is the migrated config row",
+      // Two mentions, and only one of them is a call: the import and the send.
+      (code(cfg).match(/new DeleteCommand\(/g) ?? []).length === 1
+        && /new DeleteCommand\(\{ TableName: TABLE\(\), Key: \{ org: legacy \} \}\)/.test(code(cfg)),
+      "a second delete here would be a different claim needing its own test");
     check("  and the routes say so where the admin reads them",
       /deletes nothing|stays stored|keep rendering/.test(routes));
   }

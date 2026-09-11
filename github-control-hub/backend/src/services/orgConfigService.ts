@@ -1,4 +1,4 @@
-import { docClient, hasTable, tableName, PutCommand, GetCommand } from "../utils/dynamo";
+import { docClient, hasTable, tableName, PutCommand, GetCommand, DeleteCommand } from "../utils/dynamo";
 
 export interface OrgFeatures {
   rulesetsSupported: boolean;
@@ -156,14 +156,44 @@ export async function getOrgConfig(): Promise<OrgConfig> {
       new GetCommand({ TableName: TABLE(), Key: { org: CONFIG_KEY } }));
     if (result.Item) return result.Item as OrgConfig;
 
-    // Written before the key stopped being the organization's name. Returned
-    // under the new key so the next write, which puts the whole row back,
-    // lands in the right place.
+    /**
+     * Written before the key stopped being the organization's name.
+     *
+     * Migrated, not merely read through. Returning it under the new key was
+     * enough for this process, and left two rows in the table: the next write
+     * from here copies everything to `config` while the old row stays exactly
+     * as it was. Nothing then keeps them in step, and anything still reading
+     * the old key, a Lambda built before the change and not redeployed since,
+     * carries on answering from a row that stopped being updated.
+     *
+     * That is the worst shape a split like this can take, because both halves
+     * work. The app reads its row and is right; the deployed function reads its
+     * row and is also right, about an organization as it was configured months
+     * ago. A Teams flow URL set from the app after the change is simply not
+     * there as far as that function is concerned, and the notification it
+     * gates is skipped without a word.
+     *
+     * So the read that finds the old row is the one that fixes it: copy it
+     * forward and delete it, and every reader converges on one row from then
+     * on. The delete is allowed to fail; a copy that succeeded is already the
+     * whole of the fix, and a second attempt costs one request.
+     */
     const legacy = legacyKey();
-    if (legacy) {
+    if (legacy && legacy !== CONFIG_KEY) {
       const old = await docClient.send(
         new GetCommand({ TableName: TABLE(), Key: { org: legacy } }));
-      if (old.Item) return { ...(old.Item as OrgConfig), org: CONFIG_KEY };
+      if (old.Item) {
+        const moved = { ...(old.Item as OrgConfig), org: CONFIG_KEY };
+        await docClient.send(new PutCommand({ TableName: TABLE(), Item: moved }));
+        try {
+          await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { org: legacy } }));
+          console.log(`[OrgConfig] Migrated the organization row from "${legacy}" to "${CONFIG_KEY}".`);
+        } catch (err: any) {
+          console.warn(`[OrgConfig] Copied the organization row forward but could not remove `
+            + `"${legacy}": ${err?.message ?? err}`);
+        }
+        return moved;
+      }
     }
 
     // First access: seed default config

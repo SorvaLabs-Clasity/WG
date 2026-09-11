@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDevAlerts, useSaveDevAlerts, useTestDevAlerts } from "../hooks/useMe";
-import { Note, Button, Spinner, SURFACE } from "../design";
+import { saveDevAlerts } from "../api/me";
+import { Note, Button, Spinner, SURFACE, TYPE } from "../design";
+import { ago } from "../lib/ago";
 import { allZones, zoneLabel } from "../lib/zones";
 import type { DigestPrefs, EventPrefs } from "../api/me";
 
@@ -177,6 +179,19 @@ function Row({ label, hint, checked, onChange, disabled }: {
   );
 }
 
+/** One precondition, and what it means when it is not met. */
+function Check({ ok, good, bad }: { ok: boolean; good: string; bad: string }) {
+  return (
+    <li className="flex items-start gap-2 text-[11.5px] leading-relaxed">
+      <i className={`ph-bold ${ok ? "ph-check-circle text-emerald-500" : "ph-warning-circle text-amber-500"}
+                     text-[13px] mt-[1px] shrink-0`} aria-hidden="true" />
+      <span className={ok ? "text-slate-500 dark:text-slate-400" : "text-slate-700 dark:text-slate-200"}>
+        {ok ? good : bad}
+      </span>
+    </li>
+  );
+}
+
 export default function DevAlertSettings() {
   const { data, isLoading } = useDevAlerts();
   const save = useSaveDevAlerts();
@@ -214,9 +229,22 @@ export default function DevAlertSettings() {
     return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [current]);
 
-  // A pending save must not be dropped by unmounting the tab.
+  /**
+   * A pending save must not be dropped by unmounting the tab, and was.
+   *
+   * The timer was cleared and the body it was holding thrown away, so a change
+   * made within the debounce of leaving this screen was shown as applied and
+   * never written. The comment above it already promised the opposite.
+   *
+   * Sent through the API function rather than the mutation: the component is
+   * going away, and a mutation whose callbacks touch its state would be
+   * updating something that no longer exists.
+   */
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
+    const body = queued.current;
+    queued.current = null;
+    if (body) void saveDevAlerts(body).catch(() => {});
   }, []);
 
   // Seeded once the server answers, then left alone: re-seeding on every fetch
@@ -247,14 +275,32 @@ export default function DevAlertSettings() {
     timer.current = setTimeout(() => {
       const body = queued.current;
       queued.current = null;
-      if (body) commit(body);
+      // Caught: nobody is awaiting this, and an unhandled rejection from a
+      // debounced save would surface as a crash rather than as a failed save.
+      if (body) void commit(body).catch(() => {});
     }, 600);
   };
 
-  const patchEvents = (p: Partial<EventPrefs>) => {
+  /**
+   * Switched at once, and put back if the save is refused.
+   *
+   * Drawn immediately because a switch that waits for a round trip feels
+   * broken. But the optimism was never taken back: `commit` is async and was
+   * called without awaiting or catching, so a rejected save left the switch
+   * showing on while the stored row said off, `setSaved` never ran so there was
+   * no confirmation either way, and the only error on the page sits in a
+   * different card several hundred pixels above. Somebody then reasonably
+   * concludes the feature is broken rather than the save.
+   */
+  const patchEvents = async (p: Partial<EventPrefs>) => {
+    const before = events;
     const next = { ...events, ...p };
     setEvents(next);
-    commit({ events: next });
+    try {
+      await commit({ events: next });
+    } catch {
+      setEvents(before);
+    }
   };
   const patchDigest = (p: Partial<DigestPrefs>) => {
     const next = { ...digest, ...p };
@@ -307,7 +353,7 @@ export default function DevAlertSettings() {
             />
             <Button variant="primary"
               disabled={!address.trim() || address.trim() === data.teamsAddress || save.isPending}
-              onClick={() => commit({ teamsAddress: address.trim() })}>
+              onClick={() => void commit({ teamsAddress: address.trim() }).catch(() => {})}>
               Save
             </Button>
           </div>
@@ -386,8 +432,12 @@ export default function DevAlertSettings() {
                 value={reviewerLimit ?? ""}
                 onChange={e => {
                   const next = e.target.value === "" ? null : Number(e.target.value);
+                  // Put back if the save is refused, for the same reason the
+                  // switches are: a control left showing a value the server
+                  // never accepted is worse than one that snaps back.
+                  const before = reviewerLimit;
                   setReviewerLimit(next);
-                  commit({ reviewerLimit: next });
+                  void commit({ reviewerLimit: next }).catch(() => setReviewerLimit(before));
                 }}
                 className={`${SURFACE.input} max-w-sm`}
               >
@@ -426,6 +476,91 @@ export default function DevAlertSettings() {
             drawn from several, so they live in the summary below rather than as switches here
             that would never quite fire.
           </p>
+        </div>
+
+        {/* ── why nothing has arrived ─────────────────────────────────
+            Everything above can be set correctly and still produce silence,
+            because the two causes that matter are not on this screen: the
+            organization has no Teams flow, or the GitHub App is not subscribed
+            to the event. Both used to look identical to "it is broken". */}
+        <div className="px-5 pb-5">
+          <div className={`${SURFACE.inset} rounded-xl px-4 py-3.5`}>
+            <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
+              Nothing arriving?
+            </p>
+
+            <ul className="mt-2.5 grid gap-1.5">
+              <Check ok={data.teamsReady}
+                good="An administrator has set the shared Teams flow up."
+                bad="No Teams flow is set up for this organization yet. An administrator does that once, in Alarms. Nothing here can send until then." />
+              {/* The stored one, not the box above it. The webhook worker reads
+                  the saved row, so an address typed and not saved is exactly as
+                  good as no address at all. */}
+              <Check ok={!!data.teamsAddress}
+                good="Your Teams address is saved."
+                bad="Your Teams address is not saved yet, so there is nowhere to send." />
+              <Check ok={events.reviewRequested || events.approved || events.changesRequested}
+                good="At least one of the switches above is on."
+                bad="All three switches above are off." />
+            </ul>
+
+            {/* The decisive one, and the only thing that can tell "GitHub never
+                told us" apart from "we decided not to send it". */}
+            <div className="mt-3 pt-3 border-t border-slate-200/70 dark:border-white/[0.07]">
+              {data.lastEvent ? (
+                <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  Last event: <span className="font-semibold text-slate-700 dark:text-slate-200">
+                    {data.lastEvent.kind}
+                  </span> on <span className="font-mono">{data.lastEvent.subject}</span>,{" "}
+                  {ago(data.lastEvent.at) ?? "recently"}
+                  {" — "}
+                  <span className={data.lastEvent.outcome === "sent"
+                    ? "text-emerald-600 dark:text-emerald-400 font-semibold"
+                    : "text-amber-600 dark:text-amber-400 font-semibold"}>
+                    {data.lastEvent.outcome}
+                  </span>
+                  {data.lastEvent.detail && <>. {data.lastEvent.detail}</>}
+                </p>
+              ) : (
+                <>
+                  <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    No event naming you has reached the app yet, which has two quite different
+                    causes and this cannot yet tell them apart.
+                  </p>
+                  {/* Said first, because it is the one that makes this line
+                      itself untrustworthy: the field it reads is written by
+                      code that only runs in the deployed webhook worker, so a
+                      worker built before that existed reports nothing whatever
+                      is happening. Blaming the subscription without saying this
+                      sends somebody to fix a thing that is not broken. */}
+                  <ul className="mt-2 grid gap-1.5 text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                    <li>
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                        The webhook worker may not have been redeployed.
+                      </span>{" "}
+                      These are sent by a Lambda, not by this app, and committing does not update
+                      it. Run <span className="font-mono text-[11px]">cdk deploy</span> from{" "}
+                      <span className="font-mono text-[11px]">infra/</span>. Until then this line
+                      says nothing either way, because the worker is what writes it.
+                    </li>
+                    <li>
+                      <span className="font-semibold text-slate-700 dark:text-slate-200">
+                        Or the webhook is not subscribed to the event.
+                      </span>{" "}
+                      <span className="font-mono text-[11px]">pull_request</span> carries review
+                      requests; <span className="font-mono text-[11px]">pull_request_review</span>{" "}
+                      carries approvals and change requests. Both are ticked where the app's
+                      webhook is configured, not here.
+                    </li>
+                  </ul>
+                  <p className="text-[11.5px] text-slate-400 dark:text-slate-500 leading-relaxed mt-2">
+                    The summary below does not go through any of that, which is why it can be
+                    arriving while these are not.
+                  </p>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 

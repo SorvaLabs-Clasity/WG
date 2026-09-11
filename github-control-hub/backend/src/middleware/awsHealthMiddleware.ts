@@ -48,22 +48,45 @@ export function resetAwsHealthCache(): void {
  * moves that cost, and the whole AWS credential chain underneath it, into the
  * seconds while somebody is still opening the app.
  */
+let inFlight: Promise<boolean> | null = null;
+
 export async function isAwsHealthy(): Promise<boolean> {
   if (awsLocked) return false;
 
   const now = Date.now();
   if (now - lastCheckTime < CHECK_INTERVAL_MS) return lastCheckResult;
 
-  try {
-    const table = process.env.ACTIVITY_TABLE;
-    if (!table) return false;
-    await docClient.send(new ScanCommand({ TableName: table, Limit: 1 }));
-    lastCheckResult = true;
-  } catch {
-    lastCheckResult = false;
-  }
-  lastCheckTime = Date.now();
-  return lastCheckResult;
+  /**
+   * The check already running, shared rather than started again.
+   *
+   * `lastCheckTime` is only set once the scan has *finished*, so it cannot stop
+   * a burst that all arrives before the first one returns, and a fresh process
+   * is exactly that burst. Startup priming begins one check; the page then
+   * opens six requests at once, every one of them finds the cache still empty,
+   * and every one starts its own scan. On a cold process each of those resolves
+   * the whole AWS credential chain underneath it, an SSO round trip and two
+   * TLS handshakes, so the first screen after launch paid for seven of them
+   * concurrently.
+   *
+   * Priming moved the cost off the first request. This is what stops it being
+   * paid several times over, which is why priming alone did not fix it.
+   */
+  if (inFlight) return inFlight;
+
+  inFlight = (async () => {
+    try {
+      const table = process.env.ACTIVITY_TABLE;
+      if (!table) return false;
+      await docClient.send(new ScanCommand({ TableName: table, Limit: 1 }));
+      lastCheckResult = true;
+    } catch {
+      lastCheckResult = false;
+    }
+    lastCheckTime = Date.now();
+    return lastCheckResult;
+  })().finally(() => { inFlight = null; });
+
+  return inFlight;
 }
 
 export function awsHealthMiddleware(req: Request, res: Response, next: NextFunction): void {

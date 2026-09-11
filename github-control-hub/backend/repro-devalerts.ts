@@ -690,6 +690,74 @@ const text = (card: any) => JSON.stringify(card);
       "without it the changes-requested notification silently never fires");
   }
 
+  console.log("\nthe organization's settings live in one row, not two");
+  {
+    /**
+     * The key stopped being the organization's name and became the constant
+     * "config". Reads fell back to the old row and returned it under the new
+     * key, which was enough for the process doing the reading and left two rows
+     * in the table: the next write copied everything to "config" while the old
+     * row stayed exactly as it was, updated by nothing.
+     *
+     * Both halves then work, which is what makes it bad. The app reads its row
+     * and is right. A function deployed before the change reads the old row and
+     * is also right, about an organization as it was configured months ago. A
+     * Teams flow URL set from the app after the change is simply absent as far
+     * as that function is concerned, and the notification it gates is skipped
+     * without a word.
+     */
+    const svc = fs.readFileSync("./src/services/orgConfigService.ts", "utf8");
+
+    check("the old row is copied forward rather than read through",
+      /const moved = \{ \.\.\.\(old\.Item as OrgConfig\), org: CONFIG_KEY \};/.test(svc)
+        && /new PutCommand\(\{ TableName: TABLE\(\), Item: moved \}\)/.test(svc),
+      "returning it under the new key leaves the old one behind, updated by nothing");
+    check("  and then removed, so readers converge",
+      /new DeleteCommand\(\{ TableName: TABLE\(\), Key: \{ org: legacy \} \}\)/.test(svc));
+
+    // The copy is the whole of the fix; a delete that fails costs one request
+    // next time rather than losing anything.
+    check("  while a failed removal does not lose the migration",
+      /Copied the organization row forward but could not remove/.test(svc));
+
+    // GITHUB_ORG could in principle be the literal "config", which would make
+    // the migration read and delete the row it just wrote.
+    check("  and a legacy key equal to the new one is not migrated onto itself",
+      /legacy !== CONFIG_KEY/.test(svc));
+  }
+
+  console.log("\na refused save does not leave the screen claiming otherwise");
+  {
+    const ui = fs.readFileSync(
+      "../frontend/src/components/DevAlertSettings.tsx", "utf8");
+
+    /**
+     * The switch was drawn on before the request and never taken back. A
+     * rejected save left it showing on while the stored row said off, with the
+     * only error in a different card, so the feature looked broken rather than
+     * the save.
+     */
+    check("a switch is put back when its save is refused",
+      /const before = events;/.test(ui) && /catch \{\s*\n\s*setEvents\(before\);/.test(ui));
+    check("  and so is the reviewer limit",
+      /catch\(\(\) => setReviewerLimit\(before\)\)/.test(ui));
+
+    /**
+     * The debounced save was cleared on unmount and its body thrown away, so a
+     * change made within 600ms of leaving this tab was shown as applied and
+     * never written. The comment above it promised the opposite.
+     */
+    check("leaving the tab flushes a queued save rather than dropping it",
+      /if \(body\) void saveDevAlerts\(body\)/.test(ui),
+      "the comment above it already promised this");
+
+    // Nothing may reject into nowhere: these are all started without awaiting.
+    check("  and no save is started without a catch",
+      !/[^.]\bcommit\((?!.*catch)[^)]*\);/.test(
+        ui.replace(/await commit\([^)]*\);/g, "")),
+      "an unhandled rejection surfaces as a crash, not as a failed save");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

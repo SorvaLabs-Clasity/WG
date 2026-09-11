@@ -217,9 +217,20 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
       /\{days > 0 && \(/.test(alerts),
       '"skip if quiet over any age" is not a sentence');
 
+    // The window was 200 characters and the queued save grew a comment and a
+    // catch, so the closing `}, 600)` moved past the end of it. Same claim.
     check("saving waits until somebody stops changing things",
-      /setTimeout\([\s\S]{0,200}\}, 600\)/.test(alerts),
+      /setTimeout\([\s\S]{0,600}\}, 600\)/.test(alerts),
       "a request per keystroke is what made the field lag under its own saves");
+
+    /**
+     * And the queue must survive leaving the tab. The cleanup cleared the timer
+     * and threw away the body it was holding, so a change made within the
+     * debounce of switching away was drawn as applied and never written.
+     */
+    check("  and a queued save is flushed on unmount rather than dropped",
+      /if \(body\) void saveDevAlerts\(body\)/.test(alerts),
+      "clearing the timer without sending is how a saved-looking change is lost");
     check("  which also stops one adjustment being read as several",
       /clearTimeout\(timer\.current\)/.test(alerts),
       "each save re-decides whether today's summary is owed");

@@ -120,23 +120,60 @@ export function recipientsFor(event: string, payload: any): Array<{
  */
 export async function notifyDevEvents(event: string, payload: any): Promise<number> {
   const targets = recipientsFor(event, payload);
+
+  /**
+   * Logged even when there is nothing to do.
+   *
+   * This is the only trace that the event arrived at all. Without it, an App
+   * that is not subscribed to `pull_request_review` and an event that was
+   * correctly ignored produce exactly the same evidence: none. One line in the
+   * worker's log is what separates "GitHub never told us" from "we decided not
+   * to".
+   */
+  console.log(`[DevEvent] ${event}/${payload?.action}: ${targets.length} to consider`);
   if (targets.length === 0) return 0;
 
-  const flowUrl = (await getOrgConfig().catch(() => null))?.teamsFlow?.url;
-  if (!flowUrl) return 0;
-
   const pr = payload.pull_request;
+  const subject = `${payload?.repository?.name ?? "?"}#${pr?.number ?? "?"}`;
+
+  const flowUrl = (await getOrgConfig().catch(() => null))?.teamsFlow?.url;
+  if (!flowUrl) {
+    // Recorded against each person, because this is the one cause they cannot
+    // fix or even see from their own settings screen.
+    console.warn("[DevEvent] No Teams flow is set up for this organization; nothing can be sent.");
+    for (const t of targets) {
+      await note(t.login, t.kind, subject, "skipped",
+        "No Teams flow is set up for this organization yet. An administrator sets it up once, in Alarms.");
+    }
+    return 0;
+  }
+
   let sent = 0;
 
   for (const target of targets) {
     try {
       const prefs = await getDevAlerts(target.login);
-      if (!wants(prefs, target.kind)) continue;
+
+      if (!prefs.teamsAddress) {
+        await note(target.login, target.kind, subject, "skipped",
+          "You have not set your Teams address yet.");
+        continue;
+      }
+      if (!wants(prefs, target.kind)) {
+        await note(target.login, target.kind, subject, "skipped",
+          `The "${target.kind}" switch is off.`);
+        continue;
+      }
 
       // Asked for by somebody who only wants the requests that are theirs to
-      // do. Skipped quietly: it is a preference, not a failure, and it is
-      // still in the daily digest.
-      if (target.kind === "reviewRequested" && !withinReviewerLimit(prefs, target)) continue;
+      // do. A preference, not a failure, and it is still in the daily digest,
+      // but it is recorded: "I turned it on and got nothing" is exactly what
+      // this looks like from the outside.
+      if (target.kind === "reviewRequested" && !withinReviewerLimit(prefs, target)) {
+        await note(target.login, target.kind, subject, "skipped",
+          "More reviewers were asked than your limit allows. It is still in the daily summary.");
+        continue;
+      }
 
       const devEvent: DevEvent = {
         kind: target.kind,
@@ -153,17 +190,49 @@ export async function notifyDevEvents(event: string, payload: any): Promise<numb
       const now = new Date().toISOString();
       if (result.ok) {
         sent++;
-        await putDevAlerts({ ...prefs, lastSentAt: now, lastError: undefined, lastErrorAt: undefined });
+        await putDevAlerts({
+          ...prefs, lastSentAt: now, lastError: undefined, lastErrorAt: undefined,
+          lastEvent: { at: now, kind: target.kind, subject, outcome: "sent" },
+        });
       } else {
         // Recorded, not retried. The settings screen reads this, which is the
         // only way somebody finds out their webhook stopped working.
-        await putDevAlerts({ ...prefs, lastError: result.error, lastErrorAt: now });
+        await putDevAlerts({
+          ...prefs, lastError: result.error, lastErrorAt: now,
+          lastEvent: { at: now, kind: target.kind, subject, outcome: "failed", detail: result.error },
+        });
         console.warn(`[DevEvent] ${target.login}: ${result.error}`);
       }
     } catch (err: any) {
       console.warn(`[DevEvent] Could not notify ${target.login}:`, err?.message ?? err);
+      await note(target.login, target.kind, subject, "failed", err?.message ?? String(err));
     }
   }
 
   return sent;
+}
+
+/**
+ * Write down what happened to one person's event, and never fail the delivery.
+ *
+ * This runs inside webhook delivery, where a throw releases the claim and
+ * re-runs every other effect of the same event. A note about a notification is
+ * not worth that, so its own failure is swallowed and logged.
+ */
+async function note(
+  login: string,
+  kind: EventKind,
+  subject: string,
+  outcome: "sent" | "skipped" | "failed",
+  detail?: string,
+): Promise<void> {
+  try {
+    const prefs = await getDevAlerts(login);
+    await putDevAlerts({
+      ...prefs,
+      lastEvent: { at: new Date().toISOString(), kind, subject, outcome, detail },
+    });
+  } catch (err: any) {
+    console.warn(`[DevEvent] Could not record the outcome for ${login}:`, err?.message ?? err);
+  }
 }

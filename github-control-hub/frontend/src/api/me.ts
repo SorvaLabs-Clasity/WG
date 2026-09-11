@@ -176,6 +176,20 @@ export interface DevAlerts {
   lastDigestAt?: string;
   lastError?: string;
   lastErrorAt?: string;
+  /**
+   * The last immediate event that named you, and what became of it.
+   *
+   * Absent means none has reached the app since this began recording, which is
+   * itself the most useful answer: it separates "GitHub is not sending these"
+   * from "we decided not to send it to you".
+   */
+  lastEvent?: {
+    at: string;
+    kind: string;
+    subject: string;
+    outcome: "sent" | "skipped" | "failed";
+    detail?: string;
+  };
 }
 
 export const fetchDevAlerts = () => apiGet<DevAlerts>("/me/alerts");
