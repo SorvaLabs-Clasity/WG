@@ -42,10 +42,20 @@
 /* ── The contract ─────────────────────────────────────────────────────────
    Broadsheet's values are the defaults, so a theme only declares what it
    changes. Colours are unwrapped RGB triples so Tailwind's `/40` alpha slot
-   keeps working through the variable. */
+   keeps working through the variable.
+
+   THE SELECTOR IS `[data-skin]`, NOT `[data-skin="broadsheet"]`, and that
+   matters. Custom properties inherit, so a theme that simply omits a variable
+   picks up whatever its *ancestor* last set rather than the value below. At
+   the root that is harmless — the ancestor is this block. Nested, it is not:
+   the theme picker renders each preview inside the running theme, so a Swiss
+   card sitting inside a Risograph page was inheriting Risograph's hard offset
+   shadow and advertising a Swiss that does not exist. Declaring the whole
+   contract on every skinned element, ahead of the theme blocks, means each one
+   starts from the same floor wherever it is mounted. */
 
 :root,
-[data-skin="broadsheet"] {
+[data-skin] {
   /* stock and ink */
   --paper:   247 244 237;
   --paper-2: 240 236 226;
