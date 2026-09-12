@@ -812,6 +812,66 @@ const text = (card: any) => JSON.stringify(card);
 
     check("  and once it knows, it stops offering a list of suspects",
       /the reason is above/.test(ui));
+
+    /**
+     * The evidence that separates "GitHub never sent it" from "we chose not to
+     * send it to you".
+     *
+     * The per-person record is written by the same code that decides whether to
+     * send, so its absence is ambiguous in exactly the two cases that matter:
+     * an unsubscribed event and a stale worker both produce nothing, because
+     * the code that would write it never ran. This is org-wide and written
+     * before any decision, so it is the one that can be trusted to be missing
+     * for a reason.
+     */
+    const wh = fs.readFileSync("src/webhooks/devEvents.ts", "utf8");
+    const dev = fs.readFileSync("src/services/devAlertService.ts", "utf8");
+
+    check("the worker writes down that the event reached it",
+      /recordDevEventSeen\(/.test(wh));
+
+    // Before the early return, or the case it exists to explain — an event
+    // that named nobody — is the one case it never records.
+    check("  before deciding there is nobody to tell",
+      wh.indexOf("recordDevEventSeen(") < wh.indexOf("if (targets.length === 0) return 0;"),
+      "an event naming nobody is exactly the case this has to record");
+
+    // A throw here releases the delivery claim and re-runs every other effect
+    // of the event. A note about a notification is not worth that.
+    check("  and its own failure cannot cost the delivery",
+      /recordDevEventSeen\([\s\S]{0,220}\.catch\(/.test(wh));
+
+    /**
+     * listDevAlerts scans this table and treats everything under `devalerts#`
+     * as a person. A marker row with that prefix would join the digest pass as
+     * a developer with no login and no settings.
+     */
+    check("  under a key the digest pass will not mistake for a person",
+      /const SEEN_KEY = "devevents#/.test(dev) && !/const SEEN_KEY = `?\$\{?KEY_PREFIX/.test(dev),
+      "a devalerts# key is picked up by listDevAlerts as a developer");
+
+    check("and the screen reports it as the decisive check",
+      /lastWebhookSeen/.test(ui) && /delivery path is working/.test(ui));
+
+    /**
+     * The API and the webhook worker are separate deployments, and either can
+     * be the older one. A field that is absent altogether says the API predates
+     * the record; reporting that as "nothing has arrived" accuses a delivery
+     * path nobody has actually looked at.
+     */
+    check("  reading nothing is not the same claim as nothing arriving",
+      /lastWebhookSeen === undefined \? null :/.test(ui),
+      "an absent field is being rendered as a failed check");
+
+    /**
+     * Once the worker has recorded an event of its own, both remaining suspects
+     * are contradicted by that record — it is written by the current worker, on
+     * an event GitHub delivered. Leaving them up sends somebody to redeploy a
+     * Lambda and re-tick a checkbox that are demonstrably fine.
+     */
+    check("  and a record retires the suspects it disproves",
+      /\{!data\.lastWebhookSeen && \(/.test(ui),
+      "the redeploy/subscription suspects still show after the worker proved itself");
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

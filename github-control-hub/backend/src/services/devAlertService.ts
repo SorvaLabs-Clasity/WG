@@ -316,6 +316,51 @@ export async function putDevAlerts(alerts: DevAlerts): Promise<DevAlerts> {
   return row;
 }
 
+/**
+ * The last notification-carrying webhook the worker actually saw.
+ *
+ * Deliberately org-wide and written before any decision is taken, including
+ * when the event names nobody. It answers the one question the per-person
+ * record cannot: *did GitHub deliver this to us at all*.
+ *
+ * Without it, three quite different failures look identical from the settings
+ * screen — the App is not subscribed to the event, the webhook worker is
+ * running an older build, or we received it and decided not to send. The first
+ * two produce no per-person record at all, because the code that would write
+ * one never runs.
+ *
+ * Under a key outside KEY_PREFIX on purpose. `listDevAlerts` scans this table
+ * and treats everything under `devalerts#` as a person, so a marker row with
+ * that prefix would join the digest pass as a developer with no login.
+ */
+const SEEN_KEY = "devevents#lastseen";
+
+export interface DevEventSeen {
+  /** When the worker handled it. */
+  at: string;
+  /** The GitHub event and action, as delivered. */
+  event: string;
+  action?: string;
+  /** How many people it named. Zero is a real and useful answer. */
+  considered: number;
+}
+
+export async function recordDevEventSeen(seen: DevEventSeen): Promise<void> {
+  if (!hasTable("ORG_CONFIG_TABLE")) return;
+  await docClient.send(new PutCommand({
+    TableName: TABLE(),
+    Item: { org: SEEN_KEY, ...seen },
+  }));
+}
+
+export async function readDevEventSeen(): Promise<DevEventSeen | null> {
+  if (!hasTable("ORG_CONFIG_TABLE")) return null;
+  const out = await docClient.send(new GetCommand({ TableName: TABLE(), Key: { org: SEEN_KEY } }));
+  const row = out.Item as any;
+  if (!row?.at) return null;
+  return { at: row.at, event: row.event, action: row.action, considered: Number(row.considered) || 0 };
+}
+
 export async function deleteDevAlerts(login: string): Promise<void> {
   if (!hasTable("ORG_CONFIG_TABLE")) return;
   await docClient.send(new DeleteCommand({ TableName: TABLE(), Key: { org: keyFor(login) } }));

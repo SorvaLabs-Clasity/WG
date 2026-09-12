@@ -546,6 +546,23 @@ export default function DevAlertSettings() {
                 good="The GitHub App is subscribed to both events these need."
                 bad={missingLabel(data.missingEvents ?? [])}
                 unknown="Whether the GitHub App is subscribed to these events could not be read, so this cannot say either way. It needs the App's own credentials, which this deployment may not have." />
+              {/* The decisive one, and org-wide rather than yours: it is written
+                  the moment the worker handles one of these events, before any
+                  decision about who to tell. A recent value proves GitHub is
+                  delivering and the worker is running current code, which is
+                  what moves the question from the plumbing onto the rows above. */}
+              <Check
+                /* Three states, not two. The field being absent altogether means
+                   this deployment's API predates the record, which is not the
+                   same claim as "nothing has arrived" and must not be reported
+                   as one — the worker and the API are separate deployments and
+                   either can be the old one. */
+                ok={data.lastWebhookSeen === undefined ? null : !!data.lastWebhookSeen}
+                good={data.lastWebhookSeen
+                  ? `A ${data.lastWebhookSeen.event} event reached the app ${ago(data.lastWebhookSeen.at) ?? "recently"}, so the delivery path is working.`
+                  : ""}
+                bad="No pull request or review event has reached the app at all. Either GitHub is not sending them, or the webhook worker is running a build from before this was recorded — in both cases nothing here can fire, whatever is set above."
+                unknown="Whether any event has reached the app could not be read, so this cannot say either way. This deployment's API is older than the record." />
             </ul>
 
             {/* The decisive one, and the only thing that can tell "GitHub never
@@ -582,8 +599,15 @@ export default function DevAlertSettings() {
               ) : (
                 <>
                   <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed">
-                    No event naming you has reached the app yet, which has two quite different
-                    causes and this cannot yet tell them apart.
+                    {data.lastWebhookSeen
+                      ? <>No event naming <em>you</em> has reached the app — but a{" "}
+                          <span className="font-mono text-[0.6875rem]">{data.lastWebhookSeen.event}</span>{" "}
+                          event did, {ago(data.lastWebhookSeen.at) ?? "recently"}. So the delivery path is
+                          working and the plumbing below is not the explanation. The likeliest reason is
+                          that nothing has happened yet on a pull request of yours since these were
+                          switched on.</>
+                      : <>No event naming you has reached the app yet, which has two quite different
+                          causes and this cannot yet tell them apart.</>}
                   </p>
                   {/* Said first, because it is the one that makes this line
                       itself untrustworthy: the field it reads is written by
@@ -591,6 +615,12 @@ export default function DevAlertSettings() {
                       worker built before that existed reports nothing whatever
                       is happening. Blaming the subscription without saying this
                       sends somebody to fix a thing that is not broken. */}
+                  {/* Withheld once the worker has recorded an event of its own.
+                      Both suspects below are contradicted by that record — it is
+                      written by the current worker, on an event GitHub delivered
+                      — and leaving them on screen sends somebody to redeploy a
+                      Lambda and re-tick a checkbox that are demonstrably fine. */}
+                  {!data.lastWebhookSeen && (
                   <ul className="mt-2 grid gap-1.5 text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed">
                     <li>
                       <span className="font-semibold text-slate-700 dark:text-slate-200">
@@ -611,6 +641,7 @@ export default function DevAlertSettings() {
                       webhook is configured, not here.
                     </li>
                   </ul>
+                  )}
                   <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 leading-relaxed mt-2">
                     The summary below does not go through any of that, which is why it can be
                     arriving while these are not.

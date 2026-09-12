@@ -9,7 +9,8 @@ import { fromClassic, explainPush } from "../services/pushExplainer";
 import { searchActivity } from "../services/activitySearch";
 import { getDetailedLogging } from "../services/orgConfigService";
 import {
-  getDevAlerts, putDevAlerts, badTeamsAddress, nextDigestRecord, type DevAlerts,
+  getDevAlerts, putDevAlerts, badTeamsAddress, nextDigestRecord, readDevEventSeen,
+  type DevAlerts,
 } from "../services/devAlertService";
 import { buildDigest } from "../services/devAlertContent";
 import { sendToPerson } from "../services/teamsClient";
@@ -336,7 +337,18 @@ router.get("/alerts", async (req: Request, res: Response) => {
      * the screen has to keep reporting as "cannot tell" rather than as "no".
      */
     const missing = await missingEvents(EVENT_NOTIFICATION_EVENTS).catch(() => null);
-    res.json({ ...a, teamsReady: !!flow?.url, missingEvents: missing });
+    /**
+     * And whether the worker has seen one of these events at all.
+     *
+     * The per-person record below only exists once the code that writes it
+     * runs, so its absence is ambiguous in exactly the cases that matter: an
+     * unsubscribed event and a worker running an older build both produce
+     * nothing. This is written org-wide, before any decision, so a recent
+     * value proves the delivery path is alive and moves the question onto the
+     * person's own settings.
+     */
+    const seen = await readDevEventSeen().catch(() => null);
+    res.json({ ...a, teamsReady: !!flow?.url, missingEvents: missing, lastWebhookSeen: seen });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "me") });
   }
