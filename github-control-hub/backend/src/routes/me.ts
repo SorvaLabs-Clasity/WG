@@ -13,6 +13,7 @@ import {
 } from "../services/devAlertService";
 import { buildDigest } from "../services/devAlertContent";
 import { sendToPerson } from "../services/teamsClient";
+import { missingEvents } from "../services/appSubscriptions";
 import { getOrgConfig } from "../services/orgConfigService";
 import {
   readView, saveView, isViewDue, refreshViewIfDue, isViewRefreshing,
@@ -307,6 +308,15 @@ router.get("/ship", async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * The events the immediate notifications are delivered by.
+ *
+ * `pull_request` carries a review request; `pull_request_review` carries an
+ * approval and a request for changes. Both are checkboxes on the GitHub App,
+ * and an unticked one is silent rather than broken.
+ */
+const EVENT_NOTIFICATION_EVENTS = ["pull_request", "pull_request_review"];
+
 router.get("/alerts", async (req: Request, res: Response) => {
   try {
     const a = await getDevAlerts(req.user!.login);
@@ -315,7 +325,18 @@ router.get("/alerts", async (req: Request, res: Response) => {
     // survives. What they cannot see for themselves is whether an administrator
     // has set the shared flow up, so that travels with it.
     const flow = (await getOrgConfig().catch(() => null))?.teamsFlow;
-    res.json({ ...a, teamsReady: !!flow?.url });
+    /**
+     * And nor can they see whether GitHub was ever asked to send these.
+     *
+     * This is the one precondition the settings screen could not check, and it
+     * is the one that fails silently: an unticked box produces no delivery, no
+     * error and no record, so "I turned it on and got nothing" looked identical
+     * whether the cause was a checkbox or a bug. Answered from the App's own
+     * subscription list, cached, and `null` when it could not be read — which
+     * the screen has to keep reporting as "cannot tell" rather than as "no".
+     */
+    const missing = await missingEvents(EVENT_NOTIFICATION_EVENTS).catch(() => null);
+    res.json({ ...a, teamsReady: !!flow?.url, missingEvents: missing });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "me") });
   }

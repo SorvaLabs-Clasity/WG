@@ -35,7 +35,10 @@ const code = page.split("\n")
 (async () => {
   // ── search ──────────────────────────────────────────────────────────
   {
-    check("the checks can be searched", /placeholder="Search checks/.test(code));
+    // The visible label moved out of the placeholder and into a small-cap
+    // "Find" beside the field, so the accessible name is what to assert: it is
+    // the part that has to survive any amount of redesigning.
+    check("the checks can be searched", /aria-label="Search checks"/.test(code));
     check("  by title and by what the check asks",
       /\$\{w\.title\} \$\{label\} \$\{w\.queryParam \?\? ""\}/.test(code),
       'a card named "Prod repos" must be findable by "protection"');

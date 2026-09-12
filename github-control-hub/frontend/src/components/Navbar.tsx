@@ -7,7 +7,7 @@ import { revokeGithub } from "../api/auth";
 import { clearToken, getToken } from "../api/client";
 import { COMPANY_NAME } from "../design/tokens";
 import ThemePicker from "./ThemePicker";
-import { themeEntry, isRail } from "../design/themes";
+import { themeEntry, isRail, type Skin } from "../design/themes";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuthStatus } from "../api/auth";
 
@@ -62,6 +62,61 @@ function today() {
   return new Date().toLocaleDateString(undefined, {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
+}
+
+/**
+ * The section line, opened out on a narrow window. Shared by both layouts.
+ *
+ * Declared out here rather than inside Navbar. A component defined in a render
+ * body is a new function — so a new element type — on every render, and React
+ * answers that by unmounting the old subtree and mounting a fresh one rather
+ * than updating in place. repro-nestedcomponents.ts is the rule; the sheet
+ * holds no state of its own, but the next thing added to it would have lost it
+ * silently.
+ */
+function SectionSheet({ items, pathname, login, skin, onGo, onTheme, onSignOut }: {
+  items: { label: string; path: string; match: (p: string) => boolean }[];
+  pathname: string;
+  login?: string;
+  skin: Skin;
+  onGo: (path: string) => void;
+  onTheme: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+
+  <div className="fixed inset-0 top-[5.75rem] z-30 bg-paper xl:hidden overflow-y-auto animate-[fadeIn_140ms_ease-out]">
+    <div className="max-w-[100rem] mx-auto px-5 sm:px-8 py-3">
+      {items.map(item => {
+        const on = item.match(pathname);
+        return (
+          <button key={item.path}
+            onClick={() => onGo(item.path)}
+            className={`w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left transition-colors ${
+              on ? "text-ink" : "text-ink-2 hover:text-ink"}`}>
+            <span className={`display text-[1.125rem] ${on ? "text-ink" : ""}`}>{item.label}</span>
+            {on && <span className="caps text-ink">Reading</span>}
+          </button>
+        );
+      })}
+
+      <button
+        onClick={onTheme}
+        className="w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left">
+        <span className="display text-[1.125rem] text-ink">Appearance</span>
+        <span className="caps">{themeEntry(skin).name}</span>
+      </button>
+
+      {login && (
+        <button
+          onClick={onSignOut}
+          className="w-full py-4 text-left caps text-crimson">
+          Sign out
+        </button>
+      )}
+    </div>
+  </div>
+  );
 }
 
 export default function Navbar({ login, avatarUrl }: NavbarProps) {
@@ -139,41 +194,6 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   };
 
   const rail = isRail(skin);
-
-  /** The section line, opened out on a narrow window. Shared by both layouts. */
-  const SectionSheet = () => (
-    <div className="fixed inset-0 top-[5.75rem] z-30 bg-paper xl:hidden overflow-y-auto animate-[fadeIn_140ms_ease-out]">
-      <div className="max-w-[100rem] mx-auto px-5 sm:px-8 py-3">
-        {items.map(item => {
-          const on = item.match(pathname);
-          return (
-            <button key={item.path}
-              onClick={() => { navigate(item.path); setMenuOpen(false); }}
-              className={`w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left transition-colors ${
-                on ? "text-ink" : "text-ink-2 hover:text-ink"}`}>
-              <span className={`display text-[1.125rem] ${on ? "text-ink" : ""}`}>{item.label}</span>
-              {on && <span className="caps text-ink">Reading</span>}
-            </button>
-          );
-        })}
-
-        <button
-          onClick={() => { setMenuOpen(false); setThemeOpen(true); }}
-          className="w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left">
-          <span className="display text-[1.125rem] text-ink">Appearance</span>
-          <span className="caps">{themeEntry(skin).name}</span>
-        </button>
-
-        {login && (
-          <button
-            onClick={() => { setMenuOpen(false); logout(); }}
-            className="w-full py-4 text-left caps text-crimson">
-            Sign out
-          </button>
-        )}
-      </div>
-    </div>
-  );
 
   /**
    * The account block and the edition switch, which both layouts need.
@@ -305,7 +325,13 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
           </div>
         </nav>
 
-        {menuOpen && <SectionSheet />}
+        {menuOpen && (
+          <SectionSheet
+            items={items} pathname={pathname} login={login} skin={skin}
+            onGo={(path) => { navigate(path); setMenuOpen(false); }}
+            onTheme={() => { setMenuOpen(false); setThemeOpen(true); }}
+            onSignOut={() => { setMenuOpen(false); logout(); }} />
+        )}
         <ThemePicker open={themeOpen} onClose={() => setThemeOpen(false)} />
       </>
     );
@@ -366,7 +392,13 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
         </div>
       </nav>
 
-      {menuOpen && <SectionSheet />}
+      {menuOpen && (
+          <SectionSheet
+            items={items} pathname={pathname} login={login} skin={skin}
+            onGo={(path) => { navigate(path); setMenuOpen(false); }}
+            onTheme={() => { setMenuOpen(false); setThemeOpen(true); }}
+            onSignOut={() => { setMenuOpen(false); logout(); }} />
+        )}
 
       <ThemePicker open={themeOpen} onClose={() => setThemeOpen(false)} />
     </>

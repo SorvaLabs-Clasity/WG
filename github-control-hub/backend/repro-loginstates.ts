@@ -125,9 +125,22 @@ const base = { ghAuthed: false, awsOk: false, ghConfigured: false, settling: tru
   {
     const css = fs.readFileSync(
       path.join(__dirname, "../frontend/src/index.css"), "utf8");
-    check("color-scheme is declared for both themes",
-      /:root\s*\{\s*color-scheme:\s*light/.test(css) && /:root\.dark\s*\{\s*color-scheme:\s*dark/.test(css),
-      "without this, Windows draws a light dropdown behind light text");
+    /**
+     * Declared per theme now, not once on :root.
+     *
+     * The app has eight themes and two editions, so the property this protects
+     * — a native dropdown is told which scheme it is being drawn in — has to
+     * hold for each of them, not merely somewhere in the file. Asserted that
+     * way: every dark block declares it, and the shared floor declares light.
+     */
+    const darkBlocks = css.match(/\[data-skin="[a-z]+"\]\[data-edition="dark"\]\s*\{[\s\S]*?\n\}/g) ?? [];
+    check("color-scheme is declared for both editions of every theme",
+      darkBlocks.length >= 5
+      && darkBlocks.every(b => /color-scheme:\s*dark/.test(b))
+      && /\[data-skin\]\s*\{[\s\S]*?color-scheme:\s*light/.test(css),
+      { themes: darkBlocks.length,
+        missing: darkBlocks.filter(b => !/color-scheme:\s*dark/.test(b))
+          .map(b => b.slice(0, 40)) });
     check("  and option colours fall back to system colours",
       /select option[\s\S]{0,80}background-color:\s*Canvas/.test(css), "no option colour fallback");
   }

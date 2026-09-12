@@ -758,6 +758,62 @@ const text = (card: any) => JSON.stringify(card);
       "an unhandled rejection surfaces as a crash, not as a failed save");
   }
 
+  /**
+   * The precondition that used to fail in complete silence.
+   *
+   * GitHub never delivers an event the App is not subscribed to. No request
+   * arrives, nothing errors, and nothing anywhere records a non-event — so
+   * "I turned the switch on and got nothing" looked exactly like a bug, and
+   * the settings screen said out loud that it could not tell the two apart.
+   * These assert the app now asks GitHub instead of guessing, and that the
+   * three answers stay three answers.
+   */
+  console.log("\nthe subscription is read, not guessed");
+  {
+    const svc = fs.readFileSync("src/services/appSubscriptions.ts", "utf8");
+    const route = fs.readFileSync("src/routes/me.ts", "utf8");
+    const ui = fs.readFileSync("../frontend/src/components/DevAlertSettings.tsx", "utf8");
+
+    // The list belongs to the App, not to the installation, so it is one of the
+    // few things only the App's own JWT may ask for.
+    check("the subscription is asked of the App itself",
+      /getAppJwt/.test(svc) && /GET \/app/.test(svc));
+
+    /**
+     * The distinction the whole feature rests on. An empty list means "you are
+     * subscribed to nothing"; null means "we could not ask". Collapsing them
+     * would send somebody to re-tick boxes that were never unticked.
+     */
+    check("  and a failure answers null, never an empty list",
+      /return null;/.test(svc) && !/catch[\s\S]{0,80}return \[\];/.test(svc));
+
+    check("  and the answer is cached, so the screen is not a GitHub call",
+      /TTL_MS/.test(svc) && /cache/.test(svc));
+
+    check("the route reports which needed events are missing",
+      /missingEvents\(/.test(route) && /pull_request_review/.test(route));
+
+    // Both. `pull_request` carries the review request, `pull_request_review`
+    // carries the approval and the change request; one without the other is
+    // two of the three switches silently dead.
+    check("  both events these need are checked, not just the obvious one",
+      /"pull_request",\s*"pull_request_review"/.test(route));
+
+    check("the screen renders unknown as unknown, not as a failure",
+      /ok === null/.test(ui) && /unknown\?:/.test(ui));
+
+    /**
+     * Naming the API event is not enough: GitHub's settings page labels its
+     * checkboxes in prose, and `pull_request_review` appears nowhere on the
+     * screen somebody has to go and tick.
+     */
+    check("  and names the checkbox in the words GitHub's own page uses",
+      /Pull request reviews/.test(ui) && /EVENT_BOX/.test(ui));
+
+    check("  and once it knows, it stops offering a list of suspects",
+      /the reason is above/.test(ui));
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

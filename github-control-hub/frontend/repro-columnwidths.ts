@@ -432,8 +432,12 @@ function check(name: string, ok: boolean, got?: unknown) {
   check("comparing draws every stream from the baseline",
     /L\$\{\(\(buckets\.length - 1\) \* step\)\.toFixed\(1\)\},\$\{H\}L0,\$\{H\}Z/.test(pulse),
     "a height has to be a value, not a value stacked on other values");
+  // Every stream's fill carries an alpha, whatever ink the theme gives it.
+  // Pinning the literal rgba() meant a palette change failed a test about
+  // overlap being readable.
   check("  translucent, so an overlap shows both",
-    /rgba\(99,102,241,0\.28\)/.test(pulse));
+    (pulse.match(/area:\s*"rgb\(var\(--[a-z-]+\)\s*\/\s*0?\.\d+\)"/g) ?? []).length === 3,
+    "an opaque fill hides whichever stream is drawn under it");
   check("  and its scale ignores what is muted",
     /if \(mode === "lines"\) return Math\.max\(1, \.\.\.buckets\.flatMap\(b => STREAMS\.map/.test(pulse),
     "a line that grows because you hid something lied before or lies now");

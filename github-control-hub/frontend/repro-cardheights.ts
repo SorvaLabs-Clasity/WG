@@ -63,8 +63,11 @@ const page = fs.readFileSync("./src/pages/AnalyticsPage.tsx", "utf8");
     check("the main card lays itself out as a column",
       /h-full flex flex-col/.test(page),
       "otherwise the extra height is dead space with nothing claiming it");
+    // Matched on the property, not on the paint. This used to name the exact
+    // border colour of the block, so re-theming the app failed a test about
+    // where a short card's slack goes.
     check("  and the name list takes the extra height",
-      /border-white\/\[0\.06\] flex-1"/.test(page),
+      /className="[^"]*\bflex-1"[\s\S]{0,120}preview\.length === 0/.test(page),
       "so a short card is padded below the list, not between the figure and it");
     check("  while the loading state keeps a floor rather than a fixed height",
       /h-full min-h-\[268px\]/.test(page) && !/p-6 h-\[268px\]/.test(page),

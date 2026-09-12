@@ -120,6 +120,12 @@ The backend authenticates to GitHub using a **GitHub App** (not a personal acces
 | Members | Read | Org member visibility |
 | Organization administration | Read | Org config and audit logs |
 
+> **If the instant notifications in My work are silent**, open that panel: it
+> now reads the App's own subscription list and names the checkbox that is
+> missing, rather than listing the two things it could be. An unticked box is
+> completely silent — GitHub never delivers, nothing errors, and nothing is
+> recorded — which is why the app has to ask rather than infer.
+
 **Required webhook events:** `push`, `pull_request`, `create`, `delete`, `repository`, `branch_protection_rule`, `repository_ruleset`, `member`, `team`, `organization`, `dependabot_alert` for Dependabot alert emails, and `pull_request_review` for the "changes requested" and "approved" developer notifications. Without the last one neither of those fires, and nothing else is affected. The checkboxes in GitHub's UI are labelled in prose rather than by event name, see [setup.md](../docs/operations/setup.md) for which box each one is.
 
 ## Environment Variables

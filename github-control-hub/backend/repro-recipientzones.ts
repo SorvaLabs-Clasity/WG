@@ -317,8 +317,16 @@ function check(name: string, ok: boolean, got?: unknown) {
     // The column, not only the text in it. grid-cols-2 is minmax(auto, 1fr),
     // and that `auto` sizes a column to its content: the card was being pushed
     // out from a level above the one being truncated.
+    /**
+     * Asserted on the property, not on the paint.
+     *
+     * This used to match the column's whole class string including a literal
+     * `#151a23`, so re-theming the app failed a test about grid sizing. The
+     * thing that matters is `min-w-0` on both columns; what colour they are is
+     * the theme's business and changes whenever somebody picks a new one.
+     */
     check("  and so does the column holding it",
-      (panel.match(/bg-white dark:bg-\[#151a23\] p-5 min-w-0/g) ?? []).length === 2,
+      (panel.match(/p-5 min-w-0/g) ?? []).length === 2,
       "an auto-sized grid column grows past its share whatever is inside it");
 
     check("  with the full address on hover",

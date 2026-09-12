@@ -64,8 +64,10 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
     check("    and is decided before any all-clear",
       verdict.indexOf("unknown") < verdict.indexOf("protected === false"),
       verdict.slice(0, 120));
+    // The caution ink, by whichever name the palette gives it. What matters is
+    // that "we could not read the rules" is never drawn in the success colour.
     check("    drawn as a warning, never as success",
-      /unknown[\s\S]{0,120}bg-amber/.test(verdict), verdict.slice(0, 200));
+      /unknown[\s\S]{0,160}(bg-amber|bg-ochre)/.test(verdict), verdict.slice(0, 200));
 
     check("  only an actually unprotected branch says you can push",
       /data\.protected === false[\s\S]{0,200}"You can push"/.test(verdict),
@@ -86,8 +88,8 @@ const hooks = fs.readFileSync("./src/hooks/useMe.ts", "utf8");
     // Matched on the behaviour rather than on one variable's name: the point
     // is that nothing reads as an alarm on a clear day, not how it is spelled.
     check("a zero is dimmed rather than drawn as a number",
-      (page.match(/=== 0 \? "text-slate-300/g) ?? []).length >= 2
-      && /clear \? "text-slate-300/.test(page),
+      (page.match(/=== 0 \? "text-(slate-300|ink-4)/g) ?? []).length >= 2
+      && /clear \? "text-(slate-300|ink-4)/.test(page),
       "three bold zeroes read as an alarm rather than as a clear day");
     check("  and the lead number is the one somebody else is blocked on",
       /Waiting on you<\/div>/.test(page.replace(/\s+/g, " ")) || /Waiting on you/.test(page),
