@@ -1,5 +1,4 @@
-import { Octokit } from "octokit";
-import { getAppJwt } from "../github/client";
+import { createOctokit, getAppJwt } from "../github/client";
 
 /**
  * Which webhook events the GitHub App is actually subscribed to.
@@ -39,7 +38,11 @@ export async function subscribedEvents(now = Date.now()): Promise<string[] | nul
   }
 
   try {
-    const octokit = new Octokit({ auth: jwt });
+    // Through the factory, like every other client here: it is what counts the
+    // request and files it under a feature, and a client built around it is a
+    // call the budget page cannot see. Told which allowance it draws on,
+    // because a JWT is the App's own credential and not anybody's grant.
+    const octokit = createOctokit(jwt, "Notification event subscriptions", "app");
     const { data } = await octokit.request("GET /app");
     const events = Array.isArray((data as any)?.events)
       ? ((data as any).events as string[])

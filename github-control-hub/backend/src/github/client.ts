@@ -309,7 +309,20 @@ export async function getSystemTokenAsync(): Promise<string> {
  * page, which is the worst combination: the page keeps adding up and quietly
  * omits whatever that call site spends. `repro-githubusage.ts` fails on one.
  */
-export function createOctokit(token: string, feature?: string): Octokit {
+export function createOctokit(
+  token: string,
+  feature?: string,
+  /**
+   * Which allowance this client draws on, where the token cannot say.
+   *
+   * Normally inferred: a token equal to the installation token is the App's,
+   * anything else is a signed-in person's own grant. A JWT signed as the App is
+   * neither — it is not the installation token, but filing it as "user" would
+   * report somebody's personal allowance being spent by a request they never
+   * made. Callers holding one say so.
+   */
+  via?: "app" | "user",
+): Octokit {
   const octokit = new Octokit({
     auth: token,
     retry: { enabled: true, retries: 1 },
@@ -344,11 +357,11 @@ export function createOctokit(token: string, feature?: string): Octokit {
       // request sent with a signed-in person's own grant spends theirs, not the
       // App's — so the two are counted apart and only the App's half is
       // comparable with the headroom this app can read.
-      const via = token && token === getSystemToken() ? "app" : "user";
+      const drawnOn = via ?? (token && token === getSystemToken() ? "app" : "user");
       recordRequest(
         scoped !== UNATTRIBUTED ? scoped : (feature ?? UNATTRIBUTED),
         bucketFor(String(options.url ?? ""), options.method),
-        via);
+        drawnOn);
     } catch { /* never let bookkeeping break a request */ }
   });
 
