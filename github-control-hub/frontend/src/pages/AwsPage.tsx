@@ -519,7 +519,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                           title={rule?.mode === "enforce"
                             ? "Fix it now, rather than waiting for the next sweep"
                             : "Fix this one resource. The rule keeps reporting, so a change back is reported rather than corrected."}
-                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-ink/[0.07] border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50"
+                          className="stamp stamp-hollow shrink-0"
                         >
                           {fixing === f.resourceId
                             ? <><i className="ph-bold ph-circle-notch animate-spin text-[11px]"></i>Fixing</>
@@ -529,7 +529,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                       {href && (
                         <a href={href} target="_blank" rel="noreferrer"
                           title={consoleLinkLabel(f.resourceType)}
-                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-ink/[0.07] border border-slate-200 dark:border-ink/10 text-slate-600 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
+                          className="stamp stamp-hollow shrink-0">
                           AWS<i className="ph-bold ph-arrow-square-out text-[11px]"></i>
                         </a>
                       )}

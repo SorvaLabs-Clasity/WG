@@ -39,7 +39,7 @@ export default function DiffViewer({ oldValue, newValue }: DiffViewerProps) {
   }, [oldValue, newValue]);
 
   return (
-    <div className="w-full text-sm font-mono bg-white dark:bg-paper border border-gh-border dark:border-rule rounded-md overflow-hidden overflow-x-auto">
+    <div className="w-full text-sm font-mono bg-white dark:bg-paper border border-rule dark:border-rule rounded-md overflow-hidden overflow-x-auto">
       <table className="w-full border-collapse text-left">
         <tbody>
           {diffLines.map((line, i) => {
@@ -59,10 +59,10 @@ export default function DiffViewer({ oldValue, newValue }: DiffViewerProps) {
 
             return (
               <tr key={i} className={`group ${bgColor}`}>
-                <td className="w-12 py-0.5 px-2 text-right select-none border-r border-gh-border dark:border-rule text-gray-400 dark:text-slate-500 opacity-70 group-hover:opacity-100 text-xs font-mono">
+                <td className="w-12 py-0.5 px-2 text-right select-none border-r border-rule dark:border-rule text-gray-400 dark:text-slate-500 opacity-70 group-hover:opacity-100 text-xs font-mono">
                   {line.oldLineNum || ""}
                 </td>
-                <td className="w-12 py-0.5 px-2 text-right select-none border-r border-gh-border dark:border-rule text-gray-400 dark:text-slate-500 opacity-70 group-hover:opacity-100 text-xs font-mono">
+                <td className="w-12 py-0.5 px-2 text-right select-none border-r border-rule dark:border-rule text-gray-400 dark:text-slate-500 opacity-70 group-hover:opacity-100 text-xs font-mono">
                   {line.newLineNum || ""}
                 </td>
                 <td className="w-6 py-0.5 px-2 select-none text-gray-500 dark:text-slate-400 font-mono text-center">

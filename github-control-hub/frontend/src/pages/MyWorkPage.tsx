@@ -33,10 +33,10 @@ type Lens = "queue" | "push" | "shipped" | "board" | "myalarms" | "alerts";
 
 /** How each waiting-state reads, and how loud it should be. */
 const WAITING: Record<Waiting, { label: string; tone: string; rail: string }> = {
-  nobody:    { label: "Ready to merge", tone: "text-emerald-600 dark:text-emerald-400", rail: "bg-emerald-500" },
-  you:       { label: "On you",         tone: "text-amber-600 dark:text-amber-400",     rail: "bg-amber-500" },
-  reviewers: { label: "On reviewers",   tone: "text-sky-600 dark:text-sky-400",         rail: "bg-sky-500" },
-  checks:    { label: "Checks running", tone: "text-slate-400 dark:text-slate-500",     rail: "bg-slate-300 dark:bg-paper-3" },
+  nobody:    { label: "Ready to merge", tone: "text-forest", rail: "bg-forest" },
+  you:       { label: "On you",         tone: "text-ochre",  rail: "bg-ochre" },
+  reviewers: { label: "On reviewers",   tone: "text-indigo", rail: "bg-indigo" },
+  checks:    { label: "Checks running", tone: "text-ink-3",  rail: "bg-rule-strong" },
 };
 
 /** The block reason as a sentence, rather than as the enum it is stored as. */
@@ -57,48 +57,34 @@ function PullRow({ pr, showAuthor }: { pr: MyPull; showAuthor?: boolean }) {
   return (
     <a
       href={pr.url} target="_blank" rel="noreferrer noopener"
-      className="group relative flex items-start gap-3.5 pl-5 pr-4 py-3.5
-                 hover:bg-slate-50/80 dark:hover:bg-ink/[0.035] transition-colors"
+      className="group relative flex items-start gap-3.5 pl-5 pr-4 py-4 no-underline
+                 hover:bg-ink/[0.035] transition-colors"
     >
-      {/* The rail, not a dot. It runs the height of the row, so a column of
-          them reads as a stacked bar of what the day is made of before any of
-          the text has been read. */}
+      {/* The marginal rule, not a dot. It runs the height of the row, so a
+          column of them reads as a stacked bar of what the day is made of
+          before any of the text has been read. */}
       <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${w.rail}`} aria-hidden="true" />
 
       <div className="min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="text-[13.5px] font-semibold text-slate-900 dark:text-slate-100 truncate">
+        <div className="flex items-baseline gap-2.5">
+          <span className="display text-[1.0625rem] leading-snug text-ink truncate">
             {pr.title}
           </span>
           {pr.isDraft && <Pill intent="neutral">draft</Pill>}
-          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-slate-300 dark:text-slate-600">
+          <span className="ml-auto shrink-0 caps tabular-nums">
             {pr.idleDays < 1 ? "today" : idleLabel(pr.idleDays)}
           </span>
         </div>
 
-        <div className="flex items-center gap-2 mt-1.5 min-w-0">
-          {showAuthor && <UserAvatar login={pr.author} size={16} />}
-          <span className={`text-[11.5px] font-bold uppercase tracking-wider ${w.tone}`}>
-            {REASON[pr.reason] ?? pr.reason}
-          </span>
-          <span className="text-[12px] font-mono text-slate-400 dark:text-slate-500 truncate">
-            {pr.repo}#{pr.number}
-          </span>
+        <div className="dateline mt-2 min-w-0">
+          {showAuthor && <span className="flex items-center"><UserAvatar login={pr.author} size={15} /></span>}
+          <span className={`caps ${w.tone}`}>{REASON[pr.reason] ?? pr.reason}</span>
+          <span className="font-mono text-[12px] truncate">{pr.repo}#{pr.number}</span>
+          {pr.approvals > 0 && <span>{pr.approvals} approved</span>}
+          {pr.pending.length > 0 && (
+            <span className="truncate">waiting on {pr.pending.slice(0, 3).join(", ")}</span>
+          )}
         </div>
-
-        {(pr.approvals > 0 || pr.pending.length > 0) && (
-          <div className="flex items-center gap-3 mt-1.5 text-[11.5px] text-slate-400 dark:text-slate-500">
-            {pr.approvals > 0 && (
-              <span className="inline-flex items-center gap-1">
-                <i className="ph-fill ph-check-circle text-emerald-500 text-[12px]" aria-hidden="true" />
-                {pr.approvals}
-              </span>
-            )}
-            {pr.pending.length > 0 && (
-              <span className="truncate">waiting on {pr.pending.slice(0, 3).join(", ")}</span>
-            )}
-          </div>
-        )}
       </div>
     </a>
   );
@@ -119,17 +105,17 @@ function Panel({ title, count, note, action, children }: {
   children: React.ReactNode;
 }) {
   return (
-    <section className={`${SURFACE.card} overflow-hidden flex flex-col`}>
+    <section className="flex flex-col border border-rule bg-paper">
       <div className="px-5 pt-4">
-        <div className="flex items-baseline gap-2">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">{title}</h3>
+        <div className="flex items-baseline gap-2.5">
+          <h3 className="caps text-ink">{title}</h3>
           {count !== undefined && (
-            <span className="text-[12px] font-bold tabular-nums text-slate-300 dark:text-slate-600">{count}</span>
+            <span className="figure text-[1rem] text-ink-3">{count}</span>
           )}
-          {action && <div className="ml-auto self-center">{action}</div>}
+          {action && <div className="ml-auto self-baseline">{action}</div>}
         </div>
-        {note && <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">{note}</p>}
-        <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
+        {note && <p className="standfirst text-[12px] mt-1">{note}</p>}
+        <div className="border-t-2 border-ink mt-3" />
       </div>
       <div className="flex-1">{children}</div>
     </section>
@@ -138,7 +124,7 @@ function Panel({ title, count, note, action, children }: {
 
 /** Rows share one surface, divided by hairlines, rather than floating apart. */
 function Rows({ children }: { children: React.ReactNode }) {
-  return <div className="divide-y divide-slate-100 dark:divide-ink/[0.06]">{children}</div>;
+  return <div className="divide-y divide-rule">{children}</div>;
 }
 
 /** How many rows a panel shows before it starts paging. */
@@ -177,24 +163,15 @@ function Paged<T>({ items, render, keyOf, perPage = PAGE, bare }: {
     <>
       {bare ? <div className="p-5 grid gap-4">{rows}</div> : <Rows>{rows}</Rows>}
       {pages > 1 && (
-        <div className="flex items-center justify-between gap-3 px-5 py-2.5
-                        border-t border-slate-100 dark:border-ink/[0.06]">
-          <span className="text-[11.5px] tabular-nums text-slate-400 dark:text-slate-500">
+        <div className="flex items-baseline justify-between gap-4 px-5 py-3 border-t border-rule">
+          <span className="caps tabular-nums">
             {current * perPage + 1}&ndash;{current * perPage + shown.length} of {items.length}
           </span>
-          <div className="flex items-center gap-1">
+          <div className="flex items-baseline gap-4">
             <button onClick={() => setPage(current - 1)} disabled={current === 0}
-              className="w-7 h-7 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
-                         hover:bg-slate-100 dark:hover:bg-ink/[0.08] disabled:opacity-25 disabled:hover:bg-transparent"
-              aria-label="Previous">
-              <i className="ph-bold ph-caret-left text-[12px]" />
-            </button>
+              className="textlink caps" aria-label="Previous">← Previous</button>
             <button onClick={() => setPage(current + 1)} disabled={current >= pages - 1}
-              className="w-7 h-7 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
-                         hover:bg-slate-100 dark:hover:bg-ink/[0.08] disabled:opacity-25 disabled:hover:bg-transparent"
-              aria-label="Next">
-              <i className="ph-bold ph-caret-right text-[12px]" />
-            </button>
+              className="textlink caps" aria-label="Next">Next →</button>
           </div>
         </div>
       )}
@@ -203,9 +180,7 @@ function Paged<T>({ items, render, keyOf, perPage = PAGE, bare }: {
 }
 
 function Quiet({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="px-5 py-8 text-[13px] text-center text-slate-400 dark:text-slate-500">{children}</p>
-  );
+  return <p className="standfirst px-5 py-10 text-[13.5px] text-center">{children}</p>;
 }
 
 /**
@@ -258,43 +233,31 @@ function Headline({ mergeable, onYou, toReview }: {
 }) {
   const clear = toReview === 0;
   return (
-    <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr] mb-5">
-      <div className={`${SURFACE.card} relative overflow-hidden px-6 py-5`}>
-        {/* Tinted by the answer, so the direction reads before the number
-            does: amber when people are waiting, green when nobody is. */}
-        <div aria-hidden="true"
-          className={`pointer-events-none absolute -right-16 -top-16 w-56 h-56 rounded-full blur-2xl opacity-[0.16]
-            ${clear ? "bg-emerald-500" : "bg-amber-500"}`} />
-
-        <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Waiting on you</div>
-        <div className="flex items-end gap-3 mt-2.5">
-          <span className={`text-[52px] font-semibold tabular-nums leading-[0.85] tracking-[-0.04em]
-            ${clear ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-ink"}`}>
+    <div className="mb-7">
+      {/* The state's ink as a rule rather than a tint behind the number: amber
+          while people are waiting, forest when nobody is. */}
+      <div className={`h-[3px] w-full ${clear ? "bg-forest" : "bg-ochre"}`} aria-hidden="true" />
+      <div className="grid gap-0 sm:grid-cols-[1.4fr_1fr_1fr] columned pt-5">
+        <div className="pr-8">
+          <p className="caps">Waiting on you</p>
+          <p className={`figure text-[clamp(3rem,6vw,4.25rem)] mt-3 ${clear ? "text-ink-4" : "text-ochre"}`}>
             {toReview}
-          </span>
-          {!clear && (
-            <span className="mb-1.5 inline-flex items-center px-2 py-1 rounded-lg text-[12px] font-bold
-                             bg-amber-500/10 text-amber-700 dark:text-amber-400">
-              review
-            </span>
-          )}
+          </p>
+          <p className="standfirst text-[13px] mt-3 max-w-[34ch]">
+            {clear
+              ? "Nobody is blocked on a review from you."
+              : `${toReview === 1 ? "One pull request is" : `${toReview} pull requests are`} blocked until you look.`}
+          </p>
         </div>
-        <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-2.5">
-          {clear
-            ? "Nobody is blocked on a review from you."
-            : `${toReview === 1 ? "One pull request is" : `${toReview} pull requests are`} blocked until you look.`}
-        </p>
-      </div>
 
-      <div className={`${SURFACE.card} overflow-hidden grid sm:grid-cols-2 lg:grid-cols-1
-                       gap-px bg-slate-200/70 dark:bg-ink/[0.07]`}>
-        <MiniStat icon="ph-git-merge" tone="text-emerald-600 dark:text-emerald-400"
+        <MiniStat icon="ph-git-merge" tone="text-forest"
           label="Ready to merge" value={mergeable}
           foot={mergeable ? "nothing is in the way" : "none waiting to go out"} />
-        <MiniStat icon="ph-wrench" tone="text-amber-600 dark:text-amber-400"
+        <MiniStat icon="ph-wrench" tone="text-ochre"
           label="Need your attention" value={onYou}
           foot={onYou ? "conflicts, checks or a stale base" : "none of yours are stuck"} />
       </div>
+      <div className="border-t border-rule mt-6" />
     </div>
   );
 }
@@ -303,19 +266,13 @@ function MiniStat({ icon, label, value, foot, tone }: {
   icon: string; label: string; value: number; foot: string; tone: string;
 }) {
   return (
-    <div className="bg-white dark:bg-paper px-5 py-4 flex items-center gap-4">
-      <i className={`${icon} ph-fill text-[19px] ${value === 0 ? "text-slate-300 dark:text-slate-600" : tone}`}
-         aria-hidden="true" />
-      <div className="min-w-0">
-        <div className="flex items-baseline gap-2">
-          <span className={`text-[22px] font-semibold tabular-nums leading-none
-            ${value === 0 ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-ink"}`}>
-            {value}
-          </span>
-          <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">{label}</span>
-        </div>
-        <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1 truncate">{foot}</p>
-      </div>
+    <div className="px-0 sm:px-8 py-4 sm:py-0">
+      <p className="caps flex items-baseline gap-2">
+        <i className={`${icon} ph-bold text-[13px] ${value === 0 ? "text-ink-4" : tone}`} aria-hidden="true" />
+        {label}
+      </p>
+      <p className={`figure text-[2.5rem] mt-3 ${value === 0 ? "text-ink-4" : "text-ink"}`}>{value}</p>
+      <p className="standfirst text-[12px] mt-2 truncate">{foot}</p>
     </div>
   );
 }
@@ -327,7 +284,7 @@ function Queue() {
   const [queueLimit, setQueueLimit] = useState<number | null>(readQueueLimit);
   const { data, isLoading, isError, error, refetch } = useMyWork();
 
-  if (isLoading) return <div className="py-16 flex justify-center"><Spinner /></div>;
+  if (isLoading) return <Spinner label="Reading your queue" />;
   if (isError) return <LoadFailed what="your queue" error={error as Error} onRetry={() => refetch()} />;
   if (!data) return null;
 
@@ -373,7 +330,7 @@ function Queue() {
         </Note>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Waiting on you" count={visibleToReview.length}
           note="Reviews other people are blocked on."
           action={
@@ -389,8 +346,8 @@ function Queue() {
                 } catch { /* Not being able to remember it does not stop it working now. */ }
               }}
               title="Counts everybody still awaiting review, you included."
-              className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-ink/[0.06]
-                         border border-slate-200 dark:border-ink/10 text-slate-600 dark:text-slate-300">
+              className="caps bg-transparent border-0 border-b border-rule-strong py-1 pr-5
+                         text-ink-2 hover:text-ink focus:outline-none focus:border-ink transition-colors">
               <option value="">any number reviewing</option>
               <option value="1">only me reviewing</option>
               <option value="2">me and at most one other</option>
@@ -411,7 +368,7 @@ function Queue() {
             : <Paged items={visibleToReview} keyOf={pr => pr.url}
                 render={pr => <PullRow pr={pr} showAuthor />} />}
           {visibleToReview.length > 0 && hiddenToReview > 0 && (
-            <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-2">
+            <p className="standfirst text-[12px] px-5 py-3 border-t border-rule">
               {hiddenToReview} more {hiddenToReview === 1 ? "review has" : "reviews have"} more
               reviewers than that.
             </p>
@@ -428,8 +385,8 @@ function Queue() {
       </div>
 
       {data.cachedAt && (
-        <p className="mt-4 text-[11.5px] text-slate-400 dark:text-slate-500">
-          Collected {new Date(data.cachedAt).toLocaleString()}.
+        <p className="caps mt-5 pt-3 border-t border-rule">
+          Collected {new Date(data.cachedAt).toLocaleString()}
         </p>
       )}
     </>
@@ -475,16 +432,15 @@ function iconFor(label: string, gate: "push" | "merge"): string {
 function GateRow({ rule, tone }: { rule: PushRule; tone: "block" | "need" }) {
   const block = tone === "block";
   return (
-    <div className="flex items-start gap-3.5 px-5 py-3.5">
-      <span className={`mt-[1px] w-8 h-8 rounded-xl shrink-0 grid place-items-center ${
-        block
-          ? "bg-rose-50 dark:bg-rose-500/10 text-rose-500 dark:text-rose-400"
-          : "bg-sky-50 dark:bg-sky-500/10 text-sky-500 dark:text-sky-400"}`}>
+    <div className="flex items-start gap-4 px-5 py-4">
+      <span className={`mt-0.5 w-8 h-8 shrink-0 grid place-items-center border ${
+        block ? "border-crimson-edge bg-crimson-wash text-crimson"
+              : "border-indigo-edge bg-indigo-wash text-indigo"}`}>
         <i className={`ph-bold ${iconFor(rule.label, rule.gate)} text-[15px]`} aria-hidden="true" />
       </span>
       <div className="min-w-0">
-        <div className="text-[13.5px] font-semibold text-slate-900 dark:text-slate-100">{rule.label}</div>
-        <div className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">{rule.detail}</div>
+        <div className="display text-[1.0625rem] leading-snug text-ink">{rule.label}</div>
+        <div className="standfirst text-[12.5px] mt-1">{rule.detail}</div>
       </div>
     </div>
   );
@@ -503,45 +459,39 @@ function Verdict({ data }: { data: PushCheckData }) {
   const unknown = !!data.unreadable || !data.reachable;
 
   const look = unknown
-    ? { wash: "bg-amber-400", icon: "ph-question", tint: "text-amber-600 dark:text-amber-400",
+    ? { wash: "bg-ochre", icon: "ph-question", tint: "text-ochre",
         title: "Cannot say", sub: data.message ?? "The rules could not be read." }
     : data.protected === false
-      ? { wash: "bg-emerald-500", icon: "ph-lock-simple-open", tint: "text-emerald-600 dark:text-emerald-400",
+      ? { wash: "bg-forest", icon: "ph-lock-simple-open", tint: "text-forest",
           title: "You can push", sub: `Nothing protects ${data.branch}.` }
       : data.canBypass
-        ? { wash: "bg-amber-400", icon: "ph-shield-star", tint: "text-amber-600 dark:text-amber-400",
+        ? { wash: "bg-ochre", icon: "ph-shield-star", tint: "text-ochre",
             title: "You can push anyway", sub: data.bypassNote ?? "" }
         : blocked
-          ? { wash: "bg-rose-500", icon: "ph-prohibit", tint: "text-rose-600 dark:text-rose-400",
+          ? { wash: "bg-crimson", icon: "ph-prohibit", tint: "text-crimson",
               title: "You cannot push directly", sub: `Open a pull request into ${data.branch} instead.` }
-          : { wash: "bg-emerald-500", icon: "ph-check-circle", tint: "text-emerald-600 dark:text-emerald-400",
+          : { wash: "bg-forest", icon: "ph-check-circle", tint: "text-forest",
               title: "Nothing blocks you", sub: `${data.branch} is protected, but not against you.` };
 
   return (
-    <div className={`${SURFACE.card} relative overflow-hidden px-6 py-6`}>
-      <div aria-hidden="true"
-        className={`pointer-events-none absolute -right-20 -top-24 w-64 h-64 rounded-full blur-3xl opacity-[0.15] ${look.wash}`} />
-      <div className="flex items-start gap-4">
-        <span className={`w-12 h-12 rounded-2xl grid place-items-center shrink-0
-                          bg-white dark:bg-ink/[0.06] border border-slate-200/80 dark:border-ink/10 ${look.tint}`}>
+    <div className="mb-2">
+      <span className={`block h-[3px] w-full ${look.wash}`} aria-hidden="true" />
+      <div className="flex items-start gap-5 pt-5">
+        <span className={`w-12 h-12 grid place-items-center shrink-0 border border-rule-strong ${look.tint}`}>
           <i className={`ph-fill ${look.icon} text-[22px]`} aria-hidden="true" />
         </span>
-        <div className="min-w-0 pt-0.5">
-          <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900 dark:text-ink leading-tight">
+        <div className="min-w-0">
+          <h2 className={`display text-[clamp(1.75rem,3.2vw,2.375rem)] leading-tight ${look.tint}`}>
             {look.title}
           </h2>
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1 max-w-[62ch] leading-relaxed">
-            {look.sub}
-          </p>
-          <div className="flex items-center gap-1.5 mt-3">
-            <span className="text-[11px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-ink/[0.07]
-                             text-slate-600 dark:text-slate-300">{data.repo}</span>
-            <i className="ph-bold ph-caret-right text-[10px] text-slate-300 dark:text-slate-600" aria-hidden="true" />
-            <span className="text-[11px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-ink/[0.07]
-                             text-slate-600 dark:text-slate-300">{data.branch}</span>
+          <p className="standfirst text-[14px] mt-2 max-w-[62ch]">{look.sub}</p>
+          <div className="dateline mt-3 font-mono text-[12px]">
+            <span>{data.repo}</span>
+            <span>{data.branch}</span>
           </div>
         </div>
       </div>
+      <div className="border-t border-rule mt-6" />
     </div>
   );
 }
@@ -566,36 +516,30 @@ function PushCheck() {
   const needs = data?.mergeNeeds ?? [];
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-6">
       {/* The question, kept to one line so it does not read as a settings form. */}
-      <div className={`${SURFACE.card} p-4 flex flex-wrap items-end gap-3`}>
-        <div className="flex-1 min-w-[220px]">
-          <label className="block text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 mb-1.5">
-            Repository
-          </label>
+      <div className="flex flex-wrap items-end gap-8 border-t-2 border-ink pt-5">
+        <div className="flex-1 min-w-[14rem]">
+          <label className="caps block mb-1">Repository</label>
           <input list="mywork-repos" value={repo} onChange={e => setRepo(e.target.value)}
-            placeholder="Start typing a name" className={SURFACE.input} />
+            placeholder="Start typing a name" className="field-line display text-[1.125rem]" />
           <datalist id="mywork-repos">{names.map(n => <option key={n} value={n} />)}</datalist>
         </div>
-        <div className="w-[180px]">
-          <label className="block text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500 mb-1.5">
-            Branch
-          </label>
-          <input value={branch} onChange={e => setBranch(e.target.value)} placeholder="main" className={SURFACE.input} />
+        <div className="w-[11rem]">
+          <label className="caps block mb-1">Branch</label>
+          <input value={branch} onChange={e => setBranch(e.target.value)} placeholder="main"
+            className="field-line display text-[1.125rem]" />
         </div>
       </div>
 
       {!repo && (
-        <div className={`${SURFACE.card} px-6 py-14 text-center`}>
-          <i className="ph-duotone ph-git-branch text-[34px] text-slate-300 dark:text-slate-600" aria-hidden="true" />
-          <p className="text-[13.5px] text-slate-500 dark:text-slate-400 mt-3 max-w-[46ch] mx-auto leading-relaxed">
-            Pick a repository and branch. This says what will happen before you try it,
-            and who can let you through if something is in the way.
-          </p>
-        </div>
+        <p className="standfirst text-[15px] py-12 text-center max-w-[48ch] mx-auto">
+          Pick a repository and branch. This says what will happen before you try it,
+          and who can let you through if something is in the way.
+        </p>
       )}
 
-      {repo && isFetching && <div className="py-20 flex justify-center"><Spinner /></div>}
+      {repo && isFetching && <Spinner label="Reading the rules" />}
       {repo && isError && <Note intent="danger">{(error as Error)?.message ?? "Could not read the rules."}</Note>}
 
       {data && !isFetching && (
@@ -603,10 +547,10 @@ function PushCheck() {
           <Verdict data={data} />
 
           {data.reachable && !data.unreadable && data.protected && (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-2">
               {blocks.length > 0 && (
                 <Panel title="In the way of a direct push" count={blocks.length}>
-                  <div className="divide-y divide-slate-100 dark:divide-ink/[0.06]">
+                  <div className="divide-y divide-rule">
                     {blocks.map(r => <GateRow key={r.label} rule={r} tone="block" />)}
                   </div>
                 </Panel>
@@ -616,7 +560,7 @@ function PushCheck() {
                 note={needs.length === 0 ? undefined : "Every one of these, before it can merge."}>
                 {needs.length === 0
                   ? <Quiet>Nothing beyond opening it.</Quiet>
-                  : <div className="divide-y divide-slate-100 dark:divide-ink/[0.06]">
+                  : <div className="divide-y divide-rule">
                       {needs.map(r => <GateRow key={r.label} rule={r} tone="need" />)}
                     </div>}
               </Panel>
@@ -626,17 +570,12 @@ function PushCheck() {
           {(data.approvers?.length ?? 0) > 0 && (
             <Panel title="Who can let you through" count={data.approvers!.length}
               note="Admins can change the rule as well as satisfy it.">
-              <div className="flex flex-wrap gap-2 p-5">
+              <div className="flex flex-wrap gap-x-7 gap-y-3 p-5">
                 {data.approvers!.map(p => (
-                  <span key={p.login}
-                    className="inline-flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full
-                               bg-slate-50 dark:bg-ink/[0.05] border border-slate-200/80 dark:border-ink/10">
+                  <span key={p.login} className="inline-flex items-center gap-2.5">
                     <UserAvatar login={p.login} size={20} />
-                    <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">{p.login}</span>
-                    {p.role === "admin" && (
-                      <span className="text-[9.5px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded
-                                       bg-slate-900 dark:bg-white text-reverse dark:text-slate-900">admin</span>
-                    )}
+                    <span className="text-[13px] text-ink">{p.login}</span>
+                    {p.role === "admin" && <Pill intent="neutral">admin</Pill>}
                   </span>
                 ))}
               </div>
@@ -711,7 +650,7 @@ function Shipped() {
           options={[["7", "7 days"], ["30", "30 days"], ["90", "90 days"]]} />
       </div>
 
-      {isLoading && <div className="py-20 flex justify-center"><Spinner /></div>}
+      {isLoading && <Spinner label="Reading what you shipped" />}
       {isError && <LoadFailed what="your shipping history" error={error as Error} onRetry={() => refetch()} />}
 
       {data && (
@@ -726,81 +665,68 @@ function Shipped() {
             </Note>
           )}
 
-          <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-            <div className={`${SURFACE.card} relative overflow-hidden px-6 py-5`}>
-              <div aria-hidden="true"
-                className={`pointer-events-none absolute -right-16 -top-16 w-56 h-56 rounded-full blur-2xl opacity-[0.16]
-                  ${data.merged.length > 0 ? "bg-emerald-500" : "bg-slate-400"}`} />
-              <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
-                Merged in {data.days} days
-              </div>
-              <div className="flex items-end gap-3 mt-2.5">
-                <span className={`text-[52px] font-semibold tabular-nums leading-[0.85] tracking-[-0.04em]
-                  ${data.merged.length === 0 ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-ink"}`}>
+          <div className="mb-7">
+            <span className={`block h-[3px] w-full ${data.merged.length > 0 ? "bg-forest" : "bg-rule-strong"}`}
+              aria-hidden="true" />
+            <div className="grid gap-0 sm:grid-cols-[1.35fr_1fr] columned pt-5">
+              <div className="pr-8">
+                <p className="caps">Merged in {data.days} days</p>
+                <p className={`figure text-[clamp(3rem,6vw,4.25rem)] mt-3 ${
+                  data.merged.length === 0 ? "text-ink-4" : "text-forest"}`}>
                   {data.merged.length}
-                </span>
-                {data.pushes > 0 && (
-                  <span className="mb-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold
-                                   bg-slate-100 dark:bg-ink/[0.07] text-slate-500 dark:text-slate-400">
-                    <i className="ph-bold ph-arrow-fat-line-up text-[12px]" aria-hidden="true" />
-                    {data.pushes} direct
+                </p>
+                <div className="dateline mt-3">
+                  {data.pushes > 0 && <span>{data.pushes} pushed directly</span>}
+                  <span>
+                    {data.merged.length === 0
+                      ? (data.detailedLogging ? "Nothing merged in this window." : "Nothing recorded.")
+                      : `Across ${byDay.length} ${byDay.length === 1 ? "day" : "days"}.`}
                   </span>
-                )}
+                </div>
               </div>
-              <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-2.5">
-                {data.merged.length === 0
-                  ? (data.detailedLogging ? "Nothing merged in this window." : "Nothing recorded.")
-                  : `Across ${byDay.length} ${byDay.length === 1 ? "day" : "days"}.`}
-              </p>
-            </div>
 
-            <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-ink/[0.07]`}>
-              <MiniStat icon="ph-calendar-check" tone="text-violet-600 dark:text-violet-400"
+              <MiniStat icon="ph-calendar-check" tone="text-indigo"
                 label="Active days" value={byDay.length}
                 foot={byDay.length ? "days you shipped something" : "no merges in the window"} />
             </div>
+            <div className="border-t border-rule mt-6" />
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
+          <div className="grid gap-6 lg:grid-cols-[1.35fr_1fr]">
             <Panel title="What went out" count={data.merged.length} note="Grouped by the day it merged.">
               {byDay.length === 0
                 ? <Quiet>{data.detailedLogging ? "Nothing merged in this window." : "Nothing recorded."}</Quiet>
                 : <Paged items={byDay} keyOf={day => day.label} perPage={4} bare
                     render={day => (
                       <div>
-                        <div className="flex items-center gap-3 mb-2">
-                          <span className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-                            {day.label}
-                          </span>
-                          <span className="flex-1 h-px bg-slate-200/70 dark:bg-ink/[0.07]" />
-                          <span className="text-[11px] tabular-nums text-slate-300 dark:text-slate-600">
-                            {day.rows.length}
-                          </span>
+                        <div className="flex items-baseline gap-3 mb-2.5">
+                          <span className="caps text-ink">{day.label}</span>
+                          <span className="flex-1 border-t border-rule translate-y-[-3px]" />
+                          <span className="figure text-[0.8125rem] text-ink-3">{day.rows.length}</span>
                         </div>
                         <div className="grid gap-1.5">
                           {day.rows.map((e: ShipEntry) => {
                             const href = githubLinkFor(e, org);
                             const inner = (
                               <>
-                                <span className="text-[13px] font-medium text-slate-800 dark:text-slate-100 truncate">
+                                <span className="display text-[0.9375rem] text-ink truncate">
                                   {e.target || e.details}
                                 </span>
-                                <span className="ml-auto text-[11px] font-mono text-slate-400 dark:text-slate-500 shrink-0">
+                                <span className="ml-auto text-[11px] font-mono text-ink-3 shrink-0">
                                   {e.repo}{e.prNumber ? `#${e.prNumber}` : ""}
                                 </span>
                               </>
                             );
-                            const shape = "flex items-baseline gap-2.5 pl-3 border-l-2 border-emerald-400/70";
+                            const shape = "flex items-baseline gap-2.5 pl-3 py-1 border-l-2 border-forest no-underline";
                             // Plain text when there is nowhere to go. Something
                             // that looks clickable and lands on a 404 is worse
                             // than something that does not look clickable.
                             return href ? (
                               <a key={e.id} href={href} target="_blank" rel="noreferrer noopener"
-                                className={`${shape} group/ship rounded-r hover:bg-slate-50 dark:hover:bg-ink/[0.04] transition-colors`}>
+                                className={`${shape} group/ship hover:bg-ink/[0.035] transition-colors`}>
                                 {inner}
-                                <i className="ph-bold ph-arrow-square-out text-[11px] text-slate-300 dark:text-slate-600
-                                              opacity-0 group-hover/ship:opacity-100 transition-opacity shrink-0"
-                                   aria-hidden="true" />
+                                <span className="caps shrink-0 opacity-0 group-hover/ship:opacity-100 transition-opacity"
+                                  aria-hidden="true">Open</span>
                               </a>
                             ) : (
                               <div key={e.id} className={shape}>{inner}</div>
@@ -831,7 +757,7 @@ export default function MyWorkPage() {
         actions={<RefreshButton onRefresh={() => work.refetch()} />}
       />
 
-      <div className="mb-5">
+      <div className="mb-7">
         <Segmented
           value={lens}
           onChange={v => setLens(v as Lens)}

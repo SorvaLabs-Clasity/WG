@@ -1687,7 +1687,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
                 href={githubLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-semibold bg-slate-100 dark:bg-paper-2 hover:bg-slate-200 dark:hover:bg-paper-3 text-slate-700 dark:text-slate-300 px-3 py-1.5 rounded-md transition-colors flex items-center gap-1.5 border border-slate-200 dark:border-rule"
+                className="stamp stamp-hollow"
               >
                 <i className="ph-fill ph-github-logo text-sm"></i>
                 View in GitHub
@@ -2132,7 +2132,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
             <button type="button" onClick={onClose} className="px-4 py-2 border border-slate-300 dark:border-rule rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-paper-2 dark:text-slate-300 transition-colors" disabled={isSaving}>
               Cancel
             </button>
-            <button type="submit" className="px-4 py-2 bg-slate-900 text-reverse rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors" disabled={isSaving}>
+            <button type="submit" className="stamp" disabled={isSaving}>
               {isSaving ? "Saving..." : isEditing ? "Update Widget" : "Save Widget"}
             </button>
           </div>

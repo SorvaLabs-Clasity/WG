@@ -116,7 +116,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
       <div className="absolute inset-0 bg-ink/40 -[3px] animate-fade-in" onClick={onClose}></div>
         <div className="bg-white dark:bg-paper rounded-none shadow-modal border border-black/10 dark:border-rule w-full max-w-3xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
         
-        <div className="px-6 py-4 border-b border-gh-border dark:border-rule flex items-center justify-between bg-white dark:bg-paper pt-5 shrink-0 rounded-t-[12px]">
+        <div className="px-6 py-4 border-b border-rule dark:border-rule flex items-center justify-between bg-white dark:bg-paper pt-5 shrink-0 rounded-t-[12px]">
           <h3 className="text-lg font-bold text-gray-900 dark:text-ink tracking-tight">
             {scanner ? "Edit Scanner" : "Create Compliance Scanner"}
           </h3>
@@ -137,7 +137,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. SOC2 Branch Compliance" 
-                className="block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                className="field-line text-[13.5px] w-full"
               />
             </div>
             <div>
@@ -147,10 +147,10 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What does this verify?" 
-                className="block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                className="field-line text-[13.5px] w-full"
               />
             </div>
-            <div className="border border-gh-border dark:border-rule rounded-lg p-4 bg-gray-50/30 dark:bg-paper-2/30">
+            <div className="border border-rule dark:border-rule rounded-lg p-4 bg-gray-50/30 dark:bg-paper-2/30">
               <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-3">Target Repositories</label>
               
               <div className="space-y-4">
@@ -160,7 +160,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                     name="targetType"
                     checked={targetReposType === "all"}
                     onChange={() => setTargetReposType("all")}
-                    className="mt-0.5 w-4 h-4 text-gh-blue border-gray-300 dark:border-rule focus:ring-gh-blue"
+                    className="accent-ink w-4 h-4 cursor-pointer mt-0.5"
                   />
                   <div>
                     <span className="block text-sm font-medium text-gh-textBase dark:text-slate-200">All repositories (auto-include future repos)</span>
@@ -174,7 +174,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                     name="targetType"
                     checked={targetReposType === "selected"}
                     onChange={() => setTargetReposType("selected")}
-                    className="mt-0.5 w-4 h-4 text-gh-blue border-gray-300 dark:border-rule focus:ring-gh-blue"
+                    className="accent-ink w-4 h-4 cursor-pointer mt-0.5"
                   />
                   <div>
                     <span className="block text-sm font-medium text-gh-textBase dark:text-slate-200">Selected repositories</span>
@@ -189,7 +189,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                         type="checkbox"
                         checked={includeFutureRepos}
                         onChange={(e) => setIncludeFutureRepos(e.target.checked)}
-                        className="w-4 h-4 text-gh-blue border-gray-300 dark:border-rule rounded focus:ring-gh-blue"
+                        className="accent-ink w-4 h-4 cursor-pointer"
                       />
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">Auto-include future repositories</span>
@@ -231,7 +231,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   setSelectedRepos(selectedRepos.filter(name => name !== r.name));
                                 }
                               }}
-                              className="w-4 h-4 text-gh-blue border-gray-300 dark:border-rule rounded focus:ring-gh-blue focus:ring-offset-1 transition-all"
+                              className="accent-ink w-4 h-4 cursor-pointer"
                             />
                             <span className="text-sm font-mono text-gh-textBase dark:text-slate-200">{r.name}</span>
                           </label>
@@ -247,7 +247,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
             </div>
           </div>
 
-          <hr className="border-gh-border dark:border-rule" />
+          <hr className="border-rule dark:border-rule" />
 
           <div>
             <div className="flex justify-between items-end mb-3">
@@ -262,7 +262,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
             <div className="space-y-4">
               {conditions.map((cond, idx) => (
-                <div key={idx} className="border border-gh-border dark:border-rule rounded-lg bg-gray-50/30 dark:bg-paper-2/30 p-4 relative">
+                <div key={idx} className="border border-rule dark:border-rule rounded-lg bg-gray-50/30 dark:bg-paper-2/30 p-4 relative">
                   <button 
                     onClick={() => removeCondition(idx)}
                     className="absolute top-3 right-3 text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400"
@@ -275,7 +275,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                     <select 
                       value={cond.type || "branch_protection"}
                       onChange={(e) => updateCondition(idx, "type", e.target.value)}
-                      className="block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                      className="field-line text-[13.5px] w-full"
                     >
                       <option value="branch_protection">Branch Protection Rule</option>
                       <option value="query">Security Insight Query</option>
@@ -307,13 +307,13 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                     </div>
 
                   {cond.requiresProtection && (
-                    <div className="mt-3 border-t border-gh-border dark:border-rule pt-4">
+                    <div className="mt-3 border-t border-rule dark:border-rule pt-4">
                       <div className="mb-3">
                         <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Protection Type</label>
                         <select 
                           value={cond.protectionType || "any"}
                           onChange={(e) => updateCondition(idx, "protectionType", e.target.value)}
-                          className="block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                          className="field-line text-[13.5px] w-full"
                         >
                           <option value="any">Must have ANY protection</option>
                           <option value="ruleset">Must use Repository Ruleset</option>
@@ -326,7 +326,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                         <select 
                           value={cond.ruleMatchType || "at_least"}
                           onChange={(e) => updateCondition(idx, "ruleMatchType", e.target.value)}
-                          className="block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                          className="field-line text-[13.5px] w-full"
                         >
                           <option value="any">Any rules (just check if protection exists)</option>
                           <option value="at_least">Must have at least the selected rules</option>
@@ -344,7 +344,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             type="checkbox" 
                             checked={!!cond.rules?.requirePr}
                             onChange={(e) => updateRule(idx, "requirePr", e.target.checked)}
-                            className="rounded text-gh-blue focus:ring-gh-blue"
+                            className="field-line text-[13.5px]"
                           />
                           Require Pull Request
                         </label>
@@ -357,7 +357,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               min="1" max="5"
                               value={cond.rules.minApprovals || 1}
                               onChange={(e) => updateRule(idx, "minApprovals", parseInt(e.target.value))}
-                              className="w-16 rounded-md border-gray-300 dark:border-rule py-1 px-2 text-xs ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200 focus:border-gh-blue"
+                              className="field-line text-[13.5px]"
                             />
                           </div>
                         )}
@@ -367,7 +367,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             type="checkbox" 
                             checked={!!cond.rules?.dismissStaleReviews}
                             onChange={(e) => updateRule(idx, "dismissStaleReviews", e.target.checked)}
-                            className="rounded text-gh-blue focus:ring-gh-blue"
+                            className="field-line text-[13.5px]"
                           />
                           Dismiss stale reviews
                         </label>
@@ -377,7 +377,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             type="checkbox" 
                             checked={!!cond.rules?.preventForcePush}
                             onChange={(e) => updateRule(idx, "preventForcePush", e.target.checked)}
-                            className="rounded text-gh-blue focus:ring-gh-blue"
+                            className="field-line text-[13.5px]"
                           />
                           Prevent force pushing
                         </label>
@@ -387,7 +387,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             type="checkbox" 
                             checked={!!cond.rules?.preventDeletion}
                             onChange={(e) => updateRule(idx, "preventDeletion", e.target.checked)}
-                            className="rounded text-gh-blue focus:ring-gh-blue"
+                            className="field-line text-[13.5px]"
                           />
                           Prevent deletion
                         </label>
@@ -404,7 +404,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireCodeOwnerReviews}
                               onChange={(e) => updateRule(idx, "requireCodeOwnerReviews", e.target.checked)}
-                              className="rounded text-gh-blue focus:ring-gh-blue"
+                              className="field-line text-[13.5px]"
                             />
                             Require Code Owner review
                           </label>
@@ -413,7 +413,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireConversationResolution}
                               onChange={(e) => updateRule(idx, "requireConversationResolution", e.target.checked)}
-                              className="rounded text-gh-blue focus:ring-gh-blue"
+                              className="field-line text-[13.5px]"
                             />
                             Require conversation resolution
                           </label>
@@ -422,7 +422,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireStatusChecks}
                               onChange={(e) => updateRule(idx, "requireStatusChecks", e.target.checked)}
-                              className="rounded text-gh-blue focus:ring-gh-blue"
+                              className="field-line text-[13.5px]"
                             />
                             Require status checks
                           </label>
@@ -431,7 +431,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.strictStatusChecks}
                               onChange={(e) => updateRule(idx, "strictStatusChecks", e.target.checked)}
-                              className="rounded text-gh-blue focus:ring-gh-blue"
+                              className="field-line text-[13.5px]"
                             />
                             Strict status checks (require up to date)
                           </label>
@@ -440,7 +440,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireSignedCommits}
                               onChange={(e) => updateRule(idx, "requireSignedCommits", e.target.checked)}
-                              className="rounded text-gh-blue focus:ring-gh-blue"
+                              className="field-line text-[13.5px]"
                             />
                             Require signed commits
                           </label>
@@ -449,7 +449,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireLinearHistory}
                               onChange={(e) => updateRule(idx, "requireLinearHistory", e.target.checked)}
-                              className="rounded text-gh-blue focus:ring-gh-blue"
+                              className="field-line text-[13.5px]"
                             />
                             Require linear history
                           </label>
@@ -458,7 +458,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.enforceAdmins}
                               onChange={(e) => updateRule(idx, "enforceAdmins", e.target.checked)}
-                              className="rounded text-gh-blue focus:ring-gh-blue"
+                              className="field-line text-[13.5px]"
                             />
                             Enforce for admins
                           </label>
@@ -490,7 +490,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             updateCondition(idx, "queryAdvanced", undefined);
                           }
                         }}
-                        className="block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                        className="field-line text-[13.5px] w-full"
                       >
                         <option value="" disabled>Select a query...</option>
                         {QUERY_OPTIONS.map(q => (
@@ -521,7 +521,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   value={cond.queryParam || ""}
                                   onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
                                   placeholder={`Enter ${paramNoun(selectedQuery.paramLabel)}...`}
-                                  className="block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                                  className="field-line text-[13.5px] w-full"
                                 />
                               )}
                             </div>
@@ -535,7 +535,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                 <select 
                                   value={cond.queryAdvanced?.protectionType || "any"}
                                   onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}
-                                  className="block w-full rounded-md border-gray-300 dark:border-rule shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                                  className="field-line text-[13.5px] w-full"
                                 >
                                   <option value="any">Any protection</option>
                                   <option value="classic">Classic only</option>
@@ -548,7 +548,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.requirePr}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requirePr: e.target.checked })}
-                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                    className="field-line text-[13.5px]"
                                   /> Require PRs
                                 </label>
                                 <label className="flex items-center gap-2">
@@ -556,7 +556,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.requireStatusChecks}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requireStatusChecks: e.target.checked })}
-                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                    className="field-line text-[13.5px]"
                                   /> Require Status Checks
                                 </label>
                                 <label className="flex items-center gap-2">
@@ -564,7 +564,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.enforceAdmins}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, enforceAdmins: e.target.checked })}
-                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                    className="field-line text-[13.5px]"
                                   /> Enforce Admins
                                 </label>
                               </div>
@@ -599,7 +599,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             updateCondition(idx, "queryAdvanced", undefined);
                           }
                         }}
-                        className="block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                        className="field-line text-[13.5px] w-full"
                       >
                         <option value="" disabled>Select a query...</option>
                         {QUERY_OPTIONS.map(q => (
@@ -630,7 +630,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   value={cond.queryParam || ""}
                                   onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
                                   placeholder={`Enter ${paramNoun(selectedQuery.paramLabel)}...`}
-                                  className="block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                                  className="field-line text-[13.5px] w-full"
                                 />
                               )}
                             </div>
@@ -644,7 +644,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                 <select 
                                   value={cond.queryAdvanced?.protectionType || "any"}
                                   onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}
-                                  className="block w-full rounded-md border-gray-300 dark:border-rule shadow-sm focus:border-gh-blue sm:text-sm py-1.5 px-3 ring-1 ring-inset ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200"
+                                  className="field-line text-[13.5px] w-full"
                                 >
                                   <option value="any">Any protection</option>
                                   <option value="classic">Classic only</option>
@@ -657,7 +657,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.requirePr}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requirePr: e.target.checked })}
-                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                    className="field-line text-[13.5px]"
                                   /> Require PRs
                                 </label>
                                 <label className="flex items-center gap-2">
@@ -665,7 +665,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.requireStatusChecks}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requireStatusChecks: e.target.checked })}
-                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                    className="field-line text-[13.5px]"
                                   /> Require Status Checks
                                 </label>
                                 <label className="flex items-center gap-2">
@@ -673,7 +673,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.enforceAdmins}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, enforceAdmins: e.target.checked })}
-                                    className="rounded text-gh-blue focus:ring-gh-blue"
+                                    className="field-line text-[13.5px]"
                                   /> Enforce Admins
                                 </label>
                               </div>
@@ -700,17 +700,17 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
           </div>
         </div>
 
-        <div className="px-6 py-4 border-t border-gh-border dark:border-rule bg-gray-50/50 dark:bg-paper-2/50 flex justify-end gap-3 rounded-b-[12px] shrink-0">
+        <div className="px-6 py-4 border-t border-rule dark:border-rule bg-gray-50/50 dark:bg-paper-2/50 flex justify-end gap-3 rounded-b-[12px] shrink-0">
           <button 
             onClick={onClose}
-            className="px-4 py-2 border border-gh-border dark:border-rule shadow-sm text-sm font-medium rounded-md text-gh-textBase dark:text-slate-200 bg-white dark:bg-paper-2 hover:bg-gray-50 dark:hover:bg-paper-3 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-200 dark:focus:ring-rule"
+            className="stamp stamp-hollow"
           >
             Cancel
           </button>
           <button 
             onClick={handleSave}
             disabled={!name || createMutation.isPending || updateMutation.isPending || conditions.some(c => (c as any).hasPendingBranch || (c as any).hasPendingQuery)}
-            className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-reverse bg-gh-blue hover:bg-gh-blueHover focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gh-blue/50 disabled:opacity-50"
+            className="stamp"
           >
             {createMutation.isPending || updateMutation.isPending ? "Saving..." : "Save Scanner"}
           </button>

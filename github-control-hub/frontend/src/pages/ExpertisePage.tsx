@@ -29,10 +29,7 @@ interface Answer {
 
 const labelClass = "block text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1.5";
 
-const inputClass =
-  "w-full px-3.5 py-2.5 text-sm bg-white dark:bg-ink/[0.06] border border-slate-200 dark:border-ink/10 " +
-  "rounded-xl text-slate-700 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 " +
-  "focus:outline-none focus:ring-2 focus:ring-gh-blue/40 focus:border-gh-blue transition-shadow";
+const inputClass = "field-line text-[13.5px]";
 
 /**
  * What each mode asks and what it costs, said where it is chosen.

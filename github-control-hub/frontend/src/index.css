@@ -284,6 +284,22 @@ input::placeholder, textarea::placeholder { color: rgb(var(--ink-4)); }
   .stamp-crimson:hover { background: transparent; color: rgb(var(--crimson)); }
   .stamp-crimson:disabled { background: rgb(var(--crimson)); color: rgb(var(--paper)); }
 
+  /** The same, in the other three inks. Each is still rare by construction. */
+  .stamp-ochre { background: rgb(var(--ochre)); border-color: rgb(var(--ochre)); color: rgb(var(--paper)); }
+  .stamp-ochre:hover { background: transparent; color: rgb(var(--ochre)); }
+  .stamp-ochre:disabled { background: rgb(var(--ochre)); color: rgb(var(--paper)); }
+
+  .stamp-forest { background: rgb(var(--forest)); border-color: rgb(var(--forest)); color: rgb(var(--paper)); }
+  .stamp-forest:hover { background: transparent; color: rgb(var(--forest)); }
+  .stamp-forest:disabled { background: rgb(var(--forest)); color: rgb(var(--paper)); }
+
+  .stamp-indigo { background: rgb(var(--indigo)); border-color: rgb(var(--indigo)); color: rgb(var(--paper)); }
+  .stamp-indigo:hover { background: transparent; color: rgb(var(--indigo)); }
+  .stamp-indigo:disabled { background: rgb(var(--indigo)); color: rgb(var(--paper)); }
+
+  /** A stamp at half size, for a control that sits inside a row of records. */
+  .stamp-sm { padding: 0.3rem 0.6rem; font-size: 0.625rem; letter-spacing: 0.12em; }
+
   /** A field. An underline, never a box. */
   .field-line {
     display: block;

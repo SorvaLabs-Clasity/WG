@@ -298,7 +298,7 @@ export default function AccessPage() {
             {teamList.slice(0, LIST_CAP).map((t, i) => (
               <button key={t.slug} onClick={() => setOpenTeam(t.slug)}
                 style={enter(i, 12, 200)}
-                className="w-full text-left px-4 py-2.5 rounded-xl border border-slate-200 dark:border-rule bg-white dark:bg-paper hover:border-slate-400 dark:hover:border-rule transition-colors flex items-center justify-between gap-4">
+                className="stamp stamp-hollow w-full justify-between">
                 <span className="font-semibold text-[13.5px] text-slate-800 dark:text-slate-100 truncate">
                   {t.name}
                   <span className="ml-2 font-mono text-[12px] text-slate-400 dark:text-slate-500">{t.slug}</span>
@@ -333,7 +333,7 @@ export default function AccessPage() {
               {repoList.slice(0, LIST_CAP).map((r, i) => (
                 <button key={r} onClick={() => setOpenRepo(r)}
                   style={enter(i, 12, 200)}
-                  className="w-full text-left px-4 py-2.5 rounded-xl border border-slate-200 dark:border-rule bg-white dark:bg-paper font-mono text-[13.5px] font-semibold text-slate-800 dark:text-slate-100 hover:border-slate-400 dark:hover:border-rule hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                  className="stamp stamp-hollow w-full">
                   {r}
                 </button>
               ))}

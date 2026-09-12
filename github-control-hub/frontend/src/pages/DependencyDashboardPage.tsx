@@ -664,7 +664,7 @@ export default function DependencyDashboardPage() {
 
                       {org && (
                         <a href={`https://github.com/${org}/${repo}/security/dependabot`} target="_blank" rel="noreferrer"
-                          className="px-3.5 py-2.5 rounded-xl bg-white dark:bg-paper border border-slate-200 dark:border-rule text-sm font-bold text-slate-700 dark:text-slate-200 shadow-sm hover:shadow transition-shadow inline-flex items-center gap-1.5">
+                          className="stamp stamp-hollow">
                           <i className="ph-fill ph-github-logo"></i>GitHub
                         </a>
                       )}
@@ -932,7 +932,7 @@ function VulnRow({ alert: a }: { alert: DependencyAlert }) {
           <a href={`https://github.com/advisories?query=${encodeURIComponent(a.cve)}`}
             target="_blank" rel="noreferrer"
             title="Look up this advisory on GitHub"
-            className="shrink-0 font-mono text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-ink/[0.07] border border-slate-200 dark:border-ink/10 text-slate-600 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-700 transition-colors inline-flex items-center gap-1.5">
+            className="stamp stamp-hollow shrink-0">
             {a.cve}<i className="ph-bold ph-arrow-square-out text-[11px]"></i>
           </a>
         )}

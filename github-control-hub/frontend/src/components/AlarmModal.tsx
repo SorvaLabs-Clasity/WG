@@ -11,11 +11,8 @@ import TeamsWording from "./TeamsWording";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
-const inputClass =
-  "block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue " +
-  "focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset " +
-  "ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200";
-const labelClass = "block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1";
+const inputClass = "field-line text-[13.5px]";
+const labelClass = "caps block mb-1.5";
 
 /**
  * Configure one alarm on one widget.
@@ -191,7 +188,7 @@ export default function AlarmModal({
       <div className="absolute inset-0 bg-ink/40 -[3px] animate-fade-in" onClick={onClose}></div>
       <div className="bg-white dark:bg-paper rounded-none shadow-modal border border-black/10 dark:border-rule w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
 
-        <div className="px-6 py-4 border-b border-gh-border dark:border-rule flex items-center justify-between shrink-0 rounded-t-[12px]">
+        <div className="px-6 py-4 border-b border-rule dark:border-rule flex items-center justify-between shrink-0 rounded-t-[12px]">
           <h3 className="text-lg font-bold text-gray-900 dark:text-ink tracking-tight">
             {existing ? "Edit alarm" : "New alarm"}
           </h3>
@@ -350,7 +347,7 @@ export default function AlarmModal({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gh-border dark:border-rule flex justify-end gap-2 shrink-0">
+        <div className="px-6 py-4 border-t border-rule dark:border-rule flex justify-end gap-2 shrink-0">
           <button onClick={onClose}
             className="px-4 py-2 text-sm font-semibold rounded-md text-gh-textBase dark:text-slate-200 hover:bg-black/5 dark:hover:bg-ink/5">
             Cancel

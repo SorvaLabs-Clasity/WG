@@ -9,13 +9,9 @@ import TeamsWording from "./TeamsWording";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
-const inputClass =
-  "block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue " +
-  "focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset " +
-  "ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200";
-const labelClass = "block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1";
-const cardClass =
-  "bg-white dark:bg-paper rounded-none border border-gh-border dark:border-rule p-5";
+const inputClass = "field-line text-[13.5px]";
+const labelClass = "caps block mb-1.5";
+const cardClass = "bg-paper border border-rule p-5";
 
 /**
  * Everything that differs between the two feeds, in one place.

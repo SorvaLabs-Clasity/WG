@@ -46,7 +46,7 @@ export default function DetailedLoggingPanel() {
   };
 
   return (
-    <div className="bg-white dark:bg-paper rounded-lg border border-gh-border dark:border-rule shadow-subtle mb-4">
+    <div className="bg-white dark:bg-paper rounded-lg border border-rule dark:border-rule shadow-subtle mb-4">
       <div className="px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
           <i className="fa-solid fa-list-check text-gh-muted dark:text-slate-400"></i>
@@ -86,7 +86,7 @@ export default function DetailedLoggingPanel() {
       </div>
 
       {settings.enabled && open && (
-        <div className="border-t border-gh-border dark:border-rule px-4 py-3">
+        <div className="border-t border-rule dark:border-rule px-4 py-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2">
             {kinds.map(k => (
               <label key={k.id} className="flex items-start gap-2 cursor-pointer">
@@ -95,7 +95,7 @@ export default function DetailedLoggingPanel() {
                   checked={!disabled.has(k.id)}
                   disabled={save.isPending}
                   onChange={() => toggleKind(k.id)}
-                  className="mt-0.5 rounded border-slate-300 dark:border-rule text-gh-blue focus:ring-gh-blue"
+                  className="field-line text-[13.5px] mt-0.5"
                 />
                 <span className="min-w-0">
                   <span className="block text-sm text-gh-textBase dark:text-slate-200">{k.label}</span>
