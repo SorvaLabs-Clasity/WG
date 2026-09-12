@@ -1,4 +1,4 @@
-import { app, BrowserWindow, shell, dialog, ipcMain, session, Menu } from "electron";
+import { app, BrowserWindow, shell, dialog, ipcMain, session, Menu, nativeTheme } from "electron";
 import path from "path";
 import { autoUpdater } from "electron-updater";
 import { bootstrap } from "./bootstrap";
@@ -78,6 +78,17 @@ function createWindow(): void {
     minWidth: 1024,
     minHeight: 700,
     title: "GitHub Control Hub",
+    /**
+     * The stock the window is printed on.
+     *
+     * Without this Electron paints white until the renderer's first frame, so
+     * launching the app flashed a white rectangle before the warm paper ground
+     * arrived — and, in the night edition, a white rectangle before a dark one,
+     * which is the worst version of it. These are the two `--paper` values from
+     * the stylesheet; the system's own preference decides which, because the
+     * stored theme lives in the renderer and is not readable from here yet.
+     */
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#141210" : "#F7F4ED",
     // macOS reads the window icon from the app bundle; Windows and Linux need
     // it named here, including when running unpackaged in dev.
     icon: path.join(__dirname, "..", "assets", "icon.png"),
