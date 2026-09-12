@@ -135,7 +135,7 @@ export const COMPANY_NAME: string =
  * ground, and it is one step of warmth, not a different colour.
  */
 export const SURFACE = {
-  page: "bg-paper text-ink",
+  page: "page-ground text-ink",
   /** A ruled box. Radius and shadow utilities resolve to nothing app-wide. */
   card: "bg-paper border border-rule",
   /** Hover is a wash of ink, not a lift. Paper does not lift. */

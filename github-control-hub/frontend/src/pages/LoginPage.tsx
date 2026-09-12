@@ -22,6 +22,8 @@ import {
 } from "../api/auth";
 import { clearToken, isAuthenticated, getUserInfo, getToken } from "../api/client";
 import { useTheme } from "../hooks/useTheme";
+import ThemePicker from "../components/ThemePicker";
+import { themeEntry } from "../design/themes";
 import { INTENT, TYPE, SURFACE, EASE, enter, COMPANY_NAME, type Intent, Button, Segmented, Spinner } from "../design";
 
 /**
@@ -47,7 +49,16 @@ type Stage = "loading" | "offline" | "aws" | "github" | "ready";
 export default function LoginPage() {
   const navigate = useNavigate();
   const loginUrl = getLoginUrl();
-  const { theme, toggle } = useTheme();
+  const { theme, toggle, skin } = useTheme();
+  /**
+   * Reachable before signing in, not only from the account menu.
+   *
+   * This screen is the first thing anybody sees, and it is also the screen
+   * somebody sits on longest when something is wrong. Making them authenticate
+   * before they can choose how the app is set would be an odd order to insist
+   * on.
+   */
+  const [themeOpen, setThemeOpen] = useState(false);
 
   const [status, setStatus] = useState<AuthStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -551,10 +562,15 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <button onClick={toggle} className="textlink caps shrink-0"
-            title={theme === "dark" ? "Switch to the day edition" : "Switch to the night edition"}>
-            {theme === "dark" ? "Day edition" : "Night edition"}
-          </button>
+          <div className="flex items-baseline gap-5 shrink-0">
+            <button onClick={() => setThemeOpen(true)} className="textlink caps">
+              {themeEntry(skin).name}
+            </button>
+            <button onClick={toggle} className="textlink caps"
+              title={theme === "dark" ? "Switch to the day edition" : "Switch to the night edition"}>
+              {theme === "dark" ? "Day edition" : "Night edition"}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -1109,6 +1125,8 @@ export default function LoginPage() {
           </span>
         </div>
       </footer>
+
+      <ThemePicker open={themeOpen} onClose={() => setThemeOpen(false)} />
     </div>
   );
 }

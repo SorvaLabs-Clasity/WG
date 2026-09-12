@@ -33,6 +33,17 @@ import "@fortawesome/fontawesome-free/css/brands.css";
 import "./index.css";
 import App from "./App";
 import { setToken, setUserInfo } from "./api/client";
+import { applyTheme, getInitialTheme, getInitialSkin } from "./hooks/useTheme";
+
+/**
+ * The theme goes on before the first paint, not after it.
+ *
+ * Applying it from an effect meant the app rendered one frame in the default
+ * theme and then swapped — a white flash for anyone on a dark edition, and a
+ * serif flash for anyone on Terminal. This runs while the module graph is
+ * still evaluating, which is before React has drawn anything.
+ */
+applyTheme(getInitialTheme(), getInitialSkin());
 
 const queryParams = new URLSearchParams(window.location.search);
 const code = queryParams.get("code");

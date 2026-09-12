@@ -62,17 +62,18 @@ export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      /**
+       * The three faces, and which is which, is the theme's decision.
+       *
+       * `serif` is the display face and `sans` the running one whatever the
+       * theme calls them: under Terminal both resolve to the same monospace,
+       * under Swiss both resolve to the same grotesque. The names are kept
+       * because several thousand lines of markup already say `font-mono`.
+       */
       fontFamily: {
-        /**
-         * The display face. System serifs only: this app holds an
-         * administrative session and must never fetch a font from an origin it
-         * does not control, so there is no webfont to load and the stack has to
-         * land on something real on every machine it runs on.
-         */
-        serif: ["Iowan Old Style", "Charter", "Hoefler Text", "Palatino Linotype", "Palatino", "Georgia", "serif"],
-        /** Running text and labels. Humanist first, Inter as the floor. */
-        sans: ["Avenir Next", "Seravek", "Optima", "Gill Sans", "Inter", "system-ui", "sans-serif"],
-        mono: ["JetBrains Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+        serif: "var(--font-display)",
+        sans: "var(--font-ui)",
+        mono: "var(--font-mono)",
       },
 
       colors: {
@@ -154,19 +155,27 @@ export default {
       ringColor: { white: v("rule-strong"), black: v("ink") },
       divideColor: { white: v("rule"), black: v("ink") },
 
-      /** Paper has no corner radius. Only a dot or a portrait is round. */
+      /**
+       * Corner radius and shadow are theme decisions, not app ones.
+       *
+       * Broadsheet, Swiss and Terminal resolve every step to zero; Control
+       * restores a real radius ramp; Risograph keeps the corners square and
+       * spends the shadow on a hard offset instead. Routing them through
+       * variables is what lets one `rounded-2xl` in the markup mean the right
+       * thing in all five.
+       */
       borderRadius: {
-        none: "0", sm: "0", DEFAULT: "0", md: "0",
-        lg: "0", xl: "0", "2xl": "0", "3xl": "0", "4xl": "0",
+        none: "0", sm: "var(--r-sm)", DEFAULT: "var(--r)", md: "var(--r-md)",
+        lg: "var(--r-lg)", xl: "var(--r-xl)", "2xl": "var(--r-2xl)",
+        "3xl": "var(--r-3xl)", "4xl": "var(--r-3xl)",
         full: "9999px",
       },
 
-      /** Nor a shadow. Depth here is a rule, not a blur. */
       boxShadow: {
-        none: "none", sm: "none", DEFAULT: "none", md: "none",
-        lg: "none", xl: "none", "2xl": "none", inner: "none",
-        /** The one exception: a hard letterpress offset, no blur. */
-        press: "3px 3px 0 0 rgb(var(--rule-strong))",
+        none: "none", sm: "var(--shadow-sm)", DEFAULT: "var(--shadow)",
+        md: "var(--shadow-md)", lg: "var(--shadow-lg)", xl: "var(--shadow-xl)",
+        "2xl": "var(--shadow-xl)", inner: "none",
+        press: "var(--shadow-press)",
       },
 
       letterSpacing: {

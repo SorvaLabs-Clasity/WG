@@ -79,16 +79,20 @@ function createWindow(): void {
     minHeight: 700,
     title: "GitHub Control Hub",
     /**
-     * The stock the window is printed on.
+     * The stock the window is printed on, for the frame before React draws.
      *
      * Without this Electron paints white until the renderer's first frame, so
-     * launching the app flashed a white rectangle before the warm paper ground
-     * arrived — and, in the night edition, a white rectangle before a dark one,
-     * which is the worst version of it. These are the two `--paper` values from
-     * the stylesheet; the system's own preference decides which, because the
-     * stored theme lives in the renderer and is not readable from here yet.
+     * launching flashed a white rectangle before the ground arrived — and, on a
+     * night edition, a white rectangle before a dark one, which is the worst
+     * version of it.
+     *
+     * Deliberately a neutral rather than any one theme's exact stock: the app
+     * has five, the chosen one lives in the renderer's localStorage, and it is
+     * not readable from here before the window exists. Every light theme is
+     * near-white and every dark one is near-black, so the system's preference
+     * gets the frame close enough that nothing flashes.
      */
-    backgroundColor: nativeTheme.shouldUseDarkColors ? "#141210" : "#F7F4ED",
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#121212" : "#F4F3F0",
     // macOS reads the window icon from the app bundle; Windows and Linux need
     // it named here, including when running unpackaged in dev.
     icon: path.join(__dirname, "..", "assets", "icon.png"),

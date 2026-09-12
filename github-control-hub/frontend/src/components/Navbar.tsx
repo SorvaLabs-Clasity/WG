@@ -6,6 +6,8 @@ import { useTheme } from "../hooks/useTheme";
 import { revokeGithub } from "../api/auth";
 import { clearToken, getToken } from "../api/client";
 import { COMPANY_NAME } from "../design/tokens";
+import ThemePicker from "./ThemePicker";
+import { themeEntry } from "../design/themes";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuthStatus } from "../api/auth";
 
@@ -92,8 +94,9 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [themeOpen, setThemeOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
-  const { theme, toggle } = useTheme();
+  const { theme, toggle, skin } = useTheme();
 
   // Sign out used to be an unlabelled icon in the corner, which is the same as
   // not having one. Nobody hovers a glyph to find out what it does.
@@ -192,6 +195,16 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
                           {appVersion && <span className="font-mono">v{appVersion}</span>}
                         </div>
                       </div>
+                      {/* Above the account switcher and sign-out, because it is
+                          the one item here somebody opens this menu *for*
+                          rather than reaches on the way out. */}
+                      <button role="menuitem"
+                        onClick={() => { setAccountOpen(false); setThemeOpen(true); }}
+                        className="w-full px-5 py-3.5 flex items-baseline justify-between gap-4 text-left
+                                   hover:bg-ink/[0.05] transition-colors border-b border-rule">
+                        <span className="caps text-ink">Appearance</span>
+                        <span className="caps">{themeEntry(skin).name} · {theme === "dark" ? "Night" : "Day"}</span>
+                      </button>
                       <AwsAccountSwitcher
                         current={status?.aws?.profile}
                         onSwitched={() => setAccountOpen(false)} />
@@ -251,6 +264,13 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
               );
             })}
 
+            <button
+              onClick={() => { setMenuOpen(false); setThemeOpen(true); }}
+              className="w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left">
+              <span className="display text-[1.125rem] text-ink">Appearance</span>
+              <span className="caps">{themeEntry(skin).name}</span>
+            </button>
+
             {login && (
               <button
                 onClick={() => { setMenuOpen(false); logout(); }}
@@ -261,6 +281,8 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
           </div>
         </div>
       )}
+
+      <ThemePicker open={themeOpen} onClose={() => setThemeOpen(false)} />
     </>
   );
 }
