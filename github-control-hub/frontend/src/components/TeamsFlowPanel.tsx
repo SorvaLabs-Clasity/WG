@@ -44,7 +44,7 @@ export default function TeamsFlowPanel() {
           </h3>
           <span className={`ml-auto text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
             configured
-              ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+              ? "bg-forest-wash text-forest border border-forest-edge"
               : "bg-slate-100 dark:bg-ink/[0.08] text-slate-500 dark:text-slate-400"}`}>
             {configured ? "set up" : "not set up"}
           </span>
@@ -154,8 +154,8 @@ export default function TeamsFlowPanel() {
                   trigger step and paste it above.</>,
               ].map((step, i) => (
                 <li key={i} className="flex gap-3 text-[12.5px] text-slate-600 dark:text-slate-300 leading-relaxed">
-                  <span className="shrink-0 w-5 h-5 rounded-full grid place-items-center text-[10.5px] font-bold
-                                   bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 tabular-nums">
+                  <span className="shrink-0 w-5 h-5 grid place-items-center figure text-[0.8125rem]
+                                   bg-ink !text-reverse">
                     {i + 1}
                   </span>
                   <span>{step}</span>

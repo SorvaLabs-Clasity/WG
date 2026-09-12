@@ -564,13 +564,13 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             ) : r.findings > 0 ? (
               <span className={`text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0 tabular-nums ${
                 r.worst === "critical"
-                  ? "bg-rose-500/10 text-rose-700 dark:text-rose-400"
-                  : "bg-amber-500/10 text-amber-700 dark:text-amber-400"}`}>
+                  ? "bg-crimson-wash text-crimson border border-crimson-edge"
+                  : "bg-ochre-wash text-ochre border border-ochre-edge"}`}>
                 {r.findings} open
               </span>
             ) : (
               <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0
-                               bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                               bg-forest-wash text-forest border border-forest-edge">
                 clear
               </span>
             )}

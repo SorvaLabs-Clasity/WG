@@ -22,13 +22,13 @@ function MuteChip({ login, avatarUrl, onRemove, busy }: {
   login: string; avatarUrl?: string | null; onRemove: () => void; busy?: boolean;
 }) {
   return (
-    <span className="group inline-flex items-center gap-2 pl-1 pr-1.5 py-1 rounded-full bg-slate-100 dark:bg-ink/[0.07] border border-slate-200 dark:border-ink/10">
+    <span className="group inline-flex items-center gap-2 pl-1 pr-2 py-1 bg-paper-2 border border-rule">
       <UserAvatar login={login} avatarUrl={avatarUrl ?? undefined} size={20} />
-      <span className="text-[13px] font-medium text-slate-700 dark:text-slate-200">{login}</span>
+      <span className="text-[13px] text-ink">{login}</span>
       <button onClick={onRemove} disabled={busy} aria-label={`Stop muting ${login}`}
         title={`Stop muting ${login}`}
-        className="w-4 h-4 rounded-full flex items-center justify-center text-slate-400 hover:bg-rose-500 hover:text-ink disabled:opacity-40 transition-colors">
-        <i className="ph-bold ph-x text-[9px]"></i>
+        className="textlink caps !text-ink-3 hover:!text-crimson">
+        Unmute
       </button>
     </span>
   );
@@ -102,50 +102,35 @@ export default function PrReminderSettings({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true"
       aria-label="Reminder mutes">
-      <div className="absolute inset-0 bg-ink/40 -[3px] animate-fade-in" onClick={onClose}></div>
+      <div className="absolute inset-0 bg-ink/45 animate-fade-in" onClick={onClose}></div>
 
-      <div className={`${SURFACE.sheet} ${SURFACE.raised} relative z-10 w-full max-w-3xl flex flex-col max-h-[85vh]`}
-        style={{ animation: "slideUp 0.28s cubic-bezier(0.16,1,0.3,1) both" }}>
+      <div className="bg-paper border border-ink relative z-10 w-full max-w-3xl flex flex-col max-h-[85vh]"
+        style={{ animation: "rise 0.28s cubic-bezier(0.22,1,0.36,1) both" }}>
+        <span className="block h-[3px] w-full bg-ink shrink-0" aria-hidden="true" />
 
-        <div className="px-6 pt-5 pb-4 border-b border-slate-200 dark:border-ink/[0.09] shrink-0">
-          <div className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3 min-w-0">
-              <span className="mt-0.5 w-9 h-9 rounded-xl bg-slate-900 dark:bg-ink/10 text-reverse flex items-center justify-center shrink-0">
-                <i className="ph-bold ph-bell-slash text-base"></i>
-              </span>
-              <div className="min-w-0">
-                <h3 className="display text-[1.1875rem] text-ink">
-                  Reminder mutes
-                </h3>
-                <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
-                  Skip one person on stale pull request reminders. Nothing else about them changes,
-                  and it can be lifted at any time.
-                </p>
-              </div>
+        <div className="px-7 pt-6 pb-4 border-b border-rule shrink-0">
+          <div className="flex items-start justify-between gap-5">
+            <div className="min-w-0">
+              <h3 className="display text-[1.375rem] text-ink">Reminder mutes</h3>
+              <p className="standfirst text-[13.5px] mt-1.5 max-w-[64ch]">
+                Skip one person on stale pull request reminders. Nothing else about them changes,
+                and it can be lifted at any time.
+              </p>
             </div>
-            <button onClick={onClose} aria-label="Close"
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-900 dark:hover:text-ink hover:bg-black/5 dark:hover:bg-ink/5 transition-colors shrink-0">
-              <i className="ph-bold ph-x"></i>
-            </button>
+            <button onClick={onClose} aria-label="Close" className="textlink caps shrink-0">Close</button>
           </div>
 
           {/* Counts on the tabs, so a mute set weeks ago in the pane you are not
               looking at is still visible from here. */}
-          <div className="mt-4 flex p-1 rounded-xl bg-slate-100 dark:bg-ink/[0.05] w-fit">
+          <div className="mt-5 inline-flex items-stretch border-b border-rule-strong w-fit">
             {([["global", "Everywhere", mutes.global.length],
-               ["repo", "By repository", repoMuteCount]] as const).map(([v, label, n]) => (
+               ["repo", "By repository", repoMuteCount]] as const).map(([v, label, n], i) => (
               <button key={v} onClick={() => setTab(v)}
-                className={`px-4 py-1.5 text-[13px] font-bold rounded-lg transition-all inline-flex items-center gap-2 ${
-                  tab === v ? "bg-white dark:bg-ink/10 text-slate-900 dark:text-ink shadow-sm"
-                            : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
+                className={`caps px-4 py-2 -mb-px inline-flex items-baseline gap-2 border-b-2 transition-colors ${
+                  i > 0 ? "border-l border-l-rule" : ""} ${
+                  tab === v ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
                 {label}
-                {n > 0 && (
-                  <span className={`text-[11px] tabular-nums px-1.5  ${
-                    tab === v ? "bg-slate-900 text-reverse dark:bg-white dark:text-slate-900"
-                              : "bg-slate-200 dark:bg-ink/10 text-slate-500 dark:text-slate-400"}`}>
-                    {n}
-                  </span>
-                )}
+                {n > 0 && <span className="figure text-[0.8125rem] text-ink-3">{n}</span>}
               </button>
             ))}
           </div>
@@ -202,7 +187,7 @@ export default function PrReminderSettings({
                       <button key={r} onClick={() => setPicked(r)}
                         className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
                           on ? "bg-ink text-reverse"
-                             : "hover:bg-slate-100 dark:hover:bg-ink/[0.06] text-slate-700 dark:text-slate-300"}`}>
+                             : "hover:bg-ink/[0.05] text-ink"}`}>
                         <span className="text-[13px] truncate flex-1 min-w-0">
                           {/* Owner dimmed, because every row shares it and the
                               part that differs is the part being scanned for. */}
@@ -212,8 +197,8 @@ export default function PrReminderSettings({
                           <span className="font-medium">{r.split("/").slice(1).join("/")}</span>
                         </span>
                         {n > 0 && (
-                          <span className={`text-[11px] font-bold tabular-nums px-1.5  shrink-0 ${
-                            on ? "bg-ink/25" : "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"}`}>
+                          <span className={`caps caps-tight tabular-nums px-1.5 py-0.5 shrink-0 ${
+                            on ? "bg-paper/25" : "bg-ink !text-reverse"}`}>
                             {n}
                           </span>
                         )}
@@ -276,7 +261,7 @@ export default function PrReminderSettings({
             Saved as you go. A pull request whose every candidate is muted posts nothing at all.
           </p>
           <button onClick={onClose}
-            className="px-4 py-2 text-[13px] font-bold rounded-lg bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 hover:opacity-90">
+            className="stamp">
             Done
           </button>
         </div>

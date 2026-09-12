@@ -157,7 +157,7 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
       </div>
 
       {problem && (
-        <div className="px-4 py-3 border-t border-slate-100 dark:border-ink/[0.07] bg-amber-50/60 dark:bg-amber-500/[0.07]">
+        <div className="px-4 py-3 border-t border-rule bg-ochre-wash">
           <p className="text-[12px] font-bold text-amber-800 dark:text-amber-300">
             {problem.profile} could not be reached
           </p>
