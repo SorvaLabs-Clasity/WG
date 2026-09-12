@@ -47,8 +47,8 @@ export function TagInput({ tags, onChange, placeholder, onPendingTextChange, ico
     : "text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 ml-0.5";
 
   const iconClass = isBlue
-    ? `ph-bold ${icon} text-[10px] text-blue-400 dark:text-blue-300`
-    : `ph-bold ${icon} text-[10px] text-gray-400 dark:text-slate-500`;
+    ? `ph-bold ${icon} text-[0.625rem] text-blue-400 dark:text-blue-300`
+    : `ph-bold ${icon} text-[0.625rem] text-gray-400 dark:text-slate-500`;
 
   return (
     <div
@@ -66,7 +66,7 @@ export function TagInput({ tags, onChange, placeholder, onPendingTextChange, ico
             {icon && <i className={iconClass}></i>}
             {tag}
             <button type="button" onClick={() => onChange(tags.filter(t => t !== tag))} className={btnClass}>
-              <i className="ph-bold ph-x text-[10px]"></i>
+              <i className="ph-bold ph-x text-[0.625rem]"></i>
             </button>
           </span>
         ))}

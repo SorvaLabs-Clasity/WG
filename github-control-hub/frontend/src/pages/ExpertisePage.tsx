@@ -29,7 +29,7 @@ interface Answer {
 
 const labelClass = "caps block mb-1.5";
 
-const inputClass = "field-line text-[13.5px]";
+const inputClass = "field-line text-[0.8438rem]";
 
 /**
  * What each mode asks and what it costs, said where it is chosen.
@@ -98,7 +98,7 @@ function Signals({ e, size = "sm", sampled }: { e: Expert; size?: "sm" | "lg"; s
       {items.map(i => (
         <span key={i.icon} title={`${i.n} ${i.n === 1 ? i.one : i.many}`}
           className={`inline-flex items-center gap-1 rounded-md bg-slate-100 dark:bg-ink/[0.07] text-slate-600 dark:text-slate-300 ${
-            size === "lg" ? "px-2 py-1 text-xs" : "px-1.5 py-0.5 text-[11px]"}`}>
+            size === "lg" ? "px-2 py-1 text-xs" : "px-1.5 py-0.5 text-[0.6875rem]"}`}>
           <i className={`ph ${i.icon}`}></i>
           {/* A floor, not a total. GitHub returns one page of a hundred, so
               a repository with four thousand commits and one with a hundred and
@@ -172,7 +172,7 @@ export default function ExpertisePage() {
     <Page user={user}>
       <header className="mb-7 pb-3 border-b-2 border-ink">
         <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">Who knows this?</h1>
-        <p className="standfirst text-[14px] mt-2 max-w-[68ch]">
+        <p className="standfirst text-[0.875rem] mt-2 max-w-[68ch]">
           Ranks people by what they have actually touched, commits, reviews and discussion -
           weighted so recent work counts for more. For when something is broken and you need to
           know who to ask first.
@@ -189,7 +189,7 @@ export default function ExpertisePage() {
               className={`caps px-5 py-3 -mb-px whitespace-nowrap inline-flex items-center gap-2 border-b-2 transition-colors ${
                 i > 0 ? "border-l border-l-rule" : ""} ${
                 kind === k ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
-              <i className={`ph-bold ${MODES[k].icon} text-[13px]`}></i>
+              <i className={`ph-bold ${MODES[k].icon} text-[0.8125rem]`}></i>
               {MODES[k].label}
             </button>
           ))}
@@ -227,7 +227,7 @@ export default function ExpertisePage() {
             </button>
           </form>
 
-          <p className="standfirst text-[12.5px] mt-4 max-w-[76ch]">{MODES[kind].hint}</p>
+          <p className="standfirst text-[0.7812rem] mt-4 max-w-[76ch]">{MODES[kind].hint}</p>
         </div>
       </div>
 
@@ -317,7 +317,7 @@ export default function ExpertisePage() {
                     <p className="text-3xl font-semibold tabular-nums text-slate-900 dark:text-ink leading-none">
                       {top.score}
                     </p>
-                    <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">score</p>
+                    <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1">score</p>
                   </div>
                 </div>
               </div>

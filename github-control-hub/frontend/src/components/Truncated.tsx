@@ -57,7 +57,7 @@ export default function Truncated({ text, className = "" }: {
             maxWidth: `calc(100vw - ${at.left + 16}px)`,
           }}
           className="z-[300] pointer-events-none px-2.5 py-1.5
-                     text-[12px] leading-snug break-all bg-ink text-reverse"
+                     text-[0.75rem] leading-snug break-all bg-ink text-reverse"
         >
           {text}
         </div>,

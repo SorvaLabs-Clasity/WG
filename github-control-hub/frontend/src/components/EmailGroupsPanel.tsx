@@ -42,11 +42,11 @@ function ChannelHeader({ icon, label, count, tone }: {
 }) {
   return (
     <div className="flex items-center gap-2 mb-2.5">
-      <i className={`${icon} text-[14px] ${tone}`} aria-hidden="true" />
+      <i className={`${icon} text-[0.875rem] ${tone}`} aria-hidden="true" />
       <span className="caps">
         {label}
       </span>
-      <span className="ml-auto text-[11px] tabular-nums text-slate-300 dark:text-slate-600">{count}</span>
+      <span className="ml-auto text-[0.6875rem] tabular-nums text-slate-300 dark:text-slate-600">{count}</span>
     </div>
   );
 }
@@ -64,7 +64,7 @@ function AddRow({ value, onChange, onAdd, placeholder, type, busy }: {
       <input
         type={type} value={value} onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className={`${SURFACE.input} text-[13px] py-2`}
+        className={`${SURFACE.input} text-[0.8125rem] py-2`}
       />
       <button
         type="submit" disabled={!value.trim() || busy}
@@ -73,7 +73,7 @@ function AddRow({ value, onChange, onAdd, placeholder, type, busy }: {
                    hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-opacity"
         title="Add"
       >
-        <i className="ph-bold ph-plus text-[13px]" aria-hidden="true" />
+        <i className="ph-bold ph-plus text-[0.8125rem]" aria-hidden="true" />
       </button>
     </form>
   );
@@ -119,7 +119,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
           </h3>
           {/* The number that matters is who will actually receive something,
               which is not the number of rows below it. */}
-          <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-[0.75rem] text-slate-500 dark:text-slate-400 mt-0.5">
             {reach.live === 0
               ? <span className="text-amber-700 dark:text-amber-500">reaches nobody yet</span>
               : <>reaches <span className="font-semibold text-slate-700 dark:text-slate-200">
@@ -137,7 +137,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
             onClick={() => run(() => testGroup.mutateAsync(group.id), `Test sent to "${group.name}".`)}
             disabled={reach.live === 0 || testGroup.isPending}
             title={reach.live === 0 ? "Nobody would receive it" : "Send a test to everyone in this group"}
-            className="px-3 h-8 rounded-lg text-[12px] font-bold text-slate-600 dark:text-slate-300
+            className="px-3 h-8 rounded-lg text-[0.75rem] font-bold text-slate-600 dark:text-slate-300
                        hover:bg-slate-100 dark:hover:bg-ink/[0.08] disabled:opacity-30 transition-colors"
           >
             {testGroup.isPending ? "Sending…" : "Test"}
@@ -152,7 +152,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
             className="w-8 h-8 grid place-items-center rounded-lg text-slate-400
                        hover:bg-rose-50 dark:hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 transition-colors"
           >
-            <i className="ph-bold ph-trash text-[13px]" aria-hidden="true" />
+            <i className="ph-bold ph-trash text-[0.8125rem]" aria-hidden="true" />
           </button>
         </div>
       </div>
@@ -176,7 +176,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
               the same body, so rather than picking one person's clock and being
               wrong for the rest, it carries them all. */}
           <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-slate-100 dark:border-ink/[0.06]">
-            <span className="text-[11.5px] text-slate-400 dark:text-slate-500 shrink-0">
+            <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500 shrink-0">
               Times lead with
             </span>
             <ZonePicker
@@ -184,7 +184,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
               inheritZone={orgZone}
               onChange={zone => run(() => setGroupZone.mutateAsync({ id: group.id, timeZone: zone }))}
             />
-            <span className="text-[11px] text-slate-300 dark:text-slate-600 truncate">
+            <span className="text-[0.6875rem] text-slate-300 dark:text-slate-600 truncate">
               others shown too
             </span>
           </div>
@@ -192,16 +192,16 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
           {group.membersError ? (
             // Not the same as having none, and the difference decides whether
             // somebody adds an address that is already there.
-            <p className="text-[12px] text-amber-700 dark:text-amber-500">
+            <p className="text-[0.75rem] text-amber-700 dark:text-amber-500">
               Could not read the list: {group.membersError}
             </p>
           ) : group.members.length === 0 ? (
-            <p className="text-[12.5px] text-slate-400 dark:text-slate-500">Nobody yet.</p>
+            <p className="text-[0.7812rem] text-slate-400 dark:text-slate-500">Nobody yet.</p>
           ) : (
             <ul className="grid gap-1">
               {group.members.map(m => (
                 <li key={m.subscriptionArn}
-                  className="group/row flex items-center gap-2 py-1 text-[12.5px]">
+                  className="group/row flex items-center gap-2 py-1 text-[0.7812rem]">
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     m.confirmed ? "bg-emerald-500" : "bg-amber-400"}`} aria-hidden="true" />
                   {/* Clipped to the column, and readable in full on hover.
@@ -234,7 +234,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
                                opacity-0 group-hover/row:opacity-100 focus:opacity-100
                                hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all"
                   >
-                    <i className="ph-bold ph-x text-[11px]" aria-hidden="true" />
+                    <i className="ph-bold ph-x text-[0.6875rem]" aria-hidden="true" />
                   </button>
                 </li>
               ))}
@@ -251,7 +251,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
           />
           {/* Said where it is relevant rather than as a footnote: an address
               that never confirms receives nothing, silently. */}
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+          <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1.5">
             AWS sends a confirmation link. Until it is clicked, nothing arrives.
           </p>
         </div>
@@ -265,20 +265,20 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
               and do different things with it, and that asymmetry is worth one
               sentence each rather than being left for somebody to discover. */}
           <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-slate-100 dark:border-ink/[0.06]">
-            <span className="text-[11.5px] text-slate-400 dark:text-slate-500">
+            <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500">
               Each message uses its own recipient's zone
             </span>
           </div>
 
           {teams.length === 0 ? (
-            <p className="text-[12.5px] text-slate-400 dark:text-slate-500">Nobody yet.</p>
+            <p className="text-[0.7812rem] text-slate-400 dark:text-slate-500">Nobody yet.</p>
           ) : (
             <ul className="grid gap-1">
               {/* Names, not "Channel 1". A group is a list of people, and the
                   destination now travels with each message rather than being
                   frozen into a pipe somebody had to build first. */}
               {teams.map(address => (
-                <li key={address} className="group/row flex items-center gap-2 py-1 text-[12.5px]">
+                <li key={address} className="group/row flex items-center gap-2 py-1 text-[0.7812rem]">
                   <span className="w-1.5 h-1.5 rounded-full bg-violet-500 shrink-0" aria-hidden="true" />
                   <Truncated text={address} className="text-slate-700 dark:text-slate-200" />
                   {/* Per person, because Teams is delivered per person: the
@@ -299,7 +299,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
                                opacity-0 group-hover/row:opacity-100 focus:opacity-100
                                hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-all"
                   >
-                    <i className="ph-bold ph-x text-[11px]" aria-hidden="true" />
+                    <i className="ph-bold ph-x text-[0.6875rem]" aria-hidden="true" />
                   </button>
                 </li>
               ))}
@@ -358,7 +358,7 @@ export default function EmailGroupsPanel() {
             <h3 className="display text-[1.1875rem] text-ink">
               Default timezone
             </h3>
-            <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+            <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5">
               Used for anybody, and any group, that has not chosen one.
             </p>
           </div>
@@ -404,7 +404,7 @@ export default function EmailGroupsPanel() {
               </Button>
             </form>
           </div>
-          <p className="text-[12px] text-slate-400 dark:text-slate-500 flex-1 min-w-[240px] pb-2.5">
+          <p className="text-[0.75rem] text-slate-400 dark:text-slate-500 flex-1 min-w-[240px] pb-2.5">
             A group is a list of people an alarm tells. Anything that notifies a group,
             alarms, important events, pull request reminders, reaches every channel on it.
           </p>

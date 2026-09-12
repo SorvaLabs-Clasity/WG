@@ -23,7 +23,7 @@ const TIMEZONES = [...new Set([browserZone, "UTC",
   "Asia/Singapore", "Asia/Shanghai", "Asia/Tokyo", "Australia/Sydney",
   "Pacific/Auckland"])];
 
-const inputClass = "field-line text-[13.5px]";
+const inputClass = "field-line text-[0.8438rem]";
 const labelClass = "caps block mb-1.5";
 const cardClass = "bg-paper border border-rule p-5";
 

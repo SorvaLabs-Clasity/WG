@@ -93,7 +93,7 @@ export default function RateLimitBanner() {
               : limit.error.resource === "graphql" ? "GitHub GraphQL budget spent"
               : "GitHub request budget spent"}
           </p>
-          <p className={`text-[13px] mt-1.5 leading-relaxed ${tone.text}`}>{limit.error.message}</p>
+          <p className={`text-[0.8125rem] mt-1.5 leading-relaxed ${tone.text}`}>{limit.error.message}</p>
           <p className={`caps mt-2.5 tabular-nums ${tone.text}`}>
             {left > 0 ? <>Retrying in {formatLeft(left)}</> : <>Retrying now…</>}
           </p>

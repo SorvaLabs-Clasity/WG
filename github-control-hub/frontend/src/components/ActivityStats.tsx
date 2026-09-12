@@ -107,7 +107,7 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
             <h3 className="caps text-ink">Day by day</h3>
             <span className="caps">{pulse?.timeZone ?? "UTC"}</span>
           </div>
-          <p className="standfirst text-[12.5px] mt-1.5">Every day of the window.</p>
+          <p className="standfirst text-[0.7812rem] mt-1.5">Every day of the window.</p>
         </div>
         <div className="pt-5 pb-6">
         {/* Each calendar day of the window, not each day of the week. Seven
@@ -125,13 +125,13 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
       <section className="border-t-2 border-ink">
         <div className="pt-4">
           <h3 className="caps text-ink">Most common events</h3>
-          <p className="standfirst text-[12.5px] mt-1.5">
+          <p className="standfirst text-[0.7812rem] mt-1.5">
             What this organization spends its time doing.
           </p>
         </div>
         <div className="pt-5 pb-6">
         {(pulse?.topActions.length ?? 0) === 0 ? (
-          <p className="text-[12.5px] text-slate-400 dark:text-slate-500">Nothing recorded in this window.</p>
+          <p className="text-[0.7812rem] text-slate-400 dark:text-slate-500">Nothing recorded in this window.</p>
         ) : (
           <div className="grid gap-1">
             {pulse!.topActions.map((a, i) => (
@@ -146,13 +146,13 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
                     background: streamTint(a.action),
                   }}
                   aria-hidden="true" />
-                <span className="relative w-5 text-[11px] font-bold tabular-nums text-slate-400 dark:text-slate-500 shrink-0">
+                <span className="relative w-5 text-[0.6875rem] font-bold tabular-nums text-slate-400 dark:text-slate-500 shrink-0">
                   {i + 1}
                 </span>
-                <span className="relative text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate flex-1">
+                <span className="relative text-[0.8125rem] font-semibold text-slate-800 dark:text-slate-100 truncate flex-1">
                   {actionLabel(a.action)}
                 </span>
-                <span className="relative text-[13px] font-bold tabular-nums text-slate-600 dark:text-slate-300 shrink-0">
+                <span className="relative text-[0.8125rem] font-bold tabular-nums text-slate-600 dark:text-slate-300 shrink-0">
                   {a.count.toLocaleString()}
                 </span>
               </div>
@@ -185,11 +185,11 @@ function MiniStat({ icon, label, value, foot }: {
   return (
     <div className="px-0 sm:px-8 py-4 sm:py-0 min-w-0">
       <p className="caps flex items-baseline gap-2">
-        <i className={`ph-bold ${icon} text-[12px] text-ink-3`} aria-hidden="true" />
+        <i className={`ph-bold ${icon} text-[0.75rem] text-ink-3`} aria-hidden="true" />
         {label}
       </p>
       <p className="figure text-[2rem] text-ink mt-3">{value}</p>
-      <p className="standfirst text-[11.5px] truncate mt-2">{foot}</p>
+      <p className="standfirst text-[0.7188rem] truncate mt-2">{foot}</p>
     </div>
   );
 }
@@ -229,7 +229,7 @@ function Bars({ values, labelFor, titleFor, tickEvery }: {
 
       <div className="flex gap-[3px] mt-1.5">
         {values.map((_, i) => (
-          <span key={i} className={`flex-1 text-[9.5px] text-center tabular-nums transition-colors
+          <span key={i} className={`flex-1 text-[0.5938rem] text-center tabular-nums transition-colors
             ${hover === i ? "text-ink" : "text-ink-3"}`}>
             {i % tickEvery === 0 || hover === i ? labelFor(i) : ""}
           </span>
@@ -241,7 +241,7 @@ function Bars({ values, labelFor, titleFor, tickEvery }: {
           moves is one you chase. */}
       {hover !== null && (
         <div className="absolute -top-2 left-1/2 -translate-x-1/2 pointer-events-none z-10
-                        bg-ink px-3 py-1.5 text-[11.5px] text-reverse whitespace-nowrap">
+                        bg-ink px-3 py-1.5 text-[0.7188rem] text-reverse whitespace-nowrap">
           {titleFor(hover)} · {values[hover]} {values[hover] === 1 ? "event" : "events"}
         </div>
       )}

@@ -207,7 +207,7 @@ export default function AccessPage() {
     <Page user={user}>
       <header className="mb-7 pb-3 border-b-2 border-ink">
         <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">Access</h1>
-        <p className="standfirst text-[14px] mt-2 max-w-[58ch]">
+        <p className="standfirst text-[0.875rem] mt-2 max-w-[58ch]">
           Every person, everything they can reach, and how they came by it.
         </p>
         <div className="mt-3">
@@ -297,11 +297,11 @@ export default function AccessPage() {
               <button key={t.slug} onClick={() => setOpenTeam(t.slug)}
                 style={enter(i, 12, 200)}
                 className="stamp stamp-hollow w-full justify-between">
-                <span className="font-semibold text-[13.5px] text-slate-800 dark:text-slate-100 truncate">
+                <span className="font-semibold text-[0.8438rem] text-slate-800 dark:text-slate-100 truncate">
                   {t.name}
-                  <span className="ml-2 font-mono text-[12px] text-slate-400 dark:text-slate-500">{t.slug}</span>
+                  <span className="ml-2 font-mono text-[0.75rem] text-slate-400 dark:text-slate-500">{t.slug}</span>
                 </span>
-                <span className="shrink-0 text-[12.5px] text-slate-500 dark:text-slate-400 tabular-nums">
+                <span className="shrink-0 text-[0.7812rem] text-slate-500 dark:text-slate-400 tabular-nums">
                   {t.memberCount} member{t.memberCount === 1 ? "" : "s"} · {t.repoCount} repo{t.repoCount === 1 ? "" : "s"}
                   {t.adminCount > 0 && (
                     <span className="ml-2 text-amber-600 dark:text-amber-400 font-semibold">{t.adminCount} admin</span>
@@ -310,7 +310,7 @@ export default function AccessPage() {
               </button>
             ))}
             {teamList.length > LIST_CAP && (
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-3">
+              <p className="text-[0.8125rem] text-slate-500 dark:text-slate-400 mt-3">
                 Showing {LIST_CAP} of {teamList.length}. Search to narrow it down.
               </p>
             )}
@@ -337,7 +337,7 @@ export default function AccessPage() {
               ))}
             </div>
             {repoList.length > LIST_CAP && (
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-3">
+              <p className="text-[0.8125rem] text-slate-500 dark:text-slate-400 mt-3">
                 Showing {LIST_CAP} of {repoList.length}. Search to narrow it down.
               </p>
             )}
@@ -355,7 +355,7 @@ function Stat({ value, label, hint, tone = "neutral" }: {
     <div className="px-0 sm:px-6 first:pl-0 py-3 sm:py-0">
       <p className={`figure text-[2.5rem] ${tone === "warn" ? "text-ochre" : "text-ink"}`}>{value}</p>
       <p className="caps mt-2.5">{label}</p>
-      {hint && <p className="standfirst text-[11.5px] mt-1.5">{hint}</p>}
+      {hint && <p className="standfirst text-[0.7188rem] mt-1.5">{hint}</p>}
     </div>
   );
 }
@@ -372,7 +372,7 @@ function PersonRow({ person, index, onOpen }: { person: Person; index: number; o
               <span className="display text-[1.0625rem] text-ink">{person.login}</span>
               <OrgRoleTag role={person.orgRole} />
             </div>
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+            <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
               {person.teams.length === 0
                 ? "No teams"
                 : person.teams.map(t => t.name).join(", ")}
@@ -393,11 +393,11 @@ function PersonRow({ person, index, onOpen }: { person: Person; index: number; o
 function Count({ n, label, warn }: { n: number; label: string; warn?: boolean }) {
   return (
     <div>
-      <p className={`text-[17px] font-semibold tabular-nums leading-none ${
+      <p className={`text-[1.0625rem] font-semibold tabular-nums leading-none ${
         n === 0 ? "text-slate-300 dark:text-slate-600"
           : warn ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-ink"
       }`}>{n}</p>
-      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{label}</p>
+      <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1">{label}</p>
     </div>
   );
 }
@@ -493,7 +493,7 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
                         {r.visibility === "public" && <Pill intent="warn">public</Pill>}
                       </div>
                       {/* The routes, which are the reason this page exists. */}
-                      <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
+                      <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-1">
                         {r.paths.length === 0
                           ? "Route unknown"
                           : r.paths.map((p, j) => (
@@ -546,7 +546,7 @@ function TeamDetail({ slug, onBack, onOpenPerson, onOpenRepo }: {
         <SheetHeader
           intent={admins.length > 0 ? "warn" : "neutral"}
           title={data.name}
-          subtitle={<span className="font-mono text-[13px]">{data.slug}</span>}
+          subtitle={<span className="font-mono text-[0.8125rem]">{data.slug}</span>}
         />
       </Sheet>
 
@@ -568,8 +568,8 @@ function TeamDetail({ slug, onBack, onOpenPerson, onOpenRepo }: {
             {data.members.map((m, i) => (
               <button key={m.login} onClick={() => onOpenPerson(m.login)} style={enter(i, 10, 180)}
                 className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-rule hover:border-slate-400 dark:hover:border-rule transition-colors flex items-center justify-between gap-3">
-                <span className="font-semibold text-[13.5px] text-slate-800 dark:text-slate-100">{m.login}</span>
-                <span className="text-[12px] text-slate-500 dark:text-slate-400">
+                <span className="font-semibold text-[0.8438rem] text-slate-800 dark:text-slate-100">{m.login}</span>
+                <span className="text-[0.75rem] text-slate-500 dark:text-slate-400">
                   {m.orgRole === "owner" ? "org owner" : m.outside ? "outside collaborator" : "member"}
                 </span>
               </button>
@@ -593,9 +593,9 @@ function TeamDetail({ slug, onBack, onOpenPerson, onOpenRepo }: {
             {data.repos.map((r, i) => (
               <button key={r.repo} onClick={() => onOpenRepo(r.repo)} style={enter(i, 10, 180)}
                 className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-rule hover:border-slate-400 dark:hover:border-rule transition-colors flex items-center justify-between gap-3">
-                <span className="font-mono text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+                <span className="font-mono text-[0.8125rem] font-semibold text-slate-800 dark:text-slate-100 truncate">
                   {r.repo}
-                  {r.archived && <span className="ml-2 text-[11px] text-slate-400">archived</span>}
+                  {r.archived && <span className="ml-2 text-[0.6875rem] text-slate-400">archived</span>}
                 </span>
                 <Pill intent={r.permission === "admin" ? "warn" : "neutral"}>{r.permission}</Pill>
               </button>
@@ -647,7 +647,7 @@ function RepoDetail({ repo, onBack, onOpenPerson }: {
               {data.teams.map((t, i) => (
                 <InsetRow key={t.slug} intent="neutral" index={i}>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="font-bold text-[13.5px] text-slate-900 dark:text-ink">{t.name}</span>
+                    <span className="font-bold text-[0.8438rem] text-slate-900 dark:text-ink">{t.name}</span>
                     <Pill intent={ROLE_TONE[t.permission] ?? "neutral"}>{roleName(t.permission)}</Pill>
                   </div>
                 </InsetRow>
@@ -670,7 +670,7 @@ function RepoDetail({ repo, onBack, onOpenPerson }: {
                       </button>
                       <OrgRoleTag role={p.orgRole} />
                     </div>
-                    <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
+                    <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-1">
                       {p.paths.map((path, j) => (
                         <span key={j}>
                           {j > 0 && <span className="text-slate-300 dark:text-slate-600"> · </span>}

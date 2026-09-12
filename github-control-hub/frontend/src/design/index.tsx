@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import Navbar from "../components/Navbar";
+import { useTheme } from "../hooks/useTheme";
+import { isRail } from "./themes";
 import { INTENT, TYPE, SURFACE, RULE, EASE, enter, type Intent } from "./tokens";
 
 export * from "./tokens";
@@ -30,10 +32,25 @@ export function Page({ user, width = "wide", children }: {
   width?: "wide" | "narrow";
   children: React.ReactNode;
 }) {
+  const { skin } = useTheme();
+  const rail = isRail(skin);
+
   return (
-    <div className={`min-h-screen pt-[5.75rem] ${SURFACE.page}`}>
+    /* The rail only exists from `xl` up; below that every theme falls back to
+       the same compact top bar, because a 13.5rem column on a phone is the
+       whole phone. The padding has to follow it in both directions. */
+    <div className={`min-h-screen ${SURFACE.page} ${
+      rail ? "pt-[5.75rem] xl:pt-0 xl:pl-[var(--rail-w)]" : "pt-[5.75rem]"}`}>
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-      <main className={`${width === "wide" ? "max-w-[1380px]" : "max-w-[62rem]"} mx-auto px-5 sm:px-8 pb-24 pt-7`}>
+      <main
+        className={`mx-auto pb-24 ${rail ? "pt-6 xl:pt-8" : "pt-7"}`}
+        style={{
+          /* Both are theme decisions: Cockpit runs full width, Quiet stops at
+             one 52rem column, and the rest sit somewhere between. */
+          maxWidth: width === "wide" ? "var(--page-max)" : "min(62rem, var(--page-max))",
+          paddingInline: "var(--page-pad)",
+        }}
+      >
         {children}
       </main>
     </div>
@@ -79,7 +96,7 @@ export function Section({ title, caption, actions, children, className = "" }: {
         {actions && <div className="flex items-baseline gap-4 flex-wrap">{actions}</div>}
       </div>
       <div className="border-t-2 border-ink" />
-      {caption && <p className={`${TYPE.standfirst} text-[13.5px] mt-3 max-w-[70ch]`}>{caption}</p>}
+      {caption && <p className={`${TYPE.standfirst} text-[0.8438rem] mt-3 max-w-[70ch]`}>{caption}</p>}
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -309,7 +326,7 @@ export function SearchInput({ value, onChange, placeholder }: {
     <label className="relative flex-1 min-w-[15rem] max-w-sm flex items-baseline gap-2.5 border-b border-rule-strong focus-within:border-ink transition-colors">
       <i className="ph-bold ph-magnifying-glass text-ink-3 text-sm translate-y-0.5" aria-hidden="true"></i>
       <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="field-line text-[13.5px] w-full" />
+        className="field-line text-[0.8438rem] w-full" />
       {value && (
         <button onClick={() => onChange("")} aria-label="Clear search"
           className="caps text-ink-3 hover:text-ink shrink-0 pr-0.5">Clear</button>
@@ -344,7 +361,7 @@ export function SheetHeader({ intent = "neutral", title, subtitle, aside }: {
       <div className="px-6 py-5 flex items-start justify-between gap-6 flex-wrap">
         <div className="min-w-0">
           <h2 className={`${TYPE.heading} text-ink text-[1.25rem]`}>{title}</h2>
-          {subtitle && <p className={`${TYPE.standfirst} text-[13.5px] mt-1.5`}>{subtitle}</p>}
+          {subtitle && <p className={`${TYPE.standfirst} text-[0.8438rem] mt-1.5`}>{subtitle}</p>}
         </div>
         {aside && <div className="shrink-0 text-right">{aside}</div>}
       </div>
@@ -430,7 +447,7 @@ export function Note({ intent, children }: { intent: Intent; children: React.Rea
 export function Chip({ intent = "neutral", children }: { intent?: Intent; children: React.ReactNode }) {
   const t = INTENT[intent];
   return (
-    <span className={`inline-block font-mono text-[11.5px] leading-none px-1.5 py-1 border ${t.border} ${t.soft} ${t.text}`}>
+    <span className={`inline-block font-mono text-[0.7188rem] leading-none px-1.5 py-1 border ${t.border} ${t.soft} ${t.text}`}>
       {children}
     </span>
   );
@@ -503,7 +520,7 @@ export function Drawer({ open, onClose, title, subtitle, children, footer }: {
           <div className="min-w-0">
             <h2 className={`${TYPE.heading} text-[1.375rem] text-ink`}>{title}</h2>
             {subtitle && (
-              <p className={`${TYPE.standfirst} text-[13.5px] mt-1.5 max-w-[70ch]`}>{subtitle}</p>
+              <p className={`${TYPE.standfirst} text-[0.8438rem] mt-1.5 max-w-[70ch]`}>{subtitle}</p>
             )}
           </div>
           <button onClick={onClose} aria-label="Close" className="textlink caps shrink-0 pt-1.5">
@@ -695,9 +712,9 @@ export function ProgressDialog({
               <li key={l.repo} className="flex items-baseline gap-3 py-2 border-b border-rule">
                 <span className={`w-1.5 h-1.5 shrink-0 translate-y-[-1px] ${INTENT[l.ok ? "good" : "danger"].mark}`}
                   aria-hidden="true" />
-                <span className="font-mono text-[12.5px] text-ink truncate">{l.repo}</span>
+                <span className="font-mono text-[0.7812rem] text-ink truncate">{l.repo}</span>
                 {l.note && (
-                  <span className={`ml-auto text-[11.5px] truncate max-w-[55%] text-right ${
+                  <span className={`ml-auto text-[0.7188rem] truncate max-w-[55%] text-right ${
                     l.ok ? "text-ink-3" : INTENT.danger.text}`} title={l.note}>
                     {l.note}
                   </span>
@@ -732,7 +749,7 @@ export function Empty({ title, body, action }: { title: string; body?: string; a
   return (
     <div className="border-t-2 border-ink py-16 text-center">
       <p className={`${TYPE.heading} text-[1.375rem] text-ink`}>{title}</p>
-      {body && <p className={`${TYPE.standfirst} text-[14px] mt-3 max-w-[46ch] mx-auto`}>{body}</p>}
+      {body && <p className={`${TYPE.standfirst} text-[0.875rem] mt-3 max-w-[46ch] mx-auto`}>{body}</p>}
       {action && <div className="mt-6 flex justify-center">{action}</div>}
     </div>
   );
@@ -818,7 +835,7 @@ export function Spinner({ label = "Setting the page" }: { label?: string }) {
       <div className="w-40 h-px bg-rule overflow-hidden">
         <div className="h-full w-1/3 bg-ink" style={{ animation: "ruleRun 1.15s ease-in-out infinite" }} />
       </div>
-      <p className="standfirst text-[13.5px]">{label}…</p>
+      <p className="standfirst text-[0.8438rem]">{label}…</p>
     </div>
   );
 }
@@ -850,7 +867,7 @@ export function SortHeader({ label, columnKey, sortKey, sortDir, onSort, align =
         ${active ? "text-ink" : "hover:text-ink"}`}
     >
       {label}
-      <span aria-hidden="true" className={`text-[8px] transition-opacity ${
+      <span aria-hidden="true" className={`text-[0.5rem] transition-opacity ${
         active ? "opacity-100" : "opacity-0 group-hover:opacity-40"}`}>
         {active && sortDir === "desc" ? "▼" : "▲"}
       </span>

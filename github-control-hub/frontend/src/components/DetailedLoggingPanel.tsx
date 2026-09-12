@@ -94,7 +94,7 @@ export default function DetailedLoggingPanel() {
                   checked={!disabled.has(k.id)}
                   disabled={save.isPending}
                   onChange={() => toggleKind(k.id)}
-                  className="field-line text-[13.5px] mt-0.5"
+                  className="field-line text-[0.8438rem] mt-0.5"
                 />
                 <span className="min-w-0">
                   <span className="block text-sm text-gh-textBase dark:text-slate-200">{k.label}</span>

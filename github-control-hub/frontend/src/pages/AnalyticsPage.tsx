@@ -443,11 +443,11 @@ export default function AnalyticsPage() {
                 scheduled pass, and a figure presented as current when it is
                 twenty minutes old is the thing this is meant to avoid. */}
             {oldestComputedAt && !live && (
-              <p className="standfirst text-[13px] mt-3">
+              <p className="standfirst text-[0.8125rem] mt-3">
                 Checked {ago(oldestComputedAt)} · refresh to run them now
               </p>
             )}
-            {live && <p className="standfirst text-[13px] mt-3">Running every check now…</p>}
+            {live && <p className="standfirst text-[0.8125rem] mt-3">Running every check now…</p>}
           </div>
 
           <div className="flex items-center gap-5 shrink-0 flex-wrap">
@@ -505,7 +505,7 @@ export default function AnalyticsPage() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder="a check by name, or by what it asks"
               aria-label="Search checks"
-              className="field-line text-[13.5px] w-full"
+              className="field-line text-[0.8438rem] w-full"
             />
             {search && (
               <button onClick={() => setSearch("")} aria-label="Clear search" className="textlink caps shrink-0">
@@ -793,7 +793,7 @@ const EMBLEM: Record<Entity, string> = {
 function Emblem({ kind, tone }: { kind: Entity; tone: typeof TONE[Level] }) {
   return (
     <div className={`w-[68px] h-[68px] shrink-0 flex items-center justify-center border ${tone.edge} ${tone.wash}`}>
-      <i className={`${EMBLEM[kind]} text-[24px] ${tone.figure}`}></i>
+      <i className={`${EMBLEM[kind]} text-[1.5rem] ${tone.figure}`}></i>
     </div>
   );
 }
@@ -969,14 +969,14 @@ export function CheckCard({
         className="group rounded-2xl border border-slate-200/80 dark:border-ink/[0.09] bg-white dark:bg-paper overflow-hidden h-full">
         <div className="px-5 pt-5 pb-4 flex items-start gap-4">
           <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-ink/10 border border-gh-blue/20">
-            <i className="ph ph-circle-notch text-[26px] text-gh-blue animate-spin"></i>
+            <i className="ph ph-circle-notch text-[1.625rem] text-gh-blue animate-spin"></i>
           </div>
           <div className="flex-1 min-w-0 pt-1">
             <p className={`${TYPE.label} text-gh-blue mb-1.5`}>Building coverage</p>
             <h3 className="display text-[1.1875rem] text-ink line-clamp-2">
               {config.title}
             </h3>
-            <p className="text-[13px] tabular-nums text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-[0.8125rem] tabular-nums text-slate-500 dark:text-slate-400 mt-1">
               {error.covered} of {error.total} checked
             </p>
           </div>
@@ -990,7 +990,7 @@ export function CheckCard({
           </div>
         </div>
         <div className="px-5 py-4">
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 leading-relaxed">
+          <p className="text-[0.8125rem] text-slate-500 dark:text-slate-400 leading-relaxed">
             This check reads one account or repository at a time against a GitHub limit measured
             per minute, so it covers them in batches. It updates on its own.
           </p>
@@ -1003,7 +1003,7 @@ export function CheckCard({
             </button>
           )}
           {refreshNow.data && (
-            <p className="mt-2 text-[12px] text-slate-500 dark:text-slate-400">{refreshNow.data.message}</p>
+            <p className="mt-2 text-[0.75rem] text-slate-500 dark:text-slate-400">{refreshNow.data.message}</p>
           )}
         </div>
       </article>
@@ -1016,7 +1016,7 @@ export function CheckCard({
         <span className="block h-[3px] w-full bg-ochre" aria-hidden="true" />
         <div className="px-5 pt-5 pb-4 flex items-start gap-4">
           <div className="w-[68px] h-[68px] shrink-0 flex items-center justify-center border border-ochre-edge bg-ochre-wash">
-            <i className="ph-fill ph-warning text-[24px] text-ochre"></i>
+            <i className="ph-fill ph-warning text-[1.5rem] text-ochre"></i>
           </div>
           <div className="flex-1 min-w-0 pt-1">
             <p className="caps text-ochre mb-1.5">
@@ -1028,7 +1028,7 @@ export function CheckCard({
           </div>
         </div>
         <div className="px-5 py-4 border-t border-rule">
-          <p className="standfirst text-[13px]">{error.message}</p>
+          <p className="standfirst text-[0.8125rem]">{error.message}</p>
           {canEdit && !/recrawl/i.test(error.message) && (
             <div className="flex gap-5 mt-3">
               <button onClick={e => { e.stopPropagation(); onEdit(); }} className="textlink caps">Edit check</button>
@@ -1133,15 +1133,15 @@ export function CheckCard({
           than as a ragged grid. */}
       <div className="px-5 py-4 border-t border-rule flex-1">
         {preview.length === 0 ? (
-          <p className="standfirst text-[13px] py-1">
+          <p className="standfirst text-[0.8125rem] py-1">
             {graphEmpty ? "No graph data. Sync to populate." : "Nothing to show."}
           </p>
         ) : (
           <ul>
             {preview.map((item: any, k: number) => (
               <li key={k} className="flex items-baseline justify-between gap-3 py-1.5 border-b border-rule last:border-0">
-                <span className="font-mono text-[12.5px] text-ink truncate">{nameOf(item)}</span>
-                <span className="text-[12px] text-ink-3 shrink-0 truncate max-w-[45%]"
+                <span className="font-mono text-[0.7812rem] text-ink truncate">{nameOf(item)}</span>
+                <span className="text-[0.75rem] text-ink-3 shrink-0 truncate max-w-[45%]"
                   title={item.checkedAt ? `Checked ${since(item.checkedAt)}` : undefined}>
                   {detailOf(item, config)}
                   {/* Per row, because subjects are checked at different times —
@@ -1181,7 +1181,7 @@ export function CheckCard({
           </div>
         )}
         {batchedQuery && refreshNow.data && (
-          <p className="standfirst text-[12px] mt-2">{refreshNow.data.message}</p>
+          <p className="standfirst text-[0.75rem] mt-2">{refreshNow.data.message}</p>
         )}
       </div>
 
@@ -1562,7 +1562,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                         title={`Open #${item.number} on GitHub`}
                         className="inline-flex items-center gap-1 text-xs font-semibold text-gh-blue hover:underline"
                       >
-                        Open <i className="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                        Open <i className="fa-solid fa-arrow-up-right-from-square text-[0.5625rem]"></i>
                       </a>
                     </td>
                   </>
@@ -1612,7 +1612,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
                         {/* The kind, always. Without it a team slug and a
                             username look identical, and "who owns this" gets a
                             different answer depending on which you assumed. */}
-                        <span className="ml-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+                        <span className="ml-1.5 text-[0.6875rem] text-slate-400 dark:text-slate-500">
                           {item.ownerKind === "team" ? "team"
                             : item.ownerKind === "admin" ? "admin"
                             : item.ownerKind === "unlinked-committer" ? "top committer \u00b7 no account"
@@ -1722,7 +1722,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
                     const detail = colonIdx > 0 ? part.substring(colonIdx + 1).trim() : part;
                     return (
                       <div key={idx} className="bg-rose-50 dark:bg-red-950/50 border border-rose-200 dark:border-red-800 rounded-lg p-3">
-                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-800 dark:text-rose-300 bg-rose-100 dark:bg-rose-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
+                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-800 dark:text-rose-300 bg-rose-100 dark:bg-rose-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[0.625rem]"></i>{branchName}</span>}
                         <p className="text-sm text-rose-700 dark:text-red-400">{detail}</p>
                       </div>
                     );
@@ -1740,7 +1740,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
                     const detail = colonIdx > 0 ? part.substring(colonIdx + 1).trim() : part;
                     return (
                       <div key={idx} className="bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-lg p-3">
-                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[10px]"></i>{branchName}</span>}
+                        {branchName && <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-900 px-2 py-0.5 rounded-md mb-1.5"><i className="ph-bold ph-git-branch text-[0.625rem]"></i>{branchName}</span>}
                         <p className="text-sm text-emerald-700 dark:text-emerald-400">{detail}</p>
                       </div>
                     );
@@ -1893,7 +1893,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="field-line text-[13.5px] w-full"
+              className="field-line text-[0.8438rem] w-full"
               placeholder="e.g. My Custom Metric"
               required
             />
@@ -1904,7 +1904,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
             <select
               value={type}
               onChange={(e) => setType(e.target.value as WidgetType)}
-              className="field-line text-[13.5px] w-full"
+              className="field-line text-[0.8438rem] w-full"
             >
               <option value="preset">Built-in Ranking Presets</option>
               <option value="query">Security Insight Query</option>
@@ -1918,7 +1918,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                 <select
                   value={presetId}
                   onChange={(e) => setPresetId(e.target.value as PresetId)}
-                  className="field-line text-[13.5px] w-full"
+                  className="field-line text-[0.8438rem] w-full"
                 >
                   {presetOptions(initialData?.presetId).map(id => (
                     <option key={id} value={id}>{PRESET_LABELS[id] ?? id}</option>
@@ -1977,7 +1977,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                   <select
                     value={selectedQueryId}
                     onChange={(e) => handleQuerySelect(e.target.value)}
-                    className="field-line text-[13.5px] w-full"
+                    className="field-line text-[0.8438rem] w-full"
                   >
                     {QUERY_OPTIONS.map(q => (
                       <option key={q.id} value={q.id}>{q.label}</option>
@@ -2016,7 +2016,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                         type="text"
                         value={paramValue}
                         onChange={(e) => setParamValue(e.target.value)}
-                        className="field-line text-[13.5px] w-full"
+                        className="field-line text-[0.8438rem] w-full"
                         required
                       />
                     )}
@@ -2033,7 +2033,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                         <select
                           value={protectionType}
                           onChange={(e) => setProtectionType(e.target.value)}
-                          className="field-line text-[13.5px] w-full"
+                          className="field-line text-[0.8438rem] w-full"
                         >
                           <option value="any">Must have ANY protection</option>
                           <option value="classic">Must use Classic Protection</option>
@@ -2045,7 +2045,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                         <select
                           value={ruleMatchType}
                           onChange={(e) => setRuleMatchType(e.target.value)}
-                          className="field-line text-[13.5px] w-full"
+                          className="field-line text-[0.8438rem] w-full"
                         >
                           <option value="any">Any rules (just check if protection exists)</option>
                           <option value="at_least">Must have at least the selected rules</option>
@@ -2069,7 +2069,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                                 type="number" min={1} max={5}
                                 value={minApprovals}
                                 onChange={(e) => setMinApprovals(parseInt(e.target.value))}
-                                className="field-line text-[13.5px]"
+                                className="field-line text-[0.8438rem]"
                               />
                             </div>
                           )}
@@ -2092,8 +2092,8 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                         </div>
 
                         <details className="group/det mt-3">
-                          <summary className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 cursor-pointer hover:underline list-none flex items-center gap-1 select-none pt-2 border-t border-slate-100 dark:border-rule">
-                            <i className="ph-bold ph-caret-right text-[10px] group-open/det:rotate-90 transition-transform"></i>
+                          <summary className="text-[0.6875rem] font-semibold text-blue-600 dark:text-blue-400 cursor-pointer hover:underline list-none flex items-center gap-1 select-none pt-2 border-t border-slate-100 dark:border-rule">
+                            <i className="ph-bold ph-caret-right text-[0.625rem] group-open/det:rotate-90 transition-transform"></i>
                             Advanced Rules
                           </summary>
                           <div className="grid grid-cols-2 gap-y-2 gap-x-4 pt-3 mt-1 text-sm">

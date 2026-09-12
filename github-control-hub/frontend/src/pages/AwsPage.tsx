@@ -70,7 +70,7 @@ export default function AwsPage() {
         <div className="flex items-end justify-between gap-6 mb-7 flex-wrap pb-3 border-b-2 border-ink">
           <div>
             <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">AWS Guardrails</h1>
-            <p className="standfirst text-[14px] mt-2 max-w-[58ch]">
+            <p className="standfirst text-[0.875rem] mt-2 max-w-[58ch]">
               Checked when resources are created, every ten minutes, and on demand.
             </p>
           </div>
@@ -265,7 +265,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
                   </div>
                   <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>{entry?.summary ?? r.kind}</p>
                   {excluded > 0 && (
-                    <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-1.5">{excluded} excluded by a list</p>
+                    <p className="text-[0.75rem] text-slate-400 dark:text-slate-500 mt-1.5">{excluded} excluded by a list</p>
                   )}
                 </div>
 
@@ -483,7 +483,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                       <Pill intent={fi}>{label}</Pill>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2 flex-wrap">
-                          <p className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-ink break-all">{f.resourceId}</p>
+                          <p className="font-mono text-[0.8438rem] font-bold text-slate-900 dark:text-ink break-all">{f.resourceId}</p>
                           {/* The region, not the account: there is only one
                               account now, but a finding's region still tells you
                               where to go and look. */}
@@ -493,15 +493,15 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                             </span>
                           )}
                         </div>
-                        <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-0.5">
                           {f.summary}
                           {f.proposedFix && !f.remediated && !f.excluded && (
                             <span className="text-slate-400 dark:text-slate-500">. Would {f.proposedFix.charAt(0).toLowerCase() + f.proposedFix.slice(1)}</span>
                           )}
                         </p>
-                        {f.error && <p className="text-[12.5px] text-rose-500 mt-0.5">{f.error}</p>}
+                        {f.error && <p className="text-[0.7812rem] text-rose-500 mt-0.5">{f.error}</p>}
                         {fixNote?.id === f.resourceId && (
-                          <p className={`text-[12.5px] mt-0.5 ${fixNote.ok ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-500"}`}>
+                          <p className={`text-[0.7812rem] mt-0.5 ${fixNote.ok ? "text-emerald-600 dark:text-emerald-400" : "text-amber-700 dark:text-amber-500"}`}>
                             {fixNote.text}
                           </p>
                         )}
@@ -522,15 +522,15 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                           className="stamp stamp-hollow shrink-0"
                         >
                           {fixing === f.resourceId
-                            ? <><i className="ph-bold ph-circle-notch animate-spin text-[11px]"></i>Fixing</>
-                            : <><i className="ph-bold ph-wrench text-[11px]"></i>Fix</>}
+                            ? <><i className="ph-bold ph-circle-notch animate-spin text-[0.6875rem]"></i>Fixing</>
+                            : <><i className="ph-bold ph-wrench text-[0.6875rem]"></i>Fix</>}
                         </button>
                       )}
                       {href && (
                         <a href={href} target="_blank" rel="noreferrer"
                           title={consoleLinkLabel(f.resourceType)}
                           className="stamp stamp-hollow shrink-0">
-                          AWS<i className="ph-bold ph-arrow-square-out text-[11px]"></i>
+                          AWS<i className="ph-bold ph-arrow-square-out text-[0.6875rem]"></i>
                         </a>
                       )}
                     </div>
@@ -566,8 +566,8 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex items-baseline justify-between gap-6 py-2 border-b border-slate-50 dark:border-rule/60">
-      <dt className="text-[14px] text-slate-500 dark:text-slate-400">{label}</dt>
-      <dd className="text-[14px] font-semibold text-slate-800 dark:text-slate-200 text-right">{children}</dd>
+      <dt className="text-[0.875rem] text-slate-500 dark:text-slate-400">{label}</dt>
+      <dd className="text-[0.875rem] font-semibold text-slate-800 dark:text-slate-200 text-right">{children}</dd>
     </div>
   );
 }
@@ -625,7 +625,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
     }
   };
 
-  const input = "field-line text-[13.5px]";
+  const input = "field-line text-[0.8438rem]";
 
   return (
     <Modal title={rule ? "Edit guardrail" : "New guardrail"} onClose={onClose} onSubmit={submit} error={error}>
@@ -633,7 +633,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
         <select className={input} value={kind} onChange={e => onKindChange(e.target.value)} disabled={!!rule}>
           {catalog.map(c => <option key={c.kind} value={c.kind}>{label(c.kind)}</option>)}
         </select>
-        {rule && <p className="text-[11px] text-slate-400 mt-1">Rule type can't be changed after creation, delete and recreate instead.</p>}
+        {rule && <p className="text-[0.6875rem] text-slate-400 mt-1">Rule type can't be changed after creation, delete and recreate instead.</p>}
       </Field>
 
       <Field label="Name"><input className={input} value={name} onChange={e => setName(e.target.value)} /></Field>
@@ -725,7 +725,7 @@ function ParamControl({ spec, value, onChange }: { spec: ParamSpec; value: any; 
       </label>
     );
   }
-  const field = "field-line text-[13.5px]";
+  const field = "field-line text-[0.8438rem]";
   return (
     <label className="block">
       <span className="block text-sm text-slate-700 dark:text-slate-300 mb-1.5">{spec.label}</span>
@@ -759,7 +759,7 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     <div className="mb-4">
       <label className="caps block mb-1">{label}</label>
       {children}
-      {hint && <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{hint}</p>}
+      {hint && <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1">{hint}</p>}
     </div>
   );
 }
@@ -779,7 +779,7 @@ function Modal({ title, onClose, onSubmit, error, children }: {
         <div className="p-5">
           {children}
           {error && (
-            <div className="mb-4 pl-3 pr-3 py-2 border-l-2 border-crimson bg-crimson-wash text-[12.5px] text-crimson">
+            <div className="mb-4 pl-3 pr-3 py-2 border-l-2 border-crimson bg-crimson-wash text-[0.7812rem] text-crimson">
               {error}
             </div>
           )}
@@ -820,7 +820,7 @@ function Copyable({ label, value, mono = true }: { label: string; value: string;
   return (
     <div className="mb-3">
       <div className="flex items-center justify-between gap-3 mb-1">
-        <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">{label}</span>
+        <span className="text-[0.75rem] font-bold text-slate-600 dark:text-slate-300">{label}</span>
         <button
           onClick={() => {
             navigator.clipboard.writeText(value);
@@ -831,7 +831,7 @@ function Copyable({ label, value, mono = true }: { label: string; value: string;
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <div className={`px-3 py-2 bg-paper-2 border border-rule text-[12px] break-all ${mono ? "font-mono" : ""} text-ink`}>
+      <div className={`px-3 py-2 bg-paper-2 border border-rule text-[0.75rem] break-all ${mono ? "font-mono" : ""} text-ink`}>
         {value}
       </div>
     </div>
@@ -844,8 +844,8 @@ function Fields({ rows }: { rows: readonly (readonly [string, React.ReactNode])[
     <dl className="grid gap-2">
       {rows.map(([label, value], i) => (
         <div key={i} className="grid sm:grid-cols-[170px_minmax(0,1fr)] gap-x-3 gap-y-0.5">
-          <dt className="text-[12.5px] font-bold text-slate-500 dark:text-slate-400">{label}</dt>
-          <dd className="text-[12.5px] text-slate-600 dark:text-slate-300">{value}</dd>
+          <dt className="text-[0.7812rem] font-bold text-slate-500 dark:text-slate-400">{label}</dt>
+          <dd className="text-[0.7812rem] text-slate-600 dark:text-slate-300">{value}</dd>
         </div>
       ))}
     </dl>
@@ -855,12 +855,12 @@ function Fields({ rows }: { rows: readonly (readonly [string, React.ReactNode])[
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-3 mb-5">
-      <span className="shrink-0 h-6 w-6 rounded-full bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 text-[12px] font-semibold grid place-items-center mt-0.5">
+      <span className="shrink-0 h-6 w-6 rounded-full bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 text-[0.75rem] font-semibold grid place-items-center mt-0.5">
         {n}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] font-bold text-slate-900 dark:text-ink mb-1.5">{title}</p>
-        <div className="text-[13px] text-slate-600 dark:text-slate-300">{children}</div>
+        <p className="text-[0.8438rem] font-bold text-slate-900 dark:text-ink mb-1.5">{title}</p>
+        <div className="text-[0.8125rem] text-slate-600 dark:text-slate-300">{children}</div>
       </div>
     </div>
   );
@@ -929,26 +929,26 @@ function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
                     )}
                     <ul className="mt-3 grid gap-1.5">
                       {(l.patterns ?? []).map(p => (
-                        <li key={p.id} className="text-[13px] text-slate-600 dark:text-slate-300">
+                        <li key={p.id} className="text-[0.8125rem] text-slate-600 dark:text-slate-300">
                           <span className="text-slate-400 dark:text-slate-500">Skip anything whose </span>
                           {describeRule(p.type as MatchType, p.value)}
                         </li>
                       ))}
                       {(l.resources ?? []).map(r => (
-                        <li key={r} className="text-[13px] text-slate-600 dark:text-slate-300">
+                        <li key={r} className="text-[0.8125rem] text-slate-600 dark:text-slate-300">
                           <span className="text-slate-400 dark:text-slate-500">Skip exactly </span>
                           <span className="font-mono font-semibold">{r}</span>
                         </li>
                       ))}
                       {(l.whitelist ?? []).map(w => (
-                        <li key={w} className="text-[13px] text-emerald-700 dark:text-emerald-400">
+                        <li key={w} className="text-[0.8125rem] text-emerald-700 dark:text-emerald-400">
                           <span className="opacity-70">But always check </span>
                           <span className="font-mono font-semibold">{w}</span>
                         </li>
                       ))}
                     </ul>
                     {rules + named + kept === 0 && (
-                      <p className="text-[13px] text-amber-600 dark:text-amber-400 mt-2">
+                      <p className="text-[0.8125rem] text-amber-600 dark:text-amber-400 mt-2">
                         This list is empty, so it excludes nothing.
                       </p>
                     )}
@@ -1096,7 +1096,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
                           <i className="ph-bold ph-trash"></i>
                         </button>
                       </div>
-                      <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
+                      <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-2">
                         {kind.help} <span className="text-slate-400 dark:text-slate-500">e.g. {kind.example}</span>
                       </p>
                     </div>
@@ -1114,7 +1114,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
               placeholder="my-bucket-name, press Enter"
               intent="neutral"
             />
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-2">
               Skip these specific resources, whatever the rules above say.
             </p>
           </Block>
@@ -1127,7 +1127,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
               placeholder="prod-logs, press Enter"
               intent="good"
             />
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-2">
+            <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-2">
               These win over everything above, use one when a rule casts too wide a net and you want a
               single resource pulled back in.
             </p>
@@ -1136,7 +1136,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
           <div className="px-7 py-5 flex items-center gap-3 flex-wrap">
             <Button variant="primary" onClick={submit}>{list ? "Save list" : "Create list"}</Button>
             <Button variant="ghost" onClick={onClose}>Cancel</Button>
-            {error && <span className="text-[13px] font-semibold text-rose-600 dark:text-rose-400">{error}</span>}
+            {error && <span className="text-[0.8125rem] font-semibold text-rose-600 dark:text-rose-400">{error}</span>}
           </div>
         </Sheet>
 
@@ -1147,7 +1147,7 @@ function ExclusionEditor({ list, onClose, onSave }: {
               title="What this skips"
               aside={
                 <div>
-                  <p className="text-[34px] font-semibold text-reverse leading-none tabular-nums">{matched.length}</p>
+                  <p className="text-[2.125rem] font-semibold text-reverse leading-none tabular-nums">{matched.length}</p>
                   <p className={`${TYPE.label} text-reverse/70 mt-1`}>of {known.length}</p>
                 </div>
               } />
@@ -1163,14 +1163,14 @@ function ExclusionEditor({ list, onClose, onSave }: {
               ) : (
                 <ul className="grid gap-1.5 max-h-[380px] overflow-y-auto">
                   {matched.slice(0, 100).map(id => (
-                    <li key={id} className="font-mono text-[12.5px] text-slate-600 dark:text-slate-300 truncate" title={id}>
+                    <li key={id} className="font-mono text-[0.7812rem] text-slate-600 dark:text-slate-300 truncate" title={id}>
                       {id}
                     </li>
                   ))}
                 </ul>
               )}
               {hasTagRule && (
-                <p className="text-[12.5px] text-amber-600 dark:text-amber-400 mt-3">
+                <p className="text-[0.7812rem] text-amber-600 dark:text-amber-400 mt-3">
                   Tag rules are not previewed here. Tags are read when a guardrail runs, not stored with findings.
                   They will still apply.
                 </p>
@@ -1197,10 +1197,10 @@ function TokenInput({ values, draft, setDraft, onAdd, onRemove, placeholder, int
     <div>
       <div className="flex flex-wrap gap-1.5 mb-2">
         {values.map(v => (
-          <span key={v} className={`inline-flex items-center gap-1.5 text-[12px] font-mono font-semibold px-2.5 py-1 rounded-lg ${INTENT[intent].soft} ${INTENT[intent].text}`}>
+          <span key={v} className={`inline-flex items-center gap-1.5 text-[0.75rem] font-mono font-semibold px-2.5 py-1 rounded-lg ${INTENT[intent].soft} ${INTENT[intent].text}`}>
             {v}
             <button onClick={() => onRemove(v)} className="opacity-50 hover:opacity-100" title="Remove">
-              <i className="ph-bold ph-x text-[10px]"></i>
+              <i className="ph-bold ph-x text-[0.625rem]"></i>
             </button>
           </span>
         ))}

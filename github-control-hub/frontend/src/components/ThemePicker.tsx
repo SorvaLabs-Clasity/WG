@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useTheme } from "../hooks/useTheme";
-import { THEMES, themeEntry, type Edition, type Skin } from "../design/themes";
+import { THEMES, themeEntry, isRail, type Edition, type Skin } from "../design/themes";
 
 /**
  * Choosing how the app is set.
@@ -52,9 +52,10 @@ export default function ThemePicker({ open, onClose }: { open: boolean; onClose:
             <h2 className="display text-[clamp(1.625rem,3vw,2.125rem)] text-ink leading-tight">
               Appearance
             </h2>
-            <p className="standfirst text-[14px] mt-2 max-w-[62ch]">
-              Five ways of setting the same application. Every screen is written once; the theme decides
-              what a headline, a rule, a figure and a button look like.
+            <p className="standfirst text-[0.875rem] mt-2 max-w-[62ch]">
+              {THEMES.length} ways of setting the same application. Every screen is written once; the
+              theme decides what a headline, a rule, a figure and a button look like — and, for some of
+              them, where navigation lives and how dense the whole build is.
             </p>
           </div>
 
@@ -81,7 +82,7 @@ export default function ThemePicker({ open, onClose }: { open: boolean; onClose:
         </header>
 
         <div className="px-6 sm:px-8 py-7">
-          <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="theme-grid grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
             {THEMES.map((t, i) => {
               const on = t.id === skin;
               return (
@@ -101,7 +102,7 @@ export default function ThemePicker({ open, onClose }: { open: boolean; onClose:
                         ? <span className="caps text-ink">In use</span>
                         : <span className="caps opacity-0 group-hover:opacity-100 transition-opacity">Use this</span>}
                     </div>
-                    <p className="standfirst text-[12.5px] mt-1.5">{t.blurb}</p>
+                    <p className="standfirst text-[0.7812rem] mt-1.5">{t.blurb}</p>
                   </div>
                 </button>
               );
@@ -112,7 +113,7 @@ export default function ThemePicker({ open, onClose }: { open: boolean; onClose:
               screen at once is five paragraphs nobody reads. */}
           <div className="mt-7 pt-4 border-t-2 border-ink">
             <p className="caps">{chosen.name}</p>
-            <p className="standfirst text-[14px] mt-2 max-w-[86ch]">{chosen.detail}</p>
+            <p className="standfirst text-[0.875rem] mt-2 max-w-[86ch]">{chosen.detail}</p>
           </div>
         </div>
       </div>
@@ -129,53 +130,87 @@ export default function ThemePicker({ open, onClose }: { open: boolean; onClose:
  * text link. `pointer-events-none` because the card around it is the control.
  */
 function Specimen({ skin, edition }: { skin: Skin; edition: Edition }) {
+  const rail = isRail(skin);
   return (
     <div
       data-skin={skin}
       data-edition={edition}
       className={`${edition === "dark" ? "dark" : ""} pointer-events-none select-none
                   bg-paper text-ink overflow-hidden`}
-      /* Terminal rules its ground into a grid, and that ground is set on the
-         body. A specimen has to carry it too, or the one theme whose surface is
-         part of its identity advertises itself without it. */
-      style={{ backgroundImage: "var(--page-image)", backgroundSize: "24px 24px" }}
+      /* Two things, both of which the card would otherwise lie about.
+         `--page-image` is the ground Terminal and Blueprint rule into a grid,
+         and it is set on the body, which a specimen never touches. And the
+         font-size is the theme's own root: everything inside is sized in `em`
+         rather than `rem` precisely so that a 13.5px theme and a 17.5px theme
+         advertise themselves at the densities they actually run at. `rem`
+         would have resolved against the page and shown all eight identically. */
+      style={{
+        backgroundImage: "var(--page-image)",
+        backgroundSize: "24px 24px",
+        fontSize: "var(--root-size)",
+      }}
       aria-hidden="true"
     >
-      <div className="px-3.5 pt-3 pb-1.5 flex items-baseline justify-between gap-2 border-b-2 border-ink">
-        <span className="display text-[0.9375rem] text-ink leading-none">Control Hub</span>
-        <span className="caps caps-tight">{edition === "dark" ? "Night" : "Day"}</span>
-      </div>
-
-      <div className="px-3.5 py-1.5 flex gap-3 border-b border-rule">
-        <span className="caps caps-tight text-ink">Overview</span>
-        <span className="caps caps-tight">AWS</span>
-        <span className="caps caps-tight">Access</span>
-      </div>
-
-      <div className="px-3.5 pt-3 pb-3.5">
-        <div className="h-[3px] w-full bg-crimson" />
-        <div className="pt-2.5 flex items-end">
-          <div className="pr-4">
-            <p className="caps caps-tight">Affected</p>
-            <p className="figure text-[1.6rem] text-crimson mt-1">930</p>
+      <div className={rail ? "flex min-h-[11.5em]" : ""}>
+        {/* Navigation is the one part a theme changes in kind rather than in
+            degree, so the specimen has to render the tree, not restyle it. */}
+        {rail ? (
+          <div className="w-[5.5em] shrink-0 bg-paper-2 border-r border-rule py-[0.7em]">
+            <div className="px-[0.8em] pb-[0.6em] border-b border-rule">
+              <span className="display block text-[0.72em] leading-none text-ink">Control Hub</span>
+            </div>
+            {["Overview", "AWS", "Access", "Alarms"].map((n, i) => (
+              <div key={n} className={`relative px-[0.8em] py-[0.34em] ${i === 0 ? "bg-ink/[0.06]" : ""}`}>
+                {i === 0 && <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-ink" />}
+                <span className={`caps caps-tight ${i === 0 ? "text-ink" : ""}`}>{n}</span>
+              </div>
+            ))}
           </div>
-          <div className="px-4 border-l border-rule">
-            <p className="caps caps-tight">Clear</p>
-            <p className="figure text-[1.6rem] text-forest mt-1">1</p>
-          </div>
-        </div>
+        ) : (
+          <div className="absolute" />
+        )}
 
-        <div className="mt-3 relative border border-rule bg-paper">
-          <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-ochre" aria-hidden="true" />
-          <div className="pl-3.5 pr-2.5 py-2">
-            <p className="display text-[0.8125rem] text-ink leading-snug">Protection removed</p>
-            <p className="standfirst text-[0.6875rem] mt-1">web-platform · 30m ago</p>
-          </div>
-        </div>
+        <div className="min-w-0 flex-1">
+          {!rail && (
+            <>
+              <div className="px-[0.9em] pt-[0.8em] pb-[0.4em] flex items-baseline justify-between gap-2 border-b-2 border-ink">
+                <span className="display text-[0.95em] text-ink leading-none">Control Hub</span>
+                <span className="caps caps-tight">{edition === "dark" ? "Night" : "Day"}</span>
+              </div>
+              <div className="px-[0.9em] py-[0.4em] flex gap-[0.8em] border-b border-rule">
+                <span className="caps caps-tight text-ink">Overview</span>
+                <span className="caps caps-tight">AWS</span>
+                <span className="caps caps-tight">Access</span>
+              </div>
+            </>
+          )}
 
-        <div className="mt-3.5 flex items-center gap-4">
-          <span className="stamp stamp-sm">Add check</span>
-          <span className="textlink">Refresh</span>
+          <div className="px-[0.9em] pt-[0.8em] pb-[0.9em]">
+            <div className="h-[2px] w-full bg-crimson" />
+            <div className="pt-[0.6em] flex items-end">
+              <div className="pr-[1em]">
+                <p className="caps caps-tight">Affected</p>
+                <p className="figure text-[1.7em] text-crimson mt-[0.2em]">930</p>
+              </div>
+              <div className="px-[1em] border-l border-rule">
+                <p className="caps caps-tight">Clear</p>
+                <p className="figure text-[1.7em] text-forest mt-[0.2em]">1</p>
+              </div>
+            </div>
+
+            <div className="mt-[0.8em] relative border border-rule bg-paper">
+              <span className="absolute left-0 top-0 bottom-0 w-[2px] bg-ochre" aria-hidden="true" />
+              <div className="pl-[0.9em] pr-[0.6em] py-[0.5em]">
+                <p className="display text-[0.85em] text-ink leading-snug">Protection removed</p>
+                <p className="standfirst text-[0.7em] mt-[0.25em]">web-platform · 30m ago</p>
+              </div>
+            </div>
+
+            <div className="mt-[0.9em] flex items-center gap-[1em]">
+              <span className="stamp stamp-sm">Add check</span>
+              <span className="textlink">Refresh</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>

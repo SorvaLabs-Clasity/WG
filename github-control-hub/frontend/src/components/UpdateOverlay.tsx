@@ -48,7 +48,7 @@ export default function UpdateOverlay() {
           <h2 className="display text-[clamp(1.5rem,3vw,2rem)] text-ink leading-tight">
             {current.title}
           </h2>
-          <p className="standfirst text-[14px] mt-2.5">{current.subtitle}</p>
+          <p className="standfirst text-[0.875rem] mt-2.5">{current.subtitle}</p>
         </div>
         {/* The measure, as a rule inking across. No spinner: this screen is a
             held page, not a widget. */}

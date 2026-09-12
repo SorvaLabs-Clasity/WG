@@ -58,7 +58,7 @@ export default function MutationErrors() {
           <span className={`block h-[3px] w-full ${tone.mark}`} aria-hidden="true" />
           <div className="p-4 flex items-start gap-3.5">
             <i className={`ph-bold ph-warning-circle text-lg shrink-0 mt-0.5 ${tone.text}`}></i>
-            <p className={`flex-1 text-[13px] leading-relaxed ${tone.text}`}>{e.message}</p>
+            <p className={`flex-1 text-[0.8125rem] leading-relaxed ${tone.text}`}>{e.message}</p>
             <button
               onClick={() => setErrors(prev => prev.filter(x => x.id !== e.id))}
               className={`textlink caps shrink-0 !${tone.text}`}

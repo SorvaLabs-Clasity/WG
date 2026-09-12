@@ -38,18 +38,18 @@ export default function TeamsFlowPanel() {
     <section className={`${SURFACE.card} overflow-hidden`}>
       <div className="px-5 pt-4">
         <div className="flex items-center gap-2.5">
-          <i className="ph-fill ph-chat-teardrop-text text-[15px] text-violet-500" aria-hidden="true" />
+          <i className="ph-fill ph-chat-teardrop-text text-[0.9375rem] text-violet-500" aria-hidden="true" />
           <h3 className="display text-[1.1875rem] text-ink">
             Teams delivery
           </h3>
-          <span className={`ml-auto text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
+          <span className={`ml-auto text-[0.625rem] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
             configured
               ? "bg-forest-wash text-forest border border-forest-edge"
               : "bg-slate-100 dark:bg-ink/[0.08] text-slate-500 dark:text-slate-400"}`}>
             {configured ? "set up" : "not set up"}
           </span>
         </div>
-        <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-1">
+        <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-1">
           One workflow, set up once. After this, anybody can be sent a Teams message by
           adding their address, and nobody else opens Power Automate.
         </p>
@@ -97,7 +97,7 @@ export default function TeamsFlowPanel() {
           type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
           className="textlink caps inline-flex items-center gap-1.5 mt-3 transition-colors"
         >
-          <span className="w-[17px] h-[17px] rounded-full grid place-items-center text-[11px] font-semibold
+          <span className="w-[17px] h-[17px] rounded-full grid place-items-center text-[0.6875rem] font-semibold
                            border border-current leading-none">i</span>
           How to create it
         </button>
@@ -105,7 +105,7 @@ export default function TeamsFlowPanel() {
         {open && (
           <div className="mt-3 rounded-xl border border-slate-200 dark:border-ink/10
                           bg-slate-50/70 dark:bg-ink/[0.03] p-4">
-            <p className="text-[12.5px] text-slate-600 dark:text-slate-300 leading-relaxed">
+            <p className="text-[0.7812rem] text-slate-600 dark:text-slate-300 leading-relaxed">
               You are building one workflow that can message anybody. Two things matter: the
               Recipient reads who each message is for out of the request rather than being a name
               typed into the flow, and the posting step is the message one rather than the card
@@ -142,18 +142,18 @@ export default function TeamsFlowPanel() {
                 <>In each, clear the <span className="font-semibold">Recipient</span> field and
                   paste this expression in its place. This is what makes one flow able to message
                   anybody, rather than only the person named when it was created:
-                  <code className="block mt-1.5 font-mono text-[11px] p-2 rounded bg-slate-200/70 dark:bg-ink/[0.08] overflow-x-auto">
+                  <code className="block mt-1.5 font-mono text-[0.6875rem] p-2 rounded bg-slate-200/70 dark:bg-ink/[0.08] overflow-x-auto">
                     triggerBody()?['recipient']
                   </code></>,
                 <>In each, put this expression in the
                   {" "}<span className="font-semibold">Message</span> field:
-                  <code className="block mt-1.5 font-mono text-[11px] p-2 rounded bg-slate-200/70 dark:bg-ink/[0.08] overflow-x-auto">
+                  <code className="block mt-1.5 font-mono text-[0.6875rem] p-2 rounded bg-slate-200/70 dark:bg-ink/[0.08] overflow-x-auto">
                     triggerBody()?['message']
                   </code></>,
                 <>Save the flow, then copy its <span className="font-semibold">HTTP URL</span> from the
                   trigger step and paste it above.</>,
               ].map((step, i) => (
-                <li key={i} className="flex gap-3 text-[12.5px] text-slate-600 dark:text-slate-300 leading-relaxed">
+                <li key={i} className="flex gap-3 text-[0.7812rem] text-slate-600 dark:text-slate-300 leading-relaxed">
                   <span className="shrink-0 w-5 h-5 grid place-items-center figure text-[0.8125rem]
                                    bg-ink !text-reverse">
                     {i + 1}
@@ -167,7 +167,7 @@ export default function TeamsFlowPanel() {
               {/* The failure that looks like success: Power Automate answers 202
                   before running the flow, so a wrong destination reports as sent
                   and delivers nothing. */}
-              <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
+              <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed">
                 If a test says it was accepted but nothing arrives, open the flow's
                 <span className="font-semibold"> Run history</span>. Power Automate accepts the
                 request before it runs the flow, so a failure there cannot be seen from here.

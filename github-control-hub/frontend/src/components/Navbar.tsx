@@ -7,7 +7,7 @@ import { revokeGithub } from "../api/auth";
 import { clearToken, getToken } from "../api/client";
 import { COMPANY_NAME } from "../design/tokens";
 import ThemePicker from "./ThemePicker";
-import { themeEntry } from "../design/themes";
+import { themeEntry, isRail } from "../design/themes";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuthStatus } from "../api/auth";
 
@@ -138,6 +138,179 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
     navigate("/login");
   };
 
+  const rail = isRail(skin);
+
+  /** The section line, opened out on a narrow window. Shared by both layouts. */
+  const SectionSheet = () => (
+    <div className="fixed inset-0 top-[5.75rem] z-30 bg-paper xl:hidden overflow-y-auto animate-[fadeIn_140ms_ease-out]">
+      <div className="max-w-[100rem] mx-auto px-5 sm:px-8 py-3">
+        {items.map(item => {
+          const on = item.match(pathname);
+          return (
+            <button key={item.path}
+              onClick={() => { navigate(item.path); setMenuOpen(false); }}
+              className={`w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left transition-colors ${
+                on ? "text-ink" : "text-ink-2 hover:text-ink"}`}>
+              <span className={`display text-[1.125rem] ${on ? "text-ink" : ""}`}>{item.label}</span>
+              {on && <span className="caps text-ink">Reading</span>}
+            </button>
+          );
+        })}
+
+        <button
+          onClick={() => { setMenuOpen(false); setThemeOpen(true); }}
+          className="w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left">
+          <span className="display text-[1.125rem] text-ink">Appearance</span>
+          <span className="caps">{themeEntry(skin).name}</span>
+        </button>
+
+        {login && (
+          <button
+            onClick={() => { setMenuOpen(false); logout(); }}
+            className="w-full py-4 text-left caps text-crimson">
+            Sign out
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
+  /**
+   * The account block and the edition switch, which both layouts need.
+   *
+   * Extracted rather than duplicated: they carry a dropdown, an outside-click
+   * listener and a sign-out, and two copies of that is two places for the
+   * behaviour to drift.
+   */
+  const account = (
+    <>
+      <button onClick={toggle} className="textlink caps"
+        title={theme === "dark" ? "Switch to the day edition" : "Switch to the night edition"}>
+        {theme === "dark" ? "Day edition" : "Night edition"}
+      </button>
+
+      {login && (
+        <div ref={accountRef} className="relative">
+          <button
+            onClick={() => setAccountOpen(o => !o)}
+            aria-haspopup="menu"
+            aria-expanded={accountOpen}
+            className="flex items-center gap-2.5 group"
+          >
+            <UserAvatar login={login} avatarUrl={avatarUrl} size={26}
+              className="border border-rule-strong" />
+            <span className="hidden md:block caps text-ink group-hover:text-ink-2 transition-colors">
+              {login}
+            </span>
+            <span aria-hidden="true" className={`text-[0.5rem] text-ink-3 transition-transform ${accountOpen ? "rotate-180" : ""}`}>▼</span>
+          </button>
+
+          {accountOpen && (
+            <div role="menu"
+              className={`absolute w-72 bg-paper border border-ink animate-[fadeIn_140ms_ease-out] z-50 ${
+                rail ? "left-0 bottom-full mb-3 xl:left-0" : "right-0 top-full mt-3"}`}>
+              <span className="block h-[3px] w-full bg-ink" aria-hidden="true" />
+              <div className="px-5 py-4 border-b border-rule">
+                <p className="caps">Signed in as</p>
+                <p className="display text-[1.125rem] text-ink mt-1.5 truncate">{login}</p>
+                <div className="dateline mt-2 text-[0.75rem]">
+                  <span>{COMPANY_NAME}</span>
+                  {appVersion && <span className="font-mono">v{appVersion}</span>}
+                </div>
+              </div>
+              {/* Above the account switcher and sign-out, because it is the one
+                  item here somebody opens this menu *for* rather than reaches
+                  on the way out. */}
+              <button role="menuitem"
+                onClick={() => { setAccountOpen(false); setThemeOpen(true); }}
+                className="w-full px-5 py-3.5 flex items-baseline justify-between gap-4 text-left
+                           hover:bg-ink/[0.05] transition-colors border-b border-rule">
+                <span className="caps text-ink">Appearance</span>
+                <span className="caps">{themeEntry(skin).name} · {theme === "dark" ? "Night" : "Day"}</span>
+              </button>
+              <AwsAccountSwitcher
+                current={status?.aws?.profile}
+                onSwitched={() => setAccountOpen(false)} />
+              <button role="menuitem" onClick={logout}
+                className="w-full px-5 py-3.5 text-left caps text-crimson hover:bg-crimson-wash transition-colors border-t border-rule">
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+
+  /**
+   * The rail.
+   *
+   * Not a restyled masthead: a different tree. Sections run down the side as a
+   * list, the current one takes a marginal bar rather than an underline, and
+   * the account block sits at the foot where a sidebar puts it. This is the
+   * one part of a theme CSS could not have decided on its own, and it is the
+   * part that actually stops two themes looking like one.
+   */
+  if (rail) {
+    return (
+      <>
+        <nav className="hidden xl:flex fixed left-0 top-0 bottom-0 z-40 flex-col
+                        w-[var(--rail-w)] bg-paper-2 border-r border-rule">
+          <button onClick={() => navigate("/")}
+            className="px-4 py-4 text-left border-b border-rule shrink-0">
+            <span className="display block text-[1.0625rem] leading-none text-ink">Control Hub</span>
+            {COMPANY_NAME !== "Control Hub" && (
+              <span className="caps block mt-1.5 truncate">{COMPANY_NAME}</span>
+            )}
+          </button>
+
+          <div className="flex-1 overflow-y-auto py-2">
+            {items.map(item => {
+              const on = item.match(pathname);
+              return (
+                <button key={item.path} onClick={() => navigate(item.path)}
+                  aria-current={on ? "page" : undefined}
+                  className={`relative w-full text-left px-4 py-2 flex items-center transition-colors ${
+                    on ? "bg-ink/[0.06] text-ink" : "hover:bg-ink/[0.035]"}`}>
+                  {on && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-ink" aria-hidden="true" />}
+                  <span className={`caps ${on ? "text-ink" : ""}`}>{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="shrink-0 border-t border-rule px-4 py-3.5 flex flex-col items-start gap-3">
+            {account}
+          </div>
+        </nav>
+
+        {/* Below xl the rail is the whole screen, so every theme falls back to
+            the same compact bar. */}
+        <nav className="xl:hidden fixed top-0 left-0 right-0 h-[5.75rem] z-40 bg-paper border-b border-rule">
+          <div className="h-full px-5 flex flex-col">
+            <div className="flex-1 flex items-center justify-between gap-5">
+              <button onClick={() => navigate("/")} className="display text-[1.5rem] leading-none text-ink">
+                Control Hub
+              </button>
+              <div className="flex items-center gap-5">{account}</div>
+            </div>
+            <div className="border-t-2 border-ink" />
+            <div className="h-10 flex items-stretch">
+              <button className="caps flex items-center gap-2 text-ink"
+                onClick={() => setMenuOpen(o => !o)} aria-expanded={menuOpen}>
+                <span aria-hidden="true">{menuOpen ? "✕" : "☰"}</span>
+                Sections
+              </button>
+            </div>
+          </div>
+        </nav>
+
+        {menuOpen && <SectionSheet />}
+        <ThemePicker open={themeOpen} onClose={() => setThemeOpen(false)} />
+      </>
+    );
+  }
+
   return (
     <>
       <nav className="fixed top-0 left-0 right-0 h-[5.75rem] z-40 bg-paper border-b border-rule">
@@ -161,61 +334,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
 
             <div className="flex items-center gap-5 shrink-0">
               <span className="hidden lg:block caps text-ink-4 whitespace-nowrap">{today()}</span>
-
-              <button onClick={toggle} className="textlink caps"
-                title={theme === "dark" ? "Switch to the day edition" : "Switch to the night edition"}>
-                {theme === "dark" ? "Day edition" : "Night edition"}
-              </button>
-
-              {login && (
-                <div ref={accountRef} className="relative">
-                  <button
-                    onClick={() => setAccountOpen(o => !o)}
-                    aria-haspopup="menu"
-                    aria-expanded={accountOpen}
-                    className="flex items-center gap-2.5 group"
-                  >
-                    <UserAvatar login={login} avatarUrl={avatarUrl} size={26}
-                      className="border border-rule-strong" />
-                    <span className="hidden md:block caps text-ink group-hover:text-ink-2 transition-colors">
-                      {login}
-                    </span>
-                    <span aria-hidden="true" className={`text-[8px] text-ink-3 transition-transform ${accountOpen ? "rotate-180" : ""}`}>▼</span>
-                  </button>
-
-                  {accountOpen && (
-                    <div role="menu"
-                      className="absolute right-0 top-full mt-3 w-72 bg-paper border border-ink animate-[fadeIn_140ms_ease-out] z-50">
-                      <span className="block h-[3px] w-full bg-ink" aria-hidden="true" />
-                      <div className="px-5 py-4 border-b border-rule">
-                        <p className="caps">Signed in as</p>
-                        <p className="display text-[1.125rem] text-ink mt-1.5 truncate">{login}</p>
-                        <div className="dateline mt-2 text-[12px]">
-                          <span>{COMPANY_NAME}</span>
-                          {appVersion && <span className="font-mono">v{appVersion}</span>}
-                        </div>
-                      </div>
-                      {/* Above the account switcher and sign-out, because it is
-                          the one item here somebody opens this menu *for*
-                          rather than reaches on the way out. */}
-                      <button role="menuitem"
-                        onClick={() => { setAccountOpen(false); setThemeOpen(true); }}
-                        className="w-full px-5 py-3.5 flex items-baseline justify-between gap-4 text-left
-                                   hover:bg-ink/[0.05] transition-colors border-b border-rule">
-                        <span className="caps text-ink">Appearance</span>
-                        <span className="caps">{themeEntry(skin).name} · {theme === "dark" ? "Night" : "Day"}</span>
-                      </button>
-                      <AwsAccountSwitcher
-                        current={status?.aws?.profile}
-                        onSwitched={() => setAccountOpen(false)} />
-                      <button role="menuitem" onClick={logout}
-                        className="w-full px-5 py-3.5 text-left caps text-crimson hover:bg-crimson-wash transition-colors border-t border-rule">
-                        Sign out
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )}
+              {account}
             </div>
           </div>
 
@@ -247,40 +366,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
         </div>
       </nav>
 
-      {/* The section line, opened out on a narrow window. */}
-      {menuOpen && (
-        <div className="fixed inset-0 top-[5.75rem] z-30 bg-paper xl:hidden overflow-y-auto animate-[fadeIn_140ms_ease-out]">
-          <div className="max-w-[1600px] mx-auto px-5 sm:px-8 py-3">
-            {items.map(item => {
-              const on = item.match(pathname);
-              return (
-                <button key={item.path}
-                  onClick={() => { navigate(item.path); setMenuOpen(false); }}
-                  className={`w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left transition-colors ${
-                    on ? "text-ink" : "text-ink-2 hover:text-ink"}`}>
-                  <span className={`display text-[1.125rem] ${on ? "text-ink" : ""}`}>{item.label}</span>
-                  {on && <span className="caps text-ink">Reading</span>}
-                </button>
-              );
-            })}
-
-            <button
-              onClick={() => { setMenuOpen(false); setThemeOpen(true); }}
-              className="w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left">
-              <span className="display text-[1.125rem] text-ink">Appearance</span>
-              <span className="caps">{themeEntry(skin).name}</span>
-            </button>
-
-            {login && (
-              <button
-                onClick={() => { setMenuOpen(false); logout(); }}
-                className="w-full py-4 text-left caps text-crimson">
-                Sign out
-              </button>
-            )}
-          </div>
-        </div>
-      )}
+      {menuOpen && <SectionSheet />}
 
       <ThemePicker open={themeOpen} onClose={() => setThemeOpen(false)} />
     </>

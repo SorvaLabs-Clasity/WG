@@ -81,7 +81,7 @@ export function ActivityChart({ buckets, selected, onSelect }: {
               <div className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-20
                               opacity-0 group-hover:opacity-100 transition-opacity duration-150 whitespace-nowrap
                               rounded-lg bg-slate-900 dark:bg-paper-3 px-2.5 py-1.5
-                              text-[11.5px] font-semibold text-reverse dark:text-slate-900 shadow-lg">
+                              text-[0.7188rem] font-semibold text-reverse dark:text-slate-900 shadow-lg">
                 {b.label} · {b.total || "nothing"}
                 {b.total > 0 && (
                   <span className="font-normal opacity-70">
@@ -95,7 +95,7 @@ export function ActivityChart({ buckets, selected, onSelect }: {
         })}
       </div>
 
-      <div className="flex justify-between mt-2 text-[10.5px] font-medium text-slate-400 dark:text-slate-500 tabular-nums">
+      <div className="flex justify-between mt-2 text-[0.6562rem] font-medium text-slate-400 dark:text-slate-500 tabular-nums">
         <span>{buckets[0]?.label}</span>
         <span>this week</span>
       </div>

@@ -123,8 +123,8 @@ export default function CostPanel() {
                   of other people's work, and a page headed "what this app
                   costs" showing the department's DynamoDB bill would be worse
                   than no page. */}
-              <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
-                Only resources named <code className="font-mono text-[11px]">{data.prefix}-*</code>,
+              <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5">
+                Only resources named <code className="font-mono text-[0.6875rem]">{data.prefix}-*</code>,
                 over the last {data.days} days, at {data.region} list rates.
                 Nothing else in this account is counted.
               </p>
@@ -132,7 +132,7 @@ export default function CostPanel() {
             <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-ink/10">
               {[7, 30, 90].map(d => (
                 <button key={d} type="button" onClick={() => setDays(d)}
-                  className={`px-2.5 py-1 text-[12px] font-bold transition-colors ${
+                  className={`px-2.5 py-1 text-[0.75rem] font-bold transition-colors ${
                     d === days
                       ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
                       : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-ink/[0.05]"}`}>
@@ -176,7 +176,7 @@ export default function CostPanel() {
             against an invoice needs to know why they differ before they
             conclude one of them is wrong. */}
         <div className="px-5 pb-4">
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 leading-relaxed">
+          <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 leading-relaxed">
             An estimate at list price, from what each resource actually
             consumed. It does not know about the free tier, committed-use
             discounts, credits or tax, so a real bill is usually lower. AWS does
@@ -196,7 +196,7 @@ export default function CostPanel() {
           must not. The ceiling, not a guess at how often somebody looks: the
           report is cached for an hour, so this is the most it can cost however
           hard the page is refreshed. */}
-      <p className="text-[11.5px] text-slate-400 dark:text-slate-500 px-1 leading-relaxed">
+      <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 px-1 leading-relaxed">
         Producing this reads {data.self.metricsRequested} CloudWatch metrics, about{" "}
         {data.self.costPerRun < 0.001 ? "a tenth of a cent" : money(data.self.costPerRun)} a
         time, and it is cached for an hour: at most{" "}
@@ -229,21 +229,21 @@ export default function CostPanel() {
             const share = data.total > 0 ? (sum / data.total) * 100 : 0;
             return (
               <div key={kind} className="flex items-center gap-3">
-                <i className={`ph-fill ${k.icon} ${k.tone} text-[14px] shrink-0`} aria-hidden="true" />
-                <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200 w-20 shrink-0">
+                <i className={`ph-fill ${k.icon} ${k.tone} text-[0.875rem] shrink-0`} aria-hidden="true" />
+                <span className="text-[0.7812rem] font-semibold text-slate-700 dark:text-slate-200 w-20 shrink-0">
                   {k.label}
                 </span>
-                <span className="text-[11px] text-slate-400 dark:text-slate-500 w-20 shrink-0 tabular-nums">
+                <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500 w-20 shrink-0 tabular-nums">
                   {count} {count === 1 ? "resource" : "resources"}
                 </span>
                 <span className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-ink/[0.07] overflow-hidden">
                   <span className="block h-full  bg-slate-900/70 dark:bg-ink/60"
                     style={{ width: `${Math.max(share, sum > 0 ? 2 : 0)}%` }} />
                 </span>
-                <span className="text-[11px] text-slate-400 dark:text-slate-500 w-9 text-right tabular-nums shrink-0">
+                <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500 w-9 text-right tabular-nums shrink-0">
                   {Math.round(share)}%
                 </span>
-                <span className="text-[12.5px] font-bold tabular-nums text-slate-900 dark:text-ink w-16 text-right shrink-0">
+                <span className="text-[0.7812rem] font-bold tabular-nums text-slate-900 dark:text-ink w-16 text-right shrink-0">
                   {money(sum)}
                 </span>
               </div>
@@ -257,7 +257,7 @@ export default function CostPanel() {
           <h3 className="display text-[1.1875rem] text-ink">
             By resource
           </h3>
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+          <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5">
             Largest first. Open one to see what it did.
           </p>
         </div>
@@ -275,16 +275,16 @@ export default function CostPanel() {
                   className="w-full px-3 py-2 flex items-center gap-3 text-left rounded-lg
                              hover:bg-slate-50 dark:hover:bg-ink/[0.04] transition-colors"
                 >
-                  <i className={`ph-fill ${k.icon} ${k.tone} text-[15px] shrink-0`} aria-hidden="true" />
+                  <i className={`ph-fill ${k.icon} ${k.tone} text-[0.9375rem] shrink-0`} aria-hidden="true" />
                   <span className="min-w-0 flex-1">
-                    <span className="block text-[12.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">
+                    <span className="block text-[0.7812rem] font-semibold text-slate-800 dark:text-slate-100 truncate">
                       {line.name}
                     </span>
                     {/* A bar, because "which one is the problem" is a
                         comparison and a column of numbers makes the reader do
                         it themselves. */}
                     {line.billedDays < data.days - 0.5 && (
-                      <span className="block text-[10.5px] text-amber-700 dark:text-amber-500">
+                      <span className="block text-[0.6562rem] text-amber-700 dark:text-amber-500">
                         billed {Math.max(0, Math.floor(line.billedDays))} of {data.days} days
                       </span>
                     )}
@@ -301,14 +301,14 @@ export default function CostPanel() {
                   <span className="caps shrink-0">
                     {k.label}
                   </span>
-                  <span className="text-[12.5px] font-bold tabular-nums text-slate-900 dark:text-ink shrink-0 w-16 text-right">
+                  <span className="text-[0.7812rem] font-bold tabular-nums text-slate-900 dark:text-ink shrink-0 w-16 text-right">
                     {money(line.cost)}
                   </span>
                 </button>
 
                 {isOpen && (
                   <div className="px-3 pb-3 pl-11">
-                    <table className="w-full text-[12px]">
+                    <table className="w-full text-[0.75rem]">
                       <tbody>
                         {line.usage.map(u => (
                           <tr key={u.label}>
@@ -331,7 +331,7 @@ export default function CostPanel() {
         </ul>
 
         {data.lines.length === 0 && (
-          <p className="px-5 pb-5 text-[12.5px] text-slate-400 dark:text-slate-500">
+          <p className="px-5 pb-5 text-[0.7812rem] text-slate-400 dark:text-slate-500">
             Nothing found with the prefix this install uses.
           </p>
         )}

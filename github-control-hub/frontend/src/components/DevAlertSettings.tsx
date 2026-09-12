@@ -63,7 +63,7 @@ function IncludeRow({ label, checked, onChange, days, onDays, limit, onLimit }: 
       <label className="flex items-center gap-3 cursor-pointer min-w-0 flex-1">
         <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)}
           className="w-4 h-4 rounded accent-slate-900 dark:accent-white shrink-0" />
-        <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">{label}</span>
+        <span className="text-[0.8125rem] font-semibold text-slate-800 dark:text-slate-100">{label}</span>
       </label>
       <div className={`flex items-center gap-1.5 shrink-0 ${checked ? "" : "opacity-40 pointer-events-none"}`}>
         {/* Phrased as what gets dropped, not what gets kept.
@@ -75,11 +75,11 @@ function IncludeRow({ label, checked, onChange, days, onDays, limit, onLimit }: 
             The words are hidden at "any age", because there is no limit to
             describe and "skip if quiet over any age" is not a sentence. */}
         {days > 0 && (
-          <span className="text-[11.5px] text-slate-400 dark:text-slate-500">skip if quiet over</span>
+          <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500">skip if quiet over</span>
         )}
         <select value={days} onChange={e => onDays(Number(e.target.value))}
           title="Anything untouched for longer than this is left out of the summary."
-          className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-ink/[0.06]
+          className="text-[0.75rem] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-ink/[0.06]
                      border border-slate-200 dark:border-ink/10 text-slate-700 dark:text-slate-200">
           {/* Zero first, because no limit is the default and the honest one:
               a summary that silently drops things nobody asked it to drop is
@@ -95,10 +95,10 @@ function IncludeRow({ label, checked, onChange, days, onDays, limit, onLimit }: 
         the section it applies to, and only while that section is included. */}
     {onLimit && checked && (
       <div className="flex items-center gap-1.5 mt-1.5 ml-7">
-        <span className="text-[11.5px] text-slate-400 dark:text-slate-500">and only when</span>
+        <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500">and only when</span>
         <select value={limit ?? ""} onChange={e => onLimit(e.target.value === "" ? null : Number(e.target.value))}
           title="Counts everybody still awaiting review, you included, and a team counts as one."
-          className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-ink/[0.06]
+          className="text-[0.75rem] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-ink/[0.06]
                      border border-slate-200 dark:border-ink/10 text-slate-700 dark:text-slate-200">
           {REVIEWER_LIMIT_OPTIONS.map(([v, label]) => (
             <option key={v} value={v}>{v === "" ? "any number are reviewing" : label.toLowerCase()}</option>
@@ -111,7 +111,7 @@ function IncludeRow({ label, checked, onChange, days, onDays, limit, onLimit }: 
 }
 
 /** A select with no chrome of its own, for sitting inside a shared field. */
-const BARE_SELECT = "bg-transparent border-0 p-0 pr-4 text-[13px] font-semibold tabular-nums "
+const BARE_SELECT = "bg-transparent border-0 p-0 pr-4 text-[0.8125rem] font-semibold tabular-nums "
   + "text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-0 cursor-pointer";
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -172,8 +172,8 @@ function Row({ label, hint, checked, onChange, disabled }: {
         className="mt-0.5 w-4 h-4 rounded accent-slate-900 dark:accent-white"
       />
       <span className="min-w-0">
-        <span className="block text-[13px] font-semibold text-slate-800 dark:text-slate-100">{label}</span>
-        {hint && <span className="block text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">{hint}</span>}
+        <span className="block text-[0.8125rem] font-semibold text-slate-800 dark:text-slate-100">{label}</span>
+        {hint && <span className="block text-[0.75rem] text-slate-500 dark:text-slate-400 mt-0.5">{hint}</span>}
       </span>
     </label>
   );
@@ -182,9 +182,9 @@ function Row({ label, hint, checked, onChange, disabled }: {
 /** One precondition, and what it means when it is not met. */
 function Check({ ok, good, bad }: { ok: boolean; good: string; bad: string }) {
   return (
-    <li className="flex items-start gap-2 text-[11.5px] leading-relaxed">
+    <li className="flex items-start gap-2 text-[0.7188rem] leading-relaxed">
       <i className={`ph-bold ${ok ? "ph-check-circle text-emerald-500" : "ph-warning-circle text-amber-500"}
-                     text-[13px] mt-[1px] shrink-0`} aria-hidden="true" />
+                     text-[0.8125rem] mt-[1px] shrink-0`} aria-hidden="true" />
       <span className={ok ? "text-slate-500 dark:text-slate-400" : "text-slate-700 dark:text-slate-200"}>
         {ok ? good : bad}
       </span>
@@ -316,7 +316,7 @@ export default function DevAlertSettings() {
           <h3 className="display text-[1.1875rem] text-ink">
             Where to reach you
           </h3>
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+          <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5">
             Your work email, the one you sign in to Teams with. Messages arrive as a
             direct message from the Power Automate bot.
           </p>
@@ -371,30 +371,30 @@ export default function DevAlertSettings() {
                 request is not a delivered message. */}
             {test.isSuccess && (
               test.data?.queued ? (
-                <span className="text-[12.5px] font-semibold text-amber-700 dark:text-amber-500">
+                <span className="text-[0.7812rem] font-semibold text-amber-700 dark:text-amber-500">
                   Accepted by Power Automate. If nothing arrives, ask an administrator to check
                   the flow's run history.
                 </span>
               ) : (
-                <span className="text-[12.5px] font-semibold text-emerald-600 dark:text-emerald-400">
+                <span className="text-[0.7812rem] font-semibold text-emerald-600 dark:text-emerald-400">
                   Delivered. Check Teams.
                 </span>
               )
             )}
             {test.isError && (
-              <span className="text-[12.5px] font-semibold text-rose-600 dark:text-rose-400">
+              <span className="text-[0.7812rem] font-semibold text-rose-600 dark:text-rose-400">
                 {(test.error as Error)?.message}
               </span>
             )}
             {data.lastSentAt && !test.isPending && (
-              <span className="text-[11.5px] text-slate-400 dark:text-slate-500 ml-auto">
+              <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500 ml-auto">
                 Last delivered {new Date(data.lastSentAt).toLocaleString()}
               </span>
             )}
           </div>
 
           {!data.teamsAddress && (
-            <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-3">
+            <p className="text-[0.75rem] text-slate-400 dark:text-slate-500 mt-3">
               Nothing is sent until an address is saved, whatever is ticked below.
             </p>
           )}
@@ -407,7 +407,7 @@ export default function DevAlertSettings() {
           <h3 className="display text-[1.1875rem] text-ink">
             Tell me straight away
           </h3>
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+          <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5">
             Arrives within seconds. Kept short on purpose. A message that is not worth
             reading immediately teaches you to ignore the ones that are.
           </p>
@@ -425,7 +425,7 @@ export default function DevAlertSettings() {
               control for something that is not happening. */}
           {events.reviewRequested && (
             <div className="pl-1 pb-3 -mt-1">
-              <label className="block text-[11.5px] text-slate-500 dark:text-slate-400 mb-1.5">
+              <label className="block text-[0.7188rem] text-slate-500 dark:text-slate-400 mb-1.5">
                 Only when the review is mine to do
               </label>
               <select
@@ -451,7 +451,7 @@ export default function DevAlertSettings() {
               {/* The counting rule, said once. Somebody choosing "only me" and
                   then not hearing about a request to themselves and a team
                   would reasonably call that broken. */}
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
+              <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
                 Counts everybody still awaiting review, you included, and a team
                 counts as one. A request whose reviewer list cannot be read is
                 sent rather than withheld. Anything skipped here is still in the
@@ -471,7 +471,7 @@ export default function DevAlertSettings() {
             checked={events.changesRequested}
             onChange={v => patchEvents({ changesRequested: v })}
           />
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-2">
+          <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-2">
             “Ready to merge” and “checks went red” are not single events. They are conclusions
             drawn from several, so they live in the summary below rather than as switches here
             that would never quite fire.
@@ -508,7 +508,7 @@ export default function DevAlertSettings() {
                 told us" apart from "we decided not to send it". */}
             <div className="mt-3 pt-3 border-t border-slate-200/70 dark:border-ink/[0.07]">
               {data.lastEvent ? (
-                <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed">
                   Last event: <span className="font-semibold text-slate-700 dark:text-slate-200">
                     {data.lastEvent.kind}
                   </span> on <span className="font-mono">{data.lastEvent.subject}</span>,{" "}
@@ -523,7 +523,7 @@ export default function DevAlertSettings() {
                 </p>
               ) : (
                 <>
-                  <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  <p className="text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed">
                     No event naming you has reached the app yet, which has two quite different
                     causes and this cannot yet tell them apart.
                   </p>
@@ -533,27 +533,27 @@ export default function DevAlertSettings() {
                       worker built before that existed reports nothing whatever
                       is happening. Blaming the subscription without saying this
                       sends somebody to fix a thing that is not broken. */}
-                  <ul className="mt-2 grid gap-1.5 text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                  <ul className="mt-2 grid gap-1.5 text-[0.7188rem] text-slate-500 dark:text-slate-400 leading-relaxed">
                     <li>
                       <span className="font-semibold text-slate-700 dark:text-slate-200">
                         The webhook worker may not have been redeployed.
                       </span>{" "}
                       These are sent by a Lambda, not by this app, and committing does not update
-                      it. Run <span className="font-mono text-[11px]">cdk deploy</span> from{" "}
-                      <span className="font-mono text-[11px]">infra/</span>. Until then this line
+                      it. Run <span className="font-mono text-[0.6875rem]">cdk deploy</span> from{" "}
+                      <span className="font-mono text-[0.6875rem]">infra/</span>. Until then this line
                       says nothing either way, because the worker is what writes it.
                     </li>
                     <li>
                       <span className="font-semibold text-slate-700 dark:text-slate-200">
                         Or the webhook is not subscribed to the event.
                       </span>{" "}
-                      <span className="font-mono text-[11px]">pull_request</span> carries review
-                      requests; <span className="font-mono text-[11px]">pull_request_review</span>{" "}
+                      <span className="font-mono text-[0.6875rem]">pull_request</span> carries review
+                      requests; <span className="font-mono text-[0.6875rem]">pull_request_review</span>{" "}
                       carries approvals and change requests. Both are ticked where the app's
                       webhook is configured, not here.
                     </li>
                   </ul>
-                  <p className="text-[11.5px] text-slate-400 dark:text-slate-500 leading-relaxed mt-2">
+                  <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 leading-relaxed mt-2">
                     The summary below does not go through any of that, which is why it can be
                     arriving while these are not.
                   </p>
@@ -572,7 +572,7 @@ export default function DevAlertSettings() {
               <h3 className="display text-[1.1875rem] text-ink">
                 Send me a summary
               </h3>
-              <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+              <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5">
                 One message, at an hour you choose, in your own timezone.
               </p>
             </div>
@@ -580,7 +580,7 @@ export default function DevAlertSettings() {
               <input type="checkbox" checked={digest.enabled}
                 onChange={e => patchDigest({ enabled: e.target.checked })}
                 className="w-4 h-4 rounded accent-slate-900 dark:accent-white" />
-              <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">On</span>
+              <span className="text-[0.7812rem] font-semibold text-slate-700 dark:text-slate-200">On</span>
             </label>
           </div>
           <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
@@ -613,7 +613,7 @@ export default function DevAlertSettings() {
                     <option key={h} value={h}>{h}</option>)}
                 </select>
 
-                <span className="text-[13px] font-bold text-slate-400 dark:text-slate-500">:</span>
+                <span className="text-[0.8125rem] font-bold text-slate-400 dark:text-slate-500">:</span>
 
                 <select
                   aria-label="Minute"
@@ -631,7 +631,7 @@ export default function DevAlertSettings() {
                     return (
                       <button key={half} type="button"
                         onClick={() => patchDigest({ hour: (digest.hour % 12) + (half === "AM" ? 0 : 12) })}
-                        className={`px-2 py-1 text-[11px] font-bold leading-none transition-colors ${
+                        className={`px-2 py-1 text-[0.6875rem] font-bold leading-none transition-colors ${
                           on
                             ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
                             : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-ink/[0.05]"}`}>
@@ -641,7 +641,7 @@ export default function DevAlertSettings() {
                   })}
                 </div>
               </div>
-              <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+              <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1.5">
                 The pass runs every five minutes on the clock, so these are the times it can keep.
               </p>
             </div>
@@ -672,7 +672,7 @@ export default function DevAlertSettings() {
                 return (
                   <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     {clock && (
-                      <span className="text-[11px] text-slate-400 dark:text-slate-500 tabular-nums">
+                      <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500 tabular-nums">
                         {clockLabel(clock.hour, clock.minute)} there now
                       </span>
                     )}
@@ -704,7 +704,7 @@ export default function DevAlertSettings() {
                       const next = base.includes(n) ? base.filter(d => d !== n) : [...base, n];
                       patchDigest({ days: next });
                     }}
-                    className={`px-2.5 py-1.5 rounded-lg text-[12px] font-bold border transition-colors ${
+                    className={`px-2.5 py-1.5 rounded-lg text-[0.75rem] font-bold border transition-colors ${
                       on
                         ? "border-slate-900 dark:border-white bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
                         : "border-slate-200 dark:border-ink/15 text-slate-500 dark:text-slate-400"}`}>
@@ -714,7 +714,7 @@ export default function DevAlertSettings() {
               })}
             </div>
             {digest.days.length === 0 && (
-              <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-1.5">Every day.</p>
+              <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-1.5">Every day.</p>
             )}
           </div>
 
@@ -739,7 +739,7 @@ export default function DevAlertSettings() {
                   : {})}
               />
             ))}
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5">
+            <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1.5">
               A limit keeps anything touched within it and leaves out the rest. Age is time
               since the last commit, so something touched this morning is never old however
               long ago it was opened.
@@ -755,12 +755,12 @@ export default function DevAlertSettings() {
             {(() => {
               const next = nextRun(digest);
               return next ? (
-                <span className="text-[12px] font-semibold text-slate-700 dark:text-slate-200">
+                <span className="text-[0.75rem] font-semibold text-slate-700 dark:text-slate-200">
                   Next summary {next}.
                 </span>
               ) : null;
             })()}
-            <span className="text-[11.5px] text-slate-400 dark:text-slate-500">
+            <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500">
               {data.lastDigestAt
                 ? `Last one sent ${new Date(data.lastDigestAt).toLocaleString()}.`
                 : "None sent yet."}
@@ -779,7 +779,7 @@ export default function DevAlertSettings() {
       </section>
 
       {saved && (
-        <p className="text-[12px] font-semibold text-emerald-600 dark:text-emerald-400">Saved.</p>
+        <p className="text-[0.75rem] font-semibold text-emerald-600 dark:text-emerald-400">Saved.</p>
       )}
     </div>
   );

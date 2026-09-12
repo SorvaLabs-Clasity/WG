@@ -50,7 +50,7 @@ export default function TeamsWording({
   };
 
   const label = "block text-xs font-semibold text-gray-600 dark:text-slate-300 mb-1";
-  const input = "field-line text-[13.5px]";
+  const input = "field-line text-[0.8438rem]";
 
   return (
     <div className="mt-4 pt-4 border-t border-rule dark:border-rule">

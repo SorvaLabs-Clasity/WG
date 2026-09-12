@@ -117,7 +117,7 @@ export default function KnowledgeGraphPage() {
     });
   }, [repos, search, language, visibility, showArchived, sortKey]);
 
-  const selectCls = "field-line text-[12.5px] !w-auto min-w-[9rem] flex-1 pr-4";
+  const selectCls = "field-line text-[0.7812rem] !w-auto min-w-[9rem] flex-1 pr-4";
 
   return (
     <Page user={user}>
@@ -148,7 +148,7 @@ export default function KnowledgeGraphPage() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search repositories…"
-                  className="field-line text-[13.5px] w-full"
+                  className="field-line text-[0.8438rem] w-full"
                 />
               </div>
               <div className="flex flex-wrap items-baseline gap-5">
@@ -178,7 +178,7 @@ export default function KnowledgeGraphPage() {
               {isLoading ? (
                 <Spinner label="Reading the repositories" />
               ) : filtered.length === 0 ? (
-                <p className="standfirst p-12 text-center text-[14px]">
+                <p className="standfirst p-12 text-center text-[0.875rem]">
                   No repositories match those filters.
                 </p>
               ) : filtered.map(r => (
@@ -233,7 +233,7 @@ function RepoRow({ repo, selected, onSelect }: { repo: Repo; selected: boolean; 
           </div>
 
           {repo.description && (
-            <p className="standfirst text-[13px] line-clamp-2 mt-1.5">{repo.description}</p>
+            <p className="standfirst text-[0.8125rem] line-clamp-2 mt-1.5">{repo.description}</p>
           )}
 
           <div className="dateline mt-2">
@@ -348,11 +348,11 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
           <button onClick={onClose} className="textlink caps shrink-0">Close</button>
         </div>
 
-        {data.description && <p className="standfirst text-[12.5px] mb-3">{data.description}</p>}
+        {data.description && <p className="standfirst text-[0.7812rem] mb-3">{data.description}</p>}
         {data.topics.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             {data.topics.map(t => (
-              <span key={t} className="font-mono text-[11px] px-1.5 py-0.5 bg-paper-2 text-ink-2 border border-rule">#{t}</span>
+              <span key={t} className="font-mono text-[0.6875rem] px-1.5 py-0.5 bg-paper-2 text-ink-2 border border-rule">#{t}</span>
             ))}
           </div>
         )}
@@ -394,7 +394,7 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
             </div>
             {data.languages.map(l => (
               <div key={l.name} className="flex items-center justify-between py-1">
-                <span className="flex items-center gap-2.5 text-[13.5px] text-ink">
+                <span className="flex items-center gap-2.5 text-[0.8438rem] text-ink">
                   <span className="w-2.5 h-2.5 shrink-0" style={{ backgroundColor: languageHue(l.name) }}></span>
                   {l.name}
                 </span>
@@ -494,7 +494,7 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
               <div key={w.path} className="flex items-center justify-between py-1.5 gap-2">
                 <span className="min-w-0">
                   <span className="text-sm text-slate-700 dark:text-slate-300 block truncate">{w.name}</span>
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 font-mono block truncate">{w.path}</span>
+                  <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500 font-mono block truncate">{w.path}</span>
                 </span>
                 <Pill tone={w.state === "active" ? "good" : "muted"}>{w.state}</Pill>
               </div>
@@ -562,7 +562,7 @@ function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
       {rows.map(([k, v]) => (
         <div key={k} className="flex items-baseline justify-between gap-4 py-2">
           <dt className="caps shrink-0">{k}</dt>
-          <dd className="text-[13px] text-ink text-right font-mono break-all">{v}</dd>
+          <dd className="text-[0.8125rem] text-ink text-right font-mono break-all">{v}</dd>
         </div>
       ))}
     </dl>
@@ -603,22 +603,22 @@ function WhoKnows({ repo }: { repo: string }) {
         className="w-full flex items-center gap-2 py-2.5 text-left"
       >
         <i className={`ph-fill ph-users-three text-violet-500 text-base`}></i>
-        <span className="text-[13px] font-bold text-slate-700 dark:text-slate-200">Who knows this</span>
-        <i className={`ph-bold ph-caret-down ml-auto text-[11px] text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}></i>
+        <span className="text-[0.8125rem] font-bold text-slate-700 dark:text-slate-200">Who knows this</span>
+        <i className={`ph-bold ph-caret-down ml-auto text-[0.6875rem] text-slate-400 transition-transform ${open ? "rotate-180" : ""}`}></i>
       </button>
 
       {open && (
         <div className="pb-3">
-          {isFetching && <div className="py-3 text-[12.5px] text-slate-400">Reading commits and reviews…</div>}
+          {isFetching && <div className="py-3 text-[0.7812rem] text-slate-400">Reading commits and reviews…</div>}
 
           {!!error && (
-            <p className="py-2 text-[12.5px] text-amber-700 dark:text-amber-500">
+            <p className="py-2 text-[0.7812rem] text-amber-700 dark:text-amber-500">
               {(error as Error)?.message ?? "Could not work out who knows this."}
             </p>
           )}
 
           {data && !isFetching && data.experts.length === 0 && (
-            <p className="py-2 text-[12.5px] text-slate-500 dark:text-slate-400">
+            <p className="py-2 text-[0.7812rem] text-slate-500 dark:text-slate-400">
               Nobody has committed, reviewed or commented here recently enough to rank.
             </p>
           )}
@@ -632,7 +632,7 @@ function WhoKnows({ repo }: { repo: string }) {
                     Somebody who owned this two years ago is a worse answer than
                     somebody with four commits last week. */}
                 {e.daysSinceActive !== null && (
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500">
+                  <span className="text-[0.6875rem] text-slate-400 dark:text-slate-500">
                     {e.daysSinceActive === 0 ? "today" : `${e.daysSinceActive}d ago`}
                   </span>
                 )}
@@ -645,12 +645,12 @@ function WhoKnows({ repo }: { repo: string }) {
 
           {/* One page from GitHub, so a hundred means "at least a hundred". */}
           {data?.sampled && (
-            <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+            <p className="mt-2 text-[0.6875rem] text-slate-400 dark:text-slate-500">
               Based on the most recent page of activity, so this is a sample rather than a full count.
             </p>
           )}
           {(data?.degraded?.length ?? 0) > 0 && (
-            <p className="mt-1 text-[11px] text-amber-600 dark:text-amber-500">
+            <p className="mt-1 text-[0.6875rem] text-amber-600 dark:text-amber-500">
               Could not read: {data!.degraded.join(", ")}. The ranking is from what was readable.
             </p>
           )}
@@ -678,12 +678,12 @@ function Section({ label, icon, color, count, defaultOpen, children }: {
         className="w-full px-5 py-3 flex items-baseline justify-between gap-4 border-t border-rule hover:bg-ink/[0.035] transition-colors"
       >
         <span className="flex items-baseline gap-2.5">
-          <i className={`ph-bold ${icon} text-[13px] text-ink-3`} aria-hidden="true"></i>
+          <i className={`ph-bold ${icon} text-[0.8125rem] text-ink-3`} aria-hidden="true"></i>
           <span className="caps text-ink">{label}</span>
         </span>
         <span className="flex items-baseline gap-3">
           {count > 0 && <span className="figure text-[0.875rem] text-ink-3">{count}</span>}
-          <span aria-hidden="true" className="text-[8px] text-ink-3">{open ? "▲" : "▼"}</span>
+          <span aria-hidden="true" className="text-[0.5rem] text-ink-3">{open ? "▲" : "▼"}</span>
         </span>
       </button>
       {open && (

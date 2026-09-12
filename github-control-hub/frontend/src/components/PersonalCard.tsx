@@ -117,7 +117,7 @@ export default function PersonalCard({
             title={`${alarmCount} alarm${alarmCount > 1 ? "s" : ""} on this card`}
             className="shrink-0 inline-flex items-center gap-1.5 px-1.5 py-1 caps caps-tight
                        bg-ochre-wash text-ochre border border-ochre-edge transition-colors">
-            <i className="ph-bold ph-bell text-[10px]" aria-hidden="true" />
+            <i className="ph-bold ph-bell text-[0.625rem]" aria-hidden="true" />
             {alarmCount}
           </button>
         )}
@@ -134,7 +134,7 @@ export default function PersonalCard({
               title={label as string} aria-label={`${label} ${config.title}`}
               className="w-7 h-7 grid place-items-center text-ink-3 hover:text-ink
                          hover:bg-ink/[0.06] transition-colors">
-              <i className={`ph-bold ${icon} text-[12.5px]`} aria-hidden="true" />
+              <i className={`ph-bold ${icon} text-[0.7812rem]`} aria-hidden="true" />
             </button>
           ))}
         </div>
@@ -161,13 +161,13 @@ export default function PersonalCard({
             ))}
           </div>
         ) : error ? (
-          <p className="text-[12.5px] text-crimson leading-relaxed">
+          <p className="text-[0.7812rem] text-crimson leading-relaxed">
             {error.message}
           </p>
         ) : items.length === 0 ? (
           /* Two different nothings, and the difference is the whole point of
              having put a filter on. */
-          <p className="standfirst text-[12.5px]">
+          <p className="standfirst text-[0.7812rem]">
             {filtered && unfiltered > 0
               ? `Nothing matches your filters. The check found ${unfiltered.toLocaleString()}.`
               : "Nothing found."}
@@ -176,7 +176,7 @@ export default function PersonalCard({
           <>
             <ul className="grid gap-1">
               {preview.map((item: any, i: number) => (
-                <li key={i} className="flex items-baseline gap-2.5 text-[12.5px] min-w-0 py-1 border-b border-rule last:border-0">
+                <li key={i} className="flex items-baseline gap-2.5 text-[0.7812rem] min-w-0 py-1 border-b border-rule last:border-0">
                   <span className={`w-1.5 h-1.5 shrink-0 translate-y-[-1px] ${
                     item.status === "pass" ? "bg-forest"
                       : item.status === "fail" ? "bg-crimson"
@@ -185,7 +185,7 @@ export default function PersonalCard({
                     {nameOf(item)}
                   </span>
                   {item.owner && (
-                    <span className="ml-auto shrink-0 text-[10.5px] font-mono text-ink-3
+                    <span className="ml-auto shrink-0 text-[0.6562rem] font-mono text-ink-3
                                      truncate max-w-[38%]" title={item.owner}>
                       {item.owner}
                     </span>

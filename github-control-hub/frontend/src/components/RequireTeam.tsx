@@ -51,14 +51,14 @@ function Locked({ title, team, login, kind }: {
         {/* A ruled notice, not an error state. The page is a dead end by
             design, so it is set like a standing notice rather than a warning. */}
         <div className={`relative mx-auto w-16 h-16 grid place-items-center border ${accent.ring}`}>
-          <i className={`ph-bold ph-lock-key text-[26px] ${accent.icon}`} aria-hidden="true" />
+          <i className={`ph-bold ph-lock-key text-[1.625rem] ${accent.icon}`} aria-hidden="true" />
         </div>
 
         <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink relative mt-7">
           {title} is restricted
         </h1>
 
-        <p className="standfirst relative mt-3 text-[14px] max-w-[46ch] mx-auto">
+        <p className="standfirst relative mt-3 text-[0.875rem] max-w-[46ch] mx-auto">
           {kind === "aws"
             ? "This tab acts on an AWS account rather than on repositories, so it is kept to the team that administers it."
             : "This screen gathers the whole organization's access in one place, which is why it is kept to the administrators' team."}
@@ -70,17 +70,17 @@ function Locked({ title, team, login, kind }: {
           <span className="caps">
             Ask to be added to
           </span>
-          <code className={`px-3 py-1.5 font-mono text-[13px] border ${accent.chip}`}>
+          <code className={`px-3 py-1.5 font-mono text-[0.8125rem] border ${accent.chip}`}>
             {team}
           </code>
         </div>
 
-        <p className="relative mt-7 text-[12px] text-ink-3">
+        <p className="relative mt-7 text-[0.75rem] text-ink-3">
           Signed in as <span className="font-mono">{login}</span>. Organization
           owners are admitted without being on the team.
         </p>
 
-        <p className="standfirst relative mt-4 text-[12.5px] max-w-[42ch] mx-auto">
+        <p className="standfirst relative mt-4 text-[0.7812rem] max-w-[42ch] mx-auto">
           Everything else in the app is still open to you — including your own
           cards and alarms on <span className="font-semibold">My work</span>.
         </p>

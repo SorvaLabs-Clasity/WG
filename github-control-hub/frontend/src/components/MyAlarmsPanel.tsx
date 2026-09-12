@@ -40,13 +40,13 @@ export default function MyAlarmsPanel() {
     <div className="grid gap-5">
       <section>
         <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
-          <p className="text-[12.5px] text-slate-500 dark:text-slate-400 max-w-[70ch]">
+          <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 max-w-[70ch]">
             Alarms on your own cards. Only you can see them, and they go to the
             addresses below rather than to an organization group.
           </p>
           {cards.length > 0 && (
             <Button variant="primary" onClick={() => setAdding(true)}>
-              <i className="ph-bold ph-plus mr-1.5 text-[12px]" />Add an alarm
+              <i className="ph-bold ph-plus mr-1.5 text-[0.75rem]" />Add an alarm
             </Button>
           )}
         </div>
@@ -105,14 +105,14 @@ function AlarmRow({ alarm, widgetTitle, onEdit, onRemove }: {
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-[13px] font-semibold text-slate-900 dark:text-ink truncate">
+          <span className="text-[0.8125rem] font-semibold text-slate-900 dark:text-ink truncate">
             {alarm.name}
           </span>
           {!alarm.enabled && (
             <span className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>paused</span>
           )}
         </div>
-        <p className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
+        <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 truncate mt-0.5">
           {/* Named rather than an id: the card is the thing they recognise, and
               a deleted one is worth saying out loud, because the alarm goes on
               existing and never fires again. */}
@@ -127,13 +127,13 @@ function AlarmRow({ alarm, widgetTitle, onEdit, onRemove }: {
           className="w-7 h-7 rounded-lg grid place-items-center text-slate-400
                      hover:text-slate-900 dark:hover:text-ink
                      hover:bg-slate-100 dark:hover:bg-ink/[0.08] transition-colors">
-          <i className="ph-bold ph-pencil-simple text-[12.5px]" aria-hidden="true" />
+          <i className="ph-bold ph-pencil-simple text-[0.7812rem]" aria-hidden="true" />
         </button>
         <button type="button" onClick={onRemove} title="Delete" aria-label={`Delete ${alarm.name}`}
           className="w-7 h-7 rounded-lg grid place-items-center text-slate-400
                      hover:text-rose-600 dark:hover:text-rose-400
                      hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors">
-          <i className="ph-bold ph-trash text-[12.5px]" aria-hidden="true" />
+          <i className="ph-bold ph-trash text-[0.7812rem]" aria-hidden="true" />
         </button>
       </div>
     </div>
@@ -167,7 +167,7 @@ function Destination() {
         <h3 className="display text-[1.1875rem] text-ink">
           Where your alarms go
         </h3>
-        <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 max-w-[75ch]">
+        <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5 max-w-[75ch]">
           One list for all of them. Only you receive these, and only you can see
           this list.
         </p>
@@ -183,15 +183,15 @@ function Destination() {
                 <div key={m.endpoint}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg
                              bg-slate-50 dark:bg-ink/[0.04] min-w-0">
-                  <i className={`ph-bold text-[12px] shrink-0 ${
+                  <i className={`ph-bold text-[0.75rem] shrink-0 ${
                     m.confirmed ? "ph-check-circle text-emerald-500" : "ph-clock text-amber-500"}`}
                     aria-hidden="true" />
-                  <span className="font-mono text-[12.5px] text-slate-700 dark:text-slate-200 truncate"
+                  <span className="font-mono text-[0.7812rem] text-slate-700 dark:text-slate-200 truncate"
                     title={m.endpoint}>
                     {m.endpoint}
                   </span>
                   {!m.confirmed && (
-                    <span className="text-[10.5px] font-semibold text-amber-700 dark:text-amber-400 shrink-0">
+                    <span className="text-[0.6562rem] font-semibold text-amber-700 dark:text-amber-400 shrink-0">
                       not confirmed
                     </span>
                   )}
@@ -201,7 +201,7 @@ function Destination() {
                       () => {})}
                     className="ml-auto shrink-0 w-6 h-6 rounded grid place-items-center text-slate-400
                                hover:text-rose-600 dark:hover:text-rose-400 transition-colors">
-                    <i className="ph-bold ph-x text-[10px]" aria-hidden="true" />
+                    <i className="ph-bold ph-x text-[0.625rem]" aria-hidden="true" />
                   </button>
                 </div>
               ))}
@@ -217,7 +217,7 @@ function Destination() {
           </div>
           {/* Said before they wait for it. AWS sends the confirmation, not this
               app, so it arrives from an address nobody recognises. */}
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
+          <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
             AWS emails a confirmation link. Nothing is delivered until it is
             clicked, so an address that stays “not confirmed” is why an alarm
             went quiet.
@@ -231,15 +231,15 @@ function Destination() {
               {(data?.teams ?? []).map(a => (
                 <div key={a} className="flex items-center gap-2 px-3 py-2 rounded-lg
                                         bg-slate-50 dark:bg-ink/[0.04] min-w-0">
-                  <i className="ph-bold ph-chat-teardrop-text text-[12px] text-violet-500 shrink-0"
+                  <i className="ph-bold ph-chat-teardrop-text text-[0.75rem] text-violet-500 shrink-0"
                     aria-hidden="true" />
-                  <span className="font-mono text-[12.5px] text-slate-700 dark:text-slate-200 truncate"
+                  <span className="font-mono text-[0.7812rem] text-slate-700 dark:text-slate-200 truncate"
                     title={a}>{a}</span>
                   <button type="button" aria-label={`Remove ${a}`}
                     onClick={() => run(() => removeTeams.mutateAsync(a), () => {})}
                     className="ml-auto shrink-0 w-6 h-6 rounded grid place-items-center text-slate-400
                                hover:text-rose-600 dark:hover:text-rose-400 transition-colors">
-                    <i className="ph-bold ph-x text-[10px]" aria-hidden="true" />
+                    <i className="ph-bold ph-x text-[0.625rem]" aria-hidden="true" />
                   </button>
                 </div>
               ))}
@@ -253,7 +253,7 @@ function Destination() {
               Add
             </Button>
           </div>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
+          <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
             Your work email address, which is how Teams finds you. Delivery needs
             the organization's Teams workflow to be set up.
           </p>
@@ -271,7 +271,7 @@ function Destination() {
               <option key={z} value={z}>{zoneLabel(z)}</option>
             ))}
           </select>
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
+          <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
             Times in your Teams messages are written in this zone. Daylight
             saving is handled for you.
           </p>

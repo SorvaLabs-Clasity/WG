@@ -137,7 +137,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. SOC2 Branch Compliance" 
-                className="field-line text-[13.5px] w-full"
+                className="field-line text-[0.8438rem] w-full"
               />
             </div>
             <div>
@@ -147,7 +147,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="What does this verify?" 
-                className="field-line text-[13.5px] w-full"
+                className="field-line text-[0.8438rem] w-full"
               />
             </div>
             <div className="border border-rule dark:border-rule rounded-lg p-4 bg-gray-50/30 dark:bg-paper-2/30">
@@ -164,7 +164,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                   />
                   <div>
                     <span className="block text-sm font-medium text-gh-textBase dark:text-slate-200">All repositories (auto-include future repos)</span>
-                    <span className="block text-[11px] text-gh-muted dark:text-slate-400 mt-0.5">Scan all current and future repositories in the organization automatically.</span>
+                    <span className="block text-[0.6875rem] text-gh-muted dark:text-slate-400 mt-0.5">Scan all current and future repositories in the organization automatically.</span>
                   </div>
                 </label>
                 
@@ -178,7 +178,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                   />
                   <div>
                     <span className="block text-sm font-medium text-gh-textBase dark:text-slate-200">Selected repositories</span>
-                    <span className="block text-[11px] text-gh-muted dark:text-slate-400 mt-0.5">Manually select specific repositories to scan.</span>
+                    <span className="block text-[0.6875rem] text-gh-muted dark:text-slate-400 mt-0.5">Manually select specific repositories to scan.</span>
                   </div>
                 </label>
                 
@@ -193,7 +193,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                       />
                       <div className="flex flex-col">
                         <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">Auto-include future repositories</span>
-                        <span className="text-[11px] text-gh-muted dark:text-slate-400">Any repository created after this scanner will be automatically scanned.</span>
+                        <span className="text-[0.6875rem] text-gh-muted dark:text-slate-400">Any repository created after this scanner will be automatically scanned.</span>
                       </div>
                     </label>
 
@@ -275,7 +275,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                     <select 
                       value={cond.type || "branch_protection"}
                       onChange={(e) => updateCondition(idx, "type", e.target.value)}
-                      className="field-line text-[13.5px] w-full"
+                      className="field-line text-[0.8438rem] w-full"
                     >
                       <option value="branch_protection">Branch Protection Rule</option>
                       <option value="query">Security Insight Query</option>
@@ -313,7 +313,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                         <select 
                           value={cond.protectionType || "any"}
                           onChange={(e) => updateCondition(idx, "protectionType", e.target.value)}
-                          className="field-line text-[13.5px] w-full"
+                          className="field-line text-[0.8438rem] w-full"
                         >
                           <option value="any">Must have ANY protection</option>
                           <option value="ruleset">Must use Repository Ruleset</option>
@@ -326,7 +326,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                         <select 
                           value={cond.ruleMatchType || "at_least"}
                           onChange={(e) => updateCondition(idx, "ruleMatchType", e.target.value)}
-                          className="field-line text-[13.5px] w-full"
+                          className="field-line text-[0.8438rem] w-full"
                         >
                           <option value="any">Any rules (just check if protection exists)</option>
                           <option value="at_least">Must have at least the selected rules</option>
@@ -344,7 +344,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             type="checkbox" 
                             checked={!!cond.rules?.requirePr}
                             onChange={(e) => updateRule(idx, "requirePr", e.target.checked)}
-                            className="field-line text-[13.5px]"
+                            className="field-line text-[0.8438rem]"
                           />
                           Require Pull Request
                         </label>
@@ -357,7 +357,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               min="1" max="5"
                               value={cond.rules.minApprovals || 1}
                               onChange={(e) => updateRule(idx, "minApprovals", parseInt(e.target.value))}
-                              className="field-line text-[13.5px]"
+                              className="field-line text-[0.8438rem]"
                             />
                           </div>
                         )}
@@ -367,7 +367,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             type="checkbox" 
                             checked={!!cond.rules?.dismissStaleReviews}
                             onChange={(e) => updateRule(idx, "dismissStaleReviews", e.target.checked)}
-                            className="field-line text-[13.5px]"
+                            className="field-line text-[0.8438rem]"
                           />
                           Dismiss stale reviews
                         </label>
@@ -377,7 +377,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             type="checkbox" 
                             checked={!!cond.rules?.preventForcePush}
                             onChange={(e) => updateRule(idx, "preventForcePush", e.target.checked)}
-                            className="field-line text-[13.5px]"
+                            className="field-line text-[0.8438rem]"
                           />
                           Prevent force pushing
                         </label>
@@ -387,7 +387,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             type="checkbox" 
                             checked={!!cond.rules?.preventDeletion}
                             onChange={(e) => updateRule(idx, "preventDeletion", e.target.checked)}
-                            className="field-line text-[13.5px]"
+                            className="field-line text-[0.8438rem]"
                           />
                           Prevent deletion
                         </label>
@@ -395,7 +395,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
                       <details className="group/details mt-3">
                         <summary className="text-xs font-semibold text-gh-blue cursor-pointer hover:underline list-none flex items-center gap-1.5 select-none pt-2 border-t border-gray-100 dark:border-rule">
-                          <i className="ph-bold ph-caret-right text-[10px] group-open/details:rotate-90 transition-transform"></i>
+                          <i className="ph-bold ph-caret-right text-[0.625rem] group-open/details:rotate-90 transition-transform"></i>
                           Advanced Rules
                         </summary>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-4 pt-3 mt-1">
@@ -404,7 +404,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireCodeOwnerReviews}
                               onChange={(e) => updateRule(idx, "requireCodeOwnerReviews", e.target.checked)}
-                              className="field-line text-[13.5px]"
+                              className="field-line text-[0.8438rem]"
                             />
                             Require Code Owner review
                           </label>
@@ -413,7 +413,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireConversationResolution}
                               onChange={(e) => updateRule(idx, "requireConversationResolution", e.target.checked)}
-                              className="field-line text-[13.5px]"
+                              className="field-line text-[0.8438rem]"
                             />
                             Require conversation resolution
                           </label>
@@ -422,7 +422,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireStatusChecks}
                               onChange={(e) => updateRule(idx, "requireStatusChecks", e.target.checked)}
-                              className="field-line text-[13.5px]"
+                              className="field-line text-[0.8438rem]"
                             />
                             Require status checks
                           </label>
@@ -431,7 +431,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.strictStatusChecks}
                               onChange={(e) => updateRule(idx, "strictStatusChecks", e.target.checked)}
-                              className="field-line text-[13.5px]"
+                              className="field-line text-[0.8438rem]"
                             />
                             Strict status checks (require up to date)
                           </label>
@@ -440,7 +440,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireSignedCommits}
                               onChange={(e) => updateRule(idx, "requireSignedCommits", e.target.checked)}
-                              className="field-line text-[13.5px]"
+                              className="field-line text-[0.8438rem]"
                             />
                             Require signed commits
                           </label>
@@ -449,7 +449,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.requireLinearHistory}
                               onChange={(e) => updateRule(idx, "requireLinearHistory", e.target.checked)}
-                              className="field-line text-[13.5px]"
+                              className="field-line text-[0.8438rem]"
                             />
                             Require linear history
                           </label>
@@ -458,7 +458,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                               type="checkbox" 
                               checked={!!cond.rules?.enforceAdmins}
                               onChange={(e) => updateRule(idx, "enforceAdmins", e.target.checked)}
-                              className="field-line text-[13.5px]"
+                              className="field-line text-[0.8438rem]"
                             />
                             Enforce for admins
                           </label>
@@ -490,7 +490,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             updateCondition(idx, "queryAdvanced", undefined);
                           }
                         }}
-                        className="field-line text-[13.5px] w-full"
+                        className="field-line text-[0.8438rem] w-full"
                       >
                         <option value="" disabled>Select a query...</option>
                         {QUERY_OPTIONS.map(q => (
@@ -521,7 +521,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   value={cond.queryParam || ""}
                                   onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
                                   placeholder={`Enter ${paramNoun(selectedQuery.paramLabel)}...`}
-                                  className="field-line text-[13.5px] w-full"
+                                  className="field-line text-[0.8438rem] w-full"
                                 />
                               )}
                             </div>
@@ -535,7 +535,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                 <select 
                                   value={cond.queryAdvanced?.protectionType || "any"}
                                   onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}
-                                  className="field-line text-[13.5px] w-full"
+                                  className="field-line text-[0.8438rem] w-full"
                                 >
                                   <option value="any">Any protection</option>
                                   <option value="classic">Classic only</option>
@@ -548,7 +548,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.requirePr}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requirePr: e.target.checked })}
-                                    className="field-line text-[13.5px]"
+                                    className="field-line text-[0.8438rem]"
                                   /> Require PRs
                                 </label>
                                 <label className="flex items-center gap-2">
@@ -556,7 +556,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.requireStatusChecks}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requireStatusChecks: e.target.checked })}
-                                    className="field-line text-[13.5px]"
+                                    className="field-line text-[0.8438rem]"
                                   /> Require Status Checks
                                 </label>
                                 <label className="flex items-center gap-2">
@@ -564,7 +564,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.enforceAdmins}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, enforceAdmins: e.target.checked })}
-                                    className="field-line text-[13.5px]"
+                                    className="field-line text-[0.8438rem]"
                                   /> Enforce Admins
                                 </label>
                               </div>
@@ -599,7 +599,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             updateCondition(idx, "queryAdvanced", undefined);
                           }
                         }}
-                        className="field-line text-[13.5px] w-full"
+                        className="field-line text-[0.8438rem] w-full"
                       >
                         <option value="" disabled>Select a query...</option>
                         {QUERY_OPTIONS.map(q => (
@@ -630,7 +630,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                   value={cond.queryParam || ""}
                                   onChange={(e) => updateCondition(idx, "queryParam", e.target.value)}
                                   placeholder={`Enter ${paramNoun(selectedQuery.paramLabel)}...`}
-                                  className="field-line text-[13.5px] w-full"
+                                  className="field-line text-[0.8438rem] w-full"
                                 />
                               )}
                             </div>
@@ -644,7 +644,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                 <select 
                                   value={cond.queryAdvanced?.protectionType || "any"}
                                   onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}
-                                  className="field-line text-[13.5px] w-full"
+                                  className="field-line text-[0.8438rem] w-full"
                                 >
                                   <option value="any">Any protection</option>
                                   <option value="classic">Classic only</option>
@@ -657,7 +657,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.requirePr}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requirePr: e.target.checked })}
-                                    className="field-line text-[13.5px]"
+                                    className="field-line text-[0.8438rem]"
                                   /> Require PRs
                                 </label>
                                 <label className="flex items-center gap-2">
@@ -665,7 +665,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.requireStatusChecks}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, requireStatusChecks: e.target.checked })}
-                                    className="field-line text-[13.5px]"
+                                    className="field-line text-[0.8438rem]"
                                   /> Require Status Checks
                                 </label>
                                 <label className="flex items-center gap-2">
@@ -673,7 +673,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                                     type="checkbox" 
                                     checked={!!cond.queryAdvanced?.enforceAdmins}
                                     onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, enforceAdmins: e.target.checked })}
-                                    className="field-line text-[13.5px]"
+                                    className="field-line text-[0.8438rem]"
                                   /> Enforce Admins
                                 </label>
                               </div>

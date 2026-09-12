@@ -138,7 +138,7 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
             </span>
           </div>
           {pulse && !pulse.exhausted && (
-            <p className="standfirst text-[12px] text-ochre mt-2 max-w-[52ch]">
+            <p className="standfirst text-[0.75rem] text-ochre mt-2 max-w-[52ch]">
               Counted the newest {pulse.examined.toLocaleString()} rows, back to{" "}
               {pulse.oldest ? new Date(pulse.oldest).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "the limit"}.
               There is more behind that.
@@ -224,7 +224,7 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
 
         {at && (
           <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none
-                          bg-ink px-3.5 py-2.5 text-[11.5px] text-reverse whitespace-nowrap">
+                          bg-ink px-3.5 py-2.5 text-[0.7188rem] text-reverse whitespace-nowrap">
             <div className="caps !text-reverse mb-2">{when(at.start, pulse!.bucketHours)}</div>
             <div className="grid gap-1">
               {shown.map(s => (
@@ -252,7 +252,7 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
             const last = i === buckets.length - 1;
             return (
               <span key={i}
-                className={`flex-1 min-w-0 text-[10px] font-medium tabular-nums transition-colors
+                className={`flex-1 min-w-0 text-[0.625rem] font-medium tabular-nums transition-colors
                   ${last ? "text-right" : "text-center"}
                   ${hover === i ? "text-ink" : "text-ink-3"}`}>
                 {hover === i || show
@@ -305,7 +305,7 @@ function Switch<T extends string>({ value, onChange, options }: {
           className={`caps px-3 py-1.5 -mb-px flex items-center gap-1.5 border-b-2 transition-colors
             ${i > 0 ? "border-l border-l-rule" : ""}
             ${value === v ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
-          {icon && <i className={`ph-bold ${icon} text-[12px]`} aria-hidden="true" />}
+          {icon && <i className={`ph-bold ${icon} text-[0.75rem]`} aria-hidden="true" />}
           {text}
         </button>
       ))}

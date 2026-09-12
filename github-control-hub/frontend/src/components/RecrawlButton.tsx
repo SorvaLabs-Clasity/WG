@@ -78,7 +78,7 @@ export default function RecrawlButton({ className = "", dense = false }: {
         // the part somebody needs without hovering.
         <div className="pointer-events-none absolute right-0 top-full z-30 mt-1.5 w-[46ch] max-w-[80vw]
                         opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
-          <p className={`rounded-lg px-2.5 py-2 text-[12px] leading-snug shadow-lg ring-1
+          <p className={`rounded-lg px-2.5 py-2 text-[0.75rem] leading-snug shadow-lg ring-1
                          bg-white dark:bg-paper ring-slate-200 dark:ring-ink/10 ${
             noteIsError
               ? "text-amber-700 dark:text-amber-300"
@@ -87,7 +87,7 @@ export default function RecrawlButton({ className = "", dense = false }: {
           </p>
         </div>
       ) : (
-        <p className={`mt-1.5 text-[12px] max-w-[44ch] ${
+        <p className={`mt-1.5 text-[0.75rem] max-w-[44ch] ${
           noteIsError
             ? "text-amber-700 dark:text-amber-300"
             : "text-slate-500 dark:text-slate-400"}`}>

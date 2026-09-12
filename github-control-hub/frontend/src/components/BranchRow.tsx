@@ -41,7 +41,7 @@ export default function BranchRow({
         )}
       </td>
       <td className="py-3.5 px-5">
-        <code className="text-[13px] text-gh-textMuted dark:text-slate-400 bg-gray-50 dark:bg-paper-2 border border-gray-200 dark:border-rule px-1.5 py-0.5 rounded font-mono">
+        <code className="text-[0.8125rem] text-gh-textMuted dark:text-slate-400 bg-gray-50 dark:bg-paper-2 border border-gray-200 dark:border-rule px-1.5 py-0.5 rounded font-mono">
           {branch.sha.slice(0, 7)}
         </code>
       </td>
@@ -56,7 +56,7 @@ export default function BranchRow({
                 >
                   <i className="ph ph-pencil-simple text-lg"></i>
                 </button>
-                <div className="absolute bottom-full mb-2 hidden group-hover/btn:block bg-gh-nav text-reverse text-[11px] font-medium px-2 py-1 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg -translate-x-1/2 left-1/2">
+                <div className="absolute bottom-full mb-2 hidden group-hover/btn:block bg-gh-nav text-reverse text-[0.6875rem] font-medium px-2 py-1 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg -translate-x-1/2 left-1/2">
                   Rename branch
                 </div>
               </div>
@@ -67,7 +67,7 @@ export default function BranchRow({
                 >
                   <i className="ph ph-trash text-lg"></i>
                 </button>
-                <div className="absolute bottom-full mb-2 hidden group-hover/btn:block bg-gh-nav text-reverse text-[11px] font-medium px-2 py-1 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg -translate-x-1/2 left-1/2">
+                <div className="absolute bottom-full mb-2 hidden group-hover/btn:block bg-gh-nav text-reverse text-[0.6875rem] font-medium px-2 py-1 rounded whitespace-nowrap tooltip-arrow z-10 shadow-lg -translate-x-1/2 left-1/2">
                   Delete branch
                 </div>
               </div>

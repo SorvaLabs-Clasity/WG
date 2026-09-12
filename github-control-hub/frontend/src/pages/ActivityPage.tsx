@@ -171,7 +171,7 @@ function WebhookPulse() {
   return (
     <div className={`shrink-0 pl-4 border-l-2 ${INTENT[tone].border}`}>
       <span className={`caps ${INTENT[tone].text}`}>{label}</span>
-      <span className="standfirst block text-[12px] mt-1">
+      <span className="standfirst block text-[0.75rem] mt-1">
         {when ? <>last: {when}</> : "check the org webhook is configured"}
       </span>
     </div>
@@ -691,7 +691,7 @@ export default function ActivityPage() {
           <div className="flex items-start gap-2 min-w-0">
             <div className="flex items-center gap-1 shrink-0 pt-0.5">
               {depth > 0 && (
-                <span className="text-slate-300 dark:text-slate-600 text-[10px] select-none" aria-hidden="true">
+                <span className="text-slate-300 dark:text-slate-600 text-[0.625rem] select-none" aria-hidden="true">
                   <i className="fa-solid fa-turn-up fa-rotate-90"></i>
                 </span>
               )}
@@ -701,7 +701,7 @@ export default function ActivityPage() {
                   aria-label={isExpanded ? "Collapse" : `Expand ${countAllChildren(entry)} related`}
                   className="w-5 h-5 flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500
                              hover:bg-slate-200 dark:hover:bg-paper-3 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
-                  <i className={`fa-solid fa-chevron-${isExpanded ? "down" : "right"} text-[9px]`}></i>
+                  <i className={`fa-solid fa-chevron-${isExpanded ? "down" : "right"} text-[0.5625rem]`}></i>
                 </button>
               ) : <span className="w-5 inline-block" />}
 
@@ -710,15 +710,15 @@ export default function ActivityPage() {
                   are certainly not: they come from GitHub's enterprise stream
                   and this app never wrote them. */}
               {isFailedEntry
-                ? <i className="fa-solid fa-circle-exclamation text-[13px] text-red-500" title="Failed"></i>
+                ? <i className="fa-solid fa-circle-exclamation text-[0.8125rem] text-red-500" title="Failed"></i>
                 : entry.source === "github"
-                  ? <i className="fa-brands fa-github text-[13px] text-slate-500 dark:text-slate-400" title="Reported by GitHub webhook"></i>
-                  : <i className="fa-solid fa-shield-halved text-[12px] text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
+                  ? <i className="fa-brands fa-github text-[0.8125rem] text-slate-500 dark:text-slate-400" title="Reported by GitHub webhook"></i>
+                  : <i className="fa-solid fa-shield-halved text-[0.75rem] text-gh-blue dark:text-blue-400" title="Done in the Control Hub app"></i>}
             </div>
 
             <div className="min-w-0 flex flex-wrap items-center gap-1.5">
               <span className={`inline-flex items-center gap-1.5 px-2 py-1 caps border shrink-0 ${isFailedEntry ? "bg-crimson-wash text-crimson border-crimson-edge" : cfg.colorClass} ${isUndoneEntry ? "line-through" : ""}`}>
-                <i className={isFailedEntry ? "fa-solid fa-xmark text-[10px]" : cfg.iconClass}></i>
+                <i className={isFailedEntry ? "fa-solid fa-xmark text-[0.625rem]" : cfg.iconClass}></i>
                 {/* The event itself, not the category it belongs to. Every one
                     of these rows said "Security Alert", which is the name of
                     the drawer rather than the name of the thing in it. */}
@@ -760,7 +760,7 @@ export default function ActivityPage() {
           <div className="flex items-center gap-2 min-w-0">
             <UserAvatar login={entry.triggeredBy || entry.actor} size={22} />
             <div className="min-w-0">
-              <span className="block text-[13px] text-ink truncate" title={entry.actor}>
+              <span className="block text-[0.8125rem] text-ink truncate" title={entry.actor}>
                 {actorLabel(entry.actor)}
               </span>
               {/* The person behind a row the system wrote. It used to live on a
@@ -791,10 +791,10 @@ export default function ActivityPage() {
             </span>
           )}
           {entry.target && (
-            <span className="mt-1 flex items-center gap-1 font-mono text-[11.5px] text-ink-2 min-w-0"
+            <span className="mt-1 flex items-center gap-1 font-mono text-[0.7188rem] text-ink-2 min-w-0"
               title={entry.target}>
               {entry.action.includes("branch") && (
-                <i className="fa-solid fa-code-branch text-[9px] shrink-0" aria-hidden="true"></i>
+                <i className="fa-solid fa-code-branch text-[0.5625rem] shrink-0" aria-hidden="true"></i>
               )}
               <span className="truncate">{entry.target}</span>
             </span>
@@ -803,7 +803,7 @@ export default function ActivityPage() {
 
         {/* ── 4. the detail line ────────────────────────────────────────── */}
         <td className="px-4 py-3 overflow-hidden hidden lg:table-cell">
-          <span className={`text-[13px] truncate block ${isFailedEntry ? "text-crimson" : "text-ink-2"}`}
+          <span className={`text-[0.8125rem] truncate block ${isFailedEntry ? "text-crimson" : "text-ink-2"}`}
             title={entry.details}>
             {entry.details || "\u2014"}
           </span>
@@ -858,7 +858,7 @@ export default function ActivityPage() {
               {/* One line, and only where it is not already obvious. The stream
                   descriptions moved to the tabs themselves, where the thing
                   they describe is the thing being pointed at. */}
-              <p className="standfirst text-[14px] mt-2 max-w-[70ch]">
+              <p className="standfirst text-[0.875rem] mt-2 max-w-[70ch]">
                 {lens === "stats"
                   ? "The shape of everything, across the whole organization."
                   : lens === "important"
@@ -893,7 +893,7 @@ export default function ActivityPage() {
                 className={`caps px-4 py-2 -mb-px whitespace-nowrap flex items-center gap-2 border-b-2 transition-colors
                   ${i > 0 ? "border-l border-l-rule" : ""}
                   ${lens === v ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
-                <i className={`ph-bold ${icon} text-[13px]`} aria-hidden="true" />
+                <i className={`ph-bold ${icon} text-[0.8125rem]`} aria-hidden="true" />
                 {label}
               </button>
             ))}
@@ -944,7 +944,7 @@ export default function ActivityPage() {
               tabs it is read when the tab is chosen; in the page header it was
               read once and never again. */}
           {lens === "feed" && (
-            <p className="standfirst text-[13px] max-w-[86ch]">
+            <p className="standfirst text-[0.8125rem] max-w-[86ch]">
               {CATEGORY_DESCRIPTIONS[category]}
             </p>
           )}
@@ -989,7 +989,7 @@ export default function ActivityPage() {
                   <label className="caps block mb-1">Important events</label>
                   <select value={showImportant ? "show" : "hide"}
                     onChange={(e) => setShowImportantPersistent(e.target.value === "show")}
-                    className="field-line text-[13.5px] w-full">
+                    className="field-line text-[0.8438rem] w-full">
                     <option value="show">Shown</option>
                     <option value="hide">Hidden</option>
                   </select>
@@ -1004,7 +1004,7 @@ export default function ActivityPage() {
                   <label className="caps block mb-1">Detailed rows</label>
                   <select value={showDetailed ? "show" : "hide"}
                     onChange={(e) => setShowDetailedPersistent(e.target.value === "show")}
-                    className="field-line text-[13.5px] w-full">
+                    className="field-line text-[0.8438rem] w-full">
                     <option value="show">Shown</option>
                     <option value="hide">Hidden</option>
                   </select>
@@ -1018,7 +1018,7 @@ export default function ActivityPage() {
                   <label className="caps block mb-1">Personal rows</label>
                   <select value={personalMode}
                     onChange={(e) => setPersonalPersistent(e.target.value as "all" | "only" | "hide")}
-                    className="field-line text-[13.5px] w-full">
+                    className="field-line text-[0.8438rem] w-full">
                     <option value="all">Shown</option>
                     <option value="only">Only personal</option>
                     <option value="hide">Hidden</option>
@@ -1028,17 +1028,17 @@ export default function ActivityPage() {
 
               <div>
                 <label className="caps block mb-1">Repository</label>
-                <input type="text" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} placeholder="e.g. web-platform" className="field-line text-[13.5px] w-full" />
+                <input type="text" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} placeholder="e.g. web-platform" className="field-line text-[0.8438rem] w-full" />
               </div>
               <div>
                 <label className="caps block mb-1">Target (Branch/PR)</label>
-                <input type="text" value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)} placeholder="e.g. main or 42" className="field-line text-[13.5px] w-full" />
+                <input type="text" value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)} placeholder="e.g. main or 42" className="field-line text-[0.8438rem] w-full" />
               </div>
               <div>
                 <label className="caps block mb-1">Search Details</label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-gray-400 dark:text-slate-500"><i className="fa-solid fa-magnifying-glass text-[11px]"></i></div>
-                  <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="User, action, details..." className="field-line text-[13.5px] w-full pl-7 pr-3" />
+                  <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-gray-400 dark:text-slate-500"><i className="fa-solid fa-magnifying-glass text-[0.6875rem]"></i></div>
+                  <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="User, action, details..." className="field-line text-[0.8438rem] w-full pl-7 pr-3" />
                 </div>
               </div>
             </div>
@@ -1053,7 +1053,7 @@ export default function ActivityPage() {
                   <span className="caps">
                     Which important events
                   </span>
-                  <span className="text-[11px] text-gh-muted dark:text-slate-500">
+                  <span className="text-[0.6875rem] text-gh-muted dark:text-slate-500">
                     {importantKinds.length === 0
                       ? "all of them"
                       : `${importantKinds.length} selected`}
@@ -1110,7 +1110,7 @@ export default function ActivityPage() {
         {isLoading && <Spinner label="Reading the record" />}
         {error && (
           <div className="bg-crimson-wash border-l-2 border-crimson pl-4 pr-4 py-3 mb-6">
-            <p className="text-crimson text-[13.5px]">Failed to load activity: {(error as Error).message}</p>
+            <p className="text-crimson text-[0.8438rem]">Failed to load activity: {(error as Error).message}</p>
           </div>
         )}
 
@@ -1140,7 +1140,7 @@ export default function ActivityPage() {
                   onOpen={setSelectedEvent}
                 />
                 {filtered.length === 0 && (
-                  <p className="standfirst py-12 text-center text-[14px]">
+                  <p className="standfirst py-12 text-center text-[0.875rem]">
                     Nothing to show for this filter.
                   </p>
                 )}
@@ -1202,17 +1202,17 @@ export default function ActivityPage() {
                            which is not the same answer as "there are none". */
                         <>
                           <p className="display text-[1.25rem] text-ink">Nothing matched in the most recent {data?.examined?.toLocaleString() ?? "few thousand"} events</p>
-                          <p className="standfirst text-[13.5px] mt-2">There may be older matches. Press <strong>Older</strong> to keep looking.</p>
+                          <p className="standfirst text-[0.8438rem] mt-2">There may be older matches. Press <strong>Older</strong> to keep looking.</p>
                         </>
                       ) : hasFilters ? (
                         <>
                           <p className="display text-[1.25rem] text-ink">No matching activity</p>
-                          <p className="standfirst text-[13.5px] mt-2">Nothing in the whole feed matches these filters.</p>
+                          <p className="standfirst text-[0.8438rem] mt-2">Nothing in the whole feed matches these filters.</p>
                         </>
                       ) : (
                         <>
                           <p className="display text-[1.25rem] text-ink">Nothing recorded here yet</p>
-                          <p className="standfirst text-[13.5px] mt-2 max-w-[62ch] mx-auto">{CATEGORY_DESCRIPTIONS[category]}</p>
+                          <p className="standfirst text-[0.8438rem] mt-2 max-w-[62ch] mx-auto">{CATEGORY_DESCRIPTIONS[category]}</p>
                         </>
                       )}
                     </td></tr>
@@ -1238,7 +1238,7 @@ export default function ActivityPage() {
                   <select
                     value={perPage}
                     onChange={(e) => setPerPage(Number(e.target.value))}
-                    className="field-line text-[13.5px]"
+                    className="field-line text-[0.8438rem]"
                   >
                     {[25, 50, 100, 200].map((n) => (
                       <option key={n} value={n}>{n}</option>
@@ -1287,11 +1287,11 @@ export default function ActivityPage() {
             <div className="px-6 py-5 border-b border-rule flex justify-between items-start gap-4">
               <div className="flex items-start gap-3.5">
                 <div className={`w-10 h-10 flex items-center justify-center border ${popupEntry.failed ? 'bg-crimson-wash text-crimson border-crimson-edge' : popupCfg.colorClass}`}>
-                  <i className={popupEntry.failed ? 'fa-solid fa-circle-exclamation text-sm' : popupCfg.iconClass.replace('text-[10px]', 'text-sm')}></i>
+                  <i className={popupEntry.failed ? 'fa-solid fa-circle-exclamation text-sm' : popupCfg.iconClass.replace('text-[0.625rem]', 'text-sm')}></i>
                 </div>
                 <div>
                   <h3 className="display text-[1.25rem] text-ink leading-snug">{popupEntry.failed ? `${popupCfg.label} (Failed)` : popupCfg.label}</h3>
-                  <div className="dateline mt-1.5 text-[12px]">
+                  <div className="dateline mt-1.5 text-[0.75rem]">
                     <span>{formatTimestamp(popupEntry.timestamp)}</span>
                     <span>{new Date(popupEntry.timestamp).toLocaleString()}</span>
                   </div>
@@ -1338,7 +1338,7 @@ export default function ActivityPage() {
               {popupIsTracker && popupOriginal && popupOriginalCfg && (
                 <div className="border border-rule dark:border-rule rounded-lg overflow-hidden">
                   <div className="bg-gray-50 dark:bg-paper-2 px-3 py-2 border-b border-rule dark:border-rule flex items-center gap-2">
-                    <i className="fa-solid fa-link text-gray-400 dark:text-slate-500 text-[10px]"></i>
+                    <i className="fa-solid fa-link text-gray-400 dark:text-slate-500 text-[0.625rem]"></i>
                     <span className="caps">Original Action</span>
                   </div>
                   <div className="px-4 py-3 space-y-3">
@@ -1347,8 +1347,8 @@ export default function ActivityPage() {
                         <i className={popupOriginalCfg.iconClass}></i>
                         {popupOriginalCfg.label}
                       </span>
-                      {popupOriginal.undone && <span className="text-[10px] px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 font-medium">Undone</span>}
-                      {!popupOriginal.undone && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 font-medium">Active</span>}
+                      {popupOriginal.undone && <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-orange-100 dark:bg-orange-900/50 text-orange-600 dark:text-orange-400 border border-orange-200 dark:border-orange-800 font-medium">Undone</span>}
+                      {!popupOriginal.undone && <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 font-medium">Active</span>}
                     </div>
                     <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-sm">
                       <span className="text-gh-muted dark:text-slate-400 text-xs">Repo</span>
@@ -1367,7 +1367,7 @@ export default function ActivityPage() {
                         onClick={() => navigateToActivity(popupOriginal.id)}
                         className="stamp stamp-hollow"
                       >
-                        <i className="fa-solid fa-location-arrow text-[10px] text-gray-400 dark:text-slate-500"></i>
+                        <i className="fa-solid fa-location-arrow text-[0.625rem] text-gray-400 dark:text-slate-500"></i>
                         Go to Original Event
                       </button>
                       {popupOriginal.action === "conflict.pending" && popupOriginal.conflictResolution === "skip" && !popupOriginal.undone && (
@@ -1376,7 +1376,7 @@ export default function ActivityPage() {
                           disabled={isBusy}
                           className="stamp stamp-ochre"
                         >
-                          <i className="fa-solid fa-rotate-left text-[10px]"></i>
+                          <i className="fa-solid fa-rotate-left text-[0.625rem]"></i>
                           Undo Skip
                         </button>
                       )}
@@ -1387,7 +1387,7 @@ export default function ActivityPage() {
                             disabled={isBusy}
                             className="stamp stamp-ochre"
                           >
-                            <i className="fa-solid fa-rotate-left text-[10px]"></i>
+                            <i className="fa-solid fa-rotate-left text-[0.625rem]"></i>
                             Undo Override
                           </button>
                           <button
@@ -1395,7 +1395,7 @@ export default function ActivityPage() {
                             disabled={isBusy}
                             className="stamp stamp-crimson"
                           >
-                            <i className="fa-solid fa-trash text-[10px]"></i>
+                            <i className="fa-solid fa-trash text-[0.625rem]"></i>
                             Undo Event
                           </button>
                         </>
@@ -1406,7 +1406,7 @@ export default function ActivityPage() {
                           disabled={isBusy}
                           className="stamp stamp-forest"
                         >
-                          <i className="fa-solid fa-rotate-right text-[10px]"></i>
+                          <i className="fa-solid fa-rotate-right text-[0.625rem]"></i>
                           Redo
                         </button>
                       )}
@@ -1416,7 +1416,7 @@ export default function ActivityPage() {
                           disabled={isBusy}
                           className="stamp stamp-ochre"
                         >
-                          <i className="fa-solid fa-rotate-left text-[10px]"></i>
+                          <i className="fa-solid fa-rotate-left text-[0.625rem]"></i>
                           Undo
                         </button>
                       )}
@@ -1471,36 +1471,36 @@ export default function ActivityPage() {
                           onClick={(e) => { e.stopPropagation(); setSelectedEvent(child); }}
                         >
                           {childFailed
-                            ? <i className="fa-solid fa-circle-exclamation text-red-500 text-[11px]"></i>
+                            ? <i className="fa-solid fa-circle-exclamation text-red-500 text-[0.6875rem]"></i>
                             : child.undone
-                              ? <i className="fa-solid fa-rotate-left text-orange-400 text-[11px]"></i>
+                              ? <i className="fa-solid fa-rotate-left text-orange-400 text-[0.6875rem]"></i>
                               : child.action === "conflict.pending" && !child.conflictResolution
-                                ? <i className="fa-solid fa-pause text-amber-500 text-[11px]"></i>
-                                : <i className="fa-solid fa-check-circle text-green-500 text-[11px]"></i>}
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5  text-[11px] font-medium border ${childFailed ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : childCfg.colorClass} ${child.undone ? 'line-through' : ''}`}>
-                            <i className={childFailed ? 'fa-solid fa-xmark text-[9px]' : childCfg.iconClass}></i>
+                                ? <i className="fa-solid fa-pause text-amber-500 text-[0.6875rem]"></i>
+                                : <i className="fa-solid fa-check-circle text-green-500 text-[0.6875rem]"></i>}
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5  text-[0.6875rem] font-medium border ${childFailed ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : childCfg.colorClass} ${child.undone ? 'line-through' : ''}`}>
+                            <i className={childFailed ? 'fa-solid fa-xmark text-[0.5625rem]' : childCfg.iconClass}></i>
                             {childCfg.label}
                           </span>
                           <span className="font-mono text-xs text-gray-500 dark:text-slate-400">{child.repo !== '*' && child.repo !== popupEntry.repo ? child.repo : ''}</span>
                           <span className="font-mono text-xs text-gh-textBase dark:text-slate-200">{child.target}</span>
                           {childFailed && child.errorMessage && (
-                            <span className="text-[10px] text-red-500 ml-auto truncate max-w-[120px]" title={child.errorMessage}>{child.errorMessage}</span>
+                            <span className="text-[0.625rem] text-red-500 ml-auto truncate max-w-[120px]" title={child.errorMessage}>{child.errorMessage}</span>
                           )}
                           {!childFailed && childFailedCount > 0 && (
-                            <span className="text-[10px] text-red-500 ml-auto">{childFailedCount} failed</span>
+                            <span className="text-[0.625rem] text-red-500 ml-auto">{childFailedCount} failed</span>
                           )}
-                          {child.undone && !childFailed && <span className="text-[10px] text-orange-500 ml-auto">undone</span>}
+                          {child.undone && !childFailed && <span className="text-[0.625rem] text-orange-500 ml-auto">undone</span>}
                           {child.action === "conflict.pending" && !child.conflictResolution && !childFailed && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold ml-auto">On Hold</span>
+                            <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 font-semibold ml-auto">On Hold</span>
                           )}
                           {child.conflictResolution === "override" && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium ml-auto">Overridden</span>
+                            <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium ml-auto">Overridden</span>
                           )}
                           {child.conflictResolution === "skip" && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-paper-3 text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-rule font-medium ml-auto">Skipped</span>
+                            <span className="text-[0.625rem] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-paper-3 text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-rule font-medium ml-auto">Skipped</span>
                           )}
                           {child.children && child.children.length > 0 && !childFailed && childFailedCount === 0 && (
-                            <span className="text-[10px] text-gray-400 dark:text-slate-500 ml-auto">+{countAllChildren(child)} sub</span>
+                            <span className="text-[0.625rem] text-gray-400 dark:text-slate-500 ml-auto">+{countAllChildren(child)} sub</span>
                           )}
                         </div>
                       );
@@ -1522,7 +1522,7 @@ export default function ActivityPage() {
                   </div>
                   <div className="px-3 py-2 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center px-2 py-0.5  text-[10px] font-semibold uppercase tracking-wider ${popupEntry.conflictPayload.type === "ruleset" ? "bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800" : "bg-purple-50 text-purple-700 border border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-400 dark:border-purple-800"}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5  text-[0.625rem] font-semibold uppercase tracking-wider ${popupEntry.conflictPayload.type === "ruleset" ? "bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800" : "bg-purple-50 text-purple-700 border border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-400 dark:border-purple-800"}`}>
                         {popupEntry.conflictPayload.type}
                       </span>
                       <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">{popupEntry.conflictPayload.name}</span>
@@ -1532,7 +1532,7 @@ export default function ActivityPage() {
                       className="textlink caps !text-indigo mt-0.5 flex items-center gap-1"
                       onClick={() => setConflictDiffOpenId(prev => prev === popupEntry.id ? null : popupEntry.id)}
                     >
-                      <i className={`fa-solid fa-chevron-${conflictDiffOpenId === popupEntry.id ? 'down' : 'right'} text-[8px]`}></i>
+                      <i className={`fa-solid fa-chevron-${conflictDiffOpenId === popupEntry.id ? 'down' : 'right'} text-[0.5rem]`}></i>
                       {conflictDiffOpenId === popupEntry.id ? "Hide" : "View"} {popupEntry.conflictPayload.differences.length} difference{popupEntry.conflictPayload.differences.length !== 1 ? "s" : ""}
                     </button>
                     {conflictDiffOpenId === popupEntry.id && (() => {
@@ -1564,7 +1564,7 @@ export default function ActivityPage() {
                       );
                     })()}
                     {!popupEntry.conflictResolution && (
-                      <p className="text-[11px] text-gh-muted dark:text-slate-400 pt-2">
+                      <p className="text-[0.6875rem] text-gh-muted dark:text-slate-400 pt-2">
                         This conflict was never resolved, and can no longer be, the templates
                         feature that raised it has been removed. The repository still has the
                         configuration shown under &ldquo;Existing&rdquo;.

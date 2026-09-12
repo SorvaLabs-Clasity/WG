@@ -11,7 +11,7 @@ import TeamsWording from "./TeamsWording";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
-const inputClass = "field-line text-[13.5px]";
+const inputClass = "field-line text-[0.8438rem]";
 const labelClass = "caps block mb-1.5";
 
 /**
@@ -297,7 +297,7 @@ export default function AlarmModal({
                   onChange={e => setNotifyOnRecovery(e.target.checked)} />
                 <span>
                   Tell me when it returns to normal
-                  <span className="block text-[12px] text-gray-500 dark:text-slate-400 mt-0.5">
+                  <span className="block text-[0.75rem] text-gray-500 dark:text-slate-400 mt-0.5">
                     Sent to the same group, by email and Teams. It waits for two clean checks
                     in a row, so a value resting on its threshold does not send an all-clear
                     every time it wobbles. Going wrong waits for nothing.
@@ -394,18 +394,18 @@ function PersonalDestinationSummary({ destination }: {
     <div className="text-sm text-slate-600 dark:text-slate-300">
       {confirmed.map(e => (
         <div key={e.endpoint} className="flex items-center gap-1.5">
-          <i className="ph-bold ph-envelope-simple text-[12px] text-slate-400" aria-hidden="true" />
-          <span className="font-mono text-[12.5px]">{e.endpoint}</span>
+          <i className="ph-bold ph-envelope-simple text-[0.75rem] text-slate-400" aria-hidden="true" />
+          <span className="font-mono text-[0.7812rem]">{e.endpoint}</span>
         </div>
       ))}
       {teams.map(a => (
         <div key={a} className="flex items-center gap-1.5">
-          <i className="ph-bold ph-chat-teardrop-text text-[12px] text-violet-500" aria-hidden="true" />
-          <span className="font-mono text-[12.5px]">{a}</span>
+          <i className="ph-bold ph-chat-teardrop-text text-[0.75rem] text-violet-500" aria-hidden="true" />
+          <span className="font-mono text-[0.7812rem]">{a}</span>
         </div>
       ))}
       {pending.length > 0 && (
-        <p className="text-[12px] text-amber-700 dark:text-amber-400 mt-1">
+        <p className="text-[0.75rem] text-amber-700 dark:text-amber-400 mt-1">
           {pending.length} more waiting to confirm.
         </p>
       )}

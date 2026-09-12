@@ -14,11 +14,26 @@
  * colours to draw its swatch in.
  */
 
-export type Skin = "broadsheet" | "control" | "terminal" | "swiss" | "riso";
+export type Skin =
+  | "broadsheet" | "control" | "terminal" | "swiss" | "riso"
+  | "cockpit" | "quiet" | "blueprint";
 export type Edition = "light" | "dark";
+
+/**
+ * Where navigation lives.
+ *
+ * The one part of a theme that CSS cannot decide on its own, because it is a
+ * different tree and not a different treatment. It turned out to be the single
+ * largest lever on whether two themes read as two designs: everything else —
+ * colour, radius, shadow, typeface, even density — leaves the same silhouette
+ * on the screen.
+ */
+export type NavMode = "masthead" | "rail";
 
 export interface ThemeEntry {
   id: Skin;
+  /** Masthead across the top, or a rail down the left. */
+  nav: NavMode;
   /** What it is called in the picker. */
   name: string;
   /** The one-line pitch, and the thing that distinguishes it from its neighbours. */
@@ -32,6 +47,7 @@ export interface ThemeEntry {
 export const THEMES: ThemeEntry[] = [
   {
     id: "broadsheet",
+    nav: "masthead",
     name: "Broadsheet",
     blurb: "Printed sheet. Warm paper, a display serif, hairline rules.",
     detail:
@@ -42,6 +58,7 @@ export const THEMES: ThemeEntry[] = [
   },
   {
     id: "control",
+    nav: "masthead",
     name: "Control",
     blurb: "Modern console. Rounded cards, real shadows, saturated status colour.",
     detail:
@@ -52,6 +69,7 @@ export const THEMES: ThemeEntry[] = [
   },
   {
     id: "terminal",
+    nav: "masthead",
     name: "Terminal",
     blurb: "Engineering console. One monospace, a ruled grid, one phosphor.",
     detail:
@@ -62,6 +80,7 @@ export const THEMES: ThemeEntry[] = [
   },
   {
     id: "swiss",
+    nav: "masthead",
     name: "Swiss",
     blurb: "International style. Grotesque type, a hard grid, one red.",
     detail:
@@ -72,6 +91,7 @@ export const THEMES: ThemeEntry[] = [
   },
   {
     id: "riso",
+    nav: "masthead",
     name: "Risograph",
     blurb: "Brutalist print. 2px rules, hard offsets, two overprinted inks.",
     detail:
@@ -80,7 +100,48 @@ export const THEMES: ThemeEntry[] = [
       + "press into their own shadow. The loudest of the five.",
     swatch: ["#F7F4EA", "#111111", "#F0125C"],
   },
+  {
+    id: "cockpit",
+    nav: "rail",
+    name: "Cockpit",
+    blurb: "Instrument. A left rail, a 13.5px build, zebra rows, no cards.",
+    detail:
+      "Navigation moves to a rail down the left and the whole build drops to a 13.5px root, which takes "
+      + "every padding, gap and type step with it. Boxes give up their outlines for single rules and tables "
+      + "rank by stripe, so a deck of cards becomes a readout. Full width, because a monitoring screen that "
+      + "stops short is throwing away the columns you opened it for.",
+    swatch: ["#E8ECF1", "#0F1723", "#0870A8"],
+  },
+  {
+    id: "quiet",
+    nav: "masthead",
+    name: "Quiet",
+    blurb: "Document. A 17.5px build, one narrow column, no boxes at all.",
+    detail:
+      "The opposite extreme: a 17.5px root, one 52rem column, very open leading, and no borders, fills or "
+      + "shadows anywhere — whitespace does the ranking a box would otherwise do. The labels come out of "
+      + "small capitals into sentence case, which changes the texture of every screen more than any other "
+      + "single decision in the set.",
+    swatch: ["#FCFCFA", "#292926", "#465A8A"],
+  },
+  {
+    id: "blueprint",
+    nav: "masthead",
+    name: "Blueprint",
+    blurb: "Technical drawing. Cyan linework on navy, outlined, gridded.",
+    detail:
+      "Cyan linework on deep navy: everything outlined, labels set in a monospace, and a fine cyan grid "
+      + "under the whole sheet. Dark in both editions — the day edition is a lighter drafting film rather "
+      + "than white paper. The one theme here that does not treat a light ground as the natural state of "
+      + "a screen.",
+    swatch: ["#12263A", "#D6E9F5", "#4FC3F7"],
+  },
 ];
+
+/** Whether this theme puts its navigation down the side. */
+export function isRail(id: string | null | undefined): boolean {
+  return themeEntry(id).nav === "rail";
+}
 
 export const DEFAULT_SKIN: Skin = "broadsheet";
 

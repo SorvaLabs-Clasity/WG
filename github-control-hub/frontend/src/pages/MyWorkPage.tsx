@@ -79,7 +79,7 @@ function PullRow({ pr, showAuthor }: { pr: MyPull; showAuthor?: boolean }) {
         <div className="dateline mt-2 min-w-0">
           {showAuthor && <span className="flex items-center"><UserAvatar login={pr.author} size={15} /></span>}
           <span className={`caps ${w.tone}`}>{REASON[pr.reason] ?? pr.reason}</span>
-          <span className="font-mono text-[12px] truncate">{pr.repo}#{pr.number}</span>
+          <span className="font-mono text-[0.75rem] truncate">{pr.repo}#{pr.number}</span>
           {pr.approvals > 0 && <span>{pr.approvals} approved</span>}
           {pr.pending.length > 0 && (
             <span className="truncate">waiting on {pr.pending.slice(0, 3).join(", ")}</span>
@@ -114,7 +114,7 @@ function Panel({ title, count, note, action, children }: {
           )}
           {action && <div className="ml-auto self-baseline">{action}</div>}
         </div>
-        {note && <p className="standfirst text-[12px] mt-1">{note}</p>}
+        {note && <p className="standfirst text-[0.75rem] mt-1">{note}</p>}
         <div className="border-t-2 border-ink mt-3" />
       </div>
       <div className="flex-1">{children}</div>
@@ -180,7 +180,7 @@ function Paged<T>({ items, render, keyOf, perPage = PAGE, bare }: {
 }
 
 function Quiet({ children }: { children: React.ReactNode }) {
-  return <p className="standfirst px-5 py-10 text-[13.5px] text-center">{children}</p>;
+  return <p className="standfirst px-5 py-10 text-[0.8438rem] text-center">{children}</p>;
 }
 
 /**
@@ -243,7 +243,7 @@ function Headline({ mergeable, onYou, toReview }: {
           <p className={`figure text-[clamp(3rem,6vw,4.25rem)] mt-3 ${clear ? "text-ink-4" : "text-ochre"}`}>
             {toReview}
           </p>
-          <p className="standfirst text-[13px] mt-3 max-w-[34ch]">
+          <p className="standfirst text-[0.8125rem] mt-3 max-w-[34ch]">
             {clear
               ? "Nobody is blocked on a review from you."
               : `${toReview === 1 ? "One pull request is" : `${toReview} pull requests are`} blocked until you look.`}
@@ -268,11 +268,11 @@ function MiniStat({ icon, label, value, foot, tone }: {
   return (
     <div className="px-0 sm:px-8 py-4 sm:py-0">
       <p className="caps flex items-baseline gap-2">
-        <i className={`${icon} ph-bold text-[13px] ${value === 0 ? "text-ink-4" : tone}`} aria-hidden="true" />
+        <i className={`${icon} ph-bold text-[0.8125rem] ${value === 0 ? "text-ink-4" : tone}`} aria-hidden="true" />
         {label}
       </p>
       <p className={`figure text-[2.5rem] mt-3 ${value === 0 ? "text-ink-4" : "text-ink"}`}>{value}</p>
-      <p className="standfirst text-[12px] mt-2 truncate">{foot}</p>
+      <p className="standfirst text-[0.75rem] mt-2 truncate">{foot}</p>
     </div>
   );
 }
@@ -368,7 +368,7 @@ function Queue() {
             : <Paged items={visibleToReview} keyOf={pr => pr.url}
                 render={pr => <PullRow pr={pr} showAuthor />} />}
           {visibleToReview.length > 0 && hiddenToReview > 0 && (
-            <p className="standfirst text-[12px] px-5 py-3 border-t border-rule">
+            <p className="standfirst text-[0.75rem] px-5 py-3 border-t border-rule">
               {hiddenToReview} more {hiddenToReview === 1 ? "review has" : "reviews have"} more
               reviewers than that.
             </p>
@@ -436,11 +436,11 @@ function GateRow({ rule, tone }: { rule: PushRule; tone: "block" | "need" }) {
       <span className={`mt-0.5 w-8 h-8 shrink-0 grid place-items-center border ${
         block ? "border-crimson-edge bg-crimson-wash text-crimson"
               : "border-indigo-edge bg-indigo-wash text-indigo"}`}>
-        <i className={`ph-bold ${iconFor(rule.label, rule.gate)} text-[15px]`} aria-hidden="true" />
+        <i className={`ph-bold ${iconFor(rule.label, rule.gate)} text-[0.9375rem]`} aria-hidden="true" />
       </span>
       <div className="min-w-0">
         <div className="display text-[1.0625rem] leading-snug text-ink">{rule.label}</div>
-        <div className="standfirst text-[12.5px] mt-1">{rule.detail}</div>
+        <div className="standfirst text-[0.7812rem] mt-1">{rule.detail}</div>
       </div>
     </div>
   );
@@ -478,14 +478,14 @@ function Verdict({ data }: { data: PushCheckData }) {
       <span className={`block h-[3px] w-full ${look.wash}`} aria-hidden="true" />
       <div className="flex items-start gap-5 pt-5">
         <span className={`w-12 h-12 grid place-items-center shrink-0 border border-rule-strong ${look.tint}`}>
-          <i className={`ph-fill ${look.icon} text-[22px]`} aria-hidden="true" />
+          <i className={`ph-fill ${look.icon} text-[1.375rem]`} aria-hidden="true" />
         </span>
         <div className="min-w-0">
           <h2 className={`display text-[clamp(1.75rem,3.2vw,2.375rem)] leading-tight ${look.tint}`}>
             {look.title}
           </h2>
-          <p className="standfirst text-[14px] mt-2 max-w-[62ch]">{look.sub}</p>
-          <div className="dateline mt-3 font-mono text-[12px]">
+          <p className="standfirst text-[0.875rem] mt-2 max-w-[62ch]">{look.sub}</p>
+          <div className="dateline mt-3 font-mono text-[0.75rem]">
             <span>{data.repo}</span>
             <span>{data.branch}</span>
           </div>
@@ -533,7 +533,7 @@ function PushCheck() {
       </div>
 
       {!repo && (
-        <p className="standfirst text-[15px] py-12 text-center max-w-[48ch] mx-auto">
+        <p className="standfirst text-[0.9375rem] py-12 text-center max-w-[48ch] mx-auto">
           Pick a repository and branch. This says what will happen before you try it,
           and who can let you through if something is in the way.
         </p>
@@ -574,7 +574,7 @@ function PushCheck() {
                 {data.approvers!.map(p => (
                   <span key={p.login} className="inline-flex items-center gap-2.5">
                     <UserAvatar login={p.login} size={20} />
-                    <span className="text-[13px] text-ink">{p.login}</span>
+                    <span className="text-[0.8125rem] text-ink">{p.login}</span>
                     {p.role === "admin" && <Pill intent="neutral">admin</Pill>}
                   </span>
                 ))}
@@ -637,10 +637,10 @@ function Shipped() {
             from a row the scheduled pass keeps warm, so without a stamp a
             reader who merged something a minute ago reads its absence as the
             merge not having been recorded. */}
-        <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums">
+        <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500 tabular-nums">
           {data?.computedAt && (
             <>
-              <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
+              <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[0.6875rem]" aria-hidden="true" />
               counted {ago(data.computedAt)}
               {data.refreshing && <span className="ml-1 opacity-60">(refreshing)</span>}
             </>
@@ -712,7 +712,7 @@ function Shipped() {
                                 <span className="display text-[0.9375rem] text-ink truncate">
                                   {e.target || e.details}
                                 </span>
-                                <span className="ml-auto text-[11px] font-mono text-ink-3 shrink-0">
+                                <span className="ml-auto text-[0.6875rem] font-mono text-ink-3 shrink-0">
                                   {e.repo}{e.prNumber ? `#${e.prNumber}` : ""}
                                 </span>
                               </>

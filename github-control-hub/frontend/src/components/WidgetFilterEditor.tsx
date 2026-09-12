@@ -89,7 +89,7 @@ export default function WidgetFilterEditor({ config, onClose }: {
               <h3 className="display text-[1.1875rem] text-ink truncate">
                 Narrow “{config.title}”
               </h3>
-              <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+              <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5">
                 The check still looks at the whole organization. This decides
                 which of its rows reach your board.
               </p>
@@ -98,7 +98,7 @@ export default function WidgetFilterEditor({ config, onClose }: {
               className="shrink-0 w-7 h-7 rounded-lg grid place-items-center
                          text-slate-400 hover:text-slate-900 dark:hover:text-ink
                          hover:bg-slate-100 dark:hover:bg-ink/[0.08] transition-colors">
-              <i className="ph-bold ph-x text-[13px]" aria-hidden="true" />
+              <i className="ph-bold ph-x text-[0.8125rem]" aria-hidden="true" />
             </button>
           </div>
         </div>
@@ -133,7 +133,7 @@ export default function WidgetFilterEditor({ config, onClose }: {
 
         <div className="px-5 py-3.5 border-t border-slate-200 dark:border-ink/10
                         flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-[12px] text-slate-500 dark:text-slate-400 tabular-nums">
+          <p className="text-[0.75rem] text-slate-500 dark:text-slate-400 tabular-nums">
             {draft.filter(isActive).length === 0
               ? `${unfiltered.length.toLocaleString()} rows, unnarrowed`
               : `${preview.toLocaleString()} of ${unfiltered.length.toLocaleString()} rows kept`}
@@ -231,7 +231,7 @@ function ColumnFilter({ column, items, value, onChange }: {
         : "border-slate-200 dark:border-ink/10"}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-baseline gap-2 min-w-0">
-          <span className="text-[13px] font-bold text-slate-900 dark:text-ink">
+          <span className="text-[0.8125rem] font-bold text-slate-900 dark:text-ink">
             {column.label}
           </span>
           <span className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
@@ -239,7 +239,7 @@ function ColumnFilter({ column, items, value, onChange }: {
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`text-[11px] font-bold tabular-nums ${
+          <span className={`text-[0.6875rem] font-bold tabular-nums ${
             active && kept === 0 ? "text-rose-600 dark:text-rose-400"
               : active ? "text-emerald-600 dark:text-emerald-400"
               : "text-slate-300 dark:text-slate-600"}`}>
@@ -257,7 +257,7 @@ function ColumnFilter({ column, items, value, onChange }: {
       {/* The column has nothing in it at all. Said before somebody types into
           it and concludes the filter is broken. */}
       {missing && (
-        <p className="text-[11.5px] text-amber-700 dark:text-amber-400 mt-1.5">
+        <p className="text-[0.7188rem] text-amber-700 dark:text-amber-400 mt-1.5">
           No row in this check reports a {column.label.toLowerCase()}, so a
           filter here would match nothing.
         </p>
@@ -268,7 +268,7 @@ function ColumnFilter({ column, items, value, onChange }: {
           <input type="number" inputMode="numeric" placeholder={bounds ? `min ${bounds.lo}` : "min"}
             value={value?.min ?? ""} className={`${SURFACE.input} max-w-[140px]`}
             onChange={e => onChange({ min: e.target.value === "" ? null : Number(e.target.value) })} />
-          <span className="text-[12px] text-slate-400">to</span>
+          <span className="text-[0.75rem] text-slate-400">to</span>
           <input type="number" inputMode="numeric" placeholder={bounds ? `max ${bounds.hi}` : "max"}
             value={value?.max ?? ""} className={`${SURFACE.input} max-w-[140px]`}
             onChange={e => onChange({ max: e.target.value === "" ? null : Number(e.target.value) })} />
@@ -281,7 +281,7 @@ function ColumnFilter({ column, items, value, onChange }: {
               <button key={opt} type="button"
                 onClick={() => onChange({ values: on ? values.filter(v => v !== opt) : [...values, opt] })}
                 aria-pressed={on}
-                className={`px-2.5 py-1 rounded-lg text-[12px] font-semibold transition-colors border
+                className={`px-2.5 py-1 rounded-lg text-[0.75rem] font-semibold transition-colors border
                             inline-flex items-center gap-1.5 ${
                   on
                     ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 border-transparent"
@@ -289,7 +289,7 @@ function ColumnFilter({ column, items, value, onChange }: {
                 {opt}
                 {/* How many rows carry it. A choice that would keep nothing is
                     worth seeing before it is made, not after. */}
-                <span className={`text-[10px] tabular-nums font-bold ${
+                <span className={`text-[0.625rem] tabular-nums font-bold ${
                   on ? "opacity-60" : "text-slate-400 dark:text-slate-500"}`}>
                   {counts.get(opt) ?? 0}
                 </span>
@@ -318,14 +318,14 @@ function ColumnFilter({ column, items, value, onChange }: {
             <div className="flex flex-wrap gap-1.5 mt-2">
               {values.map(v => (
                 <span key={v} className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg
-                                         text-[12px] font-semibold bg-slate-100 dark:bg-ink/[0.08]
+                                         text-[0.75rem] font-semibold bg-slate-100 dark:bg-ink/[0.08]
                                          text-slate-700 dark:text-slate-200">
                   {v}
                   <button type="button" aria-label={`Remove ${v}`}
                     onClick={() => onChange({ values: values.filter(x => x !== v) })}
                     className="w-4 h-4 rounded grid place-items-center text-slate-400
                                hover:text-rose-600 dark:hover:text-rose-400 transition-colors">
-                    <i className="ph-bold ph-x text-[9px]" aria-hidden="true" />
+                    <i className="ph-bold ph-x text-[0.5625rem]" aria-hidden="true" />
                   </button>
                 </span>
               ))}
@@ -334,7 +334,7 @@ function ColumnFilter({ column, items, value, onChange }: {
           {/* Matching is on part of the value, not all of it, because what
               people type is a name they half-remember. Said here so a filter
               that keeps more than expected is explainable. */}
-          <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
+          <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1.5 leading-relaxed">
             Matches any part of the value, ignoring case.
             {examples.length > 0 && (
               <> This column holds things like{" "}
@@ -342,7 +342,7 @@ function ColumnFilter({ column, items, value, onChange }: {
                   <span key={e}>
                     {i > 0 && ", "}
                     <button type="button" onClick={() => addValue(e)}
-                      className="font-mono text-[10.5px] px-1 py-0.5 rounded
+                      className="font-mono text-[0.6562rem] px-1 py-0.5 rounded
                                  bg-slate-200/70 dark:bg-ink/[0.08]
                                  text-slate-600 dark:text-slate-300 hover:text-gh-blue transition-colors">
                       {e}
@@ -353,7 +353,7 @@ function ColumnFilter({ column, items, value, onChange }: {
             )}
           </p>
           {active && kept === 0 && (
-            <p className="text-[11.5px] text-rose-600 dark:text-rose-400 mt-1.5 leading-relaxed">
+            <p className="text-[0.7188rem] text-rose-600 dark:text-rose-400 mt-1.5 leading-relaxed">
               Nothing in this column matches. Check it is the column you meant:
               Entity holds the repository, user or team a row is about, and Owner
               holds who to ask about it.
@@ -367,7 +367,7 @@ function ColumnFilter({ column, items, value, onChange }: {
           {(["include", "exclude"] as const).map(mode => (
             <button key={mode} type="button" onClick={() => onChange({ mode })}
               aria-pressed={(value?.mode ?? "include") === mode}
-              className={`px-2.5 py-1 rounded-lg text-[11.5px] font-bold transition-colors ${
+              className={`px-2.5 py-1 rounded-lg text-[0.7188rem] font-bold transition-colors ${
                 (value?.mode ?? "include") === mode
                   ? "bg-slate-200 dark:bg-ink/[0.12] text-slate-900 dark:text-ink"
                   : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"}`}>

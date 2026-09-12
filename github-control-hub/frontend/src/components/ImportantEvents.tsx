@@ -282,7 +282,7 @@ export default function ImportantEvents() {
         <section className={`${SURFACE.card} p-5 mb-4`} style={enter(0)}>
           <div className="flex items-baseline justify-between gap-3 flex-wrap mb-3">
             <h2 className={TYPE.heading}>Last {RECENT_DAYS} days</h2>
-            <span className="text-[12px] text-slate-400 dark:text-slate-500">
+            <span className="text-[0.75rem] text-slate-400 dark:text-slate-500">
               {lately.length === 0 ? "nothing to show" : "no action needed"}
             </span>
           </div>
@@ -297,10 +297,10 @@ export default function ImportantEvents() {
                 <div key={a.id} className="flex items-baseline gap-3 py-1.5 border-b last:border-b-0 border-slate-100 dark:border-ink/[0.05]">
                   <span className={`shrink-0 w-1.5 h-1.5 rounded-full translate-y-[-1px]
                     ${SEVERITY_BAR[(a.severity ?? "low").toLowerCase() as Severity] ?? "bg-slate-300"}`} />
-                  <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 shrink-0">
+                  <span className="text-[0.8125rem] font-semibold text-slate-700 dark:text-slate-200 shrink-0">
                     {label(a.type)}
                   </span>
-                  <span className="text-[12.5px] text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1">
+                  <span className="text-[0.7812rem] text-slate-500 dark:text-slate-400 truncate min-w-0 flex-1">
                     {a.repo}{a.actor ? ` · by ${a.actor}` : a.source === "reconciliation" ? " · no webhook" : ""}
                   </span>
                   {wasReverted(a) && (
@@ -308,13 +308,13 @@ export default function ImportantEvents() {
                       undone
                     </span>
                   )}
-                  <span className="shrink-0 text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums">
+                  <span className="shrink-0 text-[0.7188rem] text-slate-400 dark:text-slate-500 tabular-nums">
                     {ago(a.timestamp)}
                   </span>
                 </div>
               ))}
               {lately.length > 8 && (
-                <p className="text-[12px] text-slate-400 dark:text-slate-500 pt-2">
+                <p className="text-[0.75rem] text-slate-400 dark:text-slate-500 pt-2">
                   and {lately.length - 8} more, in the record below
                 </p>
               )}
@@ -356,7 +356,7 @@ export default function ImportantEvents() {
                   const on = f.severity === s;
                   return (
                     <button key={s} type="button" onClick={() => toggle("severity", s)} aria-pressed={on}
-                      className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11.5px] font-semibold transition-colors
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[0.7188rem] font-semibold transition-colors
                         ${on ? "bg-slate-900 text-reverse dark:bg-white dark:text-slate-900"
                              : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-ink/[0.07]"}`}>
                       <span className={`w-2 h-2 rounded-sm ${SEVERITY_DOT[s]}`} />
@@ -392,7 +392,7 @@ export default function ImportantEvents() {
                         : `border-slate-200/80 dark:border-ink/[0.09] bg-white dark:bg-paper ${SURFACE.cardHover}`}`}
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <span className="text-[13.5px] font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                      <span className="text-[0.8438rem] font-bold text-slate-800 dark:text-slate-100 leading-tight">
                         {label(k.type)}
                       </span>
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 mt-1.5 ${INTENT[intent].mark}`}
@@ -401,11 +401,11 @@ export default function ImportantEvents() {
 
                     <div className="flex items-end justify-between gap-3 mt-2.5">
                       <div>
-                        <div className={`text-[30px] font-semibold tabular-nums leading-none tracking-tight
+                        <div className={`text-[1.875rem] font-semibold tabular-nums leading-none tracking-tight
                           ${notable ? INTENT[intent].figure : "text-slate-800 dark:text-slate-100"}`}>
                           {k.total}
                         </div>
-                        <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
+                        <div className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-1">
                           across {k.repos} {k.repos === 1 ? "repository" : "repositories"}
                         </div>
                       </div>
@@ -415,14 +415,14 @@ export default function ImportantEvents() {
 
                     <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-ink/[0.06]
                                     flex items-center justify-between gap-2">
-                      <span className={`text-[11.5px] font-semibold ${notable ? INTENT[intent].text : "text-slate-400 dark:text-slate-500"}`}>
+                      <span className={`text-[0.7188rem] font-semibold ${notable ? INTENT[intent].text : "text-slate-400 dark:text-slate-500"}`}>
                         {trendWords(k)}
                       </span>
                       {/* How bad this kind gets, which is the durable fact.
                           It used to read "N open", a number that only ever
                           grew and that could be driven to zero by clicking
                           rather than by anything changing on GitHub. */}
-                      <span className={`text-[10.5px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded
+                      <span className={`text-[0.6562rem] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded
                                         ${INTENT[intent].soft} ${INTENT[intent].text}`}>
                         {k.worst}
                       </span>
@@ -446,12 +446,12 @@ export default function ImportantEvents() {
                   const on = f.repo === r.repo;
                   return (
                     <button key={r.repo} type="button" onClick={() => toggle("repo", r.repo)} aria-pressed={on}
-                      className={`group flex items-center gap-2 pl-2.5 pr-1.5 py-1.5 rounded-xl border text-[12.5px] font-semibold transition-all
+                      className={`group flex items-center gap-2 pl-2.5 pr-1.5 py-1.5 rounded-xl border text-[0.7812rem] font-semibold transition-all
                         ${on ? "border-slate-900 dark:border-white bg-slate-900 text-reverse dark:bg-white dark:text-slate-900"
                              : "border-slate-200 dark:border-ink/10 text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-ink/30"}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${on ? "bg-current opacity-70" : INTENT[sevIntent(r.worst)].mark}`} />
                       <span className="truncate max-w-[190px]">{r.repo}</span>
-                      <span className={`tabular-nums text-[11px] px-1.5 py-0.5 rounded-md
+                      <span className={`tabular-nums text-[0.6875rem] px-1.5 py-0.5 rounded-md
                         ${on ? "bg-ink/20 dark:bg-paper/15" : "bg-slate-100 dark:bg-ink/[0.07] text-slate-500 dark:text-slate-400"}`}>
                         {r.total}
                       </span>
@@ -459,7 +459,7 @@ export default function ImportantEvents() {
                   );
                 })}
                 {repos.length > 14 && (
-                  <span className="self-center text-[12px] text-slate-400 dark:text-slate-500 px-1">
+                  <span className="self-center text-[0.75rem] text-slate-400 dark:text-slate-500 px-1">
                     and {repos.length - 14} more
                   </span>
                 )}
@@ -496,14 +496,14 @@ export default function ImportantEvents() {
                 {active.map(a => (
                   <button key={a.k} type="button"
                     onClick={() => set(a.k, (a.k === "search" ? "" : null) as any)}
-                    className="group flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-lg text-[12px] font-semibold
+                    className="group flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-lg text-[0.75rem] font-semibold
                                bg-slate-900 text-reverse dark:bg-white dark:text-slate-900 hover:opacity-80 transition-opacity">
                     {a.text}
-                    <span className="opacity-50 group-hover:opacity-100 text-[13px] leading-none">×</span>
+                    <span className="opacity-50 group-hover:opacity-100 text-[0.8125rem] leading-none">×</span>
                   </button>
                 ))}
                 <button type="button" onClick={() => { setF(NO_FILTERS); setPage(1); }}
-                  className="text-[12px] font-semibold text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-ink px-1.5 transition-colors">
+                  className="text-[0.75rem] font-semibold text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-ink px-1.5 transition-colors">
                   clear all
                 </button>
               </div>
@@ -542,7 +542,7 @@ export default function ImportantEvents() {
               <div className="mt-4 rounded-xl border border-amber-200 dark:border-amber-500/30
                               bg-amber-50 dark:bg-amber-500/[0.1] px-4 py-3
                               flex items-center justify-between gap-4 flex-wrap">
-                <p className="text-[12.5px] text-amber-800 dark:text-amber-200">
+                <p className="text-[0.7812rem] text-amber-800 dark:text-amber-200">
                   Showing {all.length} alerts back to {shortDate(oldestLoaded)}. There are
                   older ones. Everything above, including search, covers only what has loaded.
                 </p>
@@ -615,7 +615,7 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
                    focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900/20 dark:focus-visible:ring-ink/30">
         <span className={`shrink-0 w-1 self-stretch  ${INTENT[intent].mark}`} />
 
-        <i className={`ph-bold ph-caret-right shrink-0 text-slate-300 dark:text-slate-600 text-[12px]
+        <i className={`ph-bold ph-caret-right shrink-0 text-slate-300 dark:text-slate-600 text-[0.75rem]
                        transition-transform duration-200 ${open ? "rotate-90" : ""}`} aria-hidden="true" />
 
         <span className="min-w-0 flex-1">
@@ -632,7 +632,7 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
               </Pill>
             )}
           </span>
-          <span className="block text-[12.5px] text-slate-500 dark:text-slate-400 mt-1 truncate">
+          <span className="block text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-1 truncate">
             {s.repos.length === 1
               ? s.repos[0]
               : `${s.repos.slice(0, 3).join(", ")}${s.repos.length > 3 ? ` and ${s.repos.length - 3} more` : ""}`}
@@ -640,10 +640,10 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
         </span>
 
         <span className="shrink-0 text-right">
-          <span className="block text-[14px] font-bold tabular-nums text-slate-700 dark:text-slate-200">
+          <span className="block text-[0.875rem] font-bold tabular-nums text-slate-700 dark:text-slate-200">
             {s.repos.length > 1 ? `${s.repos.length} repos` : `${s.count} ${s.count === 1 ? "alert" : "alerts"}`}
           </span>
-          <span className="block text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+          <span className="block text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-0.5">
             {shortDate(s.last)}{spread && ` · over ${spanWords(s.first, s.last)}`}
           </span>
         </span>
@@ -652,7 +652,7 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
       {open && (
         <div className="border-t border-slate-100 dark:border-ink/[0.07] bg-slate-50/60 dark:bg-ink/[0.02]">
           {alerts.length === 0 ? (
-            <p className="px-4 py-3 text-[12.5px] text-slate-500 dark:text-slate-400">
+            <p className="px-4 py-3 text-[0.7812rem] text-slate-500 dark:text-slate-400">
               These alerts are no longer in the loaded set.
             </p>
           ) : alerts.map(a => (
@@ -661,7 +661,7 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${SEVERITY_BAR[(a.severity ?? "low").toLowerCase() as Severity] ?? "bg-slate-300"}`} />
-                  <span className="text-[13px] font-semibold text-slate-800 dark:text-slate-100">{a.repo}</span>
+                  <span className="text-[0.8125rem] font-semibold text-slate-800 dark:text-slate-100">{a.repo}</span>
                   {/* "Undone", not "resolved". The only thing `resolved` still
                       records is that the change was reversed on GitHub, which
                       is a fact about the repository. It used to also mean
@@ -674,8 +674,8 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
                     </span>
                   )}
                 </div>
-                <p className="text-[12.5px] mt-1 text-slate-600 dark:text-slate-300">{a.message}</p>
-                <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-1.5">
+                <p className="text-[0.7812rem] mt-1 text-slate-600 dark:text-slate-300">{a.message}</p>
+                <p className="text-[0.7188rem] text-slate-400 dark:text-slate-500 mt-1.5">
                   {/* A reconciliation alert's timestamp is when the nightly
                       walk noticed, not when it happened, and the two render
                       identically unless it is said out loud. */}
@@ -685,14 +685,14 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
                   {a.actor && <> · by <span className="font-semibold text-slate-500 dark:text-slate-400">{a.actor}</span></>}
                 </p>
                 {a.source === "reconciliation" && (
-                  <p className="text-[11.5px] mt-1.5 text-amber-700 dark:text-amber-300">
+                  <p className="text-[0.7188rem] mt-1.5 text-amber-700 dark:text-amber-300">
                     Found by the nightly check, not reported by GitHub. Nobody knows
                     who made this change, and it happened some time before it was found.
                   </p>
                 )}
                 {a.details && (
                   <pre className="mt-2.5 p-2.5 rounded-lg bg-white dark:bg-ink/[0.05] border border-slate-200 dark:border-ink/[0.07]
-                                  text-[11px] font-mono text-slate-500 dark:text-slate-300 max-h-32 overflow-auto">
+                                  text-[0.6875rem] font-mono text-slate-500 dark:text-slate-300 max-h-32 overflow-auto">
                     {JSON.stringify(a.details, null, 2)}
                   </pre>
                 )}

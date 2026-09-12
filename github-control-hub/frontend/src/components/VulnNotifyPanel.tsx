@@ -9,7 +9,7 @@ import TeamsWording from "./TeamsWording";
 
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
-const inputClass = "field-line text-[13.5px]";
+const inputClass = "field-line text-[0.8438rem]";
 const labelClass = "caps block mb-1.5";
 const cardClass = "bg-paper border border-rule p-5";
 

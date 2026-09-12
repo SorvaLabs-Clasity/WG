@@ -108,7 +108,7 @@ export default function PersonPicker({
           onKeyDown={onKey}
           placeholder={placeholder}
           role="combobox" aria-expanded={open} aria-autocomplete="list"
-          className="field-line text-[13.5px] w-full pl-9 pr-3"
+          className="field-line text-[0.8438rem] w-full pl-9 pr-3"
         />
       </div>
 
@@ -116,12 +116,12 @@ export default function PersonPicker({
         <div ref={listRef}
           className="absolute z-20 left-0 right-0 mt-1 max-h-64 overflow-y-auto rounded-xl border border-slate-200 dark:border-ink/10 bg-white dark:bg-paper-2 shadow-xl p-1">
           {loading ? (
-            <p className="px-3 py-2 text-[13px] text-slate-400 dark:text-slate-500">Loading people…</p>
+            <p className="px-3 py-2 text-[0.8125rem] text-slate-400 dark:text-slate-500">Loading people…</p>
           ) : matches.length === 0 ? (
             // Says which of the two it is. "Not in this organization" and
             // "already muted" send you to different next actions, and a single
             // "no results" line makes them look like the same dead end.
-            <p className="px-3 py-2 text-[13px] text-slate-500 dark:text-slate-400">
+            <p className="px-3 py-2 text-[0.8125rem] text-slate-500 dark:text-slate-400">
               {q
                 ? taken.has(q.toLowerCase())
                   ? <><strong className="font-semibold">{q}</strong> is already on the list.</>
@@ -139,7 +139,7 @@ export default function PersonPicker({
                   string, a guessed URL resolves for any GitHub account at all,
                   which is how a stranger's face ended up in this box. */}
               <UserAvatar login={m.login} avatarUrl={m.avatarUrl ?? undefined} size={22} />
-              <span className="text-[13px] font-medium truncate">{m.login}</span>
+              <span className="text-[0.8125rem] font-medium truncate">{m.login}</span>
             </button>
           ))}
         </div>

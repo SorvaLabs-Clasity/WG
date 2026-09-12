@@ -92,18 +92,18 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
       </p>
 
       {isLoading && (
-        <p className="px-4 pb-3 text-[12px] text-slate-400 dark:text-ink/40">Reading your profiles…</p>
+        <p className="px-4 pb-3 text-[0.75rem] text-slate-400 dark:text-ink/40">Reading your profiles…</p>
       )}
 
       {error && (
-        <p className="px-4 pb-3 text-[12px] text-slate-500 dark:text-ink/50">
-          Could not read <code className="text-[11px]">~/.aws/config</code>. Switch from the sign-in screen instead.
+        <p className="px-4 pb-3 text-[0.75rem] text-slate-500 dark:text-ink/50">
+          Could not read <code className="text-[0.6875rem]">~/.aws/config</code>. Switch from the sign-in screen instead.
         </p>
       )}
 
       {profiles?.length === 0 && !isLoading && (
-        <p className="px-4 pb-3 text-[12px] text-slate-500 dark:text-ink/50">
-          No named profiles found in <code className="text-[11px]">~/.aws/config</code>.
+        <p className="px-4 pb-3 text-[0.75rem] text-slate-500 dark:text-ink/50">
+          No named profiles found in <code className="text-[0.6875rem]">~/.aws/config</code>.
         </p>
       )}
 
@@ -127,7 +127,7 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
                   : on ? "ph-check-circle text-emerald-500"
                   : "ph-cloud text-slate-400 dark:text-ink/40"} text-base shrink-0`}></i>
               <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-bold text-slate-900 dark:text-ink truncate">
+                <span className="block text-[0.8125rem] font-bold text-slate-900 dark:text-ink truncate">
                   {profile.name}
                 </span>
                 {/* The account id is what people recognise; the region is what
@@ -144,7 +144,7 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
                     that tells two profiles into the same account apart, off the
                     end as "· in…". The check icon to the left already says
                     which profile is in use, so the words did not need to. */}
-                <span className="block text-[11px] text-slate-400 dark:text-ink/40 truncate">
+                <span className="block text-[0.6875rem] text-slate-400 dark:text-ink/40 truncate">
                   {profile.accountId || profile.type.toUpperCase()}
                   {profile.region
                     ? ` · ${profile.region}`
@@ -158,10 +158,10 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
 
       {problem && (
         <div className="px-4 py-3 border-t border-rule bg-ochre-wash">
-          <p className="text-[12px] font-bold text-amber-800 dark:text-amber-300">
+          <p className="text-[0.75rem] font-bold text-amber-800 dark:text-amber-300">
             {problem.profile} could not be reached
           </p>
-          <p className="text-[11px] text-amber-700/80 dark:text-amber-200/70 mt-0.5 break-words">
+          <p className="text-[0.6875rem] text-amber-700/80 dark:text-amber-200/70 mt-0.5 break-words">
             {problem.message}
           </p>
           {problem.sso && (

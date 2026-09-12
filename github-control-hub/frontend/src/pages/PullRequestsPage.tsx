@@ -282,7 +282,7 @@ export default function PullRequestsPage() {
               yet stale reads as what *will* happen rather than what has. */}
           {(p.stale || (isAdmin && reminders)) && (
             <div className="mt-4 pt-3 border-t border-rule flex items-center justify-between gap-4 flex-wrap">
-              <div className="text-[12px] text-ink-2 min-w-0">
+              <div className="text-[0.75rem] text-ink-2 min-w-0">
                 {!reminders ? (
                   <span className="text-slate-400 dark:text-slate-500">Reminders are off</span>
                 ) : p.paused ? (
@@ -343,7 +343,7 @@ export default function PullRequestsPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Pause this pull request</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  <p className="text-[0.6875rem] text-slate-500 dark:text-slate-400">
                     Nobody is reminded about it, the author included.
                   </p>
                 </div>
@@ -359,7 +359,7 @@ export default function PullRequestsPage() {
                       <div key={l} className="flex items-center justify-between gap-2 flex-wrap">
                         <span className="inline-flex items-center gap-1.5 text-xs text-slate-700 dark:text-slate-200">
                           <UserAvatar login={l} size={16} />{l}
-                          {l === p.author && <span className="text-[10px] text-slate-400">author</span>}
+                          {l === p.author && <span className="text-[0.625rem] text-slate-400">author</span>}
                         </span>
                         {/* Three scopes, because the question is asked at three
                             sizes and offering only the narrowest sends people
@@ -367,17 +367,17 @@ export default function PullRequestsPage() {
                         <span className="flex items-center gap-1.5">
                           <button disabled={busy}
                             onClick={() => pause.mutate({ repo: p.repo, number: p.number, pausedLogins: [...p.pausedLogins, l] })}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
+                            className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
                             this PR
                           </button>
                           <button disabled={busy}
                             onClick={() => mute.mutate({ scope: "repo", repo: p.repo, target: l, muted: true })}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
+                            className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
                             this repo
                           </button>
                           <button disabled={busy}
                             onClick={() => mute.mutate({ scope: "global", target: l, muted: true })}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
+                            className="text-[0.6875rem] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
                             everywhere
                           </button>
                         </span>
@@ -390,7 +390,7 @@ export default function PullRequestsPage() {
                           <div key={m.login} className="flex items-center justify-between gap-2 text-xs">
                             <span className="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
                               <UserAvatar login={m.login} size={16} />{m.login}
-                              <span className="text-[10px]">muted {m.scope}</span>
+                              <span className="text-[0.625rem]">muted {m.scope}</span>
                             </span>
                             <button disabled={busy}
                               onClick={() => {
@@ -426,9 +426,9 @@ export default function PullRequestsPage() {
         <span className="figure text-[0.9375rem] text-ink-3">{rows.length}</span>
       </div>
       <div className="border-t-2 border-ink" />
-      {hint && <p className="standfirst text-[13px] mt-3 mb-4 max-w-[76ch]">{hint}</p>}
+      {hint && <p className="standfirst text-[0.8125rem] mt-3 mb-4 max-w-[76ch]">{hint}</p>}
       {rows.length === 0 ? (
-        <p className="standfirst text-[13.5px] py-6">Nothing here.</p>
+        <p className="standfirst text-[0.8438rem] py-6">Nothing here.</p>
       ) : (
         <>
           <ul className="grid gap-3 mt-4">
@@ -451,7 +451,7 @@ export default function PullRequestsPage() {
         <div className="flex items-end justify-between gap-8 flex-wrap">
           <div>
             <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">Open pull requests</h1>
-            <p className="standfirst text-[14px] mt-2 max-w-[62ch]">
+            <p className="standfirst text-[0.875rem] mt-2 max-w-[62ch]">
               Every open pull request in the organization, most idle first, closed ones never
               appear. Idle counts from the last <strong className="font-semibold">commit</strong>,
               not from when it was opened.
@@ -474,7 +474,7 @@ export default function PullRequestsPage() {
           <div className="px-5 py-3 flex items-center justify-between gap-4">
             <div>
               <p className="display text-[1.0625rem] text-ink">Monitor pull requests</p>
-              <p className="standfirst text-[12.5px] mt-1">
+              <p className="standfirst text-[0.7812rem] mt-1">
                 Off means nothing is fetched, listed or posted, and nothing runs on the schedule.
               </p>
             </div>
@@ -485,7 +485,7 @@ export default function PullRequestsPage() {
           <div className={`px-5 py-3 flex items-center justify-between gap-4 ${monitoring ? "" : "opacity-50"}`}>
             <div>
               <p className="display text-[1.0625rem] text-ink">Post reminders</p>
-              <p className="standfirst text-[12.5px] mt-1">
+              <p className="standfirst text-[0.7812rem] mt-1">
                 One comment on anything idle for {thresholdLabel(data?.staleSeconds ?? 604_800)}, replacing
                 itself each time rather than adding another.
               </p>
@@ -525,7 +525,7 @@ export default function PullRequestsPage() {
           left on would otherwise remind everyone every few minutes with nothing
           on screen explaining why. */}
       {(data?.staleSeconds ?? 604_800) < 86_400 && (
-        <div className="mb-5 bg-ochre-wash border-l-2 border-ochre pl-4 pr-3 py-2.5 text-[13.5px] text-ochre">
+        <div className="mb-5 bg-ochre-wash border-l-2 border-ochre pl-4 pr-3 py-2.5 text-[0.8438rem] text-ochre">
           <strong>Test threshold active.</strong> Pull requests count as stale after{" "}
           {thresholdLabel(data?.staleSeconds ?? 0)} instead of 7 days.{" "}
           <code className="px-1 rounded bg-black/10 dark:bg-ink/10">STALE_SECONDS</code> in{" "}
@@ -534,12 +534,12 @@ export default function PullRequestsPage() {
       )}
 
       {notice && (
-        <div className="mb-5 bg-forest-wash border-l-2 border-forest pl-4 pr-3 py-2.5 text-[13.5px] text-forest">
+        <div className="mb-5 bg-forest-wash border-l-2 border-forest pl-4 pr-3 py-2.5 text-[0.8438rem] text-forest">
           {notice}
         </div>
       )}
       {error && (
-        <div className="mb-5 bg-crimson-wash border-l-2 border-crimson pl-4 pr-3 py-2.5 text-[13.5px] text-crimson">
+        <div className="mb-5 bg-crimson-wash border-l-2 border-crimson pl-4 pr-3 py-2.5 text-[0.8438rem] text-crimson">
           {error}
         </div>
       )}
@@ -580,7 +580,7 @@ export default function PullRequestsPage() {
           )}
 
           {data?.truncated && (
-            <div className="mb-5 bg-ochre-wash border-l-2 border-ochre pl-4 pr-3 py-2.5 text-[13.5px] text-ochre">
+            <div className="mb-5 bg-ochre-wash border-l-2 border-ochre pl-4 pr-3 py-2.5 text-[0.8438rem] text-ochre">
               More open pull requests exist than shown. The counts are a floor.
             </div>
           )}

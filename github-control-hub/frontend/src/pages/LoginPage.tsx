@@ -555,7 +555,7 @@ export default function LoginPage() {
                 account menu: the menu needs somebody signed in, and the moment
                 you most want to know which build you are running is the moment
                 the app is not working. Which is this screen. */}
-            <div className="dateline mt-2 text-[12px]">
+            <div className="dateline mt-2 text-[0.75rem]">
               <span className="caps">{COMPANY_NAME}</span>
               <span>Running locally on this machine</span>
               {appVersion && <span className="font-mono">v{appVersion}</span>}
@@ -600,7 +600,7 @@ export default function LoginPage() {
           {error && (
             <Banner intent="danger" icon="ph-fill ph-plugs" title="Backend unreachable" index={0}>
               Nothing is responding on the local API. Make sure{" "}
-              <code className="font-mono text-[12.5px] px-1.5 py-0.5 rounded bg-rose-500/15">ghch serve</code>{" "}
+              <code className="font-mono text-[0.7812rem] px-1.5 py-0.5 rounded bg-rose-500/15">ghch serve</code>{" "}
               is running, then reload.
             </Banner>
           )}
@@ -926,7 +926,7 @@ export default function LoginPage() {
                         placeholder={'export AWS_ACCESS_KEY_ID="AKIA…"\nexport AWS_SECRET_ACCESS_KEY="wJal…"\nexport AWS_SESSION_TOKEN="IQoJ…"'}
                         value={akPasteBlock}
                         onChange={e => setAkPasteBlock(e.target.value)}
-                        className={`${SURFACE.input} font-mono text-[12.5px] leading-relaxed resize-none`}
+                        className={`${SURFACE.input} font-mono text-[0.7812rem] leading-relaxed resize-none`}
                       />
                       {akPasteBlock && !pasteBlockValid && (
                         <Hint intent="danger">
@@ -945,15 +945,15 @@ export default function LoginPage() {
                     <>
                       <Field label="Access key ID">
                         <input type="text" value={akId} onChange={e => setAkId(e.target.value)}
-                          placeholder="AKIA…" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                          placeholder="AKIA…" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
                       </Field>
                       <Field label="Secret access key">
                         <input type="password" value={akSecret} onChange={e => setAkSecret(e.target.value)}
-                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
                       </Field>
                       <Field label="Session token" optional>
                         <input type="password" value={akSession} onChange={e => setAkSession(e.target.value)}
-                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                          placeholder="••••••••" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
                       </Field>
                       {/* Optional, but worth naming: a key pair carries no
                           region, so this is the only thing here that can say
@@ -963,7 +963,7 @@ export default function LoginPage() {
                           machine that does not. */}
                       <Field label="Region" optional>
                         <input type="text" value={akRegion} onChange={e => setAkRegion(e.target.value)}
-                          placeholder="us-east-2" className={`${SURFACE.input} font-mono text-[12.5px]`} />
+                          placeholder="us-east-2" className={`${SURFACE.input} font-mono text-[0.7812rem]`} />
                         <Aside>
                           Which region's install to open. Access keys do not carry one, and with
                           one install per region this is what picks between them.
@@ -1103,7 +1103,7 @@ export default function LoginPage() {
             <span className={`figure text-[1.75rem] shrink-0 ${canEnter ? "text-forest" : "text-ink-3"}`}>
               {connected}<span className="text-ink-4">/2</span>
             </span>
-            <span className="standfirst text-[13.5px] leading-snug">
+            <span className="standfirst text-[0.8438rem] leading-snug">
               {REMAINING[stage](status?.github.org)}
             </span>
           </span>
@@ -1209,7 +1209,7 @@ function Panel({ index, intent, icon, avatar, busy, sealed, service, title, subt
           ) : (
             <span className={`w-12 h-12 flex items-center justify-center shrink-0 border ${
               sealed ? "border-rule text-ink-4" : `${tone.border} ${tone.text}`}`}>
-              <i className={(busy ? "ph-bold ph-circle-notch animate-spin" : icon) + " text-[23px]"}></i>
+              <i className={(busy ? "ph-bold ph-circle-notch animate-spin" : icon) + " text-[1.4375rem]"}></i>
             </span>
           )}
 
@@ -1224,7 +1224,7 @@ function Panel({ index, intent, icon, avatar, busy, sealed, service, title, subt
               {sealed && <span aria-hidden="true" className="mr-2.5 text-[0.7em]">✕</span>}
               {title}
             </h2>
-            <p className="standfirst text-[13.5px] mt-3 max-w-[46ch]">{subtitle}</p>
+            <p className="standfirst text-[0.8438rem] mt-3 max-w-[46ch]">{subtitle}</p>
 
             {/* Under the identity rather than opposite it. The half of the
                 window that has settled is the narrow one, which leaves these
@@ -1251,7 +1251,7 @@ function Quiet({ onClick, disabled, icon, label }: {
 }) {
   return (
     <button onClick={onClick} disabled={disabled} className="textlink caps shrink-0 hover:!text-crimson">
-      <i className={icon + " text-[12px] mr-1.5"} aria-hidden="true"></i>{label}
+      <i className={icon + " text-[0.75rem] mr-1.5"} aria-hidden="true"></i>{label}
     </button>
   );
 }
@@ -1259,7 +1259,7 @@ function Quiet({ onClick, disabled, icon, label }: {
 function Hint({ intent, children }: { intent: Intent; children: React.ReactNode }) {
   const tone = INTENT[intent];
   return (
-    <div className={`pl-3.5 pr-3 py-2.5 border-l-2 text-[12.5px] leading-relaxed ${tone.soft} ${tone.text} ${tone.border}`}>
+    <div className={`pl-3.5 pr-3 py-2.5 border-l-2 text-[0.7812rem] leading-relaxed ${tone.soft} ${tone.text} ${tone.border}`}>
       {children}
     </div>
   );
@@ -1287,7 +1287,7 @@ function Field({ label, optional, children }: {
  */
 function Aside({ children }: { children: React.ReactNode }) {
   return (
-    <span className="standfirst block mt-2 text-[11.5px] leading-relaxed">
+    <span className="standfirst block mt-2 text-[0.7188rem] leading-relaxed">
       {children}
     </span>
   );
@@ -1305,7 +1305,7 @@ function Banner({ intent, icon, title, children, onDismiss, index }: {
         <i className={`${icon} ${tone.text} text-lg shrink-0 mt-0.5`}></i>
         <div className="flex-1 min-w-0">
           <p className={`display text-[1.0625rem] ${tone.text}`}>{title}</p>
-          <p className={`text-[13px] mt-1.5 leading-relaxed ${tone.text}`}>{children}</p>
+          <p className={`text-[0.8125rem] mt-1.5 leading-relaxed ${tone.text}`}>{children}</p>
         </div>
         {onDismiss && (
           <button onClick={onDismiss} className={`textlink caps shrink-0 !${tone.text}`}>Dismiss</button>

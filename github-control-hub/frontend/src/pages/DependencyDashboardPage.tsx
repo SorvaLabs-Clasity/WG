@@ -364,7 +364,7 @@ export default function DependencyDashboardPage() {
                 control nobody can reach. */}
             {view === "alerts" && (
               <Button onClick={() => setManaging(true)}>
-                <i className="ph-bold ph-sliders-horizontal mr-1.5 text-[12px]" aria-hidden="true" />
+                <i className="ph-bold ph-sliders-horizontal mr-1.5 text-[0.75rem]" aria-hidden="true" />
                 Manage
               </Button>
             )}
@@ -407,7 +407,7 @@ export default function DependencyDashboardPage() {
           <div className="flex items-center gap-3">
             {stuck && stuck.total > 0 && (
               <button onClick={() => setManaging(true)}
-                className="inline-flex items-center gap-1.5 text-[11.5px] font-bold
+                className="inline-flex items-center gap-1.5 text-[0.7188rem] font-bold
                            text-amber-700 dark:text-amber-400 rounded-lg px-2 py-1 -mx-1
                            hover:bg-amber-50 dark:hover:bg-amber-500/10 transition-colors">
                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500" aria-hidden="true" />
@@ -420,20 +420,20 @@ export default function DependencyDashboardPage() {
                 keeps rediscovering: an absence rendered as an answer. It costs
                 a sentence to say instead. */}
             {age && !age.storing && age.problem && (
-              <span className="inline-flex items-center gap-1.5 text-[11.5px] font-bold
+              <span className="inline-flex items-center gap-1.5 text-[0.7188rem] font-bold
                                text-rose-700 dark:text-rose-400 rounded-lg px-2 py-1 -mx-1"
                 title={`${age.problem} Until that is fixed, every opening of this tab recomputes the whole organization.`}>
-                <i className="ph-bold ph-warning-circle text-[12px]" aria-hidden="true" />
+                <i className="ph-bold ph-warning-circle text-[0.75rem]" aria-hidden="true" />
                 not being stored
               </span>
             )}
             {age?.computedAt && (
-              <span className="text-[11.5px] text-slate-400 dark:text-slate-500 tabular-nums"
+              <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500 tabular-nums"
                 title={age.refreshing
                   ? "A fresh sweep is running now and will be here next time you look."
                   : "Opening this tab does not start a sweep. The stored one is served as it "
                     + "stands, and refreshed at most every half hour. Refresh forces one."}>
-                <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[11px]" aria-hidden="true" />
+                <i className="ph-bold ph-clock-counter-clockwise mr-1 text-[0.6875rem]" aria-hidden="true" />
                 swept {new Date(age.computedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
                 {/* Only when one is genuinely running. This used to be shown
                     for anything over ten minutes old, which was also when a
@@ -460,7 +460,7 @@ export default function DependencyDashboardPage() {
         {stuck && stuck.total > 0 && (
           <div className="mb-5 rounded-2xl border border-slate-200 dark:border-ink/[0.08] overflow-hidden">
             <div className="px-4 py-3 bg-slate-50/80 dark:bg-ink/[0.02] border-b border-slate-200/70 dark:border-ink/[0.07]">
-              <p className="text-[13px] font-bold text-slate-900 dark:text-ink">
+              <p className="text-[0.8125rem] font-bold text-slate-900 dark:text-ink">
                 {stuck.total} {stuck.total === 1 ? "repository has" : "repositories have"} findings and no fix pull request
               </p>
             </div>
@@ -474,10 +474,10 @@ export default function DependencyDashboardPage() {
                 [stuck.targetBranch, "dependabot.yml sets target-branch", "Puts the config out of scope for security updates."],
               ] as const).filter(([n]) => n > 0).map(([n, label, hint]) => (
                 <div key={label} className="px-4 py-2.5 flex items-baseline gap-3">
-                  <dt className="w-8 shrink-0 text-[15px] font-semibold tabular-nums text-slate-900 dark:text-ink">{n}</dt>
+                  <dt className="w-8 shrink-0 text-[0.9375rem] font-semibold tabular-nums text-slate-900 dark:text-ink">{n}</dt>
                   <dd className="min-w-0">
-                    <span className="text-[12.5px] font-bold text-slate-700 dark:text-slate-200">{label}</span>
-                    <span className="block text-[11.5px] text-slate-400 dark:text-slate-500">{hint}</span>
+                    <span className="text-[0.7812rem] font-bold text-slate-700 dark:text-slate-200">{label}</span>
+                    <span className="block text-[0.7188rem] text-slate-400 dark:text-slate-500">{hint}</span>
                   </dd>
                 </div>
               ))}
@@ -497,7 +497,7 @@ export default function DependencyDashboardPage() {
           notice.ok ? `${INTENT.good.soft} ${INTENT.good.border}` : `${INTENT.danger.soft} ${INTENT.danger.border}`}`}>
           <i className={`${notice.ok ? "ph-fill ph-check-circle" : "ph-fill ph-warning-circle"} text-lg shrink-0 mt-0.5 ${
             notice.ok ? INTENT.good.text : INTENT.danger.text}`}></i>
-          <p className={`flex-1 text-[13px] leading-relaxed ${notice.ok ? INTENT.good.text : INTENT.danger.text}`}>
+          <p className={`flex-1 text-[0.8125rem] leading-relaxed ${notice.ok ? INTENT.good.text : INTENT.danger.text}`}>
             {notice.msg}
           </p>
           <button onClick={() => setNotice(null)}
@@ -619,7 +619,7 @@ export default function DependencyDashboardPage() {
                       )}
                       {scanning && (
                         <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1 flex items-center gap-1.5`}>
-                          <i className="ph-bold ph-circle-notch animate-spin text-[13px]"></i>
+                          <i className="ph-bold ph-circle-notch animate-spin text-[0.8125rem]"></i>
                           Just switched on. GitHub is still scanning. Results appear shortly.
                         </p>
                       )}
@@ -707,7 +707,7 @@ export default function DependencyDashboardPage() {
                         <span className={`${TYPE.label} text-slate-500 dark:text-slate-400`}>
                           Open fix pull requests
                         </span>
-                        <span className="text-[11.5px] text-slate-400 dark:text-slate-500">
+                        <span className="text-[0.7188rem] text-slate-400 dark:text-slate-500">
                           {repoPrs.filter(p => p.readiness === "ready").length} ready to merge
                         </span>
                       </div>
@@ -720,7 +720,7 @@ export default function DependencyDashboardPage() {
                           the @dependabot close command, and on a backlog this
                           size that is easy to do to a hundred of them before
                           noticing. */}
-                      <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-2.5 px-0.5 leading-relaxed">
+                      <p className="text-[0.6875rem] text-slate-400 dark:text-slate-500 mt-2.5 px-0.5 leading-relaxed">
                         Closing one without merging stops Dependabot raising it again.
                         Comment <span className="font-mono">@dependabot reopen</span> to undo that.
                       </p>
@@ -827,7 +827,7 @@ function FixPrCount({ open, expected, expandable, expanded, onToggle }: {
           {expected > 0 || open !== 1 ? "fix PRs" : "fix PR"}
         </span>
         {expandable && (
-          <i className={`ph-bold ph-caret-down text-[9px] text-slate-400 dark:text-slate-500
+          <i className={`ph-bold ph-caret-down text-[0.5625rem] text-slate-400 dark:text-slate-500
                          transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
         )}
       </div>
@@ -865,8 +865,8 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
             shows instead of an invented name. */}
         {pr.packageName ? (
           <>
-            <span className="font-mono text-[12.5px] text-ink truncate">{pr.packageName}</span>
-            <span className="text-[11.5px] text-ink-3 truncate">{pr.title}</span>
+            <span className="font-mono text-[0.7812rem] text-ink truncate">{pr.packageName}</span>
+            <span className="text-[0.7188rem] text-ink-3 truncate">{pr.title}</span>
           </>
         ) : (
           <span className="display text-[0.9375rem] text-ink truncate">{pr.title}</span>
@@ -874,7 +874,7 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
         {pr.draft && <Pill intent="neutral">draft</Pill>}
       </span>
 
-      <span className="shrink-0 flex items-center gap-2.5 text-[11.5px] text-slate-500 dark:text-slate-400">
+      <span className="shrink-0 flex items-center gap-2.5 text-[0.7188rem] text-slate-500 dark:text-slate-400">
         {checks && (
           <span className={
             pr.checks === "SUCCESS" ? "text-forest"
@@ -894,7 +894,7 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
         )}
         <span className="tabular-nums">{pr.ageDays}d</span>
         <span className="tabular-nums text-slate-400 dark:text-slate-500">#{pr.number}</span>
-        <i className="ph-bold ph-arrow-up-right text-[11px] opacity-40 group-hover:opacity-100 transition-opacity" />
+        <i className="ph-bold ph-arrow-up-right text-[0.6875rem] opacity-40 group-hover:opacity-100 transition-opacity" />
       </span>
     </a>
   );
@@ -909,11 +909,11 @@ function VulnRow({ alert: a }: { alert: DependencyAlert }) {
         <span className={`caps caps-tight px-1.5 py-1 shrink-0 ${sev.chip}`}>{a.severity}</span>
 
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-[13.5px] text-ink truncate">
+          <p className="font-mono text-[0.8438rem] text-ink truncate">
             {a.dependency}
             <span className="ml-2.5 font-sans caps">{a.ecosystem}</span>
           </p>
-          <p className="text-[12.5px] text-ink-2 mt-1">
+          <p className="text-[0.7812rem] text-ink-2 mt-1">
             <span className="font-mono">{a.vulnerable_version}</span>
             {a.patched_version
               ? <> → fixed in <span className="font-mono text-forest">{a.patched_version}</span></>
@@ -926,7 +926,7 @@ function VulnRow({ alert: a }: { alert: DependencyAlert }) {
             target="_blank" rel="noreferrer"
             title="Look up this advisory on GitHub"
             className="stamp stamp-hollow shrink-0">
-            {a.cve}<i className="ph-bold ph-arrow-square-out text-[11px]"></i>
+            {a.cve}<i className="ph-bold ph-arrow-square-out text-[0.6875rem]"></i>
           </a>
         )}
       </div>

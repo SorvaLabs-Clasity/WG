@@ -9,7 +9,7 @@ export interface Mutes {
   byRepo: Record<string, string[]>;
 }
 
-const inputClass = "field-line text-[13.5px]";
+const inputClass = "field-line text-[0.8438rem]";
 
 /**
  * A muted person, with the way to undo it attached.
@@ -24,7 +24,7 @@ function MuteChip({ login, avatarUrl, onRemove, busy }: {
   return (
     <span className="group inline-flex items-center gap-2 pl-1 pr-2 py-1 bg-paper-2 border border-rule">
       <UserAvatar login={login} avatarUrl={avatarUrl ?? undefined} size={20} />
-      <span className="text-[13px] text-ink">{login}</span>
+      <span className="text-[0.8125rem] text-ink">{login}</span>
       <button onClick={onRemove} disabled={busy} aria-label={`Stop muting ${login}`}
         title={`Stop muting ${login}`}
         className="textlink caps !text-ink-3 hover:!text-crimson">
@@ -36,7 +36,7 @@ function MuteChip({ login, avatarUrl, onRemove, busy }: {
 
 function Nobody({ children }: { children: React.ReactNode }) {
   return (
-    <p className="text-[13px] text-slate-400 dark:text-slate-500 italic py-1">{children}</p>
+    <p className="text-[0.8125rem] text-slate-400 dark:text-slate-500 italic py-1">{children}</p>
   );
 }
 
@@ -112,7 +112,7 @@ export default function PrReminderSettings({
           <div className="flex items-start justify-between gap-5">
             <div className="min-w-0">
               <h3 className="display text-[1.375rem] text-ink">Reminder mutes</h3>
-              <p className="standfirst text-[13.5px] mt-1.5 max-w-[64ch]">
+              <p className="standfirst text-[0.8438rem] mt-1.5 max-w-[64ch]">
                 Skip one person on stale pull request reminders. Nothing else about them changes,
                 and it can be lifted at any time.
               </p>
@@ -139,7 +139,7 @@ export default function PrReminderSettings({
         <div className="flex-1 overflow-y-auto">
           {tab === "global" ? (
             <div className="p-6 space-y-4">
-              <p className="text-[13px] text-slate-500 dark:text-slate-400 max-w-lg">
+              <p className="text-[0.8125rem] text-slate-500 dark:text-slate-400 max-w-lg">
                 For someone on leave, or who has left. They are never named in any reminder, on any
                 repository.
               </p>
@@ -170,14 +170,14 @@ export default function PrReminderSettings({
                   <div className="relative">
                     <i className="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
                     <input value={search} onChange={e => setSearch(e.target.value)}
-                      placeholder="Search repositories…" className={inputClass + " pl-8 py-1.5 text-[13px]"} />
+                      placeholder="Search repositories…" className={inputClass + " pl-8 py-1.5 text-[0.8125rem]"} />
                   </div>
                 </div>
                 <div className="overflow-y-auto max-h-[26rem] p-2">
                   {reposLoading && all.length === 0 ? (
-                    <p className="text-[13px] text-slate-400 dark:text-slate-500 px-2 py-2">Loading repositories…</p>
+                    <p className="text-[0.8125rem] text-slate-400 dark:text-slate-500 px-2 py-2">Loading repositories…</p>
                   ) : shown.length === 0 ? (
-                    <p className="text-[13px] text-slate-400 dark:text-slate-500 px-2 py-2">
+                    <p className="text-[0.8125rem] text-slate-400 dark:text-slate-500 px-2 py-2">
                       {q ? "No repository matches." : "No repositories visible to you."}
                     </p>
                   ) : shown.map(r => {
@@ -188,7 +188,7 @@ export default function PrReminderSettings({
                         className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
                           on ? "bg-ink text-reverse"
                              : "hover:bg-ink/[0.05] text-ink"}`}>
-                        <span className="text-[13px] truncate flex-1 min-w-0">
+                        <span className="text-[0.8125rem] truncate flex-1 min-w-0">
                           {/* Owner dimmed, because every row shares it and the
                               part that differs is the part being scanned for. */}
                           <span className={on ? "opacity-70" : "text-slate-400 dark:text-slate-500"}>
@@ -215,7 +215,7 @@ export default function PrReminderSettings({
                     <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
                       Pick a repository
                     </p>
-                    <p className="text-[13px] text-slate-400 dark:text-slate-500 mt-1 max-w-xs">
+                    <p className="text-[0.8125rem] text-slate-400 dark:text-slate-500 mt-1 max-w-xs">
                       For someone who keeps being asked to review a repository they do not work on.
                       A repository with no open pull requests can still be set up now.
                     </p>
@@ -223,13 +223,13 @@ export default function PrReminderSettings({
                 ) : (
                   <div className="space-y-4">
                     <div>
-                      <code className="text-[13px] font-semibold text-slate-900 dark:text-ink break-all">
+                      <code className="text-[0.8125rem] font-semibold text-slate-900 dark:text-ink break-all">
                         {picked}
                       </code>
                       {!repos.includes(picked) && (
                         // Otherwise a mute on a repository that has since gone
                         // reads as a repository nobody can find.
-                        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-0.5">
+                        <p className="text-[0.6875rem] text-amber-600 dark:text-amber-400 mt-0.5">
                           Not in your visible repositories. Renamed, archived or removed from the
                           installation.
                         </p>
@@ -257,7 +257,7 @@ export default function PrReminderSettings({
         </div>
 
         <div className="px-6 py-3.5 border-t border-slate-200 dark:border-ink/[0.09] flex items-center justify-between gap-3 shrink-0">
-          <p className="text-[12px] text-slate-400 dark:text-slate-500">
+          <p className="text-[0.75rem] text-slate-400 dark:text-slate-500">
             Saved as you go. A pull request whose every candidate is muted posts nothing at all.
           </p>
           <button onClick={onClose}
