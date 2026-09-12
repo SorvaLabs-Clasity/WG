@@ -15,7 +15,7 @@
  */
 
 export type Skin =
-  | "broadsheet" | "control" | "terminal" | "swiss" | "riso"
+  | "broadsheet" | "original" | "terminal" | "swiss" | "riso"
   | "cockpit" | "quiet" | "blueprint";
 export type Edition = "light" | "dark";
 
@@ -57,15 +57,17 @@ export const THEMES: ThemeEntry[] = [
     swatch: ["#F7F4ED", "#221E1A", "#9E272A"],
   },
   {
-    id: "control",
+    id: "original",
     nav: "masthead",
-    name: "Control",
-    blurb: "Modern console. Rounded cards, real shadows, saturated status colour.",
+    name: "Original",
+    blurb: "The design this app had before. GitHub's own palette, a dark header.",
     detail:
-      "The design this app wore before the Broadsheet. Cards with rounded corners on a cool blue-grey "
-      + "ground, drop shadows carrying the depth, Inter set heavy and tight, and status colour at full "
-      + "strength. The most conventional of the five, and the easiest to hand to somebody new.",
-    swatch: ["#F6F7FA", "#0F172A", "#2563EB"],
+      "Not a tribute to the old app — the old app, rebuilt from the commit it was replaced in. "
+      + "GitHub's palette down to the hex: #f6f8fa canvas, #d0d7de hairlines, #0969da links, "
+      + "#24292f across the top. Inter at 6px radii, soft grey-blue shadows, and labels in sentence "
+      + "case rather than small capitals, which is what makes it read as the old app rather than as "
+      + "this one wearing its colours. Its night edition is the slate one it always had.",
+    swatch: ["#F6F8FA", "#24292F", "#0969DA"],
   },
   {
     id: "terminal",
@@ -146,7 +148,9 @@ export function isRail(id: string | null | undefined): boolean {
 export const DEFAULT_SKIN: Skin = "broadsheet";
 
 export function themeEntry(id: string | null | undefined): ThemeEntry {
-  return THEMES.find(t => t.id === id) ?? THEMES[0];
+  return THEMES.find(t => t.id === id)
+    ?? THEMES.find(t => t.id === DEFAULT_SKIN)
+    ?? THEMES[0];
 }
 
 export function isSkin(v: unknown): v is Skin {

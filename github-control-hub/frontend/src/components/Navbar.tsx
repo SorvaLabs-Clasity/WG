@@ -400,7 +400,12 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 h-[5.75rem] z-40 bg-paper border-b border-rule">
+      {/* `masthead` is a hook for a theme, not a style. A theme that wants a
+          header in a different stock than the page redefines the ink and paper
+          variables on this element and every child follows, because they all
+          read `text-ink` / `bg-paper` / `border-rule` already. Nothing here has
+          to know which theme is running. */}
+      <nav className="masthead fixed top-0 left-0 right-0 h-[5.75rem] z-40 bg-paper border-b border-rule">
         <div className="h-full max-w-[1600px] mx-auto px-5 sm:px-8 flex flex-col">
 
           {/* ── Tier one: the title of the paper ─────────────────────── */}

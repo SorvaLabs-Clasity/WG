@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useTheme } from "../hooks/useTheme";
-import { THEMES, themeEntry, isRail, type Edition, type Skin } from "../design/themes";
+import { THEMES, themeEntry, isRail, type Edition, type Skin, type ThemeEntry } from "../design/themes";
 
 /**
  * Choosing how the app is set.
@@ -17,7 +17,7 @@ import { THEMES, themeEntry, isRail, type Edition, type Skin } from "../design/t
  * a theme nobody tries.
  */
 export default function ThemePicker({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { skin, setSkin, theme, toggle } = useTheme();
+  const { skin, setSkin, theme, toggle, favorites, toggleFavorite } = useTheme();
 
   useEffect(() => {
     if (!open) return;
@@ -35,6 +35,11 @@ export default function ThemePicker({ open, onClose }: { open: boolean; onClose:
 
   if (!open) return null;
   const chosen = themeEntry(skin);
+  /* Ordered by when they were starred, not by the register, which is why this
+     maps over `favorites` rather than filtering `THEMES`. */
+  const starred = favorites
+    .map(id => THEMES.find(t => t.id === id))
+    .filter((t): t is ThemeEntry => !!t);
 
   return (
     <div className="fixed inset-0 z-[80] grid place-items-center p-4 sm:p-6"
@@ -82,31 +87,40 @@ export default function ThemePicker({ open, onClose }: { open: boolean; onClose:
         </header>
 
         <div className="px-6 sm:px-8 py-7">
+          {/* Starred first, and only when there are any: an empty "Favourites"
+              heading over nothing is a section that teaches you it is broken.
+              The same cards appear again below rather than being moved out of
+              the full set — starring a theme should not make it harder to find
+              the one next to it. */}
+          {starred.length > 0 && (
+            <section className="mb-8">
+              <div className="flex items-baseline justify-between gap-4 pb-3 mb-5 border-b-2 border-ink">
+                <p className="caps">Favourites</p>
+                <p className="standfirst text-[0.75rem]">
+                  {starred.length} of {THEMES.length}, in the order you starred them
+                </p>
+              </div>
+              <div className="theme-grid grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                {starred.map((t, i) => (
+                  <ThemeCard key={t.id} t={t} i={i} edition={theme} on={t.id === skin}
+                    starred onChoose={() => setSkin(t.id)} onStar={() => toggleFavorite(t.id)} />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {starred.length > 0 && (
+            <div className="flex items-baseline justify-between gap-4 pb-3 mb-5 border-b border-rule">
+              <p className="caps">All themes</p>
+            </div>
+          )}
+
           <div className="theme-grid grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
-            {THEMES.map((t, i) => {
-              const on = t.id === skin;
-              return (
-                <button key={t.id} onClick={() => setSkin(t.id)} aria-pressed={on}
-                  style={{ animation: `rise 0.4s cubic-bezier(0.22,1,0.36,1) ${i * 45}ms backwards` }}
-                  className={`group text-left border transition-colors ${
-                    on ? "border-ink" : "border-rule hover:border-rule-strong"}`}>
-                  <span className={`block h-[3px] w-full ${on ? "bg-ink" : "bg-transparent"}`}
-                    aria-hidden="true" />
-
-                  <Specimen skin={t.id} edition={theme} />
-
-                  <div className="px-4 py-3.5 border-t border-rule">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="display text-[1.1875rem] text-ink">{t.name}</span>
-                      {on
-                        ? <span className="caps text-ink">In use</span>
-                        : <span className="caps opacity-0 group-hover:opacity-100 transition-opacity">Use this</span>}
-                    </div>
-                    <p className="standfirst text-[0.7812rem] mt-1.5">{t.blurb}</p>
-                  </div>
-                </button>
-              );
-            })}
+            {THEMES.map((t, i) => (
+              <ThemeCard key={t.id} t={t} i={i} edition={theme} on={t.id === skin}
+                starred={favorites.includes(t.id)}
+                onChoose={() => setSkin(t.id)} onStar={() => toggleFavorite(t.id)} />
+            ))}
           </div>
 
           {/* The long description, for the one actually chosen. Five of these on
@@ -117,6 +131,63 @@ export default function ThemePicker({ open, onClose }: { open: boolean; onClose:
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * One theme's card: a running preview, its name, and a star.
+ *
+ * The star is a sibling of the card rather than a child of it. Both are
+ * controls, and a button inside a button is invalid markup that browsers
+ * resolve by dropping one of them — which in practice means the star works and
+ * choosing the theme silently stops working, or the reverse, depending on the
+ * browser. Keeping them apart and positioning the star over the corner is the
+ * only arrangement where both are real buttons.
+ *
+ * `group` sits on the wrapper so the hover affordance still covers both.
+ */
+function ThemeCard({ t, i, edition, on, starred, onChoose, onStar }: {
+  t: ThemeEntry; i: number; edition: Edition; on: boolean; starred: boolean;
+  onChoose: () => void; onStar: () => void;
+}) {
+  return (
+    <div className="group relative"
+      style={{ animation: `rise 0.4s cubic-bezier(0.22,1,0.36,1) ${i * 45}ms backwards` }}>
+      <button onClick={onChoose} aria-pressed={on}
+        className={`w-full text-left border transition-colors ${
+          on ? "border-ink" : "border-rule hover:border-rule-strong"}`}>
+        <span className={`block h-[3px] w-full ${on ? "bg-ink" : "bg-transparent"}`}
+          aria-hidden="true" />
+
+        <Specimen skin={t.id} edition={edition} />
+
+        <div className="px-4 py-3.5 border-t border-rule">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="display text-[1.1875rem] text-ink">{t.name}</span>
+            {on
+              ? <span className="caps text-ink">In use</span>
+              : <span className="caps opacity-0 group-hover:opacity-100 transition-opacity">Use this</span>}
+          </div>
+          {/* Room kept for the star, which sits over this corner. */}
+          <p className="standfirst text-[0.7812rem] mt-1.5 pr-9">{t.blurb}</p>
+        </div>
+      </button>
+
+      {/* Always rendered, never only on hover: a star that appears when you
+          reach for it cannot be seen at a glance, and seeing which ones are
+          starred without hovering each is the whole point of the section above.
+          Unstarred, it is faint; starred, it is ink. */}
+      <button
+        onClick={onStar}
+        aria-pressed={starred}
+        title={starred ? `Remove ${t.name} from favourites` : `Add ${t.name} to favourites`}
+        aria-label={starred ? `Remove ${t.name} from favourites` : `Add ${t.name} to favourites`}
+        className={`absolute right-2.5 bottom-3 w-8 h-8 grid place-items-center leading-none
+                    text-[1.0625rem] transition-colors ${
+          starred ? "text-ink" : "text-ink-4 hover:text-ink-2"}`}>
+        <span aria-hidden="true">{starred ? "\u2605" : "\u2606"}</span>
+      </button>
     </div>
   );
 }
@@ -172,7 +243,12 @@ function Specimen({ skin, edition }: { skin: Skin; edition: Edition }) {
 
         <div className="min-w-0 flex-1">
           {!rail && (
-            <>
+            /* Carries `masthead` for the same reason the real one does: a theme
+               that puts its header in a different stock than its page does it by
+               redefining the ink and paper on this element. Without the class
+               the card would advertise a light bar and the app would show a
+               dark one, which is the one lie a running preview must not tell. */
+            <div className="masthead bg-paper">
               <div className="px-[0.9em] pt-[0.8em] pb-[0.4em] flex items-baseline justify-between gap-2 border-b-2 border-ink">
                 <span className="display text-[0.95em] text-ink leading-none">Control Hub</span>
                 <span className="caps caps-tight">{edition === "dark" ? "Night" : "Day"}</span>
@@ -182,7 +258,7 @@ function Specimen({ skin, edition }: { skin: Skin; edition: Edition }) {
                 <span className="caps caps-tight">AWS</span>
                 <span className="caps caps-tight">Access</span>
               </div>
-            </>
+            </div>
           )}
 
           <div className="px-[0.9em] pt-[0.8em] pb-[0.9em]">

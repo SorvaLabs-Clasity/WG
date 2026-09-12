@@ -5,7 +5,10 @@ import { router } from "./router";
 import { isAuthenticated, clearToken, getToken, getUserInfo, DEMO_MODE } from "./api/client";
 import { fetchAuthStatus } from "./api/auth";
 import { DEMO_USER } from "./api/mock";
-import { ThemeContext, getInitialTheme, getInitialSkin, applyTheme, type Theme } from "./hooks/useTheme";
+import {
+  ThemeContext, getInitialTheme, getInitialSkin, getInitialFavorites, saveFavorites,
+  applyTheme, type Theme,
+} from "./hooks/useTheme";
 import type { Skin } from "./design/themes";
 import UpdateOverlay from "./components/UpdateOverlay";
 import MutationErrors from "./components/MutationErrors";
@@ -102,6 +105,7 @@ function PrefetchPulls() {
 export default function App() {
   const [theme, setTheme] = useState<Theme>(getInitialTheme);
   const [skin, setSkin] = useState<Skin>(getInitialSkin);
+  const [favorites, setFavorites] = useState<Skin[]>(getInitialFavorites);
 
   useEffect(() => { applyTheme(theme, skin); }, [theme, skin]);
 
@@ -109,9 +113,23 @@ export default function App() {
     setTheme(prev => (prev === "light" ? "dark" : "light"));
   }, []);
 
+  /**
+   * Starring a theme. Appends rather than inserts, so the list stays in the
+   * order things were starred, and writes through on the same tick rather than
+   * in an effect — this is a preference, not derived state, and an effect here
+   * would also write on mount and overwrite a list another tab had just saved.
+   */
+  const toggleFavorite = useCallback((id: Skin) => {
+    setFavorites(prev => {
+      const next = prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id];
+      saveFavorites(next);
+      return next;
+    });
+  }, []);
+
   const themeValue = useMemo(
-    () => ({ theme, skin, toggle: toggleTheme, setSkin }),
-    [theme, skin, toggleTheme]);
+    () => ({ theme, skin, favorites, toggle: toggleTheme, setSkin, toggleFavorite }),
+    [theme, skin, favorites, toggleTheme, toggleFavorite]);
 
   const user = useMemo<User | null>(() => {
     if (DEMO_MODE) return DEMO_USER;
