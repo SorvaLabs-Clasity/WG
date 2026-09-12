@@ -64,7 +64,7 @@ export default function DetailedLoggingPanel() {
         <div className="flex items-center gap-3 shrink-0">
           {settings.enabled && (
             <button onClick={() => setOpen(!open)}
-              className="text-xs font-semibold text-gh-blue hover:underline">
+              className="textlink caps">
               {open ? "Hide kinds" : "Choose kinds"}
             </button>
           )}
@@ -75,8 +75,8 @@ export default function DetailedLoggingPanel() {
             aria-checked={settings.enabled}
             disabled={save.isPending}
             onClick={() => save.mutate({ enabled: !settings.enabled, disabledKinds: settings.disabledKinds })}
-            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-              settings.enabled ? "bg-gh-blue" : "bg-slate-300 dark:bg-paper-3"} ${
+            className={`relative inline-flex h-5 w-9 items-center border border-rule-strong transition-colors ${
+              settings.enabled ? "bg-ink" : "bg-slate-300 dark:bg-paper-3"} ${
               save.isPending ? "opacity-60" : ""}`}
           >
             <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${

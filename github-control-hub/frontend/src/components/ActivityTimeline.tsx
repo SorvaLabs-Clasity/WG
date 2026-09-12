@@ -64,7 +64,7 @@ export default function ActivityTimeline({
               as a heading. */}
           <div className="sticky top-0 z-10 flex items-center gap-3 py-2.5
                           bg-ink/95 dark:bg-paper/95 ">
-            <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+            <h3 className="caps">
               {day.label}
             </h3>
             <div className="flex-1 h-px bg-slate-200/80 dark:bg-ink/10" />

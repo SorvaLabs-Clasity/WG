@@ -627,7 +627,7 @@ export default function LoginPage() {
                 Adding a profile. You stay signed in to <strong>{status?.aws.profile || "this account"}</strong>.
               </span>
               <button onClick={() => setAddingProfile(false)}
-                className="shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-ink">
+                className="textlink caps shrink-0">
                 Cancel
               </button>
             </div>

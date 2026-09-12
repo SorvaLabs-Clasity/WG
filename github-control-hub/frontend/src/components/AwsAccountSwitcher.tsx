@@ -87,7 +87,7 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
           account and hold entirely different rules, findings and alarms, and
           a heading saying only "AWS account" invites reading them as
           duplicates. */}
-      <p className="px-4 pt-3 pb-1.5 text-[10px] uppercase tracking-[0.16em] font-bold text-slate-400 dark:text-ink/35">
+      <p className="caps px-4 pt-3 pb-1.5">
         AWS account and region
       </p>
 
@@ -167,7 +167,7 @@ export default function AwsAccountSwitcher({ current, onSwitched }: {
           {problem.sso && (
             <button
               onClick={() => { void triggerAwsSsoLogin(problem.profile); }}
-              className="mt-2 text-[12px] font-bold text-amber-900 dark:text-amber-200 underline underline-offset-2">
+              className="textlink caps !text-ochre mt-2">
               Sign in to SSO for this profile
             </button>
           )}

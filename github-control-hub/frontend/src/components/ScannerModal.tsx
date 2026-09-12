@@ -117,7 +117,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
         <div className="bg-white dark:bg-paper rounded-none shadow-modal border border-black/10 dark:border-rule w-full max-w-3xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
         
         <div className="px-6 py-4 border-b border-rule dark:border-rule flex items-center justify-between bg-white dark:bg-paper pt-5 shrink-0 rounded-t-[12px]">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-ink tracking-tight">
+          <h3 className="display text-[1.1875rem] text-ink">
             {scanner ? "Edit Scanner" : "Create Compliance Scanner"}
           </h3>
           <button 
@@ -204,7 +204,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                           <button 
                             type="button"
                             onClick={() => setSelectedRepos(repos?.map((r: any) => r.name) || [])}
-                            className="text-xs font-medium text-gh-blue hover:text-gh-blueHover"
+                            className="textlink caps"
                           >
                             Select All
                           </button>
@@ -212,7 +212,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                           <button 
                             type="button"
                             onClick={() => setSelectedRepos([])}
-                            className="text-xs font-medium text-gh-muted dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300"
+                            className="textlink caps"
                           >
                             Clear
                           </button>
@@ -254,7 +254,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
               <label className="block text-sm font-bold text-gh-textBase dark:text-slate-200">Compliance Conditions</label>
               <button 
                 onClick={addCondition}
-                className="text-xs font-semibold text-gh-blue hover:text-gh-blueHover"
+                className="textlink caps"
               >
                 + Add Condition
               </button>
@@ -298,7 +298,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
                     <div className="flex items-center gap-2 mt-4 mb-4">
                       <div 
-                        className={`w-10 h-5 flex items-center rounded-full p-1 cursor-pointer transition-colors ${cond.requiresProtection ? 'bg-gh-blue' : 'bg-gray-300 dark:bg-paper-3'}`}
+                        className={`w-10 h-5 flex items-center border border-rule-strong p-1 cursor-pointer transition-colors ${cond.requiresProtection ? 'bg-ink' : 'bg-gray-300 dark:bg-paper-3'}`}
                         onClick={() => updateCondition(idx, "requiresProtection", !cond.requiresProtection)}
                       >
                         <div className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${cond.requiresProtection ? 'translate-x-5' : ''}`}></div>
@@ -336,7 +336,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
                       {(!cond.ruleMatchType || cond.ruleMatchType !== "any") && (
                         <div className="bg-white dark:bg-paper border border-gray-200 dark:border-rule rounded p-3 text-sm">
-                          <h4 className="font-semibold text-xs text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-3">Required Rules</h4>
+                          <h4 className="caps mb-3">Required Rules</h4>
                       
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-3 gap-x-4">
                         <label className="flex items-center gap-2">
@@ -529,7 +529,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
                           {selectedQuery?.hasAdvancedRules && (
                             <div className="bg-white dark:bg-paper border border-gray-200 dark:border-rule rounded p-3 text-sm mt-3">
-                              <h4 className="font-semibold text-xs text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-3">Advanced Rules</h4>
+                              <h4 className="caps mb-3">Advanced Rules</h4>
                               <div className="mb-3">
                                 <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Protection Type</label>
                                 <select 
@@ -638,7 +638,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
                           {selectedQuery?.hasAdvancedRules && (
                             <div className="bg-white dark:bg-paper border border-gray-200 dark:border-rule rounded p-3 text-sm mt-3">
-                              <h4 className="font-semibold text-xs text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-3">Advanced Rules</h4>
+                              <h4 className="caps mb-3">Advanced Rules</h4>
                               <div className="mb-3">
                                 <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Protection Type</label>
                                 <select 

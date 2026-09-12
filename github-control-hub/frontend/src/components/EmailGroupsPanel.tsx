@@ -43,7 +43,7 @@ function ChannelHeader({ icon, label, count, tone }: {
   return (
     <div className="flex items-center gap-2 mb-2.5">
       <i className={`${icon} text-[14px] ${tone}`} aria-hidden="true" />
-      <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+      <span className="caps">
         {label}
       </span>
       <span className="ml-auto text-[11px] tabular-nums text-slate-300 dark:text-slate-600">{count}</span>
@@ -114,7 +114,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
     <section className={`${SURFACE.card} overflow-hidden`}>
       <div className="px-5 pt-4 pb-3.5 flex items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h3 className="text-[14px] font-bold tracking-tight text-slate-900 dark:text-ink truncate">
+          <h3 className="display text-[1.1875rem] text-ink truncate">
             {group.name}
           </h3>
           {/* The number that matters is who will actually receive something,
@@ -210,8 +210,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
                       grew the row and pushed the picker and the X off it. */}
                   <Truncated text={m.endpoint} className="text-slate-700 dark:text-slate-200" />
                   {!m.confirmed && (
-                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-wide
-                                     text-amber-700 dark:text-amber-500">pending</span>
+                    <span className="caps text-ochre shrink-0">pending</span>
                   )}
                   {/* Their own zone, the same control as the Teams column.
                       One email cannot be written in two clocks, so it is
@@ -356,7 +355,7 @@ export default function EmailGroupsPanel() {
       <div className={`${SURFACE.card} px-5 py-4`}>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="min-w-0">
-            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+            <h3 className="display text-[1.1875rem] text-ink">
               Default timezone
             </h3>
             <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">

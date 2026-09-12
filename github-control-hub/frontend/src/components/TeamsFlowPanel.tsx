@@ -39,7 +39,7 @@ export default function TeamsFlowPanel() {
       <div className="px-5 pt-4">
         <div className="flex items-center gap-2.5">
           <i className="ph-fill ph-chat-teardrop-text text-[15px] text-violet-500" aria-hidden="true" />
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+          <h3 className="display text-[1.1875rem] text-ink">
             Teams delivery
           </h3>
           <span className={`ml-auto text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
@@ -95,8 +95,7 @@ export default function TeamsFlowPanel() {
 
         <button
           type="button" onClick={() => setOpen(o => !o)} aria-expanded={open}
-          className="inline-flex items-center gap-1.5 mt-3 text-[12px] font-semibold
-                     text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-ink transition-colors"
+          className="textlink caps inline-flex items-center gap-1.5 mt-3 transition-colors"
         >
           <span className="w-[17px] h-[17px] rounded-full grid place-items-center text-[11px] font-semibold
                            border border-current leading-none">i</span>

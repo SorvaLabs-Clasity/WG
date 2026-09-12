@@ -67,20 +67,20 @@ export default function AwsPage() {
 
   return (
     <Page user={user}>
-        <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
+        <div className="flex items-end justify-between gap-6 mb-7 flex-wrap pb-3 border-b-2 border-ink">
           <div>
-            <h1 className="text-2xl font-semibold text-slate-900 dark:text-ink tracking-tight">AWS Guardrails</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Checked when resources are created, every 10 minutes, and on demand.
+            <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">AWS Guardrails</h1>
+            <p className="standfirst text-[14px] mt-2 max-w-[58ch]">
+              Checked when resources are created, every ten minutes, and on demand.
             </p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-5 shrink-0 flex-wrap">
             <RefreshButton
               busy={rulesFetching || findingsFetching}
               onRefresh={() => Promise.all([refetchRules(), refetchFindings(), refetchExclusions(), refetchAccounts()])}
             />
             <Button onClick={() => setView({ k: "exclusions" })}>
-              Exclusions <span className="text-slate-400 font-mono ml-1">{exclusions?.length ?? 0}</span>
+              Exclusions <span className="font-mono ml-1.5">{exclusions?.length ?? 0}</span>
             </Button>
             {isAdmin && <Button onClick={() => setEditing("new")}>New rule</Button>}
             {isAdmin && (
@@ -381,10 +381,10 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
           subtitle={entry?.summary}
           aside={
             <div>
-              <p className="text-[44px] font-semibold text-reverse leading-none tabular-nums">
+              <p className={`figure text-[2.75rem] ${INTENT[intent].figure}`}>
                 {failing.length > 0 ? failing.length : checked}
               </p>
-              <p className={`${TYPE.label} text-reverse/70 mt-1.5`}>
+              <p className="caps mt-2">
                 {failing.length > 0 ? "failing" : checked > 0 ? "passing" : "not checked"}
               </p>
             </div>
@@ -392,24 +392,24 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
         />
 
         {isAdmin && (
-          <div className="px-7 py-3.5 border-b border-slate-100 dark:border-rule flex items-center gap-5 bg-slate-50/70 dark:bg-paper-2/40 flex-wrap">
+          <div className="px-6 py-3 border-b border-rule flex items-baseline gap-6 bg-paper-2 flex-wrap">
             <button onClick={onRun} disabled={running}
-              className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:opacity-70 disabled:opacity-40">
+              className="textlink caps">
               {running ? "Running…" : "Run now"}
             </button>
-            <button onClick={onEdit} className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">Edit</button>
-            <button onClick={onToggleEnabled} className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:opacity-70">
+            <button onClick={onEdit} className="textlink caps !text-indigo">Edit</button>
+            <button onClick={onToggleEnabled} className="textlink caps">
               {rule.enabled ? "Pause" : "Resume"}
             </button>
             {/* In the row with the other actions rather than floating below the
                 findings. Guardrail results were reachable only by looking at
                 them; an alarm is how drift reaches somebody who is not. */}
             <button onClick={() => setAlarmFor(rule.id)}
-              className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:opacity-70">
+              className="textlink caps">
               Add alarm
             </button>
             <button onClick={() => { if (confirm(`Delete "${rule.name}"? Its findings go too.`)) onDelete(); }}
-              className="text-sm font-bold text-rose-600 dark:text-rose-400 hover:opacity-70 ml-auto">Delete</button>
+              className="textlink caps !text-crimson ml-auto">Delete</button>
           </div>
         )}
 
@@ -434,7 +434,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
           title={`Resources, ${failing.length} failing of ${checked} checked${excluded ? `, ${excluded} excluded` : ""}`}
           action={rest.length > 0 && (
             <button onClick={() => setShowPassing(v => !v)}
-              className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline">
+              className="textlink caps !text-indigo">
               {showPassing ? "Hide passing" : `View ${rest.length} passing`}
             </button>
           )}>
@@ -488,7 +488,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                               account now, but a finding's region still tells you
                               where to go and look. */}
                           {f.region && (
-                            <span className="shrink-0 text-[11.5px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                            <span className="caps shrink-0">
                               {f.region}
                             </span>
                           )}
@@ -625,7 +625,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
     }
   };
 
-  const input = "w-full px-3 py-2 text-sm bg-white dark:bg-paper-2 border border-slate-200 dark:border-rule rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
+  const input = "field-line text-[13.5px]";
 
   return (
     <Modal title={rule ? "Edit guardrail" : "New guardrail"} onClose={onClose} onSubmit={submit} error={error}>
@@ -651,10 +651,10 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
             <button key={m} type="button"
               onClick={() => !(m === "enforce" && enforceBlocked) && setMode(m)}
               disabled={m === "enforce" && enforceBlocked}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition ${
+              className={`caps px-3 py-1.5 border transition-colors ${
                 mode === m
-                  ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 border-slate-900 dark:border-white"
-                  : "bg-white dark:bg-paper-2 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-rule"
+                  ? "bg-ink text-reverse border-ink"
+                  : "bg-paper border-rule hover:border-ink hover:text-ink"
               } ${m === "enforce" && enforceBlocked ? "opacity-40 cursor-not-allowed" : ""}`}
             >
               {m === "enforce" && enforceBlocked && <i className="ph-fill ph-lock-simple mr-1"></i>}
@@ -725,7 +725,7 @@ function ParamControl({ spec, value, onChange }: { spec: ParamSpec; value: any; 
       </label>
     );
   }
-  const field = "w-full px-3 py-2 text-sm bg-white dark:bg-paper-2 border border-slate-200 dark:border-rule rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
+  const field = "field-line text-[13.5px]";
   return (
     <label className="block">
       <span className="block text-sm text-slate-700 dark:text-slate-300 mb-1.5">{spec.label}</span>
@@ -768,23 +768,24 @@ function Modal({ title, onClose, onSubmit, error, children }: {
   title: string; onClose: () => void; onSubmit: () => void; error: string | null; children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50  p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-paper rounded-2xl border border-slate-200 dark:border-rule shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45  p-4" onClick={onClose}>
+      <div className="bg-paper border border-ink w-full max-w-lg max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-slate-100 dark:border-rule flex items-center justify-between sticky top-0 bg-white dark:bg-paper">
-          <h3 className="font-bold text-slate-900 dark:text-ink">{title}</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"><i className="ph-bold ph-x"></i></button>
+        <span className="block h-[3px] w-full bg-ink" aria-hidden="true" />
+        <div className="px-6 py-4 border-b border-rule flex items-baseline justify-between gap-4 sticky top-0 bg-paper">
+          <h3 className="display text-[1.25rem] text-ink">{title}</h3>
+          <button onClick={onClose} className="textlink caps shrink-0">Close</button>
         </div>
         <div className="p-5">
           {children}
           {error && (
-            <div className="mb-3 px-3 py-2 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-xs text-rose-700 dark:text-rose-300">
+            <div className="mb-4 pl-3 pr-3 py-2 border-l-2 border-crimson bg-crimson-wash text-[12.5px] text-crimson">
               {error}
             </div>
           )}
           <div className="flex justify-end gap-2 pt-2">
-            <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200">Cancel</button>
-            <button onClick={onSubmit} className="px-4 py-2 rounded-lg bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 text-sm font-semibold hover:opacity-90">Save</button>
+            <button onClick={onClose} className="textlink caps">Cancel</button>
+            <button onClick={onSubmit} className="stamp">Save</button>
           </div>
         </div>
       </div>
@@ -826,11 +827,11 @@ function Copyable({ label, value, mono = true }: { label: string; value: string;
             setCopied(true);
             setTimeout(() => setCopied(false), 1600);
           }}
-          className="text-[12px] font-bold text-blue-600 dark:text-blue-400 hover:opacity-70 shrink-0">
+          className="textlink caps !text-indigo shrink-0">
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <div className={`px-3 py-2 rounded-lg bg-slate-50 dark:bg-paper-2/70 border border-slate-200 dark:border-rule text-[12px] break-all ${mono ? "font-mono" : ""} text-slate-700 dark:text-slate-200`}>
+      <div className={`px-3 py-2 bg-paper-2 border border-rule text-[12px] break-all ${mono ? "font-mono" : ""} text-ink`}>
         {value}
       </div>
     </div>
@@ -954,9 +955,9 @@ function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
                   </div>
                   <div className="flex gap-4 shrink-0">
                     <button onClick={() => setEditing(l)}
-                      className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:opacity-70">Edit</button>
+                      className="textlink caps !text-indigo">Edit</button>
                     <button onClick={() => { if (confirm(`Delete "${l.name}"? Rules using it will start checking those resources again.`)) remove.mutate(l.id); }}
-                      className="text-sm font-bold text-rose-600 dark:text-rose-400 hover:opacity-70">Delete</button>
+                      className="textlink caps !text-crimson">Delete</button>
                   </div>
                 </div>
               </RailCard>

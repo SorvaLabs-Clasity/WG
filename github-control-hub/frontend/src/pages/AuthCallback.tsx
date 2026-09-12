@@ -24,9 +24,9 @@ export default function AuthCallback() {
   }, [params, navigate]);
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-white dark:bg-paper">
-      <Spinner />
-      <p className="text-sm text-slate-500 dark:text-slate-400">Authenticating…</p>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-paper">
+      <p className="display text-[1.75rem] text-ink mb-1">GitHub Control Hub</p>
+      <Spinner label="Authenticating" />
     </div>
   );
 }

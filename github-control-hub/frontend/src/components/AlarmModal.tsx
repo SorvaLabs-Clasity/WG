@@ -189,7 +189,7 @@ export default function AlarmModal({
       <div className="bg-white dark:bg-paper rounded-none shadow-modal border border-black/10 dark:border-rule w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
 
         <div className="px-6 py-4 border-b border-rule dark:border-rule flex items-center justify-between shrink-0 rounded-t-[12px]">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-ink tracking-tight">
+          <h3 className="display text-[1.1875rem] text-ink">
             {existing ? "Edit alarm" : "New alarm"}
           </h3>
           <button onClick={onClose}
@@ -307,7 +307,7 @@ export default function AlarmModal({
 
               <div>
                 <button type="button" onClick={() => setShowTemplates(v => !v)}
-                  className="text-sm font-semibold text-gh-blue hover:underline">
+                  className="textlink caps">
                   <i className={`ph ph-caret-${showTemplates ? "down" : "right"} mr-1`}></i>
                   Customise the message
                 </button>
@@ -353,7 +353,7 @@ export default function AlarmModal({
             Cancel
           </button>
           <button onClick={save} disabled={saving || !spec?.conditions.length}
-            className="px-4 py-2 text-sm font-semibold rounded-md bg-gh-blue text-reverse hover:opacity-90 disabled:opacity-50">
+            className="px-4 py-2 text-sm font-semibold rounded-md bg-ink text-reverse hover:opacity-90 disabled:opacity-50">
             {saving ? "Saving…" : existing ? "Save changes" : "Create alarm"}
           </button>
         </div>

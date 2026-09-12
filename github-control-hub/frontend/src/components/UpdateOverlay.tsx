@@ -52,7 +52,7 @@ export default function UpdateOverlay() {
           )}
         </div>
         <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-ink">
+          <h2 className="display text-[1.1875rem] text-ink">
             {current.title}
           </h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">

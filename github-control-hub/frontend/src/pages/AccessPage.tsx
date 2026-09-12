@@ -205,17 +205,15 @@ export default function AccessPage() {
 
   return (
     <Page user={user}>
-      <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-ink tracking-tight">Access</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Every person, everything they can reach, and how they came by it.
-          </p>
-          <div className="mt-2">
-            <GraphFreshness busy={isFetching} onReread={() => refetch()} />
-          </div>
+      <header className="mb-7 pb-3 border-b-2 border-ink">
+        <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">Access</h1>
+        <p className="standfirst text-[14px] mt-2 max-w-[58ch]">
+          Every person, everything they can reach, and how they came by it.
+        </p>
+        <div className="mt-3">
+          <GraphFreshness busy={isFetching} onReread={() => refetch()} />
         </div>
-      </div>
+      </header>
 
       {data?.stale && (
         <Note intent="warn">
@@ -239,7 +237,7 @@ export default function AccessPage() {
             </Note>
           )}
 
-          <div className="grid sm:grid-cols-4 gap-3 mb-5">
+          <div className="grid sm:grid-cols-4 columned mb-8 border-t-2 border-ink pt-5">
             <Stat value={data.people.length} label="people" />
             <Stat value={owners} label={owners === 1 ? "org owner" : "org owners"}
               hint="Admin on every repository, always" tone={owners > 3 ? "warn" : "neutral"} />
@@ -251,7 +249,7 @@ export default function AccessPage() {
         </>
       )}
 
-      <div className="flex items-center gap-3 mb-4 flex-wrap">
+      <div className="flex items-end gap-6 mb-6 flex-wrap">
         <Segmented
           value={mode}
           onChange={m => { setMode(m); setQuery(""); }}
@@ -264,7 +262,7 @@ export default function AccessPage() {
         </div>
       </div>
 
-      {isLoading && <Spinner />}
+      {isLoading && <Spinner label="Reading the access map" />}
 
       {/* Each list has its own query, so each reports its own failure. With no
           data every one of these is empty, and "Nobody matches" / "No teams"
@@ -354,12 +352,10 @@ function Stat({ value, label, hint, tone = "neutral" }: {
   value: number; label: string; hint?: string; tone?: Intent;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-rule px-4 py-3">
-      <p className={`text-[26px] font-semibold leading-none tabular-nums ${
-        tone === "warn" ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-ink"
-      }`}>{value}</p>
-      <p className="text-[12.5px] font-bold text-slate-600 dark:text-slate-300 mt-1.5">{label}</p>
-      {hint && <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">{hint}</p>}
+    <div className="px-0 sm:px-6 first:pl-0 py-3 sm:py-0">
+      <p className={`figure text-[2.5rem] ${tone === "warn" ? "text-ochre" : "text-ink"}`}>{value}</p>
+      <p className="caps mt-2.5">{label}</p>
+      {hint && <p className="standfirst text-[11.5px] mt-1.5">{hint}</p>}
     </div>
   );
 }
@@ -373,7 +369,7 @@ function PersonRow({ person, index, onOpen }: { person: Person; index: number; o
           <Avatar login={person.login} size={32} />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-[14px] text-slate-900 dark:text-ink">{person.login}</span>
+              <span className="display text-[1.0625rem] text-ink">{person.login}</span>
               <OrgRoleTag role={person.orgRole} />
             </div>
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
@@ -466,7 +462,7 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
           title={`${data.repos.length} ${data.repos.length === 1 ? "repository" : "repositories"}`}
           action={archivedCount > 0 && (
             <button onClick={() => setShowArchived(v => !v)}
-              className="text-sm font-bold text-blue-600 dark:text-blue-400 hover:underline">
+              className="textlink caps !text-indigo">
               {showArchived ? `Hide ${archivedCount} archived` : `Show ${archivedCount} archived`}
             </button>
           )}>
@@ -490,7 +486,7 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <button onClick={() => onOpenRepo(r.repo)}
-                          className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-ink hover:text-blue-600 dark:hover:text-blue-400 break-all">
+                          className="textlink caps break-all">
                           {r.repo}
                         </button>
                         {r.archived && <Pill intent="neutral">archived</Pill>}
@@ -669,7 +665,7 @@ function RepoDetail({ repo, onBack, onOpenPerson }: {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Avatar login={p.login} size={20} />
                       <button onClick={() => onOpenPerson(p.login)}
-                        className="font-bold text-[13.5px] text-slate-900 dark:text-ink hover:text-blue-600 dark:hover:text-blue-400">
+                        className="textlink caps">
                         {p.login}
                       </button>
                       <OrgRoleTag role={p.orgRole} />

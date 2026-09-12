@@ -83,8 +83,7 @@ export default function PersonalCard({
       <div className="pl-5 pr-3 pt-3.5 pb-1 flex items-start gap-2">
         <button type="button" onClick={onOpen}
           className="min-w-0 flex-1 text-left group/title">
-          <h3 className="text-[12px] font-bold uppercase tracking-wider text-slate-400
-                         dark:text-slate-500 truncate group-hover/title:text-gh-blue transition-colors">
+          <h3 className="caps truncate group-hover/title:text-gh-blue transition-colors">
             {config.title}
           </h3>
 
@@ -156,8 +155,8 @@ export default function PersonalCard({
           {chips.map(f => (
             <button key={f.column} type="button" onClick={onFilters}
               className="px-2 py-0.5 rounded-md text-[10.5px] font-semibold
-                         bg-gh-blue/10 dark:bg-blue-400/15 text-gh-blue dark:text-blue-300
-                         hover:bg-gh-blue/20 transition-colors max-w-full truncate">
+                         bg-ink/10 dark:bg-blue-400/15 text-gh-blue dark:text-blue-300
+                         hover:bg-ink/20 transition-colors max-w-full truncate">
               {describeFilter(f, labels.get(f.column) ?? f.column)}
             </button>
           ))}
@@ -208,8 +207,7 @@ export default function PersonalCard({
             </ul>
             {more > 0 && (
               <button type="button" onClick={onOpen}
-                className="mt-2 text-[11.5px] font-semibold text-slate-400 dark:text-slate-500
-                           hover:text-gh-blue transition-colors">
+                className="textlink caps mt-2 transition-colors">
                 and {more.toLocaleString()} more →
               </button>
             )}

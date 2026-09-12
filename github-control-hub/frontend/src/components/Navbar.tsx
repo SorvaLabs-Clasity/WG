@@ -146,9 +146,14 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
               <span className="display text-[1.5rem] sm:text-[1.7rem] leading-none text-ink tracking-[0.01em] whitespace-nowrap">
                 Control Hub
               </span>
-              <span className="hidden sm:inline caps text-ink-3 group-hover:text-ink transition-colors truncate">
-                {COMPANY_NAME}
-              </span>
+              {/* Only where it says something the wordmark does not. An
+                  unbranded install sets COMPANY_NAME to the app's own name, and
+                  printing it twice on one line reads as a mistake. */}
+              {COMPANY_NAME !== "Control Hub" && (
+                <span className="hidden sm:inline caps text-ink-3 group-hover:text-ink transition-colors truncate">
+                  {COMPANY_NAME}
+                </span>
+              )}
             </button>
 
             <div className="flex items-center gap-5 shrink-0">

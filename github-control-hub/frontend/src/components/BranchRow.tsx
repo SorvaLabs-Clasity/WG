@@ -23,7 +23,7 @@ export default function BranchRow({
           <i className="ph ph-git-commit text-gh-textMuted dark:text-slate-400 mr-2"></i>
           <span className="font-medium text-gh-textBase dark:text-slate-200 text-sm">{branch.name}</span>
           {isDefault && (
-            <span className="inline-flex items-center px-2 py-0.5  border border-gh-blue/30 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/50 text-gh-blue text-[10px] font-semibold uppercase tracking-wide ml-3">
+            <span className="caps inline-flex items-center px-2 py-0.5 border border-gh-blue/30 bg-blue-50 ml-3">
               Default
             </span>
           )}

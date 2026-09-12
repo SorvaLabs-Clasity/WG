@@ -116,7 +116,7 @@ export default function CostPanel() {
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+              <h3 className="display text-[1.1875rem] text-ink">
                 What this app costs
               </h3>
               {/* The scope, said first. This runs in accounts that hold plenty
@@ -219,7 +219,7 @@ export default function CostPanel() {
           which is the whole reason this page exists. */}
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4 pb-1">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+          <h3 className="display text-[1.1875rem] text-ink">
             By service
           </h3>
         </div>
@@ -254,7 +254,7 @@ export default function CostPanel() {
 
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4 pb-2">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+          <h3 className="display text-[1.1875rem] text-ink">
             By resource
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -294,12 +294,11 @@ export default function CostPanel() {
                     </span>
                   </span>
                   {FIXED.has(line.kind) && (
-                    <span className="text-[9.5px] font-semibold uppercase tracking-wider shrink-0
-                                     text-amber-700 dark:text-amber-500" title="Charged whether it is used or not">
+                    <span className="caps text-ochre shrink-0" title="Charged whether it is used or not">
                       fixed
                     </span>
                   )}
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-300 dark:text-slate-600 shrink-0">
+                  <span className="caps shrink-0">
                     {k.label}
                   </span>
                   <span className="text-[12.5px] font-bold tabular-nums text-slate-900 dark:text-ink shrink-0 w-16 text-right">

@@ -203,6 +203,10 @@ input::placeholder, textarea::placeholder { color: rgb(var(--ink-4)); }
   .figure {
     font-family: "Iowan Old Style", Charter, "Hoefler Text", "Palatino Linotype", Palatino, Georgia, serif;
     font-variant-numeric: tabular-nums lining-nums;
+    /* The display serifs ship fraction ligatures, which turned "1/2 connected"
+       into a vulgar fraction. Every figure here is a count, never a fraction. */
+    font-variant-ligatures: none;
+    font-feature-settings: "frac" 0, "afrc" 0, "dlig" 0;
     letter-spacing: -0.02em;
     line-height: 0.9;
   }
@@ -313,6 +317,9 @@ input::placeholder, textarea::placeholder { color: rgb(var(--ink-4)); }
   }
   .field-line:focus { outline: none; border-bottom-color: rgb(var(--ink)); }
   .field-line:disabled { color: rgb(var(--ink-3)); border-bottom-style: dashed; }
+
+  /** A field that shares a line with others rather than owning one. */
+  .field-inline { display: inline-block; width: auto; }
 
   /** A record: one hairline-separated row in a list of them. */
   .record { border-bottom: 1px solid rgb(var(--rule)); }

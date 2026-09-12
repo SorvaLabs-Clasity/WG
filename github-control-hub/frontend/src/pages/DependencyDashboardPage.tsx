@@ -17,10 +17,10 @@ const SEVERITY: Record<string, Intent> = {
 
 /** Each severity gets its own weight so a critical never reads like a low. */
 const SEV_STYLE: Record<string, { chip: string; bar: string; rank: number }> = {
-  critical: { chip: "bg-rose-600 text-reverse", bar: "bg-rose-500", rank: 0 },
-  high: { chip: "bg-orange-600 text-reverse", bar: "bg-orange-500", rank: 1 },
-  medium: { chip: "bg-amber-500 text-reverse", bar: "bg-amber-400", rank: 2 },
-  low: { chip: "bg-slate-400 text-reverse", bar: "bg-slate-300", rank: 3 },
+  critical: { chip: "bg-crimson text-reverse", bar: "bg-crimson", rank: 0 },
+  high: { chip: "bg-crimson-wash text-crimson border border-crimson-edge", bar: "bg-crimson", rank: 1 },
+  medium: { chip: "bg-ochre-wash text-ochre border border-ochre-edge", bar: "bg-ochre", rank: 2 },
+  low: { chip: "bg-paper-2 text-ink-2 border border-rule", bar: "bg-rule-strong", rank: 3 },
 };
 
 const REPOS_PER_PAGE = 15;
@@ -734,7 +734,7 @@ export default function DependencyDashboardPage() {
                       </ul>
                       {(hidden > 0 || isOpen) && (
                         <button onClick={() => toggle(repo)}
-                          className="mt-3 text-[13px] font-bold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1.5">
+                          className="textlink caps !text-indigo mt-3 inline-flex items-center gap-1.5">
                           <i className={`ph-bold ph-caret-${isOpen ? "up" : "down"} text-xs`}></i>
                           {isOpen
                             ? `Hide ${real.length - COLLAPSED} ${real.length - COLLAPSED === 1 ? "vulnerability" : "vulnerabilities"}`
@@ -841,7 +841,7 @@ function FixPrCount({ open, expected, expandable, expanded, onToggle }: {
   return (
     <button onClick={onToggle} aria-expanded={expanded}
       title={`${expanded ? "Hide" : "Show"} the ${open} open fix pull request${open === 1 ? "" : "s"}`}
-      className="text-right rounded-xl -m-1.5 p-1.5 hover:bg-slate-100 dark:hover:bg-ink/[0.06] transition-colors">
+      className="text-right -m-1.5 p-1.5 hover:bg-ink/[0.035] transition-colors">
       {body}
     </button>
   );
@@ -855,10 +855,9 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
 
   return (
     <a href={pr.url} target="_blank" rel="noopener noreferrer" title={r.hint}
-      className="group flex items-center gap-3 rounded-xl pl-0 pr-3 py-2 overflow-hidden
-                 bg-white dark:bg-ink/[0.03] border border-slate-200/80 dark:border-ink/[0.07]
-                 hover:border-slate-300 dark:hover:border-ink/20 transition-colors">
-      <span className={`w-1 self-stretch shrink-0 rounded-l-xl ${INTENT[r.intent].mark}`} aria-hidden="true" />
+      className="group flex items-center gap-3 pl-0 pr-3 py-2 overflow-hidden no-underline
+                 bg-paper border border-rule hover:bg-ink/[0.035] transition-colors">
+      <span className={`w-[3px] self-stretch shrink-0 ${INTENT[r.intent].mark}`} aria-hidden="true" />
 
       <span className="min-w-0 flex-1 flex items-baseline gap-2 flex-wrap">
         {/* The package, where the branch named one. A grouped pull request
@@ -866,15 +865,11 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
             shows instead of an invented name. */}
         {pr.packageName ? (
           <>
-            <span className="font-mono text-[12.5px] font-bold text-slate-800 dark:text-slate-100 truncate">
-              {pr.packageName}
-            </span>
-            <span className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate">{pr.title}</span>
+            <span className="font-mono text-[12.5px] text-ink truncate">{pr.packageName}</span>
+            <span className="text-[11.5px] text-ink-3 truncate">{pr.title}</span>
           </>
         ) : (
-          <span className="text-[12.5px] font-semibold text-slate-800 dark:text-slate-100 truncate">
-            {pr.title}
-          </span>
+          <span className="display text-[0.9375rem] text-ink truncate">{pr.title}</span>
         )}
         {pr.draft && <Pill intent="neutral">draft</Pill>}
       </span>
@@ -882,19 +877,19 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
       <span className="shrink-0 flex items-center gap-2.5 text-[11.5px] text-slate-500 dark:text-slate-400">
         {checks && (
           <span className={
-            pr.checks === "SUCCESS" ? "text-emerald-700 dark:text-emerald-400 font-bold"
-              : pr.checks === "FAILURE" || pr.checks === "ERROR" ? "text-rose-700 dark:text-rose-400 font-bold"
+            pr.checks === "SUCCESS" ? "text-forest"
+              : pr.checks === "FAILURE" || pr.checks === "ERROR" ? "text-crimson"
               : ""
           }>{checks}</span>
         )}
         {review && <span className="hidden sm:inline">{review}</span>}
         {pr.mergeable === "CONFLICTING" && (
-          <span className="text-amber-700 dark:text-amber-400 font-bold">conflicts</span>
+          <span className="text-ochre">conflicts</span>
         )}
         {pr.changedFiles !== undefined && (
           <span className="hidden md:inline tabular-nums">
-            <span className="text-emerald-700 dark:text-emerald-400">+{pr.additions ?? 0}</span>{" "}
-            <span className="text-rose-700 dark:text-rose-400">-{pr.deletions ?? 0}</span>
+            <span className="text-forest">+{pr.additions ?? 0}</span>{" "}
+            <span className="text-crimson">-{pr.deletions ?? 0}</span>
           </span>
         )}
         <span className="tabular-nums">{pr.ageDays}d</span>
@@ -908,23 +903,21 @@ function FixPrRow({ pr }: { pr: DependabotPr }) {
 function VulnRow({ alert: a }: { alert: DependencyAlert }) {
   const sev = SEV_STYLE[a.severity] ?? SEV_STYLE.low;
   return (
-    <li className="relative overflow-hidden rounded-xl bg-slate-50 dark:bg-ink/[0.05] border border-slate-200/70 dark:border-ink/[0.08]">
-      <span className={`absolute left-0 top-0 bottom-0 w-1 ${sev.bar}`} />
+    <li className="relative bg-paper-2 border border-rule">
+      <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${sev.bar}`} />
       <div className="pl-4 pr-3.5 py-3 flex items-center gap-4 flex-wrap">
-        <span className={`text-[10px] uppercase tracking-wider font-semibold px-2 py-1 rounded-md shrink-0 ${sev.chip}`}>
-          {a.severity}
-        </span>
+        <span className={`caps caps-tight px-1.5 py-1 shrink-0 ${sev.chip}`}>{a.severity}</span>
 
         <div className="min-w-0 flex-1">
-          <p className="font-mono text-[14px] font-bold text-slate-900 dark:text-ink truncate">
+          <p className="font-mono text-[13.5px] text-ink truncate">
             {a.dependency}
-            <span className="ml-2 font-sans text-[12px] font-medium text-slate-400 dark:text-slate-500">{a.ecosystem}</span>
+            <span className="ml-2.5 font-sans caps">{a.ecosystem}</span>
           </p>
-          <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-[12.5px] text-ink-2 mt-1">
             <span className="font-mono">{a.vulnerable_version}</span>
             {a.patched_version
-              ? <> → fixed in <span className="font-mono font-semibold text-emerald-600 dark:text-emerald-400">{a.patched_version}</span></>
-              : <> · <span className="font-semibold text-rose-600 dark:text-rose-400">no fix available</span></>}
+              ? <> → fixed in <span className="font-mono text-forest">{a.patched_version}</span></>
+              : <> · <span className="text-crimson">no fix available</span></>}
           </p>
         </div>
 

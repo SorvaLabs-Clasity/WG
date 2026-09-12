@@ -302,7 +302,7 @@ export default function GithubBudgetPanel() {
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+              <h3 className="display text-[1.1875rem] text-ink">
                 What this app spent, {windowLabel}
               </h3>
               {/* One measurement on this page, not two.
@@ -474,7 +474,7 @@ export default function GithubBudgetPanel() {
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
-            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+            <h3 className="display text-[1.1875rem] text-ink">
               Which feature spent it
             </h3>
             {measured > 0 && (

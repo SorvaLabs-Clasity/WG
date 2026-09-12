@@ -527,8 +527,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         </span>
         {selected.size > 0 && (
           <button type="button" onClick={() => setSelected(new Set())}
-            className="text-[12px] font-semibold text-slate-400 hover:text-slate-700
-                       dark:hover:text-slate-200 transition-colors">
+            className="textlink caps transition-colors">
             Clear
           </button>
         )}

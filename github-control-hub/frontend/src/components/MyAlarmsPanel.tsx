@@ -164,7 +164,7 @@ function Destination() {
   return (
     <section className={`${SURFACE.card} overflow-hidden`}>
       <div className="px-5 pt-4">
-        <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+        <h3 className="display text-[1.1875rem] text-ink">
           Where your alarms go
         </h3>
         <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 max-w-[75ch]">

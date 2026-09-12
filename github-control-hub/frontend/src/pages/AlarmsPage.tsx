@@ -100,12 +100,10 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-[13.5px] font-semibold text-slate-900 dark:text-slate-100">{alarm.name}</span>
           {subject.guardrail && (
-            <span className="text-[9.5px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded
-                             bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400">AWS</span>
+            <span className="caps text-ochre px-1.5 py-0.5 bg-amber-100">AWS</span>
           )}
           {!alarm.enabled && (
-            <span className="text-[9.5px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded
-                             bg-slate-100 dark:bg-ink/[0.08] text-slate-500 dark:text-slate-400">paused</span>
+            <span className="caps px-1.5 py-0.5 bg-slate-100">paused</span>
           )}
         </div>
 
@@ -181,7 +179,7 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
             {alarm.lastValue}
           </div>
         )}
-        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mt-1">
+        <div className="caps mt-1">
           {alarm.lastValue !== undefined && alarm.lastValue !== null ? "last read" : "no reading"}
         </div>
       </div>
@@ -290,14 +288,14 @@ export default function AlarmsPage() {
         actions={<RefreshButton busy={isFetching} onRefresh={() => refetch()} />}
       />
 
-      <div className="mb-5">
+      <div className="mb-7">
         <Segmented value={lens} onChange={v => setLens(v as Lens)}
           options={[["alarms", `Alarms${rows.length ? ` (${rows.length})` : ""}`],
                     ["groups", "Groups"]]} />
       </div>
 
       {lens === "groups" ? <EmailGroupsPanel /> : isLoading ? (
-        <div className="py-20 flex justify-center"><Spinner /></div>
+        <Spinner label="Reading your alarms" />
       ) : isError ? (
         <LoadFailed what="your alarms" error={error} onRetry={() => refetch()} />
       ) : rows.length === 0 ? (
@@ -311,57 +309,44 @@ export default function AlarmsPage() {
           {/* ── the one question this page exists to answer ───────────
               A flat list makes you read every row to find out whether
               anything is wrong. This says it before the list starts. */}
-          <div className="grid gap-4 lg:grid-cols-[1.35fr_1fr]">
-            <div className={`${SURFACE.card} relative overflow-hidden px-6 py-5`}>
-              <div aria-hidden="true"
-                className={`pointer-events-none absolute -right-16 -top-16 w-56 h-56 rounded-full blur-2xl opacity-[0.16]
-                  ${firing.length ? "bg-rose-500" : "bg-emerald-500"}`} />
-              <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Currently firing</div>
-              <div className="flex items-end gap-3 mt-2.5">
-                <span className={`text-[52px] font-semibold tabular-nums leading-[0.85] tracking-[-0.04em]
-                  ${firing.length ? "text-rose-600 dark:text-rose-400" : "text-slate-300 dark:text-slate-600"}`}>
+          <div className="mb-2">
+            <span className={`block h-[3px] w-full ${firing.length ? "bg-crimson" : "bg-forest"}`}
+              aria-hidden="true" />
+            <div className="grid gap-0 sm:grid-cols-[1.35fr_1fr_1fr] columned pt-5">
+              <div className="pr-8">
+                <p className="caps">Currently firing</p>
+                <p className={`figure text-[clamp(3rem,6vw,4.25rem)] mt-3 ${
+                  firing.length ? "text-crimson" : "text-ink-4"}`}>
                   {firing.length}
-                </span>
-                {firing.length === 0 && (
-                  <span className="mb-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold
-                                   bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
-                    <i className="ph-bold ph-check text-[12px]" aria-hidden="true" />all clear
-                  </span>
-                )}
+                </p>
+                <p className="standfirst text-[13px] mt-3 max-w-[34ch]">
+                  {firing.length === 0
+                    ? `${rows.length - paused.length} watching, nothing over its threshold.`
+                    : `${firing.length === 1 ? "One alarm is" : `${firing.length} alarms are`} over their threshold.`}
+                </p>
               </div>
-              <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-2.5">
-                {firing.length === 0
-                  ? `${rows.length - paused.length} watching, nothing over its threshold.`
-                  : `${firing.length === 1 ? "One alarm is" : `${firing.length} alarms are`} over their threshold.`}
-              </p>
-            </div>
 
-            <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-ink/[0.07]`}>
-              <div className="bg-white dark:bg-paper px-5 py-4 flex items-center gap-4">
-                <i className={`ph-fill ph-pause-circle text-[19px] ${paused.length ? "text-slate-500" : "text-slate-300 dark:text-slate-600"}`} aria-hidden="true" />
-                <div>
-                  <div className="flex items-baseline gap-2">
-                    <span className={`text-[22px] font-semibold tabular-nums leading-none ${paused.length ? "text-slate-900 dark:text-ink" : "text-slate-300 dark:text-slate-600"}`}>{paused.length}</span>
-                    <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">Paused</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">watching nothing while paused</p>
-                </div>
+              <div className="px-0 sm:px-8 py-4 sm:py-0">
+                <p className="caps">Paused</p>
+                <p className={`figure text-[2.5rem] mt-3 ${paused.length ? "text-ink" : "text-ink-4"}`}>
+                  {paused.length}
+                </p>
+                <p className="standfirst text-[12px] mt-2">watching nothing while paused</p>
               </div>
+
               {/* Its own number, because an alarm that cannot take a reading is
                   not a passing alarm and does not belong in either count above. */}
-              <div className="bg-white dark:bg-paper px-5 py-4 flex items-center gap-4">
-                <i className={`ph-fill ph-warning-circle text-[19px] ${unreadable.length ? "text-amber-500" : "text-slate-300 dark:text-slate-600"}`} aria-hidden="true" />
-                <div>
-                  <div className="flex items-baseline gap-2">
-                    <span className={`text-[22px] font-semibold tabular-nums leading-none ${unreadable.length ? "text-slate-900 dark:text-ink" : "text-slate-300 dark:text-slate-600"}`}>{unreadable.length}</span>
-                    <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">Cannot read</span>
-                  </div>
-                  <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
-                    {unreadable.length ? "not the same as passing" : "every check took a reading"}
-                  </p>
-                </div>
+              <div className="px-0 sm:px-8 py-4 sm:py-0">
+                <p className="caps">Cannot read</p>
+                <p className={`figure text-[2.5rem] mt-3 ${unreadable.length ? "text-ochre" : "text-ink-4"}`}>
+                  {unreadable.length}
+                </p>
+                <p className="standfirst text-[12px] mt-2">
+                  {unreadable.length ? "not the same as passing" : "every check took a reading"}
+                </p>
               </div>
             </div>
+            <div className="border-t border-rule mt-6" />
           </div>
 
           {([
@@ -385,7 +370,7 @@ export default function AlarmsPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <i className={`ph-bold ${section.icon} text-[14px] text-slate-400 dark:text-slate-500`}
                     aria-hidden="true" />
-                  <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+                  <h3 className="display text-[1.1875rem] text-ink">
                     {section.title}
                   </h3>
                   <span className="text-[11px] font-bold tabular-nums text-slate-300 dark:text-slate-600">

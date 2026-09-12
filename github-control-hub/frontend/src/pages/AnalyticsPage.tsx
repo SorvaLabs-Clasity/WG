@@ -968,12 +968,12 @@ export function CheckCard({
       <article style={enter(index)}
         className="group rounded-2xl border border-slate-200/80 dark:border-ink/[0.09] bg-white dark:bg-paper overflow-hidden h-full">
         <div className="px-5 pt-5 pb-4 flex items-start gap-4">
-          <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-gh-blue/10 border border-gh-blue/20">
+          <div className="w-[68px] h-[68px] shrink-0 rounded-2xl flex items-center justify-center bg-ink/10 border border-gh-blue/20">
             <i className="ph ph-circle-notch text-[26px] text-gh-blue animate-spin"></i>
           </div>
           <div className="flex-1 min-w-0 pt-1">
             <p className={`${TYPE.label} text-gh-blue mb-1.5`}>Building coverage</p>
-            <h3 className="text-[15px] font-semibold text-slate-900 dark:text-ink leading-tight line-clamp-2">
+            <h3 className="display text-[1.1875rem] text-ink line-clamp-2">
               {config.title}
             </h3>
             <p className="text-[13px] tabular-nums text-slate-500 dark:text-slate-400 mt-1">
@@ -985,7 +985,7 @@ export function CheckCard({
             a glance and completely different amounts of waiting. */}
         <div className="px-5">
           <div className="h-1.5 rounded-full bg-slate-100 dark:bg-ink/[0.07] overflow-hidden">
-            <div className="h-full  bg-gh-blue transition-[width] duration-700"
+            <div className="h-full  bg-ink transition-[width] duration-700"
               style={{ width: `${Math.max(2, pctDone)}%` }} />
           </div>
         </div>
@@ -998,7 +998,7 @@ export function CheckCard({
             <button
               onClick={e => { e.stopPropagation(); refreshNow.mutate(batchedId!); }}
               disabled={refreshNow.isPending}
-              className="mt-3 text-[12.5px] font-bold text-gh-blue hover:underline disabled:opacity-50">
+              className="textlink caps mt-3">
               {refreshNow.isPending ? "Checking…" : "Check the rest now"}
             </button>
           )}
@@ -1438,7 +1438,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
           {cols.customised && (
             <button
               onClick={cols.resetAll}
-              className="shrink-0 text-xs font-semibold text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-ink transition-colors"
+              className="textlink caps shrink-0 transition-colors"
             >
               <i className="ph-bold ph-arrows-in-line-horizontal mr-1.5"></i>Reset columns
             </button>
@@ -1472,7 +1472,7 @@ function WidgetDataTable({ config, items, graphEmpty, orgName }: { config: Widge
             <col key={c.id} style={i === columns.length - 1 ? undefined : { width: cols.widths[c.id] ?? c.width }} />
           ))}
         </colgroup>
-        <thead className="bg-slate-50 dark:bg-paper sticky top-0 z-10 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider border-b border-slate-200 dark:border-rule">
+        <thead className="caps bg-slate-50 sticky top-0 z-10 border-b border-slate-200">
           <tr>
             {columns.map((c, i) => (
               <th
@@ -1677,7 +1677,7 @@ function RawDetailsModal({ item, config, onClose, orgName }: { item: any; config
       <div className="absolute inset-0 bg-slate-900/40  animate-fade-in" onClick={onClose}></div>
       <div className="bg-white dark:bg-paper rounded-2xl shadow-xl border border-slate-200 dark:border-rule w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
         <div className="px-6 py-4 border-b border-slate-100 dark:border-rule flex items-center justify-between bg-white dark:bg-paper shrink-0 rounded-t-2xl">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-ink tracking-tight flex items-center gap-2">
+          <h3 className="display text-[1.1875rem] text-ink flex items-center gap-2">
             <i className="ph-fill ph-info text-blue-600 dark:text-blue-400"></i>
             {name}
           </h3>
@@ -1879,7 +1879,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
       <div className="absolute inset-0 bg-slate-900/40  animate-fade-in" onClick={onClose}></div>
       <div className="bg-white dark:bg-paper rounded-2xl shadow-xl border border-slate-200 dark:border-rule w-full max-w-xl relative z-10 animate-slide-up flex flex-col">
         <div className="px-6 py-4 border-b border-slate-100 dark:border-rule flex items-center justify-between rounded-t-2xl">
-          <h3 className="text-lg font-bold text-slate-900 dark:text-ink">{isEditing ? "Edit Widget" : "Add Dashboard Widget"}</h3>
+          <h3 className="display text-[1.1875rem] text-ink">{isEditing ? "Edit Widget" : "Add Dashboard Widget"}</h3>
           <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-ink"><i className="ph ph-x text-lg"></i></button>
         </div>
 
@@ -1929,7 +1929,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                       <button
                         type="button"
                         onClick={() => setSeverities(picked.length === SEVERITIES.length ? ["critical"] : [...SEVERITIES])}
-                        className="text-[12px] font-bold text-blue-600 dark:text-blue-400 hover:underline"
+                        className="textlink caps !text-indigo"
                       >
                         {picked.length === SEVERITIES.length ? "Critical only" : "Select all"}
                       </button>
@@ -2022,7 +2022,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
 
                 {selectedQuery?.hasAdvancedRules && (
                   <div className="pt-3 border-t border-slate-200 dark:border-rule space-y-3">
-                    <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Branch Rule Configuration</label>
+                    <label className="caps block">Branch Rule Configuration</label>
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -2053,7 +2053,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
 
                     {ruleMatchType !== "any" && (
                       <div className="bg-white dark:bg-paper border border-slate-200 dark:border-rule rounded-lg p-3">
-                        <h4 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Required Rules</h4>
+                        <h4 className="caps mb-2">Required Rules</h4>
                         <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-sm">
                           <label className="flex items-center gap-2">
                             <input type="checkbox" checked={requirePr} onChange={e => setRequirePr(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" />

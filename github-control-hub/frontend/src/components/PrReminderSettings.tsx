@@ -114,7 +114,7 @@ export default function PrReminderSettings({
                 <i className="ph-bold ph-bell-slash text-base"></i>
               </span>
               <div className="min-w-0">
-                <h3 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-ink">
+                <h3 className="display text-[1.1875rem] text-ink">
                   Reminder mutes
                 </h3>
                 <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">
@@ -201,7 +201,7 @@ export default function PrReminderSettings({
                     return (
                       <button key={r} onClick={() => setPicked(r)}
                         className={`w-full text-left px-2.5 py-1.5 rounded-lg flex items-center gap-2 transition-colors ${
-                          on ? "bg-gh-blue text-reverse"
+                          on ? "bg-ink text-reverse"
                              : "hover:bg-slate-100 dark:hover:bg-ink/[0.06] text-slate-700 dark:text-slate-300"}`}>
                         <span className="text-[13px] truncate flex-1 min-w-0">
                           {/* Owner dimmed, because every row shares it and the

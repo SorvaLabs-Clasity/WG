@@ -313,7 +313,7 @@ export default function DevAlertSettings() {
       {/* ── where it goes ─────────────────────────────────────────── */}
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+          <h3 className="display text-[1.1875rem] text-ink">
             Where to reach you
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -404,7 +404,7 @@ export default function DevAlertSettings() {
       {/* ── the moments worth interrupting for ────────────────────── */}
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+          <h3 className="display text-[1.1875rem] text-ink">
             Tell me straight away
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -569,7 +569,7 @@ export default function DevAlertSettings() {
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
+              <h3 className="display text-[1.1875rem] text-ink">
                 Send me a summary
               </h3>
               <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -589,7 +589,7 @@ export default function DevAlertSettings() {
         <div className={`px-5 pb-5 ${digest.enabled ? "" : "opacity-45 pointer-events-none"}`}>
           <div className="grid sm:grid-cols-2 gap-4 mt-4">
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+              <label className="caps block mb-1.5">
                 At
               </label>
               {/* Three controls in one field, rather than three inputs.
@@ -647,7 +647,7 @@ export default function DevAlertSettings() {
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+              <label className="caps block mb-1.5">
                 Timezone
               </label>
               {/* Was a text field, which is the wrong control for a value with
@@ -678,8 +678,7 @@ export default function DevAlertSettings() {
                     )}
                     {here && here !== digest.timeZone && (
                       <button type="button" onClick={() => patchDigest({ timeZone: here })}
-                        className="text-[11px] font-semibold text-slate-500 dark:text-slate-400
-                                   underline underline-offset-2 hover:text-slate-900 dark:hover:text-ink">
+                        className="textlink caps">
                         Use this computer's ({here.split("/").pop()?.replace(/_/g, " ")})
                       </button>
                     )}
@@ -690,7 +689,7 @@ export default function DevAlertSettings() {
           </div>
 
           <div className="mt-4">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1.5">
+            <label className="caps block mb-1.5">
               On
             </label>
             <div className="flex flex-wrap gap-1.5">
@@ -720,7 +719,7 @@ export default function DevAlertSettings() {
           </div>
 
           <div className="mt-4">
-            <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+            <label className="caps block mb-1">
               Include
             </label>
             {([

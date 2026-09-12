@@ -170,9 +170,9 @@ export default function ExpertisePage() {
 
   return (
     <Page user={user}>
-      <header className="mb-6">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-ink">Who knows this?</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-3xl">
+      <header className="mb-7 pb-3 border-b-2 border-ink">
+        <h1 className="display text-[clamp(1.75rem,3vw,2.25rem)] text-ink">Who knows this?</h1>
+        <p className="standfirst text-[14px] mt-2 max-w-[68ch]">
           Ranks people by what they have actually touched, commits, reviews and discussion -
           weighted so recent work counts for more. For when something is broken and you need to
           know who to ask first.
@@ -183,18 +183,14 @@ export default function ExpertisePage() {
         {/* The tabs sit on the card's edge rather than inside it, so the card
             reads as belonging to the mode rather than the mode being one more
             field in a form. */}
-        <div className="flex border-b border-slate-200 dark:border-ink/[0.09] overflow-x-auto">
-          {(Object.keys(MODES) as Kind[]).map(k => (
+        <div className="flex border-b border-rule overflow-x-auto">
+          {(Object.keys(MODES) as Kind[]).map((k, i) => (
             <button key={k} onClick={() => setKind(k)}
-              className={`relative px-5 py-3 text-[13px] font-bold whitespace-nowrap inline-flex items-center gap-2 transition-colors ${
-                kind === k
-                  ? "text-slate-900 dark:text-ink"
-                  : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
-              <i className={`ph-bold ${MODES[k].icon} text-base`}></i>
+              className={`caps px-5 py-3 -mb-px whitespace-nowrap inline-flex items-center gap-2 border-b-2 transition-colors ${
+                i > 0 ? "border-l border-l-rule" : ""} ${
+                kind === k ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
+              <i className={`ph-bold ${MODES[k].icon} text-[13px]`}></i>
               {MODES[k].label}
-              {kind === k && (
-                <span className="absolute left-3 right-3 -bottom-px h-0.5 rounded-full bg-gh-blue" />
-              )}
             </button>
           ))}
         </div>
@@ -226,16 +222,12 @@ export default function ExpertisePage() {
               title={canAsk ? "" : kind === "path"
                 ? "Both a repository and a path are needed. A path only means something inside one repository"
                 : "Fill this in first"}
-              className="h-fit px-6 py-2.5 text-sm font-bold rounded-xl bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 hover:opacity-90 disabled:opacity-30 transition-opacity inline-flex items-center gap-2">
-              {isFetching
-                ? <><i className="ph ph-circle-notch animate-spin"></i>Looking…</>
-                : <><i className="ph-bold ph-magnifying-glass"></i>Ask</>}
+              className="stamp h-fit">
+              {isFetching ? "Looking…" : "Ask"}
             </button>
           </form>
 
-          <p className="mt-3 text-xs text-slate-500 dark:text-slate-400 max-w-3xl leading-relaxed">
-            {MODES[kind].hint}
-          </p>
+          <p className="standfirst text-[12.5px] mt-4 max-w-[76ch]">{MODES[kind].hint}</p>
         </div>
       </div>
 
@@ -272,11 +264,11 @@ export default function ExpertisePage() {
           ) : (
             <>
               <div className="flex items-center gap-2.5 flex-wrap mb-4">
-                <span className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-100 dark:bg-ink/[0.07] text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <span className="caps inline-flex items-center gap-1.5 px-2 py-1 bg-slate-100">
                   <i className={`ph-bold ${MODES[data.subject.kind].icon}`}></i>
                   {MODES[data.subject.kind].label}
                 </span>
-                <h2 className="text-lg font-semibold tracking-tight text-slate-900 dark:text-ink break-all">
+                <h2 className="display text-[1.1875rem] text-ink break-all">
                   {data.subject.name}
                 </h2>
                 {data.repos && data.repos.length > 0 && (
@@ -298,7 +290,7 @@ export default function ExpertisePage() {
                   it is given the room to be read as one rather than being row
                   one of a table. */}
               <div className={`${SURFACE.sheet} relative overflow-hidden mb-3`}>
-                <span className="absolute inset-y-0 left-0 bg-gh-blue/[0.07] dark:bg-gh-blue/[0.12]"
+                <span className="absolute inset-y-0 left-0 bg-ink/[0.07] dark:bg-ink/[0.12]"
                   style={{ width: "100%" }} aria-hidden="true" />
                 <div className="relative p-5 flex items-center gap-4 flex-wrap">
                   <div className="relative shrink-0">
@@ -307,7 +299,7 @@ export default function ExpertisePage() {
                       title={`Last active ${ago(top.daysSinceActive)}`} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-gh-blue mb-0.5">
+                    <p className="caps mb-0.5">
                       Ask first
                     </p>
                     <a href={`https://github.com/${top.login}`} target="_blank" rel="noopener noreferrer"
@@ -337,7 +329,7 @@ export default function ExpertisePage() {
                       className={`${SURFACE.inset} relative overflow-hidden rounded-xl`}>
                       {/* The bar is the score. A number alone makes 91 and 34
                           look like neighbours in a list; a width does not. */}
-                      <span className="absolute inset-y-0 left-0 bg-gh-blue/[0.10] dark:bg-gh-blue/[0.16] transition-[width] duration-500"
+                      <span className="absolute inset-y-0 left-0 bg-ink/[0.10] dark:bg-ink/[0.16] transition-[width] duration-500"
                         style={{ width: `${Math.max(2, e.score)}%` }} aria-hidden="true" />
                       <div className="relative px-4 py-2.5 flex items-center gap-3 flex-wrap">
                         <span className="text-xs font-semibold tabular-nums text-slate-400 dark:text-slate-500 w-4 shrink-0">
@@ -378,9 +370,9 @@ export default function ExpertisePage() {
                   Scores are relative to the top person, not absolute. Contributions halve in weight
                   every 90 days, so this ranks who is likely to remember rather than who has done
                   the most over all time. The dot is recency -{" "}
-                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 align-middle" /> within a
+                  <span className="inline-block w-2 h-2 bg-forest align-middle" /> within a
                   month,{" "}
-                  <span className="inline-block w-2 h-2 rounded-full bg-amber-500 align-middle" /> within six,{" "}
+                  <span className="inline-block w-2 h-2 bg-ochre align-middle" /> within six,{" "}
                   <span className="inline-block w-2 h-2 rounded-full bg-slate-300 dark:bg-paper-3 align-middle" /> longer
                   ago. Bot accounts are excluded.
                 </p>

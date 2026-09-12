@@ -304,7 +304,7 @@ export default function ImportantEvents() {
                     {a.repo}{a.actor ? ` · by ${a.actor}` : a.source === "reconciliation" ? " · no webhook" : ""}
                   </span>
                   {wasReverted(a) && (
-                    <span className="shrink-0 text-[10.5px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                    <span className="caps text-forest shrink-0">
                       undone
                     </span>
                   )}
@@ -561,7 +561,7 @@ export default function ImportantEvents() {
           question "should somebody be emailed about this?" arrives while
           looking at one, not while looking for a preferences page. */}
       <div className="mt-12">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-ink mb-1">Notifications</h2>
+        <h2 className="display text-[1.1875rem] text-ink mb-1">Notifications</h2>
         <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
           Email delivery for the events above. Groups are created on the Alarms page.
         </p>
@@ -669,7 +669,7 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
                       what made a reversal indistinguishable from an
                       acknowledgement. */}
                   {wasReverted(a) && (
-                    <span className="text-[10.5px] font-bold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                    <span className="caps text-forest">
                       undone since
                     </span>
                   )}

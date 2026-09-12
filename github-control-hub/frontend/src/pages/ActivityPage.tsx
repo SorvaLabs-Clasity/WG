@@ -717,7 +717,7 @@ export default function ActivityPage() {
             </div>
 
             <div className="min-w-0 flex flex-wrap items-center gap-1.5">
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1  text-xs font-semibold border shrink-0 ${isFailedEntry ? "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800" : cfg.colorClass} ${isUndoneEntry ? "line-through" : ""}`}>
+              <span className={`inline-flex items-center gap-1.5 px-2 py-1 caps border shrink-0 ${isFailedEntry ? "bg-crimson-wash text-crimson border-crimson-edge" : cfg.colorClass} ${isUndoneEntry ? "line-through" : ""}`}>
                 <i className={isFailedEntry ? "fa-solid fa-xmark text-[10px]" : cfg.iconClass}></i>
                 {/* The event itself, not the category it belongs to. Every one
                     of these rows said "Security Alert", which is the name of
@@ -1059,7 +1059,7 @@ export default function ActivityPage() {
                       : `${importantKinds.length} selected`}
                     {importantKinds.length > 0 && (
                       <button onClick={() => { setImportantKinds([]); try { localStorage.setItem("activity:important-kinds", "[]"); } catch { /* view still changes */ } }}
-                        className="ml-2 font-semibold text-gh-muted dark:text-slate-400 hover:text-gh-blue dark:hover:text-blue-400">
+                        className="textlink caps ml-2">
                         show all
                       </button>
                     )}
@@ -1339,7 +1339,7 @@ export default function ActivityPage() {
                 <div className="border border-rule dark:border-rule rounded-lg overflow-hidden">
                   <div className="bg-gray-50 dark:bg-paper-2 px-3 py-2 border-b border-rule dark:border-rule flex items-center gap-2">
                     <i className="fa-solid fa-link text-gray-400 dark:text-slate-500 text-[10px]"></i>
-                    <span className="text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">Original Action</span>
+                    <span className="caps">Original Action</span>
                   </div>
                   <div className="px-4 py-3 space-y-3">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1455,7 +1455,7 @@ export default function ActivityPage() {
               {/* Children summary */}
               {popupEntry.children && popupEntry.children.length > 0 && (
                 <div className="border border-rule dark:border-rule rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 dark:bg-paper-2 px-3 py-2 border-b border-rule dark:border-rule text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">
+                  <div className="caps bg-gray-50 px-3 py-2 border-b border-rule">
                     Sub-actions ({popupChildCount})
                     {popupFailedCount > 0 && <span className="ml-2 text-red-500 normal-case">&middot; {popupFailedCount} failed</span>}
                   </div>
@@ -1529,7 +1529,7 @@ export default function ActivityPage() {
                       <span className="text-xs text-gh-muted dark:text-slate-400">in {popupEntry.conflictPayload.repo}</span>
                     </div>
                     <button
-                      className="text-[11px] font-medium text-gh-blue dark:text-blue-400 hover:text-gh-blueHover mt-0.5 flex items-center gap-1"
+                      className="textlink caps !text-indigo mt-0.5 flex items-center gap-1"
                       onClick={() => setConflictDiffOpenId(prev => prev === popupEntry.id ? null : popupEntry.id)}
                     >
                       <i className={`fa-solid fa-chevron-${conflictDiffOpenId === popupEntry.id ? 'down' : 'right'} text-[8px]`}></i>
@@ -1542,9 +1542,9 @@ export default function ActivityPage() {
                           <table className="w-full">
                             <thead>
                               <tr className="bg-gray-50 dark:bg-paper-2 border-b border-rule dark:border-rule">
-                                <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">Setting</th>
-                                <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-red-500 uppercase tracking-wider">Existing</th>
-                                <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-green-600 dark:text-green-400 uppercase tracking-wider">Template</th>
+                                <th className="caps px-3 py-1.5">Setting</th>
+                                <th className="caps text-crimson px-3 py-1.5">Existing</th>
+                                <th className="caps text-forest px-3 py-1.5">Template</th>
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-rule">
@@ -1577,11 +1577,11 @@ export default function ActivityPage() {
               {/* Diff viewer */}
               {popupEntry.diff && (
                 <div>
-                  <h4 className="text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-2 border-b dark:border-rule pb-2">Changes Made</h4>
+                  <h4 className="display text-[1rem] text-ink mb-2 border-b pb-2">Changes Made</h4>
                   <div className="space-y-3">
                     {Object.entries(popupEntry.diff).map(([key, changes]: [string, any]) => (
                       <div key={key} className="border border-rule dark:border-rule rounded-md overflow-hidden">
-                        <div className="bg-gray-50 dark:bg-paper-2 px-3 py-1.5 border-b border-rule dark:border-rule text-xs font-mono font-semibold text-gray-600 dark:text-slate-400 uppercase tracking-wider">{key}</div>
+                        <div className="caps bg-gray-50 px-3 py-1.5 border-b border-rule">{key}</div>
                         <DiffViewer oldValue={changes.old} newValue={changes.new} />
                       </div>
                     ))}

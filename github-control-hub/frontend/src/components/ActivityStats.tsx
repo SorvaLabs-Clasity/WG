@@ -44,58 +44,45 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
     () => pickPeak((pulse?.byDay ?? []).map(d => d.count)), [pulse]);
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-8">
       {/* ── the numbers, with the first one leading ───────────────────
           Four equal boxes said all four mattered equally, which is how a
           dashboard ends up with nothing to look at first. The total leads and
           carries the trend; the rest are supporting facts at supporting size. */}
-      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-        <div className={`${SURFACE.card} relative overflow-hidden px-6 py-5`}>
-          {/* A wash behind the headline, tinted by which way the trend went.
-              Colour doing a second job: you can read the direction before you
-              have read the number. */}
-          <div aria-hidden="true"
-            className={`pointer-events-none absolute -right-16 -top-16 w-56 h-56 rounded-full blur-2xl opacity-[0.16]
-              ${delta === null ? "bg-slate-400" : delta > 0 ? "bg-gh-blue" : "bg-emerald-500"}`} />
+      {/* ── the numbers, with the first one leading ───────────────────
+          Four equal boxes said all four mattered equally, which is how a
+          dashboard ends up with nothing to look at first. The total leads and
+          carries the trend; the rest are supporting facts at supporting size,
+          divided by column rules the way a results table is set. */}
+      <div className="mb-2">
+        {/* The rule takes the trend's ink, so the direction is readable before
+            the number is. */}
+        <span aria-hidden="true" className={`block h-[3px] w-full ${
+          delta === null ? "bg-rule-strong" : delta > 0 ? "bg-indigo" : "bg-forest"}`} />
 
-          <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
-            Events in {windowLabel}
-          </div>
-          <div className="flex items-end gap-3 mt-2.5">
-            <span className="text-[52px] font-semibold tabular-nums leading-[0.85] tracking-[-0.04em] text-slate-900 dark:text-ink">
+        <div className="grid gap-0 sm:grid-cols-[1.4fr_1fr_1fr_1fr] columned pt-5">
+          <div className="pr-8">
+            <p className="caps">Events in {windowLabel}</p>
+            <p className="figure text-[clamp(3rem,6vw,4.25rem)] mt-3 text-ink">
               {total.toLocaleString()}
-              {pulse && !pulse.exhausted && <span className="text-slate-300 dark:text-slate-600">+</span>}
-            </span>
-            {delta !== null && (
-              <span className={`mb-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold tabular-nums
-                ${delta > 0
-                  ? "bg-gh-blue/10 dark:bg-blue-400/15 text-gh-blue dark:text-blue-300"
-                  : delta < 0
-                    ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                    : "bg-slate-100 dark:bg-ink/[0.07] text-slate-500 dark:text-slate-400"}`}>
-                <i className={`ph-bold ${delta > 0 ? "ph-trend-up" : delta < 0 ? "ph-trend-down" : "ph-minus"} text-[12px]`}
-                   aria-hidden="true" />
-                {delta > 0 ? "+" : ""}{delta}%
+              {pulse && !pulse.exhausted && <span className="text-ink-4">+</span>}
+            </p>
+            <div className="dateline mt-3">
+              {delta !== null && (
+                <span className={delta > 0 ? "text-indigo" : delta < 0 ? "text-forest" : ""}>
+                  {delta > 0 ? "+" : ""}{delta}%
+                </span>
+              )}
+              <span>
+                {delta === null
+                  ? (prev === null
+                      ? "no earlier window to compare against"
+                      : "nothing was recorded before this window")
+                  : `against ${prev!.toLocaleString()} in the ${windowLabel} before`}
               </span>
-            )}
+            </div>
           </div>
-          <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-2.5">
-            {delta === null
-              ? (prev === null
-                  ? "No earlier window was read, so there is nothing to compare against."
-                  : "Nothing was recorded before this window.")
-              : `against ${prev!.toLocaleString()} in the ${windowLabel} before`}
-          </p>
-        </div>
 
-        {/* One panel divided by hairlines, not three cards floating apart.
-            Three bordered boxes beside a fourth said these were four peers;
-            they are three readings of the same thing and belong on one
-            surface. The `gap-px` over a tinted background is how the
-            leaderboards are already built, so this is the app's own idiom
-            rather than a new one. */}
-        <div className={`${SURFACE.card} overflow-hidden grid sm:grid-cols-3 lg:grid-cols-1
-                         gap-px bg-slate-200/70 dark:bg-ink/[0.07]`}>
           <MiniStat icon="ph-clock" label="Busiest hour"
             value={busiestHour ? clockHour(busiestHour.i) : "\u2014"}
             foot={busiestHour ? `${busiestHour.v} events · ${pulse?.timeZone ?? "UTC"}` : "nothing recorded"} />
@@ -106,29 +93,23 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
             value={String(pulse?.topActors.length ?? 0)}
             foot={(pulse?.topActors.length ?? 0) >= 6 ? "six shown, there may be more" : "excluding automation"} />
         </div>
+        <div className="border-t border-rule mt-6" />
       </div>
 
       {/* ── the days of the window ───────────────────────────────────── */}
-      <section className={`${SURFACE.card} overflow-hidden`}>
+      <section className="border-t-2 border-ink">
         {/* A rule under the heading rather than a tinted bar behind it.
             The strip was chrome doing the work a line does: it made the card
             look like a window with a title bar, which is a heavier idea than
             "here is a heading and here is the thing". */}
-        <div className="px-6 pt-5">
-          <div className="flex items-baseline justify-between gap-3 flex-wrap">
-            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
-              Day by day
-            </h3>
-            <span className="text-[11px] tabular-nums text-slate-400 dark:text-slate-500">
-              {pulse?.timeZone ?? "UTC"}
-            </span>
+        <div className="pt-4">
+          <div className="flex items-baseline justify-between gap-4 flex-wrap">
+            <h3 className="caps text-ink">Day by day</h3>
+            <span className="caps">{pulse?.timeZone ?? "UTC"}</span>
           </div>
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
-            Every day of the window.
-          </p>
-          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3.5" />
+          <p className="standfirst text-[12.5px] mt-1.5">Every day of the window.</p>
         </div>
-        <div className="px-6 pt-4 pb-5">
+        <div className="pt-5 pb-6">
         {/* Each calendar day of the window, not each day of the week. Seven
             bars headed Mon to Sun cannot tell you which Tuesday, and "which
             one" is the question somebody looking at a spike is asking. */}
@@ -141,17 +122,14 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
       </section>
 
       {/* ── what kinds of thing ──────────────────────────────────────── */}
-      <section className={`${SURFACE.card} overflow-hidden`}>
-        <div className="px-6 pt-5">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
-            Most common events
-          </h3>
-          <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
+      <section className="border-t-2 border-ink">
+        <div className="pt-4">
+          <h3 className="caps text-ink">Most common events</h3>
+          <p className="standfirst text-[12.5px] mt-1.5">
             What this organization spends its time doing.
           </p>
-          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3.5" />
         </div>
-        <div className="px-6 pt-4 pb-5">
+        <div className="pt-5 pb-6">
         {(pulse?.topActions.length ?? 0) === 0 ? (
           <p className="text-[12.5px] text-slate-400 dark:text-slate-500">Nothing recorded in this window.</p>
         ) : (
@@ -205,18 +183,13 @@ function MiniStat({ icon, label, value, foot }: {
   icon: string; label: string; value: string; foot: string;
 }) {
   return (
-    <div className="bg-white dark:bg-paper px-5 py-4 flex items-start gap-3.5">
-      <span className="shrink-0 mt-0.5 w-8 h-8 rounded-lg grid place-items-center
-                       border border-slate-200 dark:border-ink/10 text-slate-400 dark:text-slate-500">
-        <i className={`ph-bold ${icon} text-[14px]`} aria-hidden="true" />
-      </span>
-      <div className="min-w-0">
-        <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>{label}</div>
-        <div className="text-[21px] font-semibold tabular-nums leading-none tracking-tight text-slate-900 dark:text-ink mt-1.5">
-          {value}
-        </div>
-        <div className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-1">{foot}</div>
-      </div>
+    <div className="px-0 sm:px-8 py-4 sm:py-0 min-w-0">
+      <p className="caps flex items-baseline gap-2">
+        <i className={`ph-bold ${icon} text-[12px] text-ink-3`} aria-hidden="true" />
+        {label}
+      </p>
+      <p className="figure text-[2rem] text-ink mt-3">{value}</p>
+      <p className="standfirst text-[11.5px] truncate mt-2">{foot}</p>
     </div>
   );
 }
@@ -240,18 +213,15 @@ function Bars({ values, labelFor, titleFor, tickEvery }: {
 
   return (
     <div className="relative" onPointerLeave={() => setHover(null)}>
-      <div className="flex items-end gap-[3px] h-28">
+      <div className="flex items-end gap-[3px] h-28 border-b border-rule">
         {values.map((v, i) => (
           <button key={i} type="button"
             onPointerEnter={() => setHover(i)}
             onFocus={() => setHover(i)}
             aria-label={`${titleFor(i)}: ${v} ${v === 1 ? "event" : "events"}`}
-            className="group relative flex-1 h-full flex items-end rounded-t-[3px]
-                       focus:outline-none focus-visible:ring-2 focus-visible:ring-gh-blue/40">
-            <div className={`w-full rounded-t-[3px] transition-colors
-              ${v > 0
-                ? (hover === i ? "bg-gh-blue dark:bg-blue-400" : "bg-gh-blue/60 dark:bg-blue-400/50")
-                : "bg-slate-200 dark:bg-ink/[0.07]"}`}
+            className="group relative flex-1 h-full flex items-end focus:outline-none">
+            <div className={`w-full transition-colors
+              ${v > 0 ? (hover === i ? "bg-ink" : "bg-ink/55") : "bg-rule"}`}
               style={{ height: v > 0 ? `${Math.max(6, (v / peak) * 100)}%` : "3px" }} />
           </button>
         ))}
@@ -260,7 +230,7 @@ function Bars({ values, labelFor, titleFor, tickEvery }: {
       <div className="flex gap-[3px] mt-1.5">
         {values.map((_, i) => (
           <span key={i} className={`flex-1 text-[9.5px] text-center tabular-nums transition-colors
-            ${hover === i ? "text-slate-700 dark:text-slate-200 font-semibold" : "text-slate-400 dark:text-slate-500"}`}>
+            ${hover === i ? "text-ink" : "text-ink-3"}`}>
             {i % tickEvery === 0 || hover === i ? labelFor(i) : ""}
           </span>
         ))}
@@ -271,8 +241,7 @@ function Bars({ values, labelFor, titleFor, tickEvery }: {
           moves is one you chase. */}
       {hover !== null && (
         <div className="absolute -top-2 left-1/2 -translate-x-1/2 pointer-events-none z-10
-                        rounded-lg bg-slate-900 dark:bg-paper-3 px-3 py-1.5 shadow-lg
-                        text-[11.5px] font-semibold text-reverse dark:text-slate-900 whitespace-nowrap">
+                        bg-ink px-3 py-1.5 text-[11.5px] text-reverse whitespace-nowrap">
           {titleFor(hover)} · {values[hover]} {values[hover] === 1 ? "event" : "events"}
         </div>
       )}

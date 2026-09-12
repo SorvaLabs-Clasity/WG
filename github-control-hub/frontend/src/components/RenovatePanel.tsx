@@ -723,8 +723,7 @@ export default function RenovatePanel() {
                           )}
                           {r.marker && r.issueNumber !== undefined && (
                             r.requested
-                              ? <span className="text-[11px] uppercase tracking-[0.14em] font-bold
-                                                 text-slate-400 dark:text-slate-500">sent</span>
+                              ? <span className="caps">sent</span>
                               : <button disabled={busy !== null || !writable}
                                   title={writable ? undefined : NO_WRITE(repo)}
                                   onClick={() => setPending({

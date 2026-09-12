@@ -80,13 +80,13 @@ export default function WidgetFilterEditor({ config, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50  p-4"
+    <div className="fixed inset-0 z-50 grid place-items-center bg-ink/45  p-4"
       role="dialog" aria-modal="true" aria-label={`Filters for ${config.title}`}>
       <div className={`${SURFACE.card} w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden`}>
         <div className="px-5 pt-4 pb-3 border-b border-slate-200 dark:border-ink/10">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="text-[14px] font-bold tracking-tight text-slate-900 dark:text-ink truncate">
+              <h3 className="display text-[1.1875rem] text-ink truncate">
                 Narrow “{config.title}”
               </h3>
               <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -227,7 +227,7 @@ function ColumnFilter({ column, items, value, onChange }: {
   return (
     <div className={`rounded-xl border p-3.5 transition-colors ${
       active
-        ? "border-gh-blue/40 bg-gh-blue/[0.04] dark:bg-blue-400/[0.06]"
+        ? "border-gh-blue/40 bg-ink/[0.04] dark:bg-blue-400/[0.06]"
         : "border-slate-200 dark:border-ink/10"}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-baseline gap-2 min-w-0">
@@ -247,8 +247,7 @@ function ColumnFilter({ column, items, value, onChange }: {
           </span>
           {active && (
             <button type="button" onClick={() => onChange(null)}
-              className="text-[11.5px] font-semibold text-slate-400 hover:text-rose-600
-                         dark:hover:text-rose-400 transition-colors">
+              className="textlink caps transition-colors">
               Clear
             </button>
           )}
