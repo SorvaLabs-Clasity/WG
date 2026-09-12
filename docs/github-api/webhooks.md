@@ -20,9 +20,11 @@ disambiguate from.
 
 ## Events handled
 
-Eleven, and each one does two jobs: it records what happened, and it patches the
-access graph so the widgets that read it are current in seconds rather than at
-the next rebuild.
+Twelve. Most do two jobs: they record what happened, and they patch the access
+graph so the widgets that read it are current in seconds rather than at the next
+rebuild. The two pull-request events do neither — they exist only to deliver a
+notification to a person, which is why they are the two that can be missing
+without anything on any screen looking wrong.
 
 | Event | Recorded as | Graph edge patched |
 |---|---|---|
@@ -38,17 +40,29 @@ the next rebuild.
 | `team` added_to / removed_from repository | team access changed | `owned_by_team` |
 | `membership` added / removed |, | `has_member` |
 | `dependabot_alert` created / fixed / dismissed |, | `has_vulnerable_dependency` |
-| `pull_request` |, |, |
+| `pull_request` review_requested |, |, |
 | `pull_request_review` submitted |, |, |
 
 These are the things nobody did through the app. Without them the activity log
 would only show the app's own actions, which is the least interesting half of an
 audit trail, and six widgets would be as stale as the last six-hourly rebuild.
 
-**`membership` is the newest**, and the only one an installation set up before it
-existed will not have ticked. See
-[setup.md](../operations/setup.md) for the checkbox names, which do not resemble
-the API names.
+**Three are newer than the first release** — `membership`, `pull_request` and
+`pull_request_review` — so a webhook configured before them will not have them
+ticked, and an unticked box is delivered never and errors nowhere.
+
+The two pull-request ones are the ones somebody notices. They carry the instant
+notifications in **My work → Notifications**, and nothing else uses them: no
+activity row, no graph edge. So when they are missing, every screen looks
+correct and three switches a developer turned on simply never fire.
+
+**These are the organization webhook's events.** The GitHub App subscribes to
+none, and they are not permissions — `pull_request` delivery has nothing to do
+with the App's Pull requests permission, which is already Read & write for the
+PR tab. See [setup.md](../operations/setup.md) for the checkbox names, which do
+not resemble the API names, and for the two neighbouring boxes
+(`pull_request_review_comment`, `pull_request_review_thread`) that look like
+they belong and are dropped.
 
 ## Health
 

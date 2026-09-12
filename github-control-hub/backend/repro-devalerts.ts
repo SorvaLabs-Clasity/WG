@@ -869,6 +869,43 @@ const text = (card: any) => JSON.stringify(card);
     check("  and a record retires the suspects it disproves",
       /\{!data\.lastWebhookSeen && \(/.test(ui),
       "the redeploy/subscription suspects still show after the worker proved itself");
+
+    /**
+     * And the document somebody is actually sent to has to agree.
+     *
+     * The screen can only say "go and look at the organization webhook". What
+     * the two boxes are called, which neighbouring boxes look like they belong
+     * and do not, and that none of it is a permission, all live in setup.md —
+     * and setup.md carried the wrong version of this for a while: it said
+     * `membership` was the only event added after the first release, when
+     * `pull_request` and `pull_request_review` were added later still. An
+     * installation older than August 2026 therefore has all three unticked and
+     * a document telling it to check one.
+     */
+    const setup = fs.readFileSync("../../docs/operations/setup.md", "utf8");
+    const hooks = fs.readFileSync("../../docs/github-api/webhooks.md", "utf8");
+
+    check("the setup doc names all three events added after the first release",
+      /`membership`/.test(setup)
+      && /`pull_request` and `pull_request_review`/.test(setup)
+      && !/only event here\s*\n?>?\s*that was added after the first release/.test(setup),
+      "an install older than these has three boxes unticked, not one");
+
+    // The question anybody asks the moment they find the right page: the two
+    // boxes directly below the one they want read as though they belong with it.
+    check("  and the two neighbours that look like they belong",
+      /pull_request_review_comment/.test(setup) && /pull_request_review_thread/.test(setup));
+
+    check("  and says plainly that none of this is a permission",
+      /not a \*\*permission\*\*|are not permissions/.test(setup));
+
+    // The error this whole correction came from, asserted out of both documents.
+    for (const [name, text] of [["setup.md", setup], ["webhooks.md", hooks]] as const) {
+      check(`  and ${name} does not call them the GitHub App's subscriptions`,
+        /App subscribes to\s+(none|nothing)/.test(text)
+        && !/The\s+GitHub App is subscribed to/.test(text),
+        "the App subscribes to nothing here; saying otherwise sends people to the wrong page");
+    }
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
