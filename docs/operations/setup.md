@@ -511,11 +511,24 @@ what you are looking for on the page.
 | **Membership** | `membership` | A person joining or leaving a team, what `empty-teams` and team membership in the access map read. Its description reads "Team membership added or removed"; do not confuse it with **Teams** below |
 | **Teams** | `team` | Team access changes in the access map, and the ownership behind `unowned-repos` |
 
-> **Adding `membership` to an existing installation.** It is the only event here
-> that was added after the first release, so an App set up earlier will not have
-> it ticked. Without it `empty-teams` and team membership in the access map fall
-> back to the 30-minute refresh pass instead of updating in seconds, correct,
-> just slower. Nothing breaks if you forget it.
+> **Three of these were added after the first release, so a webhook configured
+> earlier will not have them ticked.** Nothing warns you: an unticked box is
+> delivered never and errors nowhere.
+>
+> - `membership` (August 2026). Without it `empty-teams` and team membership in
+>   the access map fall back to the 30-minute refresh pass instead of updating
+>   in seconds. Correct, just slower. Nothing breaks if you forget it.
+> - `pull_request` and `pull_request_review` (August 2026). These two **do**
+>   break something, and visibly: they are the entire delivery path for the
+>   instant notifications a developer switches on for themselves in **My work →
+>   Notifications** ("somebody requests my review", "somebody approves mine",
+>   "somebody requests changes"). Without them all three switches can be turned
+>   on and will never fire, and the person who turned them on has no way to see
+>   why. The daily summary is unaffected — it does not go through the webhook —
+>   which is why "the summary arrives but the instant ones never do" is the
+>   symptom that points here.
+>
+> If the app has been running since before then, check these three first.
 
 **`organization` was on this list and should not be.** The app subscribes to
 nothing for it and drops every delivery, so ticking it costs a webhook call per
@@ -523,11 +536,26 @@ membership change and achieves nothing. Untick it if it is already on; the
 counterpart it looks like, a member joining or leaving a *repository*, is
 `member`, which is already above.
 
-Two that are easy to tick by mistake: **Branch protection configurations** is a
-different event from **Branch protection rules**, and **Dependabot alerts** is
-not the same as **Repository vulnerability alerts**, which is the deprecated
-predecessor. Neither wrong choice reports an error; the app simply never sees
-the event.
+Four that are easy to tick by mistake. None of them reports an error; the app
+simply never sees the event, or sees one it drops.
+
+- **Branch protection configurations** is a different event from **Branch
+  protection rules**.
+- **Dependabot alerts** is not **Repository vulnerability alerts**, which is the
+  deprecated predecessor.
+- **Pull request review comments** (`pull_request_review_comment`) is not one of
+  these. It fires for a comment left on a line of a diff. The app drops it.
+- **Pull request review threads** (`pull_request_review_thread`) is not one of
+  these either. It fires when such a thread is resolved or unresolved. The app
+  drops it too.
+
+The last two sit directly beneath **Pull request reviews** in the list and read
+as though they belong with it. They do not: **Pull request reviews**
+(`pull_request_review`) is the one that carries an approval or a request for
+changes, and it is the only one the notifications need. Ticking the other two
+adds a delivery for every diff comment and every thread resolved anywhere in the
+organization — easily the noisiest two boxes on the page — and the app discards
+all of it.
 
 **Dependabot alerts** is only needed for the "email me when Dependabot finds a
 vulnerability" toggle on the Vulnerabilities tab. Without it that toggle can be
@@ -539,11 +567,25 @@ Ticking it does not send anything for alerts that already exist. The event fires
 when an alert is *created*, so the first email arrives with the next new
 vulnerability, not for the backlog already in the table.
 
-**These are the organization webhook's events, not the GitHub App's.** The App
-subscribes to none; every delivery this app receives comes from the webhook
-configured under Organization → Settings → Webhooks. `GET /app` reporting an
-empty `events` list is therefore expected, and is not the thing to fix if events
-stop arriving.
+**These are the organization webhook's events, not the GitHub App's, and they
+are not permissions.** Three different pages get confused for each other here,
+so to be explicit:
+
+| Looking for | It is here | It is *not* here |
+|---|---|---|
+| Which events GitHub sends us | Organization → Settings → **Webhooks**, the hook's own event list | the GitHub App |
+| What the app may read and write | GitHub App → **Permissions** (repository and organization) | the webhook |
+| The App's own event subscriptions | nowhere — it has none | — |
+
+The App subscribes to nothing; every delivery this app receives comes from the
+organization webhook. `GET /app` reporting an empty `events` list is therefore
+expected and healthy, and is not the thing to fix if events stop arriving.
+
+Nor is any of this a **permission**. Repository → Pull requests is already
+**Read & write** for the PR tab and the stale-PR comment, and raising or
+lowering it changes nothing about what GitHub delivers. An event subscription
+and a permission are separate settings on separate pages, and the notifications
+need the subscription.
 
 Reading the secret back if needed:
 

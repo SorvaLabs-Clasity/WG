@@ -14,7 +14,6 @@ import {
 } from "../services/devAlertService";
 import { buildDigest } from "../services/devAlertContent";
 import { sendToPerson } from "../services/teamsClient";
-import { missingEvents } from "../services/appSubscriptions";
 import { getOrgConfig } from "../services/orgConfigService";
 import {
   readView, saveView, isViewDue, refreshViewIfDue, isViewRefreshing,
@@ -309,15 +308,6 @@ router.get("/ship", async (req: Request, res: Response) => {
   }
 });
 
-/**
- * The events the immediate notifications are delivered by.
- *
- * `pull_request` carries a review request; `pull_request_review` carries an
- * approval and a request for changes. Both are checkboxes on the GitHub App,
- * and an unticked one is silent rather than broken.
- */
-const EVENT_NOTIFICATION_EVENTS = ["pull_request", "pull_request_review"];
-
 router.get("/alerts", async (req: Request, res: Response) => {
   try {
     const a = await getDevAlerts(req.user!.login);
@@ -327,28 +317,26 @@ router.get("/alerts", async (req: Request, res: Response) => {
     // has set the shared flow up, so that travels with it.
     const flow = (await getOrgConfig().catch(() => null))?.teamsFlow;
     /**
-     * And nor can they see whether GitHub was ever asked to send these.
-     *
-     * This is the one precondition the settings screen could not check, and it
-     * is the one that fails silently: an unticked box produces no delivery, no
-     * error and no record, so "I turned it on and got nothing" looked identical
-     * whether the cause was a checkbox or a bug. Answered from the App's own
-     * subscription list, cached, and `null` when it could not be read — which
-     * the screen has to keep reporting as "cannot tell" rather than as "no".
-     */
-    const missing = await missingEvents(EVENT_NOTIFICATION_EVENTS).catch(() => null);
-    /**
      * And whether the worker has seen one of these events at all.
      *
-     * The per-person record below only exists once the code that writes it
-     * runs, so its absence is ambiguous in exactly the cases that matter: an
-     * unsubscribed event and a worker running an older build both produce
-     * nothing. This is written org-wide, before any decision, so a recent
-     * value proves the delivery path is alive and moves the question onto the
-     * person's own settings.
+     * This is deliberately the *only* thing reported about the delivery path,
+     * and it is measured rather than inferred. An earlier version of this
+     * screen asked the GitHub App which webhook events it was subscribed to
+     * and named the unticked ones. That was the wrong source: this app is fed
+     * by an **organization** webhook, configured under Organization → Settings
+     * → Webhooks, and the App subscribes to nothing — so `GET /app` reports an
+     * empty event list on a perfectly healthy install, and the screen accused
+     * every deployment of a checkbox that was never the problem. The App has
+     * no permission to read the org webhook either, so there is nothing
+     * correct to ask.
+     *
+     * What the worker actually received is not a guess. It is written org-wide
+     * before any decision is taken, so a recent value proves GitHub is
+     * delivering and the worker is running, and its absence is the one honest
+     * reason to go and look at the webhook's own event list.
      */
     const seen = await readDevEventSeen().catch(() => null);
-    res.json({ ...a, teamsReady: !!flow?.url, missingEvents: missing, lastWebhookSeen: seen });
+    res.json({ ...a, teamsReady: !!flow?.url, lastWebhookSeen: seen });
   } catch (error: any) {
     res.status(500).json({ error: sanitizeError(error, "me") });
   }

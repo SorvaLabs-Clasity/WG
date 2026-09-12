@@ -66,6 +66,28 @@ function GraphFreshness({ busy, onReread }: { busy: boolean; onReread: () => voi
 /** Rendering 356 rows at once is slow and unreadable; the search box is the answer. */
 const LIST_CAP = 200;
 
+/**
+ * A person's teams, said in a line rather than in a list.
+ *
+ * Somebody in twenty teams is not unusual in an organization this size, and
+ * joining twenty names produces a string no row can hold. Ellipsis alone would
+ * cut a team name mid-word and lose the only number that is actually
+ * actionable — how many there are — so the count is kept and the names are
+ * what gets dropped.
+ *
+ * Three is the most that fits beside a login and the counts at the right on a
+ * laptop; the row still truncates underneath this, because a single team can
+ * be named anything.
+ */
+const TEAMS_SHOWN = 3;
+
+function teamSummary(teams: Array<{ name: string }>, shown = TEAMS_SHOWN): string {
+  if (teams.length === 0) return "No teams";
+  const names = teams.slice(0, shown).map(t => t.name).join(", ");
+  const rest = teams.length - shown;
+  return rest > 0 ? `${names} +${rest} more` : names;
+}
+
 const ROLE_TONE: Record<string, Intent> = {
   admin: "danger", maintain: "warn", write: "info", push: "info", triage: "neutral", read: "neutral",
 };
@@ -372,10 +394,12 @@ function PersonRow({ person, index, onOpen }: { person: Person; index: number; o
               <span className="display text-[1.0625rem] text-ink">{person.login}</span>
               <OrgRoleTag role={person.orgRole} />
             </div>
-            <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
-              {person.teams.length === 0
-                ? "No teams"
-                : person.teams.map(t => t.name).join(", ")}
+            {/* `truncate` is the backstop, not the plan: one team can be
+                named anything. `title` keeps the full list reachable, since
+                what the line drops is names rather than the count. */}
+            <p className="text-[0.7812rem] text-slate-500 dark:text-slate-400 mt-0.5 truncate"
+              title={person.teams.length === 0 ? undefined : person.teams.map(t => t.name).join(", ")}>
+              {teamSummary(person.teams)}
             </p>
           </div>
         </div>
@@ -440,7 +464,10 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
               ? "An organization owner. Admin on every repository by virtue of the role. Removing individual grants does not change that."
               : data.orgRole === "outside_collaborator"
                 ? "Not a member of this organization. Reaches only what was granted to them."
-                : `Member of ${data.teams.length === 0 ? "no teams" : data.teams.map(t => t.name).join(", ")}.`
+                : data.teams.length === 0
+                  ? "Member of no teams."
+                  // Room for more here than in a row, but not for thirty.
+                  : `Member of ${teamSummary(data.teams, 8)}.`
           }
         />
 

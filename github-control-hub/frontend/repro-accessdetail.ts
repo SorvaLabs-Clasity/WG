@@ -148,6 +148,60 @@ const page = fs.readFileSync("./src/pages/AccessPage.tsx", "utf8");
       "this was local pending state, invisible to everyone but the clicker");
   }
 
+  /**
+   * The row has to be allowed to be narrower than what is in it.
+   *
+   * These rows are laid out in a `grid`, and a grid item's `min-width` defaults
+   * to `auto`, which resolves to its *min-content* size. One person in twenty
+   * teams therefore sized the whole track to fit the joined list, the page grew
+   * a horizontal scrollbar, and the `truncate` on that line never did anything
+   * — nothing was ever narrower than the text, so there was nothing to clip.
+   *
+   * It read as theme-specific and was not: the themes with a narrow `--page-max`
+   * showed it first, and Quiet hid it completely because its `grid-cols-*`
+   * override already rewrites tracks to `minmax(0, 1fr)`.
+   */
+  console.log("\na long row cannot widen the page");
+  {
+    const design = fs.readFileSync("./src/design/index.tsx", "utf8");
+    /** One exported function's source, up to wherever the next one begins. */
+    const body = (name: string) => {
+      const from = design.indexOf(`export function ${name}`);
+      if (from < 0) return "";
+      const next = design.indexOf("\nexport ", from + 1);
+      return design.slice(from, next < 0 ? undefined : next);
+    };
+
+    check("a list row may be narrower than its contents",
+      /min-w-0/.test(body("RailCard")),
+      "without this a grid track sizes to the longest unbreakable string in it");
+
+    check("  and so may an inset row",
+      /min-w-0/.test(body("InsetRow")));
+
+    const page = fs.readFileSync("./src/pages/AccessPage.tsx", "utf8");
+
+    /**
+     * Ellipsis alone would cut a team name mid-word and lose the only number
+     * that is actionable — how many there are. The names are what gets dropped.
+     */
+    check("a person's teams are summarized rather than joined in full",
+      /function teamSummary/.test(page) && /\+\$\{rest\} more/.test(page),
+      "twenty joined names is a string no row can hold at any width");
+
+    check("  and the row still truncates underneath that",
+      /teamSummary\(person\.teams\)/.test(page)
+      && /truncate"\s*\n\s*title=\{person\.teams/.test(page),
+      "one team can be named anything, so the cap is not a guarantee");
+
+    check("  with the full list still reachable",
+      /title=\{person\.teams\.length === 0 \? undefined : person\.teams/.test(page));
+
+    check("and the drawer's line is capped too, just higher",
+      /teamSummary\(data\.teams, 8\)/.test(page),
+      "more room there than in a row, but not room for thirty");
+  }
+
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);
   process.exit(failures === 0 ? 0 : 1);
 })();

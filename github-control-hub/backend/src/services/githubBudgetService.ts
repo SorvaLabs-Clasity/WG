@@ -137,19 +137,6 @@ async function readLimits(token: string): Promise<{ limits: BudgetLimit[]; error
  * old explanation to new work.
  */
 export const FEATURE_NOTES: Record<string, Omit<FeatureNote, "feature">> = {
-  "Notification event subscriptions": {
-    trigger: "Opening My work \u2192 Notifications, at most once every 10 minutes",
-    endpoints: ["GET /app"],
-    files: ["services/appSubscriptions.ts"],
-    scalesWith: "nothing; it is one request however large the organization is",
-    note: "Asks which webhook events the App is subscribed to, so the settings "
-      + "screen can name the unticked checkbox rather than list what it might "
-      + "be. An unsubscribed event is delivered never and errors nowhere, so "
-      + "there is no other way to tell that apart from the feature being "
-      + "broken. Signed as the App rather than as the installation, because "
-      + "the subscription list belongs to the App; cached for ten minutes, so "
-      + "the screen costs nothing to reopen.",
-  },
   "Dependabot alert sweep": {
     trigger: "The alarm pass, every 5 minutes, and the Vulnerabilities tab",
     endpoints: ["GET /orgs/{org}/dependabot/alerts"],

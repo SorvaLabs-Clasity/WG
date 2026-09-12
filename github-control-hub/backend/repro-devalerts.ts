@@ -759,59 +759,56 @@ const text = (card: any) => JSON.stringify(card);
   }
 
   /**
-   * The precondition that used to fail in complete silence.
+   * The check that was wrong about where the events live.
    *
-   * GitHub never delivers an event the App is not subscribed to. No request
-   * arrives, nothing errors, and nothing anywhere records a non-event — so
-   * "I turned the switch on and got nothing" looked exactly like a bug, and
-   * the settings screen said out loud that it could not tell the two apart.
-   * These assert the app now asks GitHub instead of guessing, and that the
-   * three answers stay three answers.
+   * An earlier pass read the GitHub App's own subscription list (`GET /app`)
+   * and named the events missing from it. That list is empty on every healthy
+   * install of this app, by design: deliveries come from the **organization**
+   * webhook, configured under Organization → Settings → Webhooks, and the App
+   * subscribes to nothing. So the screen told everybody that two boxes were
+   * unticked, on a page where ticking them would have changed nothing, while
+   * the real event list sat somewhere the App has no permission to read.
+   *
+   * It is the exact failure the feature was written to prevent — sending
+   * somebody to fix a thing that is not broken — so it is asserted gone rather
+   * than quietly deleted, and what replaced it is a record of what the worker
+   * actually received.
    */
-  console.log("\nthe subscription is read, not guessed");
+  console.log("\nthe delivery path is measured, not inferred");
   {
-    const svc = fs.readFileSync("src/services/appSubscriptions.ts", "utf8");
     const route = fs.readFileSync("src/routes/me.ts", "utf8");
     const ui = fs.readFileSync("../frontend/src/components/DevAlertSettings.tsx", "utf8");
 
-    // The list belongs to the App, not to the installation, so it is one of the
-    // few things only the App's own JWT may ask for.
-    check("the subscription is asked of the App itself",
-      /getAppJwt/.test(svc) && /GET \/app/.test(svc));
+    // The endpoint, not the mention: the route explains in prose why `GET /app`
+    // is the wrong thing to ask, and that sentence is the point rather than a
+    // relapse. What must not come back is a call.
+    check("nothing asks the App which events it is subscribed to",
+      !fs.existsSync("src/services/appSubscriptions.ts")
+      && !/missingEvents/.test(route) && !/"GET \/app"/.test(route),
+      "GET /app is empty by design here; its answer can only mislead");
+
+    check("  and the screen no longer reports that list as a precondition",
+      !/missingEvents/.test(ui));
 
     /**
-     * The distinction the whole feature rests on. An empty list means "you are
-     * subscribed to nothing"; null means "we could not ask". Collapsing them
-     * would send somebody to re-tick boxes that were never unticked.
+     * Whatever the screen does say has to send somebody to the page that
+     * decides it. The obvious guess — App settings, or a repository or
+     * organization permission — is wrong, and it is wrong in a way that costs
+     * an org owner's time and still leaves the notifications silent.
      */
-    check("  and a failure answers null, never an empty list",
-      /return null;/.test(svc) && !/catch[\s\S]{0,80}return \[\];/.test(svc));
+    check("  and names the organization webhook, not the App",
+      /Organization . Settings . Webhooks/.test(ui) && /not a permission/.test(ui));
 
-    check("  and the answer is cached, so the screen is not a GitHub call",
-      /TTL_MS/.test(svc) && /cache/.test(svc));
+    check("  in the words GitHub's own page uses",
+      /Pull requests<\/span>/.test(ui) && /Pull request reviews<\/span>/.test(ui));
 
-    check("the route reports which needed events are missing",
-      /missingEvents\(/.test(route) && /pull_request_review/.test(route));
-
-    // Both. `pull_request` carries the review request, `pull_request_review`
-    // carries the approval and the change request; one without the other is
-    // two of the three switches silently dead.
-    check("  both events these need are checked, not just the obvious one",
-      /"pull_request",\s*"pull_request_review"/.test(route));
+    // Two hooks means two deliveries of the same event with different ids, and
+    // the deduplication lock has no way to recognize them as one.
+    check("  and says to edit the existing hook rather than add one",
+      /never adding a second/.test(ui));
 
     check("the screen renders unknown as unknown, not as a failure",
       /ok === null/.test(ui) && /unknown\?:/.test(ui));
-
-    /**
-     * Naming the API event is not enough: GitHub's settings page labels its
-     * checkboxes in prose, and `pull_request_review` appears nowhere on the
-     * screen somebody has to go and tick.
-     */
-    check("  and names the checkbox in the words GitHub's own page uses",
-      /Pull request reviews/.test(ui) && /EVENT_BOX/.test(ui));
-
-    check("  and once it knows, it stops offering a list of suspects",
-      /the reason is above/.test(ui));
 
     /**
      * The evidence that separates "GitHub never sent it" from "we chose not to
@@ -872,6 +869,43 @@ const text = (card: any) => JSON.stringify(card);
     check("  and a record retires the suspects it disproves",
       /\{!data\.lastWebhookSeen && \(/.test(ui),
       "the redeploy/subscription suspects still show after the worker proved itself");
+
+    /**
+     * And the document somebody is actually sent to has to agree.
+     *
+     * The screen can only say "go and look at the organization webhook". What
+     * the two boxes are called, which neighbouring boxes look like they belong
+     * and do not, and that none of it is a permission, all live in setup.md —
+     * and setup.md carried the wrong version of this for a while: it said
+     * `membership` was the only event added after the first release, when
+     * `pull_request` and `pull_request_review` were added later still. An
+     * installation older than August 2026 therefore has all three unticked and
+     * a document telling it to check one.
+     */
+    const setup = fs.readFileSync("../../docs/operations/setup.md", "utf8");
+    const hooks = fs.readFileSync("../../docs/github-api/webhooks.md", "utf8");
+
+    check("the setup doc names all three events added after the first release",
+      /`membership`/.test(setup)
+      && /`pull_request` and `pull_request_review`/.test(setup)
+      && !/only event here\s*\n?>?\s*that was added after the first release/.test(setup),
+      "an install older than these has three boxes unticked, not one");
+
+    // The question anybody asks the moment they find the right page: the two
+    // boxes directly below the one they want read as though they belong with it.
+    check("  and the two neighbours that look like they belong",
+      /pull_request_review_comment/.test(setup) && /pull_request_review_thread/.test(setup));
+
+    check("  and says plainly that none of this is a permission",
+      /not a \*\*permission\*\*|are not permissions/.test(setup));
+
+    // The error this whole correction came from, asserted out of both documents.
+    for (const [name, text] of [["setup.md", setup], ["webhooks.md", hooks]] as const) {
+      check(`  and ${name} does not call them the GitHub App's subscriptions`,
+        /App subscribes to\s+(none|nothing)/.test(text)
+        && !/The\s+GitHub App is subscribed to/.test(text),
+        "the App subscribes to nothing here; saying otherwise sends people to the wrong page");
+    }
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

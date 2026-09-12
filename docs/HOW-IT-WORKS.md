@@ -2524,8 +2524,9 @@ them until `scripts/backfill-alert-feed.sh --apply` runs. It writes only where
 the attribute is absent, so it is safe to run twice.
 
 1. **The only reason this works is that the app asked GitHub to tell it.** The
-   GitHub App is subscribed to team events. Nothing scans for this, so if that
-   subscription is off, nothing is ever flagged and nothing looks wrong.
+   *organization webhook* is subscribed to team events — not the GitHub App,
+   which subscribes to nothing. Nothing scans for this, so if that box is
+   unticked, nothing is ever flagged and nothing looks wrong.
 2. **There is no rules engine and no inference.** The handler compares two
    strings, the event is `team`, the action is `added_to_repository`, and
    writes the alert. That is the whole of "how it knows":

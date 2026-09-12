@@ -198,110 +198,209 @@
   color-scheme: dark;
 }
 
-/* ── CONTROL ──────────────────────────────────────────────────────────────
-   The design this app wore before: a modern console. Rounded cards on a cool
-   blue-grey ground, real shadows, Inter set heavy and tight, and saturated
-   status colour. Kept as a theme rather than deleted, because it is a
-   perfectly good way to read a dashboard and some people prefer it. */
+/* ── ORIGINAL ─────────────────────────────────────────────────────────────
+   The design this app actually wore before any of this, reproduced from the
+   commit it was replaced in rather than from memory: GitHub's own palette.
+   #f6f8fa canvas, #d0d7de hairlines, #0969da for links, #cf222e / #1a7f37 /
+   #9a6700 for state, Inter at 6px radii with the soft grey-blue shadows, and
+   a #24292f header across the top.
 
-[data-skin="control"] {
-  --paper:   246 247 250;
-  --paper-2: 255 255 255;
-  --paper-3: 237 241 247;
-  --paper-4: 226 232 240;
-  --ink:    15  23  42;
-  --ink-2:  71  85 105;
-  --ink-3: 100 116 139;
-  --ink-4: 148 163 184;
-  --rule:        226 232 240;
-  --rule-strong: 203 213 225;
+   It is here because somebody liked it, so fidelity matters more than
+   invention: every value below is the literal one from the tailwind.config.js
+   and index.css that this replaced. The night edition is the one the old app
+   had too — slate, #020617 under #e2e8f0 — rather than a darkened GitHub,
+   because that is what was there.
 
-  --crimson-wash: 255 241 242;  --crimson-edge: 254 205 211;
-  --crimson:      225  29  72;  --crimson-deep: 159  18  57;
-  --ochre-wash:   255 251 235;  --ochre-edge:   253 230 138;
-  --ochre:        217 119   6;  --ochre-deep:   146  64  14;
-  --forest-wash:  236 253 245;  --forest-edge:  167 243 208;
-  --forest:         5 150 105;  --forest-deep:    6  95  70;
-  --indigo-wash:  239 246 255;  --indigo-edge:  191 219 254;
-  --indigo:        37  99 235;  --indigo-deep:   30  58 138;
+   The labels come out of small capitals into sentence case. The old app had no
+   small capitals anywhere, and leaving them in is what made the previous
+   attempt at this read as the new design wearing old colours rather than as
+   the old design. */
 
-  --font-display: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-ui: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+[data-skin="original"] {
+  --paper:   246 248 250;   /* #f6f8fa, the canvas */
+  --paper-2: 255 255 255;   /* cards sat on white */
+  --paper-3: 243 244 246;   /* #f3f4f6, the hover */
+  --paper-4: 234 238 242;
+  --ink:     31  35  40;    /* #1F2328 */
+  --ink-2:   36  41  47;    /* #24292f */
+  --ink-3:   87  96 106;    /* #57606a, the muted one */
+  --ink-4:  101 109 118;    /* #656d76 */
+  --rule:        208 215 222;  /* #d0d7de */
+  --rule-strong: 175 184 193;  /* #afb8c1 */
 
-  --r-sm: 0.25rem; --r: 0.375rem; --r-md: 0.5rem;
-  --r-lg: 0.625rem; --r-xl: 0.75rem; --r-2xl: 1rem; --r-3xl: 1.5rem;
-  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.1);
-  --shadow: 0 1px 3px rgb(15 23 42 / 0.1), 0 1px 2px rgb(15 23 42 / 0.06);
-  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.1), 0 2px 4px -2px rgb(15 23 42 / 0.06);
-  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.12), 0 4px 6px -4px rgb(15 23 42 / 0.08);
-  --shadow-xl: 0 20px 25px -5px rgb(15 23 42 / 0.14), 0 8px 10px -6px rgb(15 23 42 / 0.08);
-  --shadow-press: var(--shadow-md);
+  --crimson-wash: 255 235 233;  --crimson-edge: 255 206 203;
+  --crimson:      207  34  46;  --crimson-deep: 164  14  38;
+  --ochre-wash:   255 248 197;  --ochre-edge:   242 204  96;
+  --ochre:        154 103   0;  --ochre-deep:   125  78   0;
+  --forest-wash:  218 251 225;  --forest-edge:  172 238 187;
+  --forest:        26 127  55;  --forest-deep:   17  99  41;
+  --indigo-wash:  221 244 255;  --indigo-edge:  182 227 255;
+  --indigo:         9 105 218;  --indigo-deep:    3  83 164;
 
-  --display-weight: 800;
-  --display-tracking: -0.03em;
+  --font-display: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* 6px, which is what the whole of the old app was drawn at. */
+  --r-sm: 0.1875rem; --r: 0.375rem; --r-md: 0.375rem;
+  --r-lg: 0.5rem; --r-xl: 0.75rem; --r-2xl: 0.75rem; --r-3xl: 1rem;
+
+  /* The old `soft` / `lift` / `subtle` / `modal`, in that order. Grey-blue
+     rather than black: they were always tinted toward the border colour. */
+  --shadow-sm: 0 1px 0 rgb(31 35 40 / 0.04);
+  --shadow: 0 3px 6px -1px rgb(140 149 159 / 0.15);
+  --shadow-md: 0 8px 18px -2px rgb(140 149 159 / 0.15);
+  --shadow-lg: 0 1px 3px rgb(31 35 40 / 0.12), 0 8px 24px rgb(149 157 165 / 0.05);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 10px 10px -5px rgb(0 0 0 / 0.04),
+               0 0 0 1px rgb(0 0 0 / 0.05);
+  --shadow-press: var(--shadow-sm);
+
+  --page-max: 80rem;  /* the 1280px container */
+
+  --body-size: 0.875rem;
+  --body-line: 1.5;
+
+  --display-weight: 600;
+  --display-tracking: -0.01em;
   --figure-family: var(--font-ui);
-  --figure-weight: 800;
-  --figure-tracking: -0.03em;
+  --figure-weight: 600;
+  --figure-tracking: -0.02em;
 
-  --caps-weight: 700;
-  --caps-tracking: 0.18em;
+  --caps-size: 0.75rem;
+  --caps-weight: 600;
+  --caps-tracking: 0;
+  --caps-transform: none;
 
   --standfirst-family: var(--font-ui);
   --standfirst-style: normal;
+  --standfirst-weight: 400;
 
-  --link-weight: 700;
+  --link-weight: 600;
+  --link-transform: none;
   --link-decoration: none;
 
-  --stamp-radius: var(--r-xl);
-  --stamp-pad-y: 0.625rem;
-  --stamp-pad-x: 1rem;
+  --stamp-radius: var(--r);
+  --stamp-pad-y: 0.3125rem;
+  --stamp-pad-x: 0.75rem;
   --stamp-size: 0.875rem;
-  --stamp-weight: 700;
-  --stamp-tracking: -0.01em;
+  --stamp-weight: 500;
+  --stamp-tracking: 0;
   --stamp-transform: none;
-  --stamp-border-w: 0;
+  --stamp-border-w: 1px;
   --stamp-shadow: var(--shadow-sm);
 
-  --field-radius: var(--r-xl);
-  --field-pad-y: 0.625rem;
-  --field-pad-x: 0.875rem;
+  --field-radius: var(--r);
+  --field-pad-y: 0.3125rem;
+  --field-pad-x: 0.75rem;
   --field-border: 1px;
   --field-bg: rgb(var(--paper-2));
 
   --rule-heavy-w: 1px;
   --rule-heavy-color: rgb(var(--rule));
-  --card-radius: var(--r-2xl);
-  --card-shadow: var(--shadow-sm);
+  --card-radius: var(--r);
+  --card-shadow: none;
 
   --focus: rgb(var(--indigo));
   color-scheme: light;
 }
 
-[data-skin="control"][data-edition="dark"] {
-  --paper:    11  14  20;
-  --paper-2:  21  26  35;
-  --paper-3:  28  34  48;
-  --paper-4:  39  47  61;
-  --ink:    248 250 252;
+[data-skin="original"][data-edition="dark"] {
+  /* Slate, from the old `.dark body`: #020617 under #e2e8f0. */
+  --paper:     2   6  23;
+  --paper-2:  15  23  42;
+  --paper-3:  30  41  59;
+  --paper-4:  51  65  85;
+  --ink:    226 232 240;
   --ink-2:  203 213 225;
   --ink-3:  148 163 184;
   --ink-4:  100 116 139;
-  --rule:        39  47  61;
-  --rule-strong: 55  65  81;
-  --crimson-wash: 45 16 25;  --crimson-edge: 86 24 43;
-  --crimson:     251 113 133; --crimson-deep: 159 18 57;
-  --ochre-wash:   45 32 12;  --ochre-edge:   87 58 20;
-  --ochre:       251 191  36; --ochre-deep:  180 83 9;
-  --forest-wash:  10 42 33;  --forest-edge:  17 79 60;
-  --forest:       52 211 153; --forest-deep:  6 95 70;
-  --indigo-wash:  17 30 56;  --indigo-edge:  30 58 110;
-  --indigo:       96 165 250; --indigo-deep: 30 64 175;
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.4), 0 1px 3px rgb(0 0 0 / 0.5);
-  --shadow: 0 1px 3px rgb(0 0 0 / 0.5);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.5);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.6);
-  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.7);
+  --rule:        51  65  85;
+  --rule-strong: 71  85 105;
+
+  /* GitHub's night signals, which are lighter rather than merely dimmer. */
+  --crimson-wash: 45 16 25;   --crimson-edge:  86 24 43;
+  --crimson:     248 81  73;  --crimson-deep: 218 54 51;
+  --ochre-wash:   45 32 12;   --ochre-edge:   87 58 20;
+  --ochre:       210 153 34;  --ochre-deep:  158 106  3;
+  --forest-wash:  10 42 33;   --forest-edge:  17 79 60;
+  --forest:       63 185 80;  --forest-deep:  35 134 54;
+  --indigo-wash:  17 30 56;   --indigo-edge:  30 58 110;
+  --indigo:       88 166 255; --indigo-deep:  31 111 235;
+
+  --shadow-sm: 0 1px 0 rgb(0 0 0 / 0.3);
+  --shadow: 0 3px 6px -1px rgb(0 0 0 / 0.4);
+  --shadow-md: 0 8px 18px -2px rgb(0 0 0 / 0.45);
+  --shadow-lg: 0 1px 3px rgb(0 0 0 / 0.5), 0 8px 24px rgb(0 0 0 / 0.3);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 10px 10px -5px rgb(0 0 0 / 0.3);
   color-scheme: dark;
+}
+
+/* The dark header, which is the half of the old design somebody recognises
+   first.
+
+   Done by redefining the ink and the stock *inside* the masthead rather than
+   by restyling its parts: every child in there already reads `text-ink`,
+   `bg-paper`, `border-rule`, so flipping the variables on the container turns
+   the whole bar over at once and nothing in Navbar.tsx has to know that a
+   theme exists. The menu that hangs off it is put back on the page's contract
+   below, because it is a panel floating over the page rather than part of the
+   bar, and it was light in the old app too. */
+[data-skin="original"] .masthead {
+  --paper:   36  41  47;    /* #24292f */
+  --paper-2: 36  41  47;
+  --paper-3: 48  54  61;
+  --paper-4: 55  62  70;
+  --ink:    255 255 255;
+  --ink-2:  225 228 232;
+  --ink-3:  177 186 196;
+  --ink-4:  139 148 158;
+  --rule:        48  54  61;
+  --rule-strong: 68  76  86;
+}
+
+[data-skin="original"][data-edition="dark"] .masthead {
+  --paper:   15  23  42;
+  --paper-2: 15  23  42;
+  --paper-3: 30  41  59;
+  --paper-4: 51  65  85;
+  --ink:    226 232 240;
+  --ink-2:  203 213 225;
+  --ink-3:  148 163 184;
+  --ink-4:  100 116 139;
+  --rule:        51  65  85;
+  --rule-strong: 71  85 105;
+}
+
+/* The account menu is a panel over the page, not part of the bar, so it takes
+   the page's palette back. Without this it inherits the header's white ink on
+   its own white ground and reads as an empty rectangle. */
+[data-skin="original"] .masthead [role="menu"] {
+  --paper:   246 248 250;
+  --paper-2: 255 255 255;
+  --paper-3: 243 244 246;
+  --paper-4: 234 238 242;
+  --ink:     31  35  40;
+  --ink-2:   36  41  47;
+  --ink-3:   87  96 106;
+  --ink-4:  101 109 118;
+  --rule:        208 215 222;
+  --rule-strong: 175 184 193;
+  background: rgb(var(--paper-2));
+  border-color: rgb(var(--rule));
+  box-shadow: var(--shadow-lg);
+}
+
+[data-skin="original"][data-edition="dark"] .masthead [role="menu"] {
+  --paper:     2   6  23;
+  --paper-2:  15  23  42;
+  --paper-3:  30  41  59;
+  --paper-4:  51  65  85;
+  --ink:    226 232 240;
+  --ink-2:  203 213 225;
+  --ink-3:  148 163 184;
+  --ink-4:  100 116 139;
+  --rule:        51  65  85;
+  --rule-strong: 71  85 105;
 }
 
 /* ── TERMINAL ─────────────────────────────────────────────────────────────
@@ -1179,21 +1278,21 @@ input::placeholder, textarea::placeholder { color: rgb(var(--ink-4)); }
      Only what a variable cannot express. Each is `:where()`-wrapped so it
      stays at the same specificity as the base class it replaces. */
 
-  /* Control: the old console's ghost button, and a lifted stamp. */
-  :where([data-skin="control"]) .textlink:hover { text-decoration: none; }
-  :where([data-skin="control"]) .stamp:hover {
+  /* Original: GitHub's ghost button and its lifted primary. */
+  :where([data-skin="original"]) .textlink:hover { text-decoration: none; }
+  :where([data-skin="original"]) .stamp:hover {
     background: rgb(var(--ink)); color: rgb(var(--paper));
     box-shadow: var(--shadow-md); transform: translateY(-1px);
   }
-  :where([data-skin="control"]) .stamp-hollow {
+  :where([data-skin="original"]) .stamp-hollow {
     background: rgb(var(--paper-2)); border-color: rgb(var(--rule));
     box-shadow: var(--shadow-sm);
   }
-  :where([data-skin="control"]) .stamp-hollow:hover {
+  :where([data-skin="original"]) .stamp-hollow:hover {
     background: rgb(var(--paper-3)); color: rgb(var(--ink));
     border-color: rgb(var(--rule-strong));
   }
-  :where([data-skin="control"]) .rule-heavy { border-top-width: 1px; }
+  :where([data-skin="original"]) .rule-heavy { border-top-width: 1px; }
   :where([data-skin="swiss"]) .rule-heavy { border-top-width: 3px; }
 
   /* Terminal: bracketed controls, and a caret that blinks in the phosphor. */
@@ -1282,8 +1381,8 @@ input::placeholder, textarea::placeholder { color: rgb(var(--ink-4)); }
 [data-skin="riso"] .border-b-2 { border-bottom-width: 3px; }
 
 /* Control divides with a light hairline rather than an inked rule. */
-[data-skin="control"] .border-t-2.border-ink { border-top-width: 1px; border-color: rgb(var(--rule)); }
-[data-skin="control"] .border-b-2.border-ink { border-bottom-width: 1px; border-color: rgb(var(--rule)); }
+[data-skin="original"] .border-t-2.border-ink { border-top-width: 1px; border-color: rgb(var(--rule)); }
+[data-skin="original"] .border-b-2.border-ink { border-bottom-width: 1px; border-color: rgb(var(--rule)); }
 
 /* Swiss spends colour on fills and rules, never on an outline, so the tinted
    card edges go grey and the state rule along the top is left to carry it. */

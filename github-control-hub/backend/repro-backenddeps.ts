@@ -139,6 +139,32 @@ function packageOf(spec: string): string {
     check("the packaging step still installs from backend/package.json alone",
       bundle.includes("backend") && bundle.includes("package.json"),
       "if this changed, the rule above may no longer be the one that matters");
+
+    /**
+     * And no build step reaches for the registry to find its own tools.
+     *
+     * `npx <tool>` looks for a local binary and, not finding one, downloads
+     * whatever is published under that name and runs it. `npx tsc` does not
+     * fetch TypeScript: `tsc` is an unrelated package by another author, which
+     * is why a machine whose install left no compiler behind got
+     *
+     *   This is not the tsc command you are looking for
+     *
+     * in the middle of `npm run dev`, rather than a missing-dependency error.
+     *
+     * That is worth a rule of its own rather than a fix in one place. A build
+     * on this repository runs beside an administrative GitHub App token and an
+     * AWS session, so a step that silently executes an unreviewed package from
+     * the public registry is a supply-chain hole, not a convenience. `npm run`
+     * puts every ancestor `node_modules/.bin` on PATH, finds the hoisted
+     * compiler exactly the same way, and when it genuinely is not installed
+     * says so and stops.
+     */
+    const registryReach = Object.entries(desktop.scripts ?? {})
+      .filter(([, body]) => /(^|[\s&|;])npx\s/.test(String(body)))
+      .map(([name]) => name);
+    check("  and no script resolves a tool through the registry",
+      registryReach.length === 0, registryReach);
   }
 
   console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILED`);

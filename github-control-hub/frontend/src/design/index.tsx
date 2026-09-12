@@ -390,13 +390,28 @@ export function Block({ title, children, action }: {
  * the printed equivalent of a change bar in a margin. Nothing lifts on hover,
  * because paper does not lift; the whole record takes a wash of ink instead.
  */
+/**
+ * A full-width list row with a coloured edge.
+ *
+ * `min-w-0` is not decoration. These are laid out in a `grid`, and a grid
+ * item's `min-width` defaults to `auto`, which resolves to its *min-content*
+ * size — so one row holding a long unbroken string (a person in twenty teams,
+ * a dependency with a long coordinate) sizes the whole track to fit it, the
+ * page grows a horizontal scrollbar, and every `truncate` inside the row never
+ * gets the chance to act because nothing is ever narrower than the text.
+ *
+ * It looked theme-dependent, and was: the themes that set a narrow `--page-max`
+ * showed it first, and Quiet hid it entirely because its `grid-cols-*` override
+ * already rewrites tracks to `minmax(0, 1fr)`. The cause is the same in all of
+ * them.
+ */
 export function RailCard({ intent, index = 0, onClick, children }: {
   intent: Intent; index?: number; onClick?: () => void; children: React.ReactNode;
 }) {
   const Tag = onClick ? "button" : "div";
   return (
     <Tag onClick={onClick} style={enter(index)}
-      className={`group relative w-full text-left block border border-rule bg-paper ${
+      className={`group relative w-full min-w-0 text-left block border border-rule bg-paper ${
         onClick ? "transition-colors duration-150 hover:bg-ink/[0.035]" : ""}`}>
       <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${INTENT[intent].mark}`} aria-hidden="true" />
       <div className="relative pl-6 pr-5 py-4">{children}</div>
@@ -425,7 +440,7 @@ export function InsetRow({ intent, index = 0, children }: {
   intent: Intent; index?: number; children: React.ReactNode;
 }) {
   return (
-    <li style={enter(index, 16, 240)} className="relative bg-paper-2 border border-rule">
+    <li style={enter(index, 16, 240)} className="relative min-w-0 bg-paper-2 border border-rule">
       <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${INTENT[intent].mark}`} aria-hidden="true" />
       <div className="relative pl-4 pr-3.5 py-2.5">{children}</div>
     </li>
