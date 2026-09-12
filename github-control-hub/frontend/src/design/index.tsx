@@ -1,22 +1,29 @@
 import { useState, useEffect, useRef } from "react";
 import Navbar from "../components/Navbar";
-import { INTENT, TYPE, SURFACE, EASE, enter, type Intent } from "./tokens";
+import { INTENT, TYPE, SURFACE, RULE, EASE, enter, type Intent } from "./tokens";
 
 export * from "./tokens";
 
 /**
- * Shared UI primitives.
+ * Shared UI primitives — The Broadsheet.
  *
- * Every page assembles from these so the app reads as one product. Adding a
- * page should mean composing these, not inventing another card style.
+ * Every page is set from these so the app reads as one printed object. The
+ * vocabulary is a newspaper's: a masthead, headlines, standfirsts, small-cap
+ * column heads, hairline-ruled records, datelines of middot-separated facts,
+ * and figures set in the display serif. There is no card, no pill, no badge
+ * and no raised button, because a page does not have those.
+ *
+ * Adding a screen means composing these. If something here does not fit, the
+ * answer is a new rule or a new column head, not a new box.
  */
 
 // ── page shell ────────────────────────────────────────────────────────
 
 /**
- * Root wrapper. The navbar is `fixed h-14`, so pages must reserve that space
- * themselves, two pages shipped without it and slid underneath. Doing it here
- * means no page has to remember.
+ * Root wrapper. The masthead is `fixed` and two-tier — title rule on top,
+ * section line under it — so pages must reserve its height. Doing it here
+ * means no page has to remember, which is how two of them ended up sliding
+ * underneath the old navbar.
  */
 export function Page({ user, width = "wide", children }: {
   user?: { login?: string; avatarUrl?: string } | null;
@@ -24,37 +31,78 @@ export function Page({ user, width = "wide", children }: {
   children: React.ReactNode;
 }) {
   return (
-    <div className={`min-h-screen pt-16 ${SURFACE.page}`}>
+    <div className={`min-h-screen pt-[5.75rem] ${SURFACE.page}`}>
       <Navbar login={user?.login} avatarUrl={user?.avatarUrl} />
-      <main className={`${width === "wide" ? "max-w-[1400px]" : "max-w-[1000px]"} mx-auto px-6 py-6`}>
+      <main className={`${width === "wide" ? "max-w-[1380px]" : "max-w-[62rem]"} mx-auto px-5 sm:px-8 pb-24 pt-7`}>
         {children}
       </main>
     </div>
   );
 }
 
+/**
+ * The headline block that opens every screen.
+ *
+ * Serif headline, italic standfirst under it, actions on the same baseline at
+ * the right, and a heavy rule closing the whole thing off — the masthead of the
+ * story rather than a title bar.
+ */
 export function PageHeader({ title, subtitle, actions }: {
   title: string; subtitle?: React.ReactNode; actions?: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-4 flex-wrap mb-6">
-      <div>
-        <h1 className={`${TYPE.title} text-slate-900 dark:text-white`}>{title}</h1>
-        {subtitle && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{subtitle}</p>}
+    <header className="mb-7">
+      <div className="flex items-end justify-between gap-6 flex-wrap pb-3">
+        <div className="min-w-0">
+          <h1 className={`${TYPE.title} text-ink`}>{title}</h1>
+          {subtitle && <p className={`${TYPE.standfirst} mt-2 max-w-[58ch]`}>{subtitle}</p>}
+        </div>
+        {actions && <div className="flex items-end gap-5 shrink-0 flex-wrap">{actions}</div>}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
-    </div>
+      <div className="border-t-2 border-ink" />
+    </header>
   );
 }
 
 /**
- * Re-fetches a page's data on demand.
+ * A section within a page: small-cap column head over a heavy rule, with an
+ * optional note and controls sharing the head's baseline.
+ */
+export function Section({ title, caption, actions, children, className = "" }: {
+  title: string; caption?: React.ReactNode; actions?: React.ReactNode;
+  children: React.ReactNode; className?: string;
+}) {
+  return (
+    <section className={`mt-9 first:mt-0 ${className}`}>
+      <div className="flex items-baseline justify-between gap-5 flex-wrap pb-2">
+        <h2 className="caps text-ink">{title}</h2>
+        {actions && <div className="flex items-baseline gap-4 flex-wrap">{actions}</div>}
+      </div>
+      <div className="border-t-2 border-ink" />
+      {caption && <p className={`${TYPE.standfirst} text-[13.5px] mt-3 max-w-[70ch]`}>{caption}</p>}
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+/** A hairline, or the heavy rule that opens a section. */
+export function Rule({ heavy = false, className = "" }: { heavy?: boolean; className?: string }) {
+  return <div className={`${heavy ? RULE.heavy : RULE.hair} ${className}`} />;
+}
+
+/** Facts separated by middots, newspaper style. */
+export function Dateline({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`dateline ${className}`}>{children}</div>;
+}
+
+/**
+ * Re-fetches a screen's data on demand.
  *
  * Queries here have long stale times and window-focus refetching is off, so a
- * page can sit on data that changed elsewhere, in GitHub, in AWS, or by
- * someone else in the app, with no way to say "look again" short of a
- * restart. The spin is held for a moment past the response: an instant that
- * looks identical to nothing happening does not read as success.
+ * screen can sit on data that changed elsewhere with no way to say "look
+ * again". Set as a text link, because refreshing is not the thing any screen is
+ * for. The word is held past the response: an instant that looks identical to
+ * nothing happening does not read as success.
  */
 export function RefreshButton({ onRefresh, label = "Refresh", busy }: {
   onRefresh: () => Promise<unknown> | void;
@@ -71,14 +119,9 @@ export function RefreshButton({ onRefresh, label = "Refresh", busy }: {
   };
 
   return (
-    <button
-      onClick={run}
-      disabled={active}
-      title={label}
-      className="px-3.5 py-2.5 rounded-xl text-sm font-bold bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 shadow-sm hover:shadow hover:text-slate-900 dark:hover:text-white transition-all disabled:opacity-60 inline-flex items-center gap-2"
-    >
-      <i className={`ph-bold ph-arrows-clockwise text-base ${active ? "animate-spin" : ""}`}></i>
-      <span className="hidden sm:inline">{active ? "Refreshing…" : label}</span>
+    <button onClick={run} disabled={active} title={label}
+      className="textlink caps !text-[0.6875rem] disabled:no-underline">
+      {active ? "Refreshing…" : label}
     </button>
   );
 }
@@ -107,10 +150,17 @@ export function useCountUp(value: number, ms = 650) {
 }
 
 /**
- * Full-width status surface whose colour follows state.
+ * The ledger strip: a screen's standing at a glance.
  *
- * The app's signature element: posture should be readable before any text is.
- * One per page, at the top, or it stops meaning anything.
+ * The app's signature element, and the one place a page states its own
+ * posture. It is a ruled strip, not a coloured slab: a heavy rule in the
+ * state's ink across the top, then the figures set in the display serif and
+ * divided by column rules, the way a results table is set. State is carried by
+ * that one rule and by the ink on the leading figure — enough to read before
+ * any word on the page, and quiet enough to sit above a screen of records
+ * without shouting over them.
+ *
+ * One per screen, at the top, or it stops meaning anything.
  */
 export function StatusSlab({ intent, eyebrow, metrics, aside, footer }: {
   intent: Intent;
@@ -120,114 +170,131 @@ export function StatusSlab({ intent, eyebrow, metrics, aside, footer }: {
   footer?: React.ReactNode;
 }) {
   return (
-    <section
-      className={`relative overflow-hidden rounded-3xl px-8 py-8 sm:px-10 sm:py-9 mb-6 ${SURFACE.raised} ${INTENT[intent].solid} transition-colors duration-700`}
-      style={{ animation: `fadeInUp 0.5s ${EASE} both` }}
-    >
-      {/* Angled wash and orb give depth without glassmorphism or gradient text. */}
-      <div className="pointer-events-none absolute inset-0 opacity-[0.22]"
-        style={{ background: "linear-gradient(115deg, rgba(255,255,255,0.5) 0%, rgba(255,255,255,0) 45%)" }} />
-      <div className="pointer-events-none absolute -right-24 -top-24 w-72 h-72 rounded-full bg-white/10" />
-
-      {/* The footer sits under the whole row, not inside the metrics column.
-          Nested there, a sentence long enough to wrap made that column full
-          width, which pushed the aside onto its own line below, the big
-          percentage ending up bottom-left, under the caption, instead of
-          opposite the numbers it belongs to. */}
-      <div className="relative flex flex-wrap items-start justify-between gap-x-10 gap-y-6">
-        <div>
-          <p className={`${TYPE.label} text-white/60 mb-3`}>{eyebrow}</p>
-          <div className="flex items-end gap-10 sm:gap-14">
-            {metrics.map(m => <SlabMetric key={m.label} {...m} />)}
+    <section className="mb-8" style={{ animation: `rise 0.5s ${EASE} both` }}>
+      <div className={`h-[3px] w-full ${INTENT[intent].mark} transition-colors duration-700`} />
+      <div className="pt-4 flex flex-wrap items-start justify-between gap-x-10 gap-y-6">
+        <div className="min-w-0">
+          <p className={`caps ${INTENT[intent].text} mb-4`}>{eyebrow}</p>
+          <div className="flex items-end flex-wrap">
+            {metrics.map((m, i) => (
+              <SlabMetric key={m.label} {...m} intent={intent} first={i === 0} />
+            ))}
           </div>
         </div>
         {aside && <div className="flex flex-col items-end gap-4 shrink-0">{aside}</div>}
       </div>
       {footer && (
-        <div className="relative text-sm text-white/70 mt-6 max-w-[92ch]">{footer}</div>
+        <div className={`${RULE.hair} mt-5 pt-3 ${TYPE.sub} text-ink-2 max-w-[92ch]`}>{footer}</div>
       )}
     </section>
   );
 }
 
-function SlabMetric({ value, label, emphasis }: { value: number; label: string; emphasis?: boolean }) {
+function SlabMetric({ value, label, emphasis, intent, first }: {
+  value: number; label: string; emphasis?: boolean; intent: Intent; first: boolean;
+}) {
   const n = useCountUp(value);
   return (
-    <div>
-      <p className={`text-white ${emphasis ? TYPE.metric : "text-[34px] sm:text-[40px] font-black tabular-nums leading-[0.85] tracking-tighter text-white/75"}`}>
+    <div className={`${first ? "pr-8 sm:pr-11" : "px-8 sm:px-11 border-l border-rule"} py-1`}>
+      <p className={`${emphasis || first ? TYPE.metric : "display figure text-[2.25rem]"} ${
+        emphasis || first ? INTENT[intent].figure : "text-ink-2"}`}>
         {n}
       </p>
-      <p className={`${TYPE.label} mt-2 ${emphasis ? "text-white/70" : "text-[10px] text-white/50"}`}>{label}</p>
+      <p className="caps mt-2.5">{label}</p>
     </div>
   );
 }
 
-/** Large percentage for the right of a slab. */
+/** The large percentage that sits at the right of a ledger strip. */
 export function SlabPercent({ value, label }: { value: number; label: string }) {
   const n = useCountUp(value);
   return (
     <div className="text-right">
-      <p className="text-[64px] sm:text-[76px] leading-[0.85] font-black text-white tabular-nums tracking-tighter">
-        {n}<span className="text-3xl align-top">%</span>
+      <p className={`${TYPE.display} text-ink`}>
+        {n}<span className="display text-[0.38em] align-top ml-0.5">%</span>
       </p>
-      <p className={`${TYPE.label} text-white/60 mt-2`}>{label}</p>
+      <p className="caps mt-2.5">{label}</p>
+    </div>
+  );
+}
+
+/** A figure and its column head, for a row of readings. */
+export function Stat({ value, label, intent = "neutral", note }: {
+  value: React.ReactNode; label: string; intent?: Intent; note?: React.ReactNode;
+}) {
+  return (
+    <div className="min-w-0">
+      <p className={`${TYPE.metricSm} ${INTENT[intent].figure}`}>{value}</p>
+      <p className="caps mt-2">{label}</p>
+      {note && <p className={`${TYPE.sub} text-ink-3 mt-1`}>{note}</p>}
     </div>
   );
 }
 
 // ── controls ──────────────────────────────────────────────────────────
 
+/**
+ * The app's buttons.
+ *
+ * `ghost` is the default idiom of the whole application — a text link, because
+ * a printed page does not have raised rectangles on it. `primary` is a stamp:
+ * an inked block with reversed-out small capitals, and it is deliberately the
+ * only filled control in the vocabulary so that it keeps meaning "this is the
+ * action this screen is for".
+ */
 export function Button({ variant = "secondary", onClick, disabled, children, className = "", type }: {
   variant?: "primary" | "secondary" | "onDark" | "ghost" | "caution";
   /**
-   * Typed with the event it actually receives, even though almost nobody uses it.
-   *
-   * This forwards straight to the DOM, so React calls it with a click event. When
-   * this was declared `() => void` that was a lie the compiler believed: a handler
+   * Typed with the event it actually receives, even though almost nobody uses
+   * it. This forwards straight to the DOM, so React calls it with a click
+   * event. Declared `() => void` it was a lie the compiler believed: a handler
    * taking an optional parameter is assignable to a zero-parameter type, so
-   * `onClick={handleThing}` for a `handleThing(id?: string)` compiled clean and
-   * then received a synthetic event as `id` at runtime. Naming the parameter makes
-   * that a type error at the call site instead of a blank screen.
+   * `onClick={handleThing}` for `handleThing(id?: string)` compiled clean and
+   * then received a synthetic event as `id` at runtime.
    */
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void; disabled?: boolean; children: React.ReactNode;
   className?: string; type?: "button" | "submit";
 }) {
-  const styles = {
-    primary: "bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm hover:shadow-md hover:scale-[1.02] active:scale-[0.99]",
-    secondary: "bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 shadow-sm hover:shadow",
-    onDark: "bg-white text-slate-900 shadow-lg hover:scale-[1.03] active:scale-[0.98]",
-    ghost: "text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white",
+  const styles: Record<string, string> = {
+    primary: "stamp",
+    secondary: "stamp stamp-hollow",
+    /** On an inked ground: the stamp, reversed. */
+    onDark: "stamp bg-paper text-ink border-paper hover:bg-transparent hover:text-paper",
+    ghost: "textlink",
     /**
-     * For an action that is safe but expensive and slow.
-     *
-     * Not red: nothing here is destructive, and dressing it as destructive
-     * would be its own lie. Amber says "this one has a cost" and, more
-     * importantly, stops it looking identical to the refresh button beside it,
-     * which was the actual problem: two buttons that looked the same and did
-     * very different amounts of work.
+     * For an action that is safe but expensive and slow. Not crimson: nothing
+     * here is destructive, and dressing it as destructive would be its own lie.
+     * Ochre says "this one has a cost" and stops it reading identically to the
+     * refresh link beside it.
      */
-    caution: "bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800/70 "
-      + "text-amber-800 dark:text-amber-300 shadow-sm hover:bg-amber-100 dark:hover:bg-amber-900/50",
-  }[variant];
-  const pad = variant === "ghost" ? "px-2 py-1.5" : "px-4 py-2.5";
+    caution: "stamp stamp-hollow !border-ochre-edge !text-ochre hover:!bg-ochre hover:!text-reverse",
+  };
   return (
     <button type={type ?? "button"} onClick={onClick} disabled={disabled}
-      className={`${pad} rounded-xl text-sm font-bold transition-all disabled:opacity-50 disabled:pointer-events-none ${styles} ${className}`}>
+      className={`${styles[variant]} disabled:pointer-events-none ${className}`}>
       {children}
     </button>
   );
 }
 
+/**
+ * A choice between readings of the same screen.
+ *
+ * Set as a line of small-cap links divided by hairlines, the way a newspaper
+ * sets its section strip. The chosen one is inked and underlined; there is no
+ * container, no track and no sliding thumb.
+ */
 export function Segmented<T extends string>({ value, onChange, options }: {
   value: T; onChange: (v: T) => void; options: [T, string][];
 }) {
   return (
-    <div className="flex p-1 rounded-xl bg-slate-200/70 dark:bg-slate-800">
-      {options.map(([v, label]) => (
-        <button key={v} onClick={() => onChange(v)}
-          className={`px-3.5 py-1.5 text-[13px] font-bold rounded-lg transition-all ${
-            value === v ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                        : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}>
+    <div className="inline-flex items-stretch border-b border-rule-strong">
+      {options.map(([v, label], i) => (
+        <button key={v} onClick={() => onChange(v)} aria-pressed={value === v}
+          className={`caps px-3.5 py-2 -mb-px transition-colors ${i > 0 ? "border-l border-rule" : ""} ${
+            value === v
+              ? "text-ink border-b-2 border-ink"
+              : "hover:text-ink border-b-2 border-transparent"}`}>
           {label}
         </button>
       ))}
@@ -239,33 +306,48 @@ export function SearchInput({ value, onChange, placeholder }: {
   value: string; onChange: (v: string) => void; placeholder: string;
 }) {
   return (
-    <div className="relative flex-1 min-w-[240px] max-w-sm">
-      <i className="ph-bold ph-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+    <label className="relative flex-1 min-w-[15rem] max-w-sm flex items-baseline gap-2.5 border-b border-rule-strong focus-within:border-ink transition-colors">
+      <i className="ph-bold ph-magnifying-glass text-ink-3 text-sm translate-y-0.5" aria-hidden="true"></i>
       <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className={`${SURFACE.input} pl-10 shadow-sm`} />
-    </div>
+        className="w-full bg-transparent border-0 px-0 py-2 text-[14px] text-ink placeholder:text-ink-4 focus:outline-none" />
+      {value && (
+        <button onClick={() => onChange("")} aria-label="Clear search"
+          className="caps text-ink-3 hover:text-ink shrink-0 pr-0.5">Clear</button>
+      )}
+    </label>
   );
 }
 
 // ── surfaces ──────────────────────────────────────────────────────────
 
+/** A ruled box: the sidebar treatment, for a reading that sits beside a story. */
 export function Sheet({ children }: { children: React.ReactNode }) {
   return (
-    <div className={SURFACE.sheet} style={{ animation: `slideUp 0.35s ${EASE} both` }}>{children}</div>
+    <div className={SURFACE.sheet} style={{ animation: `rise 0.35s ${EASE} both` }}>{children}</div>
   );
 }
 
-/** Coloured header for a Sheet, so context survives when a page swaps views. */
+/**
+ * The head of a ruled box.
+ *
+ * A heavy rule in the state's ink across the top, then the title on the page's
+ * own stock. The previous design reversed a whole band out in the state colour,
+ * which spent the loudest element on a screen restating a thing the figures
+ * below it already said.
+ */
 export function SheetHeader({ intent = "neutral", title, subtitle, aside }: {
   intent?: Intent; title: string; subtitle?: React.ReactNode; aside?: React.ReactNode;
 }) {
   return (
-    <div className={`px-7 py-6 ${INTENT[intent].solid} flex items-start justify-between gap-6 flex-wrap`}>
-      <div className="min-w-0">
-        <h2 className="text-xl font-black text-white tracking-tight">{title}</h2>
-        {subtitle && <p className="text-sm text-white/70 mt-1.5">{subtitle}</p>}
+    <div className="border-b border-rule">
+      <div className={`h-[3px] w-full ${INTENT[intent].mark}`} />
+      <div className="px-6 py-5 flex items-start justify-between gap-6 flex-wrap">
+        <div className="min-w-0">
+          <h2 className={`${TYPE.heading} text-ink text-[1.25rem]`}>{title}</h2>
+          {subtitle && <p className={`${TYPE.standfirst} text-[13.5px] mt-1.5`}>{subtitle}</p>}
+        </div>
+        {aside && <div className="shrink-0 text-right">{aside}</div>}
       </div>
-      {aside && <div className="shrink-0 text-right">{aside}</div>}
     </div>
   );
 }
@@ -274,9 +356,9 @@ export function Block({ title, children, action }: {
   title: string; children: React.ReactNode; action?: React.ReactNode;
 }) {
   return (
-    <div className="px-7 py-6 border-b border-slate-100 dark:border-slate-800 last:border-0">
-      <div className="flex items-center justify-between mb-4">
-        <h4 className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>{title}</h4>
+    <div className="px-6 py-5 border-b border-rule last:border-0">
+      <div className="flex items-baseline justify-between gap-4 mb-3.5 pb-1.5 border-b border-rule">
+        <h4 className="caps">{title}</h4>
         {action}
       </div>
       {children}
@@ -284,93 +366,107 @@ export function Block({ title, children, action }: {
   );
 }
 
-/** Row card with a coloured status rail. The app's standard list item. */
+/**
+ * The app's standard record: one item in a list of them.
+ *
+ * A ruled box carrying a marginal bar in the state's ink down its left edge —
+ * the printed equivalent of a change bar in a margin. Nothing lifts on hover,
+ * because paper does not lift; the whole record takes a wash of ink instead.
+ */
 export function RailCard({ intent, index = 0, onClick, children }: {
   intent: Intent; index?: number; onClick?: () => void; children: React.ReactNode;
 }) {
   const Tag = onClick ? "button" : "div";
   return (
     <Tag onClick={onClick} style={enter(index)}
-      className={`group relative w-full text-left ${SURFACE.card} ${onClick ? SURFACE.cardHover : ""} overflow-hidden block`}>
-      <span className={`absolute left-0 top-0 bottom-0 w-[5px] ${INTENT[intent].mark}`} />
-      {/* A wash of the state colour so the whole card carries it, not just the edge. */}
-      {intent !== "neutral" && (
-        <span className={`pointer-events-none absolute inset-0 opacity-[0.045] dark:opacity-[0.09] ${INTENT[intent].mark}`} />
-      )}
-      <div className="relative pl-7 pr-6 py-5">{children}</div>
+      className={`group relative w-full text-left block border border-rule bg-paper ${
+        onClick ? "transition-colors duration-150 hover:bg-ink/[0.035]" : ""}`}>
+      <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${INTENT[intent].mark}`} aria-hidden="true" />
+      <div className="relative pl-6 pr-5 py-4">{children}</div>
     </Tag>
   );
 }
 
 /**
- * A count, sized to be the first thing the eye lands on.
+ * A count, set to be the first thing the eye lands on.
  *
- * Cards previously set these at body weight, so the number a page exists to
- * communicate carried no more emphasis than its label.
+ * Display serif, tabular, with its column head beneath in small capitals. The
+ * previous design set these at body weight, so the number a screen exists to
+ * report carried no more emphasis than the word describing it.
  */
 export function Figure({ intent, value, label }: { intent: Intent; value: number | string; label: string }) {
   return (
     <div className="text-right shrink-0">
       <p className={`${TYPE.metricSm} ${INTENT[intent].figure}`}>{value}</p>
-      <p className={`text-[10px] uppercase tracking-[0.14em] font-black mt-1 ${INTENT[intent].text} opacity-70`}>{label}</p>
+      <p className="caps caps-tight mt-1.5">{label}</p>
     </div>
   );
 }
 
-/** Recessed row for findings and vulnerabilities, with a state edge. */
+/** A recessed record, for findings listed inside a larger one. */
 export function InsetRow({ intent, index = 0, children }: {
   intent: Intent; index?: number; children: React.ReactNode;
 }) {
   return (
-    <li style={enter(index, 18, 260)}
-      className={`relative overflow-hidden rounded-xl ${SURFACE.inset}`}>
-      <span className={`absolute left-0 top-0 bottom-0 w-1 ${INTENT[intent].mark}`} />
-      <div className="relative pl-4 pr-3.5 py-3">{children}</div>
+    <li style={enter(index, 16, 240)} className="relative bg-paper-2 border border-rule">
+      <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${INTENT[intent].mark}`} aria-hidden="true" />
+      <div className="relative pl-4 pr-3.5 py-2.5">{children}</div>
     </li>
   );
 }
 
+/** A note set into running text: washed stock behind a marginal rule. */
 export function Note({ intent, children }: { intent: Intent; children: React.ReactNode }) {
   const t = INTENT[intent];
   return (
-    <div className={`mb-5 px-4 py-3 rounded-xl border text-sm shadow-sm ${t.soft} ${t.border} ${t.text}`}>
+    <div className={`mb-5 pl-4 pr-4 py-3 border-l-2 ${t.soft} ${t.text} ${TYPE.body}`}
+      style={{ borderLeftColor: "currentColor" }}>
       {children}
     </div>
   );
 }
 
+/** A tag. A boxed monospace fragment, never a lozenge. */
 export function Chip({ intent = "neutral", children }: { intent?: Intent; children: React.ReactNode }) {
   const t = INTENT[intent];
-  return <span className={`text-[12px] font-mono font-medium px-2.5 py-1 rounded-lg ${t.soft} ${t.text}`}>{children}</span>;
+  return (
+    <span className={`inline-block font-mono text-[11.5px] leading-none px-1.5 py-1 border ${t.border} ${t.soft} ${t.text}`}>
+      {children}
+    </span>
+  );
 }
 
+/** A stamp, at label size. Reserved for a state that must not be missed. */
 export function Pill({ intent = "info", children }: { intent?: Intent; children: React.ReactNode }) {
-  return <span className={`text-[10px] uppercase tracking-wider font-black px-2 py-0.5 rounded-full ${INTENT[intent].loud}`}>{children}</span>;
+  return (
+    <span className={`inline-block caps caps-tight leading-none px-1.5 py-1 ${INTENT[intent].loud}`}>
+      {children}
+    </span>
+  );
 }
 
 export function Back({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <button onClick={onClick}
-      className="mb-4 inline-flex items-center gap-1.5 text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors">
-      <i className="ph-bold ph-arrow-left text-xs"></i>{children}
+    <button onClick={onClick} className="textlink caps mb-4 inline-flex items-center gap-1.5">
+      <span aria-hidden="true">←</span>{children}
     </button>
   );
 }
 
 /**
- * A panel that slides in over the page, for a task that needs room.
+ * A sheet that slides in over the page, for a task that needs room.
  *
  * This exists because the alternative kept happening: every new feature became
  * another band stacked down the page, until the thing somebody opened the tab
  * for was four scrolls below controls they were not using. A task with its own
- * beginning and end, bulk-editing three hundred repositories being the case
- * this was built for, belongs on its own surface rather than pushing the page
- * it was launched from.
+ * beginning and end — bulk-editing three hundred repositories being the case
+ * it was built for — belongs on its own surface rather than pushing the page it
+ * was launched from.
  *
- * Closes on Escape and on the backdrop, because a panel that covers the page
+ * Closes on Escape and on the scrim, because a surface that covers the page
  * must be dismissible without hunting for the control that does it. The page
- * behind it is frozen while it is open, so a scroll gesture over the backdrop
- * does not silently move the content underneath.
+ * behind it is frozen while it is open, so a scroll gesture over the scrim does
+ * not silently move the content underneath.
  */
 export function Drawer({ open, onClose, title, subtitle, children, footer }: {
   open: boolean;
@@ -398,40 +494,29 @@ export function Drawer({ open, onClose, title, subtitle, children, footer }: {
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label={title}>
-      <div className="drawer-scrim absolute inset-0 bg-slate-950/40 dark:bg-black/60 backdrop-blur-[2px] animate-[fadeIn_150ms_ease-out]"
+      <div className="drawer-scrim absolute inset-0 bg-ink/45 animate-[fadeIn_150ms_ease-out]"
         onClick={onClose} aria-hidden="true" />
 
-      <div className="drawer-panel relative w-full max-w-3xl h-full flex flex-col
-                      bg-white dark:bg-[#151a23] border-l border-slate-200 dark:border-white/[0.09]
-                      shadow-[0_0_60px_-12px_rgba(15,23,42,0.45)]
-                      animate-[slideIn_220ms_cubic-bezier(0.22,1,0.36,1)]">
-        <header className="shrink-0 px-6 py-5 border-b border-slate-200/80 dark:border-white/[0.07]
-                           flex items-start justify-between gap-4">
+      <div className="drawer-panel relative w-full max-w-3xl h-full flex flex-col bg-paper
+                      border-l-2 border-ink animate-[slideIn_240ms_cubic-bezier(0.22,1,0.36,1)]">
+        <header className="shrink-0 px-7 pt-6 pb-4 border-b-2 border-ink flex items-start justify-between gap-5">
           <div className="min-w-0">
-            <h2 className="text-[17px] font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
+            <h2 className={`${TYPE.heading} text-[1.375rem] text-ink`}>{title}</h2>
             {subtitle && (
-              <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1 max-w-[70ch] leading-relaxed">
-                {subtitle}
-              </p>
+              <p className={`${TYPE.standfirst} text-[13.5px] mt-1.5 max-w-[70ch]`}>{subtitle}</p>
             )}
           </div>
-          <button onClick={onClose} aria-label="Close"
-            className="shrink-0 -mr-1 -mt-1 w-9 h-9 rounded-xl grid place-items-center
-                       text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
-                       hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors">
-            <i className="ph-bold ph-x text-base" />
+          <button onClick={onClose} aria-label="Close" className="textlink caps shrink-0 pt-1.5">
+            Close
           </button>
         </header>
 
-        {/* The only scrolling region, so the header and the actions stay put
-            while a list of three hundred repositories moves under them. */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        {/* The only scrolling region, so the head and the actions stay put while
+            a list of three hundred repositories moves under them. */}
+        <div className="flex-1 overflow-y-auto px-7 py-6">{children}</div>
 
         {footer && (
-          <div className="shrink-0 px-6 py-4 border-t border-slate-200/80 dark:border-white/[0.07]
-                          bg-slate-50/80 dark:bg-white/[0.02]">
-            {footer}
-          </div>
+          <div className="shrink-0 px-7 py-4 border-t-2 border-ink bg-paper-2">{footer}</div>
         )}
       </div>
     </div>
@@ -439,26 +524,9 @@ export function Drawer({ open, onClose, title, subtitle, children, footer }: {
 }
 
 /**
- * A confirmation before something is done on somebody else's behalf.
- *
- * Not `window.confirm`. Two reasons, and the second is the one that bites: the
- * native dialog cannot say *what* is about to happen in more than a line, and
- * Electron's dialog handling is its own implementation rather than Chromium's,
- * which is how the bulk-close button came to be silently dead for a release
- * (`window.prompt` is not implemented there at all).
- *
- * The body is where the honesty lives. Every action this guards is a request to
- * a bot that acts later, not a change that has happened by the time the dialog
- * closes, and a dialog that implies otherwise is worse than none.
- *
- * Escape and the backdrop both close it, because a dialog covering the page has
- * to be dismissible without hunting for the control that does it, and the
- * confirm button takes focus on open so it can be answered from the keyboard.
- */
-/**
  * The shell both dialogs sit in.
  *
- * One implementation, because two would be two places for the backdrop, the
+ * One implementation, because two would be two places for the scrim, the
  * Escape handling and the scroll lock to drift, and a dialog that traps the
  * page's scroll differently from the one beside it is the kind of difference
  * nobody notices until it is a bug.
@@ -480,8 +548,6 @@ function ModalShell({ open, onClose, title, intent, dismissible = true, width = 
     if (!open) return;
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && dismissible) onClose(); };
     window.addEventListener("keydown", onKey);
-    // Restored rather than cleared: something else may have set it, and
-    // clearing would silently undo theirs.
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
@@ -495,24 +561,34 @@ function ModalShell({ open, onClose, title, intent, dismissible = true, width = 
   return (
     <div className="fixed inset-0 z-[60] grid place-items-center p-4"
       role="dialog" aria-modal="true" aria-label={title}>
-      <div className="drawer-scrim absolute inset-0 bg-slate-950/40 dark:bg-black/60 backdrop-blur-[2px]
-                      animate-[fadeIn_150ms_ease-out]"
+      <div className="drawer-scrim absolute inset-0 bg-ink/45 animate-[fadeIn_150ms_ease-out]"
         onClick={dismissible ? onClose : undefined} aria-hidden="true" />
 
-      <div className={`relative w-full ${width} overflow-hidden rounded-2xl
-                       bg-white dark:bg-[#151a23] border border-slate-200 dark:border-white/[0.09]
-                       shadow-[0_24px_70px_-20px_rgba(15,23,42,0.5)]
-                       animate-[fadeInUp_200ms_cubic-bezier(0.16,1,0.3,1)]`}>
-        {/* The state's colour along the top edge rather than a tinted icon
-            block: it says which kind of thing this is without spending a
-            quarter of the dialog saying it. */}
-        <span className={`block h-1 w-full ${INTENT[intent].mark}`} aria-hidden="true" />
+      <div className={`relative w-full ${width} bg-paper border border-ink
+                       animate-[rise_200ms_cubic-bezier(0.22,1,0.36,1)]`}>
+        {/* The state's ink along the top edge rather than a tinted icon block:
+            it says which kind of thing this is without spending a quarter of
+            the dialog saying it. */}
+        <span className={`block h-[3px] w-full ${INTENT[intent].mark}`} aria-hidden="true" />
         {children}
       </div>
     </div>
   );
 }
 
+/**
+ * A confirmation before something is done on somebody else's behalf.
+ *
+ * Not `window.confirm`. Two reasons, and the second is the one that bites: the
+ * native dialog cannot say *what* is about to happen in more than a line, and
+ * Electron's dialog handling is its own implementation rather than Chromium's,
+ * which is how the bulk-close button came to be silently dead for a release
+ * (`window.prompt` is not implemented there at all).
+ *
+ * The body is where the honesty lives. Every action this guards is a request to
+ * a bot that acts later, not a change that has happened by the time the dialog
+ * closes, and a dialog that implies otherwise is worse than none.
+ */
 export function ConfirmDialog({
   open, onClose, onConfirm, title, body, confirmLabel, intent = "info", busy,
 }: {
@@ -528,23 +604,17 @@ export function ConfirmDialog({
   const confirmRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { if (open) confirmRef.current?.focus(); }, [open]);
 
-  const t = INTENT[intent];
+  const loud = intent === "danger" ? "stamp stamp-crimson" : "stamp";
   return (
     <ModalShell open={open} onClose={onClose} title={title} intent={intent} dismissible={!busy}>
-      <div className="px-6 pt-5 pb-4">
-        <h2 className="text-[17px] font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
-        <div className="text-[13px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed">
-          {body}
-        </div>
+      <div className="px-7 pt-6 pb-5">
+        <h2 className={`${TYPE.heading} text-[1.375rem] text-ink`}>{title}</h2>
+        <div className={`${TYPE.sub} text-ink-2 mt-3 leading-relaxed`}>{body}</div>
       </div>
 
-      <div className="px-6 py-4 flex justify-end gap-2 border-t border-slate-200/80 dark:border-white/[0.07]
-                      bg-slate-50/80 dark:bg-white/[0.02]">
-        <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-        <button ref={confirmRef} onClick={onConfirm} disabled={busy}
-          className={`px-4 py-2.5 rounded-xl text-sm font-bold transition-all shadow-sm
-                      hover:shadow-md hover:scale-[1.02] active:scale-[0.99]
-                      disabled:opacity-50 disabled:pointer-events-none ${t.loud}`}>
+      <div className="px-7 py-4 flex justify-end items-center gap-5 border-t border-rule bg-paper-2">
+        <button className="textlink caps" onClick={onClose} disabled={busy}>Cancel</button>
+        <button ref={confirmRef} onClick={onConfirm} disabled={busy} className={loud}>
           {busy ? "Working…" : confirmLabel}
         </button>
       </div>
@@ -569,8 +639,8 @@ export interface ProgressLine {
  * repository, no way to tell a slow run from a stuck one, and every result
  * withheld until the last one finished.
  *
- * The bar is **real**, not a guess. It advances as each batch actually comes
- * back, and the rows appear as they land, so a run that stalls on repository
+ * The measure is **real**, not a guess. It advances as each batch actually comes
+ * back, and the lines are set as they land, so a run that stalls on repository
  * nineteen says so instead of looking identical to one that is nearly done.
  * Nothing here animates on a timer.
  */
@@ -590,10 +660,10 @@ export function ProgressDialog({
   /**
    * How to stop, and what stopping means.
    *
-   * The label is the caller's, not this component's, because the two cases are
-   * genuinely different and must not be dressed alike. Where the action has a
-   * true inverse the caller offers to undo; where it does not, the honest offer
-   * is to stop, and `note` says what stays done.
+   * The label is the caller's, because the two cases are genuinely different
+   * and must not be dressed alike. Where the action has a true inverse the
+   * caller offers to undo; where it does not, the honest offer is to stop, and
+   * `note` says what stays done.
    */
   cancel?: { label: string; note?: string; run: () => void; pending?: boolean };
 }) {
@@ -604,37 +674,31 @@ export function ProgressDialog({
     <ModalShell open={open} onClose={onClose} title={title}
       intent={failed > 0 && !running ? "warn" : intent}
       dismissible={!running} width="max-w-lg">
-      <div className="px-6 pt-5 pb-4">
-        <div className="flex items-baseline justify-between gap-3">
-          <h2 className="text-[17px] font-black tracking-tight text-slate-900 dark:text-white">{title}</h2>
-          <span className="text-[12.5px] tabular-nums text-slate-500 dark:text-slate-400">
-            {done} of {total}
+      <div className="px-7 pt-6 pb-5">
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className={`${TYPE.heading} text-[1.375rem] text-ink`}>{title}</h2>
+          <span className="figure text-[1.5rem] text-ink tabular-nums">
+            {done}<span className="text-ink-3"> / {total}</span>
           </span>
         </div>
 
-        <div className="mt-3 h-1.5 w-full rounded-full bg-slate-200/80 dark:bg-white/[0.08] overflow-hidden">
+        {/* The measure, set as a rule that inks in rather than a filling pill. */}
+        <div className="mt-4 h-[3px] w-full bg-rule">
           <div role="progressbar" aria-valuenow={done} aria-valuemin={0} aria-valuemax={total}
             style={{ width: `${pct}%` }}
-            className={`h-full rounded-full ${INTENT[intent].mark}
-                        transition-[width] duration-300 ease-out`} />
+            className={`h-full ${INTENT[intent].mark} transition-[width] duration-300 ease-out`} />
         </div>
 
         {lines.length > 0 && (
-          <ul className="mt-4 max-h-64 overflow-y-auto grid gap-1 pr-1">
+          <ul className="mt-5 max-h-64 overflow-y-auto border-t border-rule">
             {lines.map(l => (
-              <li key={l.repo}
-                className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg
-                           odd:bg-slate-50 dark:odd:bg-white/[0.03]">
-                <span className={`w-1.5 h-1.5 rounded-full shrink-0
-                                  ${INTENT[l.ok ? "good" : "danger"].mark}`} aria-hidden="true" />
-                <span className="font-mono text-[12.5px] text-slate-700 dark:text-slate-200 truncate">
-                  {l.repo}
-                </span>
+              <li key={l.repo} className="flex items-baseline gap-3 py-2 border-b border-rule">
+                <span className={`w-1.5 h-1.5 shrink-0 translate-y-[-1px] ${INTENT[l.ok ? "good" : "danger"].mark}`}
+                  aria-hidden="true" />
+                <span className="font-mono text-[12.5px] text-ink truncate">{l.repo}</span>
                 {l.note && (
-                  <span className={`ml-auto text-[11.5px] truncate max-w-[55%] text-right
-                                    ${l.ok ? "text-slate-400 dark:text-slate-500"
-                                           : INTENT.danger.text}`}
-                    title={l.note}>
+                  <span className={`ml-auto text-[11.5px] truncate max-w-[55%] text-right ${
+                    l.ok ? "text-ink-3" : INTENT.danger.text}`} title={l.note}>
                     {l.note}
                   </span>
                 )}
@@ -644,35 +708,32 @@ export function ProgressDialog({
         )}
       </div>
 
-      <div className="px-6 py-4 flex items-center justify-between gap-3
-                      border-t border-slate-200/80 dark:border-white/[0.07]
-                      bg-slate-50/80 dark:bg-white/[0.02]">
-        <span className="text-[12.5px] text-slate-500 dark:text-slate-400 min-w-0">
-          {running
-            ? (cancel?.note ?? "Paced so GitHub does not refuse the burst.")
-            : footer}
+      <div className="px-7 py-4 flex items-center justify-between gap-4 border-t border-rule bg-paper-2">
+        <span className={`${TYPE.sub} text-ink-3 min-w-0`}>
+          {running ? (cancel?.note ?? "Paced so GitHub does not refuse the burst.") : footer}
         </span>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-4 shrink-0">
           {running && cancel && (
-            <Button variant="caution" onClick={cancel.run} disabled={cancel.pending}>
+            <button className="textlink caps" onClick={cancel.run} disabled={cancel.pending}>
               {cancel.pending ? "Stopping…" : cancel.label}
-            </Button>
+            </button>
           )}
-          <Button variant={running ? "ghost" : "primary"} onClick={onClose} disabled={running}>
+          <button className={running ? "textlink caps" : "stamp"} onClick={onClose} disabled={running}>
             {running ? "Working…" : "Done"}
-          </Button>
+          </button>
         </div>
       </div>
     </ModalShell>
   );
 }
 
+/** Nothing to report, said in the page's own voice. */
 export function Empty({ title, body, action }: { title: string; body?: string; action?: React.ReactNode }) {
   return (
-    <div className={`${SURFACE.card} py-20 text-center`}>
-      <p className="text-xl font-bold text-slate-800 dark:text-slate-100">{title}</p>
-      {body && <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-sm mx-auto">{body}</p>}
-      {action && <div className="mt-6">{action}</div>}
+    <div className="border-t-2 border-ink py-16 text-center">
+      <p className={`${TYPE.heading} text-[1.375rem] text-ink`}>{title}</p>
+      {body && <p className={`${TYPE.standfirst} text-[14px] mt-3 max-w-[46ch] mx-auto`}>{body}</p>}
+      {action && <div className="mt-6 flex justify-center">{action}</div>}
     </div>
   );
 }
@@ -684,7 +745,7 @@ export function Empty({ title, body, action }: { title: string; body?: string; a
  * "Nothing outstanding", "No alarms yet", "No open pull requests". Somebody
  * whose token had expired, or whose laptop had slept through the credentials
  * behind a tab going stale, was told in a calm voice that there was nothing to
- * see. On a security or compliance screen that is the worst available answer,
+ * see. On a security or compliance screen that is the worst available answer:
  * it under-reports, and it looks deliberate.
  *
  * `what` names the thing that could not be read, because "Something went wrong"
@@ -710,7 +771,7 @@ export function LoadFailed({ what, error, onRetry }: {
  * than it looks: a 1px line is honest about where the boundary is and horrible
  * to hit, so the hit area is 9px and only the middle of it is ever painted.
  *
- * `touch-none` matters on a trackpad and a touchscreen, without it the browser
+ * `touch-none` matters on a trackpad and a touchscreen; without it the browser
  * claims the gesture for scrolling and the drag never starts.
  */
 export function ColumnResizeHandle({ active, onPointerDown, onPointerMove, onPointerUp, onDoubleClick, label }: {
@@ -738,16 +799,26 @@ export function ColumnResizeHandle({ active, onPointerDown, onPointerMove, onPoi
         touch-none select-none flex justify-center group/resize
         ${active ? "" : "opacity-0 hover:opacity-100 focus-within:opacity-100"} transition-opacity`}
     >
-      <span className={`w-[2px] h-full rounded-full transition-colors ${
-        active ? "bg-blue-500" : "bg-slate-300 dark:bg-slate-600 group-hover/resize:bg-blue-400"}`} />
+      <span className={`w-px h-full transition-colors ${
+        active ? "bg-ink" : "bg-rule-strong group-hover/resize:bg-ink"}`} />
     </span>
   );
 }
 
-export function Spinner() {
+/**
+ * Waiting, set as type.
+ *
+ * A spinning ring is a widget from another design language. This is the word,
+ * in the italic serif the rest of the page uses for an aside, over a rule that
+ * inks across while the read is outstanding.
+ */
+export function Spinner({ label = "Setting the page" }: { label?: string }) {
   return (
-    <div className="py-20 flex justify-center">
-      <div className="animate-spin rounded-full h-7 w-7 border-2 border-slate-200 dark:border-slate-700 border-t-slate-900 dark:border-t-white"></div>
+    <div className="py-16 flex flex-col items-center gap-3" role="status" aria-live="polite">
+      <div className="w-40 h-px bg-rule overflow-hidden">
+        <div className="h-full w-1/3 bg-ink" style={{ animation: "ruleRun 1.15s ease-in-out infinite" }} />
+      </div>
+      <p className="standfirst text-[13.5px]">{label}…</p>
     </div>
   );
 }
@@ -755,10 +826,10 @@ export function Spinner() {
 // ── table controls ────────────────────────────────────────────────────
 
 /**
- * A sortable column header.
+ * A sortable column head.
  *
- * The arrow only appears on the sorted column. Showing a neutral arrow on every
- * header reads as "these are all sorted" and makes the real one hard to find.
+ * The mark only appears on the sorted column. Showing a neutral arrow on every
+ * head reads as "these are all sorted" and makes the real one hard to find.
  */
 export function SortHeader({ label, columnKey, sortKey, sortDir, onSort, align = "left" }: {
   label: string;
@@ -774,14 +845,15 @@ export function SortHeader({ label, columnKey, sortKey, sortDir, onSort, align =
       type="button"
       onClick={() => onSort(columnKey)}
       aria-sort={active ? (sortDir === "asc" ? "ascending" : "descending") : "none"}
-      className={`group inline-flex items-center gap-1.5 font-medium transition-colors
+      className={`group inline-flex items-baseline gap-1.5 caps transition-colors
         ${align === "right" ? "flex-row-reverse" : ""}
-        ${active ? "text-slate-900 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
+        ${active ? "text-ink" : "hover:text-ink"}`}
     >
       {label}
-      <i className={`ph-bold text-[10px] transition-opacity
-        ${active ? "opacity-100" : "opacity-0 group-hover:opacity-40"}
-        ${active && sortDir === "desc" ? "ph-arrow-down" : "ph-arrow-up"}`}></i>
+      <span aria-hidden="true" className={`text-[8px] transition-opacity ${
+        active ? "opacity-100" : "opacity-0 group-hover:opacity-40"}`}>
+        {active && sortDir === "desc" ? "▼" : "▲"}
+      </span>
     </button>
   );
 }
@@ -789,7 +861,7 @@ export function SortHeader({ label, columnKey, sortKey, sortDir, onSort, align =
 /**
  * Page navigation, and the count of what is being shown.
  *
- * Renders nothing when there is one page and no search, a pager under six rows
+ * Renders nothing when there is one page and no search: a pager under six rows
  * is furniture. When a search is active it stays, because "3 of 357" is the
  * answer to "did my search work".
  */
@@ -804,23 +876,19 @@ export function Pager({ page, totalPages, onPage, matchCount, totalCount, filter
 }) {
   if (totalPages <= 1 && !filtered) return null;
   return (
-    <div className="flex items-center justify-between gap-4 pt-4 text-sm">
-      <span className="text-slate-500 dark:text-slate-400">
-        {filtered
-          ? `${matchCount} of ${totalCount} ${noun}`
-          : `${totalCount} ${noun}`}
+    <div className="flex items-baseline justify-between gap-5 pt-4 mt-1 border-t border-rule">
+      <span className="caps">
+        {filtered ? `${matchCount} of ${totalCount} ${noun}` : `${totalCount} ${noun}`}
       </span>
       {totalPages > 1 && (
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" disabled={page <= 1} onClick={() => onPage(page - 1)}>
-            <i className="ph-bold ph-caret-left"></i>
-          </Button>
-          <span className="text-slate-500 dark:text-slate-400 tabular-nums">
-            Page {page} of {totalPages}
-          </span>
-          <Button variant="ghost" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>
-            <i className="ph-bold ph-caret-right"></i>
-          </Button>
+        <div className="flex items-baseline gap-5">
+          <button className="textlink caps" disabled={page <= 1} onClick={() => onPage(page - 1)}>
+            ← Previous
+          </button>
+          <span className="caps text-ink tabular-nums">Page {page} of {totalPages}</span>
+          <button className="textlink caps" disabled={page >= totalPages} onClick={() => onPage(page + 1)}>
+            Next →
+          </button>
         </div>
       )}
     </div>

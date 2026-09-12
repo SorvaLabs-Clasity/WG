@@ -57,12 +57,12 @@ function Locked({ title, team, login, kind }: {
                       w-72 h-72 rounded-full blur-3xl ${accent.glow}`} />
 
         <div className={`relative mx-auto w-16 h-16 rounded-2xl grid place-items-center
-                         bg-white dark:bg-slate-900 ring-1 ${accent.ring}
-                         shadow-[0_18px_40px_-20px_rgba(0,0,0,0.45)]`}>
+                         bg-white dark:bg-paper ring-1 ${accent.ring}
+                         `}>
           <i className={`ph-fill ph-lock-key text-[26px] ${accent.icon}`} aria-hidden="true" />
         </div>
 
-        <h1 className="relative mt-6 text-[22px] font-black tracking-[-0.02em] text-slate-900 dark:text-white">
+        <h1 className="relative mt-6 text-[22px] font-semibold tracking-[-0.02em] text-slate-900 dark:text-ink">
           {title} is restricted
         </h1>
 
@@ -75,7 +75,7 @@ function Locked({ title, team, login, kind }: {
         {/* The one fact that resolves this: the team to ask for, spelled the way
             it is spelled on GitHub. */}
         <div className="relative mt-6 inline-flex flex-col items-center gap-2">
-          <span className="text-[10.5px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+          <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
             Ask to be added to
           </span>
           <code className={`px-3 py-1.5 rounded-lg font-mono text-[13px] font-bold ${accent.chip}`}>

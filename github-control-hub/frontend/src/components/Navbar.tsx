@@ -5,7 +5,7 @@ import UserAvatar from "./UserAvatar";
 import { useTheme } from "../hooks/useTheme";
 import { revokeGithub } from "../api/auth";
 import { clearToken, getToken } from "../api/client";
-import { COMPANY_NAME } from "../design";
+import { COMPANY_NAME } from "../design/tokens";
 import { useQuery } from "@tanstack/react-query";
 import { fetchAuthStatus } from "../api/auth";
 
@@ -15,15 +15,24 @@ interface NavbarProps {
 }
 
 /**
- * Primary navigation. Follows the theme, and marks the active item with a solid
- * pill so the current location is obvious rather than hunted for.
- */
-/**
- * Which tabs survive when GitHub is confined to another AWS account.
+ * The masthead.
  *
- * The backend refuses every GitHub route there, so a tab left in the bar leads
- * to a 403 that only explains itself after a page half-loads. Hiding them is
- * presentation; the refusal is the restriction.
+ * Two tiers, the way a broadsheet sets its front page: the title of the paper
+ * over a heavy rule, and the section line under it. The current section is
+ * inked and underlined rather than sitting in a filled pill — a printed page
+ * marks where you are with weight, not with a shape.
+ *
+ * The edition line carries the things that are true of the whole app rather
+ * than of any one screen: whose install this is, today's date, which edition is
+ * running, and who is signed in.
+ */
+
+/**
+ * Which sections survive when GitHub is confined to another AWS account.
+ *
+ * The backend refuses every GitHub route there, so a section left in the line
+ * leads to a 403 that only explains itself after a page half-loads. Hiding them
+ * is presentation; the refusal is the restriction.
  *
  * Activity stays and shows only the AWS rows: it is the one feed carrying both
  * halves, and an account running guardrails needs the record of what they did.
@@ -34,17 +43,24 @@ const ALWAYS_AVAILABLE = new Set(["/aws", "/activity", "/alarms"]);
 
 const ITEMS = [
   // First, because it is the one somebody opens without being sent there.
-  { label: "My work", short: "Mine", icon: "ph-user-focus", path: "/my-work", match: (p: string) => p.startsWith("/my-work") },
-  { label: "Overview", short: "Overview", icon: "ph-chart-line-up", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics") },
-  { label: "AWS", short: "AWS", icon: "ph-cloud", path: "/aws", match: (p: string) => p.startsWith("/aws") },
-  { label: "Alarms", short: "Alarms", icon: "ph-bell", path: "/alarms", match: (p: string) => p.startsWith("/alarms") },
-  { label: "Access", short: "Access", icon: "ph-key", path: "/access", match: (p: string) => p.startsWith("/access") },
-  { label: "Vulnerabilities", short: "Vulns", icon: "ph-bug-beetle", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies") },
-  { label: "Repos", short: "Repos", icon: "ph-books", path: "/graph", match: (p: string) => p.startsWith("/graph") },
-  { label: "PR's", short: "PR's", icon: "ph-git-pull-request", path: "/pulls", match: (p: string) => p.startsWith("/pulls") },
-  { label: "Who knows", short: "Who", icon: "ph-users-three", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows") },
-  { label: "Activity", short: "Activity", icon: "ph-pulse", path: "/activity", match: (p: string) => p.startsWith("/activity") },
+  { label: "My work", path: "/my-work", match: (p: string) => p.startsWith("/my-work") },
+  { label: "Overview", path: "/analytics", match: (p: string) => p === "/" || p.startsWith("/analytics") },
+  { label: "AWS", path: "/aws", match: (p: string) => p.startsWith("/aws") },
+  { label: "Alarms", path: "/alarms", match: (p: string) => p.startsWith("/alarms") },
+  { label: "Access", path: "/access", match: (p: string) => p.startsWith("/access") },
+  { label: "Vulnerabilities", path: "/dependencies", match: (p: string) => p.startsWith("/dependencies") },
+  { label: "Repos", path: "/graph", match: (p: string) => p.startsWith("/graph") },
+  { label: "Pull requests", path: "/pulls", match: (p: string) => p.startsWith("/pulls") },
+  { label: "Who knows", path: "/who-knows", match: (p: string) => p.startsWith("/who-knows") },
+  { label: "Activity", path: "/activity", match: (p: string) => p.startsWith("/activity") },
 ];
+
+/** The edition's date, set the way a paper dates itself. */
+function today() {
+  return new Date().toLocaleDateString(undefined, {
+    weekday: "long", day: "numeric", month: "long", year: "numeric",
+  });
+}
 
 export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const navigate = useNavigate();
@@ -56,16 +72,16 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   });
 
   // Undefined while the status loads: show everything rather than flashing a
-  // one-tab bar at every launch and then filling it in.
+  // one-section line at every launch and then filling it in.
   const githubBlocked = status?.githubAccess?.allowed === false;
   const items = githubBlocked ? ITEMS.filter(i => ALWAYS_AVAILABLE.has(i.path)) : ITEMS;
 
   /**
-   * Leave a tab the account you just switched into cannot serve.
+   * Leave a section the account you just switched into cannot serve.
    *
-   * Hiding it from the bar is not enough when you are standing on it: the page
+   * Hiding it from the line is not enough when you are standing on it: the page
    * stays mounted, its queries 403, and it reads as the app breaking rather
-   * than as the account not having that half. Only ever moves you off a tab
+   * than as the account not having that half. Only ever moves you off a section
    * that has actually gone.
    */
   useEffect(() => {
@@ -73,6 +89,7 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
     const stillOffered = ITEMS.some(i => ALWAYS_AVAILABLE.has(i.path) && i.match(pathname));
     if (!stillOffered) navigate("/aws", { replace: true });
   }, [githubBlocked, pathname, navigate]);
+
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
@@ -96,8 +113,8 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
    *
    * Worth a line on screen because the alternative is inspecting the installed
    * bundle. A fix can be committed, pushed, built and still not be in the app
-   * you are running, a release whose version has not moved does not publish,
-   * so the download stays the previous build and nothing says so.
+   * you are running: a release whose version has not moved does not publish, so
+   * the download stays the previous build and nothing says so.
    *
    * Empty in a browser, where there is no installed build to name.
    */
@@ -120,114 +137,121 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
 
   return (
     <>
-      <nav className="fixed top-0 left-0 right-0 h-16 z-40 bg-white dark:bg-[#11141c] border-b border-slate-200 dark:border-white/[0.08]">
-        <div className="h-full max-w-[1600px] mx-auto px-4 sm:px-6 flex items-center gap-6">
-          <button className="xl:hidden text-white/60 hover:text-white p-1 -ml-1" onClick={() => setMenuOpen(o => !o)}>
-            <i className={`ph-bold ${menuOpen ? "ph-x" : "ph-list"} text-xl`}></i>
-          </button>
+      <nav className="fixed top-0 left-0 right-0 h-[5.75rem] z-40 bg-paper border-b border-rule">
+        <div className="h-full max-w-[1600px] mx-auto px-5 sm:px-8 flex flex-col">
 
-          <button onClick={() => navigate("/")} className="flex items-center gap-2.5 shrink-0 group">
-            <span className="w-8 h-8 rounded-xl bg-slate-900 dark:bg-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
-              <i className="ph-fill ph-shield-check text-white dark:text-[#11141c] text-lg"></i>
-            </span>
-            <span className="hidden sm:block text-left leading-tight">
-              <span className="block text-[13px] font-black text-slate-900 dark:text-white tracking-tight">Control Hub</span>
-              <span className="block text-[10px] text-slate-400 dark:text-white/40 font-medium">{COMPANY_NAME}</span>
-            </span>
-          </button>
+          {/* ── Tier one: the title of the paper ─────────────────────── */}
+          <div className="flex-1 flex items-center justify-between gap-6 pb-1.5">
+            <button onClick={() => navigate("/")} className="flex items-baseline gap-3 min-w-0 text-left group">
+              <span className="display text-[1.5rem] sm:text-[1.7rem] leading-none text-ink tracking-[0.01em] whitespace-nowrap">
+                Control Hub
+              </span>
+              <span className="hidden sm:inline caps text-ink-3 group-hover:text-ink transition-colors truncate">
+                {COMPANY_NAME}
+              </span>
+            </button>
 
-          <div className="hidden xl:flex items-center gap-0.5">
-            {items.map(item => {
-              const on = item.match(pathname);
-              return (
-                <button key={item.path} onClick={() => navigate(item.path)}
-                  className={`px-3.5 py-2 rounded-xl text-[13px] font-bold transition-all flex items-center gap-2 ${
-                    on
-                      ? "bg-slate-900 dark:bg-white text-white dark:text-[#11141c]"
-                      : "text-slate-500 dark:text-white/55 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.07]"}`}>
-                  <i className={`${on ? "ph-fill" : "ph-bold"} ${item.icon} text-[15px]`}></i>
-                  {item.label}
-                </button>
-              );
-            })}
+            <div className="flex items-center gap-5 shrink-0">
+              <span className="hidden lg:block caps text-ink-4 whitespace-nowrap">{today()}</span>
+
+              <button onClick={toggle} className="textlink caps"
+                title={theme === "dark" ? "Switch to the day edition" : "Switch to the night edition"}>
+                {theme === "dark" ? "Day edition" : "Night edition"}
+              </button>
+
+              {login && (
+                <div ref={accountRef} className="relative">
+                  <button
+                    onClick={() => setAccountOpen(o => !o)}
+                    aria-haspopup="menu"
+                    aria-expanded={accountOpen}
+                    className="flex items-center gap-2.5 group"
+                  >
+                    <UserAvatar login={login} avatarUrl={avatarUrl} size={26}
+                      className="border border-rule-strong" />
+                    <span className="hidden md:block caps text-ink group-hover:text-ink-2 transition-colors">
+                      {login}
+                    </span>
+                    <span aria-hidden="true" className={`text-[8px] text-ink-3 transition-transform ${accountOpen ? "rotate-180" : ""}`}>▼</span>
+                  </button>
+
+                  {accountOpen && (
+                    <div role="menu"
+                      className="absolute right-0 top-full mt-3 w-72 bg-paper border border-ink animate-[fadeIn_140ms_ease-out] z-50">
+                      <span className="block h-[3px] w-full bg-ink" aria-hidden="true" />
+                      <div className="px-5 py-4 border-b border-rule">
+                        <p className="caps">Signed in as</p>
+                        <p className="display text-[1.125rem] text-ink mt-1.5 truncate">{login}</p>
+                        <div className="dateline mt-2 text-[12px]">
+                          <span>{COMPANY_NAME}</span>
+                          {appVersion && <span className="font-mono">v{appVersion}</span>}
+                        </div>
+                      </div>
+                      <AwsAccountSwitcher
+                        current={status?.aws?.profile}
+                        onSwitched={() => setAccountOpen(false)} />
+                      <button role="menuitem" onClick={logout}
+                        className="w-full px-5 py-3.5 text-left caps text-crimson hover:bg-crimson-wash transition-colors border-t border-rule">
+                        Sign out
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
 
-          <div className="ml-auto flex items-center gap-2 sm:gap-3">
-            <button onClick={toggle}
-              className="w-9 h-9 rounded-xl text-slate-400 dark:text-white/50 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.07] flex items-center justify-center transition-colors"
-              title={theme === "dark" ? "Switch to light" : "Switch to dark"}>
-              <i className={`ph-bold ${theme === "dark" ? "ph-sun" : "ph-moon"} text-base`}></i>
-            </button>
-            {login && (
-              <div ref={accountRef} className="relative pl-2 sm:pl-3 border-l border-slate-200 dark:border-white/10">
-                <button
-                  onClick={() => setAccountOpen(o => !o)}
-                  aria-haspopup="menu"
-                  aria-expanded={accountOpen}
-                  className="flex items-center gap-2.5 pl-1 pr-2 py-1 rounded-xl hover:bg-slate-100 dark:hover:bg-white/[0.07] transition-colors"
-                >
-                  <UserAvatar login={login} avatarUrl={avatarUrl} size={28} className="ring-2 ring-slate-200 dark:ring-white/15" />
-                  <span className="hidden md:block text-[13px] font-semibold text-slate-700 dark:text-white/80">{login}</span>
-                  <i className={`ph-bold ph-caret-down text-[11px] text-slate-400 dark:text-white/40 transition-transform ${accountOpen ? "rotate-180" : ""}`}></i>
-                </button>
+          {/* ── The heavy rule ───────────────────────────────────────── */}
+          <div className="border-t-2 border-ink" />
 
-                {accountOpen && (
-                  <div role="menu"
-                    className="absolute right-0 top-full mt-2 w-60 rounded-2xl bg-white dark:bg-[#151a23] border border-slate-200 dark:border-white/10 shadow-xl overflow-hidden animate-fade-in">
-                    <div className="px-4 py-3 border-b border-slate-100 dark:border-white/[0.07]">
-                      <p className="text-[10px] uppercase tracking-[0.16em] font-bold text-slate-400 dark:text-white/35">Signed in as</p>
-                      <p className="text-sm font-bold text-slate-900 dark:text-white mt-1 truncate">{login}</p>
-                      <p className="text-[11px] text-slate-400 dark:text-white/40 mt-0.5">{COMPANY_NAME}</p>
-                      {appVersion && (
-                        <p className="text-[10px] font-mono text-slate-400 dark:text-white/30 mt-1.5">
-                          v{appVersion}
-                        </p>
-                      )}
-                    </div>
-                    <AwsAccountSwitcher
-                      current={status?.aws?.profile}
-                      onSwitched={() => setAccountOpen(false)} />
-                    <button role="menuitem" onClick={logout}
-                      className="w-full px-4 py-3 flex items-center gap-2.5 text-[13px] font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors text-left border-t border-slate-100 dark:border-white/[0.07]">
-                      <i className="ph-bold ph-sign-out text-base"></i>
-                      Sign out
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+          {/* ── Tier two: the section line ───────────────────────────── */}
+          <div className="h-10 flex items-stretch">
+            <div className="hidden xl:flex items-stretch gap-0 -mb-px overflow-x-auto">
+              {items.map(item => {
+                const on = item.match(pathname);
+                return (
+                  <button key={item.path} onClick={() => navigate(item.path)}
+                    aria-current={on ? "page" : undefined}
+                    className={`caps px-3.5 first:pl-0 flex items-center border-b-2 whitespace-nowrap transition-colors ${
+                      on ? "text-ink border-ink" : "border-transparent hover:text-ink"}`}>
+                    {item.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button className="xl:hidden caps flex items-center gap-2 text-ink"
+              onClick={() => setMenuOpen(o => !o)} aria-expanded={menuOpen}>
+              <span aria-hidden="true">{menuOpen ? "✕" : "☰"}</span>
+              Sections
+            </button>
           </div>
         </div>
       </nav>
 
+      {/* The section line, opened out on a narrow window. */}
       {menuOpen && (
-        <div className="fixed inset-0 top-16 z-30 bg-white dark:bg-[#11141c] xl:hidden overflow-y-auto animate-fade-in">
-          <div className="p-4 grid gap-1">
+        <div className="fixed inset-0 top-[5.75rem] z-30 bg-paper xl:hidden overflow-y-auto animate-[fadeIn_140ms_ease-out]">
+          <div className="max-w-[1600px] mx-auto px-5 sm:px-8 py-3">
             {items.map(item => {
               const on = item.match(pathname);
               return (
                 <button key={item.path}
                   onClick={() => { navigate(item.path); setMenuOpen(false); }}
-                  className={`flex items-center gap-3 px-4 py-3.5 rounded-xl text-left font-bold transition-colors ${
-                    on
-                      ? "bg-slate-900 dark:bg-white text-white dark:text-[#11141c]"
-                      : "text-slate-500 dark:text-white/60 hover:bg-slate-100 dark:hover:bg-white/[0.07] hover:text-slate-900 dark:hover:text-white"}`}>
-                  <i className={`${on ? "ph-fill" : "ph-bold"} ${item.icon} text-lg`}></i>
-                  {item.label}
+                  className={`w-full flex items-baseline justify-between gap-4 py-3.5 border-b border-rule text-left transition-colors ${
+                    on ? "text-ink" : "text-ink-2 hover:text-ink"}`}>
+                  <span className={`display text-[1.125rem] ${on ? "text-ink" : ""}`}>{item.label}</span>
+                  {on && <span className="caps text-ink">Reading</span>}
                 </button>
               );
             })}
 
             {login && (
-              <>
-                <div className="h-px bg-slate-200 dark:bg-white/10 my-2" />
-                <button
-                  onClick={() => { setMenuOpen(false); logout(); }}
-                  className="flex items-center gap-3 px-4 py-3.5 rounded-xl text-left font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors">
-                  <i className="ph-bold ph-sign-out text-lg"></i>
-                  Sign out
-                </button>
-              </>
+              <button
+                onClick={() => { setMenuOpen(false); logout(); }}
+                className="w-full py-4 text-left caps text-crimson">
+                Sign out
+              </button>
             )}
           </div>
         </div>

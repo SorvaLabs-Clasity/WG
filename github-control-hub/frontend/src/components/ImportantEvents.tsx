@@ -294,7 +294,7 @@ export default function ImportantEvents() {
           ) : (
             <div className="grid gap-1">
               {lately.slice(0, 8).map(a => (
-                <div key={a.id} className="flex items-baseline gap-3 py-1.5 border-b last:border-b-0 border-slate-100 dark:border-white/[0.05]">
+                <div key={a.id} className="flex items-baseline gap-3 py-1.5 border-b last:border-b-0 border-slate-100 dark:border-ink/[0.05]">
                   <span className={`shrink-0 w-1.5 h-1.5 rounded-full translate-y-[-1px]
                     ${SEVERITY_BAR[(a.severity ?? "low").toLowerCase() as Severity] ?? "bg-slate-300"}`} />
                   <span className="text-[13px] font-semibold text-slate-700 dark:text-slate-200 shrink-0">
@@ -357,8 +357,8 @@ export default function ImportantEvents() {
                   return (
                     <button key={s} type="button" onClick={() => toggle("severity", s)} aria-pressed={on}
                       className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11.5px] font-semibold transition-colors
-                        ${on ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                             : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.07]"}`}>
+                        ${on ? "bg-slate-900 text-reverse dark:bg-white dark:text-slate-900"
+                             : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-ink/[0.07]"}`}>
                       <span className={`w-2 h-2 rounded-sm ${SEVERITY_DOT[s]}`} />
                       {s} <span className="tabular-nums opacity-60">{n}</span>
                     </button>
@@ -386,10 +386,10 @@ export default function ImportantEvents() {
                     key={k.type} type="button" onClick={() => toggle("kind", k.type)} aria-pressed={on}
                     style={enter(i, 30)}
                     className={`text-left rounded-2xl border p-4 transition-all duration-200
-                      focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 dark:focus-visible:ring-white/30
+                      focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-900/20 dark:focus-visible:ring-ink/30
                       ${on
-                        ? "border-slate-900 dark:border-white bg-white dark:bg-[#151a23] shadow-md -translate-y-0.5"
-                        : `border-slate-200/80 dark:border-white/[0.09] bg-white dark:bg-[#151a23] ${SURFACE.cardHover}`}`}
+                        ? "border-slate-900 dark:border-white bg-white dark:bg-paper shadow-md -translate-y-0.5"
+                        : `border-slate-200/80 dark:border-ink/[0.09] bg-white dark:bg-paper ${SURFACE.cardHover}`}`}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <span className="text-[13.5px] font-bold text-slate-800 dark:text-slate-100 leading-tight">
@@ -401,7 +401,7 @@ export default function ImportantEvents() {
 
                     <div className="flex items-end justify-between gap-3 mt-2.5">
                       <div>
-                        <div className={`text-[30px] font-black tabular-nums leading-none tracking-tight
+                        <div className={`text-[30px] font-semibold tabular-nums leading-none tracking-tight
                           ${notable ? INTENT[intent].figure : "text-slate-800 dark:text-slate-100"}`}>
                           {k.total}
                         </div>
@@ -410,10 +410,10 @@ export default function ImportantEvents() {
                         </div>
                       </div>
                       <Spark values={k.spark} label={label(k.type).toLowerCase()}
-                        intent={notable ? INTENT[intent].mark : "bg-slate-300 dark:bg-slate-600"} />
+                        intent={notable ? INTENT[intent].mark : "bg-slate-300 dark:bg-paper-3"} />
                     </div>
 
-                    <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-white/[0.06]
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-ink/[0.06]
                                     flex items-center justify-between gap-2">
                       <span className={`text-[11.5px] font-semibold ${notable ? INTENT[intent].text : "text-slate-400 dark:text-slate-500"}`}>
                         {trendWords(k)}
@@ -447,12 +447,12 @@ export default function ImportantEvents() {
                   return (
                     <button key={r.repo} type="button" onClick={() => toggle("repo", r.repo)} aria-pressed={on}
                       className={`group flex items-center gap-2 pl-2.5 pr-1.5 py-1.5 rounded-xl border text-[12.5px] font-semibold transition-all
-                        ${on ? "border-slate-900 dark:border-white bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                             : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-white/30"}`}>
+                        ${on ? "border-slate-900 dark:border-white bg-slate-900 text-reverse dark:bg-white dark:text-slate-900"
+                             : "border-slate-200 dark:border-ink/10 text-slate-600 dark:text-slate-300 hover:border-slate-400 dark:hover:border-ink/30"}`}>
                       <span className={`w-1.5 h-1.5 rounded-full ${on ? "bg-current opacity-70" : INTENT[sevIntent(r.worst)].mark}`} />
                       <span className="truncate max-w-[190px]">{r.repo}</span>
                       <span className={`tabular-nums text-[11px] px-1.5 py-0.5 rounded-md
-                        ${on ? "bg-white/20 dark:bg-slate-900/15" : "bg-slate-100 dark:bg-white/[0.07] text-slate-500 dark:text-slate-400"}`}>
+                        ${on ? "bg-ink/20 dark:bg-paper/15" : "bg-slate-100 dark:bg-ink/[0.07] text-slate-500 dark:text-slate-400"}`}>
                         {r.total}
                       </span>
                     </button>
@@ -497,13 +497,13 @@ export default function ImportantEvents() {
                   <button key={a.k} type="button"
                     onClick={() => set(a.k, (a.k === "search" ? "" : null) as any)}
                     className="group flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-lg text-[12px] font-semibold
-                               bg-slate-900 text-white dark:bg-white dark:text-slate-900 hover:opacity-80 transition-opacity">
+                               bg-slate-900 text-reverse dark:bg-white dark:text-slate-900 hover:opacity-80 transition-opacity">
                     {a.text}
                     <span className="opacity-50 group-hover:opacity-100 text-[13px] leading-none">×</span>
                   </button>
                 ))}
                 <button type="button" onClick={() => { setF(NO_FILTERS); setPage(1); }}
-                  className="text-[12px] font-semibold text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-white px-1.5 transition-colors">
+                  className="text-[12px] font-semibold text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-ink px-1.5 transition-colors">
                   clear all
                 </button>
               </div>
@@ -561,7 +561,7 @@ export default function ImportantEvents() {
           question "should somebody be emailed about this?" arrives while
           looking at one, not while looking for a preferences page. */}
       <div className="mt-12">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-1">Notifications</h2>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-ink mb-1">Notifications</h2>
         <p className="text-sm text-gray-600 dark:text-slate-400 mb-4">
           Email delivery for the events above. Groups are created on the Alarms page.
         </p>
@@ -607,13 +607,13 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
   return (
     <div style={enter(index, 25)}
       className={`rounded-2xl border overflow-hidden transition-all duration-200
-        ${open ? "border-slate-300 dark:border-white/20 shadow-md" : "border-slate-200/80 dark:border-white/[0.09]"}
-        bg-white dark:bg-[#151a23]`}>
+        ${open ? "border-slate-300 dark:border-ink/20 shadow-md" : "border-slate-200/80 dark:border-ink/[0.09]"}
+        bg-white dark:bg-paper`}>
       <button type="button" onClick={onToggle} aria-expanded={open}
         className="w-full text-left px-4 py-3.5 flex items-center gap-3.5
-                   hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors
-                   focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900/20 dark:focus-visible:ring-white/30">
-        <span className={`shrink-0 w-1 self-stretch rounded-full ${INTENT[intent].mark}`} />
+                   hover:bg-slate-50 dark:hover:bg-ink/[0.03] transition-colors
+                   focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-slate-900/20 dark:focus-visible:ring-ink/30">
+        <span className={`shrink-0 w-1 self-stretch  ${INTENT[intent].mark}`} />
 
         <i className={`ph-bold ph-caret-right shrink-0 text-slate-300 dark:text-slate-600 text-[12px]
                        transition-transform duration-200 ${open ? "rotate-90" : ""}`} aria-hidden="true" />
@@ -650,13 +650,13 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
       </button>
 
       {open && (
-        <div className="border-t border-slate-100 dark:border-white/[0.07] bg-slate-50/60 dark:bg-white/[0.02]">
+        <div className="border-t border-slate-100 dark:border-ink/[0.07] bg-slate-50/60 dark:bg-ink/[0.02]">
           {alerts.length === 0 ? (
             <p className="px-4 py-3 text-[12.5px] text-slate-500 dark:text-slate-400">
               These alerts are no longer in the loaded set.
             </p>
           ) : alerts.map(a => (
-            <div key={a.id} className="px-4 py-3 border-b last:border-b-0 border-slate-100 dark:border-white/[0.05]
+            <div key={a.id} className="px-4 py-3 border-b last:border-b-0 border-slate-100 dark:border-ink/[0.05]
                                        flex items-start justify-between gap-4">
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2 flex-wrap">
@@ -691,7 +691,7 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
                   </p>
                 )}
                 {a.details && (
-                  <pre className="mt-2.5 p-2.5 rounded-lg bg-white dark:bg-white/[0.05] border border-slate-200 dark:border-white/[0.07]
+                  <pre className="mt-2.5 p-2.5 rounded-lg bg-white dark:bg-ink/[0.05] border border-slate-200 dark:border-ink/[0.07]
                                   text-[11px] font-mono text-slate-500 dark:text-slate-300 max-h-32 overflow-auto">
                     {JSON.stringify(a.details, null, 2)}
                   </pre>

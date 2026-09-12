@@ -102,7 +102,7 @@ export default function KnowledgeGraphPage() {
     });
   }, [repos, search, language, visibility, showArchived, sortKey]);
 
-  const selectCls = "text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
+  const selectCls = "text-xs bg-white dark:bg-paper-2 border border-slate-200 dark:border-rule rounded-lg px-2.5 py-1.5 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
 
   return (
     <Page user={user}>
@@ -125,15 +125,15 @@ export default function KnowledgeGraphPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_460px] gap-5 items-start">
           {/* Browser */}
-          <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 space-y-3">
+          <div className="bg-white dark:bg-paper rounded-2xl border border-slate-100 dark:border-rule shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 dark:border-rule space-y-3">
               <div className="relative">
                 <i className="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500 text-sm"></i>
                 <input
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search repositories…"
-                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
+                  className="w-full pl-9 pr-3 py-2 text-sm bg-slate-50 dark:bg-paper-2 border border-slate-200 dark:border-rule rounded-lg text-slate-700 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/40"
                 />
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -152,17 +152,17 @@ export default function KnowledgeGraphPage() {
                   <option value="size">Size</option>
                 </select>
                 <label className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400 cursor-pointer select-none">
-                  <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded border-slate-300 dark:border-slate-600" />
+                  <input type="checkbox" checked={showArchived} onChange={e => setShowArchived(e.target.checked)} className="rounded border-slate-300 dark:border-rule" />
                   Show archived
                 </label>
                 <span className="ml-auto text-xs text-slate-400 dark:text-slate-500 font-mono">{filtered.length} shown</span>
               </div>
             </div>
 
-            <div className="max-h-[calc(100vh-300px)] overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800">
+            <div className="max-h-[calc(100vh-300px)] overflow-y-auto divide-y divide-slate-100 dark:divide-rule">
               {isLoading ? (
                 <div className="p-10 flex justify-center">
-                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 dark:border-slate-700 border-t-slate-600 dark:border-t-slate-300"></div>
+                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 dark:border-rule border-t-slate-600 dark:border-t-slate-300"></div>
                 </div>
               ) : filtered.length === 0 ? (
                 <div className="p-10 text-center text-slate-400 dark:text-slate-500">
@@ -179,7 +179,7 @@ export default function KnowledgeGraphPage() {
           {selectedRepo ? (
             <RepoPanel repo={selectedRepo} onClose={() => setSelectedRepo(null)} />
           ) : (
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-10 text-center sticky top-20">
+            <div className="bg-white dark:bg-paper rounded-2xl border border-slate-100 dark:border-rule shadow-sm p-10 text-center sticky top-20">
               <i className="ph-fill ph-cards-three text-4xl text-slate-300 dark:text-slate-600 mb-3 block"></i>
               <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Select a repository</p>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
@@ -201,11 +201,11 @@ function RepoRow({ repo, selected, onSelect }: { repo: Repo; selected: boolean; 
       className={`w-full text-left px-5 py-4 transition-colors border-l-[3px] ${
         selected
           ? "bg-blue-50 dark:bg-blue-950/30 border-blue-500"
-          : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/60"}`}
+          : "border-transparent hover:bg-slate-50 dark:hover:bg-paper-2/60"}`}
     >
       <div className="flex items-start gap-3.5">
         {/* Language swatch, sized to anchor the row rather than punctuate it. */}
-        <span className="w-9 h-9 rounded-xl shrink-0 grid place-items-center text-white font-black text-[13px] mt-0.5"
+        <span className="w-9 h-9 rounded-xl shrink-0 grid place-items-center text-reverse font-semibold text-[13px] mt-0.5"
           style={{ backgroundColor: languageHue(repo.language) }}
           title={repo.language ?? "No language"}>
           {(repo.language ?? repo.name).slice(0, 2).toUpperCase()}
@@ -213,11 +213,11 @@ function RepoRow({ repo, selected, onSelect }: { repo: Repo; selected: boolean; 
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="text-[15px] font-bold text-slate-900 dark:text-white truncate tracking-tight">{repo.name}</span>
+            <span className="text-[15px] font-bold text-slate-900 dark:text-ink truncate tracking-tight">{repo.name}</span>
             {repo.private && <i className="ph-fill ph-lock-simple text-xs text-slate-400 dark:text-slate-500 shrink-0" title="Private"></i>}
             {repo.fork && <i className="ph-bold ph-git-fork text-xs text-slate-400 dark:text-slate-500 shrink-0" title="Fork"></i>}
             {repo.archived && (
-              <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 shrink-0">
+              <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-slate-200 dark:bg-paper-3 text-slate-500 dark:text-slate-400 shrink-0">
                 archived
               </span>
             )}
@@ -285,15 +285,15 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
 
   if (isLoading) {
     return (
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-10 flex justify-center sticky top-20">
-        <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 dark:border-slate-700 border-t-slate-600 dark:border-t-slate-300"></div>
+      <div className="bg-white dark:bg-paper rounded-2xl border border-slate-100 dark:border-rule shadow-sm p-10 flex justify-center sticky top-20">
+        <div className="animate-spin rounded-full h-6 w-6 border-2 border-slate-200 dark:border-rule border-t-slate-600 dark:border-t-slate-300"></div>
       </div>
     );
   }
 
   if (error || !data) {
     return (
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm p-8 text-center sticky top-20">
+      <div className="bg-white dark:bg-paper rounded-2xl border border-slate-100 dark:border-rule shadow-sm p-8 text-center sticky top-20">
         <i className="ph-fill ph-warning-circle text-3xl text-slate-300 dark:text-slate-600 mb-2 block"></i>
         <p className="text-sm text-slate-600 dark:text-slate-300">Couldn't load details for {repo}</p>
         <button onClick={onClose} className="mt-3 text-xs text-blue-600 dark:text-blue-400 font-medium">Close</button>
@@ -312,16 +312,16 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
   ];
 
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden animate-scale-in flex flex-col max-h-[calc(100vh-160px)] sticky top-20">
+    <div className="bg-white dark:bg-paper rounded-2xl border border-slate-100 dark:border-rule shadow-sm overflow-hidden animate-scale-in flex flex-col max-h-[calc(100vh-160px)] sticky top-20">
       {/* Header */}
-      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-slate-50 to-white dark:from-slate-800 dark:to-slate-900">
+      <div className="px-5 py-4 border-b border-slate-100 dark:border-rule  from-slate-50 to-white dark:from-slate-800 dark:to-slate-900">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm text-white" style={{ backgroundColor: languageHue(data.languages?.[0]?.name) }}>
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm text-reverse" style={{ backgroundColor: languageHue(data.languages?.[0]?.name) }}>
               <i className="ph-fill ph-git-repository text-lg"></i>
             </div>
             <div className="min-w-0">
-              <h3 className="font-bold text-slate-900 dark:text-white truncate" title={data.name}>{data.name}</h3>
+              <h3 className="font-bold text-slate-900 dark:text-ink truncate" title={data.name}>{data.name}</h3>
               <div className="flex items-center flex-wrap gap-1.5 mt-1">
                 <Pill>{data.visibility}</Pill>
                 {data.languages?.[0] && <Pill>{data.languages[0].name}</Pill>}
@@ -342,15 +342,15 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
         {data.topics.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             {data.topics.map(t => (
-              <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900">#{t}</span>
+              <span key={t} className="text-[10px] px-1.5 py-0.5  bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900">#{t}</span>
             ))}
           </div>
         )}
 
         <div className="grid grid-cols-3 gap-2">
           {tiles.map(t => (
-            <div key={t.label} className="bg-white dark:bg-slate-800 rounded-lg border border-slate-100 dark:border-slate-700 px-2 py-2 text-center">
-              <div className="text-base font-bold text-slate-900 dark:text-white font-mono leading-none">{t.value}</div>
+            <div key={t.label} className="bg-white dark:bg-paper-2 rounded-lg border border-slate-100 dark:border-rule px-2 py-2 text-center">
+              <div className="text-base font-bold text-slate-900 dark:text-ink font-mono leading-none">{t.value}</div>
               <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">{t.label}</div>
             </div>
           ))}
@@ -362,7 +362,7 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-700">
+      <div className="flex-1 overflow-y-auto divide-y divide-slate-100 dark:divide-rule">
         <Section label="Overview" icon="ph-info" color="slate" count={0} defaultOpen>
           <Facts rows={[
             ["Default branch", data.default_branch],
@@ -539,14 +539,14 @@ function Pill({ children, tone = "default" }: { children: React.ReactNode; tone?
   const cls = tone === "good"
     ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800"
     : tone === "muted"
-      ? "bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-700"
-      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700";
+      ? "bg-slate-50 dark:bg-paper-2 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-rule"
+      : "bg-white dark:bg-paper-2 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-rule";
   return <span className={`text-[10px] px-1.5 py-0.5 rounded border font-medium shrink-0 ${cls}`}>{children}</span>;
 }
 
 function Facts({ rows }: { rows: [string, React.ReactNode][] }) {
   return (
-    <dl className="divide-y divide-slate-50 dark:divide-slate-800">
+    <dl className="divide-y divide-slate-50 dark:divide-rule">
       {rows.map(([k, v]) => (
         <div key={k} className="flex items-start justify-between gap-3 py-1.5">
           <dt className="text-sm text-slate-500 dark:text-slate-400 shrink-0">{k}</dt>
@@ -585,7 +585,7 @@ function WhoKnows({ repo }: { repo: string }) {
   });
 
   return (
-    <div className="border-t border-slate-100 dark:border-slate-800">
+    <div className="border-t border-slate-100 dark:border-rule">
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center gap-2 py-2.5 text-left"
@@ -624,7 +624,7 @@ function WhoKnows({ repo }: { repo: string }) {
                     {e.daysSinceActive === 0 ? "today" : `${e.daysSinceActive}d ago`}
                   </span>
                 )}
-                <span className="w-10 h-1.5 rounded-full bg-slate-200 dark:bg-slate-700 overflow-hidden">
+                <span className="w-10 h-1.5  bg-slate-200 dark:bg-paper-3 overflow-hidden">
                   <span className="block h-full bg-violet-500" style={{ width: `${e.score}%` }} />
                 </span>
               </span>
@@ -663,7 +663,7 @@ function Section({ label, icon, color, count, defaultOpen, children }: {
     <div>
       <button
         onClick={() => setOpen(!open)}
-        className="w-full px-5 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        className="w-full px-5 py-3 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-paper-2 transition-colors"
       >
         <div className="flex items-center gap-2">
           <i className={`ph-fill ${icon} text-${color}-500`}></i>
@@ -671,7 +671,7 @@ function Section({ label, icon, color, count, defaultOpen, children }: {
         </div>
         <div className="flex items-center gap-2">
           {count > 0 && (
-            <span className="text-xs font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">{count}</span>
+            <span className="text-xs font-mono text-slate-400 dark:text-slate-500 bg-slate-100 dark:bg-paper-3 px-2 py-0.5 ">{count}</span>
           )}
           <i className={`ph-bold ph-caret-${open ? "up" : "down"} text-xs text-slate-400 dark:text-slate-500`}></i>
         </div>

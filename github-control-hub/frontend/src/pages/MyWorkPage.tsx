@@ -36,7 +36,7 @@ const WAITING: Record<Waiting, { label: string; tone: string; rail: string }> = 
   nobody:    { label: "Ready to merge", tone: "text-emerald-600 dark:text-emerald-400", rail: "bg-emerald-500" },
   you:       { label: "On you",         tone: "text-amber-600 dark:text-amber-400",     rail: "bg-amber-500" },
   reviewers: { label: "On reviewers",   tone: "text-sky-600 dark:text-sky-400",         rail: "bg-sky-500" },
-  checks:    { label: "Checks running", tone: "text-slate-400 dark:text-slate-500",     rail: "bg-slate-300 dark:bg-slate-600" },
+  checks:    { label: "Checks running", tone: "text-slate-400 dark:text-slate-500",     rail: "bg-slate-300 dark:bg-paper-3" },
 };
 
 /** The block reason as a sentence, rather than as the enum it is stored as. */
@@ -58,7 +58,7 @@ function PullRow({ pr, showAuthor }: { pr: MyPull; showAuthor?: boolean }) {
     <a
       href={pr.url} target="_blank" rel="noreferrer noopener"
       className="group relative flex items-start gap-3.5 pl-5 pr-4 py-3.5
-                 hover:bg-slate-50/80 dark:hover:bg-white/[0.035] transition-colors"
+                 hover:bg-slate-50/80 dark:hover:bg-ink/[0.035] transition-colors"
     >
       {/* The rail, not a dot. It runs the height of the row, so a column of
           them reads as a stacked bar of what the day is made of before any of
@@ -122,14 +122,14 @@ function Panel({ title, count, note, action, children }: {
     <section className={`${SURFACE.card} overflow-hidden flex flex-col`}>
       <div className="px-5 pt-4">
         <div className="flex items-baseline gap-2">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">{title}</h3>
+          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">{title}</h3>
           {count !== undefined && (
             <span className="text-[12px] font-bold tabular-nums text-slate-300 dark:text-slate-600">{count}</span>
           )}
           {action && <div className="ml-auto self-center">{action}</div>}
         </div>
         {note && <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">{note}</p>}
-        <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+        <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
       </div>
       <div className="flex-1">{children}</div>
     </section>
@@ -138,7 +138,7 @@ function Panel({ title, count, note, action, children }: {
 
 /** Rows share one surface, divided by hairlines, rather than floating apart. */
 function Rows({ children }: { children: React.ReactNode }) {
-  return <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">{children}</div>;
+  return <div className="divide-y divide-slate-100 dark:divide-ink/[0.06]">{children}</div>;
 }
 
 /** How many rows a panel shows before it starts paging. */
@@ -178,20 +178,20 @@ function Paged<T>({ items, render, keyOf, perPage = PAGE, bare }: {
       {bare ? <div className="p-5 grid gap-4">{rows}</div> : <Rows>{rows}</Rows>}
       {pages > 1 && (
         <div className="flex items-center justify-between gap-3 px-5 py-2.5
-                        border-t border-slate-100 dark:border-white/[0.06]">
+                        border-t border-slate-100 dark:border-ink/[0.06]">
           <span className="text-[11.5px] tabular-nums text-slate-400 dark:text-slate-500">
             {current * perPage + 1}&ndash;{current * perPage + shown.length} of {items.length}
           </span>
           <div className="flex items-center gap-1">
             <button onClick={() => setPage(current - 1)} disabled={current === 0}
               className="w-7 h-7 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
-                         hover:bg-slate-100 dark:hover:bg-white/[0.08] disabled:opacity-25 disabled:hover:bg-transparent"
+                         hover:bg-slate-100 dark:hover:bg-ink/[0.08] disabled:opacity-25 disabled:hover:bg-transparent"
               aria-label="Previous">
               <i className="ph-bold ph-caret-left text-[12px]" />
             </button>
             <button onClick={() => setPage(current + 1)} disabled={current >= pages - 1}
               className="w-7 h-7 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
-                         hover:bg-slate-100 dark:hover:bg-white/[0.08] disabled:opacity-25 disabled:hover:bg-transparent"
+                         hover:bg-slate-100 dark:hover:bg-ink/[0.08] disabled:opacity-25 disabled:hover:bg-transparent"
               aria-label="Next">
               <i className="ph-bold ph-caret-right text-[12px]" />
             </button>
@@ -268,8 +268,8 @@ function Headline({ mergeable, onYou, toReview }: {
 
         <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Waiting on you</div>
         <div className="flex items-end gap-3 mt-2.5">
-          <span className={`text-[52px] font-black tabular-nums leading-[0.85] tracking-[-0.04em]
-            ${clear ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-white"}`}>
+          <span className={`text-[52px] font-semibold tabular-nums leading-[0.85] tracking-[-0.04em]
+            ${clear ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-ink"}`}>
             {toReview}
           </span>
           {!clear && (
@@ -287,7 +287,7 @@ function Headline({ mergeable, onYou, toReview }: {
       </div>
 
       <div className={`${SURFACE.card} overflow-hidden grid sm:grid-cols-2 lg:grid-cols-1
-                       gap-px bg-slate-200/70 dark:bg-white/[0.07]`}>
+                       gap-px bg-slate-200/70 dark:bg-ink/[0.07]`}>
         <MiniStat icon="ph-git-merge" tone="text-emerald-600 dark:text-emerald-400"
           label="Ready to merge" value={mergeable}
           foot={mergeable ? "nothing is in the way" : "none waiting to go out"} />
@@ -303,13 +303,13 @@ function MiniStat({ icon, label, value, foot, tone }: {
   icon: string; label: string; value: number; foot: string; tone: string;
 }) {
   return (
-    <div className="bg-white dark:bg-[#151a23] px-5 py-4 flex items-center gap-4">
+    <div className="bg-white dark:bg-paper px-5 py-4 flex items-center gap-4">
       <i className={`${icon} ph-fill text-[19px] ${value === 0 ? "text-slate-300 dark:text-slate-600" : tone}`}
          aria-hidden="true" />
       <div className="min-w-0">
         <div className="flex items-baseline gap-2">
-          <span className={`text-[22px] font-black tabular-nums leading-none
-            ${value === 0 ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-white"}`}>
+          <span className={`text-[22px] font-semibold tabular-nums leading-none
+            ${value === 0 ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-ink"}`}>
             {value}
           </span>
           <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">{label}</span>
@@ -389,8 +389,8 @@ function Queue() {
                 } catch { /* Not being able to remember it does not stop it working now. */ }
               }}
               title="Counts everybody still awaiting review, you included."
-              className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-white/[0.06]
-                         border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300">
+              className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-ink/[0.06]
+                         border border-slate-200 dark:border-ink/10 text-slate-600 dark:text-slate-300">
               <option value="">any number reviewing</option>
               <option value="1">only me reviewing</option>
               <option value="2">me and at most one other</option>
@@ -523,21 +523,21 @@ function Verdict({ data }: { data: PushCheckData }) {
         className={`pointer-events-none absolute -right-20 -top-24 w-64 h-64 rounded-full blur-3xl opacity-[0.15] ${look.wash}`} />
       <div className="flex items-start gap-4">
         <span className={`w-12 h-12 rounded-2xl grid place-items-center shrink-0
-                          bg-white dark:bg-white/[0.06] border border-slate-200/80 dark:border-white/10 ${look.tint}`}>
+                          bg-white dark:bg-ink/[0.06] border border-slate-200/80 dark:border-ink/10 ${look.tint}`}>
           <i className={`ph-fill ${look.icon} text-[22px]`} aria-hidden="true" />
         </span>
         <div className="min-w-0 pt-0.5">
-          <h2 className="text-[22px] font-black tracking-[-0.02em] text-slate-900 dark:text-white leading-tight">
+          <h2 className="text-[22px] font-semibold tracking-[-0.02em] text-slate-900 dark:text-ink leading-tight">
             {look.title}
           </h2>
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-1 max-w-[62ch] leading-relaxed">
             {look.sub}
           </p>
           <div className="flex items-center gap-1.5 mt-3">
-            <span className="text-[11px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/[0.07]
+            <span className="text-[11px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-ink/[0.07]
                              text-slate-600 dark:text-slate-300">{data.repo}</span>
             <i className="ph-bold ph-caret-right text-[10px] text-slate-300 dark:text-slate-600" aria-hidden="true" />
-            <span className="text-[11px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/[0.07]
+            <span className="text-[11px] font-mono px-2 py-1 rounded-lg bg-slate-100 dark:bg-ink/[0.07]
                              text-slate-600 dark:text-slate-300">{data.branch}</span>
           </div>
         </div>
@@ -606,7 +606,7 @@ function PushCheck() {
             <div className="grid gap-4 lg:grid-cols-2">
               {blocks.length > 0 && (
                 <Panel title="In the way of a direct push" count={blocks.length}>
-                  <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+                  <div className="divide-y divide-slate-100 dark:divide-ink/[0.06]">
                     {blocks.map(r => <GateRow key={r.label} rule={r} tone="block" />)}
                   </div>
                 </Panel>
@@ -616,7 +616,7 @@ function PushCheck() {
                 note={needs.length === 0 ? undefined : "Every one of these, before it can merge."}>
                 {needs.length === 0
                   ? <Quiet>Nothing beyond opening it.</Quiet>
-                  : <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+                  : <div className="divide-y divide-slate-100 dark:divide-ink/[0.06]">
                       {needs.map(r => <GateRow key={r.label} rule={r} tone="need" />)}
                     </div>}
               </Panel>
@@ -630,12 +630,12 @@ function PushCheck() {
                 {data.approvers!.map(p => (
                   <span key={p.login}
                     className="inline-flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full
-                               bg-slate-50 dark:bg-white/[0.05] border border-slate-200/80 dark:border-white/10">
+                               bg-slate-50 dark:bg-ink/[0.05] border border-slate-200/80 dark:border-ink/10">
                     <UserAvatar login={p.login} size={20} />
                     <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">{p.login}</span>
                     {p.role === "admin" && (
-                      <span className="text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded
-                                       bg-slate-900 dark:bg-white text-white dark:text-slate-900">admin</span>
+                      <span className="text-[9.5px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded
+                                       bg-slate-900 dark:bg-white text-reverse dark:text-slate-900">admin</span>
                     )}
                   </span>
                 ))}
@@ -735,13 +735,13 @@ function Shipped() {
                 Merged in {data.days} days
               </div>
               <div className="flex items-end gap-3 mt-2.5">
-                <span className={`text-[52px] font-black tabular-nums leading-[0.85] tracking-[-0.04em]
-                  ${data.merged.length === 0 ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-white"}`}>
+                <span className={`text-[52px] font-semibold tabular-nums leading-[0.85] tracking-[-0.04em]
+                  ${data.merged.length === 0 ? "text-slate-300 dark:text-slate-600" : "text-slate-900 dark:text-ink"}`}>
                   {data.merged.length}
                 </span>
                 {data.pushes > 0 && (
                   <span className="mb-1.5 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[12px] font-bold
-                                   bg-slate-100 dark:bg-white/[0.07] text-slate-500 dark:text-slate-400">
+                                   bg-slate-100 dark:bg-ink/[0.07] text-slate-500 dark:text-slate-400">
                     <i className="ph-bold ph-arrow-fat-line-up text-[12px]" aria-hidden="true" />
                     {data.pushes} direct
                   </span>
@@ -754,7 +754,7 @@ function Shipped() {
               </p>
             </div>
 
-            <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-white/[0.07]`}>
+            <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-ink/[0.07]`}>
               <MiniStat icon="ph-calendar-check" tone="text-violet-600 dark:text-violet-400"
                 label="Active days" value={byDay.length}
                 foot={byDay.length ? "days you shipped something" : "no merges in the window"} />
@@ -772,7 +772,7 @@ function Shipped() {
                           <span className="text-[10.5px] font-bold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
                             {day.label}
                           </span>
-                          <span className="flex-1 h-px bg-slate-200/70 dark:bg-white/[0.07]" />
+                          <span className="flex-1 h-px bg-slate-200/70 dark:bg-ink/[0.07]" />
                           <span className="text-[11px] tabular-nums text-slate-300 dark:text-slate-600">
                             {day.rows.length}
                           </span>
@@ -796,7 +796,7 @@ function Shipped() {
                             // than something that does not look clickable.
                             return href ? (
                               <a key={e.id} href={href} target="_blank" rel="noreferrer noopener"
-                                className={`${shape} group/ship rounded-r hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors`}>
+                                className={`${shape} group/ship rounded-r hover:bg-slate-50 dark:hover:bg-ink/[0.04] transition-colors`}>
                                 {inner}
                                 <i className="ph-bold ph-arrow-square-out text-[11px] text-slate-300 dark:text-slate-600
                                               opacity-0 group-hover/ship:opacity-100 transition-opacity shrink-0"

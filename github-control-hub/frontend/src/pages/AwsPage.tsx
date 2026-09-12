@@ -69,7 +69,7 @@ export default function AwsPage() {
     <Page user={user}>
         <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
           <div>
-            <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">AWS Guardrails</h1>
+            <h1 className="text-2xl font-semibold text-slate-900 dark:text-ink tracking-tight">AWS Guardrails</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               Checked when resources are created, every 10 minutes, and on demand.
             </p>
@@ -256,7 +256,7 @@ function RulesTab({ rules, catalog, findings, isLoading, failed, failure, onRetr
               <div className="flex items-center gap-6">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className={`${TYPE.heading} ${r.enabled ? "text-slate-900 dark:text-white" : "text-slate-400 dark:text-slate-500"}`}>
+                    <h3 className={`${TYPE.heading} ${r.enabled ? "text-slate-900 dark:text-ink" : "text-slate-400 dark:text-slate-500"}`}>
                       {r.name}
                     </h3>
                     {r.mode === "enforce" && <Pill intent="info">auto-fix</Pill>}
@@ -381,10 +381,10 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
           subtitle={entry?.summary}
           aside={
             <div>
-              <p className="text-[44px] font-black text-white leading-none tabular-nums">
+              <p className="text-[44px] font-semibold text-reverse leading-none tabular-nums">
                 {failing.length > 0 ? failing.length : checked}
               </p>
-              <p className={`${TYPE.label} text-white/70 mt-1.5`}>
+              <p className={`${TYPE.label} text-reverse/70 mt-1.5`}>
                 {failing.length > 0 ? "failing" : checked > 0 ? "passing" : "not checked"}
               </p>
             </div>
@@ -392,7 +392,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
         />
 
         {isAdmin && (
-          <div className="px-7 py-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center gap-5 bg-slate-50/70 dark:bg-slate-800/40 flex-wrap">
+          <div className="px-7 py-3.5 border-b border-slate-100 dark:border-rule flex items-center gap-5 bg-slate-50/70 dark:bg-paper-2/40 flex-wrap">
             <button onClick={onRun} disabled={running}
               className="text-sm font-bold text-slate-800 dark:text-slate-100 hover:opacity-70 disabled:opacity-40">
               {running ? "Running…" : "Run now"}
@@ -483,7 +483,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                       <Pill intent={fi}>{label}</Pill>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-baseline gap-2 flex-wrap">
-                          <p className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-white break-all">{f.resourceId}</p>
+                          <p className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-ink break-all">{f.resourceId}</p>
                           {/* The region, not the account: there is only one
                               account now, but a finding's region still tells you
                               where to go and look. */}
@@ -519,7 +519,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                           title={rule?.mode === "enforce"
                             ? "Fix it now, rather than waiting for the next sweep"
                             : "Fix this one resource. The rule keeps reporting, so a change back is reported rather than corrected."}
-                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.07] border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50"
+                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-ink/[0.07] border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors disabled:opacity-50"
                         >
                           {fixing === f.resourceId
                             ? <><i className="ph-bold ph-circle-notch animate-spin text-[11px]"></i>Fixing</>
@@ -529,7 +529,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
                       {href && (
                         <a href={href} target="_blank" rel="noreferrer"
                           title={consoleLinkLabel(f.resourceType)}
-                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-white/[0.07] border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
+                          className="shrink-0 inline-flex items-center gap-1.5 text-[12px] font-bold px-2.5 py-1.5 rounded-lg bg-white dark:bg-ink/[0.07] border border-slate-200 dark:border-ink/10 text-slate-600 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-300 dark:hover:border-blue-600 transition-colors">
                           AWS<i className="ph-bold ph-arrow-square-out text-[11px]"></i>
                         </a>
                       )}
@@ -565,7 +565,7 @@ function RuleDetail({ rule, entry, findings, exclusions, accounts, isAdmin, runn
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-6 py-2 border-b border-slate-50 dark:border-slate-800/60">
+    <div className="flex items-baseline justify-between gap-6 py-2 border-b border-slate-50 dark:border-rule/60">
       <dt className="text-[14px] text-slate-500 dark:text-slate-400">{label}</dt>
       <dd className="text-[14px] font-semibold text-slate-800 dark:text-slate-200 text-right">{children}</dd>
     </div>
@@ -625,7 +625,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
     }
   };
 
-  const input = "w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
+  const input = "w-full px-3 py-2 text-sm bg-white dark:bg-paper-2 border border-slate-200 dark:border-rule rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
 
   return (
     <Modal title={rule ? "Edit guardrail" : "New guardrail"} onClose={onClose} onSubmit={submit} error={error}>
@@ -653,8 +653,8 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
               disabled={m === "enforce" && enforceBlocked}
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg border transition ${
                 mode === m
-                  ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                  ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 border-slate-900 dark:border-white"
+                  : "bg-white dark:bg-paper-2 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-rule"
               } ${m === "enforce" && enforceBlocked ? "opacity-40 cursor-not-allowed" : ""}`}
             >
               {m === "enforce" && enforceBlocked && <i className="ph-fill ph-lock-simple mr-1"></i>}
@@ -671,7 +671,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
       }>
         <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
           <input type="checkbox" checked={applyOnCreate} onChange={e => setApplyOnCreate(e.target.checked)}
-            disabled={!entry?.triggerEvents.length} className="rounded border-slate-300 dark:border-slate-600" />
+            disabled={!entry?.triggerEvents.length} className="rounded border-slate-300 dark:border-rule" />
           Enabled
         </label>
       </Field>
@@ -699,7 +699,7 @@ function RuleEditor({ rule, catalog, exclusions, isAdmin, adminTeam, onClose }: 
               <label key={l.id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
                 <input type="checkbox" checked={selected.includes(l.id)}
                   onChange={e => setSelected(s => e.target.checked ? [...s, l.id] : s.filter(x => x !== l.id))}
-                  className="rounded border-slate-300 dark:border-slate-600" />
+                  className="rounded border-slate-300 dark:border-rule" />
                 {l.name}
               </label>
             ))}
@@ -717,7 +717,7 @@ function ParamControl({ spec, value, onChange }: { spec: ParamSpec; value: any; 
     return (
       <label className="flex items-start gap-2.5 cursor-pointer">
         <input type="checkbox" checked={!!value} onChange={e => onChange(e.target.checked)}
-          className="mt-0.5 rounded border-slate-300 dark:border-slate-600" />
+          className="mt-0.5 rounded border-slate-300 dark:border-rule" />
         <span className="text-sm text-slate-700 dark:text-slate-300">
           {spec.label}
           {spec.help && <span className="block text-xs text-slate-400 dark:text-slate-500">{spec.help}</span>}
@@ -725,7 +725,7 @@ function ParamControl({ spec, value, onChange }: { spec: ParamSpec; value: any; 
       </label>
     );
   }
-  const field = "w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
+  const field = "w-full px-3 py-2 text-sm bg-white dark:bg-paper-2 border border-slate-200 dark:border-rule rounded-lg text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500/40";
   return (
     <label className="block">
       <span className="block text-sm text-slate-700 dark:text-slate-300 mb-1.5">{spec.label}</span>
@@ -768,11 +768,11 @@ function Modal({ title, onClose, onSubmit, error, children }: {
   title: string; onClose: () => void; onSubmit: () => void; error: string | null; children: React.ReactNode;
 }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 backdrop-blur-sm p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50  p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-paper rounded-2xl border border-slate-200 dark:border-rule shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto"
         onClick={e => e.stopPropagation()}>
-        <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between sticky top-0 bg-white dark:bg-slate-900">
-          <h3 className="font-bold text-slate-900 dark:text-white">{title}</h3>
+        <div className="px-5 py-4 border-b border-slate-100 dark:border-rule flex items-center justify-between sticky top-0 bg-white dark:bg-paper">
+          <h3 className="font-bold text-slate-900 dark:text-ink">{title}</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"><i className="ph-bold ph-x"></i></button>
         </div>
         <div className="p-5">
@@ -784,7 +784,7 @@ function Modal({ title, onClose, onSubmit, error, children }: {
           )}
           <div className="flex justify-end gap-2 pt-2">
             <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200">Cancel</button>
-            <button onClick={onSubmit} className="px-4 py-2 rounded-lg bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-sm font-semibold hover:opacity-90">Save</button>
+            <button onClick={onSubmit} className="px-4 py-2 rounded-lg bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 text-sm font-semibold hover:opacity-90">Save</button>
           </div>
         </div>
       </div>
@@ -830,7 +830,7 @@ function Copyable({ label, value, mono = true }: { label: string; value: string;
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
-      <div className={`px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-[12px] break-all ${mono ? "font-mono" : ""} text-slate-700 dark:text-slate-200`}>
+      <div className={`px-3 py-2 rounded-lg bg-slate-50 dark:bg-paper-2/70 border border-slate-200 dark:border-rule text-[12px] break-all ${mono ? "font-mono" : ""} text-slate-700 dark:text-slate-200`}>
         {value}
       </div>
     </div>
@@ -854,11 +854,11 @@ function Fields({ rows }: { rows: readonly (readonly [string, React.ReactNode])[
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-3 mb-5">
-      <span className="shrink-0 h-6 w-6 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[12px] font-black grid place-items-center mt-0.5">
+      <span className="shrink-0 h-6 w-6 rounded-full bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 text-[12px] font-semibold grid place-items-center mt-0.5">
         {n}
       </span>
       <div className="min-w-0 flex-1">
-        <p className="text-[13.5px] font-bold text-slate-900 dark:text-white mb-1.5">{title}</p>
+        <p className="text-[13.5px] font-bold text-slate-900 dark:text-ink mb-1.5">{title}</p>
         <div className="text-[13px] text-slate-600 dark:text-slate-300">{children}</div>
       </div>
     </div>
@@ -922,7 +922,7 @@ function ExclusionsTab({ lists }: { lists?: AwsExclusionList[] }) {
               <RailCard key={l.id} intent="neutral" index={i}>
                 <div className="flex items-start justify-between gap-5 flex-wrap">
                   <div className="min-w-0 flex-1">
-                    <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>{l.name}</h3>
+                    <h3 className={`${TYPE.heading} text-slate-900 dark:text-ink`}>{l.name}</h3>
                     {l.description && (
                       <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-1`}>{l.description}</p>
                     )}
@@ -1146,8 +1146,8 @@ function ExclusionEditor({ list, onClose, onSave }: {
               title="What this skips"
               aside={
                 <div>
-                  <p className="text-[34px] font-black text-white leading-none tabular-nums">{matched.length}</p>
-                  <p className={`${TYPE.label} text-white/70 mt-1`}>of {known.length}</p>
+                  <p className="text-[34px] font-semibold text-reverse leading-none tabular-nums">{matched.length}</p>
+                  <p className={`${TYPE.label} text-reverse/70 mt-1`}>of {known.length}</p>
                 </div>
               } />
             <div className="px-6 py-5">

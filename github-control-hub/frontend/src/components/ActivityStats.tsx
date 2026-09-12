@@ -62,7 +62,7 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
             Events in {windowLabel}
           </div>
           <div className="flex items-end gap-3 mt-2.5">
-            <span className="text-[52px] font-black tabular-nums leading-[0.85] tracking-[-0.04em] text-slate-900 dark:text-white">
+            <span className="text-[52px] font-semibold tabular-nums leading-[0.85] tracking-[-0.04em] text-slate-900 dark:text-ink">
               {total.toLocaleString()}
               {pulse && !pulse.exhausted && <span className="text-slate-300 dark:text-slate-600">+</span>}
             </span>
@@ -72,7 +72,7 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
                   ? "bg-gh-blue/10 dark:bg-blue-400/15 text-gh-blue dark:text-blue-300"
                   : delta < 0
                     ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                    : "bg-slate-100 dark:bg-white/[0.07] text-slate-500 dark:text-slate-400"}`}>
+                    : "bg-slate-100 dark:bg-ink/[0.07] text-slate-500 dark:text-slate-400"}`}>
                 <i className={`ph-bold ${delta > 0 ? "ph-trend-up" : delta < 0 ? "ph-trend-down" : "ph-minus"} text-[12px]`}
                    aria-hidden="true" />
                 {delta > 0 ? "+" : ""}{delta}%
@@ -95,7 +95,7 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
             leaderboards are already built, so this is the app's own idiom
             rather than a new one. */}
         <div className={`${SURFACE.card} overflow-hidden grid sm:grid-cols-3 lg:grid-cols-1
-                         gap-px bg-slate-200/70 dark:bg-white/[0.07]`}>
+                         gap-px bg-slate-200/70 dark:bg-ink/[0.07]`}>
           <MiniStat icon="ph-clock" label="Busiest hour"
             value={busiestHour ? clockHour(busiestHour.i) : "\u2014"}
             foot={busiestHour ? `${busiestHour.v} events · ${pulse?.timeZone ?? "UTC"}` : "nothing recorded"} />
@@ -116,7 +116,7 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
             "here is a heading and here is the thing". */}
         <div className="px-6 pt-5">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
-            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
               Day by day
             </h3>
             <span className="text-[11px] tabular-nums text-slate-400 dark:text-slate-500">
@@ -126,7 +126,7 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
             Every day of the window.
           </p>
-          <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3.5" />
+          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3.5" />
         </div>
         <div className="px-6 pt-4 pb-5">
         {/* Each calendar day of the window, not each day of the week. Seven
@@ -143,13 +143,13 @@ export default function ActivityStats({ pulse, hours, windowLabel }: {
       {/* ── what kinds of thing ──────────────────────────────────────── */}
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-6 pt-5">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
             Most common events
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
             What this organization spends its time doing.
           </p>
-          <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3.5" />
+          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3.5" />
         </div>
         <div className="px-6 pt-4 pb-5">
         {(pulse?.topActions.length ?? 0) === 0 ? (
@@ -205,14 +205,14 @@ function MiniStat({ icon, label, value, foot }: {
   icon: string; label: string; value: string; foot: string;
 }) {
   return (
-    <div className="bg-white dark:bg-[#151a23] px-5 py-4 flex items-start gap-3.5">
+    <div className="bg-white dark:bg-paper px-5 py-4 flex items-start gap-3.5">
       <span className="shrink-0 mt-0.5 w-8 h-8 rounded-lg grid place-items-center
-                       border border-slate-200 dark:border-white/10 text-slate-400 dark:text-slate-500">
+                       border border-slate-200 dark:border-ink/10 text-slate-400 dark:text-slate-500">
         <i className={`ph-bold ${icon} text-[14px]`} aria-hidden="true" />
       </span>
       <div className="min-w-0">
         <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>{label}</div>
-        <div className="text-[21px] font-black tabular-nums leading-none tracking-tight text-slate-900 dark:text-white mt-1.5">
+        <div className="text-[21px] font-semibold tabular-nums leading-none tracking-tight text-slate-900 dark:text-ink mt-1.5">
           {value}
         </div>
         <div className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-1">{foot}</div>
@@ -251,7 +251,7 @@ function Bars({ values, labelFor, titleFor, tickEvery }: {
             <div className={`w-full rounded-t-[3px] transition-colors
               ${v > 0
                 ? (hover === i ? "bg-gh-blue dark:bg-blue-400" : "bg-gh-blue/60 dark:bg-blue-400/50")
-                : "bg-slate-200 dark:bg-white/[0.07]"}`}
+                : "bg-slate-200 dark:bg-ink/[0.07]"}`}
               style={{ height: v > 0 ? `${Math.max(6, (v / peak) * 100)}%` : "3px" }} />
           </button>
         ))}
@@ -271,8 +271,8 @@ function Bars({ values, labelFor, titleFor, tickEvery }: {
           moves is one you chase. */}
       {hover !== null && (
         <div className="absolute -top-2 left-1/2 -translate-x-1/2 pointer-events-none z-10
-                        rounded-lg bg-slate-900 dark:bg-slate-100 px-3 py-1.5 shadow-lg
-                        text-[11.5px] font-semibold text-white dark:text-slate-900 whitespace-nowrap">
+                        rounded-lg bg-slate-900 dark:bg-paper-3 px-3 py-1.5 shadow-lg
+                        text-[11.5px] font-semibold text-reverse dark:text-slate-900 whitespace-nowrap">
           {titleFor(hover)} · {values[hover]} {values[hover] === 1 ? "event" : "events"}
         </div>
       )}

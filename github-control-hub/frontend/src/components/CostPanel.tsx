@@ -116,7 +116,7 @@ export default function CostPanel() {
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
                 What this app costs
               </h3>
               {/* The scope, said first. This runs in accounts that hold plenty
@@ -129,19 +129,19 @@ export default function CostPanel() {
                 Nothing else in this account is counted.
               </p>
             </div>
-            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-white/10">
+            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-ink/10">
               {[7, 30, 90].map(d => (
                 <button key={d} type="button" onClick={() => setDays(d)}
                   className={`px-2.5 py-1 text-[12px] font-bold transition-colors ${
                     d === days
-                      ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
-                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.05]"}`}>
+                      ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
+                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-ink/[0.05]"}`}>
                   {d}d
                 </button>
               ))}
             </div>
           </div>
-          <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
         </div>
 
         {/* A window longer than the install is the one case where two windows
@@ -160,13 +160,13 @@ export default function CostPanel() {
         <div className="px-5 py-4 flex items-end gap-6 flex-wrap">
           <div>
             <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Over {data.days} days</p>
-            <p className="text-[26px] font-black tabular-nums text-slate-900 dark:text-white leading-none mt-1">
+            <p className="text-[26px] font-semibold tabular-nums text-slate-900 dark:text-ink leading-none mt-1">
               {money(data.total)}
             </p>
           </div>
           <div>
             <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Per month at this rate</p>
-            <p className="text-[26px] font-black tabular-nums text-slate-900 dark:text-white leading-none mt-1">
+            <p className="text-[26px] font-semibold tabular-nums text-slate-900 dark:text-ink leading-none mt-1">
               {money(data.monthly)}
             </p>
           </div>
@@ -219,7 +219,7 @@ export default function CostPanel() {
           which is the whole reason this page exists. */}
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4 pb-1">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
             By service
           </h3>
         </div>
@@ -236,14 +236,14 @@ export default function CostPanel() {
                 <span className="text-[11px] text-slate-400 dark:text-slate-500 w-20 shrink-0 tabular-nums">
                   {count} {count === 1 ? "resource" : "resources"}
                 </span>
-                <span className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.07] overflow-hidden">
-                  <span className="block h-full rounded-full bg-slate-900/70 dark:bg-white/60"
+                <span className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-ink/[0.07] overflow-hidden">
+                  <span className="block h-full  bg-slate-900/70 dark:bg-ink/60"
                     style={{ width: `${Math.max(share, sum > 0 ? 2 : 0)}%` }} />
                 </span>
                 <span className="text-[11px] text-slate-400 dark:text-slate-500 w-9 text-right tabular-nums shrink-0">
                   {Math.round(share)}%
                 </span>
-                <span className="text-[12.5px] font-bold tabular-nums text-slate-900 dark:text-white w-16 text-right shrink-0">
+                <span className="text-[12.5px] font-bold tabular-nums text-slate-900 dark:text-ink w-16 text-right shrink-0">
                   {money(sum)}
                 </span>
               </div>
@@ -254,7 +254,7 @@ export default function CostPanel() {
 
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4 pb-2">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
             By resource
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -273,7 +273,7 @@ export default function CostPanel() {
                   type="button"
                   onClick={() => setOpen(isOpen ? null : line.name)}
                   className="w-full px-3 py-2 flex items-center gap-3 text-left rounded-lg
-                             hover:bg-slate-50 dark:hover:bg-white/[0.04] transition-colors"
+                             hover:bg-slate-50 dark:hover:bg-ink/[0.04] transition-colors"
                 >
                   <i className={`ph-fill ${k.icon} ${k.tone} text-[15px] shrink-0`} aria-hidden="true" />
                   <span className="min-w-0 flex-1">
@@ -288,21 +288,21 @@ export default function CostPanel() {
                         billed {Math.max(0, Math.floor(line.billedDays))} of {data.days} days
                       </span>
                     )}
-                    <span className="block h-1 rounded-full bg-slate-100 dark:bg-white/[0.07] mt-1 overflow-hidden">
-                      <span className="block h-full rounded-full bg-slate-900/70 dark:bg-white/60"
+                    <span className="block h-1 rounded-full bg-slate-100 dark:bg-ink/[0.07] mt-1 overflow-hidden">
+                      <span className="block h-full  bg-slate-900/70 dark:bg-ink/60"
                         style={{ width: `${Math.max(share, line.cost > 0 ? 2 : 0)}%` }} />
                     </span>
                   </span>
                   {FIXED.has(line.kind) && (
-                    <span className="text-[9.5px] font-black uppercase tracking-wider shrink-0
+                    <span className="text-[9.5px] font-semibold uppercase tracking-wider shrink-0
                                      text-amber-700 dark:text-amber-500" title="Charged whether it is used or not">
                       fixed
                     </span>
                   )}
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-300 dark:text-slate-600 shrink-0">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-300 dark:text-slate-600 shrink-0">
                     {k.label}
                   </span>
-                  <span className="text-[12.5px] font-bold tabular-nums text-slate-900 dark:text-white shrink-0 w-16 text-right">
+                  <span className="text-[12.5px] font-bold tabular-nums text-slate-900 dark:text-ink shrink-0 w-16 text-right">
                     {money(line.cost)}
                   </span>
                 </button>

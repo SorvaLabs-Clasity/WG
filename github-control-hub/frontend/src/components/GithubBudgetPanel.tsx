@@ -79,17 +79,17 @@ function UsageLine({ row, biggest, open, onToggle }: {
   const width = biggest > 0 ? Math.max(2, (row.count / biggest) * 100) : 0;
 
   return (
-    <div className="border-b border-slate-100 dark:border-white/[0.06] last:border-0">
+    <div className="border-b border-slate-100 dark:border-ink/[0.06] last:border-0">
       <button
         type="button" onClick={onToggle} aria-expanded={open}
         className="w-full text-left px-5 py-3 flex items-center gap-3
-                   hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors"
+                   hover:bg-slate-50 dark:hover:bg-ink/[0.03] transition-colors"
       >
         <i className={`ph-bold ${b.icon} ${b.tone} text-[15px] shrink-0`} aria-hidden="true" />
 
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
-            <span className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">
+            <span className="text-[13px] font-semibold text-slate-900 dark:text-ink truncate">
               {row.feature}
             </span>
             <span className={`${TYPE.label} ${b.tone} shrink-0`}>{b.label}</span>
@@ -97,13 +97,13 @@ function UsageLine({ row, biggest, open, onToggle }: {
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 truncate mt-0.5">
             {row.about?.trigger ?? "No description for this label yet"}
           </p>
-          <div className="h-1 rounded-full bg-slate-100 dark:bg-white/[0.07] mt-1.5 overflow-hidden">
-            <div className={`h-full rounded-full ${b.bar} opacity-70`} style={{ width: `${width}%` }} />
+          <div className="h-1 rounded-full bg-slate-100 dark:bg-ink/[0.07] mt-1.5 overflow-hidden">
+            <div className={`h-full  ${b.bar} opacity-70`} style={{ width: `${width}%` }} />
           </div>
         </div>
 
         <div className="text-right shrink-0">
-          <p className="text-[15px] font-bold tabular-nums text-slate-900 dark:text-white leading-none">
+          <p className="text-[15px] font-bold tabular-nums text-slate-900 dark:text-ink leading-none">
             {row.count.toLocaleString()}
           </p>
           <p className="text-[10.5px] text-slate-400 dark:text-slate-500 mt-0.5 tabular-nums">
@@ -116,7 +116,7 @@ function UsageLine({ row, biggest, open, onToggle }: {
       </button>
 
       {open && (
-        <div className="px-5 pb-4 pt-1 grid gap-3 bg-slate-50/60 dark:bg-white/[0.02]">
+        <div className="px-5 pb-4 pt-1 grid gap-3 bg-slate-50/60 dark:bg-ink/[0.02]">
           {/* Which process wrote these. Above the description, because on an
               Unattributed row it is the answer: a name other than "app" means a
               Lambda running a build from before that label existed, which is
@@ -129,7 +129,7 @@ function UsageLine({ row, biggest, open, onToggle }: {
                   <span key={src.name}
                     className={`text-[10.5px] font-semibold px-1.5 py-0.5 rounded tabular-nums ${
                       src.name === "app"
-                        ? "bg-slate-200/70 dark:bg-white/[0.08] text-slate-600 dark:text-slate-300"
+                        ? "bg-slate-200/70 dark:bg-ink/[0.08] text-slate-600 dark:text-slate-300"
                         : "bg-amber-500/10 text-amber-700 dark:text-amber-400"}`}>
                     {src.name === "app" ? "this app" : src.name} · {src.count.toLocaleString()}
                   </span>
@@ -164,7 +164,7 @@ function UsageLine({ row, biggest, open, onToggle }: {
                   <div className="flex flex-wrap gap-1.5 mt-1">
                     {row.about.endpoints.map(e => (
                       <code key={e} className="font-mono text-[10.5px] px-1.5 py-0.5 rounded
-                                               bg-slate-200/70 dark:bg-white/[0.08]
+                                               bg-slate-200/70 dark:bg-ink/[0.08]
                                                text-slate-600 dark:text-slate-300">
                         {e}
                       </code>
@@ -178,7 +178,7 @@ function UsageLine({ row, biggest, open, onToggle }: {
                   <div className="flex flex-wrap gap-1.5 mt-1">
                     {row.about.files.map(f => (
                       <code key={f} className="font-mono text-[10.5px] px-1.5 py-0.5 rounded
-                                               bg-slate-200/70 dark:bg-white/[0.08]
+                                               bg-slate-200/70 dark:bg-ink/[0.08]
                                                text-slate-500 dark:text-slate-400">
                         {f}
                       </code>
@@ -302,7 +302,7 @@ export default function GithubBudgetPanel() {
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
                 What this app spent, {windowLabel}
               </h3>
               {/* One measurement on this page, not two.
@@ -326,27 +326,27 @@ export default function GithubBudgetPanel() {
               <button type="button" onClick={refresh} disabled={spinning}
                 title="Read the counters again"
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[12px] font-bold
-                           border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300
-                           hover:bg-slate-50 dark:hover:bg-white/[0.05] transition-colors
+                           border border-slate-200 dark:border-ink/10 text-slate-600 dark:text-slate-300
+                           hover:bg-slate-50 dark:hover:bg-ink/[0.05] transition-colors
                            disabled:opacity-50">
                 <i className={`ph-bold ph-arrows-clockwise text-[12px] ${
                   spinning || isFetching ? "animate-spin" : ""}`} aria-hidden="true" />
                 {spinning || isFetching ? "Reading…" : "Refresh"}
               </button>
-            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-white/10">
+            <div className="flex rounded-lg overflow-hidden border border-slate-200 dark:border-ink/10">
               {[1, 6, 24].map(h => (
                 <button key={h} type="button" onClick={() => setHours(h)}
                   className={`px-2.5 py-1 text-[12px] font-bold transition-colors ${
                     h === hours
-                      ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
-                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.05]"}`}>
+                      ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
+                      : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-ink/[0.05]"}`}>
                   {h}h
                 </button>
               ))}
             </div>
             </div>
           </div>
-          <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
         </div>
 
         {data.error ? (
@@ -367,7 +367,7 @@ export default function GithubBudgetPanel() {
                   {/* The number the list below adds up to. Anything else here
                       invites the reader to reconcile two figures that were
                       never measuring the same thing. */}
-                  <p className="text-[24px] font-black tabular-nums text-slate-900 dark:text-white leading-none mt-1">
+                  <p className="text-[24px] font-semibold tabular-nums text-slate-900 dark:text-ink leading-none mt-1">
                     {(totals[l.bucket] ?? 0).toLocaleString()}
                     <span className="text-[13px] font-bold text-slate-400 dark:text-slate-500">
                       {" "}request{(totals[l.bucket] ?? 0) === 1 ? "" : "s"}
@@ -474,7 +474,7 @@ export default function GithubBudgetPanel() {
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4">
           <div className="flex items-baseline justify-between gap-3 flex-wrap">
-            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
               Which feature spent it
             </h3>
             {measured > 0 && (
@@ -501,7 +501,7 @@ export default function GithubBudgetPanel() {
             alert sweep and the Renovate search are held for a minute and shared,
             so a second look inside that minute costs nothing.
           </p>
-          <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
         </div>
 
         {data.empty || usage.length === 0 ? (

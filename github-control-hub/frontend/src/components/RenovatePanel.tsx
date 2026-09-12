@@ -363,7 +363,7 @@ export default function RenovatePanel() {
   if (prs.data && !prs.data.configured) {
     return (
       <div className={`${SURFACE.card} p-6`} style={enter(0)}>
-        <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>Renovate is not set up yet</h3>
+        <h3 className={`${TYPE.heading} text-slate-900 dark:text-ink`}>Renovate is not set up yet</h3>
         <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-2 max-w-2xl leading-relaxed`}>
           A self-hosted Renovate raises its pull requests and keeps its dashboard as a GitHub App,
           and its authorship is the only way to find them. Type the name shown beside one of its
@@ -385,7 +385,7 @@ export default function RenovatePanel() {
     return (
       <div className={`${SURFACE.card} p-6`} style={enter(0)}>
         <div className="flex items-center gap-2.5">
-          <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>That bot was not found</h3>
+          <h3 className={`${TYPE.heading} text-slate-900 dark:text-ink`}>That bot was not found</h3>
           <Pill intent="warn">check the name</Pill>
         </div>
         <p className={`${TYPE.sub} text-slate-500 dark:text-slate-400 mt-2 max-w-2xl leading-relaxed`}>
@@ -558,7 +558,7 @@ export default function RenovatePanel() {
                     className={`inline-flex items-center gap-2 pl-2.5 pr-3 py-1.5 rounded-xl border
                                 transition-all ${on
                                   ? `${t.soft} ${t.border} shadow-sm`
-                                  : "border-transparent hover:bg-slate-100 dark:hover:bg-white/[0.06]"}`}>
+                                  : "border-transparent hover:bg-slate-100 dark:hover:bg-ink/[0.06]"}`}>
                     <span className={`w-2 h-2 rounded-full ${t.mark}`} />
                     <span className={`text-[13px] font-bold tabular-nums
                                       ${on ? t.text : "text-slate-700 dark:text-slate-200"}`}>
@@ -623,7 +623,7 @@ export default function RenovatePanel() {
                 aria-label={`${open ? "Collapse" : "Expand"} ${repo}`}
                 className="shrink-0 w-6 h-6 -ml-1 grid place-items-center rounded-lg
                            text-slate-400 hover:text-slate-700 dark:hover:text-slate-200
-                           hover:bg-slate-100 dark:hover:bg-white/[0.06] transition-colors">
+                           hover:bg-slate-100 dark:hover:bg-ink/[0.06] transition-colors">
                 <i className={`ph-bold ph-caret-right text-[13px] transition-transform duration-200
                                ${open ? "rotate-90" : ""}`} aria-hidden="true" />
               </button>
@@ -631,7 +631,7 @@ export default function RenovatePanel() {
               <a href={org ? `https://github.com/${org}/${repo}` : undefined}
                 target="_blank" rel="noreferrer noopener"
                 title={`Open ${repo} on GitHub`}
-                className={`${TYPE.heading} font-mono text-slate-900 dark:text-white truncate
+                className={`${TYPE.heading} font-mono text-slate-900 dark:text-ink truncate
                             hover:underline underline-offset-4 decoration-slate-300
                             dark:decoration-slate-600 transition-colors`}>
                 {repo}
@@ -668,7 +668,7 @@ export default function RenovatePanel() {
                   return (
                     <div key={`${r.repo}|${r.branch}|${r.title}`} style={enter(i, 14, 200)}
                       className={`relative overflow-hidden rounded-xl ${SURFACE.inset}
-                                  hover:border-slate-300 dark:hover:border-white/20 transition-colors`}>
+                                  hover:border-slate-300 dark:hover:border-ink/20 transition-colors`}>
                       <span className={`absolute left-0 top-0 bottom-0 w-1 ${t.mark}`} aria-hidden="true" />
 
                       <div className="relative pl-4 pr-3.5 py-2.5 grid items-center gap-x-4 gap-y-1
@@ -717,7 +717,7 @@ export default function RenovatePanel() {
                           {r.pr && (
                             <a href={r.pr.url} target="_blank" rel="noreferrer noopener"
                               className="font-mono text-[12px] tabular-nums text-slate-400 dark:text-slate-500
-                                         hover:text-slate-900 dark:hover:text-white transition-colors">
+                                         hover:text-slate-900 dark:hover:text-ink transition-colors">
                               #{r.pr.number}
                             </a>
                           )}
@@ -754,8 +754,8 @@ export default function RenovatePanel() {
                         })}
                         className="px-2.5 py-1 rounded-lg text-[12px] font-bold
                                    text-slate-500 dark:text-slate-400
-                                   hover:bg-slate-100 dark:hover:bg-white/[0.06]
-                                   hover:text-slate-900 dark:hover:text-white
+                                   hover:bg-slate-100 dark:hover:bg-ink/[0.06]
+                                   hover:text-slate-900 dark:hover:text-ink
                                    disabled:opacity-40 disabled:cursor-not-allowed transition-all">
                         {BULK_LABEL[b.marker]}
                       </button>
@@ -765,8 +765,8 @@ export default function RenovatePanel() {
                         aria-expanded={invOpen.has(repo)}
                         className="ml-auto px-2.5 py-1 rounded-lg text-[12px] font-bold
                                    text-slate-500 dark:text-slate-400
-                                   hover:bg-slate-100 dark:hover:bg-white/[0.06]
-                                   hover:text-slate-900 dark:hover:text-white transition-all">
+                                   hover:bg-slate-100 dark:hover:bg-ink/[0.06]
+                                   hover:text-slate-900 dark:hover:text-ink transition-all">
                         {invOpen.has(repo) ? "Hide" : "Show"} {dashboard.detectedPackages} dependencies
                       </button>
                     )}
@@ -791,10 +791,10 @@ export default function RenovatePanel() {
           <div className={`${SURFACE.card} overflow-hidden`} style={enter(groups.length, 35, 300)}>
             <button onClick={() => toggle(shut, QUIET_KEY, setShut)} aria-expanded={open}
               className="w-full flex items-center gap-3 px-6 py-4 text-left
-                         hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+                         hover:bg-slate-50 dark:hover:bg-ink/[0.03] transition-colors">
               <i className={`ph-bold ph-caret-right text-slate-400 text-[13px] transition-transform
                              duration-200 ${open ? "rotate-90" : ""}`} aria-hidden="true" />
-              <h3 className={`${TYPE.heading} text-slate-900 dark:text-white`}>
+              <h3 className={`${TYPE.heading} text-slate-900 dark:text-ink`}>
                 No Renovate activity
               </h3>
               <span className="ml-auto shrink-0"><Pill intent="neutral">{quiet.length}</Pill></span>

@@ -69,9 +69,9 @@ export default function PersonalCard({
 
   return (
     <div className={`group relative rounded-2xl border overflow-hidden transition-colors
-                     bg-white dark:bg-slate-900
+                     bg-white dark:bg-paper
                      ${error || count === 0 || verdict.level === "clear"
-                        ? "border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/20"
+                        ? "border-slate-200 dark:border-ink/10 hover:border-slate-300 dark:hover:border-ink/20"
                         : `${tone.edge} ${tone.lift}`}`}>
       {/* The rail carries the verdict, so the state is readable before the
           number is. Clear is deliberately the quiet one: a board where every
@@ -93,14 +93,14 @@ export default function PersonalCard({
               identical across a grid. */}
           <div className="flex items-baseline gap-2 mt-1">
             {isLoading ? (
-              <span className="inline-block h-8 w-16 rounded bg-slate-100 dark:bg-white/[0.06] animate-pulse" />
+              <span className="inline-block h-8 w-16 rounded bg-slate-100 dark:bg-ink/[0.06] animate-pulse" />
             ) : error ? (
               <span className="text-[15px] font-bold text-rose-600 dark:text-rose-400">
                 Could not be read
               </span>
             ) : (
               <>
-                <span className={`text-[34px] font-black tabular-nums leading-none tracking-[-0.03em]
+                <span className={`text-[34px] font-semibold tabular-nums leading-none tracking-[-0.03em]
                                   ${count === 0 ? "text-slate-300 dark:text-slate-600" : tone.figure}`}>
                   {count.toLocaleString()}
                 </span>
@@ -143,8 +143,8 @@ export default function PersonalCard({
             <button key={label as string} type="button" onClick={fn as () => void}
               title={label as string} aria-label={`${label} ${config.title}`}
               className="w-7 h-7 rounded-lg grid place-items-center text-slate-400
-                         hover:text-slate-900 dark:hover:text-white
-                         hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors">
+                         hover:text-slate-900 dark:hover:text-ink
+                         hover:bg-slate-100 dark:hover:bg-ink/[0.08] transition-colors">
               <i className={`ph-bold ${icon} text-[12.5px]`} aria-hidden="true" />
             </button>
           ))}
@@ -168,7 +168,7 @@ export default function PersonalCard({
         {isLoading ? (
           <div className="grid gap-1.5">
             {[0, 1, 2].map(i => (
-              <div key={i} className="h-4 rounded bg-slate-100 dark:bg-white/[0.06] animate-pulse"
+              <div key={i} className="h-4 rounded bg-slate-100 dark:bg-ink/[0.06] animate-pulse"
                 style={{ width: `${80 - i * 14}%` }} />
             ))}
           </div>
@@ -192,7 +192,7 @@ export default function PersonalCard({
                   <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                     item.status === "pass" ? "bg-emerald-500"
                       : item.status === "fail" ? "bg-rose-500"
-                      : "bg-slate-300 dark:bg-slate-600"}`} />
+                      : "bg-slate-300 dark:bg-paper-3"}`} />
                   <span className="font-medium text-slate-700 dark:text-slate-200 truncate"
                     title={nameOf(item)}>
                     {nameOf(item)}

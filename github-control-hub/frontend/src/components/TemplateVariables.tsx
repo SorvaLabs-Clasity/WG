@@ -76,7 +76,7 @@ export default function VariableChips({ variables, target, onInsert, children }:
         {variables.map(v => (
           <button key={v.name} type="button" title={v.description}
             onClick={() => onInsert(v.name)}
-            className="px-2 py-1 rounded-md text-xs font-mono bg-black/5 dark:bg-white/10 text-gh-textBase dark:text-slate-200 hover:bg-gh-blue hover:text-white transition-colors">
+            className="px-2 py-1 rounded-md text-xs font-mono bg-black/5 dark:bg-ink/10 text-gh-textBase dark:text-slate-200 hover:bg-gh-blue hover:text-ink transition-colors">
             {`{{${v.name}}}`}
           </button>
         ))}

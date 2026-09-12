@@ -79,7 +79,7 @@ export default function RecrawlButton({ className = "", dense = false }: {
         <div className="pointer-events-none absolute right-0 top-full z-30 mt-1.5 w-[46ch] max-w-[80vw]
                         opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
           <p className={`rounded-lg px-2.5 py-2 text-[12px] leading-snug shadow-lg ring-1
-                         bg-white dark:bg-slate-900 ring-slate-200 dark:ring-white/10 ${
+                         bg-white dark:bg-paper ring-slate-200 dark:ring-ink/10 ${
             noteIsError
               ? "text-amber-700 dark:text-amber-300"
               : "text-slate-600 dark:text-slate-300"}`}>

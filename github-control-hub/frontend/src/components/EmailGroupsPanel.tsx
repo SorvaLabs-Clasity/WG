@@ -69,7 +69,7 @@ function AddRow({ value, onChange, onAdd, placeholder, type, busy }: {
       <button
         type="submit" disabled={!value.trim() || busy}
         className="shrink-0 w-9 h-9 grid place-items-center rounded-xl
-                   bg-slate-900 dark:bg-white text-white dark:text-slate-900
+                   bg-slate-900 dark:bg-white text-reverse dark:text-slate-900
                    hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-opacity"
         title="Add"
       >
@@ -114,7 +114,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
     <section className={`${SURFACE.card} overflow-hidden`}>
       <div className="px-5 pt-4 pb-3.5 flex items-start gap-4">
         <div className="min-w-0 flex-1">
-          <h3 className="text-[14px] font-bold tracking-tight text-slate-900 dark:text-white truncate">
+          <h3 className="text-[14px] font-bold tracking-tight text-slate-900 dark:text-ink truncate">
             {group.name}
           </h3>
           {/* The number that matters is who will actually receive something,
@@ -138,7 +138,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
             disabled={reach.live === 0 || testGroup.isPending}
             title={reach.live === 0 ? "Nobody would receive it" : "Send a test to everyone in this group"}
             className="px-3 h-8 rounded-lg text-[12px] font-bold text-slate-600 dark:text-slate-300
-                       hover:bg-slate-100 dark:hover:bg-white/[0.08] disabled:opacity-30 transition-colors"
+                       hover:bg-slate-100 dark:hover:bg-ink/[0.08] disabled:opacity-30 transition-colors"
           >
             {testGroup.isPending ? "Sending…" : "Test"}
           </button>
@@ -157,17 +157,17 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
         </div>
       </div>
 
-      <div className="h-px bg-slate-200/70 dark:bg-white/[0.07]" />
+      <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07]" />
 
       {/* Two channels as peers. Neither is the primary, a group with only
           Teams is as valid as one with only email. */}
-      <div className="grid md:grid-cols-2 gap-px bg-slate-200/70 dark:bg-white/[0.07]">
+      <div className="grid md:grid-cols-2 gap-px bg-slate-200/70 dark:bg-ink/[0.07]">
         {/* min-w-0 on the column, not only on the text inside it.
             `grid-cols-2` is minmax(auto, 1fr), and that `auto` minimum sizes a
             column to its content: one long unbroken address grew the column
             past its share and pushed the card out, which no amount of
             truncating inside it could prevent. */}
-        <div className="bg-white dark:bg-[#151a23] p-5 min-w-0">
+        <div className="bg-white dark:bg-paper p-5 min-w-0">
           <ChannelHeader icon="ph-fill ph-envelope-simple" label="Email"
             count={group.members.length} tone="text-sky-500" />
 
@@ -175,7 +175,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
               still named in the message: one SNS publish hands every subscriber
               the same body, so rather than picking one person's clock and being
               wrong for the rest, it carries them all. */}
-          <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-slate-100 dark:border-white/[0.06]">
+          <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-slate-100 dark:border-ink/[0.06]">
             <span className="text-[11.5px] text-slate-400 dark:text-slate-500 shrink-0">
               Times lead with
             </span>
@@ -257,7 +257,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
           </p>
         </div>
 
-        <div className="bg-white dark:bg-[#151a23] p-5 min-w-0">
+        <div className="bg-white dark:bg-paper p-5 min-w-0">
           <ChannelHeader icon="ph-fill ph-chat-teardrop-text" label="Microsoft Teams"
             count={teams.length} tone="text-violet-500" />
 
@@ -265,7 +265,7 @@ function GroupCard({ group, orgZone, onNotice, onError }: {
               place for the same reason: the two columns take the same setting
               and do different things with it, and that asymmetry is worth one
               sentence each rather than being left for somebody to discover. */}
-          <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-slate-100 dark:border-white/[0.06]">
+          <div className="flex items-center gap-2 mb-2.5 pb-2.5 border-b border-slate-100 dark:border-ink/[0.06]">
             <span className="text-[11.5px] text-slate-400 dark:text-slate-500">
               Each message uses its own recipient's zone
             </span>
@@ -356,7 +356,7 @@ export default function EmailGroupsPanel() {
       <div className={`${SURFACE.card} px-5 py-4`}>
         <div className="flex items-center gap-3 flex-wrap">
           <div className="min-w-0">
-            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+            <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
               Default timezone
             </h3>
             <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">

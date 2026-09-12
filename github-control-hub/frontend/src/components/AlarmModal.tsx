@@ -12,9 +12,9 @@ import TeamsWording from "./TeamsWording";
 const SEVERITIES: Severity[] = ["critical", "high", "medium", "low"];
 
 const inputClass =
-  "block w-full rounded-md border-gh-border dark:border-slate-700 shadow-sm focus:border-gh-blue " +
+  "block w-full rounded-md border-gh-border dark:border-rule shadow-sm focus:border-gh-blue " +
   "focus:ring focus:ring-gh-blue/30 sm:text-sm py-2 px-3 text-gh-textBase ring-1 ring-inset " +
-  "ring-gray-300 dark:ring-slate-600 outline-none dark:bg-slate-800 dark:text-slate-200";
+  "ring-gray-300 dark:ring-rule outline-none dark:bg-paper-2 dark:text-slate-200";
 const labelClass = "block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1";
 
 /**
@@ -188,15 +188,15 @@ export default function AlarmModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-[#24292f]/40 backdrop-blur-[3px] animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white dark:bg-slate-900 rounded-[12px] shadow-modal border border-black/10 dark:border-slate-700 w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
+      <div className="absolute inset-0 bg-ink/40 -[3px] animate-fade-in" onClick={onClose}></div>
+      <div className="bg-white dark:bg-paper rounded-none shadow-modal border border-black/10 dark:border-rule w-full max-w-2xl relative z-10 animate-slide-up flex flex-col max-h-[90vh]">
 
-        <div className="px-6 py-4 border-b border-gh-border dark:border-slate-700 flex items-center justify-between shrink-0 rounded-t-[12px]">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white tracking-tight">
+        <div className="px-6 py-4 border-b border-gh-border dark:border-rule flex items-center justify-between shrink-0 rounded-t-[12px]">
+          <h3 className="text-lg font-bold text-gray-900 dark:text-ink tracking-tight">
             {existing ? "Edit alarm" : "New alarm"}
           </h3>
           <button onClick={onClose}
-            className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-white hover:bg-black/5 dark:hover:bg-white/5 transition-colors">
+            className="w-8 h-8 rounded-md flex items-center justify-center text-gray-400 dark:text-slate-500 hover:text-gray-900 dark:hover:text-ink hover:bg-black/5 dark:hover:bg-ink/5 transition-colors">
             <i className="ph ph-x text-lg"></i>
           </button>
         </div>
@@ -350,13 +350,13 @@ export default function AlarmModal({
           )}
         </div>
 
-        <div className="px-6 py-4 border-t border-gh-border dark:border-slate-700 flex justify-end gap-2 shrink-0">
+        <div className="px-6 py-4 border-t border-gh-border dark:border-rule flex justify-end gap-2 shrink-0">
           <button onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold rounded-md text-gh-textBase dark:text-slate-200 hover:bg-black/5 dark:hover:bg-white/5">
+            className="px-4 py-2 text-sm font-semibold rounded-md text-gh-textBase dark:text-slate-200 hover:bg-black/5 dark:hover:bg-ink/5">
             Cancel
           </button>
           <button onClick={save} disabled={saving || !spec?.conditions.length}
-            className="px-4 py-2 text-sm font-semibold rounded-md bg-gh-blue text-white hover:opacity-90 disabled:opacity-50">
+            className="px-4 py-2 text-sm font-semibold rounded-md bg-gh-blue text-reverse hover:opacity-90 disabled:opacity-50">
             {saving ? "Saving…" : existing ? "Save changes" : "Create alarm"}
           </button>
         </div>

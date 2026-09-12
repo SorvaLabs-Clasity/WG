@@ -506,8 +506,8 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             aria-pressed={filter === id}
             className={`px-2.5 py-1 rounded-lg text-[12px] font-semibold transition-colors ${
               filter === id
-                ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/[0.06]"}`}>
+                ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
+                : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-ink/[0.06]"}`}>
             {label}
           </button>
         ))}
@@ -515,11 +515,11 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
           placeholder="Filter by name" className={`${SURFACE.input} max-w-[220px] ml-auto`} />
       </div>
 
-      <div className="pb-2 flex items-center gap-2 flex-wrap border-b border-slate-200/70 dark:border-white/[0.07]">
+      <div className="pb-2 flex items-center gap-2 flex-wrap border-b border-slate-200/70 dark:border-ink/[0.07]">
         <label className="inline-flex items-center gap-2 text-[12.5px] font-semibold
                           text-slate-600 dark:text-slate-300 cursor-pointer">
           <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown}
-            className="w-4 h-4 rounded border-slate-300 dark:border-slate-600" />
+            className="w-4 h-4 rounded border-slate-300 dark:border-rule" />
           Select all {shown.length === repos.length ? "" : `${shown.length} shown`}
         </label>
         <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-500">
@@ -534,7 +534,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         )}
       </div>
 
-      <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100 dark:divide-white/[0.06]">
+      <div className="max-h-[380px] overflow-y-auto divide-y divide-slate-100 dark:divide-ink/[0.06]">
         {shown.length === 0 ? (
           <p className="py-6 text-[12.5px] text-slate-400 dark:text-slate-500">
             Nothing matches.
@@ -542,9 +542,9 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         ) : shown.map(r => (
           <label key={r.repo}
             className="flex items-center gap-3 px-2 -mx-2 rounded-lg py-2.5 cursor-pointer
-                       hover:bg-slate-50 dark:hover:bg-white/[0.03] transition-colors">
+                       hover:bg-slate-50 dark:hover:bg-ink/[0.03] transition-colors">
             <input type="checkbox" checked={selected.has(r.repo)} onChange={() => toggle(r.repo)}
-              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600 shrink-0" />
+              className="w-4 h-4 rounded border-slate-300 dark:border-rule shrink-0" />
             <span className="text-[13px] font-medium text-slate-800 dark:text-slate-200 truncate flex-1">
               {r.repo}
             </span>
@@ -555,13 +555,13 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
             {r.archived && (
               <span title="GitHub refuses settings changes on an archived repository. Unarchive it to change this."
                 className="text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0
-                           bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
+                           bg-slate-200/70 dark:bg-ink/[0.08] text-slate-500 dark:text-slate-400">
                 archived
               </span>
             )}
             {r.off ? (
               <span className="text-[10.5px] font-bold px-1.5 py-0.5 rounded shrink-0
-                               bg-slate-200/70 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">
+                               bg-slate-200/70 dark:bg-ink/[0.08] text-slate-500 dark:text-slate-400">
                 not watched
               </span>
             ) : r.findings > 0 ? (
@@ -581,7 +581,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         ))}
       </div>
 
-      <div className="pt-4 mt-1 grid gap-2.5 border-t border-slate-200/70 dark:border-white/[0.07]">
+      <div className="pt-4 mt-1 grid gap-2.5 border-t border-slate-200/70 dark:border-ink/[0.07]">
         <div className="flex flex-wrap gap-2">
           {ACTIONS.map(a => (
             <Button key={a.id}
@@ -606,7 +606,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
         {/* The second kind of action, kept visually apart from the switches
             above, because this one writes a file into the repository and that
             is not something to press by accident. */}
-        <div className="mt-1 pt-3.5 border-t border-slate-100 dark:border-white/[0.06]">
+        <div className="mt-1 pt-3.5 border-t border-slate-100 dark:border-ink/[0.06]">
           <p className="text-[12px] font-bold text-slate-700 dark:text-slate-200">
             Findings with patches and no pull requests
           </p>
@@ -861,7 +861,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                   onKeyDown={e => { if (e.key === "Enter" && typed === "CLOSE") startClose(); }}
                   placeholder="Type CLOSE"
                   autoFocus
-                  className="w-36 px-2.5 py-1.5 text-[12.5px] rounded-lg bg-white dark:bg-white/[0.06]
+                  className="w-36 px-2.5 py-1.5 text-[12.5px] rounded-lg bg-white dark:bg-ink/[0.06]
                              border border-rose-300 dark:border-rose-500/40
                              text-slate-800 dark:text-slate-100 placeholder:text-slate-400
                              focus:outline-none focus:ring-2 focus:ring-rose-500/30" />

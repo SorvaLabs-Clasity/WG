@@ -642,7 +642,7 @@ export default function ActivityPage() {
   }, [filtered, data, perPage]);
 
   const renderRow = (entry: Activity, depth: number) => {
-    const cfg = ACTION_CONFIG[entry.action as ActivityAction] || { label: entry.action, colorClass: "bg-gray-50 dark:bg-slate-800", iconClass: "fa-solid fa-circle" };
+    const cfg = ACTION_CONFIG[entry.action as ActivityAction] || { label: entry.action, colorClass: "bg-gray-50 dark:bg-paper-2", iconClass: "fa-solid fa-circle" };
     const hasChildren = entry.children && entry.children.length > 0;
     const isExpanded = expandedIds.has(entry.id);
     const isUndoneEntry = entry.undone === true;
@@ -672,7 +672,7 @@ export default function ActivityPage() {
         // rail and won, so a held row lost the one mark saying where it came
         // from.
         className={`group cursor-pointer transition-colors duration-150
-          hover:bg-slate-50 dark:hover:bg-white/[0.04]
+          hover:bg-slate-50 dark:hover:bg-ink/[0.04]
           ${dimmed ? "opacity-50" : ""}
           ${isFailedEntry ? "bg-red-50/40 dark:bg-red-950/40" : ""}
           ${isHighlighted ? "ring-2 ring-inset ring-gh-blue bg-blue-50/60 dark:bg-blue-950/60 animate-pulse-once" : ""}
@@ -689,7 +689,7 @@ export default function ActivityPage() {
               three colours the chart above uses, so a row and a band in the
               graph are recognisably the same thing. */}
           <span aria-hidden="true"
-            className={`absolute left-0 inset-y-0 w-[3px] ${STREAM_RAIL[categoryOf(entry.action)] ?? "bg-slate-300 dark:bg-slate-600"}`} />
+            className={`absolute left-0 inset-y-0 w-[3px] ${STREAM_RAIL[categoryOf(entry.action)] ?? "bg-slate-300 dark:bg-paper-3"}`} />
 
           <div className="flex items-start gap-2 min-w-0">
             <div className="flex items-center gap-1 shrink-0 pt-0.5">
@@ -703,7 +703,7 @@ export default function ActivityPage() {
                   aria-expanded={isExpanded}
                   aria-label={isExpanded ? "Collapse" : `Expand ${countAllChildren(entry)} related`}
                   className="w-5 h-5 flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500
-                             hover:bg-slate-200 dark:hover:bg-slate-600 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
+                             hover:bg-slate-200 dark:hover:bg-paper-3 hover:text-slate-700 dark:hover:text-slate-200 transition-colors">
                   <i className={`fa-solid fa-chevron-${isExpanded ? "down" : "right"} text-[9px]`}></i>
                 </button>
               ) : <span className="w-5 inline-block" />}
@@ -720,7 +720,7 @@ export default function ActivityPage() {
             </div>
 
             <div className="min-w-0 flex flex-wrap items-center gap-1.5">
-              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border shrink-0 ${isFailedEntry ? "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800" : cfg.colorClass} ${isUndoneEntry ? "line-through" : ""}`}>
+              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1  text-xs font-semibold border shrink-0 ${isFailedEntry ? "bg-red-50 text-red-700 border-red-200/60 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800" : cfg.colorClass} ${isUndoneEntry ? "line-through" : ""}`}>
                 <i className={isFailedEntry ? "fa-solid fa-xmark text-[10px]" : cfg.iconClass}></i>
                 {/* The event itself, not the category it belongs to. Every one
                     of these rows said "Security Alert", which is the name of
@@ -747,7 +747,7 @@ export default function ActivityPage() {
                 </span>
               )}
               {entry.detailed && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-700/70 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-600 font-medium shrink-0" title="Recorded by detailed GitHub logging">
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-paper-3/70 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-rule font-medium shrink-0" title="Recorded by detailed GitHub logging">
                   detailed
                 </span>
               )}
@@ -842,14 +842,14 @@ export default function ActivityPage() {
   };
 
   const popupEntry = selectedEvent;
-  const popupCfg = popupEntry ? (ACTION_CONFIG[popupEntry.action as ActivityAction] || { label: popupEntry.action, colorClass: "bg-gray-50 dark:bg-slate-800", iconClass: "fa-solid fa-circle" }) : null;
+  const popupCfg = popupEntry ? (ACTION_CONFIG[popupEntry.action as ActivityAction] || { label: popupEntry.action, colorClass: "bg-gray-50 dark:bg-paper-2", iconClass: "fa-solid fa-circle" }) : null;
   const popupChildCount = popupEntry ? countAllChildren(popupEntry) : 0;
   const popupFailedCount = popupEntry ? countFailed(popupEntry) : 0;
   const popupIsTracker = popupEntry ? isUndoRedoTracker(popupEntry) : false;
   const popupOriginal = popupIsTracker && popupEntry?.linkedActivityId
     ? findActivityById(data?.entries || [], popupEntry.linkedActivityId)
     : undefined;
-  const popupOriginalCfg = popupOriginal ? (ACTION_CONFIG[popupOriginal.action as ActivityAction] || { label: popupOriginal.action, colorClass: "bg-gray-50 dark:bg-slate-800", iconClass: "fa-solid fa-circle" }) : null;
+  const popupOriginalCfg = popupOriginal ? (ACTION_CONFIG[popupOriginal.action as ActivityAction] || { label: popupOriginal.action, colorClass: "bg-gray-50 dark:bg-paper-2", iconClass: "fa-solid fa-circle" }) : null;
   const popupIsOverriddenConflict = popupEntry?.action === "conflict.pending" && popupEntry.conflictResolution === "override" && !popupEntry.undone;
   const popupIsSkippedConflict = popupEntry?.action === "conflict.pending" && popupEntry.conflictResolution === "skip" && !popupEntry.undone;
   const popupCanUndo = popupEntry ? (!popupIsOverriddenConflict && canUndo(popupEntry)) : false;
@@ -861,7 +861,7 @@ export default function ActivityPage() {
         <header className="flex flex-col mb-5 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="min-w-0">
-              <h1 className={TYPE.title + " text-slate-900 dark:text-white"}>Activity</h1>
+              <h1 className={TYPE.title + " text-slate-900 dark:text-ink"}>Activity</h1>
               {/* One line, and only where it is not already obvious. The stream
                   descriptions moved to the tabs themselves, where the thing
                   they describe is the thing being pointed at. */}
@@ -895,13 +895,13 @@ export default function ActivityPage() {
               Wrapping, because the labels are words rather than icons and five
               of them do not fit a narrow window on one line. */}
           <div className="flex items-center flex-wrap gap-1 p-1 rounded-xl
-                          bg-slate-100 dark:bg-white/[0.06] w-fit max-w-full">
+                          bg-slate-100 dark:bg-ink/[0.06] w-fit max-w-full">
             {lenses.map(([v, icon, label]) => (
               <button key={v} onClick={() => setLensPersistent(v)} aria-pressed={lens === v}
                 className={`px-3.5 py-2 rounded-lg text-[13px] font-semibold whitespace-nowrap
                             flex items-center gap-2 transition-all
                   ${lens === v
-                    ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                    ? "bg-white dark:bg-paper-2 text-slate-900 dark:text-ink shadow-sm"
                     : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}>
                 <i className={`ph-bold ${icon} text-[14px]`} aria-hidden="true" />
                 {label}
@@ -916,7 +916,7 @@ export default function ActivityPage() {
               overflows by exactly enough to raise a vertical scrollbar on a row
               of buttons. */}
           {lens === "feed" && (
-          <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-slate-700 -mb-px overflow-x-auto overflow-y-hidden">
+          <nav className="flex items-center gap-1 border-b border-slate-200 dark:border-rule -mb-px overflow-x-auto overflow-y-hidden">
             {views.map(c => {
               const active = category === c;
               return (
@@ -926,7 +926,7 @@ export default function ActivityPage() {
                   aria-current={active ? "page" : undefined}
                   className={`px-4 py-2.5 text-sm font-semibold whitespace-nowrap border-b-2 -mb-px transition-colors
                     ${active
-                      ? "border-blue-600 dark:border-blue-400 text-slate-900 dark:text-white"
+                      ? "border-blue-600 dark:border-blue-400 text-slate-900 dark:text-ink"
                       : "border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}
                 >
                   {CATEGORY_LABELS[c]}
@@ -937,8 +937,8 @@ export default function ActivityPage() {
                   {pulse && (
                     <span className={`ml-2 text-[11px] tabular-nums px-1.5 py-0.5 rounded-md
                       ${active
-                        ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900"
-                        : "bg-slate-100 dark:bg-white/[0.07] text-slate-500 dark:text-slate-400"}`}>
+                        ? "bg-slate-900 text-reverse dark:bg-white dark:text-slate-900"
+                        : "bg-slate-100 dark:bg-ink/[0.07] text-slate-500 dark:text-slate-400"}`}>
                       {/* A "+" when the walk stopped before the window did.
                           The count is then a floor, not a total, and a precise
                           looking number that has quietly stopped rising is
@@ -986,13 +986,13 @@ export default function ActivityPage() {
               {/* The arrangement, beside the filters that feed it. Both views
                   read the same rows, so this is presentation and belongs with
                   the other view controls rather than in the toolbar. */}
-              <div className="ml-auto flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-white/[0.07]">
+              <div className="ml-auto flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-ink/[0.07]">
                 {([["table", "ph-table", "Table"], ["timeline", "ph-list-dashes", "Timeline"]] as const).map(
                   ([v, icon, label]) => (
                     <button key={v} onClick={() => setShapePersistent(v)} aria-pressed={shape === v} title={label}
                       className={`px-2.5 py-1 rounded-md text-[12px] font-semibold flex items-center gap-1.5 transition-colors
                         ${shape === v
-                          ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                          ? "bg-white dark:bg-paper-2 text-slate-900 dark:text-ink shadow-sm"
                           : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}>
                       <i className={`ph-bold ${icon} text-[13px]`} aria-hidden="true" />
                       {label}
@@ -1009,7 +1009,7 @@ export default function ActivityPage() {
                   <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Important events</label>
                   <select value={showImportant ? "show" : "hide"}
                     onChange={(e) => setShowImportantPersistent(e.target.value === "show")}
-                    className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    className="w-full text-sm bg-gray-50 dark:bg-paper-2 border border-gh-border dark:border-rule rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
                     <option value="show">Shown</option>
                     <option value="hide">Hidden</option>
                   </select>
@@ -1024,7 +1024,7 @@ export default function ActivityPage() {
                   <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Detailed rows</label>
                   <select value={showDetailed ? "show" : "hide"}
                     onChange={(e) => setShowDetailedPersistent(e.target.value === "show")}
-                    className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    className="w-full text-sm bg-gray-50 dark:bg-paper-2 border border-gh-border dark:border-rule rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
                     <option value="show">Shown</option>
                     <option value="hide">Hidden</option>
                   </select>
@@ -1038,7 +1038,7 @@ export default function ActivityPage() {
                   <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Personal rows</label>
                   <select value={personalMode}
                     onChange={(e) => setPersonalPersistent(e.target.value as "all" | "only" | "hide")}
-                    className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
+                    className="w-full text-sm bg-gray-50 dark:bg-paper-2 border border-gh-border dark:border-rule rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200">
                     <option value="all">Shown</option>
                     <option value="only">Only personal</option>
                     <option value="hide">Hidden</option>
@@ -1048,17 +1048,17 @@ export default function ActivityPage() {
 
               <div>
                 <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Repository</label>
-                <input type="text" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} placeholder="e.g. web-platform" className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200" />
+                <input type="text" value={repoFilter} onChange={(e) => setRepoFilter(e.target.value)} placeholder="e.g. web-platform" className="w-full text-sm bg-gray-50 dark:bg-paper-2 border border-gh-border dark:border-rule rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200" />
               </div>
               <div>
                 <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Target (Branch/PR)</label>
-                <input type="text" value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)} placeholder="e.g. main or 42" className="w-full text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200" />
+                <input type="text" value={targetFilter} onChange={(e) => setTargetFilter(e.target.value)} placeholder="e.g. main or 42" className="w-full text-sm bg-gray-50 dark:bg-paper-2 border border-gh-border dark:border-rule rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue py-1.5 px-2 outline-none dark:text-slate-200" />
               </div>
               <div>
                 <label className="block text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider mb-1">Search Details</label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-2 flex items-center pointer-events-none text-gray-400 dark:text-slate-500"><i className="fa-solid fa-magnifying-glass text-[11px]"></i></div>
-                  <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="User, action, details..." className="w-full pl-7 pr-3 py-1.5 text-sm bg-gray-50 dark:bg-slate-800 border border-gh-border dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue outline-none dark:text-slate-200" />
+                  <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="User, action, details..." className="w-full pl-7 pr-3 py-1.5 text-sm bg-gray-50 dark:bg-paper-2 border border-gh-border dark:border-rule rounded-md shadow-sm focus:outline-none focus:border-gh-blue focus:ring-1 focus:ring-gh-blue outline-none dark:text-slate-200" />
                 </div>
               </div>
             </div>
@@ -1068,7 +1068,7 @@ export default function ActivityPage() {
                 None selected means all: a narrowing, never a whitelist that
                 would show an empty table until somebody ticked something. */}
             {showImportant && (category === "github" || category === "all") && (
-              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-700">
+              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-rule">
                 <div className="flex items-center justify-between gap-3 mb-2 flex-wrap">
                   <span className="text-[11px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">
                     Which important events
@@ -1092,8 +1092,8 @@ export default function ActivityPage() {
                       <button key={k.id} onClick={() => toggleKind(k.id)} aria-pressed={on}
                         className={`px-2.5 py-1 rounded-lg text-[12px] font-medium border transition-colors
                           ${on
-                            ? "bg-rose-600 border-rose-600 text-white"
-                            : "bg-gray-50 dark:bg-slate-800 border-gh-border dark:border-slate-600 text-gh-textBase dark:text-slate-300 hover:border-rose-400 dark:hover:border-rose-500"}`}>
+                            ? "bg-rose-600 border-rose-600 text-reverse"
+                            : "bg-gray-50 dark:bg-paper-2 border-gh-border dark:border-rule text-gh-textBase dark:text-slate-300 hover:border-rose-400 dark:hover:border-rose-500"}`}>
                         {k.label}
                       </button>
                     );
@@ -1138,7 +1138,7 @@ export default function ActivityPage() {
         {!isLoading && !error && category === "github" && <DetailedLoggingPanel />}
 
         {!isLoading && !error && (
-          <div className="bg-white dark:bg-slate-900 rounded-lg border border-gh-border dark:border-slate-700 shadow-subtle overflow-hidden relative">
+          <div className="bg-white dark:bg-paper rounded-lg border border-gh-border dark:border-rule shadow-subtle overflow-hidden relative">
             {shape === "timeline" ? (
               <div className="px-5 py-3">
                 {/* Read-only by design. Undo, redo and diffs live in the table,
@@ -1186,8 +1186,8 @@ export default function ActivityPage() {
                 </colgroup>
                 {/* Sticky, because the feed is long and a column you cannot
                     name is a column you have to scroll back up to read. */}
-                <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-800/95 backdrop-blur-sm
-                                  border-b border-gh-border dark:border-slate-700">
+                <thead className="sticky top-0 z-10 bg-slate-50/95 dark:bg-paper-2/95 
+                                  border-b border-gh-border dark:border-rule">
                   <tr>
                     {columns.map((c, i) => (
                       <th key={c.id}
@@ -1210,7 +1210,7 @@ export default function ActivityPage() {
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gh-border dark:divide-slate-700">
+                <tbody className="divide-y divide-gh-border dark:divide-rule">
                   {paginatedEntries.map((entry) => renderRow(entry, 0)).flat()}
                   {paginatedEntries.length === 0 && (
                     <tr><td colSpan={columns.length} className="px-6 py-10 text-center text-gh-muted dark:text-slate-400">
@@ -1242,7 +1242,7 @@ export default function ActivityPage() {
                 pages forward with an opaque cursor and cannot jump to page N,
                 so offering "page 7" would mean walking to it invisibly. What is
                 offered instead is exactly what the store can do. */}
-            <div className="px-6 py-3 border-t border-gh-border dark:border-slate-700 bg-gray-50 dark:bg-slate-800 flex items-center justify-between gap-3 flex-wrap">
+            <div className="px-6 py-3 border-t border-gh-border dark:border-rule bg-gray-50 dark:bg-paper-2 flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-3">
                 <span className="text-xs text-gh-muted dark:text-slate-400">
                   {paginatedEntries.length === 0
@@ -1255,7 +1255,7 @@ export default function ActivityPage() {
                   <select
                     value={perPage}
                     onChange={(e) => setPerPage(Number(e.target.value))}
-                    className="text-xs bg-white dark:bg-slate-900 border border-gh-border dark:border-slate-700 rounded px-1.5 py-0.5 outline-none focus:border-gh-blue dark:text-slate-200"
+                    className="text-xs bg-white dark:bg-paper border border-gh-border dark:border-rule rounded px-1.5 py-0.5 outline-none focus:border-gh-blue dark:text-slate-200"
                   >
                     {[25, 50, 100, 200].map((n) => (
                       <option key={n} value={n}>{n}</option>
@@ -1267,7 +1267,7 @@ export default function ActivityPage() {
                 <button
                   onClick={() => { setCursors([undefined]); setPageIndex(0); }}
                   disabled={pageIndex === 0}
-                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
+                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-rule rounded bg-white dark:bg-paper hover:bg-gray-100 dark:hover:bg-paper-3 disabled:opacity-40 transition-colors"
                   title="Newest"
                 ><i className="fa-solid fa-angles-left text-[10px]"></i></button>
                 {/* Icons, matching the jump-to-newest button beside them. The
@@ -1280,14 +1280,14 @@ export default function ActivityPage() {
                   disabled={pageIndex === 0}
                   title="Newer"
                   aria-label="Newer events"
-                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
+                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-rule rounded bg-white dark:bg-paper hover:bg-gray-100 dark:hover:bg-paper-3 disabled:opacity-40 transition-colors"
                 ><i className="fa-solid fa-angle-left text-[10px]"></i></button>
                 <button
                   onClick={goNext}
                   disabled={!hasMore || isFetching}
                   title="Older"
                   aria-label="Older events"
-                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-slate-700 rounded bg-white dark:bg-slate-900 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-40 transition-colors"
+                  className="px-2 py-1 text-xs font-medium text-gh-muted dark:text-slate-400 border border-gh-border dark:border-rule rounded bg-white dark:bg-paper hover:bg-gray-100 dark:hover:bg-paper-3 disabled:opacity-40 transition-colors"
                 ><i className="fa-solid fa-angle-right text-[10px]"></i></button>
               </div>
             </div>
@@ -1297,10 +1297,10 @@ export default function ActivityPage() {
       {/* EVENT DETAIL / UNDO-REDO-RETRY POPUP */}
       {popupEntry && popupCfg && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-gray-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedEvent(null)}></div>
-          <div className="bg-white dark:bg-slate-900 rounded-xl shadow-modal border border-black/10 dark:border-slate-700 w-full max-w-lg relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
+          <div className="absolute inset-0 bg-gray-900/60  animate-fade-in" onClick={() => setSelectedEvent(null)}></div>
+          <div className="bg-white dark:bg-paper rounded-xl shadow-modal border border-black/10 dark:border-rule w-full max-w-lg relative z-10 animate-slide-up flex flex-col max-h-[85vh]">
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gh-border dark:border-slate-700 flex justify-between items-start rounded-t-xl">
+            <div className="px-6 py-4 border-b border-gh-border dark:border-rule flex justify-between items-start rounded-t-xl">
               <div className="flex items-start gap-3">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center border ${popupEntry.failed ? 'bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' : popupCfg.colorClass}`}>
                   <i className={popupEntry.failed ? 'fa-solid fa-circle-exclamation text-sm' : popupCfg.iconClass.replace('text-[10px]', 'text-sm')}></i>
@@ -1351,14 +1351,14 @@ export default function ActivityPage() {
 
               {/* Original action card for undo/redo tracker entries */}
               {popupIsTracker && popupOriginal && popupOriginalCfg && (
-                <div className="border border-gh-border dark:border-slate-700 rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 dark:bg-slate-800 px-3 py-2 border-b border-gh-border dark:border-slate-700 flex items-center gap-2">
+                <div className="border border-gh-border dark:border-rule rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-paper-2 px-3 py-2 border-b border-gh-border dark:border-rule flex items-center gap-2">
                     <i className="fa-solid fa-link text-gray-400 dark:text-slate-500 text-[10px]"></i>
                     <span className="text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">Original Action</span>
                   </div>
                   <div className="px-4 py-3 space-y-3">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border ${popupOriginal.undone ? 'line-through opacity-60' : ''} ${popupOriginalCfg.colorClass}`}>
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1  text-xs font-medium border ${popupOriginal.undone ? 'line-through opacity-60' : ''} ${popupOriginalCfg.colorClass}`}>
                         <i className={popupOriginalCfg.iconClass}></i>
                         {popupOriginalCfg.label}
                       </span>
@@ -1377,10 +1377,10 @@ export default function ActivityPage() {
                         </>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 pt-1 border-t border-gh-border/50 dark:border-slate-700">
+                    <div className="flex items-center gap-2 pt-1 border-t border-gh-border/50 dark:border-rule">
                       <button
                         onClick={() => navigateToActivity(popupOriginal.id)}
-                        className="px-3 py-1.5 text-xs font-medium rounded-md border border-gh-border dark:border-slate-700 text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1.5"
+                        className="px-3 py-1.5 text-xs font-medium rounded-md border border-gh-border dark:border-rule text-gh-textBase dark:text-slate-200 bg-white dark:bg-paper-2 hover:bg-gray-50 dark:hover:bg-paper-3 transition-colors flex items-center gap-1.5"
                       >
                         <i className="fa-solid fa-location-arrow text-[10px] text-gray-400 dark:text-slate-500"></i>
                         Go to Original Event
@@ -1389,7 +1389,7 @@ export default function ActivityPage() {
                         <button
                           onClick={() => handleUndoResolution(popupOriginal)}
                           disabled={isBusy}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-reverse bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
                         >
                           <i className="fa-solid fa-rotate-left text-[10px]"></i>
                           Undo Skip
@@ -1400,7 +1400,7 @@ export default function ActivityPage() {
                           <button
                             onClick={() => handleUndoResolution(popupOriginal)}
                             disabled={isBusy}
-                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-reverse bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
                           >
                             <i className="fa-solid fa-rotate-left text-[10px]"></i>
                             Undo Override
@@ -1408,7 +1408,7 @@ export default function ActivityPage() {
                           <button
                             onClick={() => handleUndoFromPopup(popupOriginal)}
                             disabled={isBusy}
-                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                            className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-reverse bg-red-600 hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
                           >
                             <i className="fa-solid fa-trash text-[10px]"></i>
                             Undo Event
@@ -1419,7 +1419,7 @@ export default function ActivityPage() {
                         <button
                           onClick={() => handleRedoFromPopup(popupOriginal)}
                           disabled={isBusy}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-reverse bg-green-600 hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
                         >
                           <i className="fa-solid fa-rotate-right text-[10px]"></i>
                           Redo
@@ -1429,7 +1429,7 @@ export default function ActivityPage() {
                         <button
                           onClick={() => handleUndoFromPopup(popupOriginal)}
                           disabled={isBusy}
-                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+                          className="px-3 py-1.5 text-xs font-medium rounded-md border border-transparent text-reverse bg-orange-600 hover:bg-orange-700 disabled:opacity-50 transition-colors flex items-center gap-1.5"
                         >
                           <i className="fa-solid fa-rotate-left text-[10px]"></i>
                           Undo
@@ -1440,7 +1440,7 @@ export default function ActivityPage() {
                 </div>
               )}
               {popupIsTracker && !popupOriginal && popupEntry.linkedActivityId && (
-                <div className="px-3 py-2.5 bg-gray-50 dark:bg-slate-800 rounded-lg border border-gh-border dark:border-slate-700 flex items-center gap-2">
+                <div className="px-3 py-2.5 bg-gray-50 dark:bg-paper-2 rounded-lg border border-gh-border dark:border-rule flex items-center gap-2">
                   <i className="fa-solid fa-link-slash text-gray-400 dark:text-slate-500 text-sm"></i>
                   <span className="text-sm text-gh-muted dark:text-slate-400">Original event is not in the current view. It may be on another page or nested in a template run.</span>
                 </div>
@@ -1454,9 +1454,9 @@ export default function ActivityPage() {
                   <span className="font-medium text-gh-textBase dark:text-slate-200">{actorLabel(popupEntry.actor)}</span>
                 </div>
                 <span className="text-gh-muted dark:text-slate-400 font-medium">Repository</span>
-                <span className="font-mono text-xs bg-gray-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700 w-fit">{popupEntry.repo === '*' ? '* (Global)' : popupEntry.repo}</span>
+                <span className="font-mono text-xs bg-gray-50 dark:bg-paper-2 px-1.5 py-0.5 rounded border border-gray-200 dark:border-rule w-fit">{popupEntry.repo === '*' ? '* (Global)' : popupEntry.repo}</span>
                 <span className="text-gh-muted dark:text-slate-400 font-medium">Target</span>
-                <span className="font-mono text-xs bg-gray-50 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700 w-fit">{popupEntry.target}</span>
+                <span className="font-mono text-xs bg-gray-50 dark:bg-paper-2 px-1.5 py-0.5 rounded border border-gray-200 dark:border-rule w-fit">{popupEntry.target}</span>
                 {popupEntry.details && (
                   <>
                     <span className="text-gh-muted dark:text-slate-400 font-medium">Details</span>
@@ -1469,20 +1469,20 @@ export default function ActivityPage() {
 
               {/* Children summary */}
               {popupEntry.children && popupEntry.children.length > 0 && (
-                <div className="border border-gh-border dark:border-slate-700 rounded-lg overflow-hidden">
-                  <div className="bg-gray-50 dark:bg-slate-800 px-3 py-2 border-b border-gh-border dark:border-slate-700 text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">
+                <div className="border border-gh-border dark:border-rule rounded-lg overflow-hidden">
+                  <div className="bg-gray-50 dark:bg-paper-2 px-3 py-2 border-b border-gh-border dark:border-rule text-xs font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">
                     Sub-actions ({popupChildCount})
                     {popupFailedCount > 0 && <span className="ml-2 text-red-500 normal-case">&middot; {popupFailedCount} failed</span>}
                   </div>
-                  <div className="divide-y divide-gh-border dark:divide-slate-700 max-h-48 overflow-y-auto">
+                  <div className="divide-y divide-gh-border dark:divide-rule max-h-48 overflow-y-auto">
                     {popupEntry.children.map(child => {
-                      const childCfg = ACTION_CONFIG[child.action as ActivityAction] || { label: child.action, colorClass: "bg-gray-50 dark:bg-slate-800", iconClass: "fa-solid fa-circle" };
+                      const childCfg = ACTION_CONFIG[child.action as ActivityAction] || { label: child.action, colorClass: "bg-gray-50 dark:bg-paper-2", iconClass: "fa-solid fa-circle" };
                       const childFailed = child.failed;
                       const childFailedCount = countFailed(child);
                       return (
                         <div
                           key={child.id}
-                          className={`px-3 py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors ${child.undone ? 'opacity-50' : ''} ${childFailed ? 'bg-red-50/30 dark:bg-red-950/30' : ''}`}
+                          className={`px-3 py-2 flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-paper-2 transition-colors ${child.undone ? 'opacity-50' : ''} ${childFailed ? 'bg-red-50/30 dark:bg-red-950/30' : ''}`}
                           onClick={(e) => { e.stopPropagation(); setSelectedEvent(child); }}
                         >
                           {childFailed
@@ -1492,7 +1492,7 @@ export default function ActivityPage() {
                               : child.action === "conflict.pending" && !child.conflictResolution
                                 ? <i className="fa-solid fa-pause text-amber-500 text-[11px]"></i>
                                 : <i className="fa-solid fa-check-circle text-green-500 text-[11px]"></i>}
-                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium border ${childFailed ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : childCfg.colorClass} ${child.undone ? 'line-through' : ''}`}>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5  text-[11px] font-medium border ${childFailed ? 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/50 dark:text-red-400 dark:border-red-800' : childCfg.colorClass} ${child.undone ? 'line-through' : ''}`}>
                             <i className={childFailed ? 'fa-solid fa-xmark text-[9px]' : childCfg.iconClass}></i>
                             {childCfg.label}
                           </span>
@@ -1512,7 +1512,7 @@ export default function ActivityPage() {
                             <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-400 border border-red-200 dark:border-red-800 font-medium ml-auto">Overridden</span>
                           )}
                           {child.conflictResolution === "skip" && (
-                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 font-medium ml-auto">Skipped</span>
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-paper-3 text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-rule font-medium ml-auto">Skipped</span>
                           )}
                           {child.children && child.children.length > 0 && !childFailed && childFailedCount === 0 && (
                             <span className="text-[10px] text-gray-400 dark:text-slate-500 ml-auto">+{countAllChildren(child)} sub</span>
@@ -1537,7 +1537,7 @@ export default function ActivityPage() {
                   </div>
                   <div className="px-3 py-2 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${popupEntry.conflictPayload.type === "ruleset" ? "bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800" : "bg-purple-50 text-purple-700 border border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-400 dark:border-purple-800"}`}>
+                      <span className={`inline-flex items-center px-2 py-0.5  text-[10px] font-semibold uppercase tracking-wider ${popupEntry.conflictPayload.type === "ruleset" ? "bg-blue-50 text-blue-700 border border-blue-200/60 dark:bg-blue-950/50 dark:text-blue-400 dark:border-blue-800" : "bg-purple-50 text-purple-700 border border-purple-200/60 dark:bg-purple-950/50 dark:text-purple-400 dark:border-purple-800"}`}>
                         {popupEntry.conflictPayload.type}
                       </span>
                       <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">{popupEntry.conflictPayload.name}</span>
@@ -1553,16 +1553,16 @@ export default function ActivityPage() {
                     {conflictDiffOpenId === popupEntry.id && (() => {
                       const rows = buildConflictComparison(popupEntry.conflictPayload.type, popupEntry.conflictPayload.existingConfig, popupEntry.conflictPayload.templateConfig);
                       return (
-                        <div className="mt-2 border border-gh-border dark:border-slate-700 rounded-md overflow-hidden text-xs">
+                        <div className="mt-2 border border-gh-border dark:border-rule rounded-md overflow-hidden text-xs">
                           <table className="w-full">
                             <thead>
-                              <tr className="bg-gray-50 dark:bg-slate-800 border-b border-gh-border dark:border-slate-700">
+                              <tr className="bg-gray-50 dark:bg-paper-2 border-b border-gh-border dark:border-rule">
                                 <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-gh-muted dark:text-slate-400 uppercase tracking-wider">Setting</th>
                                 <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-red-500 uppercase tracking-wider">Existing</th>
                                 <th className="px-3 py-1.5 text-left text-[10px] font-semibold text-green-600 dark:text-green-400 uppercase tracking-wider">Template</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-gh-border dark:divide-slate-700">
+                            <tbody className="divide-y divide-gh-border dark:divide-rule">
                               {rows.map((r, ri) => (
                                 <tr key={ri} className="hover:bg-amber-50/30 dark:hover:bg-amber-950/30">
                                   <td className="px-3 py-1.5 font-medium text-gh-textBase dark:text-slate-200">{r.label}</td>
@@ -1592,11 +1592,11 @@ export default function ActivityPage() {
               {/* Diff viewer */}
               {popupEntry.diff && (
                 <div>
-                  <h4 className="text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-2 border-b dark:border-slate-700 pb-2">Changes Made</h4>
+                  <h4 className="text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-2 border-b dark:border-rule pb-2">Changes Made</h4>
                   <div className="space-y-3">
                     {Object.entries(popupEntry.diff).map(([key, changes]: [string, any]) => (
-                      <div key={key} className="border border-gh-border dark:border-slate-700 rounded-md overflow-hidden">
-                        <div className="bg-gray-50 dark:bg-slate-800 px-3 py-1.5 border-b border-gh-border dark:border-slate-700 text-xs font-mono font-semibold text-gray-600 dark:text-slate-400 uppercase tracking-wider">{key}</div>
+                      <div key={key} className="border border-gh-border dark:border-rule rounded-md overflow-hidden">
+                        <div className="bg-gray-50 dark:bg-paper-2 px-3 py-1.5 border-b border-gh-border dark:border-rule text-xs font-mono font-semibold text-gray-600 dark:text-slate-400 uppercase tracking-wider">{key}</div>
                         <DiffViewer oldValue={changes.old} newValue={changes.new} />
                       </div>
                     ))}
@@ -1606,22 +1606,22 @@ export default function ActivityPage() {
             </div>
 
             {/* Footer with undo/redo/retry */}
-            <div className="bg-gray-50 dark:bg-slate-800 px-6 py-3 flex items-center justify-between gap-3 border-t border-gh-border dark:border-slate-700 rounded-b-xl shrink-0">
+            <div className="bg-gray-50 dark:bg-paper-2 px-6 py-3 flex items-center justify-between gap-3 border-t border-gh-border dark:border-rule rounded-b-xl shrink-0">
               <div className="text-xs text-gh-muted dark:text-slate-400">
                 {!popupCanUndo && !popupCanRedo && !popupCanRetry && !popupIsOverriddenConflict && !popupIsSkippedConflict && 'No actions available'}
               </div>
               <div className="flex gap-2">
-                <button onClick={() => setSelectedEvent(null)} className="px-4 py-2 border border-gh-border dark:border-slate-700 shadow-sm text-sm font-medium rounded-md text-gh-textBase dark:text-slate-200 bg-white dark:bg-slate-800 hover:bg-gray-50 dark:hover:bg-slate-700">
+                <button onClick={() => setSelectedEvent(null)} className="px-4 py-2 border border-gh-border dark:border-rule shadow-sm text-sm font-medium rounded-md text-gh-textBase dark:text-slate-200 bg-white dark:bg-paper-2 hover:bg-gray-50 dark:hover:bg-paper-3">
                   Close
                 </button>
                 {popupCanRetry && (
                   <button
                     onClick={() => handleRetryFromPopup(popupEntry)}
                     disabled={isBusy}
-                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
+                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-reverse bg-blue-600 hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
                   >
                     {retryMutation.isPending
-                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Retrying...</>
+                      ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Retrying...</>
                       : <><i className="fa-solid fa-arrow-rotate-right text-xs"></i>{popupFailedCount > 1 ? `Retry All Failed (${popupFailedCount})` : 'Retry'}</>}
                   </button>
                 )}
@@ -1629,10 +1629,10 @@ export default function ActivityPage() {
                   <button
                     onClick={() => handleRedoFromPopup(popupEntry)}
                     disabled={isBusy}
-                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-reverse bg-green-600 hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
                   >
                     {redoMutation.isPending
-                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Redoing...</>
+                      ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Redoing...</>
                       : <><i className="fa-solid fa-rotate-right text-xs"></i>{popupEntry.children && popupEntry.children.length > 0 ? 'Redo All' : 'Redo'}</>}
                   </button>
                 )}
@@ -1640,10 +1640,10 @@ export default function ActivityPage() {
                   <button
                     onClick={() => handleUndoResolution(popupEntry)}
                     disabled={isBusy}
-                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2"
+                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-reverse bg-amber-600 hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2"
                   >
                     {undoResolutionMutation.isPending
-                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
+                      ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
                       : <><i className="fa-solid fa-rotate-left text-xs"></i>Undo Skip</>}
                   </button>
                 )}
@@ -1652,19 +1652,19 @@ export default function ActivityPage() {
                     <button
                       onClick={() => handleUndoResolution(popupEntry)}
                       disabled={isBusy}
-                      className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2"
+                      className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-reverse bg-amber-600 hover:bg-amber-700 disabled:opacity-50 flex items-center gap-2"
                     >
                       {undoResolutionMutation.isPending
-                        ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
+                        ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
                         : <><i className="fa-solid fa-rotate-left text-xs"></i>Undo Override</>}
                     </button>
                     <button
                       onClick={() => handleUndoFromPopup(popupEntry)}
                       disabled={isBusy}
-                      className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+                      className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-reverse bg-red-600 hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
                     >
                       {undoMutation.isPending
-                        ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
+                        ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
                         : <><i className="fa-solid fa-trash text-xs"></i>Undo Event</>}
                     </button>
                   </>
@@ -1673,10 +1673,10 @@ export default function ActivityPage() {
                   <button
                     onClick={() => handleUndoFromPopup(popupEntry)}
                     disabled={isBusy}
-                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-orange-600 hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+                    className="px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-reverse bg-orange-600 hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
                   >
                     {undoMutation.isPending
-                      ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
+                      ? <><div className="w-4 h-4 border-2 border-ink/30 border-t-white rounded-full animate-spin"></div>Undoing...</>
                       : <><i className="fa-solid fa-rotate-left text-xs"></i>{popupEntry.children && popupEntry.children.length > 0 ? 'Undo All' : 'Undo'}</>}
                   </button>
                 )}

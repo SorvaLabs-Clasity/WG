@@ -2,201 +2,452 @@
 @tailwind components;
 @tailwind utilities;
 
-/*
- * Native controls have to be told which scheme they are in.
- *
- * A <select> is styled by CSS, but the list it opens is drawn by the operating
- * system. Without color-scheme, Windows draws that list light while the option
- * text inherits the dark theme's near-white, white on white, and the app looks
- * like it lost its menu. macOS happens to guess right, which is why it went
- * unnoticed.
- *
- * The option rules are belt and braces: Canvas and CanvasText are system
- * colours that follow color-scheme, so they stay correct in both themes and on
- * platforms that ignore the property.
- */
-:root { color-scheme: light; }
-:root.dark { color-scheme: dark; }
+/* ============================================================================
+   THE BROADSHEET
+   ---------------------------------------------------------------------------
+   A printed sheet, not an interface. Warm paper, warm ink, hairline rules, a
+   serif display face, and colour spent only where it carries meaning. There is
+   no card, no corner radius, no drop shadow and no gradient anywhere in this
+   app; depth is a rule and emphasis is type.
 
+   Two editions. The day edition prints dark ink on warm stock. The night
+   edition prints warm stock on dark ink and changes nothing else — no glow, no
+   saturated accent, no second design pretending to be the same one.
+
+   Every colour below is an unwrapped RGB triple so Tailwind's `/40` alpha slot
+   keeps working through the variable.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Stock. Nothing here is pure white. */
+  --paper:   247 244 237;
+  --paper-2: 240 236 226;
+  --paper-3: 231 226 213;
+  --paper-4: 216 209 195;
+
+  /* Ink. Nothing here is pure black. */
+  --ink:   34 30 26;
+  --ink-2: 92 84 74;
+  --ink-3: 139 130 118;
+  --ink-4: 175 166 153;
+
+  --rule:        222 216 203;
+  --rule-strong: 189 181 165;
+
+  /* Danger. The only red on the page, and it is a printed red. */
+  --crimson-wash: 245 232 229;
+  --crimson-edge: 223 194 187;
+  --crimson:      158  39  42;
+  --crimson-deep: 124  30  33;
+
+  /* Caution. */
+  --ochre-wash: 246 239 222;
+  --ochre-edge: 225 209 172;
+  --ochre:      148  96  20;
+  --ochre-deep: 116  75  15;
+
+  /* Settled, healthy, done. */
+  --forest-wash: 229 239 231;
+  --forest-edge: 190 214 196;
+  --forest:       44  94  63;
+  --forest-deep:  32  72  51;
+
+  /* Information, and anything merely notable. */
+  --indigo-wash: 231 234 243;
+  --indigo-edge: 194 201 222;
+  --indigo:       45  62 122;
+  --indigo-deep:  35  48  95;
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --measure: 78ch;
+}
+
+:root.dark {
+  color-scheme: dark;
+
+  --paper:   20 18 16;
+  --paper-2: 28 25 22;
+  --paper-3: 39 35 30;
+  --paper-4: 54 48 41;
+
+  --ink:   237 231 220;
+  --ink-2: 176 167 154;
+  --ink-3: 128 119 107;
+  --ink-4:  98  90  80;
+
+  --rule:        52 47 40;
+  --rule-strong: 78 71 61;
+
+  --crimson-wash: 43 26 24;
+  --crimson-edge: 80 47 42;
+  --crimson:     226 122 116;
+  --crimson-deep: 226 122 116;
+
+  --ochre-wash: 42 34 23;
+  --ochre-edge: 78 62 38;
+  --ochre:     217 171  97;
+  --ochre-deep: 217 171  97;
+
+  --forest-wash: 24 36 32;
+  --forest-edge: 44 65  57;
+  --forest:     126 176 139;
+  --forest-deep:126 176 139;
+
+  --indigo-wash: 26 29 42;
+  --indigo-edge: 47 53  80;
+  --indigo:     147 169 214;
+  --indigo-deep:147 169 214;
+}
+
+/* ── Base ------------------------------------------------------------------ */
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background-color: rgb(var(--paper));
+  color: rgb(var(--ink));
+  font-family: "Avenir Next", Seravek, Optima, "Gill Sans", Inter, system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* The old design set these on `.dark body` with literal hexes. Both editions
+   now come from the variables above, so the override is a no-op kept only so
+   nothing that still targets it can reintroduce a slate ground. */
+.dark body,
+html.dark body {
+  background-color: rgb(var(--paper));
+  color: rgb(var(--ink));
+}
+
+::selection {
+  background: rgb(var(--ink) / 0.88);
+  color: rgb(var(--paper));
+}
+
+/* Native menus have to be told which edition they are in, or Windows draws a
+   light list behind near-white option text. Canvas/CanvasText follow
+   color-scheme, so they stay right on platforms that ignore the property. */
 select option,
 select optgroup {
   background-color: Canvas;
   color: CanvasText;
 }
 
-/* Custom scrollbar to match the technical aesthetic */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: transparent; 
-}
+/* A rule, not a bar. */
+::-webkit-scrollbar { width: 11px; height: 11px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #d0d7de; 
-  border-radius: 4px;
+  background: rgb(var(--rule-strong));
+  border: 4px solid rgb(var(--paper));
+  border-radius: 0;
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #afb8c1; 
+::-webkit-scrollbar-thumb:hover { background: rgb(var(--ink-3)); }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* One focus ring for the whole paper: a crimson hairline box, never a glow. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid rgb(var(--crimson));
+  outline-offset: 2px;
+  border-radius: 0;
 }
 
-.dark ::-webkit-scrollbar-thumb {
-  background: #475569;
-}
-.dark ::-webkit-scrollbar-thumb:hover {
-  background: #64748b;
-}
+input, textarea, select, button { font: inherit; color: inherit; }
 
-/* Base Setup */
-body {
-  font-family: 'Inter', sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
+input::placeholder, textarea::placeholder { color: rgb(var(--ink-4)); }
 
-.dark body,
-html.dark body {
-  background-color: #020617;
-  color: #e2e8f0;
-}
+/* ── Printed idioms -------------------------------------------------------- */
 
-/* Animated Mesh Gradient Background */
-.mesh-gradient {
-  background: linear-gradient(-45deg, #667eea, #764ba2, #6B8DD6, #8E37D7);
-  background-size: 400% 400%;
-  animation: gradientBG 15s ease infinite;
-}
-
-/* Subtle Noise Overlay for Texture (Anti-Banding) */
-.noise-overlay {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0.03;
-  pointer-events: none;
-  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
-  z-index: 10;
-}
-
-/* Entrance Animations */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
+@layer components {
+  /**
+   * The label idiom. Sections, column heads, eyebrows and legends are all the
+   * same thing: letterspaced small capitals in the running face, never a
+   * coloured chip.
+   */
+  .caps {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgb(var(--ink-3));
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  .caps-tight { font-size: 0.625rem; letter-spacing: 0.12em; }
+
+  /** Display type. Headlines, standfirsts and every figure on the page. */
+  .display {
+    font-family: "Iowan Old Style", Charter, "Hoefler Text", "Palatino Linotype", Palatino, Georgia, serif;
+    font-weight: 400;
+    letter-spacing: 0.005em;
+  }
+
+  /** A standfirst: the italic line that sits under a headline. */
+  .standfirst {
+    font-family: "Iowan Old Style", Charter, "Hoefler Text", "Palatino Linotype", Palatino, Georgia, serif;
+    font-style: italic;
+    color: rgb(var(--ink-2));
+    line-height: 1.45;
+  }
+
+  /**
+   * A number the page exists to report. Serif, tabular, tight, and big enough
+   * that the eye lands on it before the label.
+   */
+  .figure {
+    font-family: "Iowan Old Style", Charter, "Hoefler Text", "Palatino Linotype", Palatino, Georgia, serif;
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: -0.02em;
+    line-height: 0.9;
+  }
+
+  /**
+   * The dateline: facts separated by middots, newspaper style. Children are
+   * spans; the separator is drawn between them and never after the last.
+   */
+  .dateline {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: rgb(var(--ink-2));
+  }
+  .dateline > * + *::before {
+    content: "·";
+    margin-right: 0.5rem;
+    color: rgb(var(--ink-4));
+  }
+
+  /**
+   * A text button. The app's default action affordance, because a printed page
+   * does not have raised rectangles on it.
+   */
+  .textlink {
+    background: none;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: rgb(var(--ink-2));
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-decoration-color: rgb(var(--rule-strong));
+    text-underline-offset: 0.28em;
+    transition: color 160ms var(--ease), text-decoration-color 160ms var(--ease);
+  }
+  .textlink:hover { color: rgb(var(--ink)); text-decoration-color: currentColor; }
+  .textlink[aria-pressed="true"] { color: rgb(var(--ink)); text-decoration-color: currentColor; }
+  .textlink:disabled { color: rgb(var(--ink-4)); cursor: default; text-decoration-color: transparent; }
+
+  /**
+   * The one filled control: a stamp. Square, inked, letterspaced capitals.
+   * Reserved for the single action a screen is for, so that it stays rare
+   * enough to mean something.
+   */
+  .stamp {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.95rem;
+    border: 1px solid rgb(var(--ink));
+    background: rgb(var(--ink));
+    color: rgb(var(--paper));
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: background-color 150ms var(--ease), color 150ms var(--ease);
+  }
+  .stamp:hover { background: transparent; color: rgb(var(--ink)); }
+  .stamp:disabled { opacity: 0.35; cursor: default; background: rgb(var(--ink)); color: rgb(var(--paper)); }
+
+  /** The same stamp, unfilled. For the secondary of a pair. */
+  .stamp-hollow {
+    background: transparent;
+    color: rgb(var(--ink));
+    border-color: rgb(var(--rule-strong));
+  }
+  .stamp-hollow:hover { background: rgb(var(--ink)); color: rgb(var(--paper)); border-color: rgb(var(--ink)); }
+  .stamp-hollow:disabled { background: transparent; color: rgb(var(--ink-4)); }
+
+  /** A stamp that carries a warning rather than the page's ink. */
+  .stamp-crimson { background: rgb(var(--crimson)); border-color: rgb(var(--crimson)); color: rgb(var(--paper)); }
+  .stamp-crimson:hover { background: transparent; color: rgb(var(--crimson)); }
+  .stamp-crimson:disabled { background: rgb(var(--crimson)); color: rgb(var(--paper)); }
+
+  /** A field. An underline, never a box. */
+  .field-line {
+    display: block;
+    width: 100%;
+    background: none;
+    border: 0;
+    border-bottom: 1px solid rgb(var(--rule-strong));
+    padding: 0.35rem 0 0.5rem;
+    color: rgb(var(--ink));
+    transition: border-color 180ms var(--ease);
+  }
+  .field-line:focus { outline: none; border-bottom-color: rgb(var(--ink)); }
+  .field-line:disabled { color: rgb(var(--ink-3)); border-bottom-style: dashed; }
+
+  /** A record: one hairline-separated row in a list of them. */
+  .record { border-bottom: 1px solid rgb(var(--rule)); }
+  .record:last-child { border-bottom: 0; }
+
+  /** The rule that opens a section, and the lighter one that closes a row. */
+  .rule-heavy { border-top: 2px solid rgb(var(--ink)); }
+  .rule-hair  { border-top: 1px solid rgb(var(--rule)); }
+
+  /**
+   * Column rules, the thing that makes a sheet read as printed rather than as
+   * a stack of boxes. Used where two or three unrelated readings sit side by
+   * side; collapses to stacked rules below the breakpoint that fits them.
+   */
+  .columned > * + * { border-left: 1px solid rgb(var(--rule)); }
+  @media (max-width: 900px) {
+    .columned > * + * { border-left: 0; border-top: 1px solid rgb(var(--rule)); }
   }
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* ── Tables ---------------------------------------------------------------- */
+
+table { border-collapse: collapse; width: 100%; }
+
+thead th {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgb(var(--ink-3));
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid rgb(var(--ink) / 0.45);
+  white-space: nowrap;
 }
 
-@keyframes slideIn {
-  from { transform: translateX(16px); opacity: 0; }
-  to { transform: translateX(0); opacity: 1; }
+tbody td {
+  padding: 0.7rem 0.75rem;
+  border-bottom: 1px solid rgb(var(--rule));
+  vertical-align: top;
 }
 
-/* A panel that flies in is decoration, and decoration is exactly what somebody
-   asking for reduced motion has asked not to receive. It still appears. */
-@media (prefers-reduced-motion: reduce) {
-  .drawer-panel, .drawer-scrim { animation: none !important; }
-}
+tbody tr:hover td { background-color: rgb(var(--ink) / 0.028); }
 
-@keyframes gradientBG {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
+/* The old hover helper, re-pointed so any table still using it matches. */
+.table-row-hover:hover td { background-color: rgb(var(--ink) / 0.028); }
+.dark .table-row-hover:hover td { background-color: rgb(var(--ink) / 0.05); }
+
+/* ── Legacy class names, re-pointed --------------------------------------- */
+/* These are referenced from markup across the app. Rather than leave them to
+   paint the old design wherever one was missed, each is redefined as the
+   printed equivalent — or as nothing at all, where the old design's answer was
+   decoration this one does not have. */
+
+.mesh-gradient { background: rgb(var(--paper-2)); animation: none; }
+.noise-overlay { display: none; }
+.glass-card { background: rgb(var(--paper)); box-shadow: none; border: 1px solid rgb(var(--rule)); }
+.github-btn-glow:hover { box-shadow: none; }
+.hairline-border { border: 1px solid rgb(var(--rule)); }
 
 .fade-in-up {
   opacity: 0;
-  transform: translateY(20px);
-  animation: fadeInUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  transform: translateY(0.5rem);
+  animation: rise 0.5s var(--ease) forwards;
 }
-
 .fade-in-delayed {
   opacity: 0;
-  animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  animation-delay: 0.2s;
+  animation: fadeIn 0.6s var(--ease) 0.15s forwards;
 }
 
-/* Glass / Card Refinements */
-.glass-card {
-  background: rgba(255, 255, 255, 1);
-  box-shadow: 
-      0 25px 50px -12px rgba(0, 0, 0, 0.25), 
-      0 0 0 1px rgba(255, 255, 255, 0.1); 
-}
-
-/* Button Glow Effect on Hover */
-.github-btn-glow:hover {
-  box-shadow: 0 10px 15px -3px rgba(36, 41, 47, 0.3);
-}
-
-/* Tooltip arrow */
 .tooltip-arrow::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 100%;
   left: 50%;
   margin-left: -4px;
   border-width: 4px;
   border-style: solid;
-  border-color: #24292f transparent transparent transparent;
+  border-color: rgb(var(--ink)) transparent transparent transparent;
 }
 
-/* Sub-pixel border rendering for high clarity */
-.hairline-border {
-  border: 1px solid #e1e4e8;
-}
+.toggle-checkbox:checked { right: 0; border-color: rgb(var(--ink)); }
+.toggle-checkbox:checked + .toggle-label { background-color: rgb(var(--ink)); }
 
-/* Table row hover micro-interaction */
-.table-row-hover:hover td {
-  background-color: #f3f4f6;
-}
-.dark .table-row-hover:hover td {
-  background-color: #1e293b;
-}
+body.modal-open { overflow: hidden; }
 
-/* Toggle Switch Logic */
-.toggle-checkbox:checked {
-  right: 0;
-  border-color: #0969da;
-}
-.toggle-checkbox:checked + .toggle-label {
-  background-color: #0969da;
-}
-
-/* Hide Scrollbar when modal open */
-body.modal-open {
-  overflow: hidden;
-}
-
-/* Compliance gauge */
+/**
+ * The compliance dial, reprinted.
+ *
+ * Still a conic sweep, but drawn as a thin printed arc on paper stock rather
+ * than a filled ring on a white puck: the unfilled remainder is the rule
+ * colour, and the centre is the page's own ground so it reads as an engraving
+ * rather than a widget.
+ */
 .gauge-ring {
   position: relative;
   border-radius: 50%;
-  background: conic-gradient(var(--gauge-color) var(--gauge-pct), #f1f5f9 0);
-  transition: background 0.8s ease-out;
+  background: conic-gradient(var(--gauge-color) var(--gauge-pct), rgb(var(--rule)) 0);
+  transition: background 0.8s var(--ease);
 }
 .gauge-ring::before {
-  content: '';
+  content: "";
   position: absolute;
-  inset: 5px;
-  background: white;
+  inset: 6px;
+  background: rgb(var(--paper));
   border-radius: 50%;
 }
-.gauge-ring-lg::before { inset: 10px; }
+.gauge-ring-lg::before { inset: 11px; }
+.dark .gauge-ring::before { background: rgb(var(--paper)); }
+.dark .gauge-ring { background: conic-gradient(var(--gauge-color) var(--gauge-pct), rgb(var(--rule)) 0); }
 
-.dark .gauge-ring::before {
-  background: #0f172a;
+/* ── Motion ---------------------------------------------------------------- */
+/* Type settling onto the page. Nothing scales, nothing bounces, nothing loops. */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to   { opacity: 1; transform: none; }
 }
-.dark .gauge-ring {
-  background: conic-gradient(var(--gauge-color) var(--gauge-pct), #334155 0);
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(1rem); }
+  to   { opacity: 1; transform: none; }
+}
+/* Kept under the old names so any inline `animation:` string still resolves. */
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(0.5rem); } to { opacity: 1; transform: none; } }
+@keyframes slideUp  { from { opacity: 0; transform: translateY(0.5rem); } to { opacity: 1; transform: none; } }
+@keyframes gradientBG { from { opacity: 1; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .drawer-panel, .drawer-scrim { animation: none !important; }
+}
+
+/* ── Print ----------------------------------------------------------------- */
+/* It is already a printed page; make the real one behave. */
+@media print {
+  :root { --paper: 255 255 255; --paper-2: 255 255 255; }
+  nav, .no-print { display: none !important; }
+  body { font-size: 11pt; }
+}
+
+/**
+ * Waiting, drawn as a rule inking across rather than a spinning ring.
+ * Defined here rather than in the Tailwind config because it is referenced from
+ * an inline `animation:` string, which the utility layer never sees.
+ */
+@keyframes ruleRun {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(300%); }
 }

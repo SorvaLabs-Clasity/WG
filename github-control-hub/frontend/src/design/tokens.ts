@@ -1,101 +1,122 @@
 /**
- * Design tokens.
+ * Design tokens — The Broadsheet.
  *
- * The app was styled as a GitHub clone, which is deliberately quiet and is why
- * every page read as flat. See /.impeccable.md, the agreed direction is
- * saturated colour, depth and motion, with colour only ever carrying meaning.
+ * The app was a GitHub clone, then a saturated dashboard of rounded cards,
+ * coloured rails and drop shadows. It is now a printed sheet: warm stock, warm
+ * ink, hairline rules, a serif display face, and colour spent only where it
+ * carries meaning. Nothing is a rounded rectangle, nothing casts a shadow, and
+ * no surface floats above another — a page ranks things with rules and type,
+ * which is the whole point of the idiom.
  *
- * Everything is a Tailwind class string rather than a CSS variable so the
- * existing utility-first pages can adopt it a piece at a time.
+ * The token names are the ones the app already imports, deliberately: several
+ * thousand lines of markup reference `INTENT`, `TYPE` and `SURFACE`, and
+ * re-pointing them converts every one of those call sites at once rather than
+ * leaving a half-converted app behind. What each token *means* is new.
  *
- * Dark mode is specified explicitly rather than leaning on Tailwind's slate
- * ramp. slate-900 cards on a slate-950 page differ by about 4% luminance,
- * which reads as one flat sheet, the surfaces below step far enough apart to
- * be legible, and status colours are brightened so they survive a dark ground.
+ * Colour lives in CSS variables (see index.css) and the variables flip between
+ * the day and night editions, so a token almost never needs a `dark:` half.
+ * Where one appears below it is because the two editions genuinely want
+ * different treatment, not different values of the same treatment.
  */
 
-/** Semantic state. Nothing else in the app should be this saturated. */
+/** Semantic state. Four printed inks and the page's own. */
 export type Intent = "danger" | "warn" | "good" | "info" | "neutral";
 
 interface IntentStyle {
-  /** Solid fill for hero surfaces, white text sits on these. */
+  /** An inked block. For a masthead band, never for a button. */
   solid: string;
-  /** Tinted surface for inline notes and chips. */
+  /** Washed stock, for a note set into running text. */
   soft: string;
-  /** Text on a light background, brightened for dark. */
+  /** The ink itself, as text. */
   text: string;
-  /** Small solid marker: rails, dots. */
+  /** A rule, a dot or a marginal bar in this ink. */
   mark: string;
+  /** A hairline in this ink. */
   border: string;
-  /** Loud fill for badges that must not be missed. */
+  /** A stamp: inked block, reversed-out type. Rare by design. */
   loud: string;
-  /** Large numbers. Needs more punch than body text at the same hue. */
+  /** A figure. Same ink as `text`; kept separate so the two can diverge. */
   figure: string;
 }
 
 export const INTENT: Record<Intent, IntentStyle> = {
   danger: {
-    solid: "bg-[#9f1239] dark:bg-[#8d1d2c]",
-    soft: "bg-rose-50 dark:bg-rose-500/[0.14]",
-    text: "text-rose-700 dark:text-rose-300",
-    mark: "bg-rose-500 dark:bg-rose-400",
-    border: "border-rose-200 dark:border-rose-500/30",
-    loud: "bg-rose-600 text-white",
-    figure: "text-rose-600 dark:text-rose-350 dark:[color:#ff8095]",
+    solid: "bg-crimson-deep",
+    soft: "bg-crimson-wash",
+    text: "text-crimson",
+    mark: "bg-crimson",
+    border: "border-crimson-edge",
+    loud: "bg-crimson text-reverse",
+    figure: "text-crimson",
   },
   warn: {
-    solid: "bg-[#9a5b00] dark:bg-[#8a5a00]",
-    soft: "bg-amber-50 dark:bg-amber-500/[0.14]",
-    text: "text-amber-700 dark:text-amber-300",
-    mark: "bg-amber-500 dark:bg-amber-400",
-    border: "border-amber-200 dark:border-amber-500/30",
-    loud: "bg-amber-500 text-white",
-    figure: "text-amber-600 dark:[color:#ffc14d]",
+    solid: "bg-ochre-deep",
+    soft: "bg-ochre-wash",
+    text: "text-ochre",
+    mark: "bg-ochre",
+    border: "border-ochre-edge",
+    loud: "bg-ochre text-reverse",
+    figure: "text-ochre",
   },
   good: {
-    solid: "bg-[#0b6b3a] dark:bg-[#0b6b3a]",
-    soft: "bg-emerald-50 dark:bg-emerald-500/[0.14]",
-    text: "text-emerald-700 dark:text-emerald-300",
-    mark: "bg-emerald-500 dark:bg-emerald-400",
-    border: "border-emerald-200 dark:border-emerald-500/30",
-    loud: "bg-emerald-600 text-white",
-    figure: "text-emerald-600 dark:[color:#3ddc97]",
+    solid: "bg-forest-deep",
+    soft: "bg-forest-wash",
+    text: "text-forest",
+    mark: "bg-forest",
+    border: "border-forest-edge",
+    loud: "bg-forest text-reverse",
+    figure: "text-forest",
   },
   info: {
-    solid: "bg-[#123a6b] dark:bg-[#123a6b]",
-    soft: "bg-blue-50 dark:bg-blue-500/[0.14]",
-    text: "text-blue-700 dark:text-blue-300",
-    mark: "bg-blue-500 dark:bg-blue-400",
-    border: "border-blue-200 dark:border-blue-500/30",
-    loud: "bg-blue-600 text-white",
-    figure: "text-blue-600 dark:[color:#6bb4ff]",
+    solid: "bg-indigo-deep",
+    soft: "bg-indigo-wash",
+    text: "text-indigo",
+    mark: "bg-indigo",
+    border: "border-indigo-edge",
+    loud: "bg-indigo text-reverse",
+    figure: "text-indigo",
   },
   neutral: {
-    solid: "bg-slate-700 dark:bg-[#1c2230]",
-    soft: "bg-slate-50 dark:bg-white/[0.05]",
-    text: "text-slate-600 dark:text-slate-300",
-    mark: "bg-slate-300 dark:bg-slate-600",
-    border: "border-slate-200 dark:border-white/10",
-    loud: "bg-slate-500 text-white",
-    figure: "text-slate-500 dark:text-slate-400",
+    solid: "bg-ink",
+    soft: "bg-paper-2",
+    text: "text-ink-2",
+    mark: "bg-ink-3",
+    border: "border-rule",
+    loud: "bg-ink text-reverse",
+    figure: "text-ink",
   },
 };
 
 /**
- * Type scale. Deliberately wide gaps, the previous design sat everything
- * between 12px and 16px, which is why nothing had presence.
+ * The type scale.
+ *
+ * Two faces doing two jobs. The serif sets everything the page is *about* —
+ * headlines, standfirsts and every number it reports. The sans sets everything
+ * that helps you read it — labels, column heads, controls, running notes. A
+ * screen that mixes those two jobs up is the one that reads as a dashboard.
+ *
+ * `display`, `figure` and `standfirst` are classes from index.css rather than
+ * utility strings: they carry `font-variant-numeric` and the serif stack, which
+ * are worth defining once.
  */
 export const TYPE = {
-  display: "text-[64px] sm:text-[80px] font-black tabular-nums leading-[0.82] tracking-[-0.03em]",
-  metric: "text-[56px] sm:text-[68px] font-black tabular-nums leading-[0.85] tracking-tighter",
-  /** Count on a card. Large enough to be the first thing the eye lands on. */
-  metricSm: "text-[38px] font-black tabular-nums leading-none tracking-tight",
-  title: "text-2xl font-black tracking-tight",
-  heading: "text-[17px] font-bold tracking-tight",
-  body: "text-sm",
-  sub: "text-[13.5px]",
-  label: "text-[11px] uppercase tracking-[0.18em] font-bold",
-  mono: "font-mono text-[13.5px]",
+  /** The number a whole screen exists to report. One per screen at most. */
+  display: "display figure text-[clamp(3.25rem,6.5vw,4.75rem)]",
+  /** A headline figure inside a section. */
+  metric: "display figure text-[clamp(2.5rem,4.5vw,3.5rem)]",
+  /** A count beside a record. Large enough to be read down a column. */
+  metricSm: "display figure text-[2rem]",
+  /** A page or section headline. */
+  title: "display text-[clamp(1.75rem,3vw,2.25rem)] leading-[1.06]",
+  /** A subhead within a section. */
+  heading: "display text-[1.0625rem] leading-snug",
+  body: "text-[14px] leading-relaxed",
+  sub: "text-[13px] leading-relaxed",
+  /** Small capitals. The only label idiom in the app. */
+  label: "caps",
+  mono: "font-mono text-[12.5px]",
+  /** The italic serif line under a headline. */
+  standfirst: "standfirst text-[15px]",
 };
 
 /**
@@ -105,39 +126,61 @@ export const TYPE = {
 export const COMPANY_NAME: string =
   (import.meta.env.VITE_COMPANY_NAME as string | undefined) || "Control Hub";
 
+/**
+ * The paper this is printed on.
+ *
+ * There is one stock and it is the page's. A `card` is not a raised surface,
+ * it is a ruled box — the sidebar treatment a newspaper uses when a reading
+ * belongs beside the story rather than in it. `inset` is the only tinted
+ * ground, and it is one step of warmth, not a different colour.
+ */
 export const SURFACE = {
-  /** Page ground. Tinted toward blue rather than pure grey. */
-  page: "bg-[#f6f7fa] dark:bg-[#0b0e14]",
-  /** Raised surface. In dark this is LIGHTER than the page, not darker. */
-  card: "bg-white dark:bg-[#151a23] rounded-2xl border border-slate-200/80 dark:border-white/[0.09] shadow-sm",
-  cardHover: "hover:shadow-xl hover:-translate-y-0.5 hover:border-slate-300 dark:hover:border-white/20 transition-all duration-200",
-  sheet: "bg-white dark:bg-[#151a23] rounded-2xl border border-slate-200 dark:border-white/[0.09] shadow-lg overflow-hidden",
-  /** Recessed surface, for rows inside a card. */
-  inset: "bg-slate-50 dark:bg-white/[0.04] border border-slate-200/70 dark:border-white/[0.07]",
-  raised: "shadow-[0_18px_40px_-12px_rgba(15,23,42,0.35)] dark:shadow-[0_18px_50px_-12px_rgba(0,0,0,0.7)]",
-  input: "w-full px-3.5 py-2.5 text-sm bg-white dark:bg-white/[0.06] border border-slate-200 dark:border-white/10 rounded-xl text-slate-700 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-900/10 dark:focus:ring-white/25",
-  /** Navigation. Follows the theme rather than being permanently dark. */
-  nav: "bg-white dark:bg-[#11141c] border-b border-slate-200 dark:border-white/[0.08]",
+  page: "bg-paper text-ink",
+  /** A ruled box. Radius and shadow utilities resolve to nothing app-wide. */
+  card: "bg-paper border border-rule",
+  /** Hover is a wash of ink, not a lift. Paper does not lift. */
+  cardHover: "transition-colors duration-150 hover:bg-ink/[0.035]",
+  /** A heavier box, for something opened on top of the page. */
+  sheet: "bg-paper border border-rule-strong",
+  /** Recessed ground for a row inside a box. */
+  inset: "bg-paper-2 border border-rule",
+  /** Nothing floats here. Kept so old call sites resolve to a no-op. */
+  raised: "",
+  /** A field is an underline. */
+  input:
+    "w-full bg-transparent border-0 border-b border-rule-strong px-0 py-2 text-[14px] " +
+    "text-ink placeholder:text-ink-4 focus:outline-none focus:border-ink transition-colors",
+  /** The masthead rule. */
+  nav: "bg-paper border-b-2 border-ink",
 };
 
-/** Motion confirms; it never loops. Curve is ease-out-quart throughout. */
-export const EASE = "cubic-bezier(0.16,1,0.3,1)";
+/** Motion settles type onto the page. It never bounces and never loops. */
+export const EASE = "cubic-bezier(0.22,1,0.36,1)";
 
 /**
- * The entrance animation, staggered by position.
+ * The entrance, staggered by position.
  *
- * `backwards`, not `both`. `fadeInUp` animates `transform`, and a filled-
- * *forwards* animation keeps its final `transform: translateY(0)` applied for
- * the life of the element. A CSS animation outranks an ordinary declaration,
- * so that silently beat every `hover:-translate-y-0.5` on the same element:
- * `RailCard` and every card built on it had a hover lift that had never once
- * been drawn.
- *
- * `backwards` still holds `opacity: 0` through the stagger delay, which is the
- * only reason a fill mode is wanted here. Afterwards the element goes back to
- * its own styles, which is where the hover state lives. The final keyframe is
- * identical to the resting state, so nothing moves at the handover.
+ * `backwards`, not `both`. `rise` animates `transform`, and a forwards-filled
+ * animation keeps its final transform applied for the life of the element,
+ * outranking any ordinary declaration — which silently beat every hover
+ * translate in the previous design. `backwards` holds the opening frame through
+ * the stagger delay and then hands the element back to its own styles.
  */
-export function enter(index = 0, step = 45, cap = 400): React.CSSProperties {
-  return { animation: `fadeInUp 0.45s ${EASE} ${Math.min(index * step, cap)}ms backwards` };
+export function enter(index = 0, step = 40, cap = 360): React.CSSProperties {
+  return { animation: `rise 0.45s ${EASE} ${Math.min(index * step, cap)}ms backwards` };
 }
+
+/**
+ * Rules, as shared strings.
+ *
+ * A section opens on a heavy rule and its rows close on hairlines. Writing that
+ * out at every call site is how a sheet ends up with four different weights of
+ * line on it.
+ */
+export const RULE = {
+  heavy: "border-t-2 border-ink",
+  hair: "border-t border-rule",
+  below: "border-b border-rule",
+  belowStrong: "border-b border-rule-strong",
+  left: "border-l border-rule",
+};

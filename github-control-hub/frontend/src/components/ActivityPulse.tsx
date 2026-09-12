@@ -121,7 +121,7 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
             Whole organization · not affected by the filters below
           </div>
           <div className="flex items-baseline gap-2.5">
-            <span className="text-[38px] font-black tabular-nums leading-none tracking-[-0.03em] text-slate-900 dark:text-white">
+            <span className="text-[38px] font-semibold tabular-nums leading-none tracking-[-0.03em] text-slate-900 dark:text-ink">
               {isLoading ? " " : (pulse?.total ?? 0).toLocaleString()}
               {/* At least this many. The sentence underneath says why. */}
               {pulse && !pulse.exhausted && <span className="text-slate-400 dark:text-slate-500">+</span>}
@@ -156,7 +156,7 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
           aria-label={`Activity over ${label(hours)}: ${pulse?.total ?? 0} events`}>
           {[0, 0.25, 0.5, 0.75].map(f => (
             <line key={f} x1="0" x2={W} y1={H * f} y2={H * f}
-              className="stroke-slate-200/70 dark:stroke-white/[0.07]" strokeWidth="1"
+              className="stroke-slate-200/70 dark:stroke-ink/[0.07]" strokeWidth="1"
               vectorEffect="non-scaling-stroke" />
           ))}
 
@@ -217,8 +217,8 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
 
         {at && (
           <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10 pointer-events-none
-                          rounded-xl bg-slate-900 dark:bg-slate-100 px-3.5 py-2.5 shadow-xl
-                          text-[11.5px] text-white dark:text-slate-900 whitespace-nowrap">
+                          rounded-xl bg-slate-900 dark:bg-paper-3 px-3.5 py-2.5 shadow-xl
+                          text-[11.5px] text-reverse dark:text-slate-900 whitespace-nowrap">
             <div className="font-bold mb-1.5">{when(at.start, pulse!.bucketHours)}</div>
             <div className="grid gap-1">
               {shown.map(s => (
@@ -275,8 +275,8 @@ export default function ActivityPulse({ pulse, hours, onHours, isLoading, awsOnl
               className={`flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border transition-all
                 ${off
                   ? "border-transparent opacity-40 hover:opacity-70"
-                  : "border-slate-200 dark:border-white/10 hover:border-slate-300 dark:hover:border-white/25"}`}>
-              <span className="w-2.5 h-2.5 rounded-[3px]" style={{ background: STREAM[s].line }} />
+                  : "border-slate-200 dark:border-ink/10 hover:border-slate-300 dark:hover:border-ink/25"}`}>
+              <span className="w-2.5 h-2.5 rounded-none" style={{ background: STREAM[s].line }} />
               <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">
                 {STREAM[s].label}
               </span>
@@ -298,12 +298,12 @@ function Switch<T extends string>({ value, onChange, options }: {
   options: readonly (readonly [T, string | null, string])[];
 }) {
   return (
-    <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-slate-100 dark:bg-white/[0.06]">
+    <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-slate-100 dark:bg-ink/[0.06]">
       {options.map(([v, icon, text]) => (
         <button key={v} onClick={() => onChange(v)} aria-pressed={value === v}
           className={`px-2.5 py-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1.5 transition-all
             ${value === v
-              ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+              ? "bg-white dark:bg-paper-2 text-slate-900 dark:text-ink shadow-sm"
               : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"}`}>
           {icon && <i className={`ph-bold ${icon} text-[13px]`} aria-hidden="true" />}
           {text}

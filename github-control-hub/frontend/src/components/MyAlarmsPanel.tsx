@@ -99,13 +99,13 @@ function AlarmRow({ alarm, widgetTitle, onEdit, onRemove }: {
   return (
     <div className={`${SURFACE.card} px-4 py-3 flex items-center gap-3`}>
       <span className={`w-2 h-2 rounded-full shrink-0 ${
-        !alarm.enabled ? "bg-slate-300 dark:bg-slate-600"
+        !alarm.enabled ? "bg-slate-300 dark:bg-paper-3"
           : firing ? "bg-rose-500" : "bg-emerald-500"}`}
         title={!alarm.enabled ? "Paused" : firing ? "Firing" : "Clear"} />
 
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <span className="text-[13px] font-semibold text-slate-900 dark:text-white truncate">
+          <span className="text-[13px] font-semibold text-slate-900 dark:text-ink truncate">
             {alarm.name}
           </span>
           {!alarm.enabled && (
@@ -125,8 +125,8 @@ function AlarmRow({ alarm, widgetTitle, onEdit, onRemove }: {
       <div className="flex items-center gap-0.5 shrink-0">
         <button type="button" onClick={onEdit} title="Edit" aria-label={`Edit ${alarm.name}`}
           className="w-7 h-7 rounded-lg grid place-items-center text-slate-400
-                     hover:text-slate-900 dark:hover:text-white
-                     hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors">
+                     hover:text-slate-900 dark:hover:text-ink
+                     hover:bg-slate-100 dark:hover:bg-ink/[0.08] transition-colors">
           <i className="ph-bold ph-pencil-simple text-[12.5px]" aria-hidden="true" />
         </button>
         <button type="button" onClick={onRemove} title="Delete" aria-label={`Delete ${alarm.name}`}
@@ -164,14 +164,14 @@ function Destination() {
   return (
     <section className={`${SURFACE.card} overflow-hidden`}>
       <div className="px-5 pt-4">
-        <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+        <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
           Where your alarms go
         </h3>
         <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5 max-w-[75ch]">
           One list for all of them. Only you receive these, and only you can see
           this list.
         </p>
-        <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+        <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
       </div>
 
       <div className="p-5 grid gap-5">
@@ -182,7 +182,7 @@ function Destination() {
               {emails.map(m => (
                 <div key={m.endpoint}
                   className="flex items-center gap-2 px-3 py-2 rounded-lg
-                             bg-slate-50 dark:bg-white/[0.04] min-w-0">
+                             bg-slate-50 dark:bg-ink/[0.04] min-w-0">
                   <i className={`ph-bold text-[12px] shrink-0 ${
                     m.confirmed ? "ph-check-circle text-emerald-500" : "ph-clock text-amber-500"}`}
                     aria-hidden="true" />
@@ -230,7 +230,7 @@ function Destination() {
             <div className="grid gap-1.5 mb-2.5">
               {(data?.teams ?? []).map(a => (
                 <div key={a} className="flex items-center gap-2 px-3 py-2 rounded-lg
-                                        bg-slate-50 dark:bg-white/[0.04] min-w-0">
+                                        bg-slate-50 dark:bg-ink/[0.04] min-w-0">
                   <i className="ph-bold ph-chat-teardrop-text text-[12px] text-violet-500 shrink-0"
                     aria-hidden="true" />
                   <span className="font-mono text-[12.5px] text-slate-700 dark:text-slate-200 truncate"

@@ -52,7 +52,7 @@ export default function MutationErrors() {
         <div
           key={e.id}
           role="alert"
-          className={`pointer-events-auto rounded-2xl border shadow-lg backdrop-blur p-4 flex items-start gap-3 ${tone.soft} ${tone.border}`}
+          className={`pointer-events-auto rounded-2xl border shadow-lg  p-4 flex items-start gap-3 ${tone.soft} ${tone.border}`}
           style={{ animation: "slideUp 0.3s cubic-bezier(0.16,1,0.3,1) both" }}
         >
           <i className={`ph-fill ph-warning-circle text-lg shrink-0 mt-0.5 ${tone.text}`}></i>

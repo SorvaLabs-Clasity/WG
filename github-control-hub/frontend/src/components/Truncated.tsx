@@ -58,8 +58,8 @@ export default function Truncated({ text, className = "" }: {
           }}
           className="z-[300] pointer-events-none rounded-lg px-2.5 py-1.5
                      text-[12px] leading-snug break-all shadow-lg ring-1
-                     bg-slate-900 text-white ring-black/10
-                     dark:bg-white dark:text-slate-900 dark:ring-white/20"
+                     bg-slate-900 text-reverse ring-black/10
+                     dark:bg-white dark:text-slate-900 dark:ring-ink/20"
         >
           {text}
         </div>,

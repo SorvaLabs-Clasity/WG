@@ -60,10 +60,10 @@ function StatusDot({ alarm }: { alarm: WidgetAlarm }) {
   return (
     <span className="relative flex w-2.5 h-2.5 shrink-0 mt-[7px]" aria-hidden="true">
       {firing && (
-        <span className="absolute inline-flex w-full h-full rounded-full bg-rose-400 opacity-70 animate-ping" />
+        <span className="absolute inline-flex w-full h-full  bg-rose-400 opacity-70 animate-ping" />
       )}
       <span className={`relative inline-flex w-2.5 h-2.5 rounded-full ${
-        !alarm.enabled ? "bg-slate-300 dark:bg-slate-600"
+        !alarm.enabled ? "bg-slate-300 dark:bg-paper-3"
           : firing ? "bg-rose-500" : "bg-emerald-500"}`} />
     </span>
   );
@@ -88,10 +88,10 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
 
   return (
     <div className={`group relative flex items-start gap-3.5 pl-5 pr-4 py-4
-                     hover:bg-slate-50/80 dark:hover:bg-white/[0.035] transition-colors
+                     hover:bg-slate-50/80 dark:hover:bg-ink/[0.035] transition-colors
                      ${alarm.enabled ? "" : "opacity-60"}`}>
       <span className={`absolute left-0 top-0 bottom-0 w-[3px] ${
-        !alarm.enabled ? "bg-slate-200 dark:bg-slate-700"
+        !alarm.enabled ? "bg-slate-200 dark:bg-paper-3"
           : firing ? "bg-rose-500" : "bg-emerald-500/70"}`} aria-hidden="true" />
 
       <StatusDot alarm={alarm} />
@@ -100,12 +100,12 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-[13.5px] font-semibold text-slate-900 dark:text-slate-100">{alarm.name}</span>
           {subject.guardrail && (
-            <span className="text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded
+            <span className="text-[9.5px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded
                              bg-amber-100 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400">AWS</span>
           )}
           {!alarm.enabled && (
-            <span className="text-[9.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded
-                             bg-slate-100 dark:bg-white/[0.08] text-slate-500 dark:text-slate-400">paused</span>
+            <span className="text-[9.5px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded
+                             bg-slate-100 dark:bg-ink/[0.08] text-slate-500 dark:text-slate-400">paused</span>
           )}
         </div>
 
@@ -176,7 +176,7 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
 
       <div className="shrink-0 text-right">
         {alarm.lastValue !== undefined && alarm.lastValue !== null && (
-          <div className={`text-[20px] font-black tabular-nums leading-none
+          <div className={`text-[20px] font-semibold tabular-nums leading-none
             ${firing ? "text-rose-600 dark:text-rose-400" : "text-slate-300 dark:text-slate-600"}`}>
             {alarm.lastValue}
           </div>
@@ -195,12 +195,12 @@ function AlarmRow({ alarm, subject, groupName, interval, canEdit, onEdit, onTogg
       <div className="shrink-0 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
         <button onClick={onToggle} title={alarm.enabled ? "Pause" : "Resume"}
           className="w-8 h-8 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
-                     hover:bg-slate-100 dark:hover:bg-white/[0.08]">
+                     hover:bg-slate-100 dark:hover:bg-ink/[0.08]">
           <i className={`ph-bold ${alarm.enabled ? "ph-pause" : "ph-play"} text-[13px]`} />
         </button>
         <button onClick={onEdit} title="Edit"
           className="w-8 h-8 grid place-items-center rounded-lg text-slate-500 dark:text-slate-400
-                     hover:bg-slate-100 dark:hover:bg-white/[0.08]">
+                     hover:bg-slate-100 dark:hover:bg-ink/[0.08]">
           <i className="ph-bold ph-pencil-simple text-[13px]" />
         </button>
         <button onClick={onDelete} title="Delete"
@@ -318,7 +318,7 @@ export default function AlarmsPage() {
                   ${firing.length ? "bg-rose-500" : "bg-emerald-500"}`} />
               <div className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Currently firing</div>
               <div className="flex items-end gap-3 mt-2.5">
-                <span className={`text-[52px] font-black tabular-nums leading-[0.85] tracking-[-0.04em]
+                <span className={`text-[52px] font-semibold tabular-nums leading-[0.85] tracking-[-0.04em]
                   ${firing.length ? "text-rose-600 dark:text-rose-400" : "text-slate-300 dark:text-slate-600"}`}>
                   {firing.length}
                 </span>
@@ -336,12 +336,12 @@ export default function AlarmsPage() {
               </p>
             </div>
 
-            <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-white/[0.07]`}>
-              <div className="bg-white dark:bg-[#151a23] px-5 py-4 flex items-center gap-4">
+            <div className={`${SURFACE.card} overflow-hidden grid gap-px bg-slate-200/70 dark:bg-ink/[0.07]`}>
+              <div className="bg-white dark:bg-paper px-5 py-4 flex items-center gap-4">
                 <i className={`ph-fill ph-pause-circle text-[19px] ${paused.length ? "text-slate-500" : "text-slate-300 dark:text-slate-600"}`} aria-hidden="true" />
                 <div>
                   <div className="flex items-baseline gap-2">
-                    <span className={`text-[22px] font-black tabular-nums leading-none ${paused.length ? "text-slate-900 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}>{paused.length}</span>
+                    <span className={`text-[22px] font-semibold tabular-nums leading-none ${paused.length ? "text-slate-900 dark:text-ink" : "text-slate-300 dark:text-slate-600"}`}>{paused.length}</span>
                     <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">Paused</span>
                   </div>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">watching nothing while paused</p>
@@ -349,11 +349,11 @@ export default function AlarmsPage() {
               </div>
               {/* Its own number, because an alarm that cannot take a reading is
                   not a passing alarm and does not belong in either count above. */}
-              <div className="bg-white dark:bg-[#151a23] px-5 py-4 flex items-center gap-4">
+              <div className="bg-white dark:bg-paper px-5 py-4 flex items-center gap-4">
                 <i className={`ph-fill ph-warning-circle text-[19px] ${unreadable.length ? "text-amber-500" : "text-slate-300 dark:text-slate-600"}`} aria-hidden="true" />
                 <div>
                   <div className="flex items-baseline gap-2">
-                    <span className={`text-[22px] font-black tabular-nums leading-none ${unreadable.length ? "text-slate-900 dark:text-white" : "text-slate-300 dark:text-slate-600"}`}>{unreadable.length}</span>
+                    <span className={`text-[22px] font-semibold tabular-nums leading-none ${unreadable.length ? "text-slate-900 dark:text-ink" : "text-slate-300 dark:text-slate-600"}`}>{unreadable.length}</span>
                     <span className="text-[12px] font-bold text-slate-600 dark:text-slate-300">Cannot read</span>
                   </div>
                   <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">
@@ -385,7 +385,7 @@ export default function AlarmsPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <i className={`ph-bold ${section.icon} text-[14px] text-slate-400 dark:text-slate-500`}
                     aria-hidden="true" />
-                  <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+                  <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
                     {section.title}
                   </h3>
                   <span className="text-[11px] font-bold tabular-nums text-slate-300 dark:text-slate-600">
@@ -395,7 +395,7 @@ export default function AlarmsPage() {
                       a row whose controls quietly never appear. */}
                   {!section.canEdit && (
                     <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded
-                                     text-[10.5px] font-bold bg-slate-100 dark:bg-white/[0.08]
+                                     text-[10.5px] font-bold bg-slate-100 dark:bg-ink/[0.08]
                                      text-slate-500 dark:text-slate-400">
                       <i className="ph-fill ph-lock-simple text-[9px]" aria-hidden="true" />
                       view only · {section.team ?? "admin"}
@@ -405,7 +405,7 @@ export default function AlarmsPage() {
                 <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
                   {section.blurb} Firing first, then paused.
                 </p>
-                <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+                <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
               </div>
 
               {section.rows.length === 0 ? (
@@ -413,7 +413,7 @@ export default function AlarmsPage() {
                   {section.none}
                 </p>
               ) : (
-                <div className="divide-y divide-slate-100 dark:divide-white/[0.06]">
+                <div className="divide-y divide-slate-100 dark:divide-ink/[0.06]">
                   {section.rows.map(a => {
                     const guardrail = a.widgetId.startsWith("guardrail:");
                     const widget = guardrail ? undefined : widgetById.get(a.widgetId);

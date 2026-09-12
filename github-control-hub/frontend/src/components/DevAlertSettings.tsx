@@ -79,8 +79,8 @@ function IncludeRow({ label, checked, onChange, days, onDays, limit, onLimit }: 
         )}
         <select value={days} onChange={e => onDays(Number(e.target.value))}
           title="Anything untouched for longer than this is left out of the summary."
-          className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-white/[0.06]
-                     border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200">
+          className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-ink/[0.06]
+                     border border-slate-200 dark:border-ink/10 text-slate-700 dark:text-slate-200">
           {/* Zero first, because no limit is the default and the honest one:
               a summary that silently drops things nobody asked it to drop is
               worse than a long summary. */}
@@ -98,8 +98,8 @@ function IncludeRow({ label, checked, onChange, days, onDays, limit, onLimit }: 
         <span className="text-[11.5px] text-slate-400 dark:text-slate-500">and only when</span>
         <select value={limit ?? ""} onChange={e => onLimit(e.target.value === "" ? null : Number(e.target.value))}
           title="Counts everybody still awaiting review, you included, and a team counts as one."
-          className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-white/[0.06]
-                     border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200">
+          className="text-[12px] py-1 pl-2 pr-6 rounded-lg bg-white dark:bg-ink/[0.06]
+                     border border-slate-200 dark:border-ink/10 text-slate-700 dark:text-slate-200">
           {REVIEWER_LIMIT_OPTIONS.map(([v, label]) => (
             <option key={v} value={v}>{v === "" ? "any number are reviewing" : label.toLowerCase()}</option>
           ))}
@@ -313,14 +313,14 @@ export default function DevAlertSettings() {
       {/* ── where it goes ─────────────────────────────────────────── */}
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
             Where to reach you
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
             Your work email, the one you sign in to Teams with. Messages arrive as a
             direct message from the Power Automate bot.
           </p>
-          <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
         </div>
 
         <div className="p-5">
@@ -404,14 +404,14 @@ export default function DevAlertSettings() {
       {/* ── the moments worth interrupting for ────────────────────── */}
       <section className={`${SURFACE.card} overflow-hidden`}>
         <div className="px-5 pt-4">
-          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+          <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
             Tell me straight away
           </h3>
           <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
             Arrives within seconds. Kept short on purpose. A message that is not worth
             reading immediately teaches you to ignore the ones that are.
           </p>
-          <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
         </div>
         <div className="px-5 pb-4">
           <Row
@@ -506,7 +506,7 @@ export default function DevAlertSettings() {
 
             {/* The decisive one, and the only thing that can tell "GitHub never
                 told us" apart from "we decided not to send it". */}
-            <div className="mt-3 pt-3 border-t border-slate-200/70 dark:border-white/[0.07]">
+            <div className="mt-3 pt-3 border-t border-slate-200/70 dark:border-ink/[0.07]">
               {data.lastEvent ? (
                 <p className="text-[11.5px] text-slate-500 dark:text-slate-400 leading-relaxed">
                   Last event: <span className="font-semibold text-slate-700 dark:text-slate-200">
@@ -569,7 +569,7 @@ export default function DevAlertSettings() {
         <div className="px-5 pt-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-white">
+              <h3 className="text-[13px] font-bold tracking-tight text-slate-900 dark:text-ink">
                 Send me a summary
               </h3>
               <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -583,7 +583,7 @@ export default function DevAlertSettings() {
               <span className="text-[12.5px] font-semibold text-slate-700 dark:text-slate-200">On</span>
             </label>
           </div>
-          <div className="h-px bg-slate-200/70 dark:bg-white/[0.07] mt-3" />
+          <div className="h-px bg-slate-200/70 dark:bg-ink/[0.07] mt-3" />
         </div>
 
         <div className={`px-5 pb-5 ${digest.enabled ? "" : "opacity-45 pointer-events-none"}`}>
@@ -599,8 +599,8 @@ export default function DevAlertSettings() {
                   all. Bare controls inside one bordered box read as a single
                   time field and fit. */}
               <div className="inline-flex items-center gap-0.5 rounded-xl border border-slate-200
-                              dark:border-white/10 bg-white dark:bg-white/[0.06] px-2 py-1.5
-                              focus-within:ring-2 focus-within:ring-slate-900/10 dark:focus-within:ring-white/25">
+                              dark:border-ink/10 bg-white dark:bg-ink/[0.06] px-2 py-1.5
+                              focus-within:ring-2 focus-within:ring-slate-900/10 dark:focus-within:ring-ink/25">
                 <select
                   aria-label="Hour"
                   value={((digest.hour + 11) % 12) + 1}
@@ -625,7 +625,7 @@ export default function DevAlertSettings() {
                     <option key={m} value={m}>{String(m).padStart(2, "0")}</option>)}
                 </select>
 
-                <div className="flex ml-1.5 rounded-lg overflow-hidden border border-slate-200 dark:border-white/10">
+                <div className="flex ml-1.5 rounded-lg overflow-hidden border border-slate-200 dark:border-ink/10">
                   {(["AM", "PM"] as const).map(half => {
                     const on = (half === "AM") === (digest.hour < 12);
                     return (
@@ -633,8 +633,8 @@ export default function DevAlertSettings() {
                         onClick={() => patchDigest({ hour: (digest.hour % 12) + (half === "AM" ? 0 : 12) })}
                         className={`px-2 py-1 text-[11px] font-bold leading-none transition-colors ${
                           on
-                            ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900"
-                            : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/[0.05]"}`}>
+                            ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
+                            : "text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-ink/[0.05]"}`}>
                         {half}
                       </button>
                     );
@@ -679,7 +679,7 @@ export default function DevAlertSettings() {
                     {here && here !== digest.timeZone && (
                       <button type="button" onClick={() => patchDigest({ timeZone: here })}
                         className="text-[11px] font-semibold text-slate-500 dark:text-slate-400
-                                   underline underline-offset-2 hover:text-slate-900 dark:hover:text-white">
+                                   underline underline-offset-2 hover:text-slate-900 dark:hover:text-ink">
                         Use this computer's ({here.split("/").pop()?.replace(/_/g, " ")})
                       </button>
                     )}
@@ -707,8 +707,8 @@ export default function DevAlertSettings() {
                     }}
                     className={`px-2.5 py-1.5 rounded-lg text-[12px] font-bold border transition-colors ${
                       on
-                        ? "border-slate-900 dark:border-white bg-slate-900 dark:bg-white text-white dark:text-slate-900"
-                        : "border-slate-200 dark:border-white/15 text-slate-500 dark:text-slate-400"}`}>
+                        ? "border-slate-900 dark:border-white bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
+                        : "border-slate-200 dark:border-ink/15 text-slate-500 dark:text-slate-400"}`}>
                     {label}
                   </button>
                 );
@@ -768,7 +768,7 @@ export default function DevAlertSettings() {
             </span>
           </div>
 
-          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-white/[0.06]">
+          <div className="mt-2 pt-2 border-t border-slate-100 dark:border-ink/[0.06]">
             <Row
               label="Skip it when there is nothing to say"
               hint="On by default. A daily “you have nothing” is how a channel gets muted, and then the useful ones stop being read too."

@@ -58,9 +58,9 @@ const BLOCK: Record<BlockReason, { label: string; chip: string; dot: string }> =
   "conflict":          { label: "Conflicts",        chip: "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-400/20", dot: "bg-rose-500" },
   "checks-failing":    { label: "Checks failing",   chip: "bg-rose-50 text-rose-700 ring-rose-600/20 dark:bg-rose-950/50 dark:text-rose-300 dark:ring-rose-400/20", dot: "bg-rose-500" },
   "behind":            { label: "Behind base",      chip: "bg-sky-50 text-sky-700 ring-sky-600/20 dark:bg-sky-950/50 dark:text-sky-300 dark:ring-sky-400/20", dot: "bg-sky-500" },
-  "checks-pending":    { label: "Checks running",   chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20", dot: "bg-slate-400" },
-  "draft":             { label: "Draft",            chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20", dot: "bg-slate-400" },
-  "blocked":           { label: "Blocked",          chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-400/20", dot: "bg-slate-400" },
+  "checks-pending":    { label: "Checks running",   chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-paper-2 dark:text-slate-300 dark:ring-rule/20", dot: "bg-slate-400" },
+  "draft":             { label: "Draft",            chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-paper-2 dark:text-slate-300 dark:ring-rule/20", dot: "bg-slate-400" },
+  "blocked":           { label: "Blocked",          chip: "bg-slate-100 text-slate-600 ring-slate-500/20 dark:bg-paper-2 dark:text-slate-300 dark:ring-rule/20", dot: "bg-slate-400" },
 };
 
 function thresholdLabel(secs: number): string {
@@ -76,7 +76,7 @@ function Switch({ on, onChange, disabled }: {
   return (
     <button onClick={() => onChange(!on)} disabled={disabled} role="switch" aria-checked={on}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-        on ? "bg-gh-blue" : "bg-slate-300 dark:bg-slate-600"}`}>
+        on ? "bg-gh-blue" : "bg-slate-300 dark:bg-paper-3"}`}>
       <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${
         on ? "translate-x-[1.15rem]" : "translate-x-[0.2rem]"}`} />
     </button>
@@ -86,7 +86,7 @@ function Switch({ on, onChange, disabled }: {
 function Stat({ n, label, tone }: { n: number; label: string; tone?: string }) {
   return (
     <div className="flex items-baseline gap-1.5">
-      <span className={`text-xl font-black tabular-nums ${tone ?? "text-slate-900 dark:text-white"}`}>{n}</span>
+      <span className={`text-xl font-semibold tabular-nums ${tone ?? "text-slate-900 dark:text-ink"}`}>{n}</span>
       <span className="text-xs text-slate-500 dark:text-slate-400">{label}</span>
     </div>
   );
@@ -244,13 +244,13 @@ export default function PullRequestsPage() {
     const silent = p.stale && reminders && !p.paused && p.wouldNudge.length === 0;
 
     return (
-      <li className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors">
+      <li className="rounded-xl border border-slate-200 dark:border-rule bg-white dark:bg-paper hover:border-slate-300 dark:hover:border-rule transition-colors">
         <div className="p-4">
           <div className="flex items-start gap-3">
             <span className={`mt-1.5 h-2 w-2 rounded-full shrink-0 ${b.dot}`} aria-hidden="true" />
             <div className="min-w-0 flex-1">
               <a href={p.url} target="_blank" rel="noopener noreferrer"
-                className="font-semibold text-[15px] leading-snug text-slate-900 dark:text-white hover:text-gh-blue block">
+                className="font-semibold text-[15px] leading-snug text-slate-900 dark:text-ink hover:text-gh-blue block">
                 {p.title}
               </a>
               <div className="mt-1.5 flex items-center gap-x-2 gap-y-1 flex-wrap text-xs text-slate-500 dark:text-slate-400">
@@ -268,7 +268,7 @@ export default function PullRequestsPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ring-1 ring-inset ${b.chip}`}>
+              <span className={`text-[11px] font-semibold px-2 py-0.5  ring-1 ring-inset ${b.chip}`}>
                 {b.label}
               </span>
               <span className="text-sm font-bold tabular-nums text-slate-700 dark:text-slate-300 w-9 text-right"
@@ -285,7 +285,7 @@ export default function PullRequestsPage() {
               be set once the first reminder has already gone out. Anything not
               yet stale reads as what *will* happen rather than what has. */}
           {(p.stale || (isAdmin && reminders)) && (
-            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 flex-wrap">
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-rule flex items-center justify-between gap-3 flex-wrap">
               <div className="text-xs text-slate-600 dark:text-slate-400 min-w-0">
                 {!reminders ? (
                   <span className="text-slate-400 dark:text-slate-500">Reminders are off</span>
@@ -316,7 +316,7 @@ export default function PullRequestsPage() {
                       {p.stale ? "Reminds" : "Would remind"}
                     </span>
                     {p.wouldNudge.map(l => (
-                      <span key={l} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700/70">
+                      <span key={l} className="inline-flex items-center gap-1 px-1.5 py-0.5  bg-slate-100 dark:bg-paper-3/70">
                         <UserAvatar login={l} size={14} />
                         <span className="font-medium text-slate-700 dark:text-slate-200">{l}</span>
                       </span>
@@ -343,7 +343,7 @@ export default function PullRequestsPage() {
           )}
 
           {open && isAdmin && reminders && (
-            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+            <div className="mt-3 pt-3 border-t border-slate-100 dark:border-rule space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">Pause this pull request</p>
@@ -371,17 +371,17 @@ export default function PullRequestsPage() {
                         <span className="flex items-center gap-1.5">
                           <button disabled={busy}
                             onClick={() => pause.mutate({ repo: p.repo, number: p.number, pausedLogins: [...p.pausedLogins, l] })}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
+                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
                             this PR
                           </button>
                           <button disabled={busy}
                             onClick={() => mute.mutate({ scope: "repo", repo: p.repo, target: l, muted: true })}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
+                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
                             this repo
                           </button>
                           <button disabled={busy}
                             onClick={() => mute.mutate({ scope: "global", target: l, muted: true })}
-                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 disabled:opacity-40">
+                            className="text-[11px] font-medium px-2 py-0.5 rounded-md ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-3 disabled:opacity-40">
                             everywhere
                           </button>
                         </span>
@@ -389,7 +389,7 @@ export default function PullRequestsPage() {
                     ))}
 
                     {p.muted.length > 0 && (
-                      <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-800 space-y-1">
+                      <div className="pt-2 mt-2 border-t border-slate-100 dark:border-rule space-y-1">
                         {p.muted.map(m => (
                           <div key={m.login} className="flex items-center justify-between gap-2 text-xs">
                             <span className="inline-flex items-center gap-1.5 text-slate-500 dark:text-slate-400">
@@ -426,7 +426,7 @@ export default function PullRequestsPage() {
   }) => (
     <section>
       <div className="flex items-baseline gap-2 mb-1">
-        <h2 className="text-sm font-bold text-slate-900 dark:text-white">{title}</h2>
+        <h2 className="text-sm font-bold text-slate-900 dark:text-ink">{title}</h2>
         <span className="text-xs tabular-nums text-slate-400 dark:text-slate-500">{rows.length}</span>
       </div>
       {hint && <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">{hint}</p>}
@@ -453,7 +453,7 @@ export default function PullRequestsPage() {
       <header className="mb-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">Open pull requests</h1>
+            <h1 className="text-2xl font-semibold tracking-tight text-slate-900 dark:text-ink">Open pull requests</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-2xl">
               Every open pull request in the organization, most idle first, closed ones never
               appear. Idle counts from the last <strong className="font-semibold">commit</strong>,
@@ -471,10 +471,10 @@ export default function PullRequestsPage() {
       </header>
 
       {isAdmin && (
-        <div className="mb-5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 divide-y divide-slate-100 dark:divide-slate-800">
+        <div className="mb-5 rounded-xl border border-slate-200 dark:border-rule bg-white dark:bg-paper divide-y divide-slate-100 dark:divide-rule">
           <div className="px-5 py-3 flex items-center justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold text-slate-900 dark:text-white">Monitor pull requests</p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-ink">Monitor pull requests</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Off means nothing is fetched, listed or posted, and nothing runs on the schedule.
               </p>
@@ -485,7 +485,7 @@ export default function PullRequestsPage() {
 
           <div className={`px-5 py-3 flex items-center justify-between gap-4 ${monitoring ? "" : "opacity-50"}`}>
             <div>
-              <p className="text-sm font-semibold text-slate-900 dark:text-white">Post reminders</p>
+              <p className="text-sm font-semibold text-slate-900 dark:text-ink">Post reminders</p>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 One comment on anything idle for {thresholdLabel(data?.staleSeconds ?? 604_800)}, replacing
                 itself each time rather than adding another.
@@ -498,18 +498,18 @@ export default function PullRequestsPage() {
           {monitoring && reminders && (
             <div className="px-5 py-3 flex items-center justify-between gap-4 flex-wrap">
               <button onClick={() => setShowSettings(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg ring-1 ring-inset ring-slate-300 dark:ring-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800">
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg ring-1 ring-inset ring-slate-300 dark:ring-rule text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-paper-2">
                 <i className="ph-bold ph-bell-slash"></i>
                 Reminder mutes
                 {(mutes.global.length + Object.values(mutes.byRepo).flat().length) > 0 && (
-                  <span className="text-[11px] tabular-nums px-1.5 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900">
+                  <span className="text-[11px] tabular-nums px-1.5  bg-slate-900 dark:bg-white text-reverse dark:text-slate-900">
                     {mutes.global.length + Object.values(mutes.byRepo).flat().length}
                   </span>
                 )}
               </button>
               <button onClick={() => runNow.mutate()} disabled={runNow.isPending}
                 title="Run the reminder pass now instead of waiting for the next scheduled one"
-                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gh-blue text-white hover:opacity-90 disabled:opacity-40">
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-gh-blue text-reverse hover:opacity-90 disabled:opacity-40">
                 {runNow.isPending ? "Sending…" : "Send reminders now"}
               </button>
             </div>
@@ -530,8 +530,8 @@ export default function PullRequestsPage() {
         <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-950/40 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
           <strong>Test threshold active.</strong> Pull requests count as stale after{" "}
           {thresholdLabel(data?.staleSeconds ?? 0)} instead of 7 days.{" "}
-          <code className="px-1 rounded bg-black/10 dark:bg-white/10">STALE_SECONDS</code> in{" "}
-          <code className="px-1 rounded bg-black/10 dark:bg-white/10">prNudgeService.ts</code> controls it.
+          <code className="px-1 rounded bg-black/10 dark:bg-ink/10">STALE_SECONDS</code> in{" "}
+          <code className="px-1 rounded bg-black/10 dark:bg-ink/10">prNudgeService.ts</code> controls it.
         </div>
       )}
 
@@ -565,7 +565,7 @@ export default function PullRequestsPage() {
                 people that refreshing does not work. */}
             <button onClick={() => refreshNow.mutate()} disabled={isFetching || refreshNow.isPending}
               title="Reads GitHub now. The list refreshes on its own every few minutes."
-              className="shrink-0 px-3 py-2 text-sm rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40">
+              className="shrink-0 px-3 py-2 text-sm rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-paper-2 disabled:opacity-40">
               <i className={`ph ph-arrows-clockwise ${isFetching || refreshNow.isPending ? "animate-spin" : ""}`}></i>
             </button>
           </div>

@@ -97,7 +97,7 @@ function Avatar({ login, size = 32 }: { login: string; size?: number }) {
     // A deleted account, or no network. A letter beats a broken-image icon.
     return (
       <span style={{ width: px, height: px }}
-        className="shrink-0 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-300 grid place-items-center font-bold"
+        className="shrink-0 rounded-full bg-slate-200 dark:bg-paper-3 text-slate-500 dark:text-slate-300 grid place-items-center font-bold"
         aria-hidden>
         <span style={{ fontSize: size * 0.42 }}>{login.charAt(0).toUpperCase()}</span>
       </span>
@@ -111,7 +111,7 @@ function Avatar({ login, size = 32 }: { login: string; size?: number }) {
       loading="lazy"
       onError={() => setFailed(true)}
       style={{ width: px, height: px }}
-      className="shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 object-cover"
+      className="shrink-0 rounded-full bg-slate-100 dark:bg-paper-2 object-cover"
     />
   );
 }
@@ -207,7 +207,7 @@ export default function AccessPage() {
     <Page user={user}>
       <div className="flex items-start justify-between gap-4 mb-5 flex-wrap">
         <div>
-          <h1 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">Access</h1>
+          <h1 className="text-2xl font-semibold text-slate-900 dark:text-ink tracking-tight">Access</h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Every person, everything they can reach, and how they came by it.
           </p>
@@ -298,7 +298,7 @@ export default function AccessPage() {
             {teamList.slice(0, LIST_CAP).map((t, i) => (
               <button key={t.slug} onClick={() => setOpenTeam(t.slug)}
                 style={enter(i, 12, 200)}
-                className="w-full text-left px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hover:border-slate-400 dark:hover:border-slate-500 transition-colors flex items-center justify-between gap-4">
+                className="w-full text-left px-4 py-2.5 rounded-xl border border-slate-200 dark:border-rule bg-white dark:bg-paper hover:border-slate-400 dark:hover:border-rule transition-colors flex items-center justify-between gap-4">
                 <span className="font-semibold text-[13.5px] text-slate-800 dark:text-slate-100 truncate">
                   {t.name}
                   <span className="ml-2 font-mono text-[12px] text-slate-400 dark:text-slate-500">{t.slug}</span>
@@ -333,7 +333,7 @@ export default function AccessPage() {
               {repoList.slice(0, LIST_CAP).map((r, i) => (
                 <button key={r} onClick={() => setOpenRepo(r)}
                   style={enter(i, 12, 200)}
-                  className="w-full text-left px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 font-mono text-[13.5px] font-semibold text-slate-800 dark:text-slate-100 hover:border-slate-400 dark:hover:border-slate-500 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                  className="w-full text-left px-4 py-2.5 rounded-xl border border-slate-200 dark:border-rule bg-white dark:bg-paper font-mono text-[13.5px] font-semibold text-slate-800 dark:text-slate-100 hover:border-slate-400 dark:hover:border-rule hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                   {r}
                 </button>
               ))}
@@ -354,9 +354,9 @@ function Stat({ value, label, hint, tone = "neutral" }: {
   value: number; label: string; hint?: string; tone?: Intent;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 dark:border-slate-700 px-4 py-3">
-      <p className={`text-[26px] font-black leading-none tabular-nums ${
-        tone === "warn" ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-white"
+    <div className="rounded-xl border border-slate-200 dark:border-rule px-4 py-3">
+      <p className={`text-[26px] font-semibold leading-none tabular-nums ${
+        tone === "warn" ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-ink"
       }`}>{value}</p>
       <p className="text-[12.5px] font-bold text-slate-600 dark:text-slate-300 mt-1.5">{label}</p>
       {hint && <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">{hint}</p>}
@@ -373,7 +373,7 @@ function PersonRow({ person, index, onOpen }: { person: Person; index: number; o
           <Avatar login={person.login} size={32} />
           <div className="min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-bold text-[14px] text-slate-900 dark:text-white">{person.login}</span>
+              <span className="font-bold text-[14px] text-slate-900 dark:text-ink">{person.login}</span>
               <OrgRoleTag role={person.orgRole} />
             </div>
             <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
@@ -397,9 +397,9 @@ function PersonRow({ person, index, onOpen }: { person: Person; index: number; o
 function Count({ n, label, warn }: { n: number; label: string; warn?: boolean }) {
   return (
     <div>
-      <p className={`text-[17px] font-black tabular-nums leading-none ${
+      <p className={`text-[17px] font-semibold tabular-nums leading-none ${
         n === 0 ? "text-slate-300 dark:text-slate-600"
-          : warn ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-white"
+          : warn ? "text-amber-600 dark:text-amber-400" : "text-slate-900 dark:text-ink"
       }`}>{n}</p>
       <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{label}</p>
     </div>
@@ -490,7 +490,7 @@ function PersonDetail({ login, onBack, onOpenRepo }: {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <button onClick={() => onOpenRepo(r.repo)}
-                          className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 break-all">
+                          className="font-mono text-[13.5px] font-bold text-slate-900 dark:text-ink hover:text-blue-600 dark:hover:text-blue-400 break-all">
                           {r.repo}
                         </button>
                         {r.archived && <Pill intent="neutral">archived</Pill>}
@@ -571,7 +571,7 @@ function TeamDetail({ slug, onBack, onOpenPerson, onOpenRepo }: {
           <div className="grid gap-1.5 p-3">
             {data.members.map((m, i) => (
               <button key={m.login} onClick={() => onOpenPerson(m.login)} style={enter(i, 10, 180)}
-                className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 transition-colors flex items-center justify-between gap-3">
+                className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-rule hover:border-slate-400 dark:hover:border-rule transition-colors flex items-center justify-between gap-3">
                 <span className="font-semibold text-[13.5px] text-slate-800 dark:text-slate-100">{m.login}</span>
                 <span className="text-[12px] text-slate-500 dark:text-slate-400">
                   {m.orgRole === "owner" ? "org owner" : m.outside ? "outside collaborator" : "member"}
@@ -596,7 +596,7 @@ function TeamDetail({ slug, onBack, onOpenPerson, onOpenRepo }: {
           <div className="grid gap-1.5 p-3">
             {data.repos.map((r, i) => (
               <button key={r.repo} onClick={() => onOpenRepo(r.repo)} style={enter(i, 10, 180)}
-                className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 transition-colors flex items-center justify-between gap-3">
+                className="w-full text-left px-3 py-2 rounded-lg border border-slate-200 dark:border-rule hover:border-slate-400 dark:hover:border-rule transition-colors flex items-center justify-between gap-3">
                 <span className="font-mono text-[13px] font-semibold text-slate-800 dark:text-slate-100 truncate">
                   {r.repo}
                   {r.archived && <span className="ml-2 text-[11px] text-slate-400">archived</span>}
@@ -651,7 +651,7 @@ function RepoDetail({ repo, onBack, onOpenPerson }: {
               {data.teams.map((t, i) => (
                 <InsetRow key={t.slug} intent="neutral" index={i}>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="font-bold text-[13.5px] text-slate-900 dark:text-white">{t.name}</span>
+                    <span className="font-bold text-[13.5px] text-slate-900 dark:text-ink">{t.name}</span>
                     <Pill intent={ROLE_TONE[t.permission] ?? "neutral"}>{roleName(t.permission)}</Pill>
                   </div>
                 </InsetRow>
@@ -669,7 +669,7 @@ function RepoDetail({ repo, onBack, onOpenPerson }: {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Avatar login={p.login} size={20} />
                       <button onClick={() => onOpenPerson(p.login)}
-                        className="font-bold text-[13.5px] text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400">
+                        className="font-bold text-[13.5px] text-slate-900 dark:text-ink hover:text-blue-600 dark:hover:text-blue-400">
                         {p.login}
                       </button>
                       <OrgRoleTag role={p.orgRole} />

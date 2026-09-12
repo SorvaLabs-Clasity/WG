@@ -80,13 +80,13 @@ export default function WidgetFilterEditor({ config, onClose }: {
   };
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50 backdrop-blur-sm p-4"
+    <div className="fixed inset-0 z-50 grid place-items-center bg-slate-900/50  p-4"
       role="dialog" aria-modal="true" aria-label={`Filters for ${config.title}`}>
       <div className={`${SURFACE.card} w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden`}>
-        <div className="px-5 pt-4 pb-3 border-b border-slate-200 dark:border-white/10">
+        <div className="px-5 pt-4 pb-3 border-b border-slate-200 dark:border-ink/10">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="text-[14px] font-bold tracking-tight text-slate-900 dark:text-white truncate">
+              <h3 className="text-[14px] font-bold tracking-tight text-slate-900 dark:text-ink truncate">
                 Narrow “{config.title}”
               </h3>
               <p className="text-[11.5px] text-slate-400 dark:text-slate-500 mt-0.5">
@@ -96,8 +96,8 @@ export default function WidgetFilterEditor({ config, onClose }: {
             </div>
             <button type="button" onClick={onClose} aria-label="Close"
               className="shrink-0 w-7 h-7 rounded-lg grid place-items-center
-                         text-slate-400 hover:text-slate-900 dark:hover:text-white
-                         hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors">
+                         text-slate-400 hover:text-slate-900 dark:hover:text-ink
+                         hover:bg-slate-100 dark:hover:bg-ink/[0.08] transition-colors">
               <i className="ph-bold ph-x text-[13px]" aria-hidden="true" />
             </button>
           </div>
@@ -131,7 +131,7 @@ export default function WidgetFilterEditor({ config, onClose }: {
           )}
         </div>
 
-        <div className="px-5 py-3.5 border-t border-slate-200 dark:border-white/10
+        <div className="px-5 py-3.5 border-t border-slate-200 dark:border-ink/10
                         flex items-center justify-between gap-3 flex-wrap">
           <p className="text-[12px] text-slate-500 dark:text-slate-400 tabular-nums">
             {draft.filter(isActive).length === 0
@@ -228,10 +228,10 @@ function ColumnFilter({ column, items, value, onChange }: {
     <div className={`rounded-xl border p-3.5 transition-colors ${
       active
         ? "border-gh-blue/40 bg-gh-blue/[0.04] dark:bg-blue-400/[0.06]"
-        : "border-slate-200 dark:border-white/10"}`}>
+        : "border-slate-200 dark:border-ink/10"}`}>
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-baseline gap-2 min-w-0">
-          <span className="text-[13px] font-bold text-slate-900 dark:text-white">
+          <span className="text-[13px] font-bold text-slate-900 dark:text-ink">
             {column.label}
           </span>
           <span className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>
@@ -285,8 +285,8 @@ function ColumnFilter({ column, items, value, onChange }: {
                 className={`px-2.5 py-1 rounded-lg text-[12px] font-semibold transition-colors border
                             inline-flex items-center gap-1.5 ${
                   on
-                    ? "bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-transparent"
-                    : "border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-300 hover:border-slate-400"}`}>
+                    ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900 border-transparent"
+                    : "border-slate-200 dark:border-ink/10 text-slate-600 dark:text-slate-300 hover:border-slate-400"}`}>
                 {opt}
                 {/* How many rows carry it. A choice that would keep nothing is
                     worth seeing before it is made, not after. */}
@@ -319,7 +319,7 @@ function ColumnFilter({ column, items, value, onChange }: {
             <div className="flex flex-wrap gap-1.5 mt-2">
               {values.map(v => (
                 <span key={v} className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg
-                                         text-[12px] font-semibold bg-slate-100 dark:bg-white/[0.08]
+                                         text-[12px] font-semibold bg-slate-100 dark:bg-ink/[0.08]
                                          text-slate-700 dark:text-slate-200">
                   {v}
                   <button type="button" aria-label={`Remove ${v}`}
@@ -344,7 +344,7 @@ function ColumnFilter({ column, items, value, onChange }: {
                     {i > 0 && ", "}
                     <button type="button" onClick={() => addValue(e)}
                       className="font-mono text-[10.5px] px-1 py-0.5 rounded
-                                 bg-slate-200/70 dark:bg-white/[0.08]
+                                 bg-slate-200/70 dark:bg-ink/[0.08]
                                  text-slate-600 dark:text-slate-300 hover:text-gh-blue transition-colors">
                       {e}
                     </button>
@@ -370,7 +370,7 @@ function ColumnFilter({ column, items, value, onChange }: {
               aria-pressed={(value?.mode ?? "include") === mode}
               className={`px-2.5 py-1 rounded-lg text-[11.5px] font-bold transition-colors ${
                 (value?.mode ?? "include") === mode
-                  ? "bg-slate-200 dark:bg-white/[0.12] text-slate-900 dark:text-white"
+                  ? "bg-slate-200 dark:bg-ink/[0.12] text-slate-900 dark:text-ink"
                   : "text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"}`}>
               {mode === "include" ? "Keep these" : "Hide these"}
             </button>
