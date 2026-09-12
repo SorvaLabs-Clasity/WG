@@ -131,7 +131,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
         <div className="p-6 overflow-y-auto space-y-6">
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1">Scanner Name</label>
+              <label className="caps block mb-1">Scanner Name</label>
               <input 
                 type="text" 
                 value={name}
@@ -141,7 +141,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
               />
             </div>
             <div>
-              <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-1">Description</label>
+              <label className="caps block mb-1">Description</label>
               <input 
                 type="text" 
                 value={description}
@@ -151,7 +151,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
               />
             </div>
             <div className="border border-rule dark:border-rule rounded-lg p-4 bg-gray-50/30 dark:bg-paper-2/30">
-              <label className="block text-sm font-semibold text-gh-textBase dark:text-slate-200 mb-3">Target Repositories</label>
+              <label className="caps block mb-3">Target Repositories</label>
               
               <div className="space-y-4">
                 <label className="flex items-start gap-2 cursor-pointer group/radio">
@@ -251,7 +251,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
           <div>
             <div className="flex justify-between items-end mb-3">
-              <label className="block text-sm font-bold text-gh-textBase dark:text-slate-200">Compliance Conditions</label>
+              <label className="caps block">Compliance Conditions</label>
               <button 
                 onClick={addCondition}
                 className="textlink caps"
@@ -271,7 +271,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                   </button>
 
                   <div className="mb-4 pr-6">
-                    <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Condition Type</label>
+                    <label className="caps block mb-1">Condition Type</label>
                     <select 
                       value={cond.type || "branch_protection"}
                       onChange={(e) => updateCondition(idx, "type", e.target.value)}
@@ -285,7 +285,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                   {(!cond.type || cond.type === "branch_protection") && (
                     <div className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Branch Patterns</label>
+                    <label className="caps block mb-1">Branch Patterns</label>
                     <TagInput
                       tags={cond.branchPatterns || []}
                       onChange={(tags) => updateCondition(idx, "branchPatterns", tags)}
@@ -309,7 +309,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                   {cond.requiresProtection && (
                     <div className="mt-3 border-t border-rule dark:border-rule pt-4">
                       <div className="mb-3">
-                        <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Protection Type</label>
+                        <label className="caps block mb-1">Protection Type</label>
                         <select 
                           value={cond.protectionType || "any"}
                           onChange={(e) => updateCondition(idx, "protectionType", e.target.value)}
@@ -322,7 +322,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                       </div>
 
                       <div className="mb-3">
-                        <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Rule Matching Mode</label>
+                        <label className="caps block mb-1">Rule Matching Mode</label>
                         <select 
                           value={cond.ruleMatchType || "at_least"}
                           onChange={(e) => updateCondition(idx, "ruleMatchType", e.target.value)}
@@ -472,7 +472,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                 {cond.type === ("query" as any) && (
                   <div className="space-y-4 pt-2">
                     <div>
-                      <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Select Insight Query</label>
+                      <label className="caps block mb-1">Select Insight Query</label>
                       <select 
                         value={cond.queryId || ""}
                         onChange={(e) => {
@@ -505,7 +505,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                         <>
                           {selectedQuery?.requiresParam && (
                             <div>
-                              <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">{selectedQuery.paramLabel}</label>
+                              <label className="caps block mb-1">{selectedQuery.paramLabel}</label>
                               {selectedQuery.useTagInput ? (
                                 <TagInput
                                   tags={cond.queryParam ? cond.queryParam.split(",").map(s => s.trim()).filter(Boolean) : []}
@@ -531,7 +531,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             <div className="bg-white dark:bg-paper border border-gray-200 dark:border-rule rounded p-3 text-sm mt-3">
                               <h4 className="caps mb-3">Advanced Rules</h4>
                               <div className="mb-3">
-                                <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Protection Type</label>
+                                <label className="caps block mb-1">Protection Type</label>
                                 <select 
                                   value={cond.queryAdvanced?.protectionType || "any"}
                                   onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}
@@ -581,7 +581,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                 {cond.type === ("query" as any) && (
                   <div className="space-y-4 pt-2">
                     <div>
-                      <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Select Insight Query</label>
+                      <label className="caps block mb-1">Select Insight Query</label>
                       <select 
                         value={cond.queryId || ""}
                         onChange={(e) => {
@@ -614,7 +614,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                         <>
                           {selectedQuery?.requiresParam && (
                             <div>
-                              <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">{selectedQuery.paramLabel}</label>
+                              <label className="caps block mb-1">{selectedQuery.paramLabel}</label>
                               {selectedQuery.useTagInput ? (
                                 <TagInput
                                   tags={cond.queryParam ? cond.queryParam.split(",").map(s => s.trim()).filter(Boolean) : []}
@@ -640,7 +640,7 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
                             <div className="bg-white dark:bg-paper border border-gray-200 dark:border-rule rounded p-3 text-sm mt-3">
                               <h4 className="caps mb-3">Advanced Rules</h4>
                               <div className="mb-3">
-                                <label className="block text-xs font-semibold text-gh-textBase dark:text-slate-200 mb-1">Protection Type</label>
+                                <label className="caps block mb-1">Protection Type</label>
                                 <select 
                                   value={cond.queryAdvanced?.protectionType || "any"}
                                   onChange={(e) => updateCondition(idx, "queryAdvanced", { ...cond.queryAdvanced, protectionType: e.target.value })}

@@ -757,7 +757,7 @@ function ParamControl({ spec, value, onChange }: { spec: ParamSpec; value: any; 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <div className="mb-4">
-      <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1">{label}</label>
+      <label className="caps block mb-1">{label}</label>
       {children}
       {hint && <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-1">{hint}</p>}
     </div>

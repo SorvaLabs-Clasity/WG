@@ -148,7 +148,7 @@ export default function KnowledgeGraphPage() {
                   value={search}
                   onChange={e => setSearch(e.target.value)}
                   placeholder="Search repositories…"
-                  className="w-full bg-transparent border-0 px-0 py-2 text-[14px] text-ink placeholder:text-ink-4 focus:outline-none"
+                  className="field-line text-[13.5px] w-full"
                 />
               </div>
               <div className="flex flex-wrap items-baseline gap-5">

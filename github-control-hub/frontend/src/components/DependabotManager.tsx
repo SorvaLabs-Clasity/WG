@@ -499,32 +499,30 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
 
   return (
     <div>
-      <div className="pb-3 flex items-center gap-2 flex-wrap">
-        {([["all", `All ${repos.length}`], ["off", `Not watched ${counts.off}`],
-           ["watched", `Watched ${counts.watched}`]] as const).map(([id, label]) => (
-          <button key={id} type="button" onClick={() => setFilter(id as Filter)}
-            aria-pressed={filter === id}
-            className={`px-2.5 py-1 rounded-lg text-[12px] font-semibold transition-colors ${
-              filter === id
-                ? "bg-slate-900 dark:bg-white text-reverse dark:text-slate-900"
-                : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-ink/[0.06]"}`}>
-            {label}
-          </button>
-        ))}
+      <div className="pb-3 flex items-end gap-6 flex-wrap">
+        <div className="inline-flex items-stretch border-b border-rule-strong">
+          {([["all", `All ${repos.length}`], ["off", `Not watched ${counts.off}`],
+             ["watched", `Watched ${counts.watched}`]] as const).map(([id, label], i) => (
+            <button key={id} type="button" onClick={() => setFilter(id as Filter)}
+              aria-pressed={filter === id}
+              className={`caps px-3 py-1.5 -mb-px border-b-2 transition-colors ${
+                i > 0 ? "border-l border-l-rule" : ""} ${
+                filter === id ? "text-ink border-b-ink" : "border-b-transparent hover:text-ink"}`}>
+              {label}
+            </button>
+          ))}
+        </div>
         <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Filter by name" className={`${SURFACE.input} max-w-[220px] ml-auto`} />
+          placeholder="Filter by name" className={`${SURFACE.input} max-w-[14rem] ml-auto`} />
       </div>
 
-      <div className="pb-2 flex items-center gap-2 flex-wrap border-b border-slate-200/70 dark:border-ink/[0.07]">
-        <label className="inline-flex items-center gap-2 text-[12.5px] font-semibold
-                          text-slate-600 dark:text-slate-300 cursor-pointer">
+      <div className="pb-2 pt-1 flex items-center gap-4 flex-wrap border-b border-rule">
+        <label className="caps inline-flex items-center gap-2 cursor-pointer">
           <input type="checkbox" checked={allShownSelected} onChange={toggleAllShown}
             className="w-4 h-4 rounded border-slate-300 dark:border-rule" />
           Select all {shown.length === repos.length ? "" : `${shown.length} shown`}
         </label>
-        <span className="text-[12px] tabular-nums text-slate-400 dark:text-slate-500">
-          {selected.size} selected
-        </span>
+        <span className="caps tabular-nums">{selected.size} selected</span>
         {selected.size > 0 && (
           <button type="button" onClick={() => setSelected(new Set())}
             className="textlink caps transition-colors">
@@ -860,10 +858,7 @@ export default function DependabotManager({ rows, prCounts, onDone }: {
                   onKeyDown={e => { if (e.key === "Enter" && typed === "CLOSE") startClose(); }}
                   placeholder="Type CLOSE"
                   autoFocus
-                  className="w-36 px-2.5 py-1.5 text-[12.5px] rounded-lg bg-white dark:bg-ink/[0.06]
-                             border border-rose-300 dark:border-rose-500/40
-                             text-slate-800 dark:text-slate-100 placeholder:text-slate-400
-                             focus:outline-none focus:ring-2 focus:ring-rose-500/30" />
+                  className="field-line text-[13.5px]" />
                 <Button variant="caution" disabled={typed !== "CLOSE" || closing}
                   onClick={startClose}>
                   {closing ? "Closing…" : "Close them"}

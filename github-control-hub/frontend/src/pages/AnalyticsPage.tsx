@@ -505,7 +505,7 @@ export default function AnalyticsPage() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder="a check by name, or by what it asks"
               aria-label="Search checks"
-              className="w-full bg-transparent border-0 px-0 py-1 text-[14px] text-ink placeholder:text-ink-4 focus:outline-none"
+              className="field-line text-[13.5px] w-full"
             />
             {search && (
               <button onClick={() => setSearch("")} aria-label="Clear search" className="textlink caps shrink-0">
@@ -1876,32 +1876,35 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-slate-900/40  animate-fade-in" onClick={onClose}></div>
-      <div className="bg-white dark:bg-paper rounded-2xl shadow-xl border border-slate-200 dark:border-rule w-full max-w-xl relative z-10 animate-slide-up flex flex-col">
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-rule flex items-center justify-between rounded-t-2xl">
-          <h3 className="display text-[1.1875rem] text-ink">{isEditing ? "Edit Widget" : "Add Dashboard Widget"}</h3>
-          <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-900 dark:hover:text-ink"><i className="ph ph-x text-lg"></i></button>
+      <div className="absolute inset-0 bg-ink/45 animate-fade-in" onClick={onClose}></div>
+      <div className="bg-paper border border-ink w-full max-w-xl relative z-10 animate-slide-up flex flex-col max-h-[88vh]">
+        <span className="block h-[3px] w-full bg-ink shrink-0" aria-hidden="true" />
+        <div className="px-7 py-5 border-b border-rule flex items-baseline justify-between gap-4 shrink-0">
+          <h3 className="display text-[1.375rem] text-ink">
+            {isEditing ? "Edit check" : "Add a check"}
+          </h3>
+          <button onClick={onClose} className="textlink caps shrink-0">Close</button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="px-7 py-6 space-y-7 overflow-y-auto">
           <div>
-            <label className="block text-sm font-semibold text-slate-900 dark:text-ink mb-1">Widget Title</label>
+            <label className="caps block mb-1">Widget Title</label>
             <input
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-rule rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-paper-2 dark:text-slate-200"
+              className="field-line text-[13.5px] w-full"
               placeholder="e.g. My Custom Metric"
               required
             />
           </div>
 
           <div>
-            <label className="block text-sm font-semibold text-slate-900 dark:text-ink mb-1">Data Source</label>
+            <label className="caps block mb-1">Data Source</label>
             <select
               value={type}
               onChange={(e) => setType(e.target.value as WidgetType)}
-              className="w-full px-3 py-2 border border-slate-300 dark:border-rule rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-paper-2 dark:text-slate-200"
+              className="field-line text-[13.5px] w-full"
             >
               <option value="preset">Built-in Ranking Presets</option>
               <option value="query">Security Insight Query</option>
@@ -1911,11 +1914,11 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
           <div className="p-4 bg-slate-50 dark:bg-paper border border-slate-200 dark:border-rule rounded-lg space-y-4">
             {type === "preset" ? (
               <div>
-                <label className="block text-sm font-semibold text-slate-900 dark:text-ink mb-1">Select Preset</label>
+                <label className="caps block mb-1">Select Preset</label>
                 <select
                   value={presetId}
                   onChange={(e) => setPresetId(e.target.value as PresetId)}
-                  className="w-full px-3 py-2 border border-slate-300 dark:border-rule rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-paper-2 dark:text-slate-200"
+                  className="field-line text-[13.5px] w-full"
                 >
                   {presetOptions(initialData?.presetId).map(id => (
                     <option key={id} value={id}>{PRESET_LABELS[id] ?? id}</option>
@@ -1925,7 +1928,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                 {presetId === "vuln-repos" && (
                   <div className="mt-4">
                     <div className="flex items-baseline justify-between gap-3 mb-2">
-                      <label className="block text-sm font-semibold text-slate-900 dark:text-ink">Count which severities</label>
+                      <label className="caps block">Count which severities</label>
                       <button
                         type="button"
                         onClick={() => setSeverities(picked.length === SEVERITIES.length ? ["critical"] : [...SEVERITIES])}
@@ -1970,11 +1973,11 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
             ) : (
               <>
                 <div>
-                  <label className="block text-sm font-semibold text-slate-900 dark:text-ink mb-1">Select Insight Query</label>
+                  <label className="caps block mb-1">Select Insight Query</label>
                   <select
                     value={selectedQueryId}
                     onChange={(e) => handleQuerySelect(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 dark:border-rule rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-paper-2 dark:text-slate-200"
+                    className="field-line text-[13.5px] w-full"
                   >
                     {QUERY_OPTIONS.map(q => (
                       <option key={q.id} value={q.id}>{q.label}</option>
@@ -1984,7 +1987,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
 
                 {selectedQuery?.requiresParam && (
                   <div>
-                    <label className="block text-sm font-semibold text-slate-900 dark:text-ink mb-1">{selectedQuery.paramLabel}</label>
+                    <label className="caps block mb-1">{selectedQuery.paramLabel}</label>
                     {selectedQuery.useTagInput ? (
                       <>
                         <TagInput
@@ -2013,7 +2016,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                         type="text"
                         value={paramValue}
                         onChange={(e) => setParamValue(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-300 dark:border-rule rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-sm bg-white dark:bg-paper-2 dark:text-slate-200"
+                        className="field-line text-[13.5px] w-full"
                         required
                       />
                     )}
@@ -2026,11 +2029,11 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
 
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-semibold text-slate-900 dark:text-ink mb-1">Protection Type</label>
+                        <label className="caps block mb-1">Protection Type</label>
                         <select
                           value={protectionType}
                           onChange={(e) => setProtectionType(e.target.value)}
-                          className="w-full px-2 py-1.5 border border-slate-300 dark:border-rule rounded-md text-sm outline-none focus:border-blue-500 bg-white dark:bg-paper-2 dark:text-slate-200"
+                          className="field-line text-[13.5px] w-full"
                         >
                           <option value="any">Must have ANY protection</option>
                           <option value="classic">Must use Classic Protection</option>
@@ -2038,11 +2041,11 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-semibold text-slate-900 dark:text-ink mb-1">Rule Matching Mode</label>
+                        <label className="caps block mb-1">Rule Matching Mode</label>
                         <select
                           value={ruleMatchType}
                           onChange={(e) => setRuleMatchType(e.target.value)}
-                          className="w-full px-2 py-1.5 border border-slate-300 dark:border-rule rounded-md text-sm outline-none focus:border-blue-500 bg-white dark:bg-paper-2 dark:text-slate-200"
+                          className="field-line text-[13.5px] w-full"
                         >
                           <option value="any">Any rules (just check if protection exists)</option>
                           <option value="at_least">Must have at least the selected rules</option>
@@ -2066,7 +2069,7 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
                                 type="number" min={1} max={5}
                                 value={minApprovals}
                                 onChange={(e) => setMinApprovals(parseInt(e.target.value))}
-                                className="w-16 rounded-md border-slate-300 dark:border-rule py-1 px-2 text-xs ring-1 ring-inset ring-slate-300 dark:ring-rule outline-none focus:border-blue-500 bg-white dark:bg-paper-2 dark:text-slate-200"
+                                className="field-line text-[13.5px]"
                               />
                             </div>
                           )}
@@ -2128,12 +2131,12 @@ export function WidgetFormModal({ onClose, onSave, isSaving, initialData }: { on
             )}
           </div>
 
-          <div className="flex justify-end gap-3 pt-4 border-t border-slate-200 dark:border-rule">
-            <button type="button" onClick={onClose} className="px-4 py-2 border border-slate-300 dark:border-rule rounded-lg text-sm font-medium hover:bg-slate-50 dark:hover:bg-paper-2 dark:text-slate-300 transition-colors" disabled={isSaving}>
+          <div className="flex justify-end items-center gap-5 pt-5 border-t border-rule">
+            <button type="button" onClick={onClose} className="textlink caps" disabled={isSaving}>
               Cancel
             </button>
             <button type="submit" className="stamp" disabled={isSaving}>
-              {isSaving ? "Saving..." : isEditing ? "Update Widget" : "Save Widget"}
+              {isSaving ? "Saving…" : isEditing ? "Update check" : "Save check"}
             </button>
           </div>
         </form>

@@ -309,7 +309,7 @@ export function SearchInput({ value, onChange, placeholder }: {
     <label className="relative flex-1 min-w-[15rem] max-w-sm flex items-baseline gap-2.5 border-b border-rule-strong focus-within:border-ink transition-colors">
       <i className="ph-bold ph-magnifying-glass text-ink-3 text-sm translate-y-0.5" aria-hidden="true"></i>
       <input value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        className="w-full bg-transparent border-0 px-0 py-2 text-[14px] text-ink placeholder:text-ink-4 focus:outline-none" />
+        className="field-line text-[13.5px] w-full" />
       {value && (
         <button onClick={() => onChange("")} aria-label="Clear search"
           className="caps text-ink-3 hover:text-ink shrink-0 pr-0.5">Clear</button>
