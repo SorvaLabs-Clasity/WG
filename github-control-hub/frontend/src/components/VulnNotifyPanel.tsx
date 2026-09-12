@@ -160,9 +160,8 @@ export default function VulnNotifyPanel({ feed, isAdmin }: { feed: NotifyFeed; i
               disabled={!enabled && !groupId}
               title={!enabled && !groupId ? "Choose an email group first" : ""}
               className={`relative inline-flex h-6 w-11 items-center border border-rule-strong transition-colors disabled:opacity-40 ${
-                enabled ? "bg-ink" : "bg-gray-300 dark:bg-paper-3"}`}>
-              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                enabled ? "translate-x-6" : "translate-x-1"}`} />
+                enabled ? "bg-ink" : "bg-paper-2"}`}>
+              <span className={`inline-block h-3.5 w-3.5 transform transition-colors transition-transform ${enabled ? "translate-x-6 bg-paper" : "translate-x-1 bg-ink-3"}`} />
             </button>
           </div>
         </div>

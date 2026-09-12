@@ -160,13 +160,13 @@ export default function CostPanel() {
         <div className="px-5 py-4 flex items-end gap-6 flex-wrap">
           <div>
             <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Over {data.days} days</p>
-            <p className="text-[26px] font-semibold tabular-nums text-slate-900 dark:text-ink leading-none mt-1">
+            <p className="display text-[1.625rem] tabular-nums text-ink leading-none mt-1">
               {money(data.total)}
             </p>
           </div>
           <div>
             <p className={`${TYPE.label} text-slate-400 dark:text-slate-500`}>Per month at this rate</p>
-            <p className="text-[26px] font-semibold tabular-nums text-slate-900 dark:text-ink leading-none mt-1">
+            <p className="display text-[1.625rem] tabular-nums text-ink leading-none mt-1">
               {money(data.monthly)}
             </p>
           </div>

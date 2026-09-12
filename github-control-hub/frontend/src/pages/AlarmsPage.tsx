@@ -63,7 +63,7 @@ function StatusDot({ alarm }: { alarm: WidgetAlarm }) {
         <span className="absolute inline-flex w-full h-full  bg-rose-400 opacity-70 animate-ping" />
       )}
       <span className={`relative inline-flex w-2.5 h-2.5 rounded-full ${
-        !alarm.enabled ? "bg-slate-300 dark:bg-paper-3"
+        !alarm.enabled ? "bg-rule-strong"
           : firing ? "bg-rose-500" : "bg-emerald-500"}`} />
     </span>
   );

@@ -410,7 +410,7 @@ export default function ImportantEvents() {
                         </div>
                       </div>
                       <Spark values={k.spark} label={label(k.type).toLowerCase()}
-                        intent={notable ? INTENT[intent].mark : "bg-slate-300 dark:bg-paper-3"} />
+                        intent={notable ? INTENT[intent].mark : "bg-rule-strong"} />
                     </div>
 
                     <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-ink/[0.06]
@@ -620,7 +620,7 @@ function SituationRow({ s, index, open, onToggle, alerts }: {
 
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2 flex-wrap">
-            <span className="text-[14px] font-bold text-slate-800 dark:text-slate-100">{label(s.type)}</span>
+            <span className="display text-[0.875rem] text-ink dark:text-slate-100">{label(s.type)}</span>
             <Pill intent={intent}>{String(s.severity).toUpperCase()}</Pill>
             {/* Only where GitHub actually reversed the change. This read
                 `unresolved === 0`, which on an account where somebody had

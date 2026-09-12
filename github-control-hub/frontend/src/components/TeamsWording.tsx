@@ -65,7 +65,7 @@ export default function TeamsWording({
             : { subject: "", body: "" })}
         />
         <span>
-          <span className="block text-sm font-semibold text-gh-textBase dark:text-slate-200">
+          <span className="display block text-[1rem] text-ink dark:text-slate-200">
             Word it differently on Teams
           </span>
           <span className="block text-xs text-gray-500 dark:text-slate-400 mt-0.5">

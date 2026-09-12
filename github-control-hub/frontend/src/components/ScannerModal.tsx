@@ -298,10 +298,10 @@ export default function ScannerModal({ isOpen, onClose, scanner }: any) {
 
                     <div className="flex items-center gap-2 mt-4 mb-4">
                       <div 
-                        className={`w-10 h-5 flex items-center border border-rule-strong p-1 cursor-pointer transition-colors ${cond.requiresProtection ? 'bg-ink' : 'bg-gray-300 dark:bg-paper-3'}`}
+                        className={`w-10 h-5 flex items-center border border-rule-strong p-1 cursor-pointer transition-colors ${cond.requiresProtection ? "bg-ink" : "bg-paper-2"}`}
                         onClick={() => updateCondition(idx, "requiresProtection", !cond.requiresProtection)}
                       >
-                        <div className={`bg-white w-3 h-3 rounded-full shadow-md transform transition-transform ${cond.requiresProtection ? 'translate-x-5' : ''}`}></div>
+                        <div className={`w-3 h-3 transform transition-transform ${cond.requiresProtection ? "translate-x-5 bg-paper" : "bg-ink-3"}`}></div>
                       </div>
                       <span className="text-sm font-medium text-gh-textBase dark:text-slate-200">Check for protection rules</span>
                     </div>

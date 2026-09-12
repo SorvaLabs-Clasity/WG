@@ -103,7 +103,7 @@ function UsageLine({ row, biggest, open, onToggle }: {
         </div>
 
         <div className="text-right shrink-0">
-          <p className="text-[15px] font-bold tabular-nums text-slate-900 dark:text-ink leading-none">
+          <p className="display text-[0.9375rem] tabular-nums text-ink leading-none">
             {row.count.toLocaleString()}
           </p>
           <p className="text-[10.5px] text-slate-400 dark:text-slate-500 mt-0.5 tabular-nums">
@@ -367,7 +367,7 @@ export default function GithubBudgetPanel() {
                   {/* The number the list below adds up to. Anything else here
                       invites the reader to reconcile two figures that were
                       never measuring the same thing. */}
-                  <p className="text-[24px] font-semibold tabular-nums text-slate-900 dark:text-ink leading-none mt-1">
+                  <p className="display text-[1.5rem] tabular-nums text-ink leading-none mt-1">
                     {(totals[l.bucket] ?? 0).toLocaleString()}
                     <span className="text-[13px] font-bold text-slate-400 dark:text-slate-500">
                       {" "}request{(totals[l.bucket] ?? 0) === 1 ? "" : "s"}

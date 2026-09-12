@@ -686,7 +686,7 @@ export default function ActivityPage() {
               three colours the chart above uses, so a row and a band in the
               graph are recognisably the same thing. */}
           <span aria-hidden="true"
-            className={`absolute left-0 inset-y-0 w-[3px] ${STREAM_RAIL[categoryOf(entry.action)] ?? "bg-slate-300 dark:bg-paper-3"}`} />
+            className={`absolute left-0 inset-y-0 w-[3px] ${STREAM_RAIL[categoryOf(entry.action)] ?? "bg-rule-strong"}`} />
 
           <div className="flex items-start gap-2 min-w-0">
             <div className="flex items-center gap-1 shrink-0 pt-0.5">

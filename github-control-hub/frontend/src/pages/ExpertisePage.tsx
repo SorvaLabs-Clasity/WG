@@ -27,7 +27,7 @@ interface Answer {
   sampled?: boolean;
 }
 
-const labelClass = "block text-[13px] font-bold text-slate-700 dark:text-slate-200 mb-1.5";
+const labelClass = "caps block mb-1.5";
 
 const inputClass = "field-line text-[13.5px]";
 
@@ -80,10 +80,10 @@ function ago(days: number | null): string {
  * answer. Reading that off the ranking alone takes a second look.
  */
 function freshness(days: number | null): string {
-  if (days === null) return "bg-slate-300 dark:bg-paper-3";
+  if (days === null) return "bg-rule-strong";
   if (days <= 30) return "bg-emerald-500";
   if (days <= 180) return "bg-amber-500";
-  return "bg-slate-300 dark:bg-paper-3";
+  return "bg-rule-strong";
 }
 
 function Signals({ e, size = "sm", sampled }: { e: Expert; size?: "sm" | "lg"; sampled?: boolean }) {
@@ -373,7 +373,7 @@ export default function ExpertisePage() {
                   <span className="inline-block w-2 h-2 bg-forest align-middle" /> within a
                   month,{" "}
                   <span className="inline-block w-2 h-2 bg-ochre align-middle" /> within six,{" "}
-                  <span className="inline-block w-2 h-2 rounded-full bg-slate-300 dark:bg-paper-3 align-middle" /> longer
+                  <span className="inline-block w-2 h-2 rounded-full bg-rule-strong align-middle" /> longer
                   ago. Bot accounts are excluded.
                 </p>
               </div>

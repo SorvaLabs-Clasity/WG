@@ -51,7 +51,7 @@ export default function DetailedLoggingPanel() {
         <div className="flex items-center gap-3 min-w-0">
           <i className="fa-solid fa-list-check text-gh-muted dark:text-slate-400"></i>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-gh-textBase dark:text-slate-200">
+            <div className="display text-[1rem] text-ink dark:text-slate-200">
               Detailed GitHub logging
             </div>
             <div className="text-xs text-gh-muted dark:text-slate-400 truncate">
@@ -76,11 +76,10 @@ export default function DetailedLoggingPanel() {
             disabled={save.isPending}
             onClick={() => save.mutate({ enabled: !settings.enabled, disabledKinds: settings.disabledKinds })}
             className={`relative inline-flex h-5 w-9 items-center border border-rule-strong transition-colors ${
-              settings.enabled ? "bg-ink" : "bg-slate-300 dark:bg-paper-3"} ${
+              settings.enabled ? "bg-ink" : "bg-paper-2"} ${
               save.isPending ? "opacity-60" : ""}`}
           >
-            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-              settings.enabled ? "translate-x-[18px]" : "translate-x-0.5"}`} />
+            <span className={`inline-block h-3.5 w-3.5 transform transition-colors transition-transform ${settings.enabled ? "translate-x-[18px] bg-paper" : "translate-x-0.5 bg-ink-3"}`} />
           </button>
         </div>
       </div>

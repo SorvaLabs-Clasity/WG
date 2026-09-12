@@ -99,7 +99,7 @@ function AlarmRow({ alarm, widgetTitle, onEdit, onRemove }: {
   return (
     <div className={`${SURFACE.card} px-4 py-3 flex items-center gap-3`}>
       <span className={`w-2 h-2 rounded-full shrink-0 ${
-        !alarm.enabled ? "bg-slate-300 dark:bg-paper-3"
+        !alarm.enabled ? "bg-rule-strong"
           : firing ? "bg-rose-500" : "bg-emerald-500"}`}
         title={!alarm.enabled ? "Paused" : firing ? "Firing" : "Clear"} />
 

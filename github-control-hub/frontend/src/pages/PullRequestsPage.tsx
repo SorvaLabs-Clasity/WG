@@ -76,9 +76,9 @@ function Switch({ on, onChange, disabled }: {
   return (
     <button onClick={() => onChange(!on)} disabled={disabled} role="switch" aria-checked={on}
       className={`relative inline-flex h-5 w-9 shrink-0 items-center border border-rule-strong transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-        on ? "bg-ink" : "bg-slate-300 dark:bg-paper-3"}`}>
-      <span className={`inline-block h-3 w-3 transform bg-paper transition-transform ${
-        on ? "translate-x-[1.15rem]" : "translate-x-[0.2rem]"}`} />
+        on ? "bg-ink" : "bg-paper-2"}`}>
+      <span className={`inline-block h-3 w-3 transform transition-transform ${
+        on ? "translate-x-[1.15rem] bg-paper" : "translate-x-[0.2rem] bg-ink-3"}`} />
     </button>
   );
 }
