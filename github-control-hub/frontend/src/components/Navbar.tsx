@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import AwsAccountSwitcher from "./AwsAccountSwitcher";
 import UserAvatar from "./UserAvatar";
@@ -119,6 +119,115 @@ function SectionSheet({ items, pathname, login, skin, onGo, onTheme, onSignOut }
   );
 }
 
+/**
+ * How the dismissal finds an open account menu.
+ *
+ * A marker rather than a ref, because the rail layout renders the menu twice —
+ * once down the side for wide windows, once in the narrow-window bar — and a
+ * single ref is claimed by whichever mounts last, which is the hidden one.
+ * Every click in the *visible* menu then looked like a click outside one: the
+ * handler closed it on mousedown, the button was gone before mouseup, and
+ * React never dispatched the click. Appearance did nothing at all under
+ * Cockpit. `closest()` asks the question that was actually meant — "is this
+ * click inside *an* account menu" — and stays right however many copies a
+ * layout renders.
+ */
+const ACCOUNT_MARK = "data-account-menu";
+
+/**
+ * The edition switch and the account menu, for either layout.
+ *
+ * A top-level component rather than JSX held in a variable, because the rail
+ * layout renders it twice — once down the side, once in the narrow-window bar —
+ * and the two need different things. Held as one shared element it also shared
+ * a `ref`, which the second copy silently won: every click in the *visible*
+ * menu then looked like a click outside one, so the menu closed on mousedown
+ * and React never dispatched the click. That is why Appearance did nothing at
+ * all under Cockpit.
+ *
+ * `placement` is the other half. A menu hanging off the foot of a side rail
+ * opens upwards; the same menu in a bar pinned to the top of the window has to
+ * open down, or it lands above the viewport and cannot be reached.
+ */
+function AccountMenu({
+  placement, login, avatarUrl, theme, skin, appVersion, awsProfile,
+  open, onToggleOpen, onClose, onToggleEdition, onTheme, onSignOut,
+}: {
+  placement: "up" | "down";
+  login?: string;
+  avatarUrl?: string;
+  theme: "light" | "dark";
+  skin: Skin;
+  appVersion: string;
+  awsProfile?: string;
+  open: boolean;
+  onToggleOpen: () => void;
+  onClose: () => void;
+  onToggleEdition: () => void;
+  onTheme: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+  <>
+    <button onClick={onToggleEdition} className="textlink caps"
+      title={theme === "dark" ? "Switch to the day edition" : "Switch to the night edition"}>
+      {theme === "dark" ? "Day edition" : "Night edition"}
+    </button>
+
+    {login && (
+      <div {...{ [ACCOUNT_MARK]: "" }} className="relative">
+        <button
+          onClick={() => onToggleOpen()}
+          aria-haspopup="menu"
+          aria-expanded={open}
+          className="flex items-center gap-2.5 group"
+        >
+          <UserAvatar login={login} avatarUrl={avatarUrl} size={26}
+            className="border border-rule-strong" />
+          <span className="hidden md:block caps text-ink group-hover:text-ink-2 transition-colors">
+            {login}
+          </span>
+          <span aria-hidden="true" className={`text-[0.5rem] text-ink-3 transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
+        </button>
+
+        {open && (
+          <div role="menu"
+            className={`absolute w-72 bg-paper border border-ink animate-[fadeIn_140ms_ease-out] z-50 ${
+              placement === "up" ? "left-0 bottom-full mb-3" : "right-0 top-full mt-3"}`}>
+            <span className="block h-[3px] w-full bg-ink" aria-hidden="true" />
+            <div className="px-5 py-4 border-b border-rule">
+              <p className="caps">Signed in as</p>
+              <p className="display text-[1.125rem] text-ink mt-1.5 truncate">{login}</p>
+              <div className="dateline mt-2 text-[0.75rem]">
+                <span>{COMPANY_NAME}</span>
+                {appVersion && <span className="font-mono">v{appVersion}</span>}
+              </div>
+            </div>
+            {/* Above the account switcher and sign-out, because it is the one
+                item here somebody opens this menu *for* rather than reaches
+                on the way out. */}
+            <button role="menuitem"
+              onClick={() => onTheme()}
+              className="w-full px-5 py-3.5 flex items-baseline justify-between gap-4 text-left
+                         hover:bg-ink/[0.05] transition-colors border-b border-rule">
+              <span className="caps text-ink">Appearance</span>
+              <span className="caps">{themeEntry(skin).name} · {theme === "dark" ? "Night" : "Day"}</span>
+            </button>
+            <AwsAccountSwitcher
+              current={awsProfile}
+              onSwitched={onClose} />
+            <button role="menuitem" onClick={onSignOut}
+              className="w-full px-5 py-3.5 text-left caps text-crimson hover:bg-crimson-wash transition-colors border-t border-rule">
+              Sign out
+            </button>
+          </div>
+        )}
+      </div>
+    )}
+  </>
+  );
+}
+
 export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -150,7 +259,6 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
-  const accountRef = useRef<HTMLDivElement>(null);
   const { theme, toggle, skin } = useTheme();
 
   // Sign out used to be an unlabelled icon in the corner, which is the same as
@@ -158,7 +266,8 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
   useEffect(() => {
     if (!accountOpen) return;
     const close = (e: MouseEvent) => {
-      if (!accountRef.current?.contains(e.target as Node)) setAccountOpen(false);
+      const el = e.target as HTMLElement | null;
+      if (!el?.closest?.(`[${ACCOUNT_MARK}]`)) setAccountOpen(false);
     };
     const esc = (e: KeyboardEvent) => { if (e.key === "Escape") setAccountOpen(false); };
     document.addEventListener("mousedown", close);
@@ -202,66 +311,6 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
    * listener and a sign-out, and two copies of that is two places for the
    * behaviour to drift.
    */
-  const account = (
-    <>
-      <button onClick={toggle} className="textlink caps"
-        title={theme === "dark" ? "Switch to the day edition" : "Switch to the night edition"}>
-        {theme === "dark" ? "Day edition" : "Night edition"}
-      </button>
-
-      {login && (
-        <div ref={accountRef} className="relative">
-          <button
-            onClick={() => setAccountOpen(o => !o)}
-            aria-haspopup="menu"
-            aria-expanded={accountOpen}
-            className="flex items-center gap-2.5 group"
-          >
-            <UserAvatar login={login} avatarUrl={avatarUrl} size={26}
-              className="border border-rule-strong" />
-            <span className="hidden md:block caps text-ink group-hover:text-ink-2 transition-colors">
-              {login}
-            </span>
-            <span aria-hidden="true" className={`text-[0.5rem] text-ink-3 transition-transform ${accountOpen ? "rotate-180" : ""}`}>▼</span>
-          </button>
-
-          {accountOpen && (
-            <div role="menu"
-              className={`absolute w-72 bg-paper border border-ink animate-[fadeIn_140ms_ease-out] z-50 ${
-                rail ? "left-0 bottom-full mb-3 xl:left-0" : "right-0 top-full mt-3"}`}>
-              <span className="block h-[3px] w-full bg-ink" aria-hidden="true" />
-              <div className="px-5 py-4 border-b border-rule">
-                <p className="caps">Signed in as</p>
-                <p className="display text-[1.125rem] text-ink mt-1.5 truncate">{login}</p>
-                <div className="dateline mt-2 text-[0.75rem]">
-                  <span>{COMPANY_NAME}</span>
-                  {appVersion && <span className="font-mono">v{appVersion}</span>}
-                </div>
-              </div>
-              {/* Above the account switcher and sign-out, because it is the one
-                  item here somebody opens this menu *for* rather than reaches
-                  on the way out. */}
-              <button role="menuitem"
-                onClick={() => { setAccountOpen(false); setThemeOpen(true); }}
-                className="w-full px-5 py-3.5 flex items-baseline justify-between gap-4 text-left
-                           hover:bg-ink/[0.05] transition-colors border-b border-rule">
-                <span className="caps text-ink">Appearance</span>
-                <span className="caps">{themeEntry(skin).name} · {theme === "dark" ? "Night" : "Day"}</span>
-              </button>
-              <AwsAccountSwitcher
-                current={status?.aws?.profile}
-                onSwitched={() => setAccountOpen(false)} />
-              <button role="menuitem" onClick={logout}
-                className="w-full px-5 py-3.5 text-left caps text-crimson hover:bg-crimson-wash transition-colors border-t border-rule">
-                Sign out
-              </button>
-            </div>
-          )}
-        </div>
-      )}
-    </>
-  );
-
   /**
    * The rail.
    *
@@ -300,7 +349,13 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
           </div>
 
           <div className="shrink-0 border-t border-rule px-4 py-3.5 flex flex-col items-start gap-3">
-            {account}
+            <AccountMenu placement={"up"} login={login} avatarUrl={avatarUrl} theme={theme} skin={skin}
+            appVersion={appVersion} awsProfile={status?.aws?.profile}
+            open={accountOpen} onToggleOpen={() => setAccountOpen(o => !o)}
+            onClose={() => setAccountOpen(false)}
+            onToggleEdition={toggle}
+            onTheme={() => { setAccountOpen(false); setThemeOpen(true); }}
+            onSignOut={logout} />
           </div>
         </nav>
 
@@ -312,7 +367,13 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
               <button onClick={() => navigate("/")} className="display text-[1.5rem] leading-none text-ink">
                 Control Hub
               </button>
-              <div className="flex items-center gap-5">{account}</div>
+              <div className="flex items-center gap-5"><AccountMenu placement={"down"} login={login} avatarUrl={avatarUrl} theme={theme} skin={skin}
+            appVersion={appVersion} awsProfile={status?.aws?.profile}
+            open={accountOpen} onToggleOpen={() => setAccountOpen(o => !o)}
+            onClose={() => setAccountOpen(false)}
+            onToggleEdition={toggle}
+            onTheme={() => { setAccountOpen(false); setThemeOpen(true); }}
+            onSignOut={logout} /></div>
             </div>
             <div className="border-t-2 border-ink" />
             <div className="h-10 flex items-stretch">
@@ -360,7 +421,13 @@ export default function Navbar({ login, avatarUrl }: NavbarProps) {
 
             <div className="flex items-center gap-5 shrink-0">
               <span className="hidden lg:block caps text-ink-4 whitespace-nowrap">{today()}</span>
-              {account}
+              <AccountMenu placement={"down"} login={login} avatarUrl={avatarUrl} theme={theme} skin={skin}
+            appVersion={appVersion} awsProfile={status?.aws?.profile}
+            open={accountOpen} onToggleOpen={() => setAccountOpen(o => !o)}
+            onClose={() => setAccountOpen(false)}
+            onToggleEdition={toggle}
+            onTheme={() => { setAccountOpen(false); setThemeOpen(true); }}
+            onSignOut={logout} />
             </div>
           </div>
 
