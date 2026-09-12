@@ -39,26 +39,24 @@ export default function UpdateOverlay() {
   if (!current) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-ink/80 dark:bg-paper/80 ">
-      <div className="flex flex-col items-center gap-5 text-center px-8">
-        <div className="relative">
-          <div className="w-16 h-16 rounded-2xl bg-slate-900 dark:bg-white flex items-center justify-center">
-            <i className={`ph ${current.icon} text-3xl text-reverse dark:text-slate-900`}></i>
-          </div>
-          {status !== "installing" && (
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-slate-900 dark:bg-white flex items-center justify-center">
-              <div className="w-2.5 h-2.5 rounded-full border-2 border-white dark:border-rule border-t-transparent dark:border-t-transparent animate-spin"></div>
-            </div>
-          )}
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-paper">
+      <div className="flex flex-col items-center gap-6 text-center px-8 max-w-[36rem]">
+        <div className="w-16 h-16 border border-ink flex items-center justify-center text-ink">
+          <i className={`ph-bold ${current.icon} text-3xl`}></i>
         </div>
         <div>
-          <h2 className="display text-[1.1875rem] text-ink">
+          <h2 className="display text-[clamp(1.5rem,3vw,2rem)] text-ink leading-tight">
             {current.title}
           </h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {current.subtitle}
-          </p>
+          <p className="standfirst text-[14px] mt-2.5">{current.subtitle}</p>
         </div>
+        {/* The measure, as a rule inking across. No spinner: this screen is a
+            held page, not a widget. */}
+        {status !== "installing" && (
+          <div className="w-52 h-px bg-rule overflow-hidden">
+            <div className="h-full w-1/3 bg-ink" style={{ animation: "ruleRun 1.15s ease-in-out infinite" }} />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -13,17 +13,17 @@ import { SEVERITIES, type Severity, type WeekBucket } from "../lib/alertSituatio
  * unrelated hues would read as four unrelated categories.
  */
 export const SEVERITY_BAR: Record<Severity, string> = {
-  critical: "bg-rose-600 dark:bg-rose-500",
-  high: "bg-rose-400 dark:bg-rose-400/80",
-  medium: "bg-amber-400 dark:bg-amber-400/85",
-  low: "bg-slate-300 dark:bg-paper-4",
+  critical: "bg-crimson",
+  high: "bg-crimson/60",
+  medium: "bg-ochre",
+  low: "bg-rule-strong",
 };
 
 export const SEVERITY_DOT: Record<Severity, string> = {
-  critical: "bg-rose-600 dark:bg-rose-500",
-  high: "bg-rose-400 dark:bg-rose-400/80",
-  medium: "bg-amber-400 dark:bg-amber-400/85",
-  low: "bg-slate-300 dark:bg-paper-4",
+  critical: "bg-crimson",
+  high: "bg-crimson/60",
+  medium: "bg-ochre",
+  low: "bg-rule-strong",
 };
 
 /**

@@ -327,8 +327,10 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
       <div className="px-5 py-4 border-b border-rule">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 flex items-center justify-center shrink-0 border border-rule-strong text-ink-2">
-              <i className="ph-bold ph-git-repository text-lg"></i>
+            {/* The same monogram the list rows carry, so the panel and the row
+                it was opened from are recognisably the same thing. */}
+            <div className="w-10 h-10 flex items-center justify-center shrink-0 border border-rule-strong caps caps-tight text-ink">
+              {(data.languages?.[0]?.name ?? data.name).slice(0, 2).toUpperCase()}
             </div>
             <div className="min-w-0">
               <h3 className="display text-[1.1875rem] text-ink truncate" title={data.name}>{data.name}</h3>
@@ -343,31 +345,31 @@ function RepoPanel({ repo, onClose }: { repo: string; onClose: () => void }) {
               </div>
             </div>
           </div>
-          <button onClick={onClose} className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 transition-colors p-1 -mr-1 shrink-0">
-            <i className="ph-bold ph-x text-lg"></i>
-          </button>
+          <button onClick={onClose} className="textlink caps shrink-0">Close</button>
         </div>
 
-        {data.description && <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{data.description}</p>}
+        {data.description && <p className="standfirst text-[12.5px] mb-3">{data.description}</p>}
         {data.topics.length > 0 && (
           <div className="flex flex-wrap gap-1 mb-3">
             {data.topics.map(t => (
-              <span key={t} className="text-[10px] px-1.5 py-0.5  bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-100 dark:border-blue-900">#{t}</span>
+              <span key={t} className="font-mono text-[11px] px-1.5 py-0.5 bg-paper-2 text-ink-2 border border-rule">#{t}</span>
             ))}
           </div>
         )}
 
-        <div className="grid grid-cols-3 gap-2">
-          {tiles.map(t => (
-            <div key={t.label} className="bg-white dark:bg-paper-2 rounded-lg border border-slate-100 dark:border-rule px-2 py-2 text-center">
-              <div className="text-base font-bold text-slate-900 dark:text-ink font-mono leading-none">{t.value}</div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1">{t.label}</div>
+        {/* Readings side by side, divided by column rules, the way a results
+            table is set — not five boxed tiles pretending to be five cards. */}
+        <div className="grid grid-cols-3 border-t border-rule pt-3">
+          {tiles.map((t, i) => (
+            <div key={t.label} className={`py-1 ${i % 3 === 0 ? "" : "pl-3 border-l border-rule"}`}>
+              <div className="figure text-[1.375rem] text-ink">{t.value}</div>
+              <div className="caps caps-tight mt-1.5">{t.label}</div>
             </div>
           ))}
         </div>
 
-        <a href={data.html_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline font-medium">
-          <i className="ph-bold ph-arrow-square-out"></i> Open on GitHub
+        <a href={data.html_url} target="_blank" rel="noreferrer" className="textlink caps mt-4 inline-block">
+          Open on GitHub →
         </a>
       </div>
 
